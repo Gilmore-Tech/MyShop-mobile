@@ -1,0 +1,49 @@
+name: myshop_mobile
+repository: https://github.com/gilmore-technologies/myshop-mobile
+
+packages:
+  - apps/*
+  - packages/*
+
+command:
+  bootstrap:
+    usePubspecOverrides: true
+
+scripts:
+  analyze:
+    exec: dart analyze --fatal-infos
+    description: Run static analysis
+  
+  format:
+    exec: dart format --set-exit-if-changed .
+    description: Check formatting
+  
+  test:
+    exec: flutter test
+    description: Run tests in all packages
+    packageFilters:
+      dirExists: test
+  
+  build:client:android:
+    exec: flutter build apk --release
+    packageFilters:
+      scope: myshop_client
+  
+  build:client:ios:
+    exec: flutter build ios --release --no-codesign
+    packageFilters:
+      scope: myshop_client
+  
+  build:provider:android:
+    exec: flutter build apk --release
+    packageFilters:
+      scope: myshop_provider
+  
+  build:provider:ios:
+    exec: flutter build ios --release --no-codesign
+    packageFilters:
+      scope: myshop_provider
+  
+  clean:
+    exec: flutter clean
+    description: Clean all packages
