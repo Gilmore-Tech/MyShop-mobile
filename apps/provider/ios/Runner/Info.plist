@@ -53,6 +53,12 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>MyShop needs your location to show your position on the map and connect you with nearby riders.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>MyShop needs your location to track rides and keep your position updated for passengers.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>MyShop needs background location access to track active rides.</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

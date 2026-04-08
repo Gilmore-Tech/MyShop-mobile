@@ -1,22 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_ui/shared_ui.dart';
+
+import 'router.dart';
 
 /// Root widget for the MyShop Provider App.
 /// PRD Reference: Section 5 (Provider App)
-class ProviderApp extends StatelessWidget {
+class ProviderApp extends ConsumerWidget {
   const ProviderApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
+  Widget build(BuildContext context, WidgetRef ref) {
+    final router = ref.watch(goRouterProvider);
+
+    return MaterialApp.router(
       title: 'MyShop Provider',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorSchemeSeed: const Color(0xFF1A73E8), // Placeholder — Phase 6 brand
-        useMaterial3: true,
-      ),
-      home: const Scaffold(
-        body: Center(child: Text('MyShop Provider — TODO: Add routing')),
-      ),
+      theme: MyShopTheme.light,
+      routerConfig: router,
     );
   }
 }
