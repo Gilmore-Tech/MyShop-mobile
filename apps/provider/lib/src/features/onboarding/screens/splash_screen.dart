@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 
-/// Provider app launch — MyShop Provider logo, auto-login check
-/// PRD Reference: PRD 5.1
+/// Shown while the auth controller bootstraps from secure storage.
 class ProviderSplashScreen extends StatelessWidget {
   const ProviderSplashScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('ProviderSplashScreen')),
-      body: const Center(
-        child: Text('TODO: Implement ProviderSplashScreen'),
+    return const Scaffold(
+      backgroundColor: MyShopColors.surfaceWhite,
+      body: Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(MyShopColors.primaryGold),
+        ),
       ),
     );
   }

@@ -4,6 +4,14 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../features/auth/providers/auth_controller.dart';
+import '../features/auth/screens/otp_verification_screen.dart';
+import '../features/auth/screens/phone_input_screen.dart';
+import '../features/onboarding/screens/onboarding_screen.dart';
+import '../features/onboarding/screens/role_picker_screen.dart';
+import '../features/onboarding/screens/splash_screen.dart';
+import '../features/registration/screens/artisan_registration_screen.dart';
+import '../features/registration/screens/driver_registration_screen.dart';
 import '../features/artisan_home/screens/active_job_screen.dart';
 import '../features/chat/screens/chat_screen.dart';
 import '../features/chat/screens/messages_list_screen.dart';
@@ -21,6 +29,8 @@ import '../features/earnings/screens/earnings_reports_screen.dart';
 import '../features/profile/screens/account_settings_screen.dart';
 import '../features/profile/screens/availability_schedule_screen.dart';
 import '../features/profile/screens/business_information_screen.dart';
+import '../features/profile/screens/edit_business_information_screen.dart';
+import '../features/profile/screens/edit_vehicle_information_screen.dart';
 import '../features/profile/screens/deactivate_account_screen.dart';
 import '../features/profile/screens/documents_verification_screen.dart';
 import '../features/profile/screens/edit_provider_profile_screen.dart';
@@ -36,9 +46,95 @@ import '../features/trips/screens/trips_history_screen.dart';
 /// Shell route provides the bottom navigation bar for the 4 main tabs.
 /// Full-screen routes (ride request, active ride, trip complete) are outside the shell.
 final goRouterProvider = Provider<GoRouter>((ref) {
+  final refresh = _AuthRouterRefresh(ref);
   return GoRouter(
-    initialLocation: '/home',
+    initialLocation: '/onboarding',
+    refreshListenable: refresh,
+    redirect: (context, state) {
+      final auth = ref.read(authControllerProvider);
+      final loc = state.matchedLocation;
+
+      const unauthAllowed = {
+        '/splash',
+        '/onboarding',
+        '/signin/phone',
+        '/signin/otp',
+        '/signup/role',
+        '/signup/driver',
+        '/signup/artisan',
+        '/signup/phone',
+        '/signup/otp',
+      };
+
+      if (auth is AuthAuthenticated) {
+        if (!loc.startsWith('/home') &&
+            !loc.startsWith('/account') &&
+            !loc.startsWith('/earnings') &&
+            !loc.startsWith('/trips') &&
+            !loc.startsWith('/active') &&
+            !loc.startsWith('/ride') &&
+            !loc.startsWith('/job') &&
+            !loc.startsWith('/chat')) {
+          return '/home';
+        }
+        return null;
+      }
+      // From here on: signed out / mid-flow.
+      if (auth is AuthSignInOtp) {
+        return loc == '/signin/otp' ? null : '/signin/otp';
+      }
+      if (auth is AuthSignUpOtp || auth is AuthSignUpReady) {
+        return loc == '/signup/otp' ? null : '/signup/otp';
+      }
+      // AuthUnauthenticated.
+      if (!unauthAllowed.contains(loc)) return '/onboarding';
+      return null;
+    },
     routes: [
+      GoRoute(
+        path: '/splash',
+        builder: (context, state) => const ProviderSplashScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding',
+        builder: (context, state) => const OnboardingScreen(),
+      ),
+      GoRoute(
+        path: '/signin/phone',
+        builder: (context, state) => const ProviderPhoneInputScreen(
+          mode: PhoneInputMode.signIn,
+        ),
+      ),
+      GoRoute(
+        path: '/signin/otp',
+        builder: (context, state) => const ProviderOtpVerificationScreen(),
+      ),
+      GoRoute(
+        path: '/signup/role',
+        builder: (context, state) => const RolePickerScreen(),
+      ),
+      GoRoute(
+        path: '/signup/driver',
+        builder: (context, state) => const DriverRegistrationScreen(),
+      ),
+      GoRoute(
+        path: '/signup/artisan',
+        builder: (context, state) => const ArtisanRegistrationScreen(),
+      ),
+      GoRoute(
+        path: '/signup/phone',
+        builder: (context, state) {
+          final role = ref.read(providerTypeProvider);
+          return ProviderPhoneInputScreen(
+            mode: PhoneInputMode.signUp,
+            signUpRole: role,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/signup/otp',
+        builder: (context, state) => const ProviderOtpVerificationScreen(),
+      ),
       // Main shell with bottom navigation
       ShellRoute(
         builder: (context, state, child) => _DriverShell(child: child),
@@ -90,8 +186,16 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const VehicleInformationScreen(),
       ),
       GoRoute(
+        path: '/account/vehicle/edit',
+        builder: (context, state) => const EditVehicleInformationScreen(),
+      ),
+      GoRoute(
         path: '/account/business',
         builder: (context, state) => const BusinessInformationScreen(),
+      ),
+      GoRoute(
+        path: '/account/business/edit',
+        builder: (context, state) => const EditBusinessInformationScreen(),
       ),
       GoRoute(
         path: '/account/payouts',
@@ -155,6 +259,26 @@ final goRouterProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+/// Bridges Riverpod's [authControllerProvider] to a [Listenable] so GoRouter
+/// re-evaluates its [redirect] when auth state changes.
+class _AuthRouterRefresh extends ChangeNotifier {
+  _AuthRouterRefresh(this._ref) {
+    _sub = _ref.listen<AuthState>(
+      authControllerProvider,
+      (_, __) => notifyListeners(),
+    );
+  }
+
+  final Ref _ref;
+  late final ProviderSubscription<AuthState> _sub;
+
+  @override
+  void dispose() {
+    _sub.close();
+    super.dispose();
+  }
+}
 
 /// Switches between Driver and Artisan home based on the active provider role.
 class _ProviderHomeSwitcher extends ConsumerWidget {
