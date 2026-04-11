@@ -1,222 +1,488 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-/// Deactivate Account confirmation flow.
+/// Deactivate Account confirmation screen — explains consequences, surfaces
+/// blocking status checks, and offers Continue / Keep My Account actions.
 ///
-/// Figma: node 313:27644
-class DeactivateAccountScreen extends StatefulWidget {
+/// PRD Reference: PRD 5.5 — provider account closure flow.
+class DeactivateAccountScreen extends StatelessWidget {
   const DeactivateAccountScreen({super.key});
-
-  @override
-  State<DeactivateAccountScreen> createState() =>
-      _DeactivateAccountScreenState();
-}
-
-class _DeactivateAccountScreenState extends State<DeactivateAccountScreen> {
-  String? _selectedReason;
-  bool _confirmed = false;
-
-  static const _reasons = [
-    'Taking a break',
-    'Switching to another platform',
-    'Earnings too low',
-    'Too many cancellations',
-    'Privacy concerns',
-    'Other',
-  ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
-      appBar: AppBar(
-        backgroundColor: MyShopColors.surfaceWhite,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-        title: const Text('Deactivate Account',
-            style: TextStyle(
-                fontFamily: 'Raleway',
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: MyShopColors.textPrimary)),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(MyShopSpacing.md),
-        children: [
-          // Warning banner
-          Container(
-            padding: const EdgeInsets.all(MyShopSpacing.md),
-            decoration: BoxDecoration(
-              color: MyShopColors.errorLight,
-              borderRadius: BorderRadius.circular(12),
-              border:
-                  Border.all(color: MyShopColors.error.withValues(alpha: 0.3)),
-            ),
-            child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.warning_amber_rounded,
-                      size: 22, color: MyShopColors.error),
-                  const SizedBox(width: 12),
-                  Expanded(
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                        const Text('We\'re sorry to see you go',
-                            style: TextStyle(
-                                fontFamily: 'Raleway',
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: MyShopColors.textPrimary)),
-                        const SizedBox(height: 4),
-                        Text(
-                            'Deactivation is reversible within 24 hours. After that your data is retained for 90 days before being permanently deleted.',
-                            style: MyShopTypography.body2
-                                .copyWith(fontSize: 11, height: 1.4)),
-                      ])),
-                ]),
-          ),
-          const SizedBox(height: MyShopSpacing.lg),
-
-          const Text('TELL US WHY',
-              style: TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  color: MyShopColors.textSecondary,
-                  letterSpacing: 1.0)),
-          const SizedBox(height: MyShopSpacing.sm),
-
-          for (final reason in _reasons) ...[
-            _ReasonRow(
-              label: reason,
-              isSelected: _selectedReason == reason,
-              onTap: () => setState(() => _selectedReason = reason),
-            ),
-            const SizedBox(height: 8),
-          ],
-          const SizedBox(height: MyShopSpacing.lg),
-
-          // Confirm checkbox
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Checkbox(
-                value: _confirmed,
-                onChanged: (v) => setState(() => _confirmed = v ?? false),
-                activeColor: MyShopColors.error,
-              ),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => setState(() => _confirmed = !_confirmed),
-                  child: Text(
-                    'I understand that my outstanding clawback balance must be settled before deactivation can complete.',
-                    style: MyShopTypography.body2
-                        .copyWith(fontSize: 12, height: 1.4),
-                  ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            _Header(),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  MyShopSpacing.md,
+                  MyShopSpacing.lg,
+                  MyShopSpacing.md,
+                  MyShopSpacing.lg,
                 ),
+                children: [
+                  const _WarningHero(),
+                  const SizedBox(height: MyShopSpacing.lg),
+                  const _SectionLabel(text: 'CONSEQUENCES OF DEACTIVATION'),
+                  const SizedBox(height: MyShopSpacing.sm),
+                  _ConsequencesCard(),
+                  const SizedBox(height: MyShopSpacing.lg),
+                  const _SectionLabel(text: 'STATUS CHECKS'),
+                  const SizedBox(height: MyShopSpacing.sm),
+                  const _PendingPayoutsCard(amount: 'GHS 420.50'),
+                  const SizedBox(height: MyShopSpacing.md),
+                  const _DataRetentionNote(),
+                  const SizedBox(height: MyShopSpacing.lg),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: MyShopSpacing.md),
+            ),
+            _Footer(
+              onContinue: () {},
+              onKeep: () => context.pop(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
-          ElevatedButton.icon(
-            onPressed: (_selectedReason != null && _confirmed) ? () {} : null,
-            icon: const Icon(Icons.arrow_forward, size: 16),
-            label: const Text('Continue Deactivation'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: MyShopColors.error,
-              foregroundColor: MyShopColors.textOnPrimary,
-              disabledBackgroundColor: MyShopColors.disabled,
-              minimumSize: const Size(double.infinity, 52),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              textStyle: const TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700),
+// ─────────────────────────────────────────────────────────────────────────────
+// Header
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _Header extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(
+        MyShopSpacing.sm,
+        MyShopSpacing.sm,
+        MyShopSpacing.md,
+        MyShopSpacing.md,
+      ),
+      decoration: const BoxDecoration(
+        color: MyShopColors.surfaceWhite,
+        border: Border(bottom: BorderSide(color: MyShopColors.divider)),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
+            onPressed: () => context.pop(),
+          ),
+          Text(
+            'Deactivate Account',
+            style: MyShopTypography.h1.copyWith(
+              fontWeight: FontWeight.w700,
+              fontSize: 18,
             ),
           ),
-          const SizedBox(height: MyShopSpacing.sm),
-          OutlinedButton(
-            onPressed: () => Navigator.of(context).maybePop(),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: MyShopColors.textPrimary,
-              side: const BorderSide(color: MyShopColors.divider),
-              minimumSize: const Size(double.infinity, 52),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              textStyle: const TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700),
-            ),
-            child: const Text('Keep My Account'),
-          ),
-          const SizedBox(height: MyShopSpacing.xxl),
         ],
       ),
     );
   }
 }
 
-class _ReasonRow extends StatelessWidget {
-  const _ReasonRow({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
+// ─────────────────────────────────────────────────────────────────────────────
+// Warning hero
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _WarningHero extends StatelessWidget {
+  const _WarningHero();
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-            horizontal: MyShopSpacing.md, vertical: 14),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? MyShopColors.primaryGoldLight
-              : MyShopColors.surfaceWhite,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-              color: isSelected
-                  ? MyShopColors.primaryGold
-                  : MyShopColors.divider,
-              width: isSelected ? 1.5 : 1),
+    return Column(
+      children: [
+        Container(
+          width: 84,
+          height: 84,
+          decoration: const BoxDecoration(
+            color: MyShopColors.errorLight,
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: const Icon(
+            Icons.warning_amber_rounded,
+            size: 44,
+            color: MyShopColors.error,
+          ),
         ),
-        child: Row(
-          children: [
-            Icon(
-              isSelected
-                  ? Icons.radio_button_checked
-                  : Icons.radio_button_unchecked,
-              size: 20,
-              color: isSelected
-                  ? MyShopColors.primaryGold
-                  : MyShopColors.textSecondary,
+        const SizedBox(height: MyShopSpacing.md),
+        Text(
+          'Are you sure?',
+          style: MyShopTypography.h1.copyWith(
+            fontWeight: FontWeight.w800,
+            fontSize: 24,
+          ),
+        ),
+        const SizedBox(height: MyShopSpacing.sm),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.lg),
+          child: Text(
+            'This will permanently disable your provider profile and remove your access.',
+            textAlign: TextAlign.center,
+            style: MyShopTypography.body1.copyWith(
+              color: MyShopColors.textSecondary,
+              fontWeight: FontWeight.w400,
+              height: 1.5,
             ),
-            const SizedBox(width: 12),
-            Expanded(
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Section label
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: MyShopTypography.overline.copyWith(
+        color: MyShopColors.textSecondary,
+        fontWeight: FontWeight.w900,
+        fontSize: 12,
+        letterSpacing: 1.2,
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Consequences card
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ConsequencesCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    const items = [
+      _Consequence(
+        icon: Icons.history,
+        title: 'Loss of Work History',
+        body:
+            'Your track record of 450+ completed jobs will be permanently deleted.',
+      ),
+      _Consequence(
+        icon: Icons.star_border,
+        title: 'Reputation Wipe',
+        body:
+            'Your 4.9-star rating and all 128 verified customer reviews will disappear.',
+      ),
+      _Consequence(
+        icon: Icons.gpp_maybe_outlined,
+        title: 'Verification Status',
+        body:
+            'Your KYC and Police Clearance status will be revoked. Re-applying requires full fees.',
+      ),
+      _Consequence(
+        icon: Icons.account_balance_wallet_outlined,
+        title: 'Financial History',
+        body:
+            'You will lose access to your historical earnings reports and tax documents.',
+      ),
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: MyShopColors.surfaceWhite,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: MyShopColors.divider),
+      ),
+      child: Column(
+        children: [
+          for (int i = 0; i < items.length; i++) ...[
+            _ConsequenceRow(item: items[i]),
+            if (i < items.length - 1)
+              const Divider(
+                height: 1,
+                indent: MyShopSpacing.md,
+                endIndent: MyShopSpacing.md,
+                color: MyShopColors.divider,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _Consequence {
+  const _Consequence({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+}
+
+class _ConsequenceRow extends StatelessWidget {
+  const _ConsequenceRow({required this.item});
+
+  final _Consequence item;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: const BoxDecoration(
+              color: MyShopColors.surfaceGrey,
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Icon(item.icon, size: 20, color: MyShopColors.textPrimary),
+          ),
+          const SizedBox(width: MyShopSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.title,
+                  style: MyShopTypography.h3.copyWith(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  item.body,
+                  style: MyShopTypography.body2.copyWith(height: 1.5),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pending payouts card
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _PendingPayoutsCard extends StatelessWidget {
+  const _PendingPayoutsCard({required this.amount});
+
+  final String amount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: MyShopColors.primaryGoldLight,
+        borderRadius: BorderRadius.circular(12),
+        border: const Border(
+          top: BorderSide(color: MyShopColors.primaryGold, width: 3),
+        ),
+      ),
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.error_outline,
+                size: 18,
+                color: MyShopColors.primaryGold,
+              ),
+              const SizedBox(width: MyShopSpacing.sm),
+              Text(
+                'Action Required: Pending Payouts',
+                style: MyShopTypography.h3.copyWith(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: MyShopSpacing.sm),
+          Padding(
+            padding: const EdgeInsets.only(left: 26),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                RichText(
+                  text: TextSpan(
+                    style: MyShopTypography.body2.copyWith(height: 1.5),
+                    children: [
+                      const TextSpan(text: 'You have '),
+                      TextSpan(
+                        text: amount,
+                        style: const TextStyle(
+                          color: MyShopColors.textPrimary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const TextSpan(
+                        text:
+                            ' in your wallet. Deactivating now will freeze these funds. Please withdraw first.',
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: MyShopSpacing.sm),
+                GestureDetector(
+                  onTap: () {},
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Go to Payouts',
+                        style: MyShopTypography.body1.copyWith(
+                          color: MyShopColors.textPrimary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.arrow_forward,
+                        size: 16,
+                        color: MyShopColors.textPrimary,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Data retention note
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _DataRetentionNote extends StatelessWidget {
+  const _DataRetentionNote();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      decoration: BoxDecoration(
+        color: MyShopColors.offWhite,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: MyShopColors.divider),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.info_outline,
+            size: 18,
+            color: MyShopColors.textSecondary,
+          ),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(
+            child: Text(
+              'Data retention policy: We retain certain financial records for up to 7 years to comply with Ghanaian tax laws and regulatory audit requirements.',
+              style: MyShopTypography.body2.copyWith(height: 1.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sticky footer
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _Footer extends StatelessWidget {
+  const _Footer({required this.onContinue, required this.onKeep});
+
+  final VoidCallback onContinue;
+  final VoidCallback onKeep;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        MyShopSpacing.md,
+        MyShopSpacing.md,
+        MyShopSpacing.md,
+        MyShopSpacing.md + MediaQuery.of(context).padding.bottom * 0.2,
+      ),
+      decoration: const BoxDecoration(
+        color: MyShopColors.surfaceWhite,
+        border: Border(top: BorderSide(color: MyShopColors.divider)),
+      ),
+      child: Column(
+        children: [
+          GestureDetector(
+            onTap: onContinue,
+            child: Container(
+              height: 56,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: MyShopColors.error,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              alignment: Alignment.center,
               child: Text(
-                label,
-                style: TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 13,
-                  fontWeight:
-                      isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: MyShopColors.textPrimary,
+                'Understand & Continue',
+                style: MyShopTypography.button.copyWith(
+                  color: MyShopColors.textOnPrimary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: MyShopSpacing.sm),
+          GestureDetector(
+            onTap: onKeep,
+            child: Container(
+              height: 56,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: MyShopColors.surfaceWhite,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: MyShopColors.divider),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                'Keep My Account',
+                style: MyShopTypography.button.copyWith(
+                  color: MyShopColors.textPrimary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

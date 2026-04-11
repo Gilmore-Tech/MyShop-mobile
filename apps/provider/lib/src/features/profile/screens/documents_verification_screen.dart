@@ -1,437 +1,578 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-/// Documents & Verification screen — biometric check + document list + uploads.
+import '../providers/provider_type_provider.dart';
+
+/// Documents & Verification — adapts to the active provider role.
 ///
-/// Figma: nodes 298:22273 / 302:22520
-class DocumentsVerificationScreen extends StatelessWidget {
+/// - **Driver** sees a fixed set of required documents: Driver's License,
+///   Roadworthiness, Insurance, Ghana Card.
+/// - **Artisan** sees their core required docs (Ghana Card, Business
+///   Certificate, Trade Certificate) plus an "Optional Documents" group for
+///   SMEs that may not yet have full registration.
+///
+/// PRD Reference: PRD 5.5 — provider verification & compliance.
+class DocumentsVerificationScreen extends ConsumerWidget {
   const DocumentsVerificationScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isArtisan = ref.watch(providerTypeProvider).isArtisan;
+
+    final requiredDocs = isArtisan ? _artisanRequired : _driverRequired;
+    final optionalDocs = isArtisan ? _artisanOptional : const <_DocItem>[];
+
+    final uploadedRequired =
+        requiredDocs.where((d) => d.status != _DocStatus.missing).length;
+
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
-      appBar: AppBar(
-        backgroundColor: MyShopColors.surfaceWhite,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-        title: const Text('Documents & Verification',
-            style: TextStyle(
-                fontFamily: 'Raleway',
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: MyShopColors.textPrimary)),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(MyShopSpacing.md),
-        children: [
-          // Verification progress
-          Container(
-            padding: const EdgeInsets.all(MyShopSpacing.md),
-            decoration: BoxDecoration(
-                color: MyShopColors.surfaceGrey,
-                borderRadius: BorderRadius.circular(12)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                const Text('Verification Progress',
-                    style: TextStyle(
-                        fontFamily: 'Raleway',
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: MyShopColors.textPrimary)),
-                Text('65% Complete',
-                    style: MyShopTypography.body2.copyWith(
-                        color: MyShopColors.primaryGold,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12)),
-              ]),
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: const LinearProgressIndicator(
-                  value: 0.65,
-                  minHeight: 8,
-                  backgroundColor: MyShopColors.divider,
-                  valueColor:
-                      AlwaysStoppedAnimation(MyShopColors.primaryGold),
+      body: SafeArea(
+        child: Column(
+          children: [
+            _Header(),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  MyShopSpacing.md,
+                  MyShopSpacing.md,
+                  MyShopSpacing.md,
+                  MyShopSpacing.lg,
                 ),
+                children: [
+                  _ProgressCard(
+                    completed: uploadedRequired,
+                    total: requiredDocs.length,
+                    isArtisan: isArtisan,
+                  ),
+                  const SizedBox(height: MyShopSpacing.lg),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _SectionLabel(
+                          icon: Icons.task_alt,
+                          label: 'REQUIRED DOCUMENTS',
+                          iconColor: MyShopColors.error,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: MyShopColors.errorLight,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          'Mandatory',
+                          style: MyShopTypography.body2.copyWith(
+                            color: MyShopColors.error,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: MyShopSpacing.sm),
+                  _DocsCard(items: requiredDocs),
+                  if (optionalDocs.isNotEmpty) ...[
+                    const SizedBox(height: MyShopSpacing.lg),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _SectionLabel(
+                            icon: Icons.add_circle_outline,
+                            label: 'OPTIONAL DOCUMENTS',
+                            iconColor: MyShopColors.textSecondary,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: MyShopColors.surfaceGrey,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            'For SMEs',
+                            style: MyShopTypography.body2.copyWith(
+                              color: MyShopColors.textSecondary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Add these to unlock larger contracts and stand out to enterprise clients.',
+                      style: MyShopTypography.body2.copyWith(height: 1.5),
+                    ),
+                    const SizedBox(height: MyShopSpacing.sm),
+                    _DocsCard(items: optionalDocs),
+                  ],
+                  const SizedBox(height: MyShopSpacing.lg),
+                  const _PolicyNote(),
+                ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                  'Complete your identity verification and upload all professional documents to start receiving high-value jobs.',
-                  style: MyShopTypography.body2.copyWith(fontSize: 11)),
-            ]),
-          ),
-          const SizedBox(height: MyShopSpacing.lg),
-
-          // Identity verification
-          Row(children: [
-            const Text('Identity Verification',
-                style: TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: MyShopColors.textPrimary)),
-            const Spacer(),
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: MyShopColors.primaryGoldLight,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.shield_outlined,
-                  size: 14, color: MyShopColors.primaryGold),
             ),
-          ]),
-          const SizedBox(height: MyShopSpacing.sm),
-          _BiometricCard(),
-          const SizedBox(height: MyShopSpacing.lg),
+          ],
+        ),
+      ),
+    );
+  }
 
-          // Required documents
-          Row(children: [
-            const Text('Required Documents',
-                style: TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: MyShopColors.textPrimary)),
-            const Spacer(),
-            Text('3 Documents',
-                style: MyShopTypography.body2.copyWith(fontSize: 11)),
-          ]),
-          const SizedBox(height: MyShopSpacing.sm),
-          _DocItem(
-            icon: Icons.shield_outlined,
-            title: 'Ghana Card (National ID)',
-            description: 'Front & Back scanned copy',
-            status: 'Verified',
-            statusColor: MyShopColors.success,
-            expiry: 'Expiry: Mar 12, 2030',
-            actionLabel: 'View',
-          ),
-          const SizedBox(height: 8),
-          _DocItem(
-            icon: Icons.description_outlined,
-            title: "Driver's License",
-            description: 'Artisan certification proof',
-            status: 'In Review',
-            statusColor: MyShopColors.warning,
-            expiry: '',
-            actionLabel: 'Details',
-          ),
-          const SizedBox(height: 8),
-          _DocItem(
-            icon: Icons.lock_outline,
-            title: 'Ghana Police Clearance',
-            description: 'Criminal background check',
-            status: 'Expired',
-            statusColor: MyShopColors.error,
-            expiry: 'Expiry: Jan 05, 2024',
-            actionLabel: 'Renew',
-          ),
-          const SizedBox(height: MyShopSpacing.lg),
+  // ── Driver doc set ──
+  static const _driverRequired = <_DocItem>[
+    _DocItem(
+      icon: Icons.badge_outlined,
+      title: "Driver's License",
+      meta: 'Expires: Dec 12, 2027',
+      status: _DocStatus.valid,
+    ),
+    _DocItem(
+      icon: Icons.directions_car_outlined,
+      title: 'Roadworthiness Certificate',
+      meta: 'Expires: Mar 04, 2026',
+      status: _DocStatus.valid,
+    ),
+    _DocItem(
+      icon: Icons.shield_outlined,
+      title: 'Vehicle Insurance',
+      meta: 'Expires: Aug 22, 2025',
+      status: _DocStatus.expiring,
+    ),
+    _DocItem(
+      icon: Icons.credit_card,
+      title: 'Ghana Card',
+      meta: 'Tap to upload front & back',
+      status: _DocStatus.missing,
+    ),
+  ];
 
-          // Upload other proofs
-          const Text('Upload Other Proofs',
-              style: TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: MyShopColors.textPrimary)),
-          const SizedBox(height: MyShopSpacing.sm),
-          DottedUploadBox(),
-          const SizedBox(height: MyShopSpacing.md),
-          Center(
-            child: Text(
-              'All documents are stored securely using industry-standard\nencryption. By submitting, you agree to our Data Privacy Policy.',
-              textAlign: TextAlign.center,
-              style: MyShopTypography.caption.copyWith(fontSize: 10),
+  // ── Artisan doc sets ──
+  static const _artisanRequired = <_DocItem>[
+    _DocItem(
+      icon: Icons.credit_card,
+      title: 'Ghana Card',
+      meta: 'Verified',
+      status: _DocStatus.valid,
+    ),
+    _DocItem(
+      icon: Icons.business_outlined,
+      title: 'Business Registration Certificate',
+      meta: 'Expires: Mar 04, 2026',
+      status: _DocStatus.valid,
+    ),
+    _DocItem(
+      icon: Icons.workspace_premium_outlined,
+      title: 'Trade Certificate',
+      meta: 'Tap to upload',
+      status: _DocStatus.missing,
+    ),
+  ];
+
+  static const _artisanOptional = <_DocItem>[
+    _DocItem(
+      icon: Icons.description_outlined,
+      title: 'Tax Clearance (TIN)',
+      meta: 'Recommended for VAT-eligible jobs',
+      status: _DocStatus.missing,
+    ),
+    _DocItem(
+      icon: Icons.health_and_safety_outlined,
+      title: 'Public Liability Insurance',
+      meta: 'Optional · unlocks enterprise contracts',
+      status: _DocStatus.missing,
+    ),
+    _DocItem(
+      icon: Icons.school_outlined,
+      title: 'Professional Body Membership',
+      meta: 'e.g. GNAT, GIA, GIE',
+      status: _DocStatus.missing,
+    ),
+  ];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Header
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _Header extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(
+        MyShopSpacing.sm,
+        MyShopSpacing.sm,
+        MyShopSpacing.md,
+        MyShopSpacing.md,
+      ),
+      decoration: const BoxDecoration(
+        color: MyShopColors.surfaceWhite,
+        border: Border(bottom: BorderSide(color: MyShopColors.divider)),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
+            onPressed: () => context.pop(),
+          ),
+          Text(
+            'Documents & Verification',
+            style: MyShopTypography.h1.copyWith(
+              fontWeight: FontWeight.w700,
+              fontSize: 18,
             ),
           ),
-          const SizedBox(height: 8),
-          Center(
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Text('Contact Support',
-                  style: MyShopTypography.body2.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: MyShopColors.textPrimary)),
-              const Text('  |  ',
-                  style: TextStyle(color: MyShopColors.textSecondary)),
-              Text('Report Issue',
-                  style: MyShopTypography.body2.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: MyShopColors.textPrimary)),
-            ]),
-          ),
-          const SizedBox(height: MyShopSpacing.lg),
-
-          ElevatedButton(
-            onPressed: () {},
-            style: ElevatedButton.styleFrom(
-              backgroundColor: MyShopColors.darkSlate,
-              foregroundColor: MyShopColors.textOnPrimary,
-              minimumSize: const Size(double.infinity, 52),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              textStyle: const TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700),
-            ),
-            child: const Text('Submit for Final Review'),
-          ),
-          const SizedBox(height: MyShopSpacing.xxl),
         ],
       ),
     );
   }
 }
 
-class _BiometricCard extends StatelessWidget {
+// ─────────────────────────────────────────────────────────────────────────────
+// Progress card
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ProgressCard extends StatelessWidget {
+  const _ProgressCard({
+    required this.completed,
+    required this.total,
+    required this.isArtisan,
+  });
+
+  final int completed;
+  final int total;
+  final bool isArtisan;
+
   @override
   Widget build(BuildContext context) {
+    final progress = total == 0 ? 0.0 : completed / total;
+    final isComplete = completed == total;
+    final accent =
+        isComplete ? MyShopColors.success : MyShopColors.primaryGold;
+    final accentLight =
+        isComplete ? MyShopColors.successLight : MyShopColors.primaryGoldLight;
+
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),
       decoration: BoxDecoration(
-          color: MyShopColors.primaryGoldLight,
-          borderRadius: BorderRadius.circular(12),
-          border:
-              Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.3))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: const BoxDecoration(
-              color: MyShopColors.primaryGold,
-              shape: BoxShape.circle,
+        color: accentLight,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: MyShopColors.surfaceWhite,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: accent, width: 1.4),
+                ),
+                child: Icon(
+                  isComplete ? Icons.check : Icons.schedule,
+                  size: 20,
+                  color: accent,
+                ),
+              ),
+              const SizedBox(width: MyShopSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isComplete
+                          ? 'All required documents submitted'
+                          : 'Complete your verification',
+                      style: MyShopTypography.h3.copyWith(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isArtisan
+                          ? 'Artisan profile · $completed of $total required docs'
+                          : 'Driver profile · $completed of $total required docs',
+                      style: MyShopTypography.body2,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: MyShopSpacing.md),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 6,
+              backgroundColor: MyShopColors.surfaceWhite,
+              valueColor: AlwaysStoppedAnimation(accent),
             ),
-            child: const Icon(Icons.face_outlined,
-                size: 20, color: Colors.white),
           ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Smile ID Biometric Check',
-                  style: TextStyle(
-                      fontFamily: 'Raleway',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: MyShopColors.textPrimary)),
-              SizedBox(height: 2),
-              Text(
-                  'Live facial recognition to match your face with your National ID records.',
-                  style: TextStyle(
-                      fontFamily: 'Raleway',
-                      fontSize: 11,
-                      color: MyShopColors.textSecondary)),
-            ]),
-          ),
-        ]),
-        const SizedBox(height: 12),
-        Row(children: [
-          Container(
-              width: 6,
-              height: 6,
-              decoration: const BoxDecoration(
-                color: MyShopColors.warning,
-                shape: BoxShape.circle,
-              )),
-          const SizedBox(width: 6),
-          Text('Status:',
-              style: MyShopTypography.body2.copyWith(fontSize: 11)),
-          const SizedBox(width: 4),
-          Text('Awaiting Selfie',
-              style: TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: MyShopColors.warning)),
-        ]),
-        const SizedBox(height: 12),
-        ElevatedButton.icon(
-          onPressed: () {},
-          icon: const Icon(Icons.open_in_new, size: 14),
-          label: const Text('Continue Biometric Scan'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: MyShopColors.darkSlate,
-            foregroundColor: MyShopColors.textOnPrimary,
-            minimumSize: const Size(double.infinity, 44),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10)),
-            textStyle: const TextStyle(
-                fontFamily: 'Raleway',
-                fontSize: 13,
-                fontWeight: FontWeight.w700),
-          ),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 }
 
-class _DocItem extends StatelessWidget {
+// ─────────────────────────────────────────────────────────────────────────────
+// Section label
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({
+    required this.icon,
+    required this.label,
+    required this.iconColor,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color iconColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: iconColor),
+        const SizedBox(width: MyShopSpacing.sm),
+        Text(
+          label,
+          style: MyShopTypography.overline.copyWith(
+            color: MyShopColors.textSecondary,
+            fontWeight: FontWeight.w900,
+            fontSize: 12,
+            letterSpacing: 1.2,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Doc item + status
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum _DocStatus { valid, expiring, missing }
+
+class _DocItem {
   const _DocItem({
     required this.icon,
     required this.title,
-    required this.description,
+    required this.meta,
     required this.status,
-    required this.statusColor,
-    required this.expiry,
-    required this.actionLabel,
   });
+
   final IconData icon;
   final String title;
-  final String description;
-  final String status;
-  final Color statusColor;
-  final String expiry;
-  final String actionLabel;
+  final String meta;
+  final _DocStatus status;
+}
+
+class _DocsCard extends StatelessWidget {
+  const _DocsCard({required this.items});
+
+  final List<_DocItem> items;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(MyShopSpacing.md),
       decoration: BoxDecoration(
         color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: MyShopColors.divider),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(
-              width: 36,
-              height: 36,
+      child: Column(
+        children: [
+          for (int i = 0; i < items.length; i++) ...[
+            _DocRow(item: items[i]),
+            if (i < items.length - 1)
+              const Divider(
+                height: 1,
+                indent: MyShopSpacing.md,
+                endIndent: MyShopSpacing.md,
+                color: MyShopColors.divider,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DocRow extends StatelessWidget {
+  const _DocRow({required this.item});
+
+  final _DocItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () {},
+      child: Padding(
+        padding: const EdgeInsets.all(MyShopSpacing.md),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
                 color: MyShopColors.surfaceGrey,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, size: 18, color: MyShopColors.darkSlate)),
-          const SizedBox(width: 12),
-          Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                Text(title,
-                    style: const TextStyle(
-                        fontFamily: 'Raleway',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: MyShopColors.textPrimary)),
-                Text(description,
-                    style: MyShopTypography.caption.copyWith(fontSize: 10)),
-              ])),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(6),
+              child: Icon(item.icon, size: 20, color: MyShopColors.textPrimary),
             ),
-            child: Row(children: [
-              Icon(_statusIcon(), size: 11, color: statusColor),
-              const SizedBox(width: 4),
-              Text(status,
-                  style: TextStyle(
-                      fontFamily: 'Raleway',
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: statusColor)),
-            ]),
-          ),
-        ]),
-        if (expiry.isNotEmpty || actionLabel.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Row(children: [
-            if (expiry.isNotEmpty)
-              Text(expiry,
-                  style: MyShopTypography.caption.copyWith(fontSize: 10)),
-            const Spacer(),
-            Row(children: [
-              Icon(_actionIcon(), size: 12, color: MyShopColors.textSecondary),
-              const SizedBox(width: 4),
-              Text(actionLabel,
-                  style: MyShopTypography.body2.copyWith(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: MyShopColors.textPrimary)),
-            ]),
-          ]),
-        ],
-      ]),
+            const SizedBox(width: MyShopSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.title,
+                    style: MyShopTypography.h3.copyWith(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      if (item.status != _DocStatus.missing)
+                        const Padding(
+                          padding: EdgeInsets.only(right: 4),
+                          child: Icon(
+                            Icons.access_time,
+                            size: 12,
+                            color: MyShopColors.textSecondary,
+                          ),
+                        ),
+                      Flexible(
+                        child: Text(
+                          item.meta,
+                          style: MyShopTypography.body2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: MyShopSpacing.sm),
+            _StatusPill(status: item.status),
+          ],
+        ),
+      ),
     );
-  }
-
-  IconData _statusIcon() {
-    if (status == 'Verified') return Icons.check_circle;
-    if (status == 'Expired') return Icons.error_outline;
-    return Icons.access_time;
-  }
-
-  IconData _actionIcon() {
-    if (actionLabel == 'View') return Icons.visibility_outlined;
-    if (actionLabel == 'Renew') return Icons.refresh;
-    return Icons.info_outline;
   }
 }
 
-class DottedUploadBox extends StatelessWidget {
-  const DottedUploadBox({super.key});
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.status});
+
+  final _DocStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    late final Color bg;
+    late final Color fg;
+    late final String label;
+    late final IconData icon;
+
+    switch (status) {
+      case _DocStatus.valid:
+        bg = MyShopColors.successLight;
+        fg = MyShopColors.success;
+        label = 'Valid';
+        icon = Icons.check_circle_outline;
+        break;
+      case _DocStatus.expiring:
+        bg = MyShopColors.warningLight;
+        fg = MyShopColors.warning;
+        label = 'Expiring';
+        icon = Icons.warning_amber_outlined;
+        break;
+      case _DocStatus.missing:
+        bg = MyShopColors.surfaceWhite;
+        fg = MyShopColors.primaryGold;
+        label = 'Upload';
+        icon = Icons.upload_outlined;
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: status == _DocStatus.missing ? MyShopColors.primaryGold : bg,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: fg),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: MyShopTypography.body2.copyWith(
+              color: fg,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Policy note
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _PolicyNote extends StatelessWidget {
+  const _PolicyNote();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(MyShopSpacing.lg),
+      padding: const EdgeInsets.all(MyShopSpacing.md),
       decoration: BoxDecoration(
-        color: MyShopColors.surfaceGrey,
+        color: MyShopColors.offWhite,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-            color: MyShopColors.divider, style: BorderStyle.solid, width: 1.5),
       ),
-      child: Column(children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: MyShopColors.surfaceWhite,
-            shape: BoxShape.circle,
-            border: Border.all(color: MyShopColors.divider),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.lock_outline,
+            size: 18,
+            color: MyShopColors.textSecondary,
           ),
-          child:
-              const Icon(Icons.upload, size: 20, color: MyShopColors.textSecondary),
-        ),
-        const SizedBox(height: 12),
-        const Text('Add new document',
-            style: TextStyle(
-                fontFamily: 'Raleway',
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: MyShopColors.textPrimary)),
-        const SizedBox(height: 4),
-        Text('JPG, PNG or PDF formats supported.\nMaximum size 5MB.',
-            textAlign: TextAlign.center,
-            style: MyShopTypography.caption.copyWith(fontSize: 10)),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: () {},
-          icon: const Icon(Icons.add, size: 14),
-          label: const Text('Select File'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: MyShopColors.textPrimary,
-            side: const BorderSide(color: MyShopColors.divider),
-            backgroundColor: MyShopColors.surfaceWhite,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20)),
-            textStyle: const TextStyle(
-                fontFamily: 'Raleway',
-                fontSize: 12,
-                fontWeight: FontWeight.w700),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(
+            child: Text(
+              'Documents are encrypted in transit and reviewed by our compliance team within 24 hours.',
+              style: MyShopTypography.body2.copyWith(height: 1.5),
+            ),
           ),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 }

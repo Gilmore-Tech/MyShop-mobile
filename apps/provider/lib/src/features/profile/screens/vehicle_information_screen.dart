@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 /// Vehicle Information screen — driver-only.
@@ -31,7 +32,7 @@ class VehicleInformationScreen extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(right: MyShopSpacing.md),
             child: OutlinedButton.icon(
-              onPressed: () {},
+              onPressed: () => context.push('/account/vehicle/edit'),
               icon: const Icon(Icons.edit, size: 14),
               label: const Text('Edit'),
               style: OutlinedButton.styleFrom(

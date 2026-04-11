@@ -209,7 +209,7 @@ class _Header extends StatelessWidget {
             ),
           ),
           GestureDetector(
-            onTap: () {},
+            onTap: () => context.push('/account/business/edit'),
             child: Container(
               padding: const EdgeInsets.symmetric(
                 horizontal: MyShopSpacing.md,
