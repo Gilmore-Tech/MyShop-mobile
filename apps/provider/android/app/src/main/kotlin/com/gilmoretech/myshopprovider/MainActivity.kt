@@ -1,4 +1,4 @@
-package com.example.myshop_provider
+package com.gilmoretech.myshopprovider
 
 import io.flutter.embedding.android.FlutterActivity
 
