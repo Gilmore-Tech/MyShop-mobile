@@ -1,42 +1,37 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
+
+import '../../auth/providers/current_user_provider.dart';
+import '../providers/verification_provider.dart';
 
 /// Business Information screen — artisan-only.
 ///
 /// PRD Reference: PRD 5.3 — verified artisan profile.
-class BusinessInformationScreen extends StatelessWidget {
-  const BusinessInformationScreen({
-    super.key,
-    this.businessName = 'Bright Spark Electrical',
-    this.tier = 'Master Artisan',
-    this.cityRegion = 'Accra, Ghana',
-    this.rating = 4.9,
-    this.jobsCount = 128,
-    this.legalType = 'Sole Trader',
-    this.founded = 'May 2018',
-    this.taxId = 'GHA-102933',
-    this.employees = '12 Members',
-    this.serviceRadius = '15km Radius',
-    this.serviceArea = 'Osu',
-    this.regulationDaysUntilInspection = 14,
-  });
-
-  final String businessName;
-  final String tier;
-  final String cityRegion;
-  final double rating;
-  final int jobsCount;
-  final String legalType;
-  final String founded;
-  final String taxId;
-  final String employees;
-  final String serviceRadius;
-  final String serviceArea;
-  final int regulationDaysUntilInspection;
+/// Reads real data from currentUserProvider (AuthUser + ArtisanProfile).
+class BusinessInformationScreen extends ConsumerWidget {
+  const BusinessInformationScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider);
+    final ap = user?.artisanProfile;
+    final completion = ref.watch(profileCompletionProvider);
+
+    final businessName =
+        ap?.businessName ?? user?.displayName ?? 'Your Business';
+    final categories = ap?.serviceCategories
+            ?.map((sc) => sc.category.name)
+            .join(', ') ??
+        'No categories';
+    final serviceRadius = '${ap?.serviceRadiusKm.toStringAsFixed(0) ?? '5'}km';
+    final shopCapacity = ap?.shopCapacity ?? 'solo';
+    final maxJobs = ap?.maxConcurrentJobs ?? 1;
+    final jobsDone = ap?.completedJobsCount ?? 0;
+    final verificationStatus = ap?.verificationStatus ?? 'pending';
+    final isVerified = verificationStatus == 'approved';
+
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
       body: SafeArea(
@@ -52,12 +47,13 @@ class BusinessInformationScreen extends StatelessWidget {
                 children: [
                   _HeroCard(
                     businessName: businessName,
-                    tier: tier,
-                    cityRegion: cityRegion,
-                    rating: rating,
-                    jobsCount: jobsCount,
+                    categories: categories,
+                    isVerified: isVerified,
+                    jobsCount: jobsDone,
                   ),
                   const SizedBox(height: MyShopSpacing.lg),
+
+                  // Enterprise profile section
                   Row(
                     children: [
                       const Icon(
@@ -82,17 +78,18 @@ class BusinessInformationScreen extends StatelessWidget {
                     children: [
                       Expanded(
                         child: _InfoTile(
-                          icon: Icons.work_outline,
-                          label: 'LEGAL TYPE',
-                          value: legalType,
+                          icon: Icons.category_outlined,
+                          label: 'SERVICES',
+                          value: categories,
                         ),
                       ),
                       const SizedBox(width: MyShopSpacing.md),
                       Expanded(
                         child: _InfoTile(
-                          icon: Icons.calendar_today_outlined,
-                          label: 'FOUNDED',
-                          value: founded,
+                          icon: Icons.group_outlined,
+                          label: 'CAPACITY',
+                          value:
+                              '${shopCapacity[0].toUpperCase()}${shopCapacity.substring(1)} · $maxJobs job${maxJobs > 1 ? 's' : ''}',
                         ),
                       ),
                     ],
@@ -102,43 +99,32 @@ class BusinessInformationScreen extends StatelessWidget {
                     children: [
                       Expanded(
                         child: _InfoTile(
-                          icon: Icons.description_outlined,
-                          label: 'TAX ID',
-                          value: taxId,
+                          icon: Icons.verified_outlined,
+                          label: 'VERIFICATION',
+                          value: verificationStatus[0].toUpperCase() +
+                              verificationStatus.substring(1),
                         ),
                       ),
                       const SizedBox(width: MyShopSpacing.md),
                       Expanded(
                         child: _InfoTile(
-                          icon: Icons.group_outlined,
-                          label: 'EMPLOYEES',
-                          value: employees,
+                          icon: Icons.build_outlined,
+                          label: 'JOBS COMPLETED',
+                          value: jobsDone.toString(),
                         ),
                       ),
                     ],
                   ),
+
                   const SizedBox(height: MyShopSpacing.lg),
-                  _ComplianceCard(
-                    docs: const [
-                      _ComplianceDoc(
-                        title: 'Trade License (Artisan)',
-                        expires: 'Expires: Oct 12, 2025',
-                      ),
-                      _ComplianceDoc(
-                        title: 'Business Registration',
-                        expires: 'Expires: Mar 04, 2024',
-                      ),
-                      _ComplianceDoc(
-                        title: 'Tax Clearance (TIN)',
-                        expires: 'Expires: Dec 31, 2024',
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: MyShopSpacing.md),
-                  _RegulationNotice(
-                    daysUntilInspection: regulationDaysUntilInspection,
-                  ),
-                  const SizedBox(height: MyShopSpacing.lg),
+
+                  // Profile completion
+                  if (!completion.isComplete) ...[
+                    _CompletionCard(completion: completion),
+                    const SizedBox(height: MyShopSpacing.md),
+                  ],
+
+                  // Service coverage
                   Row(
                     children: [
                       const Icon(
@@ -159,9 +145,7 @@ class BusinessInformationScreen extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: MyShopSpacing.sm),
-                  _ServiceCoverageCard(
-                    radiusLabel: '$serviceRadius · $serviceArea',
-                  ),
+                  _ServiceCoverageCard(radiusLabel: '$serviceRadius Radius'),
                   const SizedBox(height: MyShopSpacing.lg),
                 ],
               ),
@@ -174,9 +158,9 @@ class BusinessInformationScreen extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 // Header
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 class _Header extends StatelessWidget {
   @override
@@ -245,23 +229,21 @@ class _Header extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 // Hero card
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 class _HeroCard extends StatelessWidget {
   const _HeroCard({
     required this.businessName,
-    required this.tier,
-    required this.cityRegion,
-    required this.rating,
+    required this.categories,
+    required this.isVerified,
     required this.jobsCount,
   });
 
   final String businessName;
-  final String tier;
-  final String cityRegion;
-  final double rating;
+  final String categories;
+  final bool isVerified;
   final int jobsCount;
 
   @override
@@ -269,11 +251,10 @@ class _HeroCard extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        height: 220,
+        height: 200,
         decoration: const BoxDecoration(color: MyShopColors.darkSlate),
         child: Stack(
           children: [
-            // Placeholder hero image — gradient
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -288,7 +269,6 @@ class _HeroCard extends StatelessWidget {
                 ),
               ),
             ),
-            // Bottom dark gradient for text legibility
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -304,7 +284,7 @@ class _HeroCard extends StatelessWidget {
               ),
             ),
 
-            // Verified pill
+            // Verified / Pending pill
             Positioned(
               top: MyShopSpacing.md,
               right: MyShopSpacing.md,
@@ -314,20 +294,23 @@ class _HeroCard extends StatelessWidget {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: MyShopColors.success,
+                  color:
+                      isVerified ? MyShopColors.success : MyShopColors.warning,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
-                      Icons.shield_outlined,
+                    Icon(
+                      isVerified
+                          ? Icons.shield_outlined
+                          : Icons.hourglass_empty,
                       size: 14,
                       color: MyShopColors.textOnPrimary,
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      'VERIFIED',
+                      isVerified ? 'VERIFIED' : 'PENDING',
                       style: MyShopTypography.caption.copyWith(
                         color: MyShopColors.textOnPrimary,
                         fontWeight: FontWeight.w900,
@@ -340,7 +323,7 @@ class _HeroCard extends StatelessWidget {
               ),
             ),
 
-            // Rating chip
+            // Stats chip
             Positioned(
               bottom: MyShopSpacing.md,
               right: MyShopSpacing.md,
@@ -356,48 +339,22 @@ class _HeroCard extends StatelessWidget {
                     color: Colors.white.withValues(alpha: 0.2),
                   ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.star_border,
-                          size: 16,
-                          color: MyShopColors.primaryGold,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          rating.toStringAsFixed(1),
-                          style: MyShopTypography.h3.copyWith(
-                            color: MyShopColors.textOnDarkSlate,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '$jobsCount JOBS',
-                      style: MyShopTypography.caption.copyWith(
-                        color: MyShopColors.textOnDarkSlate
-                            .withValues(alpha: 0.85),
-                        fontWeight: FontWeight.w800,
-                        fontSize: 10,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  '$jobsCount JOBS',
+                  style: MyShopTypography.caption.copyWith(
+                    color: MyShopColors.textOnDarkSlate,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11,
+                    letterSpacing: 0.8,
+                  ),
                 ),
               ),
             ),
 
-            // Bottom-left text stack
+            // Bottom-left text
             Positioned(
               left: MyShopSpacing.md,
-              right: 110,
+              right: 80,
               bottom: MyShopSpacing.md,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -411,45 +368,18 @@ class _HeroCard extends StatelessWidget {
                       fontSize: 24,
                       height: 1.2,
                     ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: MyShopSpacing.sm),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.18),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          tier,
-                          style: MyShopTypography.body2.copyWith(
-                            color: MyShopColors.textOnDarkSlate,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: MyShopSpacing.sm),
-                      const Icon(
-                        Icons.location_on,
-                        size: 14,
-                        color: MyShopColors.primaryGold,
-                      ),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: Text(
-                          cityRegion,
-                          style: MyShopTypography.body2.copyWith(
-                            color: MyShopColors.primaryGold,
-                            fontWeight: FontWeight.w800,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    categories,
+                    style: MyShopTypography.body2.copyWith(
+                      color: MyShopColors.primaryGold,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
@@ -461,9 +391,9 @@ class _HeroCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Info tile (2-column grid)
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Info tile
+// ---------------------------------------------------------------------------
 
 class _InfoTile extends StatelessWidget {
   const _InfoTile({
@@ -514,10 +444,11 @@ class _InfoTile extends StatelessWidget {
                 Text(
                   value,
                   style: MyShopTypography.h3.copyWith(
-                    fontSize: 16,
+                    fontSize: 14,
                     fontWeight: FontWeight.w800,
                   ),
                   overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
                 ),
               ],
             ),
@@ -528,199 +459,14 @@ class _InfoTile extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Compliance card
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Profile completion card
+// ---------------------------------------------------------------------------
 
-class _ComplianceDoc {
-  const _ComplianceDoc({required this.title, required this.expires});
+class _CompletionCard extends StatelessWidget {
+  const _CompletionCard({required this.completion});
 
-  final String title;
-  final String expires;
-}
-
-class _ComplianceCard extends StatelessWidget {
-  const _ComplianceCard({required this.docs});
-
-  final List<_ComplianceDoc> docs;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(MyShopSpacing.md),
-      decoration: BoxDecoration(
-        color: MyShopColors.surfaceWhite,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: MyShopColors.divider),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.description_outlined,
-                size: 18,
-                color: MyShopColors.textPrimary,
-              ),
-              const SizedBox(width: MyShopSpacing.sm),
-              Expanded(
-                child: Text(
-                  'Compliance & Docs',
-                  style: MyShopTypography.h3.copyWith(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: MyShopColors.surfaceGrey,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  '${docs.length} Valid',
-                  style: MyShopTypography.body2.copyWith(
-                    color: MyShopColors.textPrimary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: MyShopSpacing.md),
-          for (int i = 0; i < docs.length; i++) ...[
-            _ComplianceRow(doc: docs[i]),
-            if (i < docs.length - 1) const SizedBox(height: MyShopSpacing.sm),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _ComplianceRow extends StatelessWidget {
-  const _ComplianceRow({required this.doc});
-
-  final _ComplianceDoc doc;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(MyShopSpacing.md),
-      decoration: BoxDecoration(
-        color: MyShopColors.surfaceWhite,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: MyShopColors.divider),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: MyShopColors.textPrimary,
-                width: 1.4,
-              ),
-            ),
-            child: const Icon(
-              Icons.check,
-              size: 18,
-              color: MyShopColors.textPrimary,
-            ),
-          ),
-          const SizedBox(width: MyShopSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  doc.title,
-                  style: MyShopTypography.h3.copyWith(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.access_time,
-                      size: 12,
-                      color: MyShopColors.textSecondary,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(doc.expires, style: MyShopTypography.body2),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: MyShopColors.successLight,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'Valid',
-                  style: MyShopTypography.body2.copyWith(
-                    color: MyShopColors.success,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 6),
-              GestureDetector(
-                onTap: () {},
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'View',
-                      style: MyShopTypography.body1.copyWith(
-                        color: MyShopColors.primaryGold,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                    const Icon(
-                      Icons.open_in_new,
-                      size: 14,
-                      color: MyShopColors.primaryGold,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Regulation notice
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _RegulationNotice extends StatelessWidget {
-  const _RegulationNotice({required this.daysUntilInspection});
-
-  final int daysUntilInspection;
+  final ProfileCompletion completion;
 
   @override
   Widget build(BuildContext context) {
@@ -730,73 +476,54 @@ class _RegulationNotice extends StatelessWidget {
         color: MyShopColors.primaryGoldLight,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: const BoxDecoration(
-              color: MyShopColors.surfaceWhite,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.info_outline,
-              size: 18,
-              color: MyShopColors.primaryGold,
+          Row(
+            children: [
+              const Icon(
+                Icons.info_outline,
+                size: 18,
+                color: MyShopColors.primaryGold,
+              ),
+              const SizedBox(width: MyShopSpacing.sm),
+              Text(
+                'Profile ${completion.percentage}% complete',
+                style: MyShopTypography.h3.copyWith(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: MyShopSpacing.sm),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: completion.progress,
+              minHeight: 6,
+              backgroundColor: MyShopColors.surfaceGrey,
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                MyShopColors.primaryGold,
+              ),
             ),
           ),
-          const SizedBox(width: MyShopSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Regulation Notice',
-                  style: MyShopTypography.h3.copyWith(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'In accordance with Ghana GPRTU & Local Assembly guidelines, all certified artisans must renew trade licenses annually. Your next inspection is due in $daysUntilInspection days.',
-                  style: MyShopTypography.body2.copyWith(height: 1.5),
-                ),
-                const SizedBox(height: MyShopSpacing.sm),
-                GestureDetector(
-                  onTap: () {},
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Schedule Inspection',
-                        style: MyShopTypography.body1.copyWith(
-                          color: MyShopColors.primaryGold,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      const Icon(
-                        Icons.chevron_right,
-                        size: 18,
-                        color: MyShopColors.primaryGold,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+          if (completion.missing.isNotEmpty) ...[
+            const SizedBox(height: MyShopSpacing.sm),
+            Text(
+              'Missing: ${completion.missing.join(', ')}',
+              style: MyShopTypography.body2,
             ),
-          ),
+          ],
         ],
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 // Service coverage card
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 class _ServiceCoverageCard extends StatelessWidget {
   const _ServiceCoverageCard({required this.radiusLabel});
@@ -809,7 +536,6 @@ class _ServiceCoverageCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       child: Stack(
         children: [
-          // Map placeholder
           Container(
             height: 160,
             color: const Color(0xFFE6EAEC),
@@ -820,7 +546,6 @@ class _ServiceCoverageCard extends StatelessWidget {
               color: MyShopColors.error,
             ),
           ),
-          // Radius pill
           Positioned(
             left: 0,
             right: 0,
@@ -845,39 +570,15 @@ class _ServiceCoverageCard extends StatelessWidget {
               ),
             ),
           ),
-          // Manage Area button
-          Positioned(
-            right: MyShopSpacing.md,
-            bottom: MyShopSpacing.sm,
-            child: GestureDetector(
-              onTap: () {},
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: MyShopSpacing.md,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: MyShopColors.surfaceWhite,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'Manage Area',
-                  style: MyShopTypography.body1.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sticky footer
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Footer
+// ---------------------------------------------------------------------------
 
 class _Footer extends StatelessWidget {
   @override
@@ -922,7 +623,7 @@ class _Footer extends StatelessWidget {
           Expanded(
             flex: 6,
             child: GestureDetector(
-              onTap: () {},
+              onTap: () => context.push('/account/documents'),
               child: Container(
                 height: 52,
                 decoration: BoxDecoration(
@@ -931,7 +632,7 @@ class _Footer extends StatelessWidget {
                 ),
                 alignment: Alignment.center,
                 child: Text(
-                  'Request Validation',
+                  'Manage Documents',
                   style: MyShopTypography.button.copyWith(
                     color: MyShopColors.textOnDarkSlate,
                     fontWeight: FontWeight.w800,

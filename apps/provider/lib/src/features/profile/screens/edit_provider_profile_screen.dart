@@ -25,27 +25,32 @@ class EditProviderProfileScreen extends ConsumerStatefulWidget {
 
 class _EditProviderProfileScreenState
     extends ConsumerState<EditProviderProfileScreen> {
-  late final TextEditingController _nameController;
+  late final TextEditingController _legalNameController;
+  late final TextEditingController _displayNameController;
   late final TextEditingController _emailController;
   bool _isSaving = false;
   bool _hasChanges = false;
   bool _isUploadingPhoto = false;
-  File? _localPhoto;
 
   @override
   void initState() {
     super.initState();
     final user = ref.read(currentUserProvider);
-    _nameController = TextEditingController(text: user?.fullName ?? '');
+    _legalNameController = TextEditingController(text: user?.fullName ?? '');
+    _displayNameController =
+        TextEditingController(text: user?.displayName ?? '');
     _emailController = TextEditingController(text: user?.email ?? '');
-    _nameController.addListener(_onFieldChanged);
+    _legalNameController.addListener(_onFieldChanged);
+    _displayNameController.addListener(_onFieldChanged);
     _emailController.addListener(_onFieldChanged);
   }
 
   void _onFieldChanged() {
     final user = ref.read(currentUserProvider);
-    final changed = _nameController.text.trim() != (user?.fullName ?? '') ||
-        _emailController.text.trim() != (user?.email ?? '');
+    final changed =
+        _legalNameController.text.trim() != (user?.fullName ?? '') ||
+            _displayNameController.text.trim() != (user?.displayName ?? '') ||
+            _emailController.text.trim() != (user?.email ?? '');
     if (changed != _hasChanges) {
       setState(() => _hasChanges = changed);
     }
@@ -53,7 +58,8 @@ class _EditProviderProfileScreenState
 
   @override
   void dispose() {
-    _nameController.dispose();
+    _legalNameController.dispose();
+    _displayNameController.dispose();
     _emailController.dispose();
     super.dispose();
   }
@@ -62,13 +68,13 @@ class _EditProviderProfileScreenState
     final file = await MediaPickerHelper.pickImage(context);
     if (file == null || !mounted) return;
 
+    ref.read(localProfilePhotoProvider.notifier).setLocalFile(file);
     setState(() {
       _isUploadingPhoto = true;
-      _localPhoto = file;
     });
 
-    final user = ref.read(currentUserProvider);
-    final providerType = user?.isDriver == true ? 'driver' : 'artisan';
+    final providerType =
+        ref.read(providerTypeProvider).isDriver ? 'driver' : 'artisan';
 
     final error =
         await ref.read(documentUploadProvider.notifier).upload(
@@ -80,46 +86,97 @@ class _EditProviderProfileScreenState
     if (!mounted) return;
 
     if (error != null) {
+      ref.read(localProfilePhotoProvider.notifier).clear();
       setState(() {
         _isUploadingPhoto = false;
-        _localPhoto = null;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error)),
+        SnackBar(
+          content: Text(error),
+          duration: const Duration(seconds: 6),
+          backgroundColor: MyShopColors.error,
+        ),
       );
     } else {
-      // Refresh the user profile so the new photo URL appears everywhere
-      await ref.read(authControllerProvider.notifier).updateProfile(
-            const UpdateProfileRequest(),
-          );
+      // Save the Cloudinary URL so the photo persists across restarts
+      final uploadState = ref.read(documentUploadProvider);
+      final cloudinaryUrl =
+          uploadState.remoteUrls[DocumentType.profilePhoto.value];
+      if (cloudinaryUrl != null) {
+        await ref
+            .read(localProfilePhotoProvider.notifier)
+            .setCloudinaryUrl(cloudinaryUrl);
+      }
+
+      // Also refresh the backend profile in case it updated profilePhotoUrl
+      await ref.read(authControllerProvider.notifier).refreshProfile();
       if (!mounted) return;
       setState(() => _isUploadingPhoto = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile photo updated')),
+        SnackBar(
+          content: Text(cloudinaryUrl != null
+              ? 'Profile photo updated'
+              : 'Photo uploaded (processing)'),
+        ),
       );
     }
   }
 
   Future<void> _saveProfile() async {
-    final name = _nameController.text.trim();
+    final legalName = _legalNameController.text.trim();
+    final displayName = _displayNameController.text.trim();
     final email = _emailController.text.trim();
 
-    if (name.isEmpty) {
+    if (legalName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Name cannot be empty')),
+        const SnackBar(content: Text('Legal name cannot be empty')),
       );
       return;
     }
 
     setState(() => _isSaving = true);
 
-    final error =
-        await ref.read(authControllerProvider.notifier).updateProfile(
-              UpdateProfileRequest(
-                fullName: name,
-                email: email.isNotEmpty ? email : null,
-              ),
-            );
+    final notifier = ref.read(authControllerProvider.notifier);
+
+    // 1. Save legal name + email via PUT /users/me
+    final accountError = await notifier.updateProfile(
+      UpdateProfileRequest(
+        fullName: legalName,
+        email: email.isNotEmpty ? email : null,
+      ),
+    );
+
+    if (accountError != null) {
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(accountError)),
+        );
+      }
+      return;
+    }
+
+    // 2. Save display name via role-specific endpoint
+    if (displayName.isNotEmpty) {
+      final providerType = ref.read(providerTypeProvider);
+      final roleError = providerType.isDriver
+          ? await notifier
+                .updateDriverProfile(UpdateDriverProfileRequest(
+              displayName: displayName,
+            ))
+          : await notifier
+                .updateArtisanProfile(UpdateArtisanProfileRequest(
+              displayName: displayName,
+            ));
+
+      if (roleError != null && mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(roleError)),
+        );
+        return;
+      }
+    }
 
     if (!mounted) return;
     setState(() {
@@ -127,15 +184,9 @@ class _EditProviderProfileScreenState
       _hasChanges = false;
     });
 
-    if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error)),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile updated')),
-      );
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Profile updated')),
+    );
   }
 
   @override
@@ -151,8 +202,12 @@ class _EditProviderProfileScreenState
     final policeStatus = isDriver
         ? (dp?.policeCheckStatus ?? 'pending')
         : (ap?.policeCheckStatus ?? 'pending');
-    final photoUrl =
+    final backendPhotoUrl =
         isDriver ? dp?.profilePhotoUrl : ap?.profilePhotoUrl;
+    final photoState = ref.watch(localProfilePhotoProvider);
+    // Priority: local file (instant) → cloudinary URL (persisted) → backend URL
+    final photoUrl = backendPhotoUrl ?? photoState.cloudinaryUrl;
+    final localPhoto = photoState.localFile;
 
     // Vehicle info (driver only)
     final vehicleName = isDriver
@@ -235,10 +290,11 @@ class _EditProviderProfileScreenState
           // ── 1. Identity card with editable fields ──
           _IdentityCard(
             photoUrl: photoUrl,
-            localPhoto: _localPhoto,
+            localPhoto: localPhoto,
             isUploadingPhoto: _isUploadingPhoto,
             onPhotoTap: _pickAndUploadPhoto,
-            nameController: _nameController,
+            legalNameController: _legalNameController,
+            displayNameController: _displayNameController,
             emailController: _emailController,
             phone: user?.phone ?? '',
           ),
@@ -462,7 +518,8 @@ class _EditProviderProfileScreenState
 
 class _IdentityCard extends StatelessWidget {
   const _IdentityCard({
-    required this.nameController,
+    required this.legalNameController,
+    required this.displayNameController,
     required this.emailController,
     required this.phone,
     required this.onPhotoTap,
@@ -471,7 +528,8 @@ class _IdentityCard extends StatelessWidget {
     this.isUploadingPhoto = false,
   });
 
-  final TextEditingController nameController;
+  final TextEditingController legalNameController;
+  final TextEditingController displayNameController;
   final TextEditingController emailController;
   final String phone;
   final String? photoUrl;
@@ -558,10 +616,18 @@ class _IdentityCard extends StatelessWidget {
                 ),
                 const SizedBox(height: MyShopSpacing.lg),
 
-                // Full Name field
+                // Display Name (public-facing, per role)
                 _ProfileField(
-                  label: 'Full Name',
-                  controller: nameController,
+                  label: 'Display Name',
+                  controller: displayNameController,
+                  icon: Icons.badge_outlined,
+                ),
+                const SizedBox(height: MyShopSpacing.md),
+
+                // Legal Name (KYC / payments)
+                _ProfileField(
+                  label: 'Legal Name',
+                  controller: legalNameController,
                   icon: Icons.person_outline,
                 ),
                 const SizedBox(height: MyShopSpacing.md),

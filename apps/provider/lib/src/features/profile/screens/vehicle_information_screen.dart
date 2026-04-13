@@ -1,9 +1,11 @@
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/current_user_provider.dart';
+import '../providers/provider_type_provider.dart';
 import '../providers/verification_provider.dart';
 
 /// Vehicle Information screen — driver-only.
@@ -17,6 +19,15 @@ class VehicleInformationScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final providerType = ref.watch(providerTypeProvider);
+    // Guard: artisans should never reach this screen.
+    if (providerType.isArtisan) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) context.go('/account');
+      });
+      return const SizedBox.shrink();
+    }
+
     final user = ref.watch(currentUserProvider);
     final dp = user?.driverProfile;
     final completion = ref.watch(profileCompletionProvider);
@@ -264,11 +275,26 @@ class VehicleInformationScreen extends ConsumerWidget {
             onPressed: () async {
               final file =
                   await MediaPickerHelper.pickDocumentWithCamera(context);
-              if (file != null && context.mounted) {
+              if (file == null || !context.mounted) return;
+
+              // Upload as vehicle registration document
+              final error =
+                  await ref.read(documentUploadProvider.notifier).upload(
+                        providerType: providerType.isDriver ? 'driver' : 'artisan',
+                        documentType: DocumentType.vehicleRegistration,
+                        file: file,
+                      );
+
+              if (!context.mounted) return;
+              if (error != null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(error)),
+                );
+              } else {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content:
-                        Text('Selected: ${file.path.split('/').last}'),
+                    content: Text(
+                        'Uploaded: ${file.path.split('/').last}'),
                   ),
                 );
               }

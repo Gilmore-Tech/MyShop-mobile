@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +9,7 @@ import '../../auth/providers/auth_controller.dart';
 import '../../auth/providers/current_user_provider.dart';
 import '../../driver_home/providers/driver_earnings_provider.dart';
 import '../providers/provider_type_provider.dart';
+import '../providers/verification_provider.dart';
 import '../widgets/settings_list_tile.dart';
 import '../widgets/settings_section.dart';
 
@@ -164,12 +167,12 @@ class AccountSettingsScreen extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
               child: _IdentityCard(
                 isDriver: isDriver,
-                fullName: user?.fullName ?? 'Provider',
+                fullName: user?.displayName ?? 'Provider',
                 phone: user?.phone ?? '',
                 email: user?.email ?? '',
-                photoUrl: isDriver
-                    ? driverProfile?.profilePhotoUrl
-                    : artisanProfile?.profilePhotoUrl,
+                photoUrl: user?.profilePhotoUrl
+                    ?? ref.watch(localProfilePhotoProvider).cloudinaryUrl,
+                localPhoto: ref.watch(localProfilePhotoProvider).localFile,
                 verificationStatus: verificationStatus,
               ),
             ),
@@ -266,7 +269,7 @@ class AccountSettingsScreen extends ConsumerWidget {
                     SettingsListTile(
                       icon: Icons.business_center_outlined,
                       title: 'Business Information',
-                      subtitle: user?.fullName ?? 'Not set up yet',
+                      subtitle: user?.businessName ?? user?.displayName ?? 'Not set up yet',
                       onTap: () => context.push('/account/business'),
                     ),
                   SettingsListTile(
@@ -438,6 +441,7 @@ class _IdentityCard extends StatelessWidget {
     required this.email,
     required this.verificationStatus,
     this.photoUrl,
+    this.localPhoto,
   });
   final bool isDriver;
   final String fullName;
@@ -445,6 +449,7 @@ class _IdentityCard extends StatelessWidget {
   final String email;
   final String verificationStatus;
   final String? photoUrl;
+  final File? localPhoto;
 
   @override
   Widget build(BuildContext context) {
@@ -453,13 +458,19 @@ class _IdentityCard extends StatelessWidget {
     final statusColor = isVerified ? MyShopColors.success : MyShopColors.warning;
     final statusIcon = isVerified ? Icons.check_circle_outline : Icons.error_outline;
 
+    final ImageProvider? avatarImage = localPhoto != null
+        ? FileImage(localPhoto!)
+        : photoUrl != null
+            ? NetworkImage(photoUrl!)
+            : null;
+
     return Row(
       children: [
         CircleAvatar(
           radius: 32,
           backgroundColor: const Color(0xFFFCEAE1),
-          backgroundImage: photoUrl != null ? NetworkImage(photoUrl!) : null,
-          child: photoUrl == null
+          backgroundImage: avatarImage,
+          child: avatarImage == null
               ? const Icon(Icons.person, size: 32, color: MyShopColors.textSecondary)
               : null,
         ),

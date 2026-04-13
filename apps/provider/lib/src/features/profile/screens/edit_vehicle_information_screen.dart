@@ -1,35 +1,39 @@
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-/// Edit Vehicle Information — driver-only counterpart to the artisan
-/// edit-business screen. Lets the driver update vehicle make/model, plate,
-/// year, colour, body type, fuel, capacity, and contact info.
+import '../../auth/providers/auth_controller.dart';
+import '../../auth/providers/current_user_provider.dart';
+import '../../profile/providers/provider_type_provider.dart';
+
+/// Edit Vehicle Information — driver-only screen.
 ///
-/// Documents (license, roadworthiness, insurance) are intentionally NOT here
-/// — they live in Documents & Verification.
-///
-/// PRD Reference: PRD 5.2 — driver vehicle profile management.
-class EditVehicleInformationScreen extends StatefulWidget {
+/// Loads current vehicle data from the driver profile and saves changes
+/// via PUT /users/me. Fields supported by the backend: make, model, year,
+/// plate, colour. Specifications (body type, fuel, seats, service class) are
+/// kept as local-only UI fields until the backend supports them.
+class EditVehicleInformationScreen extends ConsumerStatefulWidget {
   const EditVehicleInformationScreen({super.key});
 
   @override
-  State<EditVehicleInformationScreen> createState() =>
+  ConsumerState<EditVehicleInformationScreen> createState() =>
       _EditVehicleInformationScreenState();
 }
 
 class _EditVehicleInformationScreenState
-    extends State<EditVehicleInformationScreen> {
+    extends ConsumerState<EditVehicleInformationScreen> {
   // Vehicle details
-  final _make = TextEditingController(text: 'Toyota');
-  final _model = TextEditingController(text: 'Corolla');
-  final _year = TextEditingController(text: '2019');
-  final _plate = TextEditingController(text: 'GR-1234-22');
-  final _colour = TextEditingController(text: 'Pearl White');
+  late final TextEditingController _make;
+  late final TextEditingController _model;
+  late final TextEditingController _year;
+  late final TextEditingController _plate;
+  late final TextEditingController _colour;
   final _seats = TextEditingController(text: '4');
 
-  // Categorical fields
+  // Categorical fields (local-only until backend supports them)
   String _bodyType = 'Sedan';
   String _fuelType = 'Petrol';
   String _serviceClass = 'Standard';
@@ -39,15 +43,25 @@ class _EditVehicleInformationScreenState
   static const _classOptions = ['Standard', 'Comfort', 'XL', 'Premium'];
 
   bool _dirty = false;
+  bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
+    final dp = ref.read(currentUserProvider)?.driverProfile;
+    _make = TextEditingController(text: dp?.vehicleMake ?? '');
+    _model = TextEditingController(text: dp?.vehicleModel ?? '');
+    _year = TextEditingController(text: dp?.vehicleYear ?? '');
+    _plate = TextEditingController(text: dp?.vehiclePlate ?? '');
+    _colour = TextEditingController(text: dp?.vehicleColor ?? '');
+
     for (final c in [_make, _model, _year, _plate, _colour, _seats]) {
-      c.addListener(() {
-        if (!_dirty) setState(() => _dirty = true);
-      });
+      c.addListener(_markDirty);
     }
+  }
+
+  void _markDirty() {
+    if (!_dirty) setState(() => _dirty = true);
   }
 
   @override
@@ -61,8 +75,69 @@ class _EditVehicleInformationScreenState
     super.dispose();
   }
 
+  String? _validate() {
+    if (_make.text.trim().isEmpty) return 'Vehicle make is required.';
+    if (_model.text.trim().isEmpty) return 'Vehicle model is required.';
+    if (_year.text.trim().isEmpty) return 'Year is required.';
+    if (_plate.text.trim().isEmpty) return 'Number plate is required.';
+    final year = int.tryParse(_year.text.trim());
+    if (year == null || year < 1990 || year > DateTime.now().year + 1) {
+      return 'Enter a valid year.';
+    }
+    return null;
+  }
+
+  Future<void> _save() async {
+    final validationError = _validate();
+    if (validationError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(validationError)),
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    final error =
+        await ref.read(authControllerProvider.notifier).updateDriverProfile(
+              UpdateDriverProfileRequest(
+                vehicleMake: _make.text.trim(),
+                vehicleModel: _model.text.trim(),
+                vehicleYear: _year.text.trim(),
+                vehiclePlate: _plate.text.trim(),
+                vehicleColor: _colour.text.trim(),
+              ),
+            );
+
+    if (!mounted) return;
+    setState(() {
+      _isSaving = false;
+      if (error == null) _dirty = false;
+    });
+
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vehicle info updated')),
+      );
+      if (context.canPop()) context.pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final providerType = ref.watch(providerTypeProvider);
+    // Guard: artisans should never reach this screen.
+    if (providerType.isArtisan) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) context.go('/account');
+      });
+      return const SizedBox.shrink();
+    }
+
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
       body: SafeArea(
@@ -91,6 +166,7 @@ class _EditVehicleInformationScreenState
                             child: _LabelledField(
                               label: 'MAKE',
                               controller: _make,
+                              enabled: !_isSaving,
                             ),
                           ),
                           const SizedBox(width: MyShopSpacing.sm),
@@ -98,6 +174,7 @@ class _EditVehicleInformationScreenState
                             child: _LabelledField(
                               label: 'MODEL',
                               controller: _model,
+                              enabled: !_isSaving,
                             ),
                           ),
                         ],
@@ -112,6 +189,7 @@ class _EditVehicleInformationScreenState
                               keyboardType: TextInputType.number,
                               maxLength: 4,
                               digitsOnly: true,
+                              enabled: !_isSaving,
                             ),
                           ),
                           const SizedBox(width: MyShopSpacing.sm),
@@ -119,6 +197,7 @@ class _EditVehicleInformationScreenState
                             child: _LabelledField(
                               label: 'COLOUR',
                               controller: _colour,
+                              enabled: !_isSaving,
                             ),
                           ),
                         ],
@@ -127,6 +206,7 @@ class _EditVehicleInformationScreenState
                         label: 'NUMBER PLATE',
                         controller: _plate,
                         textCapitalization: TextCapitalization.characters,
+                        enabled: !_isSaving,
                       ),
                     ],
                   ),
@@ -141,6 +221,7 @@ class _EditVehicleInformationScreenState
                         label: 'BODY TYPE',
                         value: _bodyType,
                         options: _bodyOptions,
+                        enabled: !_isSaving,
                         onChanged: (v) {
                           setState(() {
                             _bodyType = v;
@@ -152,6 +233,7 @@ class _EditVehicleInformationScreenState
                         label: 'FUEL TYPE',
                         value: _fuelType,
                         options: _fuelOptions,
+                        enabled: !_isSaving,
                         onChanged: (v) {
                           setState(() {
                             _fuelType = v;
@@ -169,6 +251,7 @@ class _EditVehicleInformationScreenState
                               keyboardType: TextInputType.number,
                               maxLength: 2,
                               digitsOnly: true,
+                              enabled: !_isSaving,
                             ),
                           ),
                           const SizedBox(width: MyShopSpacing.sm),
@@ -177,6 +260,7 @@ class _EditVehicleInformationScreenState
                               label: 'SERVICE CLASS',
                               value: _serviceClass,
                               options: _classOptions,
+                              enabled: !_isSaving,
                               onChanged: (v) {
                                 setState(() {
                                   _serviceClass = v;
@@ -196,11 +280,9 @@ class _EditVehicleInformationScreenState
               ),
             ),
             _SaveFooter(
-              enabled: _dirty,
-              onTap: () {
-                setState(() => _dirty = false);
-                if (context.canPop()) context.pop();
-              },
+              enabled: _dirty && !_isSaving,
+              isLoading: _isSaving,
+              onTap: _save,
             ),
           ],
         ),
@@ -209,9 +291,9 @@ class _EditVehicleInformationScreenState
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 // Header
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 class _Header extends StatelessWidget {
   @override
@@ -247,9 +329,9 @@ class _Header extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 // Section card
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 class _SectionCard extends StatelessWidget {
   const _SectionCard({
@@ -299,9 +381,9 @@ class _SectionCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 // Labelled field
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 class _LabelledField extends StatelessWidget {
   const _LabelledField({
@@ -311,6 +393,7 @@ class _LabelledField extends StatelessWidget {
     this.maxLength,
     this.digitsOnly = false,
     this.textCapitalization = TextCapitalization.none,
+    this.enabled = true,
   });
 
   final String label;
@@ -319,6 +402,7 @@ class _LabelledField extends StatelessWidget {
   final int? maxLength;
   final bool digitsOnly;
   final TextCapitalization textCapitalization;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -349,6 +433,7 @@ class _LabelledField extends StatelessWidget {
             ),
             child: TextField(
               controller: controller,
+              enabled: enabled,
               keyboardType: keyboardType,
               maxLength: maxLength,
               textCapitalization: textCapitalization,
@@ -373,9 +458,9 @@ class _LabelledField extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 // Dropdown field
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 class _DropdownField extends StatelessWidget {
   const _DropdownField({
@@ -383,12 +468,14 @@ class _DropdownField extends StatelessWidget {
     required this.value,
     required this.options,
     required this.onChanged,
+    this.enabled = true,
   });
 
   final String label;
   final String value;
   final List<String> options;
   final ValueChanged<String> onChanged;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -434,9 +521,11 @@ class _DropdownField extends StatelessWidget {
                   for (final o in options)
                     DropdownMenuItem(value: o, child: Text(o)),
                 ],
-                onChanged: (v) {
-                  if (v != null) onChanged(v);
-                },
+                onChanged: enabled
+                    ? (v) {
+                        if (v != null) onChanged(v);
+                      }
+                    : null,
               ),
             ),
           ),
@@ -446,9 +535,9 @@ class _DropdownField extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 // Docs redirect note
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 class _DocsRedirectNote extends StatelessWidget {
   const _DocsRedirectNote();
@@ -497,14 +586,19 @@ class _DocsRedirectNote extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 // Save footer
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 class _SaveFooter extends StatelessWidget {
-  const _SaveFooter({required this.enabled, required this.onTap});
+  const _SaveFooter({
+    required this.enabled,
+    required this.onTap,
+    this.isLoading = false,
+  });
 
   final bool enabled;
+  final bool isLoading;
   final VoidCallback onTap;
 
   @override
@@ -530,16 +624,25 @@ class _SaveFooter extends StatelessWidget {
             borderRadius: BorderRadius.circular(28),
           ),
           alignment: Alignment.center,
-          child: Text(
-            'Save Changes',
-            style: MyShopTypography.button.copyWith(
-              color: enabled
-                  ? MyShopColors.textOnDarkSlate
-                  : MyShopColors.disabled,
-              fontWeight: FontWeight.w800,
-              fontSize: 15,
-            ),
-          ),
+          child: isLoading
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: Colors.white,
+                  ),
+                )
+              : Text(
+                  'Save Changes',
+                  style: MyShopTypography.button.copyWith(
+                    color: enabled
+                        ? MyShopColors.textOnDarkSlate
+                        : MyShopColors.disabled,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                ),
         ),
       ),
     );

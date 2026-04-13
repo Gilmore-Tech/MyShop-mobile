@@ -1,50 +1,72 @@
 import 'dart:async';
 
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../auth/providers/auth_controller.dart';
+import '../../auth/providers/current_user_provider.dart';
+
 /// Edit Business Information — name, registration, address, contact info,
 /// and a service-coverage map with an adjustable radius.
 ///
+/// Loads initial values from the authenticated user's profile.
+/// Saves name and email via PUT /users/me. Service radius and other artisan
+/// fields will use PUT /users/me/artisan once the backend supports it.
+///
 /// PRD Reference: PRD 5.3 — verified artisan profile management.
-class EditBusinessInformationScreen extends StatefulWidget {
+class EditBusinessInformationScreen extends ConsumerStatefulWidget {
   const EditBusinessInformationScreen({super.key});
 
   @override
-  State<EditBusinessInformationScreen> createState() =>
+  ConsumerState<EditBusinessInformationScreen> createState() =>
       _EditBusinessInformationScreenState();
 }
 
 class _EditBusinessInformationScreenState
-    extends State<EditBusinessInformationScreen> {
-  final _name = TextEditingController(text: 'Bright Spark Electrical');
-  final _registration = TextEditingController(text: 'BN-GHA-992021');
-  final _address = TextEditingController(
-    text: 'Suite 402, Heritage Towers, Ridge, Accra',
-  );
-  final _email = TextEditingController(text: 'hello@brightspark.gh');
-  final _phone = TextEditingController(text: '+233 24 555 0142');
+    extends ConsumerState<EditBusinessInformationScreen> {
+  late final TextEditingController _name;
+  late final TextEditingController _registration;
+  late final TextEditingController _address;
+  late final TextEditingController _email;
+  late final TextEditingController _phone;
 
   // Service area centre — Kumasi pilot city
   static const _initialCentre = LatLng(6.6885, -1.6244);
-  double _radiusKm = 5;
+  late double _radiusKm;
 
   static const _minRadiusKm = 1.0;
   static const _maxRadiusKm = 25.0;
   static const _stepKm = 1.0;
 
   bool _dirty = false;
+  bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
+    final user = ref.read(currentUserProvider);
+    final ap = user?.artisanProfile;
+
+    _name = TextEditingController(
+      text: user?.businessName ?? user?.displayName ?? '',
+    );
+    _registration = TextEditingController(); // No backend field yet
+    _address = TextEditingController(); // No backend field yet
+    _email = TextEditingController(text: user?.email ?? '');
+    _phone = TextEditingController(text: user?.phone ?? '');
+    _radiusKm = ap?.serviceRadiusKm ?? 5;
+
     for (final c in [_name, _registration, _address, _email, _phone]) {
-      c.addListener(() {
-        if (!_dirty) setState(() => _dirty = true);
-      });
+      c.addListener(_markDirty);
     }
+  }
+
+  void _markDirty() {
+    if (!_dirty) setState(() => _dirty = true);
   }
 
   @override
@@ -63,6 +85,43 @@ class _EditBusinessInformationScreenState
           (_radiusKm + delta).clamp(_minRadiusKm, _maxRadiusKm).toDouble();
       _dirty = true;
     });
+  }
+
+  Future<void> _save() async {
+    if (_name.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Business name is required.')),
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    // Save business name and service area via PUT /users/me/artisan.
+    final error =
+        await ref.read(authControllerProvider.notifier).updateArtisanProfile(
+              UpdateArtisanProfileRequest(
+                businessName: _name.text.trim(),
+                serviceRadiusKm: _radiusKm,
+              ),
+            );
+
+    if (!mounted) return;
+    setState(() {
+      _isSaving = false;
+      if (error == null) _dirty = false;
+    });
+
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Business info updated')),
+      );
+      if (context.canPop()) context.pop();
+    }
   }
 
   @override
@@ -135,11 +194,8 @@ class _EditBusinessInformationScreenState
               ),
             ),
             _SaveFooter(
-              enabled: _dirty,
-              onTap: () {
-                setState(() => _dirty = false);
-                if (context.canPop()) context.pop();
-              },
+              enabled: _dirty && !_isSaving,
+              onTap: _save,
             ),
           ],
         ),
