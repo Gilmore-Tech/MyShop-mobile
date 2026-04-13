@@ -46,6 +46,7 @@ dependencies:
   # Media
   image_picker: ^1.1.0
   cached_network_image: ^3.4.0
+  file_picker: ^8.1.0
   
   # Communication
   url_launcher: ^6.3.0
