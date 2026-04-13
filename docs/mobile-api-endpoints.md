@@ -299,6 +299,30 @@ Token payload: `{ sub: userId, role: "client"|"driver"|"artisan", phone: "+233..
 
 ---
 
+### PUT /users/me/driver
+> Update driver-specific profile fields (vehicle info, licence, payout). **Auth: Bearer (driver only).**
+>
+> **STATUS: PENDING BACKEND IMPLEMENTATION** — Mobile app is wired and ready. Backend needs to add this endpoint.
+
+**Optional fields (send only what changed):**
+- `vehicleMake` (string) — e.g. "Toyota"
+- `vehicleModel` (string) — e.g. "Corolla"
+- `vehicleYear` (string) — e.g. "2019"
+- `vehiclePlate` (string) — e.g. "GR-1234-22"
+- `vehicleColor` (string) — e.g. "White"
+- `licenceNumber` (string) — Driver's licence number
+- `licenceExpiry` (string) — ISO 8601 date
+- `serviceRadiusKm` (number) — Range: 1.0 to 50.0
+- `payoutPreference` (PayoutPreference) — `"instant"` or `"batch"`
+- `payoutMethod` (string) — e.g. `"momo_mtn"`
+- `payoutAccountNumber` (string) — MoMo number or bank account
+
+**Response:** Same shape as `GET /users/me`.
+
+**Error codes:** `DRIVER_PROFILE_REQUIRED` (403)
+
+---
+
 ### DELETE /users/me
 > Soft-delete account. 24h recovery window, purged after 90 days. **Auth: Bearer.**
 
