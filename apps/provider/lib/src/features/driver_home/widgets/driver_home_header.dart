@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/current_user_provider.dart';
+import '../../profile/providers/verification_provider.dart';
 
 /// Frosted-glass header with welcome text and avatar.
 ///
@@ -19,7 +20,13 @@ class DriverHomeHeader extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final topPadding = MediaQuery.of(context).padding.top;
     final user = ref.watch(currentUserProvider);
-    final photoUrl = user?.driverProfile?.profilePhotoUrl;
+    final backendPhotoUrl = user?.profilePhotoUrl;
+    final photoState = ref.watch(localProfilePhotoProvider);
+    final ImageProvider? avatarImage = photoState.localFile != null
+        ? FileImage(photoState.localFile!)
+        : (backendPhotoUrl ?? photoState.cloudinaryUrl) != null
+            ? NetworkImage(backendPhotoUrl ?? photoState.cloudinaryUrl!)
+            : null;
 
     return ClipRect(
       child: BackdropFilter(
@@ -57,7 +64,7 @@ class DriverHomeHeader extends ConsumerWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      user?.fullName ?? 'Driver',
+                      user?.displayName ?? 'Driver',
                       style: MyShopTypography.h3.copyWith(fontSize: 18),
                     ),
                   ],
@@ -73,14 +80,14 @@ class DriverHomeHeader extends ConsumerWidget {
                     decoration: BoxDecoration(
                       color: const Color(0xFFFCEAE1),
                       borderRadius: BorderRadius.circular(20),
-                      image: photoUrl != null
+                      image: avatarImage != null
                           ? DecorationImage(
-                              image: NetworkImage(photoUrl),
+                              image: avatarImage,
                               fit: BoxFit.cover,
                             )
                           : null,
                     ),
-                    child: photoUrl == null
+                    child: avatarImage == null
                         ? const ClipOval(
                             child: Icon(
                               Icons.person,

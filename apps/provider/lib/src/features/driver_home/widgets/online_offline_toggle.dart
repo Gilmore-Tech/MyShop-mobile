@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../profile/providers/verification_provider.dart';
+import '../../profile/widgets/incomplete_profile_sheet.dart';
 import '../providers/driver_status_provider.dart';
 
 /// Segmented Online/Offline toggle at the top of the bottom sheet.
@@ -10,6 +12,7 @@ import '../providers/driver_status_provider.dart';
 /// - Animated sliding indicator behind the active segment
 /// - Green accent when online, grey when offline
 /// - Locked (non-interactive) when driver status is busy
+/// - Gated by profile completion — shows missing items sheet when incomplete
 class OnlineOfflineToggle extends ConsumerWidget {
   const OnlineOfflineToggle({super.key});
 
@@ -29,7 +32,7 @@ class OnlineOfflineToggle extends ConsumerWidget {
         child: GestureDetector(
           onTap: isLocked
               ? null
-              : () => ref.read(driverStatusProvider.notifier).toggle(),
+              : () => _handleToggle(context, ref, isOnline),
           child: Container(
             height: 48,
             decoration: BoxDecoration(
@@ -139,5 +142,22 @@ class OnlineOfflineToggle extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  void _handleToggle(BuildContext context, WidgetRef ref, bool isOnline) {
+    // Going offline is always allowed.
+    if (isOnline) {
+      ref.read(driverStatusProvider.notifier).toggle();
+      return;
+    }
+
+    // Going online requires a complete profile.
+    final completion = ref.read(profileCompletionProvider);
+    if (!completion.isComplete) {
+      showIncompleteProfileSheet(context, completion: completion);
+      return;
+    }
+
+    ref.read(driverStatusProvider.notifier).toggle();
   }
 }
