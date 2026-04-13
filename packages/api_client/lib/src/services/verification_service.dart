@@ -11,9 +11,9 @@ class VerificationService {
 
   final Dio _dio;
 
-  /// Request a presigned S3 upload URL for a document.
+  /// Request an upload URL for a document.
   /// POST /verification/documents
-  Future<PresignedUrlResponse> getPresignedUrl(
+  Future<DocumentUploadResponse> requestUpload(
     PresignedUrlRequest request,
   ) async {
     try {
@@ -23,37 +23,70 @@ class VerificationService {
       );
       final body = response.data as Map<String, dynamic>;
       final data = body['data'] as Map<String, dynamic>? ?? body;
-      return PresignedUrlResponse.fromJson(data);
+      return DocumentUploadResponse.fromJson(data);
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
     }
   }
 
-  /// Upload raw file bytes to an S3 presigned URL.
-  /// Uses a plain Dio instance (no auth interceptor, no JSON content-type).
-  Future<void> uploadToS3({
-    required String uploadUrl,
+  /// Upload a file to the URL provided by [requestUpload].
+  ///
+  /// Branches on [DocumentUploadResponse.uploadMethod]:
+  /// - **POST** → Cloudinary-style multipart form upload
+  /// - **PUT**  → S3-style raw bytes upload
+  ///
+  /// Returns the remote file URL on success (e.g. Cloudinary's `secure_url`),
+  /// or `null` if the storage provider doesn't return one (S3 presigned PUT).
+  Future<String?> uploadFile({
+    required DocumentUploadResponse uploadInfo,
     required File file,
     required String mimeType,
   }) async {
     final plainDio = Dio();
     try {
-      final bytes = await file.readAsBytes();
-      await plainDio.put<void>(
-        uploadUrl,
-        data: bytes,
-        options: Options(
-          headers: {
-            'Content-Type': mimeType,
-            'Content-Length': bytes.length,
-          },
-        ),
-      );
+      if (uploadInfo.isMultipart) {
+        // Cloudinary — multipart POST
+        final fieldName = uploadInfo.uploadFieldName ?? 'file';
+        final formData = FormData.fromMap({
+          fieldName: await MultipartFile.fromFile(
+            file.path,
+            contentType: DioMediaType.parse(mimeType),
+          ),
+        });
+        final response = await plainDio.post<dynamic>(
+          uploadInfo.uploadUrl,
+          data: formData,
+        );
+        // Cloudinary returns { "secure_url": "https://..." } on success
+        if (response.data is Map<String, dynamic>) {
+          final data = response.data as Map<String, dynamic>;
+          return data['secure_url'] as String? ?? data['url'] as String?;
+        }
+        return null;
+      } else {
+        // S3 — raw PUT
+        final bytes = await file.readAsBytes();
+        await plainDio.put<void>(
+          uploadInfo.uploadUrl,
+          data: bytes,
+          options: Options(
+            headers: {
+              'Content-Type': mimeType,
+              'Content-Length': bytes.length,
+            },
+          ),
+        );
+        return null;
+      }
     } on DioException catch (e) {
+      final responseBody = e.response?.data;
+      final detail = responseBody is Map
+          ? (responseBody['error']?['message'] ?? responseBody.toString())
+          : responseBody?.toString() ?? e.message;
       throw ApiException(
         statusCode: e.response?.statusCode ?? 0,
-        errorCode: 'S3_UPLOAD_FAILED',
-        message: 'Failed to upload file. Please try again.',
+        errorCode: 'UPLOAD_FAILED',
+        message: 'Upload failed: $detail',
       );
     } finally {
       plainDio.close();
@@ -73,9 +106,9 @@ class VerificationService {
     }
   }
 
-  /// Convenience: get presigned URL, then upload the file to S3.
-  /// Returns the documentId on success.
-  Future<String> uploadDocument({
+  /// Convenience: request upload URL, then upload the file.
+  /// Returns an [UploadResult] with the documentId and optional remote URL.
+  Future<UploadResult> uploadDocument({
     required String providerType,
     required DocumentType documentType,
     required File file,
@@ -84,22 +117,36 @@ class VerificationService {
     final mimeType = _mimeFromExtension(fileName);
     final fileSize = await file.length();
 
-    final presigned = await getPresignedUrl(PresignedUrlRequest(
+    final uploadInfo = await requestUpload(PresignedUrlRequest(
       providerType: providerType,
       documentType: documentType.value,
       fileName: fileName,
       mimeType: mimeType,
       fileSize: fileSize,
-    ));
+    ),);
 
-    await uploadToS3(
-      uploadUrl: presigned.uploadUrl,
+    final remoteUrl = await uploadFile(
+      uploadInfo: uploadInfo,
       file: file,
       mimeType: mimeType,
     );
 
-    return presigned.documentId;
+    return UploadResult(
+      documentId: uploadInfo.documentId,
+      remoteUrl: remoteUrl,
+    );
   }
+}
+
+/// Result of [VerificationService.uploadDocument].
+class UploadResult {
+  const UploadResult({required this.documentId, this.remoteUrl});
+
+  final String documentId;
+
+  /// The remote file URL (e.g. Cloudinary `secure_url`).
+  /// Null for S3 presigned PUT uploads.
+  final String? remoteUrl;
 }
 
 /// Infer MIME type from file extension.

@@ -14,6 +14,11 @@ abstract class TokenStorage {
   Future<String?> readPhone();
   Future<void> writePhone(String phone);
 
+  /// The role the user chose at login (e.g. "driver" or "artisan").
+  /// Persisted so bootstrap can restore the correct view after restart.
+  Future<String?> readRole();
+  Future<void> writeRole(String role);
+
   /// Whether the user has completed the onboarding/welcome screen at least
   /// once. Survives logout — only a full app data clear resets this.
   Future<bool> hasSeenOnboarding();
@@ -30,6 +35,7 @@ class SecureTokenStorage implements TokenStorage {
   static const _kRefreshToken = 'auth_refresh_token';
   static const _kPhone = 'auth_phone';
   static const _kOnboardingSeen = 'onboarding_seen';
+  static const _kRole = 'auth_role';
 
   final FlutterSecureStorage _storage;
 
@@ -57,7 +63,15 @@ class SecureTokenStorage implements TokenStorage {
     await _storage.delete(key: _kAccessToken);
     await _storage.delete(key: _kRefreshToken);
     await _storage.delete(key: _kPhone);
+    await _storage.delete(key: _kRole);
   }
+
+  @override
+  Future<String?> readRole() => _storage.read(key: _kRole);
+
+  @override
+  Future<void> writeRole(String role) =>
+      _storage.write(key: _kRole, value: role);
 
   @override
   Future<String?> readPhone() => _storage.read(key: _kPhone);

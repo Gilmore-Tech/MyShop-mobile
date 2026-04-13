@@ -8,6 +8,8 @@ class RegisterRequest {
     required this.fullName,
     required this.type,
     required this.privacyPolicyAccepted,
+    this.displayName,
+    this.businessName,
     this.email,
     this.referralCode,
     this.categories,
@@ -19,6 +21,8 @@ class RegisterRequest {
   final String fullName;
   final String type; // "client", "driver", or "artisan"
   final bool privacyPolicyAccepted;
+  final String? displayName; // public-facing name for this role
+  final String? businessName; // artisan only — trade/shop name
   final String? email;
   final String? referralCode;
   final List<String>? categories; // artisan only — category UUIDs
@@ -32,6 +36,8 @@ class RegisterRequest {
       'type': type,
       'privacyPolicyAccepted': privacyPolicyAccepted,
     };
+    if (displayName != null) json['displayName'] = displayName;
+    if (businessName != null) json['businessName'] = businessName;
     if (email != null) json['email'] = email;
     if (referralCode != null) json['referralCode'] = referralCode;
     if (categories != null) json['categories'] = categories;

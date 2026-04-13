@@ -57,27 +57,45 @@ class PresignedUrlRequest {
 }
 
 /// POST /verification/documents — response.
-class PresignedUrlResponse {
-  const PresignedUrlResponse({
+///
+/// The backend tells the client exactly how to upload:
+/// - `uploadMethod` "POST" → Cloudinary multipart form (dev/staging)
+/// - `uploadMethod` "PUT"  → S3 presigned raw bytes (production)
+class DocumentUploadResponse {
+  const DocumentUploadResponse({
     required this.documentId,
     required this.uploadUrl,
+    required this.uploadMethod,
     required this.expiresIn,
-    required this.s3Key,
+    required this.storageKey,
+    this.uploadFieldName,
   });
 
-  factory PresignedUrlResponse.fromJson(Map<String, dynamic> json) {
-    return PresignedUrlResponse(
+  factory DocumentUploadResponse.fromJson(Map<String, dynamic> json) {
+    return DocumentUploadResponse(
       documentId: json['documentId'] as String,
       uploadUrl: json['uploadUrl'] as String,
+      uploadMethod: json['uploadMethod'] as String? ?? 'PUT',
+      uploadFieldName: json['uploadFieldName'] as String?,
       expiresIn: json['expiresIn'] as int,
-      s3Key: json['s3Key'] as String,
+      storageKey: (json['storageKey'] ?? json['s3Key'] ?? '') as String,
     );
   }
 
   final String documentId;
   final String uploadUrl;
+
+  /// "POST" for Cloudinary multipart, "PUT" for S3 raw bytes.
+  final String uploadMethod;
+
+  /// The form field name for multipart uploads (e.g. "file").
+  /// Only present when [uploadMethod] is "POST".
+  final String? uploadFieldName;
+
   final int expiresIn;
-  final String s3Key;
+  final String storageKey;
+
+  bool get isMultipart => uploadMethod.toUpperCase() == 'POST';
 }
 
 /// A single document from GET /verification/status → documents[].
@@ -146,7 +164,7 @@ class VerificationStatusResponse {
       artisanData: json['artisan'] as Map<String, dynamic>?,
       documents: (json['documents'] as List<dynamic>?)
               ?.map(
-                  (e) => DocumentInfo.fromJson(e as Map<String, dynamic>))
+                  (e) => DocumentInfo.fromJson(e as Map<String, dynamic>),)
               .toList() ??
           const [],
     );

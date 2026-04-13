@@ -62,6 +62,26 @@ class AuthUser {
   bool get isArtisan => role == AuthRole.artisan;
   bool get isClient => role == AuthRole.client;
 
+  /// The public-facing display name for the active role.
+  /// Falls back to [fullName] (legal name) if no role-specific name is set.
+  String get displayName {
+    if (isDriver) return driverProfile?.displayName ?? fullName;
+    if (isArtisan) return artisanProfile?.displayName ?? fullName;
+    if (isClient) return clientProfile?.displayName ?? fullName;
+    return fullName;
+  }
+
+  /// Profile photo URL for the active role. Each role has its own photo.
+  String? get profilePhotoUrl {
+    if (isDriver) return driverProfile?.profilePhotoUrl;
+    if (isArtisan) return artisanProfile?.profilePhotoUrl;
+    if (isClient) return clientProfile?.profilePhotoUrl;
+    return null;
+  }
+
+  /// The artisan's business/shop name. Null for non-artisan roles.
+  String? get businessName => artisanProfile?.businessName;
+
   String get verificationStatus {
     if (isDriver) return driverProfile?.verificationStatus ?? 'pending';
     if (isArtisan) return artisanProfile?.verificationStatus ?? 'pending';

@@ -161,6 +161,94 @@ class MockAuthService implements AuthService {
     );
   }
 
+  @override
+  Future<UserProfile> updateDriver(UpdateDriverProfileRequest request) async {
+    await _delay();
+    final current = await getMe();
+    final dp = current.driver;
+    return UserProfile(
+      id: current.id,
+      phone: current.phone,
+      fullName: current.fullName,
+      email: current.email,
+      languagePref: current.languagePref,
+      status: current.status,
+      createdAt: current.createdAt,
+      updatedAt: DateTime.now().toIso8601String(),
+      driver: dp != null
+          ? DriverProfile(
+              id: dp.id,
+              ghanaCardVerified: dp.ghanaCardVerified,
+              profilePhotoUrl: dp.profilePhotoUrl,
+              vehicleMake: request.vehicleMake ?? dp.vehicleMake,
+              vehicleModel: request.vehicleModel ?? dp.vehicleModel,
+              vehicleYear: request.vehicleYear ?? dp.vehicleYear,
+              vehiclePlate: request.vehiclePlate ?? dp.vehiclePlate,
+              vehicleColor: request.vehicleColor ?? dp.vehicleColor,
+              verificationStatus: dp.verificationStatus,
+              kycStatus: dp.kycStatus,
+              policeCheckStatus: dp.policeCheckStatus,
+              onlineStatus: dp.onlineStatus,
+              serviceRadiusKm:
+                  request.serviceRadiusKm ?? dp.serviceRadiusKm,
+              payoutPreference:
+                  request.payoutPreference ?? dp.payoutPreference,
+              payoutMethod: request.payoutMethod ?? dp.payoutMethod,
+              payoutAccountNumber:
+                  request.payoutAccountNumber ?? dp.payoutAccountNumber,
+              licenceNumber: request.licenceNumber ?? dp.licenceNumber,
+              licenceExpiry: request.licenceExpiry ?? dp.licenceExpiry,
+              cancellationCount30d: dp.cancellationCount30d,
+            )
+          : null,
+      artisan: current.artisan,
+    );
+  }
+
+  @override
+  Future<UserProfile> updateArtisan(UpdateArtisanProfileRequest request) async {
+    await _delay();
+    final current = await getMe();
+    final ap = current.artisan;
+    return UserProfile(
+      id: current.id,
+      phone: current.phone,
+      fullName: current.fullName,
+      email: current.email,
+      languagePref: current.languagePref,
+      status: current.status,
+      createdAt: current.createdAt,
+      updatedAt: DateTime.now().toIso8601String(),
+      driver: current.driver,
+      artisan: ap != null
+          ? ArtisanProfile(
+              id: ap.id,
+              displayName: request.displayName ?? ap.displayName,
+              businessName: request.businessName ?? ap.businessName,
+              ghanaCardVerified: ap.ghanaCardVerified,
+              profilePhotoUrl: ap.profilePhotoUrl,
+              verificationStatus: ap.verificationStatus,
+              kycStatus: ap.kycStatus,
+              policeCheckStatus: ap.policeCheckStatus,
+              onlineStatus: ap.onlineStatus,
+              serviceRadiusKm:
+                  request.serviceRadiusKm ?? ap.serviceRadiusKm,
+              shopCapacity: request.shopCapacity ?? ap.shopCapacity,
+              maxConcurrentJobs:
+                  request.maxConcurrentJobs ?? ap.maxConcurrentJobs,
+              payoutPreference:
+                  request.payoutPreference ?? ap.payoutPreference,
+              payoutMethod: request.payoutMethod ?? ap.payoutMethod,
+              payoutAccountNumber:
+                  request.payoutAccountNumber ?? ap.payoutAccountNumber,
+              completedJobsCount: ap.completedJobsCount,
+              cancellationCount30d: ap.cancellationCount30d,
+              serviceCategories: ap.serviceCategories,
+            )
+          : null,
+    );
+  }
+
   Future<void> _delay() =>
       Future<void>.delayed(const Duration(milliseconds: 600));
 }

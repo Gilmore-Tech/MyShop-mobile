@@ -142,4 +142,28 @@ class RealAuthService implements AuthService {
       throw ApiException.fromDioException(e);
     }
   }
+
+  @override
+  Future<UserProfile> updateDriver(UpdateDriverProfileRequest request) async {
+    try {
+      final response =
+          await _dio.put('/users/me/driver', data: request.toJson());
+      final data = _unwrap(response) as Map<String, dynamic>;
+      return UserProfile.fromJson(data);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  @override
+  Future<UserProfile> updateArtisan(UpdateArtisanProfileRequest request) async {
+    try {
+      final response =
+          await _dio.put('/users/me/artisan', data: request.toJson());
+      final data = _unwrap(response) as Map<String, dynamic>;
+      return UserProfile.fromJson(data);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
 }

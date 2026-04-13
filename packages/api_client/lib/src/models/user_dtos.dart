@@ -75,6 +75,8 @@ class ClientProfile {
     required this.id,
     required this.loyaltyPointsBalance,
     required this.ghanaCardVerified,
+    this.displayName,
+    this.profilePhotoUrl,
     this.referralCode,
     this.preferredPaymentMethod,
   });
@@ -82,6 +84,8 @@ class ClientProfile {
   factory ClientProfile.fromJson(Map<String, dynamic> json) {
     return ClientProfile(
       id: json['id'] as String,
+      displayName: json['displayName'] as String?,
+      profilePhotoUrl: json['profilePhotoUrl'] as String?,
       loyaltyPointsBalance: json['loyaltyPointsBalance'] as int,
       referralCode: json['referralCode'] as String?,
       preferredPaymentMethod: json['preferredPaymentMethod'] as String?,
@@ -90,6 +94,13 @@ class ClientProfile {
   }
 
   final String id;
+
+  /// Public-facing name for this role. Falls back to [UserProfile.fullName].
+  final String? displayName;
+
+  /// Profile photo specific to the client role.
+  final String? profilePhotoUrl;
+
   final int loyaltyPointsBalance;
   final String? referralCode;
   final String? preferredPaymentMethod;
@@ -108,6 +119,7 @@ class DriverProfile {
     required this.payoutPreference,
     required this.cancellationCount30d,
     required this.ghanaCardVerified,
+    this.displayName,
     this.profilePhotoUrl,
     this.vehicleMake,
     this.vehicleModel,
@@ -123,6 +135,7 @@ class DriverProfile {
   factory DriverProfile.fromJson(Map<String, dynamic> json) {
     return DriverProfile(
       id: json['id'] as String,
+      displayName: json['displayName'] as String?,
       ghanaCardVerified: json['ghanaCardVerified'] as bool,
       profilePhotoUrl: json['profilePhotoUrl'] as String?,
       vehicleMake: json['vehicleMake'] as String?,
@@ -145,6 +158,10 @@ class DriverProfile {
   }
 
   final String id;
+
+  /// Public-facing name for this role. Falls back to [UserProfile.fullName].
+  final String? displayName;
+
   final bool ghanaCardVerified;
   final String? profilePhotoUrl;
   final String? vehicleMake;
@@ -180,6 +197,8 @@ class ArtisanProfile {
     required this.completedJobsCount,
     required this.cancellationCount30d,
     required this.ghanaCardVerified,
+    this.displayName,
+    this.businessName,
     this.profilePhotoUrl,
     this.payoutMethod,
     this.payoutAccountNumber,
@@ -189,6 +208,8 @@ class ArtisanProfile {
   factory ArtisanProfile.fromJson(Map<String, dynamic> json) {
     return ArtisanProfile(
       id: json['id'] as String,
+      displayName: json['displayName'] as String?,
+      businessName: json['businessName'] as String?,
       ghanaCardVerified: json['ghanaCardVerified'] as bool,
       profilePhotoUrl: json['profilePhotoUrl'] as String?,
       verificationStatus: json['verificationStatus'] as String,
@@ -210,6 +231,14 @@ class ArtisanProfile {
   }
 
   final String id;
+
+  /// Public-facing name for this role. Falls back to [UserProfile.fullName].
+  final String? displayName;
+
+  /// The artisan's trade/business name (e.g. "Bright Spark Electrical").
+  /// Distinct from [UserProfile.fullName] which is the person's legal name.
+  final String? businessName;
+
   final bool ghanaCardVerified;
   final String? profilePhotoUrl;
   final String verificationStatus;
@@ -286,6 +315,8 @@ class ServiceCategory {
 }
 
 /// PUT /users/me request body.
+///
+/// Send only the fields that changed — omitted fields are left unchanged.
 class UpdateProfileRequest {
   const UpdateProfileRequest({
     this.fullName,
@@ -302,6 +333,100 @@ class UpdateProfileRequest {
     if (fullName != null) json['fullName'] = fullName;
     if (email != null) json['email'] = email;
     if (languagePref != null) json['languagePref'] = languagePref;
+    return json;
+  }
+}
+
+/// PUT /users/me/driver request body.
+///
+/// Updates driver-specific profile fields (display name, vehicle, licence, etc.).
+class UpdateDriverProfileRequest {
+  const UpdateDriverProfileRequest({
+    this.displayName,
+    this.vehicleMake,
+    this.vehicleModel,
+    this.vehicleYear,
+    this.vehiclePlate,
+    this.vehicleColor,
+    this.licenceNumber,
+    this.licenceExpiry,
+    this.serviceRadiusKm,
+    this.payoutPreference,
+    this.payoutMethod,
+    this.payoutAccountNumber,
+  });
+
+  final String? displayName;
+  final String? vehicleMake;
+  final String? vehicleModel;
+  final String? vehicleYear;
+  final String? vehiclePlate;
+  final String? vehicleColor;
+  final String? licenceNumber;
+  final String? licenceExpiry;
+  final double? serviceRadiusKm;
+  final String? payoutPreference;
+  final String? payoutMethod;
+  final String? payoutAccountNumber;
+
+  Map<String, dynamic> toJson() {
+    final json = <String, dynamic>{};
+    if (displayName != null) json['displayName'] = displayName;
+    if (vehicleMake != null) json['vehicleMake'] = vehicleMake;
+    if (vehicleModel != null) json['vehicleModel'] = vehicleModel;
+    if (vehicleYear != null) json['vehicleYear'] = vehicleYear;
+    if (vehiclePlate != null) json['vehiclePlate'] = vehiclePlate;
+    if (vehicleColor != null) json['vehicleColor'] = vehicleColor;
+    if (licenceNumber != null) json['licenceNumber'] = licenceNumber;
+    if (licenceExpiry != null) json['licenceExpiry'] = licenceExpiry;
+    if (serviceRadiusKm != null) json['serviceRadiusKm'] = serviceRadiusKm;
+    if (payoutPreference != null) json['payoutPreference'] = payoutPreference;
+    if (payoutMethod != null) json['payoutMethod'] = payoutMethod;
+    if (payoutAccountNumber != null) {
+      json['payoutAccountNumber'] = payoutAccountNumber;
+    }
+    return json;
+  }
+}
+
+/// PUT /users/me/artisan request body.
+///
+/// Updates artisan-specific profile fields (display name, business, payout, etc.).
+class UpdateArtisanProfileRequest {
+  const UpdateArtisanProfileRequest({
+    this.displayName,
+    this.businessName,
+    this.shopCapacity,
+    this.maxConcurrentJobs,
+    this.serviceRadiusKm,
+    this.payoutPreference,
+    this.payoutMethod,
+    this.payoutAccountNumber,
+  });
+
+  final String? displayName;
+  final String? businessName;
+  final String? shopCapacity;
+  final int? maxConcurrentJobs;
+  final double? serviceRadiusKm;
+  final String? payoutPreference;
+  final String? payoutMethod;
+  final String? payoutAccountNumber;
+
+  Map<String, dynamic> toJson() {
+    final json = <String, dynamic>{};
+    if (displayName != null) json['displayName'] = displayName;
+    if (businessName != null) json['businessName'] = businessName;
+    if (shopCapacity != null) json['shopCapacity'] = shopCapacity;
+    if (maxConcurrentJobs != null) {
+      json['maxConcurrentJobs'] = maxConcurrentJobs;
+    }
+    if (serviceRadiusKm != null) json['serviceRadiusKm'] = serviceRadiusKm;
+    if (payoutPreference != null) json['payoutPreference'] = payoutPreference;
+    if (payoutMethod != null) json['payoutMethod'] = payoutMethod;
+    if (payoutAccountNumber != null) {
+      json['payoutAccountNumber'] = payoutAccountNumber;
+    }
     return json;
   }
 }

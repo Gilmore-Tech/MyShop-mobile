@@ -43,6 +43,14 @@ abstract class AuthService {
   /// Update user profile fields.
   /// PUT /users/me
   Future<UserProfile> updateMe(UpdateProfileRequest request);
+
+  /// Update driver-specific fields (display name, vehicle, licence, payout).
+  /// PUT /users/me/driver
+  Future<UserProfile> updateDriver(UpdateDriverProfileRequest request);
+
+  /// Update artisan-specific fields (display name, business name, payout, etc.).
+  /// PUT /users/me/artisan
+  Future<UserProfile> updateArtisan(UpdateArtisanProfileRequest request);
 }
 
 /// Generic auth exception with a user-facing message.
