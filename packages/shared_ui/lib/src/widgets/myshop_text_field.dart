@@ -23,6 +23,7 @@ class MyShopTextField extends StatelessWidget {
     this.onChanged,
     this.onSubmitted,
     this.maxLength,
+    this.textCapitalization = TextCapitalization.none,
   });
 
   final TextEditingController? controller;
@@ -40,6 +41,7 @@ class MyShopTextField extends StatelessWidget {
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
   final int? maxLength;
+  final TextCapitalization textCapitalization;
 
   @override
   Widget build(BuildContext context) {
@@ -58,6 +60,7 @@ class MyShopTextField extends StatelessWidget {
           obscureText: obscureText,
           keyboardType: keyboardType,
           textInputAction: textInputAction,
+          textCapitalization: textCapitalization,
           inputFormatters: inputFormatters,
           onChanged: onChanged,
           onSubmitted: onSubmitted,

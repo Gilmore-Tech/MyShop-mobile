@@ -13,6 +13,8 @@ dependencies:
   flutter_svg: ^2.0.0
   shimmer: ^3.0.0
   cached_network_image: ^3.4.0
+  image_picker: ^1.1.0
+  file_picker: ^8.1.0
 
 dev_dependencies:
   flutter_test:
