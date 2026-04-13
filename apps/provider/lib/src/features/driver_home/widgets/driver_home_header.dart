@@ -1,20 +1,25 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-/// Frosted-glass header with hamburger menu, welcome text, and avatar.
+import '../../auth/providers/current_user_provider.dart';
+
+/// Frosted-glass header with welcome text and avatar.
 ///
 /// Figma: node 164:10627
 /// - backdrop-blur 6px, white 80% opacity
 /// - 128dp height
 /// - Bottom border line
-class DriverHomeHeader extends StatelessWidget {
+class DriverHomeHeader extends ConsumerWidget {
   const DriverHomeHeader({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final topPadding = MediaQuery.of(context).padding.top;
+    final user = ref.watch(currentUserProvider);
+    final photoUrl = user?.driverProfile?.profilePhotoUrl;
 
     return ClipRect(
       child: BackdropFilter(
@@ -35,10 +40,6 @@ class DriverHomeHeader extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              
-
-              // const SizedBox(width: MyShopSpacing.sm),
-
               // Welcome text + driver name
               Expanded(
                 child: Column(
@@ -56,7 +57,7 @@ class DriverHomeHeader extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Kwame Appiah',
+                      user?.fullName ?? 'Driver',
                       style: MyShopTypography.h3.copyWith(fontSize: 18),
                     ),
                   ],
@@ -72,14 +73,22 @@ class DriverHomeHeader extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: const Color(0xFFFCEAE1),
                       borderRadius: BorderRadius.circular(20),
+                      image: photoUrl != null
+                          ? DecorationImage(
+                              image: NetworkImage(photoUrl),
+                              fit: BoxFit.cover,
+                            )
+                          : null,
                     ),
-                    child: const ClipOval(
-                      child: Icon(
-                        Icons.person,
-                        size: 24,
-                        color: MyShopColors.textSecondary,
-                      ),
-                    ),
+                    child: photoUrl == null
+                        ? const ClipOval(
+                            child: Icon(
+                              Icons.person,
+                              size: 24,
+                              color: MyShopColors.textSecondary,
+                            ),
+                          )
+                        : null,
                   ),
                   // Green online indicator
                   Positioned(
