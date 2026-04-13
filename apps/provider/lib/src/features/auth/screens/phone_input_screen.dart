@@ -81,6 +81,8 @@ class _ProviderPhoneInputScreenState
           type: 'artisan',
           privacyPolicyAccepted: true,
           role: role,
+          businessName:
+              draft.businessName.isNotEmpty ? draft.businessName : null,
           email: draft.email.isNotEmpty ? draft.email : null,
           categories: draft.serviceCategories.isNotEmpty
               ? draft.serviceCategories

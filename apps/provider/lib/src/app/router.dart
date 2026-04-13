@@ -201,10 +201,20 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/account/vehicle',
+        redirect: (context, state) {
+          final role = ref.read(providerTypeProvider);
+          if (role.isArtisan) return '/account';
+          return null;
+        },
         builder: (context, state) => const VehicleInformationScreen(),
       ),
       GoRoute(
         path: '/account/vehicle/edit',
+        redirect: (context, state) {
+          final role = ref.read(providerTypeProvider);
+          if (role.isArtisan) return '/account';
+          return null;
+        },
         builder: (context, state) => const EditVehicleInformationScreen(),
       ),
       GoRoute(

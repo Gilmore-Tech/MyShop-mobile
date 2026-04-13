@@ -83,6 +83,24 @@ class AuthRepository {
     return AuthUser.fromProfile(profile);
   }
 
+  /// Update driver-specific fields via PUT /users/me/driver.
+  /// Returns the updated [AuthUser].
+  Future<AuthUser> updateDriverProfile(
+    UpdateDriverProfileRequest request,
+  ) async {
+    final profile = await _service.updateDriver(request);
+    return AuthUser.fromProfile(profile);
+  }
+
+  /// Update artisan-specific fields via PUT /users/me/artisan.
+  /// Returns the updated [AuthUser].
+  Future<AuthUser> updateArtisanProfile(
+    UpdateArtisanProfileRequest request,
+  ) async {
+    final profile = await _service.updateArtisan(request);
+    return AuthUser.fromProfile(profile);
+  }
+
   /// Clear all stored tokens and phone.
   Future<void> clear() => _tokenStorage.clearTokens();
 

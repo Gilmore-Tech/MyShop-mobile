@@ -100,14 +100,21 @@ final authControllerProvider =
     StateNotifierProvider<AuthController, AuthState>((ref) {
   final controller = AuthController(
     ref.watch(authRepositoryProvider),
-    onAuthenticated: (AuthUser user) {
+    tokenStorage: ref.watch(tokenStorageProvider),
+    onAuthenticated: (AuthUser user, ProviderType? intendedRole) {
       // Mark onboarding as seen whenever a user successfully authenticates.
       final storage = ref.read(tokenStorageProvider);
       storage.markOnboardingSeen();
       ref.read(hasSeenOnboardingProvider.notifier).state = true;
-      // Set the provider type based on the user's actual role.
-      ref.read(providerTypeProvider.notifier).state =
-          user.isArtisan ? ProviderType.artisan : ProviderType.driver;
+      // Use the intended role if provided (sign-up/sign-in choice).
+      // When intendedRole is null (e.g. refreshProfile, updateProfile),
+      // preserve the current role — never override it from backend data,
+      // as that causes artisan→driver leakage for dual-role accounts.
+      if (intendedRole != null) {
+        ref.read(providerTypeProvider.notifier).state = intendedRole;
+        // Persist so bootstrap restores the correct role after restart
+        storage.writeRole(intendedRole.name);
+      }
     },
   );
   controller.bootstrap();
@@ -134,21 +141,37 @@ Future<void> loadOnboardingFlag(ProviderContainer container) async {
 // ---------------------------------------------------------------------------
 
 class AuthController extends StateNotifier<AuthState> {
-  AuthController(this._repo, {this.onAuthenticated})
-      : super(const AuthUnknown());
+  AuthController(
+    this._repo, {
+    this.onAuthenticated,
+    required TokenStorage tokenStorage,
+  })  : _tokenStorage = tokenStorage,
+        super(const AuthUnknown());
 
   final AuthRepository _repo;
-  final void Function(AuthUser user)? onAuthenticated;
+  final TokenStorage _tokenStorage;
+
+  /// Called when authentication succeeds. [intendedRole] is the role the user
+  /// chose during sign-up or sign-in (from [AuthOtpSent.role]). When restoring
+  /// a session via [bootstrap], it is null — derive from the profile instead.
+  final void Function(AuthUser user, ProviderType? intendedRole)?
+      onAuthenticated;
   bool _requesting = false;
 
   /// Try to restore session from stored tokens.
+  /// Reads the persisted role so dual-role users get the correct view.
   Future<void> bootstrap() async {
     try {
       final user = await _repo
           .bootstrap()
           .timeout(const Duration(seconds: 5), onTimeout: () => null);
       if (user != null) {
-        onAuthenticated?.call(user);
+        // Restore the role the user chose at their last login
+        final savedRole = await _tokenStorage.readRole();
+        final restoredRole = savedRole != null
+            ? ProviderType.values.where((e) => e.name == savedRole).firstOrNull
+            : null;
+        onAuthenticated?.call(user, restoredRole);
         state = AuthAuthenticated(user);
       } else {
         state = const AuthUnauthenticated();
@@ -165,6 +188,8 @@ class AuthController extends StateNotifier<AuthState> {
     required String type,
     required bool privacyPolicyAccepted,
     ProviderType? role,
+    String? displayName,
+    String? businessName,
     String? email,
     List<String>? categories,
     String? shopCapacity,
@@ -178,6 +203,8 @@ class AuthController extends StateNotifier<AuthState> {
         fullName: fullName,
         type: type,
         privacyPolicyAccepted: privacyPolicyAccepted,
+        displayName: displayName,
+        businessName: businessName,
         email: email,
         categories: categories,
         shopCapacity: shopCapacity,
@@ -303,7 +330,7 @@ class AuthController extends StateNotifier<AuthState> {
     try {
       await _repo.verifyOtp(phone: current.phone, code: code);
       final user = await _repo.fetchProfile();
-      onAuthenticated?.call(user);
+      onAuthenticated?.call(user, current.role);
       state = AuthAuthenticated(user);
     } on ApiException catch (e) {
       state = AuthOtpSent(
@@ -371,6 +398,21 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
+  /// Re-fetch the user profile from GET /users/me and update auth state.
+  /// Use after uploading a photo or document to get the latest data.
+  /// Returns null on success, or an error message on failure.
+  Future<String?> refreshProfile() async {
+    if (state is! AuthAuthenticated) return 'Not authenticated';
+    try {
+      final user = await _repo.fetchProfile();
+      onAuthenticated?.call(user, null);
+      state = AuthAuthenticated(user);
+      return null;
+    } catch (_) {
+      return 'Failed to refresh profile.';
+    }
+  }
+
   /// Update the user's profile (name, email, language).
   /// On success, refreshes the [AuthAuthenticated] state with the updated user.
   /// Returns null on success, or an error message on failure.
@@ -384,6 +426,42 @@ class AuthController extends StateNotifier<AuthState> {
       return AuthErrorMapper.message(e);
     } catch (_) {
       return 'Failed to update profile. Please try again.';
+    }
+  }
+
+  /// Update driver-specific fields (vehicle, licence, payout).
+  /// On success, refreshes the [AuthAuthenticated] state with the updated user.
+  /// Returns null on success, or an error message on failure.
+  Future<String?> updateDriverProfile(
+    UpdateDriverProfileRequest request,
+  ) async {
+    if (state is! AuthAuthenticated) return 'Not authenticated';
+    try {
+      final updatedUser = await _repo.updateDriverProfile(request);
+      state = AuthAuthenticated(updatedUser);
+      return null;
+    } on ApiException catch (e) {
+      return AuthErrorMapper.message(e);
+    } catch (_) {
+      return 'Failed to update driver profile. Please try again.';
+    }
+  }
+
+  /// Update artisan-specific fields (display name, business name, payout, etc.).
+  /// On success, refreshes the [AuthAuthenticated] state with the updated user.
+  /// Returns null on success, or an error message on failure.
+  Future<String?> updateArtisanProfile(
+    UpdateArtisanProfileRequest request,
+  ) async {
+    if (state is! AuthAuthenticated) return 'Not authenticated';
+    try {
+      final updatedUser = await _repo.updateArtisanProfile(request);
+      state = AuthAuthenticated(updatedUser);
+      return null;
+    } on ApiException catch (e) {
+      return AuthErrorMapper.message(e);
+    } catch (_) {
+      return 'Failed to update business info. Please try again.';
     }
   }
 
