@@ -1,18 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../auth/providers/current_user_provider.dart';
+import '../../driver_home/providers/driver_earnings_provider.dart';
 import '../widgets/weekly_performance_chart.dart';
 
 /// Earnings dashboard — balance card, stats, weekly chart, commission, payouts.
 ///
 /// Figma: node 213:12474
 /// PRD Reference: PRD 5.4
-class EarningsDashboardScreen extends StatelessWidget {
+class EarningsDashboardScreen extends ConsumerWidget {
   const EarningsDashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider);
+    final earningsAsync = ref.watch(driverEarningsProvider);
+
+    final todayAmount = earningsAsync.whenOrNull(data: (e) => e.todayAmountPesewas) ?? 0;
+    final weekAmount = earningsAsync.whenOrNull(data: (e) => e.weekAmountPesewas) ?? 0;
+    final todayTrips = earningsAsync.whenOrNull(data: (e) => e.todayTrips) ?? 0;
+    final isVerified = user?.verificationStatus == 'approved';
+
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
       body: SafeArea(
@@ -35,10 +46,12 @@ class EarningsDashboardScreen extends StatelessWidget {
                             color: MyShopColors.textPrimary,
                             letterSpacing: -0.5)),
                     Row(children: [
-                      const Icon(Icons.check_circle_outline,
-                          size: 12, color: MyShopColors.textSecondary),
+                      Icon(
+                          isVerified ? Icons.check_circle_outline : Icons.access_time,
+                          size: 12,
+                          color: isVerified ? MyShopColors.success : MyShopColors.textSecondary),
                       const SizedBox(width: 4),
-                      Text('Verified Provider',
+                      Text(isVerified ? 'Verified Provider' : 'Pending Verification',
                           style: MyShopTypography.body2.copyWith(fontSize: 11)),
                     ]),
                   ]),
@@ -76,7 +89,10 @@ class EarningsDashboardScreen extends StatelessWidget {
             // ── Balance card ──
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-              child: _BalanceCard(),
+              child: _BalanceCard(
+                todayPesewas: todayAmount,
+                weekPesewas: weekAmount,
+              ),
             ),
             const SizedBox(height: MyShopSpacing.md),
 
@@ -88,16 +104,16 @@ class EarningsDashboardScreen extends StatelessWidget {
                     child: _StatCard(
                         icon: Icons.trending_up,
                         label: 'TRIPS',
-                        value: '42',
-                        subtitle: '+12% this week',
-                        subtitleColor: MyShopColors.success)),
+                        value: '$todayTrips',
+                        subtitle: 'Today',
+                        subtitleColor: MyShopColors.textSecondary)),
                 const SizedBox(width: MyShopSpacing.md),
-                Expanded(
+                const Expanded(
                     child: _StatCard(
                         icon: Icons.access_time,
                         label: 'RATING',
-                        value: '4.92',
-                        subtitle: 'Top 5% Driver',
+                        value: '--',
+                        subtitle: 'No ratings yet',
                         subtitleColor: MyShopColors.textSecondary)),
               ]),
             ),
@@ -113,7 +129,7 @@ class EarningsDashboardScreen extends StatelessWidget {
             // ── Commission & Tax card ──
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-              child: _CommissionCard(),
+              child: _CommissionCard(weekPesewas: weekAmount),
             ),
             const SizedBox(height: MyShopSpacing.lg),
 
@@ -142,49 +158,40 @@ class EarningsDashboardScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: MyShopSpacing.sm),
+            // Empty state — no payouts endpoint wired yet
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
               child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 32),
                 decoration: BoxDecoration(
-                  color: MyShopColors.surfaceWhite,
+                  color: const Color(0xFFFAFAFB),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: MyShopColors.divider),
                 ),
-                child: Column(children: [
-                  _PayoutRow(
-                    method: 'MTN Mobile Money',
-                    date: 'Oct 24, 10:30 AM',
-                    ref: 'FW-89231',
-                    amount: 'GHS 850.00',
-                    success: true,
-                  ),
-                  const Divider(
-                      height: 1,
-                      thickness: 0.5,
-                      color: MyShopColors.divider,
-                      indent: 16,
-                      endIndent: 16),
-                  _PayoutRow(
-                    method: 'Telecel Cash',
-                    date: 'Oct 22, 06:15 PM',
-                    ref: 'FW-77102',
-                    amount: 'GHS 420.50',
-                    success: false,
-                  ),
-                  const Divider(
-                      height: 1,
-                      thickness: 0.5,
-                      color: MyShopColors.divider,
-                      indent: 16,
-                      endIndent: 16),
-                  _PayoutRow(
-                    method: 'MTN Mobile Money',
-                    date: 'Oct 19, 09:00 AM',
-                    ref: 'FW-66541',
-                    amount: 'GHS 1200.00',
-                    success: true,
-                  ),
-                ]),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: MyShopColors.surfaceGrey,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Icon(Icons.history,
+                          size: 20, color: MyShopColors.textSecondary),
+                    ),
+                    const SizedBox(height: MyShopSpacing.sm),
+                    Text('No payouts yet',
+                        style: MyShopTypography.body1.copyWith(
+                            fontWeight: FontWeight.w600)),
+                    const SizedBox(height: MyShopSpacing.xs),
+                    Text('Your payout history will appear here',
+                        style: MyShopTypography.body2.copyWith(
+                            color: MyShopColors.textSecondary)),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: MyShopSpacing.md),
@@ -245,8 +252,19 @@ class EarningsDashboardScreen extends StatelessWidget {
 // ─── Balance card ───────────────────────────────────────────────────────────
 
 class _BalanceCard extends StatelessWidget {
+  const _BalanceCard({
+    required this.todayPesewas,
+    required this.weekPesewas,
+  });
+  final int todayPesewas;
+  final int weekPesewas;
+
   @override
   Widget build(BuildContext context) {
+    final totalDisplay = _fmtGhs(todayPesewas + weekPesewas);
+    final todayDisplay = _fmtGhs(todayPesewas);
+    final weekDisplay = _fmtGhs(weekPesewas);
+
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.lg),
       decoration: BoxDecoration(
@@ -280,8 +298,8 @@ class _BalanceCard extends StatelessWidget {
           ),
         ]),
         const SizedBox(height: 4),
-        const Text('GHS 2,450.50',
-            style: TextStyle(
+        Text('GHS $totalDisplay',
+            style: const TextStyle(
                 fontFamily: 'Raleway',
                 fontSize: 36,
                 fontWeight: FontWeight.w900,
@@ -290,10 +308,10 @@ class _BalanceCard extends StatelessWidget {
         const SizedBox(height: MyShopSpacing.md),
         Row(children: [
           Expanded(
-              child: _BalanceMiniStat(label: 'TODAY', value: 'GHS 142.00')),
+              child: _BalanceMiniStat(label: 'TODAY', value: 'GHS $todayDisplay')),
           const SizedBox(width: MyShopSpacing.sm),
           Expanded(
-              child: _BalanceMiniStat(label: 'WEEKLY', value: 'GHS 1,850.00')),
+              child: _BalanceMiniStat(label: 'WEEKLY', value: 'GHS $weekDisplay')),
         ]),
         const SizedBox(height: MyShopSpacing.md),
         SizedBox(
@@ -490,8 +508,14 @@ extension on OutlinedButton {
 // ─── Commission card ────────────────────────────────────────────────────────
 
 class _CommissionCard extends StatelessWidget {
+  const _CommissionCard({required this.weekPesewas});
+  final int weekPesewas;
+
   @override
   Widget build(BuildContext context) {
+    final commission = (weekPesewas * 0.20).round();
+    final net = weekPesewas - commission;
+
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),
       decoration: BoxDecoration(
@@ -523,14 +547,12 @@ class _CommissionCard extends StatelessWidget {
           ),
         ]),
         const SizedBox(height: MyShopSpacing.md),
-        _CommissionRow(label: 'App Commission (20%)', value: '- GHS 124.20'),
-        const SizedBox(height: 10),
-        _CommissionRow(label: 'VAT & Levy', value: '- GHS 12.50'),
+        _CommissionRow(label: 'App Commission (20%)', value: '- GHS ${_fmtGhs(commission)}'),
         const SizedBox(height: 12),
         const Divider(height: 1, thickness: 0.5, color: MyShopColors.divider),
         const SizedBox(height: 12),
         _CommissionRow(
-            label: 'Net Earnings', value: 'GHS 1,713.30', bold: true),
+            label: 'Net Earnings', value: 'GHS ${_fmtGhs(net)}', bold: true),
       ]),
     );
   }
@@ -565,79 +587,12 @@ class _CommissionRow extends StatelessWidget {
   }
 }
 
-// ─── Payout row ─────────────────────────────────────────────────────────────
+// ─── Helpers ─���──────────────────────────────────────────────────────────────
 
-class _PayoutRow extends StatelessWidget {
-  const _PayoutRow({
-    required this.method,
-    required this.date,
-    required this.ref,
-    required this.amount,
-    required this.success,
-  });
-  final String method;
-  final String date;
-  final String ref;
-  final String amount;
-  final bool success;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(MyShopSpacing.md),
-      child: Row(children: [
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: MyShopColors.surfaceGrey,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            success ? Icons.check_circle_outline : Icons.access_time,
-            size: 16,
-            color: success ? MyShopColors.success : MyShopColors.warning,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-              Text(method,
-                  style: const TextStyle(
-                      fontFamily: 'Raleway',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                      color: MyShopColors.textPrimary)),
-              const SizedBox(height: 2),
-              Text('$date  ·  $ref',
-                  style: MyShopTypography.body2.copyWith(fontSize: 11)),
-            ])),
-        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text(amount,
-              style: const TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: MyShopColors.textPrimary)),
-          const SizedBox(height: 4),
-          if (success)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: MyShopColors.surfaceGrey,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text('SUCCESS',
-                  style: TextStyle(
-                      fontFamily: 'Raleway',
-                      fontSize: 9,
-                      fontWeight: FontWeight.w900,
-                      color: MyShopColors.textSecondary)),
-            ),
-        ]),
-      ]),
-    );
+String _fmtGhs(int pesewas) {
+  final ghs = pesewas / 100;
+  if (ghs == ghs.truncateToDouble()) {
+    return ghs.toStringAsFixed(0);
   }
+  return ghs.toStringAsFixed(2);
 }

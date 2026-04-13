@@ -3,7 +3,6 @@ import 'package:intl/intl.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../widgets/date_range_picker_modal.dart';
-import '../widgets/trip_detail_modal.dart';
 
 /// Trips history screen with date range filter, tab filters, and trip cards.
 ///
@@ -66,18 +65,6 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
         _rangeEnd = result.end;
       });
     }
-  }
-
-  List<_TripMock> _filteredTrips(String? statusFilter) {
-    var trips = _allTrips.where((t) {
-      if (!_hasFilter) return true;
-      return t.tripDate.isAfter(_rangeStart!.subtract(const Duration(days: 1))) &&
-          t.tripDate.isBefore(_rangeEnd!.add(const Duration(days: 1)));
-    });
-    if (statusFilter != null) {
-      trips = trips.where((t) => t.status == statusFilter);
-    }
-    return trips.toList();
   }
 
   @override
@@ -147,19 +134,37 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
             ),
             const SizedBox(height: MyShopSpacing.md),
 
-            // Trip list
+            // Empty state — no trip history endpoint wired yet
             Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _TripList(trips: _filteredTrips(null)),
-                  _TripList(trips: _filteredTrips('Completed')),
-                  _TripList(trips: _filteredTrips('Cancelled')),
-                ],
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: MyShopColors.surfaceGrey,
+                        borderRadius: BorderRadius.circular(28),
+                      ),
+                      child: const Icon(Icons.directions_car_outlined,
+                          size: 28, color: MyShopColors.textSecondary),
+                    ),
+                    const SizedBox(height: MyShopSpacing.md),
+                    Text('No trips yet',
+                        style: MyShopTypography.body1.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: MyShopColors.textPrimary)),
+                    const SizedBox(height: MyShopSpacing.xs),
+                    Text('Your completed trips will appear here',
+                        style: MyShopTypography.body2.copyWith(
+                            color: MyShopColors.textSecondary)),
+                  ],
+                ),
               ),
             ),
 
-            // Monthly spending summary
+            // Monthly summary — zero state
             Container(
               width: double.infinity,
               margin: const EdgeInsets.all(MyShopSpacing.md),
@@ -172,12 +177,11 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('MONTHLY SPENDING', style: MyShopTypography.overline.copyWith(fontSize: 9, color: Colors.white54)),
-                    const Text('₵146.65', style: TextStyle(fontFamily: 'Raleway', fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white)),
+                    Text('MONTHLY EARNINGS', style: MyShopTypography.overline.copyWith(fontSize: 9, color: Colors.white54)),
+                    const Text('₵0', style: TextStyle(fontFamily: 'Raleway', fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white)),
                   ]),
-                  // Mini chart representation
                   Row(children: [
-                    for (final h in [0.3, 0.5, 0.7, 0.4, 0.6, 0.9, 0.5])
+                    for (final h in [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
                       Container(
                         width: 8, height: 40 * h,
                         margin: const EdgeInsets.only(left: 3),
@@ -194,140 +198,3 @@ class _TripsHistoryScreenState extends State<TripsHistoryScreen>
   }
 }
 
-// Mock trip data
-final _allTrips = [
-  _TripMock(date: 'OCT 24, 2023 · 08:45 AM', tripDate: DateTime(2023, 10, 24), pickup: 'Manhyia Palace', destination: 'Kejetia Market, Kumasi', fare: '₵54.20', duration: '42 mins', status: 'Completed'),
-  _TripMock(date: 'OCT 22, 2023 · 10:15 AM', tripDate: DateTime(2023, 10, 22), pickup: 'Baba Yara Stadium', destination: 'KNUST', fare: '₵54.20', duration: '42 mins', status: 'Completed'),
-  _TripMock(date: 'OCT 18, 2023 · 02:30 PM', tripDate: DateTime(2023, 10, 18), pickup: 'Baba Yara Stadium', destination: 'KNUST', fare: '₵54.20', duration: '42 mins', status: 'Cancelled'),
-];
-
-class _TripMock {
-  const _TripMock({required this.date, required this.tripDate, required this.pickup, required this.destination, required this.fare, required this.duration, required this.status});
-  final String date;
-  final DateTime tripDate;
-  final String pickup;
-  final String destination;
-  final String fare;
-  final String duration;
-  final String status;
-}
-
-class _TripList extends StatelessWidget {
-  const _TripList({required this.trips});
-  final List<_TripMock> trips;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-      itemCount: trips.length,
-      separatorBuilder: (_, __) => const SizedBox(height: MyShopSpacing.md),
-      itemBuilder: (context, index) => _TripCard(trip: trips[index]),
-    );
-  }
-}
-
-class _TripCard extends StatelessWidget {
-  const _TripCard({required this.trip});
-  final _TripMock trip;
-
-  void _showDetail(BuildContext context) {
-    TripDetailModal.show(
-      context,
-      TripDetailData(
-        tripId: '882941-NY',
-        rideId: 'RID-92834',
-        status: trip.status,
-        date: 'Oct 24, 2023',
-        timeRange: '14:20 - 14:45 (25m)',
-        pickupTime: '14:20',
-        pickupAddress: trip.pickup,
-        dropoffTime: '14:45',
-        dropoffAddress: trip.destination,
-        distanceKm: '8.2 km',
-        durationMins: 24,
-        surgeMultiplier: '1.2x',
-        baseFare: 'GH₵ 12.00',
-        distanceFare: 'GH₵ 32.50',
-        timeFare: 'GH₵ 6.00',
-        surgeFare: 'GH₵ 9.20',
-        subtotal: 'GH₵ 59.70',
-        taxes: 'GH₵ 1.80',
-        promoDiscount: 'GH₵ 5.00',
-        totalPaid: 'GH₵ 56.50',
-        commission: 'GHS 11.30',
-        paymentMethod: 'Cash',
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isCancelled = trip.status == 'Cancelled';
-
-    return GestureDetector(
-      onTap: () => _showDetail(context),
-      child: Container(
-      padding: const EdgeInsets.all(MyShopSpacing.md),
-      decoration: BoxDecoration(
-        color: MyShopColors.surfaceWhite,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: MyShopColors.divider.withValues(alpha: 0.5)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Date + options
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Row(children: [
-            const Icon(Icons.access_time, size: 14, color: MyShopColors.primaryGold),
-            const SizedBox(width: 6),
-            Text(trip.date, style: MyShopTypography.body2.copyWith(color: MyShopColors.primaryGold, fontWeight: FontWeight.w600, fontSize: 11)),
-          ]),
-          const Icon(Icons.more_vert, size: 18, color: MyShopColors.textSecondary),
-        ]),
-        const SizedBox(height: 12),
-
-        // Pickup
-        Row(children: [
-          Container(width: 8, height: 8, decoration: const BoxDecoration(color: MyShopColors.textSecondary, shape: BoxShape.circle)),
-          const SizedBox(width: 10),
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('PICKUP', style: MyShopTypography.overline.copyWith(fontSize: 9)),
-            Text(trip.pickup, style: const TextStyle(fontFamily: 'Raleway', fontSize: 14, fontWeight: FontWeight.w600, color: MyShopColors.textPrimary)),
-          ]),
-        ]),
-        Container(width: 1, height: 12, margin: const EdgeInsets.only(left: 3.5), color: MyShopColors.divider),
-
-        // Destination
-        Row(children: [
-          Container(width: 8, height: 8, decoration: BoxDecoration(color: MyShopColors.primaryGold, shape: BoxShape.circle)),
-          const SizedBox(width: 10),
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('DESTINATION', style: MyShopTypography.overline.copyWith(fontSize: 9, color: MyShopColors.primaryGold)),
-            Text(trip.destination, style: const TextStyle(fontFamily: 'Raleway', fontSize: 14, fontWeight: FontWeight.w600, color: MyShopColors.textPrimary)),
-          ]),
-        ]),
-        const SizedBox(height: 12),
-
-        // Fare + Duration + Status
-        Row(children: [
-          Text(trip.fare, style: const TextStyle(fontFamily: 'Raleway', fontSize: 18, fontWeight: FontWeight.w900, color: MyShopColors.textPrimary)),
-          const SizedBox(width: 12),
-          const Icon(Icons.navigation, size: 12, color: MyShopColors.textSecondary),
-          const SizedBox(width: 4),
-          Text(trip.duration, style: MyShopTypography.body2),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: isCancelled ? MyShopColors.errorLight : MyShopColors.surfaceGrey,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: isCancelled ? MyShopColors.error.withValues(alpha: 0.3) : MyShopColors.divider),
-            ),
-            child: Text(trip.status, style: TextStyle(fontFamily: 'Raleway', fontSize: 11, fontWeight: FontWeight.w700, color: isCancelled ? MyShopColors.error : MyShopColors.textPrimary)),
-          ),
-        ]),
-      ]),
-      ),
-    );
-  }
-}

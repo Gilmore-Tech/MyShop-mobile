@@ -151,48 +151,48 @@ class _EarningsReportsScreenState extends State<EarningsReportsScreen> {
           ),
           const SizedBox(height: MyShopSpacing.lg),
 
-          // ── Summary stats ──
+          // ── Summary stats — no detailed endpoint yet ──
           Row(children: [
-            Expanded(
+            const Expanded(
                 child: _SummaryCard(
                     label: 'GROSS',
-                    value: 'GHS 1,850.00',
-                    delta: '+8% vs prev')),
+                    value: 'GHS 0',
+                    delta: 'No data yet')),
             const SizedBox(width: MyShopSpacing.sm),
-            Expanded(
+            const Expanded(
                 child: _SummaryCard(
                     label: 'NET',
-                    value: 'GHS 1,480.00',
-                    delta: '+12% vs prev',
+                    value: 'GHS 0',
+                    delta: 'No data yet',
                     highlight: true)),
           ]),
           const SizedBox(height: MyShopSpacing.sm),
           Row(children: [
-            Expanded(
+            const Expanded(
                 child: _SummaryCard(
                     label: 'COMMISSION',
-                    value: '- GHS 370.00',
+                    value: 'GHS 0',
                     delta: '20% rate')),
             const SizedBox(width: MyShopSpacing.sm),
-            Expanded(
+            const Expanded(
                 child: _SummaryCard(
                     label: 'TIPS',
-                    value: 'GHS 65.00',
-                    delta: '+₵12 vs prev')),
+                    value: 'GHS 0',
+                    delta: 'No data yet')),
           ]),
           const SizedBox(height: MyShopSpacing.sm),
           Row(children: [
-            Expanded(
+            const Expanded(
                 child: _SummaryCard(
                     label: 'TRIPS',
-                    value: '42',
-                    delta: '+5 vs prev')),
+                    value: '0',
+                    delta: 'No data yet')),
             const SizedBox(width: MyShopSpacing.sm),
-            Expanded(
+            const Expanded(
                 child: _SummaryCard(
                     label: 'AVG FARE',
-                    value: 'GHS 44.05',
-                    delta: '+₵2.30 vs prev')),
+                    value: 'GHS 0',
+                    delta: 'No data yet')),
           ]),
           const SizedBox(height: MyShopSpacing.lg),
 
@@ -316,17 +316,7 @@ class _EarningsReportsScreenState extends State<EarningsReportsScreen> {
                                 fontSize: 10, letterSpacing: 0.6))),
                   ]),
                 ),
-                _BreakdownRow(date: 'Mon, Oct 23', trips: 5, net: 'GHS 142.00'),
-                _BreakdownRow(date: 'Tue, Oct 24', trips: 7, net: 'GHS 230.00'),
-                _BreakdownRow(date: 'Wed, Oct 25', trips: 6, net: 'GHS 200.00'),
-                _BreakdownRow(date: 'Thu, Oct 26', trips: 8, net: 'GHS 320.00'),
-                _BreakdownRow(date: 'Fri, Oct 27', trips: 9, net: 'GHS 460.00'),
-                _BreakdownRow(date: 'Sat, Oct 28', trips: 4, net: 'GHS 410.00'),
-                _BreakdownRow(
-                    date: 'Sun, Oct 29',
-                    trips: 3,
-                    net: 'GHS 175.00',
-                    isLast: true),
+                const _BreakdownRow(date: 'No data', trips: 0, net: 'GHS 0', isLast: true),
               ],
             ),
           ),
@@ -370,20 +360,13 @@ class _EarningsReportsScreenState extends State<EarningsReportsScreen> {
     };
   }
 
+  // No detailed earnings data yet — show empty chart
   List<double> get _chartData {
-    return switch (_period) {
-      _Period.daily => const [50, 80, 120, 90, 200, 250, 180],
-      _Period.weekly => const [115, 230, 200, 320, 460, 410, 175],
-      _Period.monthly => const [820, 1100, 1300, 1850, 1480, 950, 1700],
-    };
+    return const [0, 0, 0, 0, 0, 0, 0];
   }
 
   double get _chartMax {
-    return switch (_period) {
-      _Period.daily => 280,
-      _Period.weekly => 460,
-      _Period.monthly => 2000,
-    };
+    return 100;
   }
 }
 

@@ -10,7 +10,11 @@ import '../../registration/providers/registration_controller.dart';
 /// reactive theme. Selecting a role morphs the background, accents, headline
 /// and reveals a description + Continue CTA via smooth animations.
 class RolePickerScreen extends ConsumerStatefulWidget {
-  const RolePickerScreen({super.key});
+  const RolePickerScreen({super.key, this.isSignIn = false});
+
+  /// When true, selecting a role navigates to the sign-in phone screen
+  /// instead of the sign-up registration flow.
+  final bool isSignIn;
 
   @override
   ConsumerState<RolePickerScreen> createState() => _RolePickerScreenState();
@@ -35,7 +39,11 @@ class _RolePickerScreenState extends ConsumerState<RolePickerScreen> {
     if (role == null) return;
     ref.read(pendingRoleProvider.notifier).state = role;
     ref.read(providerTypeProvider.notifier).state = role;
-    context.go(role.isDriver ? '/signup/driver' : '/signup/artisan');
+    if (widget.isSignIn) {
+      context.go('/signin/phone');
+    } else {
+      context.go(role.isDriver ? '/signup/driver' : '/signup/artisan');
+    }
   }
 
   Color get _accent => switch (_selected) {
@@ -66,18 +74,25 @@ class _RolePickerScreenState extends ConsumerState<RolePickerScreen> {
       };
 
   String get _headline => switch (_selected) {
-        ProviderType.driver => "You're driving with MyShop",
-        ProviderType.artisan => "You're offering artisan services",
-        null => 'How will you earn?',
+        ProviderType.driver => widget.isSignIn
+            ? 'Sign in as a driver'
+            : "You're driving with MyShop",
+        ProviderType.artisan => widget.isSignIn
+            ? 'Sign in as an artisan'
+            : "You're offering artisan services",
+        null => widget.isSignIn ? 'Welcome back' : 'How will you earn?',
       };
 
   String get _subhead => switch (_selected) {
-        ProviderType.driver =>
-          'Quick rides, live navigation, and fares paid the moment a trip ends.',
-        ProviderType.artisan =>
-          'Win jobs in your trade, bid on requests, and get paid the moment a job is done.',
-        null =>
-          'Choose the type of account you want to create. You can only have one role per phone number.',
+        ProviderType.driver => widget.isSignIn
+            ? "We'll send a code to your registered phone number."
+            : 'Quick rides, live navigation, and fares paid the moment a trip ends.',
+        ProviderType.artisan => widget.isSignIn
+            ? "We'll send a code to your registered phone number."
+            : 'Win jobs in your trade, bid on requests, and get paid the moment a job is done.',
+        null => widget.isSignIn
+            ? 'Select your account type to continue.'
+            : 'Choose the type of account you want to create. You can only have one role per phone number.',
       };
 
   @override

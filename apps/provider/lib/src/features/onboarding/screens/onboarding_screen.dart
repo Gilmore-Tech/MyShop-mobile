@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
+
+import '../../auth/providers/auth_controller.dart';
 
 /// Single welcome screen — replaces the old 3-slide carousel.
 ///
 /// Top half: a brand-aligned hero composition showing the two sides of the
 /// MyShop provider platform (driver + artisan). Bottom half: headline, value
 /// props, primary "Get Started" CTA, and a sign-in shortcut.
-class OnboardingScreen extends StatelessWidget {
+class OnboardingScreen extends ConsumerWidget {
   const OnboardingScreen({super.key});
 
   static const _highlights = <_Highlight>[
@@ -28,8 +31,14 @@ class OnboardingScreen extends StatelessWidget {
     ),
   ];
 
+  void _markSeenAndGo(WidgetRef ref, BuildContext context, String route) {
+    ref.read(tokenStorageProvider).markOnboardingSeen();
+    ref.read(hasSeenOnboardingProvider.notifier).state = true;
+    context.go(route);
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
       body: SafeArea(
@@ -70,11 +79,11 @@ class OnboardingScreen extends StatelessWidget {
                     MyShopPrimaryButton(
                       label: 'Get Started',
                       icon: Icons.arrow_forward_rounded,
-                      onPressed: () => context.go('/signup/role'),
+                      onPressed: () => _markSeenAndGo(ref, context, '/signup/role'),
                     ),
                     const SizedBox(height: MyShopSpacing.sm),
                     TextButton(
-                      onPressed: () => context.go('/signin/phone'),
+                      onPressed: () => _markSeenAndGo(ref, context, '/signin/phone'),
                       style: TextButton.styleFrom(
                         minimumSize: const Size(double.infinity, 48),
                         foregroundColor: MyShopColors.primaryGoldDark,

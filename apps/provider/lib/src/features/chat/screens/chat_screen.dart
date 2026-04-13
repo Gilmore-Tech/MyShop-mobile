@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
@@ -70,6 +72,19 @@ class _ProviderChatScreenState extends State<ProviderChatScreen> {
     super.dispose();
   }
 
+  void _handleFilePicked(File file) {
+    setState(() {
+      _messages.add(
+        _ChatMessage(
+          text: '[Attachment: ${file.path.split('/').last}]',
+          time: 'Now',
+          fromMe: true,
+          status: _MessageStatus.sent,
+        ),
+      );
+    });
+  }
+
   void _send() {
     final text = _composer.text.trim();
     if (text.isEmpty) return;
@@ -126,6 +141,7 @@ class _ProviderChatScreenState extends State<ProviderChatScreen> {
             _Composer(
               controller: _composer,
               onSend: _send,
+              onFilePicked: _handleFilePicked,
             ),
           ],
         ),
@@ -435,10 +451,15 @@ class _MessageBubble extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Composer extends StatelessWidget {
-  const _Composer({required this.controller, required this.onSend});
+  const _Composer({
+    required this.controller,
+    required this.onSend,
+    required this.onFilePicked,
+  });
 
   final TextEditingController controller;
   final VoidCallback onSend;
+  final ValueChanged<File> onFilePicked;
 
   @override
   Widget build(BuildContext context) {
@@ -458,7 +479,10 @@ class _Composer extends StatelessWidget {
         children: [
           _ComposerIconButton(
             icon: Icons.attach_file,
-            onTap: () {},
+            onTap: () async {
+              final file = await MediaPickerHelper.pickAttachment(context);
+              if (file != null) onFilePicked(file);
+            },
           ),
           const SizedBox(width: MyShopSpacing.sm),
           Expanded(
@@ -499,7 +523,10 @@ class _Composer extends StatelessWidget {
                   const SizedBox(width: MyShopSpacing.sm),
                   _ComposerIconButton(
                     icon: Icons.camera_alt_outlined,
-                    onTap: () {},
+                    onTap: () async {
+                      final file = await MediaPickerHelper.pickFromCamera();
+                      if (file != null) onFilePicked(file);
+                    },
                     inline: true,
                   ),
                 ],
