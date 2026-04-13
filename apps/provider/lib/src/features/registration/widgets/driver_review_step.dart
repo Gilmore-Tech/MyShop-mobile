@@ -1,6 +1,8 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../providers/registration_controller.dart';
 import 'review_section_card.dart';
@@ -115,8 +117,106 @@ class DriverReviewStep extends ConsumerWidget {
               ],
             ),
           ),
+          const SizedBox(height: MyShopSpacing.md),
+          _PolicyCheckbox(),
         ],
       ),
+    );
+  }
+}
+
+class _PolicyCheckbox extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final accepted = ref.watch(policyAcceptedProvider);
+    final showErrors = ref.watch(showRegistrationErrorsProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => ref.read(policyAcceptedProvider.notifier).state = !accepted,
+          borderRadius: BorderRadius.circular(8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: Checkbox(
+                  value: accepted,
+                  onChanged: (v) =>
+                      ref.read(policyAcceptedProvider.notifier).state = v ?? false,
+                  activeColor: MyShopColors.primaryGold,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  side: BorderSide(
+                    color: (showErrors && !accepted)
+                        ? MyShopColors.error
+                        : MyShopColors.divider,
+                    width: 1.5,
+                  ),
+                ),
+              ),
+              const SizedBox(width: MyShopSpacing.sm),
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    style: MyShopTypography.caption.copyWith(
+                      color: MyShopColors.textPrimary,
+                      height: 1.4,
+                    ),
+                    children: [
+                      const TextSpan(text: 'I agree to the '),
+                      TextSpan(
+                        text: 'Terms of Service',
+                        style: const TextStyle(
+                          color: MyShopColors.primaryGoldDark,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.underline,
+                        ),
+                        recognizer: TapGestureRecognizer()
+                          ..onTap = () => launchUrl(
+                                Uri.parse('https://myshop.com.gh/terms'),
+                                mode: LaunchMode.externalApplication,
+                              ),
+                      ),
+                      const TextSpan(text: ' and '),
+                      TextSpan(
+                        text: 'Privacy Policy',
+                        style: const TextStyle(
+                          color: MyShopColors.primaryGoldDark,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.underline,
+                        ),
+                        recognizer: TapGestureRecognizer()
+                          ..onTap = () => launchUrl(
+                                Uri.parse('https://myshop.com.gh/privacy'),
+                                mode: LaunchMode.externalApplication,
+                              ),
+                      ),
+                      const TextSpan(text: '.'),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (showErrors && !accepted) ...[
+          const SizedBox(height: MyShopSpacing.xs),
+          Padding(
+            padding: const EdgeInsets.only(left: 32),
+            child: Text(
+              'You must accept the terms to continue.',
+              style: MyShopTypography.caption.copyWith(
+                color: MyShopColors.error,
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

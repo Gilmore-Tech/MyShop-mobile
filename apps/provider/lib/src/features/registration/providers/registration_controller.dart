@@ -1,14 +1,25 @@
-import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../auth/data/auth_repository.dart';
-import '../../auth/providers/auth_controller.dart';
 import '../../profile/providers/provider_type_provider.dart';
 
 /// Tracks which role the user picked at signup; null until role picker.
 final pendingRoleProvider = StateProvider<ProviderType?>((_) => null);
 
+/// When `true`, all registration step widgets should reveal their validation
+/// errors — even for fields the user hasn't touched yet. Set to `true` when
+/// the user taps "Continue" while the form is invalid. Reset to `false` when
+/// navigating to the next step.
+final showRegistrationErrorsProvider = StateProvider<bool>((_) => false);
+
+/// Whether the user has accepted the privacy policy and terms of service
+/// on the review step. Must be `true` before "Create Account" is allowed.
+final policyAcceptedProvider = StateProvider<bool>((_) => false);
+
 /// Driver registration draft.
+///
+/// Holds form data during the registration wizard. The actual API call
+/// happens via [AuthController.registerAndSendOtp] when the user submits
+/// their phone number on the phone input screen.
 class DriverRegistrationDraft {
   DriverRegistrationDraft({
     this.fullName = '',
@@ -19,8 +30,6 @@ class DriverRegistrationDraft {
     this.vehicleYear = '',
     this.vehiclePlate = '',
     this.vehicleColor = '',
-    this.isSubmitting = false,
-    this.error,
   });
 
   final String fullName;
@@ -31,8 +40,6 @@ class DriverRegistrationDraft {
   final String vehicleYear;
   final String vehiclePlate;
   final String vehicleColor;
-  final bool isSubmitting;
-  final String? error;
 
   DriverRegistrationDraft copyWith({
     String? fullName,
@@ -43,9 +50,6 @@ class DriverRegistrationDraft {
     String? vehicleYear,
     String? vehiclePlate,
     String? vehicleColor,
-    bool? isSubmitting,
-    String? error,
-    bool clearError = false,
   }) =>
       DriverRegistrationDraft(
         fullName: fullName ?? this.fullName,
@@ -56,76 +60,30 @@ class DriverRegistrationDraft {
         vehicleYear: vehicleYear ?? this.vehicleYear,
         vehiclePlate: vehiclePlate ?? this.vehiclePlate,
         vehicleColor: vehicleColor ?? this.vehicleColor,
-        isSubmitting: isSubmitting ?? this.isSubmitting,
-        error: clearError ? null : (error ?? this.error),
       );
 
-  bool get isComplete =>
-      fullName.isNotEmpty &&
-      email.isNotEmpty &&
-      ghanaCardNumber.isNotEmpty &&
-      vehicleMake.isNotEmpty &&
-      vehicleModel.isNotEmpty &&
-      vehicleYear.isNotEmpty &&
-      vehiclePlate.isNotEmpty &&
-      vehicleColor.isNotEmpty;
+  /// Only fullName is required for POST /auth/register.
+  /// Vehicle details are submitted later via profile/verification endpoints.
+  bool get isComplete => fullName.isNotEmpty;
 }
 
 class DriverRegistrationController
     extends StateNotifier<DriverRegistrationDraft> {
-  DriverRegistrationController(this._repo, this._auth)
-      : super(DriverRegistrationDraft());
-
-  final AuthRepository _repo;
-  final AuthController _auth;
+  DriverRegistrationController() : super(DriverRegistrationDraft());
 
   void update(DriverRegistrationDraft draft) => state = draft;
-
-  Future<bool> submit(String phone) async {
-    if (!state.isComplete) {
-      state = state.copyWith(error: 'Please fill in all fields.');
-      return false;
-    }
-    state = state.copyWith(isSubmitting: true, clearError: true);
-    try {
-      final user = await _repo.registerDriver(
-        phone: phone,
-        payload: DriverRegistrationPayload(
-          fullName: state.fullName,
-          email: state.email,
-          ghanaCardNumber: state.ghanaCardNumber,
-          vehicleMake: state.vehicleMake,
-          vehicleModel: state.vehicleModel,
-          vehicleYear: state.vehicleYear,
-          vehiclePlate: state.vehiclePlate,
-          vehicleColor: state.vehicleColor,
-        ),
-      );
-      _auth.completeSignUp(user);
-      state = state.copyWith(isSubmitting: false);
-      return true;
-    } on AuthException catch (e) {
-      state = state.copyWith(isSubmitting: false, error: e.message);
-      return false;
-    } catch (_) {
-      state = state.copyWith(
-        isSubmitting: false,
-        error: 'Registration failed. Try again.',
-      );
-      return false;
-    }
-  }
 }
 
 final driverRegistrationProvider = StateNotifierProvider<
     DriverRegistrationController, DriverRegistrationDraft>((ref) {
-  return DriverRegistrationController(
-    ref.watch(authRepositoryProvider),
-    ref.watch(authControllerProvider.notifier),
-  );
+  return DriverRegistrationController();
 });
 
 /// Artisan registration draft.
+///
+/// Holds form data during the registration wizard. The actual API call
+/// happens via [AuthController.registerAndSendOtp] when the user submits
+/// their phone number on the phone input screen.
 class ArtisanRegistrationDraft {
   ArtisanRegistrationDraft({
     this.fullName = '',
@@ -136,8 +94,6 @@ class ArtisanRegistrationDraft {
     this.yearsOfExperience = 0,
     this.serviceCategories = const [],
     this.serviceRadiusKm = 5,
-    this.isSubmitting = false,
-    this.error,
   });
 
   final String fullName;
@@ -148,8 +104,6 @@ class ArtisanRegistrationDraft {
   final int yearsOfExperience;
   final List<String> serviceCategories;
   final double serviceRadiusKm;
-  final bool isSubmitting;
-  final String? error;
 
   ArtisanRegistrationDraft copyWith({
     String? fullName,
@@ -160,9 +114,6 @@ class ArtisanRegistrationDraft {
     int? yearsOfExperience,
     List<String>? serviceCategories,
     double? serviceRadiusKm,
-    bool? isSubmitting,
-    String? error,
-    bool clearError = false,
   }) =>
       ArtisanRegistrationDraft(
         fullName: fullName ?? this.fullName,
@@ -173,69 +124,21 @@ class ArtisanRegistrationDraft {
         yearsOfExperience: yearsOfExperience ?? this.yearsOfExperience,
         serviceCategories: serviceCategories ?? this.serviceCategories,
         serviceRadiusKm: serviceRadiusKm ?? this.serviceRadiusKm,
-        isSubmitting: isSubmitting ?? this.isSubmitting,
-        error: clearError ? null : (error ?? this.error),
       );
 
-  bool get isComplete =>
-      fullName.isNotEmpty &&
-      email.isNotEmpty &&
-      ghanaCardNumber.isNotEmpty &&
-      businessName.isNotEmpty &&
-      tradeCategory.isNotEmpty &&
-      serviceCategories.isNotEmpty;
+  /// Only fullName and serviceCategories are required for POST /auth/register.
+  /// Business details are submitted later via profile endpoints.
+  bool get isComplete => fullName.isNotEmpty && serviceCategories.isNotEmpty;
 }
 
 class ArtisanRegistrationController
     extends StateNotifier<ArtisanRegistrationDraft> {
-  ArtisanRegistrationController(this._repo, this._auth)
-      : super(ArtisanRegistrationDraft());
-
-  final AuthRepository _repo;
-  final AuthController _auth;
+  ArtisanRegistrationController() : super(ArtisanRegistrationDraft());
 
   void update(ArtisanRegistrationDraft draft) => state = draft;
-
-  Future<bool> submit(String phone) async {
-    if (!state.isComplete) {
-      state = state.copyWith(error: 'Please fill in all required fields.');
-      return false;
-    }
-    state = state.copyWith(isSubmitting: true, clearError: true);
-    try {
-      final user = await _repo.registerArtisan(
-        phone: phone,
-        payload: ArtisanRegistrationPayload(
-          fullName: state.fullName,
-          email: state.email,
-          ghanaCardNumber: state.ghanaCardNumber,
-          businessName: state.businessName,
-          tradeCategory: state.tradeCategory,
-          yearsOfExperience: state.yearsOfExperience,
-          serviceCategories: state.serviceCategories,
-          serviceRadiusKm: state.serviceRadiusKm,
-        ),
-      );
-      _auth.completeSignUp(user);
-      state = state.copyWith(isSubmitting: false);
-      return true;
-    } on AuthException catch (e) {
-      state = state.copyWith(isSubmitting: false, error: e.message);
-      return false;
-    } catch (_) {
-      state = state.copyWith(
-        isSubmitting: false,
-        error: 'Registration failed. Try again.',
-      );
-      return false;
-    }
-  }
 }
 
 final artisanRegistrationProvider = StateNotifierProvider<
     ArtisanRegistrationController, ArtisanRegistrationDraft>((ref) {
-  return ArtisanRegistrationController(
-    ref.watch(authRepositoryProvider),
-    ref.watch(authControllerProvider.notifier),
-  );
+  return ArtisanRegistrationController();
 });

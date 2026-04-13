@@ -219,8 +219,7 @@ class _Footer extends StatelessWidget {
                 child: MyShopPrimaryButton(
                   label: continueLabel,
                   isLoading: isSubmitting,
-                  onPressed:
-                      isContinueEnabled && !isSubmitting ? onContinue : null,
+                  onPressed: !isSubmitting ? onContinue : null,
                 ),
               ),
             ],

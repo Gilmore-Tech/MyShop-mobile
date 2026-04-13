@@ -44,30 +44,23 @@ class _DriverRegistrationScreenState
   bool _canAdvance(DriverRegistrationDraft d) {
     switch (_currentStep) {
       case 0:
-        return d.fullName.isNotEmpty &&
-            d.email.isNotEmpty &&
-            d.ghanaCardNumber.isNotEmpty;
+        return Validators.fullName(d.fullName) == null &&
+            Validators.email(d.email) == null &&
+            Validators.ghanaCard(d.ghanaCardNumber) == null;
       case 1:
         return d.vehicleMake.isNotEmpty &&
             d.vehicleModel.isNotEmpty &&
-            d.vehicleYear.isNotEmpty &&
-            d.vehiclePlate.isNotEmpty &&
+            Validators.vehicleYear(d.vehicleYear) == null &&
+            Validators.licensePlate(d.vehiclePlate) == null &&
             d.vehicleColor.isNotEmpty;
       default:
         return d.isComplete;
     }
   }
 
-  void _clearError() {
-    final notifier = ref.read(driverRegistrationProvider.notifier);
-    final draft = ref.read(driverRegistrationProvider);
-    if (draft.error != null) {
-      notifier.update(draft.copyWith(clearError: true));
-    }
-  }
-
   void _goTo(int step) {
-    _clearError();
+    // Reset error visibility when moving to a new step.
+    ref.read(showRegistrationErrorsProvider.notifier).state = false;
     setState(() => _currentStep = step);
     _pageController.animateToPage(
       step,
@@ -79,9 +72,25 @@ class _DriverRegistrationScreenState
   void _goNext() => _goTo(_currentStep + 1);
   void _goBack() => _goTo(_currentStep - 1);
 
+  void _handleContinue() {
+    final draft = ref.read(driverRegistrationProvider);
+    if (_canAdvance(draft)) {
+      _goNext();
+    } else {
+      // Reveal all validation errors on the current step.
+      ref.read(showRegistrationErrorsProvider.notifier).state = true;
+    }
+  }
+
   void _finish() {
-    _clearError();
-    context.go('/signup/phone');
+    final draft = ref.read(driverRegistrationProvider);
+    final policyAccepted = ref.read(policyAcceptedProvider);
+    if (_canAdvance(draft) && policyAccepted) {
+      ref.read(showRegistrationErrorsProvider.notifier).state = false;
+      context.go('/signup/phone');
+    } else {
+      ref.read(showRegistrationErrorsProvider.notifier).state = true;
+    }
   }
 
   void _handleAppBarBack() {
@@ -95,6 +104,7 @@ class _DriverRegistrationScreenState
   @override
   Widget build(BuildContext context) {
     final draft = ref.watch(driverRegistrationProvider);
+    final policyAccepted = ref.watch(policyAcceptedProvider);
     final isLast = _currentStep == _steps.length - 1;
 
     return PopScope(
@@ -114,11 +124,13 @@ class _DriverRegistrationScreenState
         subtitle: _stepTitles[_currentStep].$2,
         onAppBarBack: _handleAppBarBack,
         onBack: _currentStep == 0 ? null : _goBack,
-        onContinue: isLast ? _finish : _goNext,
+        onContinue: isLast ? _finish : _handleContinue,
         continueLabel: isLast ? 'Create Account' : 'Continue',
-        isContinueEnabled: _canAdvance(draft),
-        isSubmitting: draft.isSubmitting,
-        errorText: draft.error,
+        isContinueEnabled: isLast
+            ? _canAdvance(draft) && policyAccepted
+            : _canAdvance(draft),
+        isSubmitting: false,
+        errorText: null,
         child: PageView(
           controller: _pageController,
           physics: const NeverScrollableScrollPhysics(),

@@ -1,24 +1,12 @@
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../providers/categories_provider.dart';
 import '../providers/registration_controller.dart';
 import 'registration_step_scaffold.dart';
-
-/// Ordered list of artisan categories shown on the business step. Kept here
-/// (rather than pulled from the PRD's 11-category master list) so the field
-/// surface stays scoped to what today's payload supports.
-const artisanCategories = <String>[
-  'Plumbing',
-  'Electrical',
-  'Carpentry',
-  'Painting',
-  'Cleaning',
-  'Masonry',
-  'AC Repair',
-  'Appliance Repair',
-];
 
 /// Step 2 of artisan registration — business details, services, radius.
 class ArtisanBusinessStep extends ConsumerStatefulWidget {
@@ -34,6 +22,10 @@ class _ArtisanBusinessStepState extends ConsumerState<ArtisanBusinessStep>
   late final TextEditingController _businessCtrl;
   late final TextEditingController _tradeCtrl;
   late final TextEditingController _experienceCtrl;
+
+  bool _businessTouched = false;
+  bool _tradeTouched = false;
+  bool _experienceTouched = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -66,10 +58,21 @@ class _ArtisanBusinessStepState extends ConsumerState<ArtisanBusinessStep>
     notifier.update(update(ref.read(artisanRegistrationProvider)));
   }
 
+  String? _validateExperience(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null; // optional field
+    final years = int.tryParse(trimmed);
+    if (years == null) return 'Enter a number.';
+    if (years < 0 || years > 60) return 'Must be between 0 and 60.';
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
     final draft = ref.watch(artisanRegistrationProvider);
+    final showAll = ref.watch(showRegistrationErrorsProvider);
+    final categoriesAsync = ref.watch(categoriesProvider);
 
     return RegistrationStepCard(
       child: Column(
@@ -79,14 +82,28 @@ class _ArtisanBusinessStepState extends ConsumerState<ArtisanBusinessStep>
             label: 'Business name',
             hint: 'e.g. Abena\'s Plumbing Services',
             controller: _businessCtrl,
-            onChanged: (v) => _apply((d) => d.copyWith(businessName: v)),
+            errorText: (_businessTouched || showAll)
+                ? Validators.required(_businessCtrl.text, 'Business name')
+                : null,
+            onChanged: (v) {
+              _apply((d) => d.copyWith(businessName: v));
+              if (_businessTouched || showAll) setState(() {});
+            },
+            onSubmitted: (_) => setState(() => _businessTouched = true),
           ),
           const SizedBox(height: MyShopSpacing.md),
           MyShopTextField(
             label: 'Primary trade',
             hint: 'e.g. Plumber',
             controller: _tradeCtrl,
-            onChanged: (v) => _apply((d) => d.copyWith(tradeCategory: v)),
+            errorText: (_tradeTouched || showAll)
+                ? Validators.required(_tradeCtrl.text, 'Primary trade')
+                : null,
+            onChanged: (v) {
+              _apply((d) => d.copyWith(tradeCategory: v));
+              if (_tradeTouched || showAll) setState(() {});
+            },
+            onSubmitted: (_) => setState(() => _tradeTouched = true),
           ),
           const SizedBox(height: MyShopSpacing.md),
           MyShopTextField(
@@ -98,9 +115,16 @@ class _ArtisanBusinessStepState extends ConsumerState<ArtisanBusinessStep>
               FilteringTextInputFormatter.digitsOnly,
               LengthLimitingTextInputFormatter(2),
             ],
-            onChanged: (v) => _apply(
-              (d) => d.copyWith(yearsOfExperience: int.tryParse(v) ?? 0),
-            ),
+            errorText: (_experienceTouched || showAll)
+                ? _validateExperience(_experienceCtrl.text)
+                : null,
+            onChanged: (v) {
+              _apply(
+                (d) => d.copyWith(yearsOfExperience: int.tryParse(v) ?? 0),
+              );
+              if (_experienceTouched || showAll) setState(() {});
+            },
+            onSubmitted: (_) => setState(() => _experienceTouched = true),
           ),
           const SizedBox(height: MyShopSpacing.lg),
           Text('Services you offer', style: MyShopTypography.body1),
@@ -109,41 +133,47 @@ class _ArtisanBusinessStepState extends ConsumerState<ArtisanBusinessStep>
             'Pick everything you can do well.',
             style: MyShopTypography.body2,
           ),
+          if (showAll && draft.serviceCategories.isEmpty) ...[
+            const SizedBox(height: MyShopSpacing.xs),
+            Text(
+              'Select at least one service.',
+              style: MyShopTypography.caption
+                  .copyWith(color: MyShopColors.error),
+            ),
+          ],
           const SizedBox(height: MyShopSpacing.sm),
-          Wrap(
-            spacing: MyShopSpacing.sm,
-            runSpacing: MyShopSpacing.sm,
-            children: artisanCategories.map((cat) {
-              final selected = draft.serviceCategories.contains(cat);
-              return FilterChip(
-                label: Text(cat),
-                selected: selected,
-                showCheckmark: true,
-                labelStyle: MyShopTypography.body2.copyWith(
-                  color: selected
-                      ? MyShopColors.primaryGoldDark
-                      : MyShopColors.textPrimary,
-                  fontWeight: FontWeight.w600,
+          categoriesAsync.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.symmetric(vertical: MyShopSpacing.lg),
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-                backgroundColor: MyShopColors.surfaceWhite,
-                selectedColor: MyShopColors.primaryGoldLight,
-                checkmarkColor: MyShopColors.primaryGoldDark,
-                side: BorderSide(
-                  color: selected
-                      ? MyShopColors.primaryGold
-                      : MyShopColors.divider,
+              ),
+            ),
+            error: (_, __) => Column(
+              children: [
+                Text(
+                  'Could not load categories.',
+                  style: MyShopTypography.body2
+                      .copyWith(color: MyShopColors.error),
                 ),
-                onSelected: (v) {
-                  final next = List<String>.from(draft.serviceCategories);
-                  if (v) {
-                    next.add(cat);
-                  } else {
-                    next.remove(cat);
-                  }
-                  _apply((d) => d.copyWith(serviceCategories: next));
-                },
-              );
-            }).toList(),
+                const SizedBox(height: MyShopSpacing.sm),
+                TextButton(
+                  onPressed: () => ref.invalidate(categoriesProvider),
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+            data: (categories) => _CategoriesChips(
+              categories: categories,
+              selectedIds: draft.serviceCategories,
+              showError: showAll && draft.serviceCategories.isEmpty,
+              onChanged: (ids) =>
+                  _apply((d) => d.copyWith(serviceCategories: ids)),
+            ),
           ),
           const SizedBox(height: MyShopSpacing.lg),
           Text('Service radius', style: MyShopTypography.body1),
@@ -165,6 +195,125 @@ class _ArtisanBusinessStepState extends ConsumerState<ArtisanBusinessStep>
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Renders category chips grouped by parent.
+///
+/// Top-level categories without children render as a single chip.
+/// Categories with children (e.g. "Repairs") render as a section header
+/// followed by chips for each subcategory.
+class _CategoriesChips extends StatelessWidget {
+  const _CategoriesChips({
+    required this.categories,
+    required this.selectedIds,
+    required this.showError,
+    required this.onChanged,
+  });
+
+  final List<ServiceCategory> categories;
+  final List<String> selectedIds;
+  final bool showError;
+  final ValueChanged<List<String>> onChanged;
+
+  void _toggle(String id) {
+    final next = List<String>.from(selectedIds);
+    if (next.contains(id)) {
+      next.remove(id);
+    } else {
+      next.add(id);
+    }
+    onChanged(next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final widgets = <Widget>[];
+
+    for (final cat in categories) {
+      if (cat.hasChildren) {
+        // Group header + subcategory chips
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(
+            top: MyShopSpacing.md,
+            bottom: MyShopSpacing.xs,
+          ),
+          child: Text(
+            cat.name,
+            style: MyShopTypography.overline,
+          ),
+        ));
+        widgets.add(Wrap(
+          spacing: MyShopSpacing.sm,
+          runSpacing: MyShopSpacing.sm,
+          children: cat.children
+              .map((sub) => _chip(sub.id, sub.name))
+              .toList(),
+        ));
+      } else {
+        // Leaf category — collect for a single wrap
+        widgets.add(_chip(cat.id, cat.name));
+      }
+    }
+
+    // Separate top-level leaf chips from grouped sections.
+    // Collect consecutive leaf chips into a single Wrap.
+    final result = <Widget>[];
+    var leafChips = <Widget>[];
+
+    for (final w in widgets) {
+      if (w is FilterChip) {
+        leafChips.add(w);
+      } else {
+        if (leafChips.isNotEmpty) {
+          result.add(Wrap(
+            spacing: MyShopSpacing.sm,
+            runSpacing: MyShopSpacing.sm,
+            children: leafChips,
+          ));
+          leafChips = [];
+        }
+        result.add(w);
+      }
+    }
+    if (leafChips.isNotEmpty) {
+      result.add(Wrap(
+        spacing: MyShopSpacing.sm,
+        runSpacing: MyShopSpacing.sm,
+        children: leafChips,
+      ));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: result,
+    );
+  }
+
+  Widget _chip(String id, String name) {
+    final selected = selectedIds.contains(id);
+    return FilterChip(
+      label: Text(name),
+      selected: selected,
+      showCheckmark: true,
+      labelStyle: MyShopTypography.body2.copyWith(
+        color: selected
+            ? MyShopColors.primaryGoldDark
+            : MyShopColors.textPrimary,
+        fontWeight: FontWeight.w600,
+      ),
+      backgroundColor: MyShopColors.surfaceWhite,
+      selectedColor: MyShopColors.primaryGoldLight,
+      checkmarkColor: MyShopColors.primaryGoldDark,
+      side: BorderSide(
+        color: selected
+            ? MyShopColors.primaryGold
+            : showError
+                ? MyShopColors.error
+                : MyShopColors.divider,
+      ),
+      onSelected: (_) => _toggle(id),
     );
   }
 }

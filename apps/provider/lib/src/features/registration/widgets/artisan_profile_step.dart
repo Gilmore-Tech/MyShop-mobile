@@ -19,6 +19,10 @@ class _ArtisanProfileStepState extends ConsumerState<ArtisanProfileStep>
   late final TextEditingController _emailCtrl;
   late final TextEditingController _ghanaCardCtrl;
 
+  bool _nameTouched = false;
+  bool _emailTouched = false;
+  bool _ghanaCardTouched = false;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -49,6 +53,7 @@ class _ArtisanProfileStepState extends ConsumerState<ArtisanProfileStep>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final showAll = ref.watch(showRegistrationErrorsProvider);
 
     return RegistrationStepCard(
       child: Column(
@@ -58,7 +63,14 @@ class _ArtisanProfileStepState extends ConsumerState<ArtisanProfileStep>
             label: 'Full name',
             hint: 'Enter your full name',
             controller: _nameCtrl,
-            onChanged: (v) => _apply((d) => d.copyWith(fullName: v)),
+            errorText: (_nameTouched || showAll)
+                ? Validators.fullName(_nameCtrl.text)
+                : null,
+            onChanged: (v) {
+              _apply((d) => d.copyWith(fullName: v));
+              if (_nameTouched || showAll) setState(() {});
+            },
+            onSubmitted: (_) => setState(() => _nameTouched = true),
           ),
           const SizedBox(height: MyShopSpacing.md),
           MyShopTextField(
@@ -66,14 +78,29 @@ class _ArtisanProfileStepState extends ConsumerState<ArtisanProfileStep>
             hint: 'name@example.com',
             keyboardType: TextInputType.emailAddress,
             controller: _emailCtrl,
-            onChanged: (v) => _apply((d) => d.copyWith(email: v)),
+            errorText: (_emailTouched || showAll)
+                ? Validators.email(_emailCtrl.text)
+                : null,
+            onChanged: (v) {
+              _apply((d) => d.copyWith(email: v));
+              if (_emailTouched || showAll) setState(() {});
+            },
+            onSubmitted: (_) => setState(() => _emailTouched = true),
           ),
           const SizedBox(height: MyShopSpacing.md),
           MyShopTextField(
             label: 'Ghana Card number',
             hint: 'GHA-XXXXXXXXX-X',
             controller: _ghanaCardCtrl,
-            onChanged: (v) => _apply((d) => d.copyWith(ghanaCardNumber: v)),
+            textCapitalization: TextCapitalization.characters,
+            errorText: (_ghanaCardTouched || showAll)
+                ? Validators.ghanaCard(_ghanaCardCtrl.text)
+                : null,
+            onChanged: (v) {
+              _apply((d) => d.copyWith(ghanaCardNumber: v));
+              if (_ghanaCardTouched || showAll) setState(() {});
+            },
+            onSubmitted: (_) => setState(() => _ghanaCardTouched = true),
           ),
           const SizedBox(height: MyShopSpacing.sm),
           Text(
