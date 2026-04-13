@@ -1,86 +1,91 @@
 import 'package:api_client/api_client.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-/// Wraps [AuthService] with token persistence via secure storage.
+/// Wraps [AuthService] with token persistence via [TokenStorage].
 class AuthRepository {
   AuthRepository({
     required AuthService service,
-    FlutterSecureStorage? storage,
+    required TokenStorage tokenStorage,
   })  : _service = service,
-        _storage = storage ?? const FlutterSecureStorage();
-
-  static const _kAccessToken = 'auth_access_token';
-  static const _kRefreshToken = 'auth_refresh_token';
-  static const _kPhone = 'auth_phone';
+        _tokenStorage = tokenStorage;
 
   final AuthService _service;
-  final FlutterSecureStorage _storage;
+  final TokenStorage _tokenStorage;
 
-  Future<String?> readAccessToken() => _storage.read(key: _kAccessToken);
-  Future<String?> readPhone() => _storage.read(key: _kPhone);
+  /// Register a new account. Sends OTP — no tokens persisted yet.
+  Future<void> register(RegisterRequest request) async {
+    await _service.register(request);
+    await _tokenStorage.writePhone(request.phone);
+  }
 
-  Future<void> _persistTokens({
-    required String accessToken,
-    required String refreshToken,
+  /// Login as an existing driver. Sends OTP.
+  Future<void> loginDriver(String phone) async {
+    await _service.loginDriver(phone);
+    await _tokenStorage.writePhone(phone);
+  }
+
+  /// Login as an existing artisan. Sends OTP.
+  Future<void> loginArtisan(String phone) async {
+    await _service.loginArtisan(phone);
+    await _tokenStorage.writePhone(phone);
+  }
+
+  /// Check which roles are registered to a phone number.
+  Future<List<String>> checkPhone(String phone) async {
+    return _service.checkPhone(phone);
+  }
+
+  /// Login with auto role detection. Returns the detected role.
+  Future<String> login(String phone) async {
+    final role = await _service.login(phone);
+    await _tokenStorage.writePhone(phone);
+    return role;
+  }
+
+  /// Verify OTP → persist tokens.
+  Future<TokenResponse> verifyOtp({
     required String phone,
-  }) async {
-    await _storage.write(key: _kAccessToken, value: accessToken);
-    await _storage.write(key: _kRefreshToken, value: refreshToken);
-    await _storage.write(key: _kPhone, value: phone);
-  }
-
-  Future<void> clear() async {
-    await _storage.delete(key: _kAccessToken);
-    await _storage.delete(key: _kRefreshToken);
-    await _storage.delete(key: _kPhone);
-  }
-
-  Future<OtpRequestResult> requestOtp(String phone) =>
-      _service.requestOtp(phone);
-
-  Future<OtpVerifyResult> verifyOtp({
-    required String otpId,
     required String code,
-    required String phone,
   }) async {
-    final result = await _service.verifyOtp(otpId: otpId, code: code);
-    await _persistTokens(
+    final result = await _service.verifyOtp(
+      VerifyOtpRequest(phone: phone, otp: code),
+    );
+    await _tokenStorage.writeTokens(
       accessToken: result.accessToken,
       refreshToken: result.refreshToken,
-      phone: phone,
     );
+    await _tokenStorage.writePhone(phone);
     return result;
   }
 
-  Future<AuthUser> registerDriver({
-    required String phone,
-    required DriverRegistrationPayload payload,
-  }) async {
-    final token = await readAccessToken();
-    if (token == null) throw AuthException('No active session.');
-    return _service.registerDriver(
-      accessToken: token,
-      phone: phone,
-      payload: payload,
-    );
+  /// Fetch the user's full profile from GET /users/me.
+  Future<AuthUser> fetchProfile() async {
+    final profile = await _service.getMe();
+    return AuthUser.fromProfile(profile);
   }
 
-  Future<AuthUser> registerArtisan({
-    required String phone,
-    required ArtisanRegistrationPayload payload,
-  }) async {
-    final token = await readAccessToken();
-    if (token == null) throw AuthException('No active session.');
-    return _service.registerArtisan(
-      accessToken: token,
-      phone: phone,
-      payload: payload,
-    );
-  }
-
+  /// Try to restore a session from stored tokens.
+  /// Returns null if no valid session exists.
   Future<AuthUser?> bootstrap() async {
-    final token = await readAccessToken();
+    final token = await _tokenStorage.readAccessToken();
     if (token == null) return null;
-    return _service.currentUser(token);
+    try {
+      final profile = await _service.getMe();
+      return AuthUser.fromProfile(profile);
+    } catch (_) {
+      return null;
+    }
   }
+
+  /// Update the user's profile via PUT /users/me.
+  /// Returns the updated [AuthUser].
+  Future<AuthUser> updateProfile(UpdateProfileRequest request) async {
+    final profile = await _service.updateMe(request);
+    return AuthUser.fromProfile(profile);
+  }
+
+  /// Clear all stored tokens and phone.
+  Future<void> clear() => _tokenStorage.clearTokens();
+
+  /// Read the stored phone (used for OTP resend).
+  Future<String?> readPhone() => _tokenStorage.readPhone();
 }

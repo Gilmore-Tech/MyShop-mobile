@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../profile/providers/provider_type_provider.dart';
+import '../../registration/providers/registration_controller.dart';
 import '../providers/auth_controller.dart';
 
 /// Phone number input.
 ///
 /// Used by both sign-in (`mode = signIn`) and the final step of sign-up
-/// (`mode = signUp`). The screen behaves identically; only the auth call
-/// differs.
+/// (`mode = signUp`). In sign-up mode, the registration draft data is sent
+/// along with the phone via POST /auth/register.
 enum PhoneInputMode { signIn, signUp }
 
 class ProviderPhoneInputScreen extends ConsumerStatefulWidget {
@@ -40,11 +42,7 @@ class _ProviderPhoneInputScreenState
   }
 
   String? _validate(String raw) {
-    final digits = raw.replaceAll(RegExp(r'\D'), '');
-    if (digits.length != 9) {
-      return 'Enter a 9-digit Ghana phone number.';
-    }
-    return null;
+    return Validators.ghanaPhone(raw);
   }
 
   Future<void> _submit() async {
@@ -57,21 +55,52 @@ class _ProviderPhoneInputScreenState
     setState(() => _localError = null);
     final phone = '+233${raw.replaceAll(RegExp(r'\D'), '')}';
     final notifier = ref.read(authControllerProvider.notifier);
+
     if (widget.mode == PhoneInputMode.signIn) {
-      await notifier.requestSignInOtp(phone);
+      // Sign-in: check phone roles, then send OTP (or show role picker)
+      await notifier.checkPhoneAndLogin(phone: phone);
     } else {
-      await notifier.requestSignUpOtp(
-        phone: phone,
-        role: widget.signUpRole ?? ProviderType.driver,
-      );
+      // Sign-up: send registration data + phone via POST /auth/register
+      final role = widget.signUpRole ?? ProviderType.driver;
+
+      if (role == ProviderType.driver) {
+        final draft = ref.read(driverRegistrationProvider);
+        await notifier.registerAndSendOtp(
+          phone: phone,
+          fullName: draft.fullName,
+          type: 'driver',
+          privacyPolicyAccepted: true,
+          role: role,
+          email: draft.email.isNotEmpty ? draft.email : null,
+        );
+      } else {
+        final draft = ref.read(artisanRegistrationProvider);
+        await notifier.registerAndSendOtp(
+          phone: phone,
+          fullName: draft.fullName,
+          type: 'artisan',
+          privacyPolicyAccepted: true,
+          role: role,
+          email: draft.email.isNotEmpty ? draft.email : null,
+          categories: draft.serviceCategories.isNotEmpty
+              ? draft.serviceCategories
+              : null,
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(authControllerProvider);
-    final remoteError =
-        state is AuthUnauthenticated ? state.error : null;
+
+    String? remoteError;
+    bool isLoading = false;
+
+    if (state is AuthUnauthenticated) {
+      remoteError = state.error;
+      isLoading = state.isLoading;
+    }
 
     final title = widget.mode == PhoneInputMode.signIn
         ? 'Welcome back'
@@ -104,6 +133,7 @@ class _ProviderPhoneInputScreenState
                 hint: '24 123 4567',
                 keyboardType: TextInputType.phone,
                 textInputAction: TextInputAction.done,
+                enabled: !isLoading,
                 inputFormatters: [
                   FilteringTextInputFormatter.digitsOnly,
                   LengthLimitingTextInputFormatter(9),
@@ -125,13 +155,53 @@ class _ProviderPhoneInputScreenState
                   ),
                 ),
                 errorText: _localError ?? remoteError,
+                onChanged: (_) {
+                  // Clear errors as the user types.
+                  if (_localError != null) setState(() => _localError = null);
+                  if (remoteError != null) {
+                    ref.read(authControllerProvider.notifier).clearError();
+                  }
+                },
                 onSubmitted: (_) => _submit(),
               ),
               const Spacer(),
               MyShopPrimaryButton(
                 label: 'Send code',
-                onPressed: _submit,
+                isLoading: isLoading,
+                onPressed: isLoading ? null : _submit,
               ),
+              if (widget.mode == PhoneInputMode.signIn) ...[
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: isLoading
+                      ? null
+                      : () => context.go('/signup/role'),
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 48),
+                    foregroundColor: MyShopColors.primaryGoldDark,
+                  ),
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: "Don't have an account? ",
+                          style: MyShopTypography.body1.copyWith(
+                            color: MyShopColors.textSecondary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        TextSpan(
+                          text: 'Sign up',
+                          style: MyShopTypography.body1.copyWith(
+                            color: MyShopColors.primaryGoldDark,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
             ],
           ),

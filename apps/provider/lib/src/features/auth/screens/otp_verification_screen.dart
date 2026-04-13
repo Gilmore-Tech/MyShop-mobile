@@ -4,12 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-import '../../profile/providers/provider_type_provider.dart';
-import '../../registration/providers/registration_controller.dart';
 import '../providers/auth_controller.dart';
 
-/// 6-digit OTP verification. Drives both sign-in and the final step of
-/// sign-up — the auth state determines which.
+/// 6-digit OTP verification screen.
+///
+/// Used for both sign-in and sign-up flows. The auth state determines context.
+/// On successful verify, the controller fetches the user profile and
+/// transitions directly to [AuthAuthenticated].
 class ProviderOtpVerificationScreen extends ConsumerStatefulWidget {
   const ProviderOtpVerificationScreen({super.key});
 
@@ -23,7 +24,6 @@ class _ProviderOtpVerificationScreenState
   String _code = '';
   int _resendIn = 30;
   Timer? _timer;
-  bool _submittingRegistration = false;
 
   @override
   void initState() {
@@ -55,59 +55,28 @@ class _ProviderOtpVerificationScreenState
   }
 
   Future<void> _resend() async {
-    final state = ref.read(authControllerProvider);
-    final notifier = ref.read(authControllerProvider.notifier);
-    if (state is AuthSignInOtp) {
-      await notifier.requestSignInOtp(state.phone);
-    } else if (state is AuthSignUpOtp) {
-      await notifier.requestSignUpOtp(phone: state.phone, role: state.role);
-    } else {
-      return;
-    }
-    _startResendTimer();
-  }
-
-  Future<void> _submitRegistration(AuthSignUpReady ready) async {
-    if (_submittingRegistration) return;
-    _submittingRegistration = true;
-    final ok = ready.role == ProviderType.driver
-        ? await ref
-            .read(driverRegistrationProvider.notifier)
-            .submit(ready.phone)
-        : await ref
-            .read(artisanRegistrationProvider.notifier)
-            .submit(ready.phone);
-    _submittingRegistration = false;
-    if (!ok && mounted) {
-      // Surface error via the relevant draft state on the form screen.
-      ref.read(authControllerProvider.notifier).reset();
+    try {
+      await ref.read(authControllerProvider.notifier).resendOtp();
+      _startResendTimer();
+    } catch (_) {
+      // Silently fail — user can try again
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Auto-submit registration once the sign-up OTP succeeds.
-    ref.listen<AuthState>(authControllerProvider, (_, next) {
-      if (next is AuthSignUpReady) {
-        _submitRegistration(next);
-      }
-    });
-
     final state = ref.watch(authControllerProvider);
 
     String phone = '';
     String? error;
     bool isVerifying = false;
-    if (state is AuthSignInOtp) {
+
+    if (state is AuthOtpSent) {
       phone = state.phone;
       error = state.error;
       isVerifying = state.isVerifying;
-    } else if (state is AuthSignUpOtp) {
-      phone = state.phone;
-      error = state.error;
-      isVerifying = state.isVerifying;
-    } else if (state is AuthSignUpReady) {
-      phone = state.phone;
+    } else if (state is AuthAuthenticated) {
+      // Keep loading visible while router redirects to /home.
       isVerifying = true;
     }
 
@@ -138,7 +107,13 @@ class _ProviderOtpVerificationScreenState
               ),
               const SizedBox(height: 32),
               MyShopOtpInput(
-                onChanged: (v) => setState(() => _code = v),
+                onChanged: (v) {
+                  setState(() => _code = v);
+                  // Clear error as the user types a new code.
+                  if (error != null) {
+                    ref.read(authControllerProvider.notifier).clearError();
+                  }
+                },
                 onCompleted: (_) => _verify(),
                 hasError: error != null,
               ),
@@ -166,7 +141,7 @@ class _ProviderOtpVerificationScreenState
               MyShopPrimaryButton(
                 label: 'Verify',
                 isLoading: isVerifying,
-                onPressed: _code.length == 6 ? _verify : null,
+                onPressed: _code.length == 6 && !isVerifying ? _verify : null,
               ),
               const SizedBox(height: 24),
             ],
