@@ -1,17 +1,19 @@
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../auth/providers/current_user_provider.dart';
 import '../providers/provider_type_provider.dart';
+import '../providers/verification_provider.dart';
 
 /// Documents & Verification — adapts to the active provider role.
 ///
-/// - **Driver** sees a fixed set of required documents: Driver's License,
-///   Roadworthiness, Insurance, Ghana Card.
-/// - **Artisan** sees their core required docs (Ghana Card, Business
-///   Certificate, Trade Certificate) plus an "Optional Documents" group for
-///   SMEs that may not yet have full registration.
+/// - **Driver** sees: Driver's License, Roadworthiness, Vehicle Insurance,
+///   Ghana Card.
+/// - **Artisan** sees core required docs (Ghana Card, Business Certificate,
+///   Trade Certificate) plus optional SME documents.
 ///
 /// PRD Reference: PRD 5.5 — provider verification & compliance.
 class DocumentsVerificationScreen extends ConsumerWidget {
@@ -20,9 +22,22 @@ class DocumentsVerificationScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isArtisan = ref.watch(providerTypeProvider).isArtisan;
+    final user = ref.watch(currentUserProvider);
+    final completion = ref.watch(profileCompletionProvider);
+    final verificationAsync = ref.watch(verificationStatusProvider);
+    final uploadState = ref.watch(documentUploadProvider);
 
-    final requiredDocs = isArtisan ? _artisanRequired : _driverRequired;
-    final optionalDocs = isArtisan ? _artisanOptional : const <_DocItem>[];
+    // Build doc lists based on role, using real backend status where available
+    final backendDocs = verificationAsync.whenOrNull(
+          data: (status) => status.documents,
+        ) ??
+        const <DocumentInfo>[];
+
+    final requiredDocs = isArtisan
+        ? _buildArtisanRequired(user, backendDocs, uploadState)
+        : _buildDriverRequired(user, backendDocs, uploadState);
+    final optionalDocs =
+        isArtisan ? _buildArtisanOptional(backendDocs, uploadState) : const <_DocItem>[];
 
     final uploadedRequired =
         requiredDocs.where((d) => d.status != _DocStatus.missing).length;
@@ -43,8 +58,10 @@ class DocumentsVerificationScreen extends ConsumerWidget {
                 ),
                 children: [
                   _ProgressCard(
-                    completed: uploadedRequired,
-                    total: requiredDocs.length,
+                    completed: completion.completed,
+                    total: completion.total,
+                    docsCompleted: uploadedRequired,
+                    docsTotal: requiredDocs.length,
                     isArtisan: isArtisan,
                   ),
                   const SizedBox(height: MyShopSpacing.lg),
@@ -77,7 +94,11 @@ class DocumentsVerificationScreen extends ConsumerWidget {
                     ],
                   ),
                   const SizedBox(height: MyShopSpacing.sm),
-                  _DocsCard(items: requiredDocs),
+                  _DocsCard(
+                    items: requiredDocs,
+                    providerType: isArtisan ? 'artisan' : 'driver',
+                    ref: ref,
+                  ),
                   if (optionalDocs.isNotEmpty) ...[
                     const SizedBox(height: MyShopSpacing.lg),
                     Row(
@@ -114,7 +135,11 @@ class DocumentsVerificationScreen extends ConsumerWidget {
                       style: MyShopTypography.body2.copyWith(height: 1.5),
                     ),
                     const SizedBox(height: MyShopSpacing.sm),
-                    _DocsCard(items: optionalDocs),
+                    _DocsCard(
+                      items: optionalDocs,
+                      providerType: 'artisan',
+                      ref: ref,
+                    ),
                   ],
                   const SizedBox(height: MyShopSpacing.lg),
                   const _PolicyNote(),
@@ -127,76 +152,206 @@ class DocumentsVerificationScreen extends ConsumerWidget {
     );
   }
 
-  // ── Driver doc set ──
-  static const _driverRequired = <_DocItem>[
-    _DocItem(
-      icon: Icons.badge_outlined,
-      title: "Driver's License",
-      meta: 'Expires: Dec 12, 2027',
-      status: _DocStatus.valid,
-    ),
-    _DocItem(
-      icon: Icons.directions_car_outlined,
-      title: 'Roadworthiness Certificate',
-      meta: 'Expires: Mar 04, 2026',
-      status: _DocStatus.valid,
-    ),
-    _DocItem(
-      icon: Icons.shield_outlined,
-      title: 'Vehicle Insurance',
-      meta: 'Expires: Aug 22, 2025',
-      status: _DocStatus.expiring,
-    ),
-    _DocItem(
-      icon: Icons.credit_card,
-      title: 'Ghana Card',
-      meta: 'Tap to upload front & back',
-      status: _DocStatus.missing,
-    ),
-  ];
+  // ── Build doc lists from real data ──
 
-  // ── Artisan doc sets ──
-  static const _artisanRequired = <_DocItem>[
-    _DocItem(
-      icon: Icons.credit_card,
-      title: 'Ghana Card',
-      meta: 'Verified',
-      status: _DocStatus.valid,
-    ),
-    _DocItem(
-      icon: Icons.business_outlined,
-      title: 'Business Registration Certificate',
-      meta: 'Expires: Mar 04, 2026',
-      status: _DocStatus.valid,
-    ),
-    _DocItem(
-      icon: Icons.workspace_premium_outlined,
-      title: 'Trade Certificate',
-      meta: 'Tap to upload',
-      status: _DocStatus.missing,
-    ),
-  ];
+  static List<_DocItem> _buildDriverRequired(
+    AuthUser? user,
+    List<DocumentInfo> docs,
+    DocumentUploadState uploadState,
+  ) {
+    final dp = user?.driverProfile;
+    return [
+      _docItemFromBackend(
+        docs: docs,
+        uploadState: uploadState,
+        type: DocumentType.driversLicence,
+        icon: Icons.badge_outlined,
+        title: "Driver's License",
+        fallbackMeta: dp?.licenceExpiry != null
+            ? 'Expires: ${dp!.licenceExpiry}'
+            : 'Tap to upload',
+        fallbackStatus:
+            dp?.licenceNumber != null ? _DocStatus.valid : _DocStatus.missing,
+      ),
+      _docItemFromBackend(
+        docs: docs,
+        uploadState: uploadState,
+        type: DocumentType.roadworthinessCertificate,
+        icon: Icons.directions_car_outlined,
+        title: 'Roadworthiness Certificate',
+        fallbackMeta: 'Tap to upload',
+        fallbackStatus: _DocStatus.missing,
+      ),
+      _docItemFromBackend(
+        docs: docs,
+        uploadState: uploadState,
+        type: DocumentType.vehicleRegistration,
+        icon: Icons.shield_outlined,
+        title: 'Vehicle Insurance',
+        fallbackMeta: 'Tap to upload',
+        fallbackStatus: _DocStatus.missing,
+      ),
+      _docItemFromBackend(
+        docs: docs,
+        uploadState: uploadState,
+        type: DocumentType.ghanaCard,
+        icon: Icons.credit_card,
+        title: 'Ghana Card',
+        fallbackMeta: dp?.ghanaCardVerified == true
+            ? 'Verified'
+            : 'Tap to upload front & back',
+        fallbackStatus:
+            dp?.ghanaCardVerified == true ? _DocStatus.valid : _DocStatus.missing,
+      ),
+    ];
+  }
 
-  static const _artisanOptional = <_DocItem>[
-    _DocItem(
-      icon: Icons.description_outlined,
-      title: 'Tax Clearance (TIN)',
-      meta: 'Recommended for VAT-eligible jobs',
-      status: _DocStatus.missing,
-    ),
-    _DocItem(
-      icon: Icons.health_and_safety_outlined,
-      title: 'Public Liability Insurance',
-      meta: 'Optional · unlocks enterprise contracts',
-      status: _DocStatus.missing,
-    ),
-    _DocItem(
-      icon: Icons.school_outlined,
-      title: 'Professional Body Membership',
-      meta: 'e.g. GNAT, GIA, GIE',
-      status: _DocStatus.missing,
-    ),
-  ];
+  static List<_DocItem> _buildArtisanRequired(
+    AuthUser? user,
+    List<DocumentInfo> docs,
+    DocumentUploadState uploadState,
+  ) {
+    final ap = user?.artisanProfile;
+    return [
+      _docItemFromBackend(
+        docs: docs,
+        uploadState: uploadState,
+        type: DocumentType.ghanaCard,
+        icon: Icons.credit_card,
+        title: 'Ghana Card',
+        fallbackMeta:
+            ap?.ghanaCardVerified == true ? 'Verified' : 'Tap to upload',
+        fallbackStatus:
+            ap?.ghanaCardVerified == true ? _DocStatus.valid : _DocStatus.missing,
+      ),
+      _docItemFromBackend(
+        docs: docs,
+        uploadState: uploadState,
+        type: DocumentType.businessRegistration,
+        icon: Icons.business_outlined,
+        title: 'Business Registration Certificate',
+        fallbackMeta: 'Tap to upload',
+        fallbackStatus: _DocStatus.missing,
+      ),
+      _docItemFromBackend(
+        docs: docs,
+        uploadState: uploadState,
+        type: DocumentType.tradeCertificate,
+        icon: Icons.workspace_premium_outlined,
+        title: 'Trade Certificate',
+        fallbackMeta: 'Tap to upload',
+        fallbackStatus: _DocStatus.missing,
+      ),
+    ];
+  }
+
+  static List<_DocItem> _buildArtisanOptional(
+    List<DocumentInfo> docs,
+    DocumentUploadState uploadState,
+  ) {
+    return [
+      _docItemFromBackend(
+        docs: docs,
+        uploadState: uploadState,
+        type: DocumentType.nationalId,
+        icon: Icons.description_outlined,
+        title: 'Tax Clearance (TIN)',
+        fallbackMeta: 'Recommended for VAT-eligible jobs',
+        fallbackStatus: _DocStatus.missing,
+      ),
+      const _DocItem(
+        icon: Icons.health_and_safety_outlined,
+        title: 'Public Liability Insurance',
+        meta: 'Optional · unlocks enterprise contracts',
+        status: _DocStatus.missing,
+        documentType: null,
+      ),
+      const _DocItem(
+        icon: Icons.school_outlined,
+        title: 'Professional Body Membership',
+        meta: 'e.g. GNAT, GIA, GIE',
+        status: _DocStatus.missing,
+        documentType: null,
+      ),
+    ];
+  }
+
+  /// Merge backend document info with a fallback for when the endpoint
+  /// returns no data (fresh account or endpoint not available).
+  static _DocItem _docItemFromBackend({
+    required List<DocumentInfo> docs,
+    required DocumentUploadState uploadState,
+    required DocumentType type,
+    required IconData icon,
+    required String title,
+    required String fallbackMeta,
+    required _DocStatus fallbackStatus,
+  }) {
+    // Check if just uploaded in this session
+    if (uploadState.uploaded[type.value] == true) {
+      return _DocItem(
+        icon: icon,
+        title: title,
+        meta: 'Uploaded — pending review',
+        status: _DocStatus.uploaded,
+        documentType: type,
+      );
+    }
+
+    // Check if uploading right now
+    if (uploadState.uploading[type.value] == true) {
+      return _DocItem(
+        icon: icon,
+        title: title,
+        meta: 'Uploading...',
+        status: _DocStatus.uploading,
+        documentType: type,
+      );
+    }
+
+    // Check backend documents list
+    final doc = docs
+        .where((d) => d.documentType == type.value && d.isCurrent)
+        .firstOrNull;
+
+    if (doc != null) {
+      if (doc.isVerified) {
+        return _DocItem(
+          icon: icon,
+          title: title,
+          meta: doc.expiresAt != null ? 'Expires: ${doc.expiresAt}' : 'Verified',
+          status: _DocStatus.valid,
+          documentType: type,
+        );
+      } else if (doc.isRejected) {
+        return _DocItem(
+          icon: icon,
+          title: title,
+          meta: doc.rejectionReason ?? 'Rejected — please re-upload',
+          status: _DocStatus.rejected,
+          documentType: type,
+        );
+      } else {
+        // uploaded, pending review
+        return _DocItem(
+          icon: icon,
+          title: title,
+          meta: 'Uploaded — pending review',
+          status: _DocStatus.uploaded,
+          documentType: type,
+        );
+      }
+    }
+
+    // No backend data — use fallback from profile fields
+    return _DocItem(
+      icon: icon,
+      title: title,
+      meta: fallbackMeta,
+      status: fallbackStatus,
+      documentType: type,
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -238,23 +393,28 @@ class _Header extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Progress card
+// Progress card — shows both profile completion and document progress
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ProgressCard extends StatelessWidget {
   const _ProgressCard({
     required this.completed,
     required this.total,
+    required this.docsCompleted,
+    required this.docsTotal,
     required this.isArtisan,
   });
 
   final int completed;
   final int total;
+  final int docsCompleted;
+  final int docsTotal;
   final bool isArtisan;
 
   @override
   Widget build(BuildContext context) {
     final progress = total == 0 ? 0.0 : completed / total;
+    final percentage = (progress * 100).round();
     final isComplete = completed == total;
     final accent =
         isComplete ? MyShopColors.success : MyShopColors.primaryGold;
@@ -293,7 +453,7 @@ class _ProgressCard extends StatelessWidget {
                   children: [
                     Text(
                       isComplete
-                          ? 'All required documents submitted'
+                          ? 'Profile verification complete'
                           : 'Complete your verification',
                       style: MyShopTypography.h3.copyWith(
                         fontSize: 16,
@@ -302,9 +462,7 @@ class _ProgressCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      isArtisan
-                          ? 'Artisan profile · $completed of $total required docs'
-                          : 'Driver profile · $completed of $total required docs',
+                      '$percentage% complete · $docsCompleted of $docsTotal docs uploaded',
                       style: MyShopTypography.body2,
                     ),
                   ],
@@ -367,7 +525,7 @@ class _SectionLabel extends StatelessWidget {
 // Doc item + status
 // ─────────────────────────────────────────────────────────────────────────────
 
-enum _DocStatus { valid, expiring, missing }
+enum _DocStatus { valid, uploaded, uploading, expiring, rejected, missing }
 
 class _DocItem {
   const _DocItem({
@@ -375,18 +533,26 @@ class _DocItem {
     required this.title,
     required this.meta,
     required this.status,
+    this.documentType,
   });
 
   final IconData icon;
   final String title;
   final String meta;
   final _DocStatus status;
+  final DocumentType? documentType;
 }
 
 class _DocsCard extends StatelessWidget {
-  const _DocsCard({required this.items});
+  const _DocsCard({
+    required this.items,
+    required this.providerType,
+    required this.ref,
+  });
 
   final List<_DocItem> items;
+  final String providerType;
+  final WidgetRef ref;
 
   @override
   Widget build(BuildContext context) {
@@ -399,7 +565,11 @@ class _DocsCard extends StatelessWidget {
       child: Column(
         children: [
           for (int i = 0; i < items.length; i++) ...[
-            _DocRow(item: items[i]),
+            _DocRow(
+              item: items[i],
+              providerType: providerType,
+              ref: ref,
+            ),
             if (i < items.length - 1)
               const Divider(
                 height: 1,
@@ -415,14 +585,43 @@ class _DocsCard extends StatelessWidget {
 }
 
 class _DocRow extends StatelessWidget {
-  const _DocRow({required this.item});
+  const _DocRow({
+    required this.item,
+    required this.providerType,
+    required this.ref,
+  });
 
   final _DocItem item;
+  final String providerType;
+  final WidgetRef ref;
+
+  bool get _canUpload =>
+      item.status == _DocStatus.missing ||
+      item.status == _DocStatus.rejected;
+
+  Future<void> _handleUpload(BuildContext context) async {
+    if (item.documentType == null) return;
+
+    final file = await MediaPickerHelper.pickDocumentWithCamera(context);
+    if (file == null || !context.mounted) return;
+
+    final error = await ref.read(documentUploadProvider.notifier).upload(
+          providerType: providerType,
+          documentType: item.documentType!,
+          file: file,
+        );
+
+    if (error != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () {},
+      onTap: _canUpload ? () => _handleUpload(context) : null,
       child: Padding(
         padding: const EdgeInsets.all(MyShopSpacing.md),
         child: Row(
@@ -451,7 +650,8 @@ class _DocRow extends StatelessWidget {
                   const SizedBox(height: 2),
                   Row(
                     children: [
-                      if (item.status != _DocStatus.missing)
+                      if (item.status != _DocStatus.missing &&
+                          item.status != _DocStatus.uploading)
                         const Padding(
                           padding: EdgeInsets.only(right: 4),
                           child: Icon(
@@ -460,10 +660,26 @@ class _DocRow extends StatelessWidget {
                             color: MyShopColors.textSecondary,
                           ),
                         ),
+                      if (item.status == _DocStatus.uploading)
+                        const Padding(
+                          padding: EdgeInsets.only(right: 4),
+                          child: SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.5,
+                              color: MyShopColors.primaryGold,
+                            ),
+                          ),
+                        ),
                       Flexible(
                         child: Text(
                           item.meta,
-                          style: MyShopTypography.body2,
+                          style: MyShopTypography.body2.copyWith(
+                            color: item.status == _DocStatus.rejected
+                                ? MyShopColors.error
+                                : null,
+                          ),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -488,31 +704,44 @@ class _StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    late final Color bg;
-    late final Color fg;
-    late final String label;
-    late final IconData icon;
-
-    switch (status) {
-      case _DocStatus.valid:
-        bg = MyShopColors.successLight;
-        fg = MyShopColors.success;
-        label = 'Valid';
-        icon = Icons.check_circle_outline;
-        break;
-      case _DocStatus.expiring:
-        bg = MyShopColors.warningLight;
-        fg = MyShopColors.warning;
-        label = 'Expiring';
-        icon = Icons.warning_amber_outlined;
-        break;
-      case _DocStatus.missing:
-        bg = MyShopColors.surfaceWhite;
-        fg = MyShopColors.primaryGold;
-        label = 'Upload';
-        icon = Icons.upload_outlined;
-        break;
-    }
+    final (Color bg, Color fg, String label, IconData icon) = switch (status) {
+      _DocStatus.valid => (
+          MyShopColors.successLight,
+          MyShopColors.success,
+          'Valid',
+          Icons.check_circle_outline,
+        ),
+      _DocStatus.uploaded => (
+          MyShopColors.surfaceGrey,
+          MyShopColors.textSecondary,
+          'Pending',
+          Icons.hourglass_top,
+        ),
+      _DocStatus.uploading => (
+          MyShopColors.primaryGoldLight,
+          MyShopColors.primaryGold,
+          'Uploading',
+          Icons.cloud_upload_outlined,
+        ),
+      _DocStatus.expiring => (
+          MyShopColors.warningLight,
+          MyShopColors.warning,
+          'Expiring',
+          Icons.warning_amber_outlined,
+        ),
+      _DocStatus.rejected => (
+          MyShopColors.errorLight,
+          MyShopColors.error,
+          'Rejected',
+          Icons.cancel_outlined,
+        ),
+      _DocStatus.missing => (
+          MyShopColors.surfaceWhite,
+          MyShopColors.primaryGold,
+          'Upload',
+          Icons.upload_outlined,
+        ),
+    };
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

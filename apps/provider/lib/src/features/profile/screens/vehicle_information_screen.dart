@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
+
+import '../../auth/providers/current_user_provider.dart';
+import '../providers/verification_provider.dart';
 
 /// Vehicle Information screen — driver-only.
 ///
@@ -8,11 +12,21 @@ import 'package:shared_ui/shared_ui.dart';
 ///
 /// Layout: hero card with vehicle name + plate, technical specs grid,
 /// compliance & docs cards, regulation notice, upload CTA.
-class VehicleInformationScreen extends StatelessWidget {
+class VehicleInformationScreen extends ConsumerWidget {
   const VehicleInformationScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider);
+    final dp = user?.driverProfile;
+    final completion = ref.watch(profileCompletionProvider);
+    final vehicleName = [dp?.vehicleMake, dp?.vehicleModel]
+        .where((s) => s != null && s.isNotEmpty)
+        .join(' ');
+    final plate = dp?.vehiclePlate ?? '--';
+    final year = dp?.vehicleYear ?? '--';
+    final color = dp?.vehicleColor ?? '--';
+    final hasVehicle = dp?.vehicleMake != null;
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
       appBar: AppBar(
@@ -91,8 +105,8 @@ class VehicleInformationScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Toyota Camry SE',
-                          style: TextStyle(
+                      Text(hasVehicle ? vehicleName : 'No vehicle added',
+                          style: const TextStyle(
                               fontFamily: 'Raleway',
                               fontSize: 22,
                               fontWeight: FontWeight.w900,
@@ -106,19 +120,13 @@ class VehicleInformationScreen extends StatelessWidget {
                             color: MyShopColors.darkSlate,
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: const Text('GW-4922-22',
-                              style: TextStyle(
+                          child: Text(plate,
+                              style: const TextStyle(
                                   fontFamily: 'Raleway',
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
                                   color: Colors.white)),
                         ),
-                        const SizedBox(width: 8),
-                        Text('Verified Partner',
-                            style: MyShopTypography.body2.copyWith(
-                                fontSize: 11,
-                                color: MyShopColors.primaryGold,
-                                fontWeight: FontWeight.w700)),
                       ]),
                     ],
                   ),
@@ -142,15 +150,15 @@ class VehicleInformationScreen extends StatelessWidget {
           ]),
           const SizedBox(height: MyShopSpacing.sm),
           Row(children: [
-            Expanded(child: _SpecCard(icon: Icons.directions_car_outlined, label: 'TYPE', value: 'Sedan')),
+            Expanded(child: _SpecCard(icon: Icons.palette_outlined, label: 'COLOR', value: color)),
             const SizedBox(width: 8),
-            Expanded(child: _SpecCard(icon: Icons.local_gas_station_outlined, label: 'FUEL', value: 'Petrol')),
+            Expanded(child: _SpecCard(icon: Icons.directions_car_outlined, label: 'MAKE', value: dp?.vehicleMake ?? '--')),
           ]),
           const SizedBox(height: 8),
           Row(children: [
-            Expanded(child: _SpecCard(icon: Icons.calendar_today_outlined, label: 'YEAR', value: '2022')),
+            Expanded(child: _SpecCard(icon: Icons.calendar_today_outlined, label: 'YEAR', value: year)),
             const SizedBox(width: 8),
-            Expanded(child: _SpecCard(icon: Icons.event_seat_outlined, label: 'SEATS', value: '5 Persons')),
+            Expanded(child: _SpecCard(icon: Icons.badge_outlined, label: 'MODEL', value: dp?.vehicleModel ?? '--')),
           ]),
           const SizedBox(height: MyShopSpacing.lg),
 
@@ -253,7 +261,18 @@ class VehicleInformationScreen extends StatelessWidget {
           const SizedBox(height: MyShopSpacing.lg),
 
           ElevatedButton.icon(
-            onPressed: () {},
+            onPressed: () async {
+              final file =
+                  await MediaPickerHelper.pickDocumentWithCamera(context);
+              if (file != null && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content:
+                        Text('Selected: ${file.path.split('/').last}'),
+                  ),
+                );
+              }
+            },
             icon: const Icon(Icons.add, size: 16),
             label: const Text('Upload New Document'),
             style: ElevatedButton.styleFrom(
@@ -271,10 +290,17 @@ class VehicleInformationScreen extends StatelessWidget {
           const SizedBox(height: 8),
           Center(
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.check_circle,
-                  size: 14, color: MyShopColors.success),
+              Icon(
+                completion.isComplete
+                    ? Icons.check_circle
+                    : Icons.info_outline,
+                size: 14,
+                color: completion.isComplete
+                    ? MyShopColors.success
+                    : MyShopColors.primaryGold,
+              ),
               const SizedBox(width: 4),
-              Text('Profile 95% complete',
+              Text('Profile ${completion.percentage}% complete',
                   style: MyShopTypography.body2.copyWith(fontSize: 11)),
             ]),
           ),

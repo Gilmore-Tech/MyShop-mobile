@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../auth/providers/auth_controller.dart';
+import '../../auth/providers/current_user_provider.dart';
+import '../../driver_home/providers/driver_earnings_provider.dart';
 import '../providers/provider_type_provider.dart';
 import '../widgets/settings_list_tile.dart';
 import '../widgets/settings_section.dart';
@@ -26,10 +29,104 @@ import '../widgets/settings_section.dart';
 class AccountSettingsScreen extends ConsumerWidget {
   const AccountSettingsScreen({super.key});
 
+  Future<void> _showLogoutDialog(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: MyShopColors.surfaceWhite,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Log out?',
+          style: TextStyle(
+            fontFamily: 'Raleway',
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: MyShopColors.textPrimary,
+          ),
+        ),
+        content: Text(
+          'You\'ll need to sign in again to access your account.',
+          style: MyShopTypography.body2,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(
+              'Cancel',
+              style: MyShopTypography.button.copyWith(
+                color: MyShopColors.textSecondary,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(
+              'Log Out',
+              style: MyShopTypography.button.copyWith(
+                color: MyShopColors.error,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      await ref.read(authControllerProvider.notifier).logout();
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final providerType = ref.watch(providerTypeProvider);
     final isDriver = providerType.isDriver;
+    final user = ref.watch(currentUserProvider);
+    final earningsAsync = ref.watch(driverEarningsProvider);
+
+    // Derive verification status from the user's profile
+    final driverProfile = user?.driverProfile;
+    final artisanProfile = user?.artisanProfile;
+    final verificationStatus = isDriver
+        ? (driverProfile?.verificationStatus ?? 'pending')
+        : (artisanProfile?.verificationStatus ?? 'pending');
+    final kycStatus = isDriver
+        ? (driverProfile?.kycStatus ?? 'pending')
+        : (artisanProfile?.kycStatus ?? 'pending');
+    final policeCheckStatus = isDriver
+        ? (driverProfile?.policeCheckStatus ?? 'pending')
+        : (artisanProfile?.policeCheckStatus ?? 'pending');
+    final isVerified = verificationStatus == 'approved';
+
+    // Vehicle info subtitle
+    final vehicleSubtitle = driverProfile != null &&
+            driverProfile.vehicleMake != null &&
+            driverProfile.vehiclePlate != null
+        ? '${driverProfile.vehicleMake} ${driverProfile.vehicleModel ?? ''} (${driverProfile.vehiclePlate})'
+        : 'Not set up yet';
+
+    // Payout subtitle
+    final payoutSubtitle = (isDriver
+                ? driverProfile?.payoutAccountNumber
+                : artisanProfile?.payoutAccountNumber) !=
+            null
+        ? '${isDriver ? driverProfile?.payoutMethod ?? 'MoMo' : artisanProfile?.payoutMethod ?? 'MoMo'}: ••• ${(isDriver ? driverProfile!.payoutAccountNumber! : artisanProfile!.payoutAccountNumber!).substring((isDriver ? driverProfile!.payoutAccountNumber! : artisanProfile!.payoutAccountNumber!).length > 4 ? (isDriver ? driverProfile!.payoutAccountNumber! : artisanProfile!.payoutAccountNumber!).length - 4 : 0)}'
+        : 'Not set up yet';
+
+    // KYC button label and style
+    final kycLabel = kycStatus == 'approved' ? 'KYC: Verified' : 'KYC: ${_capitalize(kycStatus)}';
+    final kycColor = kycStatus == 'approved' ? MyShopColors.success : MyShopColors.warning;
+    final kycBg = kycStatus == 'approved' ? MyShopColors.successLight : MyShopColors.warningLight;
+
+    // Earnings for performance card
+    final todayEarnings = earningsAsync.when(
+      data: (e) => _formatGhs(e.todayAmountPesewas),
+      loading: () => '...',
+      error: (_, __) => '0',
+    );
+    final todayTrips = earningsAsync.when(
+      data: (e) => '${e.todayTrips}',
+      loading: () => '...',
+      error: (_, __) => '0',
+    );
 
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
@@ -65,7 +162,16 @@ class AccountSettingsScreen extends ConsumerWidget {
             // ── 2. Identity card ──
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-              child: _IdentityCard(isDriver: isDriver),
+              child: _IdentityCard(
+                isDriver: isDriver,
+                fullName: user?.fullName ?? 'Provider',
+                phone: user?.phone ?? '',
+                email: user?.email ?? '',
+                photoUrl: isDriver
+                    ? driverProfile?.profilePhotoUrl
+                    : artisanProfile?.profilePhotoUrl,
+                verificationStatus: verificationStatus,
+              ),
             ),
             const SizedBox(height: MyShopSpacing.md),
 
@@ -96,11 +202,11 @@ class AccountSettingsScreen extends ConsumerWidget {
                     child: OutlinedButton.icon(
                       onPressed: () => context.push('/account/documents'),
                       icon: const Icon(Icons.shield_outlined, size: 14),
-                      label: const Text('KYC: Pending'),
+                      label: Text(kycLabel),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: MyShopColors.warning,
-                        side: const BorderSide(color: MyShopColors.warning),
-                        backgroundColor: MyShopColors.warningLight,
+                        foregroundColor: kycColor,
+                        side: BorderSide(color: kycColor),
+                        backgroundColor: kycBg,
                         minimumSize: const Size(0, 44),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10)),
@@ -117,16 +223,21 @@ class AccountSettingsScreen extends ConsumerWidget {
             const SizedBox(height: MyShopSpacing.md),
 
             // ── 4. Verification banner ──
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-              child: _VerificationBanner(),
-            ),
-            const SizedBox(height: MyShopSpacing.lg),
+            if (!isVerified)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                child: _VerificationBanner(verificationStatus: verificationStatus),
+              ),
+            if (!isVerified) const SizedBox(height: MyShopSpacing.lg),
 
             // ── 5. Performance card ──
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-              child: _PerformanceCard(),
+              child: _PerformanceCard(
+                trips: todayTrips,
+                earnings: todayEarnings,
+                rating: '--',
+              ),
             ),
             const SizedBox(height: MyShopSpacing.lg),
 
@@ -140,7 +251,7 @@ class AccountSettingsScreen extends ConsumerWidget {
                     icon: Icons.shield_outlined,
                     title: 'Documents & Verification',
                     subtitle: 'KYC, Police Check, ID-Cards',
-                    trailingChipLabel: '1 Action',
+                    trailingChipLabel: !isVerified ? '1 Action' : null,
                     trailingChipColor: MyShopColors.error,
                     onTap: () => context.push('/account/documents'),
                   ),
@@ -148,20 +259,20 @@ class AccountSettingsScreen extends ConsumerWidget {
                     SettingsListTile(
                       icon: Icons.directions_car,
                       title: 'Vehicle Information',
-                      subtitle: 'Toyota Corolla (GS-2323-22)',
+                      subtitle: vehicleSubtitle,
                       onTap: () => context.push('/account/vehicle'),
                     )
                   else
                     SettingsListTile(
                       icon: Icons.business_center_outlined,
                       title: 'Business Information',
-                      subtitle: 'Yaakvi Electricals',
+                      subtitle: user?.fullName ?? 'Not set up yet',
                       onTap: () => context.push('/account/business'),
                     ),
                   SettingsListTile(
                     icon: Icons.account_balance_wallet_outlined,
                     title: 'Payout Methods',
-                    subtitle: 'MoMo: 054 ••• 8821',
+                    subtitle: payoutSubtitle,
                     onTap: () => context.push('/account/payouts'),
                   ),
                   SettingsListTile(
@@ -220,6 +331,12 @@ class AccountSettingsScreen extends ConsumerWidget {
                   ),
                   SettingsListTile(
                     icon: Icons.logout,
+                    title: 'Log Out',
+                    subtitle: 'Sign out of your account',
+                    onTap: () => _showLogoutDialog(context, ref),
+                  ),
+                  SettingsListTile(
+                    icon: Icons.no_accounts_outlined,
                     title: 'Deactivate Account',
                     subtitle: '',
                     danger: true,
@@ -233,29 +350,33 @@ class AccountSettingsScreen extends ConsumerWidget {
             // ── 9. Compliance Summary ──
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-              child: _ComplianceSummary(),
+              child: _ComplianceSummary(
+                kycStatus: kycStatus,
+                policeCheckStatus: policeCheckStatus,
+              ),
             ),
             const SizedBox(height: MyShopSpacing.md),
 
             // ── Continue verification CTA ──
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-              child: ElevatedButton(
-                onPressed: () => context.push('/account/documents'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: MyShopColors.darkSlate,
-                  foregroundColor: MyShopColors.textOnPrimary,
-                  minimumSize: const Size(double.infinity, 52),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
-                  textStyle: const TextStyle(
-                      fontFamily: 'Raleway',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700),
+            if (!isVerified)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                child: ElevatedButton(
+                  onPressed: () => context.push('/account/documents'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: MyShopColors.darkSlate,
+                    foregroundColor: MyShopColors.textOnPrimary,
+                    minimumSize: const Size(double.infinity, 52),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                    textStyle: const TextStyle(
+                        fontFamily: 'Raleway',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700),
+                  ),
+                  child: const Text('Continue Verification'),
                 ),
-                child: const Text('Continue Verification'),
               ),
-            ),
             const SizedBox(height: MyShopSpacing.lg),
 
             // ── App version footer ──
@@ -310,25 +431,45 @@ class AccountSettingsScreen extends ConsumerWidget {
 // ─── Identity card ──────────────────────────────────────────────────────────
 
 class _IdentityCard extends StatelessWidget {
-  const _IdentityCard({required this.isDriver});
+  const _IdentityCard({
+    required this.isDriver,
+    required this.fullName,
+    required this.phone,
+    required this.email,
+    required this.verificationStatus,
+    this.photoUrl,
+  });
   final bool isDriver;
+  final String fullName;
+  final String phone;
+  final String email;
+  final String verificationStatus;
+  final String? photoUrl;
 
   @override
   Widget build(BuildContext context) {
+    final isVerified = verificationStatus == 'approved';
+    final statusLabel = _capitalize(verificationStatus);
+    final statusColor = isVerified ? MyShopColors.success : MyShopColors.warning;
+    final statusIcon = isVerified ? Icons.check_circle_outline : Icons.error_outline;
+
     return Row(
       children: [
-        const CircleAvatar(
+        CircleAvatar(
           radius: 32,
-          backgroundColor: Color(0xFFFCEAE1),
-          child: Icon(Icons.person, size: 32, color: MyShopColors.textSecondary),
+          backgroundColor: const Color(0xFFFCEAE1),
+          backgroundImage: photoUrl != null ? NetworkImage(photoUrl!) : null,
+          child: photoUrl == null
+              ? const Icon(Icons.person, size: 32, color: MyShopColors.textSecondary)
+              : null,
         ),
         const SizedBox(width: MyShopSpacing.md),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Kofi Mensah',
-                    style: TextStyle(
+              Text(fullName,
+                    style: const TextStyle(
                         fontFamily: 'Raleway',
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
@@ -353,31 +494,49 @@ class _IdentityCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 6),
-                const Icon(Icons.error_outline,
-                    size: 12, color: MyShopColors.warning),
+                Icon(statusIcon, size: 12, color: statusColor),
                 const SizedBox(width: 2),
-                Text('Pending Verification',
+                Text('$statusLabel Verification',
                     style: MyShopTypography.caption
-                        .copyWith(color: MyShopColors.warning, fontSize: 10)),
+                        .copyWith(color: statusColor, fontSize: 10)),
               ]),
               const SizedBox(height: 4),
-              Text('+233 ••• 4582',
-                  style: MyShopTypography.body2.copyWith(fontSize: 12)),
-              Text('k.mensah@provider-mail.com',
-                  style: MyShopTypography.body2.copyWith(fontSize: 12)),
+              if (phone.isNotEmpty)
+                Text(_maskPhone(phone),
+                    style: MyShopTypography.body2.copyWith(fontSize: 12)),
+              if (email.isNotEmpty)
+                Text(email,
+                    style: MyShopTypography.body2.copyWith(fontSize: 12)),
             ],
           ),
         ),
       ],
     );
   }
+
+  /// Mask phone: +233541234567 → +233 ••• 4567
+  static String _maskPhone(String phone) {
+    if (phone.length < 6) return phone;
+    final last4 = phone.substring(phone.length - 4);
+    final prefix = phone.substring(0, phone.length > 10 ? 4 : 3);
+    return '$prefix ••• $last4';
+  }
 }
 
 // ─── Verification banner ────────────────────────────────────────────────────
 
 class _VerificationBanner extends StatelessWidget {
+  const _VerificationBanner({required this.verificationStatus});
+  final String verificationStatus;
+
   @override
   Widget build(BuildContext context) {
+    final isPending = verificationStatus == 'pending';
+    final statusText = isPending
+        ? 'Your documents are awaiting review. Please complete any remaining steps.'
+        : 'Your KYC and Police Check are currently being reviewed. Results are expected within 24-48 hours.';
+    final title = isPending ? 'Verification Required' : 'Verification in Progress';
+
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),
       decoration: BoxDecoration(
@@ -395,29 +554,16 @@ class _VerificationBanner extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Verification in Progress',
-                    style: TextStyle(
+                Text(title,
+                    style: const TextStyle(
                         fontFamily: 'Raleway',
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                         color: MyShopColors.textPrimary)),
                 const SizedBox(height: 2),
-                Text(
-                    'Your KYC and Police Check are currently being reviewed. Results are expected within 24-48 hours.',
+                Text(statusText,
                     style:
                         MyShopTypography.body2.copyWith(fontSize: 11, height: 1.4)),
-                const SizedBox(height: 6),
-                Row(children: [
-                  Text('Started: Jan 24, 2024',
-                      style: MyShopTypography.caption.copyWith(fontSize: 10)),
-                  const Spacer(),
-                  Text('View Status Details',
-                      style: MyShopTypography.body2.copyWith(
-                          fontSize: 11,
-                          color: MyShopColors.warning,
-                          fontWeight: FontWeight.w700,
-                          decoration: TextDecoration.underline)),
-                ]),
               ],
             ),
           ),
@@ -430,6 +576,15 @@ class _VerificationBanner extends StatelessWidget {
 // ─── Performance card ───────────────────────────────────────────────────────
 
 class _PerformanceCard extends StatelessWidget {
+  const _PerformanceCard({
+    required this.trips,
+    required this.earnings,
+    required this.rating,
+  });
+  final String trips;
+  final String earnings;
+  final String rating;
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -460,20 +615,20 @@ class _PerformanceCard extends StatelessWidget {
             color: MyShopColors.surfaceGrey,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: const Row(
+          child: Row(
             children: [
               _PerfStat(
                   icon: Icons.shopping_bag_outlined,
-                  value: '12',
-                  label: 'Active Trips'),
-              _PerfDivider(),
+                  value: trips,
+                  label: 'Trips Today'),
+              const _PerfDivider(),
               _PerfStat(
                   icon: Icons.payments_outlined,
-                  value: '450.00',
+                  value: earnings,
                   label: 'Earnings'),
-              _PerfDivider(),
+              const _PerfDivider(),
               _PerfStat(
-                  icon: Icons.star_border, value: '4.92', label: 'Avg Rating'),
+                  icon: Icons.star_border, value: rating, label: 'Avg Rating'),
             ],
           ),
         ),
@@ -517,6 +672,13 @@ class _PerfDivider extends StatelessWidget {
 // ─── Compliance Summary ─────────────────────────────────────────────────────
 
 class _ComplianceSummary extends StatelessWidget {
+  const _ComplianceSummary({
+    required this.kycStatus,
+    required this.policeCheckStatus,
+  });
+  final String kycStatus;
+  final String policeCheckStatus;
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -549,33 +711,46 @@ class _ComplianceSummary extends StatelessWidget {
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                         color: MyShopColors.textPrimary)),
-                const Spacer(),
-                Text('Last check: 12 Jan, 10:45 AM',
-                    style: MyShopTypography.caption.copyWith(fontSize: 9)),
               ]),
               const SizedBox(height: MyShopSpacing.sm),
               _ComplianceRow(
                 icon: Icons.fingerprint,
                 title: 'KYC Identity',
                 subtitle: 'Smile Identity Verification',
-                status: 'PENDING',
-                statusColor: MyShopColors.warning,
-                statusBg: MyShopColors.warningLight,
+                status: kycStatus.toUpperCase(),
+                statusColor: _statusColor(kycStatus),
+                statusBg: _statusBg(kycStatus),
               ),
               const SizedBox(height: 8),
               _ComplianceRow(
                 icon: Icons.local_police_outlined,
                 title: 'Police Background',
                 subtitle: 'Ghana Police Service Check',
-                status: 'APPROVED',
-                statusColor: MyShopColors.success,
-                statusBg: MyShopColors.successLight,
+                status: policeCheckStatus.toUpperCase(),
+                statusColor: _statusColor(policeCheckStatus),
+                statusBg: _statusBg(policeCheckStatus),
               ),
             ],
           ),
         ),
       ],
     );
+  }
+
+  static Color _statusColor(String status) {
+    return switch (status) {
+      'approved' => MyShopColors.success,
+      'rejected' => MyShopColors.error,
+      _ => MyShopColors.warning,
+    };
+  }
+
+  static Color _statusBg(String status) {
+    return switch (status) {
+      'approved' => MyShopColors.successLight,
+      'rejected' => MyShopColors.errorLight,
+      _ => MyShopColors.warningLight,
+    };
   }
 }
 
@@ -644,4 +819,19 @@ class _ComplianceRow extends StatelessWidget {
       ]),
     );
   }
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+String _capitalize(String s) {
+  if (s.isEmpty) return s;
+  return s[0].toUpperCase() + s.substring(1);
+}
+
+String _formatGhs(int pesewas) {
+  final ghs = pesewas / 100;
+  if (ghs == ghs.truncateToDouble()) {
+    return ghs.toStringAsFixed(0);
+  }
+  return ghs.toStringAsFixed(2);
 }

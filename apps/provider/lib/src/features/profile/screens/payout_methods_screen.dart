@@ -1,14 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
+
+import '../../auth/providers/current_user_provider.dart';
 
 /// Payout Methods screen — MoMo + bank accounts, payout history, schedule.
 ///
 /// Figma: node 313:27042
-class PayoutMethodsScreen extends StatelessWidget {
+class PayoutMethodsScreen extends ConsumerWidget {
   const PayoutMethodsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider);
+    final dp = user?.driverProfile;
+    final ap = user?.artisanProfile;
+    final payoutMethod = dp?.payoutMethod ?? ap?.payoutMethod;
+    final payoutAccount = dp?.payoutAccountNumber ?? ap?.payoutAccountNumber;
+    final hasPayoutMethod = payoutMethod != null && payoutAccount != null;
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
       appBar: AppBar(
@@ -51,7 +60,7 @@ class PayoutMethodsScreen extends StatelessWidget {
                               fontSize: 13,
                               color: MyShopColors.textSecondary)),
                       const SizedBox(height: 6),
-                      const Text('₵2,450.00',
+                      const Text('₵0',
                           style: TextStyle(
                               fontFamily: 'Raleway',
                               fontSize: 32,
@@ -76,29 +85,11 @@ class PayoutMethodsScreen extends StatelessWidget {
               const SizedBox(height: MyShopSpacing.sm),
               Row(children: [
                 const Icon(Icons.access_time,
-                    size: 14, color: MyShopColors.primaryGold),
+                    size: 14, color: MyShopColors.textSecondary),
                 const SizedBox(width: 6),
-                Text.rich(
-                  TextSpan(
+                Text('No payouts yet',
                     style: MyShopTypography.body2.copyWith(
-                        fontSize: 12, color: MyShopColors.textSecondary),
-                    children: const [
-                      TextSpan(text: 'Last Payout: '),
-                      TextSpan(
-                          text: 'Jan 12',
-                          style: TextStyle(
-                              color: MyShopColors.primaryGold,
-                              fontWeight: FontWeight.w700)),
-                    ],
-                  ),
-                ),
-                const Spacer(),
-                const Text('₵1,820.00',
-                    style: TextStyle(
-                        fontFamily: 'Raleway',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: MyShopColors.textPrimary)),
+                        fontSize: 12, color: MyShopColors.textSecondary)),
               ]),
             ]),
           ),
@@ -130,41 +121,8 @@ class PayoutMethodsScreen extends StatelessWidget {
           ]),
           const SizedBox(height: MyShopSpacing.lg),
 
-          // MoMo accounts
-          Row(children: [
-            const Text('MOBILE MONEY ACCOUNTS',
-                style: TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
-                    color: MyShopColors.textSecondary,
-                    letterSpacing: 1.0)),
-            const Spacer(),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: MyShopColors.surfaceWhite,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: MyShopColors.divider),
-              ),
-              child: Text('MTN & Telecel',
-                  style: MyShopTypography.body2.copyWith(
-                      fontSize: 10, fontWeight: FontWeight.w700)),
-            ),
-          ]),
-          const SizedBox(height: MyShopSpacing.sm),
-          const _MomoCard(
-            provider: 'MTN GHANA',
-            name: 'Samuel K. Boateng',
-            number: '**** **** 0244',
-            isPrimary: true,
-            verified: true,
-          ),
-          const SizedBox(height: MyShopSpacing.lg),
-
-          // Bank accounts
-          const Text('BANK ACCOUNTS',
+          // Payout methods
+          const Text('PAYOUT METHODS',
               style: TextStyle(
                   fontFamily: 'Raleway',
                   fontSize: 12,
@@ -172,21 +130,56 @@ class PayoutMethodsScreen extends StatelessWidget {
                   color: MyShopColors.textSecondary,
                   letterSpacing: 1.0)),
           const SizedBox(height: MyShopSpacing.sm),
-          const _BankCard(
-            bank: 'STANDARD CHARTERED',
-            name: 'S. K. Boateng',
-            number: '**** **** 8821',
-            status: 'pending',
-          ),
+          if (hasPayoutMethod)
+            _MomoCard(
+              provider: payoutMethod.toUpperCase(),
+              name: user?.fullName ?? '',
+              number: '**** **** ${payoutAccount.substring(payoutAccount.length > 4 ? payoutAccount.length - 4 : 0)}',
+              isPrimary: true,
+              verified: false,
+            )
+          else
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 32),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFAFAFB),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: MyShopColors.divider),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: MyShopColors.surfaceGrey,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Icon(Icons.account_balance_wallet_outlined,
+                        size: 20, color: MyShopColors.textSecondary),
+                  ),
+                  const SizedBox(height: MyShopSpacing.sm),
+                  Text('No payout method set up',
+                      style: MyShopTypography.body1.copyWith(
+                          fontWeight: FontWeight.w600)),
+                  const SizedBox(height: MyShopSpacing.xs),
+                  Text('Add a MoMo or bank account to receive payouts',
+                      style: MyShopTypography.body2.copyWith(
+                          color: MyShopColors.textSecondary)),
+                ],
+              ),
+            ),
           const SizedBox(height: MyShopSpacing.sm),
           DottedCta(
             icon: Icons.add,
-            label: 'Add New Bank Account',
+            label: 'Add Payout Method',
             onTap: () {},
           ),
           const SizedBox(height: MyShopSpacing.lg),
 
-          // Recent payout history
+          // Recent payout history — empty state
           Container(
             padding: const EdgeInsets.all(MyShopSpacing.md),
             decoration: BoxDecoration(
@@ -209,24 +202,26 @@ class PayoutMethodsScreen extends StatelessWidget {
                         color: MyShopColors.primaryGold,
                         fontWeight: FontWeight.w700)),
               ]),
+              const SizedBox(height: MyShopSpacing.lg),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: MyShopColors.surfaceGrey,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(Icons.history,
+                    size: 20, color: MyShopColors.textSecondary),
+              ),
+              const SizedBox(height: MyShopSpacing.sm),
+              Text('No payouts yet',
+                  style: MyShopTypography.body1.copyWith(
+                      fontWeight: FontWeight.w600)),
+              const SizedBox(height: MyShopSpacing.xs),
+              Text('Your payout history will appear here',
+                  style: MyShopTypography.body2.copyWith(
+                      color: MyShopColors.textSecondary)),
               const SizedBox(height: MyShopSpacing.md),
-              const _PayoutHistory(
-                  date: 'Payout to MoMo',
-                  subtitle: 'Jan 15, 2024',
-                  amount: '₵450.00',
-                  status: 'Completed'),
-              const Divider(height: 20, color: MyShopColors.divider),
-              const _PayoutHistory(
-                  date: 'Payout to MoMo',
-                  subtitle: 'Jan 10, 2024',
-                  amount: '₵1,200.00',
-                  status: 'Completed'),
-              const Divider(height: 20, color: MyShopColors.divider),
-              const _PayoutHistory(
-                  date: 'Payout to MoMo',
-                  subtitle: 'Dec 28, 2023',
-                  amount: '₵890.00',
-                  status: 'Completed'),
             ]),
           ),
           const SizedBox(height: MyShopSpacing.md),
@@ -388,86 +383,6 @@ class _MomoCard extends StatelessWidget {
   }
 }
 
-class _BankCard extends StatelessWidget {
-  const _BankCard({
-    required this.bank,
-    required this.name,
-    required this.number,
-    required this.status,
-  });
-  final String bank;
-  final String name;
-  final String number;
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(MyShopSpacing.md),
-      decoration: BoxDecoration(
-        color: MyShopColors.surfaceWhite,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: MyShopColors.divider),
-      ),
-      child: Column(children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                  color: MyShopColors.surfaceGrey,
-                  borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.account_balance,
-                  size: 22, color: MyShopColors.darkSlate)),
-          const SizedBox(width: 12),
-          Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                Text(bank,
-                    style: MyShopTypography.overline.copyWith(
-                        fontSize: 10,
-                        color: MyShopColors.textSecondary,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.8)),
-                const SizedBox(height: 2),
-                Text(name,
-                    style: const TextStyle(
-                        fontFamily: 'Raleway',
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: MyShopColors.textPrimary)),
-              ])),
-          const Icon(Icons.more_vert,
-              size: 20, color: MyShopColors.textSecondary),
-        ]),
-        const SizedBox(height: MyShopSpacing.sm),
-        Row(children: [
-          const SizedBox(width: 56),
-          Expanded(
-            child: Text(number,
-                style: MyShopTypography.body2.copyWith(
-                    fontSize: 13, color: MyShopColors.textSecondary)),
-          ),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-            decoration: BoxDecoration(
-              color: MyShopColors.surfaceGrey,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(status,
-                style: MyShopTypography.body2.copyWith(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: MyShopColors.textSecondary)),
-          ),
-        ]),
-      ]),
-    );
-  }
-}
-
 class DottedCta extends StatelessWidget {
   const DottedCta(
       {super.key,
@@ -555,63 +470,6 @@ class _DashedRectPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _DashedRectPainter old) =>
       old.color != color || old.radius != radius;
-}
-
-class _PayoutHistory extends StatelessWidget {
-  const _PayoutHistory({
-    required this.date,
-    required this.subtitle,
-    required this.amount,
-    required this.status,
-  });
-  final String date;
-  final String subtitle;
-  final String amount;
-  final String status;
-  @override
-  Widget build(BuildContext context) {
-    return Row(children: [
-      Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-            color: MyShopColors.surfaceGrey,
-            borderRadius: BorderRadius.circular(8)),
-        child: const Icon(Icons.history,
-            size: 16, color: MyShopColors.textSecondary),
-      ),
-      const SizedBox(width: 12),
-      Expanded(
-          child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-            Text(date,
-                style: const TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: MyShopColors.textPrimary)),
-            const SizedBox(height: 2),
-            Text(subtitle,
-                style: MyShopTypography.caption.copyWith(
-                    fontSize: 11, color: MyShopColors.textSecondary)),
-          ])),
-      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        Text(amount,
-            style: const TextStyle(
-                fontFamily: 'Raleway',
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: MyShopColors.textPrimary)),
-        const SizedBox(height: 2),
-        Text(status,
-            style: MyShopTypography.caption.copyWith(
-                fontSize: 11,
-                color: MyShopColors.success,
-                fontWeight: FontWeight.w700)),
-      ]),
-    ]);
-  }
 }
 
 class _LinkRow extends StatelessWidget {

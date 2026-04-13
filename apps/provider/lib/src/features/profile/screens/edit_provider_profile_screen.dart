@@ -1,16 +1,168 @@
+import 'dart:io';
+
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-/// Profile screen — driver identity card, KYC, vehicle, documents, ops chat,
-/// dispute, quick links.
+import '../../auth/providers/auth_controller.dart';
+import '../../auth/providers/current_user_provider.dart';
+import '../providers/provider_type_provider.dart';
+import '../providers/verification_provider.dart';
+
+/// Edit Profile screen — editable name & email, plus read-only verification,
+/// vehicle, documents, ops chat, dispute, and quick links.
 ///
 /// Figma: node 219:13295
 /// PRD Reference: PRD 5.4
-class EditProviderProfileScreen extends StatelessWidget {
+class EditProviderProfileScreen extends ConsumerStatefulWidget {
   const EditProviderProfileScreen({super.key});
 
   @override
+  ConsumerState<EditProviderProfileScreen> createState() =>
+      _EditProviderProfileScreenState();
+}
+
+class _EditProviderProfileScreenState
+    extends ConsumerState<EditProviderProfileScreen> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _emailController;
+  bool _isSaving = false;
+  bool _hasChanges = false;
+  bool _isUploadingPhoto = false;
+  File? _localPhoto;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = ref.read(currentUserProvider);
+    _nameController = TextEditingController(text: user?.fullName ?? '');
+    _emailController = TextEditingController(text: user?.email ?? '');
+    _nameController.addListener(_onFieldChanged);
+    _emailController.addListener(_onFieldChanged);
+  }
+
+  void _onFieldChanged() {
+    final user = ref.read(currentUserProvider);
+    final changed = _nameController.text.trim() != (user?.fullName ?? '') ||
+        _emailController.text.trim() != (user?.email ?? '');
+    if (changed != _hasChanges) {
+      setState(() => _hasChanges = changed);
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickAndUploadPhoto() async {
+    final file = await MediaPickerHelper.pickImage(context);
+    if (file == null || !mounted) return;
+
+    setState(() {
+      _isUploadingPhoto = true;
+      _localPhoto = file;
+    });
+
+    final user = ref.read(currentUserProvider);
+    final providerType = user?.isDriver == true ? 'driver' : 'artisan';
+
+    final error =
+        await ref.read(documentUploadProvider.notifier).upload(
+              providerType: providerType,
+              documentType: DocumentType.profilePhoto,
+              file: file,
+            );
+
+    if (!mounted) return;
+
+    if (error != null) {
+      setState(() {
+        _isUploadingPhoto = false;
+        _localPhoto = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
+    } else {
+      // Refresh the user profile so the new photo URL appears everywhere
+      await ref.read(authControllerProvider.notifier).updateProfile(
+            const UpdateProfileRequest(),
+          );
+      if (!mounted) return;
+      setState(() => _isUploadingPhoto = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile photo updated')),
+      );
+    }
+  }
+
+  Future<void> _saveProfile() async {
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Name cannot be empty')),
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    final error =
+        await ref.read(authControllerProvider.notifier).updateProfile(
+              UpdateProfileRequest(
+                fullName: name,
+                email: email.isNotEmpty ? email : null,
+              ),
+            );
+
+    if (!mounted) return;
+    setState(() {
+      _isSaving = false;
+      _hasChanges = false;
+    });
+
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile updated')),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final user = ref.watch(currentUserProvider);
+    final providerType = ref.watch(providerTypeProvider);
+    final isDriver = providerType.isDriver;
+    final dp = user?.driverProfile;
+    final ap = user?.artisanProfile;
+    final kycStatus = isDriver
+        ? (dp?.kycStatus ?? 'pending')
+        : (ap?.kycStatus ?? 'pending');
+    final policeStatus = isDriver
+        ? (dp?.policeCheckStatus ?? 'pending')
+        : (ap?.policeCheckStatus ?? 'pending');
+    final photoUrl =
+        isDriver ? dp?.profilePhotoUrl : ap?.profilePhotoUrl;
+
+    // Vehicle info (driver only)
+    final vehicleName = isDriver
+        ? [dp?.vehicleMake, dp?.vehicleModel]
+            .where((s) => s != null && s.isNotEmpty)
+            .join(' ')
+        : null;
+    final vehiclePlate = dp?.vehiclePlate;
+    final vehicleColor = dp?.vehicleColor;
+
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
       appBar: AppBar(
@@ -22,7 +174,7 @@ class EditProviderProfileScreen extends StatelessWidget {
         ),
         title: const Align(
           alignment: Alignment.centerLeft,
-          child: Text('Profile',
+          child: Text('Edit Profile',
               style: TextStyle(
                   fontFamily: 'Raleway',
                   fontSize: 18,
@@ -37,22 +189,35 @@ class EditProviderProfileScreen extends StatelessWidget {
               padding:
                   const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: MyShopColors.surfaceGrey,
+                color: kycStatus == 'approved'
+                    ? MyShopColors.successLight
+                    : MyShopColors.warningLight,
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.shield_outlined,
-                      size: 12, color: MyShopColors.textSecondary),
+                  Icon(
+                    kycStatus == 'approved'
+                        ? Icons.check_circle_outline
+                        : Icons.access_time,
+                    size: 12,
+                    color: kycStatus == 'approved'
+                        ? MyShopColors.success
+                        : MyShopColors.warning,
+                  ),
                   const SizedBox(width: 4),
-                  Text('KYC OK',
-                      style: TextStyle(
-                          fontFamily: 'Raleway',
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: MyShopColors.textSecondary,
-                          letterSpacing: 0.4)),
+                  Text(
+                    'KYC ${_capitalize(kycStatus)}',
+                    style: TextStyle(
+                        fontFamily: 'Raleway',
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: kycStatus == 'approved'
+                            ? MyShopColors.success
+                            : MyShopColors.warning,
+                        letterSpacing: 0.4),
+                  ),
                 ],
               ),
             ),
@@ -67,8 +232,45 @@ class EditProviderProfileScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(MyShopSpacing.md),
         children: [
-          // ── 1. Identity card with dark slate accent ──
-          _IdentityCard(),
+          // ── 1. Identity card with editable fields ──
+          _IdentityCard(
+            photoUrl: photoUrl,
+            localPhoto: _localPhoto,
+            isUploadingPhoto: _isUploadingPhoto,
+            onPhotoTap: _pickAndUploadPhoto,
+            nameController: _nameController,
+            emailController: _emailController,
+            phone: user?.phone ?? '',
+          ),
+          const SizedBox(height: MyShopSpacing.md),
+
+          // ── Save button ──
+          ElevatedButton(
+            onPressed: _hasChanges && !_isSaving ? _saveProfile : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: MyShopColors.primaryGold,
+              foregroundColor: MyShopColors.textOnPrimary,
+              disabledBackgroundColor: MyShopColors.surfaceGrey,
+              disabledForegroundColor: MyShopColors.textSecondary,
+              minimumSize: const Size(double.infinity, 52),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              textStyle: const TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700),
+            ),
+            child: _isSaving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: MyShopColors.textOnPrimary,
+                    ),
+                  )
+                : const Text('Save Changes'),
+          ),
           const SizedBox(height: MyShopSpacing.lg),
 
           // ── 2. Verification status ──
@@ -110,8 +312,8 @@ class EditProviderProfileScreen extends StatelessWidget {
                 _VerificationRow(
                   icon: Icons.shield_outlined,
                   title: 'SMILE IDENTITY KYC',
-                  status: 'Verified',
-                  detail: 'Last updated: 12 Oct 2023',
+                  status: _capitalize(kycStatus),
+                  isApproved: kycStatus == 'approved',
                 ),
                 const Divider(
                     height: 1,
@@ -122,274 +324,124 @@ class EditProviderProfileScreen extends StatelessWidget {
                 _VerificationRow(
                   icon: Icons.balance,
                   title: 'POLICE BACKGROUND CHECK',
-                  status: 'Completed',
-                  detail: 'Cleared on: 05 Jan 2024',
+                  status: _capitalize(policeStatus),
+                  isApproved: policeStatus == 'approved',
                 ),
               ],
             ),
           ),
           const SizedBox(height: MyShopSpacing.lg),
 
-          // ── 3. Vehicle Details ──
-          const Text('VEHICLE DETAILS',
-              style: TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  color: MyShopColors.textSecondary,
-                  letterSpacing: 1.0)),
-          const SizedBox(height: MyShopSpacing.sm),
-          Container(
-            padding: const EdgeInsets.all(MyShopSpacing.md),
-            decoration: BoxDecoration(
-              color: MyShopColors.surfaceWhite,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: MyShopColors.divider),
-            ),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    const Icon(Icons.directions_car_outlined,
-                        size: 18, color: MyShopColors.darkSlate),
-                    const SizedBox(width: 8),
-                    const Text('Toyota Vitz 2018',
-                        style: TextStyle(
-                            fontFamily: 'Raleway',
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: MyShopColors.textPrimary)),
-                  ]),
-                  const SizedBox(height: 12),
-                  _VehicleDetail(label: 'License Plate', value: 'AS-4432-18'),
-                  _VehicleDetail(label: 'Color', value: 'Silver Metallic'),
-                  _VehicleDetail(
-                      label: 'Insurance', value: 'Comprehensive (Active)'),
-                ]),
-          ),
-          const SizedBox(height: MyShopSpacing.lg),
-
-          // ── 4. Managed Documents ──
-          const Text('MANAGED DOCUMENTS',
-              style: TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  color: MyShopColors.textSecondary,
-                  letterSpacing: 1.0)),
-          const SizedBox(height: MyShopSpacing.sm),
-          Container(
-            padding: const EdgeInsets.all(MyShopSpacing.md),
-            decoration: BoxDecoration(
-              color: MyShopColors.surfaceWhite,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: MyShopColors.divider),
-            ),
-            child: Column(
-              children: [
-                _DocumentRow(
-                  title: "Driver's License (Class B)",
-                  expiry: 'Expires: 22 Nov 2027',
-                  status: 'Verified',
-                  statusBg: MyShopColors.darkSlate,
-                  statusFg: MyShopColors.textOnDarkSlate,
-                ),
-                const SizedBox(height: 8),
-                _DocumentRow(
-                  title: 'Roadworthy Certificate',
-                  expiry: 'Expires: 15 Mar 2027',
-                  status: 'Verified',
-                  statusBg: MyShopColors.darkSlate,
-                  statusFg: MyShopColors.textOnDarkSlate,
-                ),
-                const SizedBox(height: 8),
-                _DocumentRow(
-                  title: 'Hackney Permit',
-                  expiry: 'Expires: 10 Feb 2027',
-                  status: 'Reviewing',
-                  statusBg: MyShopColors.surfaceWhite,
-                  statusFg: MyShopColors.textPrimary,
-                  border: true,
-                ),
-                const SizedBox(height: MyShopSpacing.md),
-                ElevatedButton(
-                  onPressed: () {},
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: MyShopColors.darkSlate,
-                    foregroundColor: MyShopColors.textOnPrimary,
-                    minimumSize: const Size(double.infinity, 48),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    textStyle: const TextStyle(
-                        fontFamily: 'Raleway',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
-                      Text('Upload New Document'),
-                      SizedBox(width: 6),
-                      Icon(Icons.chevron_right, size: 16),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: MyShopSpacing.lg),
-
-          // ── 5. Operations Chat ──
-          const Text('OPERATIONS CHAT',
-              style: TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  color: MyShopColors.textSecondary,
-                  letterSpacing: 1.0)),
-          const SizedBox(height: MyShopSpacing.sm),
-          Container(
-            padding: const EdgeInsets.all(MyShopSpacing.md),
-            decoration: BoxDecoration(
-              color: MyShopColors.surfaceWhite,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: MyShopColors.divider),
-            ),
-            child: Column(
-              children: [
-                Row(children: [
-                  const CircleAvatar(
-                    radius: 18,
-                    backgroundColor: Color(0xFFFCEAE1),
-                    child: Icon(Icons.support_agent,
-                        size: 18, color: MyShopColors.textSecondary),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Text('Ops Support (Adwoa)',
-                                  style: TextStyle(
-                                      fontFamily: 'Raleway',
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700,
-                                      color: MyShopColors.textPrimary)),
-                              const Spacer(),
-                              Text('14:20',
-                                  style: MyShopTypography.caption
-                                      .copyWith(fontSize: 10)),
-                              const SizedBox(width: 6),
-                              Container(
-                                width: 18,
-                                height: 18,
-                                decoration: const BoxDecoration(
-                                  color: MyShopColors.primaryGold,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Center(
-                                  child: Text('1',
-                                      style: TextStyle(
-                                          fontFamily: 'Raleway',
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w900,
-                                          color: Colors.white)),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 2),
+          // ── 3. Vehicle Details (driver) or Service Categories (artisan) ──
+          if (isDriver) ...[
+            const Text('VEHICLE DETAILS',
+                style: TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    color: MyShopColors.textSecondary,
+                    letterSpacing: 1.0)),
+            const SizedBox(height: MyShopSpacing.sm),
+            Container(
+              padding: const EdgeInsets.all(MyShopSpacing.md),
+              decoration: BoxDecoration(
+                color: MyShopColors.surfaceWhite,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: MyShopColors.divider),
+              ),
+              child: vehicleName != null && vehicleName.isNotEmpty
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          const Icon(Icons.directions_car_outlined,
+                              size: 18, color: MyShopColors.darkSlate),
+                          const SizedBox(width: 8),
                           Text(
-                              '"Kofi, your payout for trip #8821 has been...',
-                              style: MyShopTypography.body2.copyWith(
-                                  fontSize: 11,
-                                  fontStyle: FontStyle.italic),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis),
+                              '$vehicleName${dp?.vehicleYear != null ? ' ${dp!.vehicleYear}' : ''}',
+                              style: const TextStyle(
+                                  fontFamily: 'Raleway',
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: MyShopColors.textPrimary)),
                         ]),
-                  ),
-                ]),
-                const SizedBox(height: 12),
-                ElevatedButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.chat_bubble_outline, size: 16),
-                  label: const Text('Open Support Thread'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: MyShopColors.primaryGold,
-                    foregroundColor: MyShopColors.textOnPrimary,
-                    minimumSize: const Size(double.infinity, 44),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    textStyle: const TextStyle(
-                        fontFamily: 'Raleway',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ],
+                        const SizedBox(height: 12),
+                        if (vehiclePlate != null)
+                          _VehicleDetail(
+                              label: 'License Plate', value: vehiclePlate),
+                        if (vehicleColor != null)
+                          _VehicleDetail(label: 'Color', value: vehicleColor),
+                        if (dp?.licenceNumber != null)
+                          _VehicleDetail(
+                              label: 'Licence #', value: dp!.licenceNumber!),
+                      ],
+                    )
+                  : Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            const Icon(Icons.directions_car_outlined,
+                                size: 32, color: MyShopColors.textSecondary),
+                            const SizedBox(height: MyShopSpacing.sm),
+                            Text('No vehicle added yet',
+                                style: MyShopTypography.body2.copyWith(
+                                    color: MyShopColors.textSecondary)),
+                          ],
+                        ),
+                      ),
+                    ),
             ),
-          ),
+          ] else ...[
+            const Text('SERVICE CATEGORIES',
+                style: TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    color: MyShopColors.textSecondary,
+                    letterSpacing: 1.0)),
+            const SizedBox(height: MyShopSpacing.sm),
+            Container(
+              padding: const EdgeInsets.all(MyShopSpacing.md),
+              decoration: BoxDecoration(
+                color: MyShopColors.surfaceWhite,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: MyShopColors.divider),
+              ),
+              child: ap?.serviceCategories != null &&
+                      ap!.serviceCategories!.isNotEmpty
+                  ? Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: ap.serviceCategories!
+                          .map((c) => Chip(
+                                label: Text(c.category.name),
+                                backgroundColor: MyShopColors.surfaceGrey,
+                                labelStyle: MyShopTypography.body2.copyWith(
+                                    fontWeight: FontWeight.w600),
+                              ))
+                          .toList(),
+                    )
+                  : Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            const Icon(Icons.work_outline,
+                                size: 32, color: MyShopColors.textSecondary),
+                            const SizedBox(height: MyShopSpacing.sm),
+                            Text('No categories set',
+                                style: MyShopTypography.body2.copyWith(
+                                    color: MyShopColors.textSecondary)),
+                          ],
+                        ),
+                      ),
+                    ),
+            ),
+          ],
           const SizedBox(height: MyShopSpacing.lg),
 
-          // ── 6. Dispute card ──
-          Container(
-            padding: const EdgeInsets.all(MyShopSpacing.md),
-            decoration: BoxDecoration(
-              color: MyShopColors.errorLight,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: MyShopColors.surfaceWhite,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                        color: MyShopColors.error.withValues(alpha: 0.3)),
-                  ),
-                  child: const Icon(Icons.error_outline,
-                      size: 18, color: MyShopColors.error),
-                ),
-                const SizedBox(height: 8),
-                const Text('Need to report a dispute?',
-                    style: TextStyle(
-                        fontFamily: 'Raleway',
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: MyShopColors.error)),
-                const SizedBox(height: 4),
-                Text(
-                    'If you have issues with a recent fare, passenger\nbehavior, or technical glitch, our dispute team is\nready.',
-                    textAlign: TextAlign.center,
-                    style: MyShopTypography.body2
-                        .copyWith(fontSize: 11, height: 1.5)),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.balance, size: 16),
-                  label: const Text('Initiate New Dispute'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: MyShopColors.error,
-                    side: const BorderSide(color: MyShopColors.error),
-                    minimumSize: const Size(double.infinity, 44),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    textStyle: const TextStyle(
-                        fontFamily: 'Raleway',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: MyShopSpacing.lg),
-
-          // ── 7. Quick links ──
+          // ── 4. Quick links ──
           Row(children: [
             Expanded(
                 child: _QuickLink(
@@ -409,8 +461,33 @@ class EditProviderProfileScreen extends StatelessWidget {
 // ─── Identity Card ──────────────────────────────────────────────────────────
 
 class _IdentityCard extends StatelessWidget {
+  const _IdentityCard({
+    required this.nameController,
+    required this.emailController,
+    required this.phone,
+    required this.onPhotoTap,
+    this.photoUrl,
+    this.localPhoto,
+    this.isUploadingPhoto = false,
+  });
+
+  final TextEditingController nameController;
+  final TextEditingController emailController;
+  final String phone;
+  final String? photoUrl;
+  final File? localPhoto;
+  final bool isUploadingPhoto;
+  final VoidCallback onPhotoTap;
+
   @override
   Widget build(BuildContext context) {
+    // Show local file first (instant feedback), fall back to network URL
+    final ImageProvider? avatarImage = localPhoto != null
+        ? FileImage(localPhoto!)
+        : photoUrl != null
+            ? NetworkImage(photoUrl!)
+            : null;
+
     return Container(
       decoration: BoxDecoration(
         color: MyShopColors.surfaceWhite,
@@ -420,86 +497,118 @@ class _IdentityCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          // Dark slate top accent
           Container(height: 6, color: MyShopColors.darkSlate),
           Padding(
             padding: const EdgeInsets.all(MyShopSpacing.md),
             child: Column(
               children: [
-                // Avatar + name + rating row
-                Row(
-                  children: [
-                    Stack(
+                // Avatar
+                Center(
+                  child: GestureDetector(
+                    onTap: isUploadingPhoto ? null : onPhotoTap,
+                    child: Stack(
                       children: [
-                        const CircleAvatar(
-                          radius: 32,
-                          backgroundColor: Color(0xFFFCEAE1),
-                          child: Icon(Icons.person,
-                              size: 32, color: MyShopColors.textSecondary),
+                        CircleAvatar(
+                          radius: 40,
+                          backgroundColor: const Color(0xFFFCEAE1),
+                          backgroundImage: avatarImage,
+                          child: avatarImage == null
+                              ? const Icon(Icons.person,
+                                  size: 40, color: MyShopColors.textSecondary)
+                              : null,
                         ),
+                        if (isUploadingPhoto)
+                          Positioned.fill(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.black38,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Center(
+                                child: SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                         Positioned(
                           bottom: 0,
                           right: 0,
                           child: Container(
-                            width: 14,
-                            height: 14,
+                            width: 28,
+                            height: 28,
                             decoration: BoxDecoration(
-                              color: MyShopColors.online,
+                              color: MyShopColors.primaryGold,
                               shape: BoxShape.circle,
                               border: Border.all(
                                   color: MyShopColors.surfaceWhite, width: 2),
                             ),
+                            child: const Icon(Icons.camera_alt,
+                                size: 14, color: Colors.white),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(width: MyShopSpacing.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Kofi Mensah',
-                              style: TextStyle(
-                                  fontFamily: 'Raleway',
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900,
-                                  color: MyShopColors.textPrimary)),
-                          const SizedBox(height: 4),
-                          Row(children: [
-                            const Icon(Icons.star,
-                                size: 16, color: MyShopColors.ratingStar),
-                            const SizedBox(width: 4),
-                            const Text('4.85',
-                                style: TextStyle(
-                                    fontFamily: 'Raleway',
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w900,
-                                    color: MyShopColors.primaryGold)),
-                            const SizedBox(width: 4),
-                            Text('(248 trips)',
-                                style: MyShopTypography.body2
-                                    .copyWith(fontSize: 12)),
-                          ]),
-                        ],
-                      ),
-                    ),
-                  ],
+                  ),
+                ),
+                const SizedBox(height: MyShopSpacing.lg),
+
+                // Full Name field
+                _ProfileField(
+                  label: 'Full Name',
+                  controller: nameController,
+                  icon: Icons.person_outline,
                 ),
                 const SizedBox(height: MyShopSpacing.md),
-                // EARNINGS / LEVEL badges
-                Row(children: [
-                  Expanded(
-                      child: _StatBadge(
-                          icon: Icons.account_balance_wallet_outlined,
-                          label: 'EARNINGS',
-                          value: 'GH₵ 1,240.50')),
-                  const SizedBox(width: MyShopSpacing.sm),
-                  Expanded(
-                      child: _StatBadge(
-                          icon: Icons.workspace_premium_outlined,
-                          label: 'LEVEL',
-                          value: 'Gold Partner')),
-                ]),
+
+                // Email field
+                _ProfileField(
+                  label: 'Email',
+                  controller: emailController,
+                  icon: Icons.email_outlined,
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: MyShopSpacing.md),
+
+                // Phone (read-only)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: MyShopSpacing.md, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: MyShopColors.surfaceGrey,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.phone_outlined,
+                          size: 18, color: MyShopColors.textSecondary),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Phone',
+                              style: MyShopTypography.body2.copyWith(
+                                  fontSize: 11,
+                                  color: MyShopColors.textSecondary)),
+                          Text(phone,
+                              style: const TextStyle(
+                                  fontFamily: 'Raleway',
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: MyShopColors.textPrimary)),
+                        ],
+                      ),
+                      const Spacer(),
+                      const Icon(Icons.lock_outline,
+                          size: 14, color: MyShopColors.textSecondary),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -509,42 +618,53 @@ class _IdentityCard extends StatelessWidget {
   }
 }
 
-class _StatBadge extends StatelessWidget {
-  const _StatBadge(
-      {required this.icon, required this.label, required this.value});
-  final IconData icon;
+// ─── Profile text field ─────────────────────────────────────────────────────
+
+class _ProfileField extends StatelessWidget {
+  const _ProfileField({
+    required this.label,
+    required this.controller,
+    required this.icon,
+    this.keyboardType,
+  });
+
   final String label;
-  final String value;
+  final TextEditingController controller;
+  final IconData icon;
+  final TextInputType? keyboardType;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: MyShopColors.surfaceWhite,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: MyShopColors.divider),
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      style: const TextStyle(
+        fontFamily: 'Raleway',
+        fontSize: 14,
+        fontWeight: FontWeight.w700,
+        color: MyShopColors.textPrimary,
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(icon, size: 12, color: MyShopColors.textSecondary),
-          const SizedBox(width: 4),
-          Text(label,
-              style: const TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: MyShopColors.textSecondary,
-                  letterSpacing: 0.5)),
-        ]),
-        const SizedBox(height: 6),
-        Text(value,
-            style: const TextStyle(
-                fontFamily: 'Raleway',
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-                color: MyShopColors.textPrimary)),
-      ]),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: MyShopTypography.body2.copyWith(
+            fontSize: 12, color: MyShopColors.textSecondary),
+        prefixIcon: Icon(icon, size: 18, color: MyShopColors.textSecondary),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: MyShopColors.divider),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: MyShopColors.divider),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide:
+              const BorderSide(color: MyShopColors.primaryGold, width: 1.5),
+        ),
+      ),
     );
   }
 }
@@ -556,12 +676,12 @@ class _VerificationRow extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.status,
-    required this.detail,
+    required this.isApproved,
   });
   final IconData icon;
   final String title;
   final String status;
-  final String detail;
+  final bool isApproved;
 
   @override
   Widget build(BuildContext context) {
@@ -573,11 +693,16 @@ class _VerificationRow extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: MyShopColors.surfaceGrey,
+              color: isApproved
+                  ? MyShopColors.successLight
+                  : MyShopColors.warningLight,
               borderRadius: BorderRadius.circular(10),
             ),
-            child:
-                Icon(icon, size: 18, color: MyShopColors.textSecondary),
+            child: Icon(icon,
+                size: 18,
+                color: isApproved
+                    ? MyShopColors.success
+                    : MyShopColors.warning),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -598,11 +723,6 @@ class _VerificationRow extends StatelessWidget {
                         fontSize: 14,
                         fontWeight: FontWeight.w900,
                         color: MyShopColors.textPrimary)),
-                Text(detail,
-                    style: MyShopTypography.body2.copyWith(
-                        fontSize: 11,
-                        color: MyShopColors.primaryGold,
-                        fontWeight: FontWeight.w600)),
               ],
             ),
           ),
@@ -610,12 +730,22 @@ class _VerificationRow extends StatelessWidget {
             width: 22,
             height: 22,
             decoration: BoxDecoration(
-              color: MyShopColors.surfaceWhite,
+              color: isApproved
+                  ? MyShopColors.successLight
+                  : MyShopColors.surfaceGrey,
               shape: BoxShape.circle,
-              border: Border.all(color: MyShopColors.divider),
+              border: Border.all(
+                  color: isApproved
+                      ? MyShopColors.success
+                      : MyShopColors.divider),
             ),
-            child: const Icon(Icons.check,
-                size: 14, color: MyShopColors.textSecondary),
+            child: Icon(
+              isApproved ? Icons.check : Icons.access_time,
+              size: 14,
+              color: isApproved
+                  ? MyShopColors.success
+                  : MyShopColors.textSecondary,
+            ),
           ),
         ],
       ),
@@ -646,87 +776,6 @@ class _VehicleDetail extends StatelessWidget {
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: MyShopColors.textPrimary)),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Document Row ───────────────────────────────────────────────────────────
-
-class _DocumentRow extends StatelessWidget {
-  const _DocumentRow({
-    required this.title,
-    required this.expiry,
-    required this.status,
-    required this.statusBg,
-    required this.statusFg,
-    this.border = false,
-  });
-  final String title;
-  final String expiry;
-  final String status;
-  final Color statusBg;
-  final Color statusFg;
-  final bool border;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: MyShopSpacing.md, vertical: 12),
-      decoration: BoxDecoration(
-        color: MyShopColors.surfaceWhite,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: MyShopColors.divider),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: MyShopColors.surfaceGrey,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(Icons.description_outlined,
-                size: 18, color: MyShopColors.textSecondary),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: const TextStyle(
-                        fontFamily: 'Raleway',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                        color: MyShopColors.textPrimary)),
-                Text(expiry,
-                    style: MyShopTypography.body2.copyWith(
-                        fontSize: 11,
-                        color: MyShopColors.primaryGold,
-                        fontWeight: FontWeight.w600)),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: statusBg,
-              borderRadius: BorderRadius.circular(12),
-              border: border
-                  ? Border.all(color: MyShopColors.divider)
-                  : null,
-            ),
-            child: Text(status,
-                style: TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: statusFg)),
-          ),
         ],
       ),
     );
@@ -764,4 +813,11 @@ class _QuickLink extends StatelessWidget {
       ),
     );
   }
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+String _capitalize(String s) {
+  if (s.isEmpty) return s;
+  return s[0].toUpperCase() + s.substring(1);
 }
