@@ -1,0 +1,2079 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../providers/bid_detail_provider.dart';
+
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const _surfaceWhite  = Color(0xFFFFFFFF);
+const _surfaceGrey   = Color(0xFFF3F5F6);
+const _offWhite      = Color(0xFFF6F7F8);
+const _textPrimary   = Color(0xFF161A1D);
+const _textSecondary = Color(0xFF555E68);
+const _textHint      = Color(0xFFBDBDBD);
+const _gold      = Color(0xFFF5A623);
+const _darkSlate = Color(0xFF46535D);
+const _success       = Color(0xFF27AE60);
+const _successLight  = Color(0xFFE8F8EF);
+const _warning       = Color(0xFFF2994A);
+const _warningLight  = Color(0xFFFEF3E8);
+const _error         = Color(0xFFEB5757);
+const _divider       = Color(0xFFE0E0E0);
+const _disabled      = Color(0xFFBDBDBD);
+
+// ── Screen ─────────────────────────────────────────────────────────────────────
+// PRD 4.5 — Client reviews full bid details: artisan profile, bid breakdown,
+// location, artisan note, and portfolio before accepting or declining.
+// API: GET /v1/jobs/:id/bids  |  PATCH /v1/jobs/:id/select-bid
+
+class BidDetailScreen extends ConsumerWidget {
+  final String bidId;
+  const BidDetailScreen({super.key, required this.bidId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final size = MediaQuery.sizeOf(context);
+    final w    = size.width;
+    final h    = size.height;
+
+    final bidAsync = ref.watch(bidDetailProvider(bidId));
+
+    return Scaffold(
+      backgroundColor: _offWhite,
+      body: bidAsync.when(
+        loading: () => _LoadingSkeleton(w: w, h: h),
+        error: (_, __) => _ErrorBody(
+          w: w,
+          h: h,
+          onRetry: () => ref.invalidate(bidDetailProvider(bidId)),
+        ),
+        data: (bid) => _BidDetailBody(bid: bid, w: w, h: h),
+      ),
+    );
+  }
+}
+
+// ── Full body ─────────────────────────────────────────────────────────────────
+
+class _BidDetailBody extends ConsumerWidget {
+  final BidDetail bid;
+  final double w;
+  final double h;
+  const _BidDetailBody({required this.bid, required this.w, required this.h});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final actionState = ref.watch(bidDetailActionProvider);
+    final awaiting   = actionState.isAwaitingConfirmation;
+    final confirmed  = actionState.isBidConfirmed;
+    final expired    = actionState.isBidExpired;
+
+    return Column(
+      children: [
+        _AppBar(w: w, h: h),
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(height: h * 0.019),
+                if (confirmed) ...[
+                  _BidConfirmedBanner(
+                    artisanName: bid.artisan.name,
+                    etaLabel: actionState.confirmedEtaLabel ?? '~18 mins',
+                    w: w,
+                    h: h,
+                  ),
+                  SizedBox(height: h * 0.014),
+                ] else if (expired) ...[
+                  _BidExpiredBanner(
+                    expiredDateLabel:
+                        actionState.expiredDateLabel ?? 'Unknown date',
+                    w: w,
+                    h: h,
+                  ),
+                  SizedBox(height: h * 0.014),
+                ] else if (awaiting) ...[
+                  _AwaitingConfirmationBanner(
+                    artisanFirstName: bid.artisan.firstName,
+                    w: w,
+                    h: h,
+                  ),
+                  SizedBox(height: h * 0.014),
+                ],
+                _ArtisanProfileCard(artisan: bid.artisan, w: w, h: h),
+                SizedBox(height: h * 0.014),
+                _TotalBidCard(bid: bid, w: w, h: h),
+                SizedBox(height: h * 0.014),
+                _BidBreakdownCard(bid: bid, w: w, h: h),
+                SizedBox(height: h * 0.014),
+                _LocationSection(
+                  artisan: bid.artisan,
+                  showRoute: awaiting || confirmed,
+                  w: w,
+                  h: h,
+                ),
+                SizedBox(height: h * 0.014),
+                if (bid.artisanNote != null)
+                  _ArtisanNoteCard(
+                    note: bid.artisanNote!,
+                    timestamp: bid.noteTimestamp,
+                    w: w,
+                    h: h,
+                  ),
+                if (bid.artisanNote != null) SizedBox(height: h * 0.014),
+                _RelatedPortfolioSection(
+                  colors: bid.portfolioColors,
+                  w: w,
+                  h: h,
+                ),
+                SizedBox(height: h * 0.014),
+                _TrustBadgesRow(w: w, h: h),
+                SizedBox(height: h * 0.028),
+              ],
+            ),
+          ),
+        ),
+        _BottomActionBar(bid: bid, w: w, h: h),
+      ],
+    );
+  }
+}
+
+// ── App Bar ────────────────────────────────────────────────────────────────────
+
+class _AppBar extends StatelessWidget {
+  final double w;
+  final double h;
+  const _AppBar({required this.w, required this.h});
+
+  @override
+  Widget build(BuildContext context) {
+    final topPad = MediaQuery.paddingOf(context).top;
+    return Container(
+      color: _surfaceWhite,
+      padding: EdgeInsets.only(
+        top: topPad + h * 0.010,
+        bottom: h * 0.017,
+        left: w * 0.041,
+        right: w * 0.041,
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => Navigator.of(context).maybePop(),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: EdgeInsets.only(right: w * 0.031),
+              child: Icon(Icons.arrow_back, size: w * 0.056, color: _textPrimary),
+            ),
+          ),
+          Text(
+            'Bid Details',
+            style: TextStyle(
+              fontSize: w * 0.051,
+              fontWeight: FontWeight.w700,
+              color: _textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Artisan Profile Card ──────────────────────────────────────────────────────
+
+class _ArtisanProfileCard extends StatelessWidget {
+  final BidArtisanProfile artisan;
+  final double w;
+  final double h;
+  const _ArtisanProfileCard({
+    required this.artisan,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      w: w,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Avatar
+          Container(
+            width: w * 0.154,  // ~60dp
+            height: w * 0.154,
+            decoration: BoxDecoration(
+              color: artisan.avatarColor,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                artisan.name.trim().split(' ').take(2).map((s) => s[0]).join(),
+                style: TextStyle(
+                  fontSize: w * 0.054,
+                  fontWeight: FontWeight.w700,
+                  color: _surfaceWhite,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: w * 0.038),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Name + verification badges
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        artisan.name,
+                        style: TextStyle(
+                          fontSize: w * 0.043,
+                          fontWeight: FontWeight.w700,
+                          color: _textPrimary,
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: w * 0.010),
+                    if (artisan.isKycVerified)
+                      _VerifyBadge(label: 'KYC', w: w),
+                    SizedBox(width: w * 0.010),
+                    if (artisan.isVetted)
+                      _VerifyBadge(label: 'Vetted', w: w),
+                  ],
+                ),
+                SizedBox(height: h * 0.005),
+                // Trade + experience
+                Text(
+                  '${artisan.tradeTitle} · ${artisan.yearsExperience}+ Years',
+                  style: TextStyle(
+                    fontSize: w * 0.033,
+                    fontWeight: FontWeight.w400,
+                    color: _textSecondary,
+                  ),
+                ),
+                SizedBox(height: h * 0.007),
+                // Rating
+                Row(
+                  children: [
+                    Icon(Icons.star_rounded,
+                        size: w * 0.036, color: _gold),
+                    SizedBox(width: w * 0.008),
+                    Text(
+                      artisan.rating.toStringAsFixed(1),
+                      style: TextStyle(
+                        fontSize: w * 0.033,
+                        fontWeight: FontWeight.w600,
+                        color: _textPrimary,
+                      ),
+                    ),
+                    Text(
+                      ' (${artisan.reviewCount} reviews)',
+                      style: TextStyle(
+                        fontSize: w * 0.031,
+                        color: _textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: h * 0.006),
+                // Base + ETA
+                Row(
+                  children: [
+                    Icon(Icons.location_on_outlined,
+                        size: w * 0.033, color: _textHint),
+                    SizedBox(width: w * 0.008),
+                    Text(
+                      'Base: ${artisan.baseName} · ETA ${artisan.etaMinutes} min',
+                      style: TextStyle(
+                        fontSize: w * 0.031,
+                        color: _textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VerifyBadge extends StatelessWidget {
+  final String label;
+  final double w;
+  const _VerifyBadge({required this.label, required this.w});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: w * 0.018,
+        vertical: w * 0.010,
+      ),
+      decoration: BoxDecoration(
+        color: _successLight,
+        borderRadius: BorderRadius.circular(w * 0.041),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.verified_rounded,
+              size: w * 0.028, color: _success),
+          SizedBox(width: w * 0.008),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: w * 0.026,
+              fontWeight: FontWeight.w700,
+              color: _success,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Total Bid Card ─────────────────────────────────────────────────────────────
+
+class _TotalBidCard extends StatelessWidget {
+  final BidDetail bid;
+  final double w;
+  final double h;
+  const _TotalBidCard({required this.bid, required this.w, required this.h});
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      w: w,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Total amount row
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'TOTAL BID AMOUNT',
+                      style: TextStyle(
+                        fontSize: w * 0.026,
+                        fontWeight: FontWeight.w900,
+                        color: _textSecondary,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                    SizedBox(height: h * 0.006),
+                    Text(
+                      bid.breakdown.totalDisplay,
+                      style: TextStyle(
+                        fontSize: w * 0.072, // ~28dp — large price
+                        fontWeight: FontWeight.w800,
+                        color: _textPrimary,
+                        height: 1.0,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _BidStatusBadge(status: bid.status, w: w),
+            ],
+          ),
+          SizedBox(height: h * 0.017),
+          const Divider(height: 1, color: _divider),
+          SizedBox(height: h * 0.017),
+          // Duration + Availability row
+          Row(
+            children: [
+              Expanded(
+                child: _MetaCell(
+                  icon: Icons.timer_outlined,
+                  label: 'DURATION',
+                  value: bid.durationLabel,
+                  w: w,
+                  h: h,
+                ),
+              ),
+              Container(width: 1, height: h * 0.050, color: _divider),
+              Expanded(
+                child: _MetaCell(
+                  icon: Icons.calendar_today_outlined,
+                  label: 'AVAILABILITY',
+                  value: bid.availabilityLabel,
+                  w: w,
+                  h: h,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BidStatusBadge extends StatelessWidget {
+  final BidStatus status;
+  final double w;
+  const _BidStatusBadge({required this.status, required this.w});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = status.color;
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: w * 0.026,
+        vertical: w * 0.013,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(w * 0.051),
+      ),
+      child: Text(
+        status.label,
+        style: TextStyle(
+          fontSize: w * 0.028,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
+  }
+}
+
+class _MetaCell extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final double w;
+  final double h;
+  final CrossAxisAlignment crossAxisAlignment;
+  const _MetaCell({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.w,
+    required this.h,
+    this.crossAxisAlignment = CrossAxisAlignment.start,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: crossAxisAlignment,
+      children: [
+        Row(
+          mainAxisAlignment: crossAxisAlignment == CrossAxisAlignment.end
+              ? MainAxisAlignment.end
+              : MainAxisAlignment.start,
+          children: [
+            Icon(icon, size: w * 0.036, color: _textHint),
+            SizedBox(width: w * 0.010),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: w * 0.026,
+                fontWeight: FontWeight.w900,
+                color: _textSecondary,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: h * 0.005),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: w * 0.038,
+            fontWeight: FontWeight.w600,
+            color: _textPrimary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Bid Breakdown Card ────────────────────────────────────────────────────────
+
+class _BidBreakdownCard extends ConsumerWidget {
+  final BidDetail bid;
+  final double w;
+  final double h;
+  const _BidBreakdownCard({required this.bid, required this.w, required this.h});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final actionState = ref.watch(bidDetailActionProvider);
+    final expanded    = actionState.materialItemsExpanded;
+    final br          = bid.breakdown;
+
+    return _Card(
+      w: w,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Bid Breakdown',
+            style: TextStyle(
+              fontSize: w * 0.041,
+              fontWeight: FontWeight.w700,
+              color: _textPrimary,
+            ),
+          ),
+          SizedBox(height: h * 0.017),
+
+          // Service Fee (Labor)
+          _BreakdownRow(
+            label: 'Service Fee (Labor)',
+            amount: br.serviceFeeDisplay,
+            w: w,
+            h: h,
+          ),
+          SizedBox(height: h * 0.014),
+
+          // Estimated Materials (expandable)
+          GestureDetector(
+            onTap: () =>
+                ref.read(bidDetailActionProvider.notifier).toggleMaterials(),
+            behavior: HitTestBehavior.opaque,
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'Estimated Materials',
+                      style: TextStyle(
+                        fontSize: w * 0.036,
+                        fontWeight: FontWeight.w400,
+                        color: _textPrimary,
+                      ),
+                    ),
+                    SizedBox(width: w * 0.010),
+                    AnimatedRotation(
+                      turns: expanded ? 0 : -0.5,
+                      duration: const Duration(milliseconds: 200),
+                      child: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: w * 0.046,
+                        color: _textSecondary,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      br.materialsFeeDisplay,
+                      style: TextStyle(
+                        fontSize: w * 0.036,
+                        fontWeight: FontWeight.w600,
+                        color: _textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+                // Expandable material items
+                AnimatedCrossFade(
+                  firstChild: const SizedBox.shrink(),
+                  secondChild: Padding(
+                    padding: EdgeInsets.only(
+                      top: h * 0.010,
+                      left: w * 0.015,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: br.materialItems.map((item) {
+                        return Padding(
+                          padding: EdgeInsets.only(bottom: h * 0.007),
+                          child: Row(
+                            children: [
+                              Text(
+                                '• ',
+                                style: TextStyle(
+                                  fontSize: w * 0.031,
+                                  color: _textSecondary,
+                                ),
+                              ),
+                              Text(
+                                item.name,
+                                style: TextStyle(
+                                  fontSize: w * 0.031,
+                                  fontWeight: FontWeight.w400,
+                                  color: _textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  crossFadeState: expanded
+                      ? CrossFadeState.showSecond
+                      : CrossFadeState.showFirst,
+                  duration: const Duration(milliseconds: 200),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: h * 0.014),
+
+          // Transaction VAT
+          _BreakdownRow(
+            label: 'Transaction VAT (${br.vatPercent})',
+            amount: br.vatDisplay,
+            w: w,
+            h: h,
+            labelColor: _textSecondary,
+          ),
+          SizedBox(height: h * 0.014),
+
+          const Divider(height: 1, color: _divider),
+          SizedBox(height: h * 0.014),
+
+          // Total
+          _BreakdownRow(
+            label: 'Total',
+            amount: br.totalDisplay,
+            w: w,
+            h: h,
+            isBold: true,
+          ),
+          SizedBox(height: h * 0.014),
+
+          // Disclaimer
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.symmetric(
+              horizontal: w * 0.031,
+              vertical: h * 0.012,
+            ),
+            decoration: BoxDecoration(
+              color: _warningLight,
+              borderRadius: BorderRadius.circular(w * 0.021),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.info_outline_rounded,
+                  size: w * 0.036,
+                  color: _warning,
+                ),
+                SizedBox(width: w * 0.015),
+                Expanded(
+                  child: Text(
+                    'Materials are estimated based on your description. '
+                    'Final cost may vary upon physical inspection.',
+                    style: TextStyle(
+                      fontSize: w * 0.028,
+                      fontWeight: FontWeight.w400,
+                      color: _warning,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BreakdownRow extends StatelessWidget {
+  final String label;
+  final String amount;
+  final double w;
+  final double h;
+  final bool isBold;
+  final Color? labelColor;
+
+  const _BreakdownRow({
+    required this.label,
+    required this.amount,
+    required this.w,
+    required this.h,
+    this.isBold = false,
+    this.labelColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final weight = isBold ? FontWeight.w700 : FontWeight.w400;
+    final size   = isBold ? w * 0.038 : w * 0.036;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: size,
+              fontWeight: weight,
+              color: labelColor ?? _textPrimary,
+            ),
+          ),
+        ),
+        Text(
+          amount,
+          style: TextStyle(
+            fontSize: size,
+            fontWeight: isBold ? FontWeight.w700 : FontWeight.w600,
+            color: _textPrimary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Location Section ──────────────────────────────────────────────────────────
+
+class _LocationSection extends StatelessWidget {
+  final BidArtisanProfile artisan;
+  final bool showRoute;
+  final double w;
+  final double h;
+  const _LocationSection({
+    required this.artisan,
+    required this.w,
+    required this.h,
+    this.showRoute = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      w: w,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Location',
+                style: TextStyle(
+                  fontSize: w * 0.041,
+                  fontWeight: FontWeight.w700,
+                  color: _textPrimary,
+                ),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () {}, // TODO: open Mapbox full-screen
+                behavior: HitTestBehavior.opaque,
+                child: Row(
+                  children: [
+                    Text(
+                      'View Map',
+                      style: TextStyle(
+                        fontSize: w * 0.033,
+                        fontWeight: FontWeight.w600,
+                        color: _gold,
+                      ),
+                    ),
+                    SizedBox(width: w * 0.008),
+                    Icon(Icons.open_in_new_rounded,
+                        size: w * 0.036, color: _gold),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: h * 0.014),
+          // Map placeholder
+          ClipRRect(
+            borderRadius: BorderRadius.circular(w * 0.021),
+            child: Stack(
+              children: [
+                Container(
+                  width: double.infinity,
+                  height: h * 0.166, // ~140dp
+                  color: const Color(0xFFD0E8C8), // map-like green
+                  child: CustomPaint(painter: _MapPlaceholderPainter(showRoute: showRoute)),
+                ),
+                // Distance chip
+                Positioned(
+                  top: h * 0.012,
+                  left: w * 0.031,
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: w * 0.026,
+                      vertical: h * 0.007,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _surfaceWhite,
+                      borderRadius: BorderRadius.circular(w * 0.041),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.near_me_rounded,
+                            size: w * 0.033, color: _gold),
+                        SizedBox(width: w * 0.010),
+                        Text(
+                          '${artisan.distanceKm.toStringAsFixed(1)} km away',
+                          style: TextStyle(
+                            fontSize: w * 0.031,
+                            fontWeight: FontWeight.w600,
+                            color: _textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                // Centre pin
+                Positioned.fill(
+                  child: Center(
+                    child: Icon(
+                      Icons.location_on_rounded,
+                      size: w * 0.082,
+                      color: _error,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Very light map-like pattern painted on the placeholder container.
+// When showRoute is true, an orange/gold route path is drawn from an artisan
+// origin point in the lower-left to the centre pin (job site).
+class _MapPlaceholderPainter extends CustomPainter {
+  final bool showRoute;
+  const _MapPlaceholderPainter({this.showRoute = false});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final road = Paint()
+      ..color = const Color(0xFFFFFFFF).withValues(alpha: 0.6)
+      ..strokeWidth = 3
+      ..style = PaintingStyle.stroke;
+
+    // horizontal road
+    canvas.drawLine(
+      Offset(0, size.height * 0.5),
+      Offset(size.width, size.height * 0.5),
+      road,
+    );
+    // vertical road
+    canvas.drawLine(
+      Offset(size.width * 0.4, 0),
+      Offset(size.width * 0.4, size.height),
+      road,
+    );
+    // diagonal accent road
+    canvas.drawLine(
+      Offset(size.width * 0.4, size.height * 0.5),
+      Offset(size.width * 0.75, size.height * 0.2),
+      road..strokeWidth = 2,
+    );
+
+    if (showRoute) {
+      // Gold route line: artisan origin (lower-left) → job site (centre)
+      final routePaint = Paint()
+        ..color = const Color(0xFFF5A623)
+        ..strokeWidth = 4
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+
+      final origin = Offset(size.width * 0.18, size.height * 0.80);
+      final dest   = Offset(size.width * 0.50, size.height * 0.50);
+      final ctrl   = Offset(size.width * 0.28, size.height * 0.35);
+
+      final path = Path()
+        ..moveTo(origin.dx, origin.dy)
+        ..quadraticBezierTo(ctrl.dx, ctrl.dy, dest.dx, dest.dy);
+      canvas.drawPath(path, routePaint);
+
+      // Artisan origin dot (darkSlate)
+      canvas.drawCircle(
+        origin,
+        6,
+        Paint()..color = const Color(0xFF46535D),
+      );
+      canvas.drawCircle(
+        origin,
+        4,
+        Paint()..color = const Color(0xFFFFFFFF),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _MapPlaceholderPainter old) =>
+      old.showRoute != showRoute;
+}
+
+// ── Artisan's Note Card ────────────────────────────────────────────────────────
+
+class _ArtisanNoteCard extends StatelessWidget {
+  final String note;
+  final String? timestamp;
+  final double w;
+  final double h;
+  const _ArtisanNoteCard({
+    required this.note,
+    required this.timestamp,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      w: w,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "Artisan's Note",
+            style: TextStyle(
+              fontSize: w * 0.041,
+              fontWeight: FontWeight.w700,
+              color: _textPrimary,
+            ),
+          ),
+          SizedBox(height: h * 0.014),
+          Text(
+            note,
+            style: TextStyle(
+              fontSize: w * 0.036,
+              fontWeight: FontWeight.w400,
+              color: _textSecondary,
+              height: 1.6,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+          if (timestamp != null) ...[
+            SizedBox(height: h * 0.012),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                timestamp!,
+                style: TextStyle(
+                  fontSize: w * 0.028,
+                  fontWeight: FontWeight.w400,
+                  color: _textHint,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── Related Portfolio Section ──────────────────────────────────────────────────
+
+class _RelatedPortfolioSection extends StatelessWidget {
+  final List<Color> colors;
+  final double w;
+  final double h;
+  const _RelatedPortfolioSection({
+    required this.colors,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      w: w,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Related Portfolio',
+            style: TextStyle(
+              fontSize: w * 0.041,
+              fontWeight: FontWeight.w700,
+              color: _textPrimary,
+            ),
+          ),
+          SizedBox(height: h * 0.014),
+          Row(
+            children: colors.asMap().entries.map((e) {
+              final isLast = e.key == colors.length - 1;
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: isLast ? 0 : w * 0.026),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(w * 0.021),
+                    child: AspectRatio(
+                      aspectRatio: 1,
+                      child: Container(color: e.value),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Trust Badges Row ───────────────────────────────────────────────────────────
+
+class _TrustBadgesRow extends StatelessWidget {
+  final double w;
+  final double h;
+  const _TrustBadgesRow({required this.w, required this.h});
+
+  static const _badges = [
+    (Icons.cancel_outlined, '30mins Cancellation'),
+    (Icons.shield_outlined, 'Service Guarantee'),
+    (Icons.lock_outline_rounded, 'Secure Payment'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: w * 0.041),
+      padding: EdgeInsets.symmetric(
+        vertical: h * 0.017,
+        horizontal: w * 0.026,
+      ),
+      decoration: BoxDecoration(
+        color: _surfaceWhite,
+        borderRadius: BorderRadius.circular(w * 0.031),
+        border: Border.all(color: _divider),
+      ),
+      child: Row(
+        children: _badges.asMap().entries.map((e) {
+          final (icon, label) = e.value;
+          final isLast = e.key == _badges.length - 1;
+          return Expanded(
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    children: [
+                      Icon(icon, size: w * 0.051, color: _textSecondary),
+                      SizedBox(height: h * 0.006),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: w * 0.026,
+                          fontWeight: FontWeight.w400,
+                          color: _textSecondary,
+                          height: 1.3,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+                if (!isLast)
+                  Container(
+                    width: 1,
+                    height: h * 0.050,
+                    color: _divider,
+                  ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+// ── Bottom Action Bar ──────────────────────────────────────────────────────────
+
+class _BottomActionBar extends ConsumerWidget {
+  final BidDetail bid;
+  final double w;
+  final double h;
+  const _BottomActionBar({required this.bid, required this.w, required this.h});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final actionState = ref.watch(bidDetailActionProvider);
+    final bottomPad   = MediaQuery.paddingOf(context).bottom;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: _surfaceWhite,
+        border: Border(top: BorderSide(color: _divider)),
+      ),
+      padding: EdgeInsets.only(
+        left: w * 0.041,
+        right: w * 0.041,
+        top: h * 0.014,
+        bottom: bottomPad + h * 0.010,
+      ),
+      child: actionState.isBidConfirmed
+          ? _ConfirmedActionContent(bid: bid, w: w, h: h)
+          : actionState.isBidExpired
+              ? _ExpiredActionContent(bid: bid, w: w, h: h)
+              : actionState.isAwaitingConfirmation
+                  ? _AwaitingActionContent(
+                      bid: bid,
+                      actionState: actionState,
+                      w: w,
+                      h: h,
+                      ref: ref,
+                    )
+                  : _PendingActionContent(
+                      bid: bid,
+                      actionState: actionState,
+                      w: w,
+                      h: h,
+                      ref: ref,
+                    ),
+    );
+  }
+}
+
+// ── Pending state content (before acceptance) ─────────────────────────────────
+
+class _PendingActionContent extends StatelessWidget {
+  final BidDetail bid;
+  final BidDetailActionState actionState;
+  final double w;
+  final double h;
+  final WidgetRef ref;
+  const _PendingActionContent({
+    required this.bid,
+    required this.actionState,
+    required this.w,
+    required this.h,
+    required this.ref,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // ── Primary CTA row ──
+        Row(
+          children: [
+            _IconCircleButton(
+              icon: Icons.chat_bubble_outline_rounded,
+              onTap: () {}, // TODO: navigate to chat
+              w: w,
+              h: h,
+            ),
+            SizedBox(width: w * 0.026),
+            _IconCircleButton(
+              icon: Icons.phone_outlined,
+              onTap: () {}, // TODO: initiate masked call
+              w: w,
+              h: h,
+            ),
+            SizedBox(width: w * 0.026),
+            Expanded(
+              child: _AcceptButton(
+                artisanFirstName: bid.artisan.firstName,
+                isLoading: actionState.isAccepting,
+                isDisabled: actionState.isBusy,
+                onPressed: () => ref
+                    .read(bidDetailActionProvider.notifier)
+                    .acceptBid(jobId: bid.jobId, bidId: bid.bidId),
+                w: w,
+                h: h,
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: h * 0.010),
+        // ── Pending hint ──
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.bolt_rounded, size: w * 0.033, color: _gold),
+            SizedBox(width: w * 0.010),
+            Expanded(
+              child: Text(
+                'Bid Pending: Tap Accept to request confirmation from '
+                '${bid.artisan.firstName}.',
+                style: TextStyle(
+                  fontSize: w * 0.028,
+                  fontWeight: FontWeight.w400,
+                  color: _textSecondary,
+                ),
+                maxLines: 2,
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: h * 0.010),
+        const Divider(height: 1, color: _divider),
+        SizedBox(height: h * 0.010),
+        // ── Decline + Report row ──
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            GestureDetector(
+              onTap: actionState.isBusy
+                  ? null
+                  : () => ref
+                      .read(bidDetailActionProvider.notifier)
+                      .declineBid(jobId: bid.jobId, bidId: bid.bidId),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: w * 0.026,
+                  vertical: h * 0.005,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.close_rounded,
+                      size: w * 0.036,
+                      color: actionState.isBusy ? _disabled : _error,
+                    ),
+                    SizedBox(width: w * 0.010),
+                    Text(
+                      'Decline Bid',
+                      style: TextStyle(
+                        fontSize: w * 0.033,
+                        fontWeight: FontWeight.w600,
+                        color: actionState.isBusy ? _disabled : _error,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(width: w * 0.041),
+            GestureDetector(
+              onTap: () {}, // TODO: navigate to report issue screen
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: w * 0.026,
+                  vertical: h * 0.005,
+                ),
+                child: Text(
+                  'Report Issue',
+                  style: TextStyle(
+                    fontSize: w * 0.033,
+                    fontWeight: FontWeight.w400,
+                    color: _textSecondary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// ── Awaiting confirmation state content (after acceptance) ────────────────────
+
+class _AwaitingActionContent extends StatelessWidget {
+  final BidDetail bid;
+  final BidDetailActionState actionState;
+  final double w;
+  final double h;
+  final WidgetRef ref;
+  const _AwaitingActionContent({
+    required this.bid,
+    required this.actionState,
+    required this.w,
+    required this.h,
+    required this.ref,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // ── Icon buttons + "Acceptance Sent" greyed label ──
+        Row(
+          children: [
+            _IconCircleButton(
+              icon: Icons.chat_bubble_outline_rounded,
+              onTap: () {}, // TODO: navigate to chat
+              w: w,
+              h: h,
+            ),
+            SizedBox(width: w * 0.026),
+            _IconCircleButton(
+              icon: Icons.phone_outlined,
+              onTap: () {}, // TODO: initiate masked call
+              w: w,
+              h: h,
+            ),
+            SizedBox(width: w * 0.026),
+            Expanded(
+              child: Container(
+                height: h * 0.062,
+                decoration: BoxDecoration(
+                  color: _surfaceGrey,
+                  borderRadius: BorderRadius.circular(w * 0.021),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle_outline_rounded,
+                        size: w * 0.041, color: _disabled),
+                    SizedBox(width: w * 0.015),
+                    Text(
+                      'Acceptance Sent',
+                      style: TextStyle(
+                        fontSize: w * 0.038,
+                        fontWeight: FontWeight.w600,
+                        color: _disabled,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: h * 0.012),
+        // ── Countdown timer ──
+        if (actionState.countdownEndTime != null)
+          _CountdownTimerRow(
+            endTime: actionState.countdownEndTime!,
+            onExpired: () =>
+                ref.read(bidDetailActionProvider.notifier).onBidExpired(),
+            w: w,
+            h: h,
+          ),
+        SizedBox(height: h * 0.010),
+        const Divider(height: 1, color: _divider),
+        SizedBox(height: h * 0.010),
+        // ── Cancel Job Request (PRD 4.5.5 free cancellation window) ──
+        GestureDetector(
+          onTap: actionState.isBusy
+              ? null
+              : () => ref
+                  .read(bidDetailActionProvider.notifier)
+                  .cancelJobRequest(jobId: bid.jobId),
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: h * 0.005),
+            child: Text(
+              'Cancel Job Request',
+              style: TextStyle(
+                fontSize: w * 0.033,
+                fontWeight: FontWeight.w600,
+                color: actionState.isBusy ? _disabled : _error,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _IconCircleButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final double w;
+  final double h;
+  const _IconCircleButton({
+    required this.icon,
+    required this.onTap,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: h * 0.062,
+        height: h * 0.062,
+        decoration: BoxDecoration(
+          color: _surfaceWhite,
+          shape: BoxShape.circle,
+          border: Border.all(color: _divider, width: 1.5),
+        ),
+        child: Icon(icon, size: w * 0.051, color: _textPrimary),
+      ),
+    );
+  }
+}
+
+class _AcceptButton extends StatelessWidget {
+  final String artisanFirstName;
+  final bool isLoading;
+  final bool isDisabled;
+  final VoidCallback onPressed;
+  final double w;
+  final double h;
+  const _AcceptButton({
+    required this.artisanFirstName,
+    required this.isLoading,
+    required this.isDisabled,
+    required this.onPressed,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final canTap = !isLoading && !isDisabled;
+    return SizedBox(
+      height: h * 0.062,
+      child: ElevatedButton(
+        onPressed: canTap ? onPressed : null,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: canTap ? _darkSlate : _surfaceGrey,
+          foregroundColor: canTap ? _surfaceWhite : _disabled,
+          disabledBackgroundColor: _surfaceGrey,
+          disabledForegroundColor: _disabled,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(w * 0.021),
+          ),
+        ),
+        child: isLoading
+            ? SizedBox(
+                width: w * 0.051,
+                height: w * 0.051,
+                child: const CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: _surfaceWhite,
+                ),
+              )
+            : Text(
+                'Accept Bid',
+                style: TextStyle(
+                  fontSize: w * 0.038,
+                  fontWeight: FontWeight.w600,
+                  color: canTap ? _surfaceWhite : _disabled,
+                  letterSpacing: 0.2,
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+// ── Awaiting Confirmation Banner ───────────────────────────────────────────────
+// Shown at the top of the scroll area once the client has accepted a bid.
+// PRD 4.5.5 — artisan must confirm within the countdown window.
+
+class _AwaitingConfirmationBanner extends StatelessWidget {
+  final String artisanFirstName;
+  final double w;
+  final double h;
+  const _AwaitingConfirmationBanner({
+    required this.artisanFirstName,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: w * 0.041),
+      padding: EdgeInsets.all(w * 0.041),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8EC),
+        borderRadius: BorderRadius.circular(w * 0.031),
+        border: Border.all(color: _gold.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: w * 0.105,
+            height: w * 0.105,
+            decoration: BoxDecoration(
+              color: _gold.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.access_time_rounded,
+                size: w * 0.051, color: _gold),
+          ),
+          SizedBox(width: w * 0.031),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Awaiting Confirmation',
+                  style: TextStyle(
+                    fontSize: w * 0.038,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF9A6B00),
+                  ),
+                ),
+                SizedBox(height: h * 0.005),
+                Text(
+                  'Acceptance sent. Waiting for $artisanFirstName to confirm '
+                  'the job request.',
+                  style: TextStyle(
+                    fontSize: w * 0.031,
+                    fontWeight: FontWeight.w400,
+                    color: const Color(0xFF9A6B00),
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Countdown Timer Row ────────────────────────────────────────────────────────
+// Live countdown displayed in the bottom action bar while awaiting confirmation.
+
+class _CountdownTimerRow extends StatefulWidget {
+  final DateTime endTime;
+  final VoidCallback onExpired;
+  final double w;
+  final double h;
+  const _CountdownTimerRow({
+    required this.endTime,
+    required this.onExpired,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  State<_CountdownTimerRow> createState() => _CountdownTimerRowState();
+}
+
+class _CountdownTimerRowState extends State<_CountdownTimerRow> {
+  late Duration _remaining;
+  Timer? _timer;
+  bool _expiredFired = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+  }
+
+  void _tick() {
+    final r = widget.endTime.difference(DateTime.now());
+    final isZero = r.isNegative || r == Duration.zero;
+    if (mounted) setState(() => _remaining = isZero ? Duration.zero : r);
+    if (isZero && !_expiredFired) {
+      _expiredFired = true;
+      _timer?.cancel();
+      // Schedule after current frame so widget tree is not mid-build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onExpired();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String get _label {
+    final m = _remaining.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = _remaining.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w = widget.w;
+    return Row(
+      children: [
+        Container(
+          width: w * 0.023,
+          height: w * 0.023,
+          decoration: const BoxDecoration(color: _gold, shape: BoxShape.circle),
+        ),
+        SizedBox(width: w * 0.026),
+        Expanded(
+          child: Text(
+            'Artisan must respond within:',
+            style: TextStyle(
+              fontSize: w * 0.031,
+              fontWeight: FontWeight.w400,
+              color: _textSecondary,
+            ),
+          ),
+        ),
+        Text(
+          _label,
+          style: TextStyle(
+            fontSize: w * 0.041,
+            fontWeight: FontWeight.w700,
+            color: _gold,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Bid Confirmed Banner ───────────────────────────────────────────────────────
+// Shown once the artisan has confirmed the appointment.
+// Driven by onArtisanConfirmed() — in production triggered by WebSocket push.
+
+class _BidConfirmedBanner extends StatelessWidget {
+  final String artisanName;
+  final String etaLabel;
+  final double w;
+  final double h;
+  const _BidConfirmedBanner({
+    required this.artisanName,
+    required this.etaLabel,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: w * 0.041),
+      padding: EdgeInsets.all(w * 0.041),
+      decoration: BoxDecoration(
+        color: _successLight,
+        borderRadius: BorderRadius.circular(w * 0.031),
+        border: Border.all(color: _success.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: w * 0.105,
+            height: w * 0.105,
+            decoration: BoxDecoration(
+              color: _success,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.check_rounded,
+                size: w * 0.054, color: _surfaceWhite),
+          ),
+          SizedBox(width: w * 0.031),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Bid Confirmed',
+                  style: TextStyle(
+                    fontSize: w * 0.038,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF1A6B3C),
+                  ),
+                ),
+                SizedBox(height: h * 0.005),
+                Text(
+                  '$artisanName has confirmed the appointment. '
+                  'Arriving in $etaLabel.',
+                  style: TextStyle(
+                    fontSize: w * 0.031,
+                    fontWeight: FontWeight.w400,
+                    color: const Color(0xFF1A6B3C),
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Bid Expired Banner ─────────────────────────────────────────────────────────
+// Shown when the 20-min confirmation window elapsed without artisan response.
+
+class _BidExpiredBanner extends StatelessWidget {
+  final String expiredDateLabel;
+  final double w;
+  final double h;
+  const _BidExpiredBanner({
+    required this.expiredDateLabel,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: w * 0.041),
+      padding: EdgeInsets.all(w * 0.041),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF0F0),
+        borderRadius: BorderRadius.circular(w * 0.031),
+        border: Border.all(color: _error.withValues(alpha: 0.30)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: w * 0.105,
+            height: w * 0.105,
+            decoration: BoxDecoration(
+              color: _error.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(w * 0.021),
+            ),
+            child: Icon(Icons.calendar_month_outlined,
+                size: w * 0.051, color: _error),
+          ),
+          SizedBox(width: w * 0.031),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Bid Expired',
+                  style: TextStyle(
+                    fontSize: w * 0.038,
+                    fontWeight: FontWeight.w700,
+                    color: _error,
+                  ),
+                ),
+                SizedBox(height: h * 0.005),
+                Text(
+                  'This bid expired on $expiredDateLabel. The artisan is no '
+                  'longer committed to this price or timeline.',
+                  style: TextStyle(
+                    fontSize: w * 0.031,
+                    fontWeight: FontWeight.w400,
+                    color: _error,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Confirmed state action content ─────────────────────────────────────────────
+
+class _ConfirmedActionContent extends StatelessWidget {
+  final BidDetail bid;
+  final double w;
+  final double h;
+  const _ConfirmedActionContent({
+    required this.bid,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            _IconCircleButton(
+              icon: Icons.chat_bubble_outline_rounded,
+              onTap: () {}, // TODO: navigate to chat
+              w: w,
+              h: h,
+            ),
+            SizedBox(width: w * 0.026),
+            _IconCircleButton(
+              icon: Icons.phone_outlined,
+              onTap: () {}, // TODO: initiate masked call
+              w: w,
+              h: h,
+            ),
+            SizedBox(width: w * 0.026),
+            Expanded(
+              child: SizedBox(
+                height: h * 0.062,
+                child: ElevatedButton(
+                  onPressed: () {}, // TODO: navigate to ride_tracking_screen
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _darkSlate,
+                    foregroundColor: _surfaceWhite,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(w * 0.021),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.near_me_rounded,
+                          size: w * 0.041, color: _surfaceWhite),
+                      SizedBox(width: w * 0.015),
+                      Text(
+                        'Track Artisan',
+                        style: TextStyle(
+                          fontSize: w * 0.038,
+                          fontWeight: FontWeight.w600,
+                          color: _surfaceWhite,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// ── Expired state action content ──────────────────────────────────────────────
+
+class _ExpiredActionContent extends StatelessWidget {
+  final BidDetail bid;
+  final double w;
+  final double h;
+  const _ExpiredActionContent({
+    required this.bid,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          height: h * 0.062,
+          child: ElevatedButton(
+            onPressed: () {}, // TODO: navigate to job_form_screen (re-post)
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _darkSlate,
+              foregroundColor: _surfaceWhite,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(w * 0.021),
+              ),
+            ),
+            child: Text(
+              'Re-post Job',
+              style: TextStyle(
+                fontSize: w * 0.038,
+                fontWeight: FontWeight.w600,
+                color: _surfaceWhite,
+              ),
+            ),
+          ),
+        ),
+        SizedBox(height: h * 0.010),
+        const Divider(height: 1, color: _divider),
+        SizedBox(height: h * 0.010),
+        GestureDetector(
+          onTap: () => Navigator.of(context).maybePop(),
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: h * 0.005),
+            child: Text(
+              'Browse Other Bids',
+              style: TextStyle(
+                fontSize: w * 0.033,
+                fontWeight: FontWeight.w600,
+                color: _textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Shared white card wrapper ─────────────────────────────────────────────────
+
+class _Card extends StatelessWidget {
+  final Widget child;
+  final double w;
+  const _Card({required this.child, required this.w});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: w * 0.041),
+      padding: EdgeInsets.all(w * 0.041),
+      decoration: BoxDecoration(
+        color: _surfaceWhite,
+        borderRadius: BorderRadius.circular(w * 0.031),
+        border: Border.all(color: _divider),
+      ),
+      child: child,
+    );
+  }
+}
+
+// ── Loading Skeleton ───────────────────────────────────────────────────────────
+
+class _LoadingSkeleton extends StatelessWidget {
+  final double w;
+  final double h;
+  const _LoadingSkeleton({required this.w, required this.h});
+
+  @override
+  Widget build(BuildContext context) {
+    final topPad = MediaQuery.paddingOf(context).top;
+    return Column(
+      children: [
+        Container(
+          color: _surfaceWhite,
+          padding: EdgeInsets.only(
+            top: topPad + h * 0.010,
+            bottom: h * 0.017,
+            left: w * 0.041,
+          ),
+          child: Row(
+            children: [
+              _Shimmer(w: w * 0.056, h: w * 0.056, r: w * 0.056),
+              SizedBox(width: w * 0.031),
+              _Shimmer(w: w * 0.41, h: h * 0.026),
+            ],
+          ),
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(
+              horizontal: w * 0.041,
+              vertical: h * 0.019,
+            ),
+            child: Column(
+              children: [
+                _Shimmer(w: double.infinity, h: h * 0.14, r: w * 0.031),
+                SizedBox(height: h * 0.014),
+                _Shimmer(w: double.infinity, h: h * 0.16, r: w * 0.031),
+                SizedBox(height: h * 0.014),
+                _Shimmer(w: double.infinity, h: h * 0.26, r: w * 0.031),
+                SizedBox(height: h * 0.014),
+                _Shimmer(w: double.infinity, h: h * 0.18, r: w * 0.031),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Shimmer extends StatelessWidget {
+  final double w;
+  final double h;
+  final double r;
+  const _Shimmer({required this.w, required this.h, this.r = 4});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: w,
+      height: h,
+      decoration: BoxDecoration(
+        color: const Color(0xFFE0E0E0),
+        borderRadius: BorderRadius.circular(r),
+      ),
+    );
+  }
+}
+
+// ── Error Body ─────────────────────────────────────────────────────────────────
+
+class _ErrorBody extends StatelessWidget {
+  final double w;
+  final double h;
+  final VoidCallback onRetry;
+  const _ErrorBody({required this.w, required this.h, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: w * 0.082),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline_rounded,
+                size: w * 0.154, color: _textHint),
+            SizedBox(height: h * 0.019),
+            Text(
+              'Could not load bid details',
+              style: TextStyle(
+                fontSize: w * 0.041,
+                fontWeight: FontWeight.w700,
+                color: _textPrimary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: h * 0.009),
+            Text(
+              'Check your connection and try again.',
+              style: TextStyle(
+                fontSize: w * 0.033,
+                color: _textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: h * 0.028),
+            GestureDetector(
+              onTap: onRetry,
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: w * 0.077,
+                  vertical: h * 0.017,
+                ),
+                decoration: BoxDecoration(
+                  color: _darkSlate,
+                  borderRadius: BorderRadius.circular(w * 0.021),
+                ),
+                child: Text(
+                  'Try Again',
+                  style: TextStyle(
+                    fontSize: w * 0.038,
+                    fontWeight: FontWeight.w600,
+                    color: _surfaceWhite,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

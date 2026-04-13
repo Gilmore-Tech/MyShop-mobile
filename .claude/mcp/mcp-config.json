@@ -1,0 +1,29 @@
+{
+  "mcpServers": {
+    "figma": {
+      "type": "url",
+      "url": "https://mcp.figma.com/mcp",
+      "description": "Pull design context from Figma frames — layout, spacing, colors, components. Authenticate with your Figma Pro account (can be a different email from Claude)."
+    },
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "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"
+      },
+      "description": "Create issues (MSP-{id} format), manage PRs, check CI status on Gilmore-Tech/MyShop-mobile."
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/path/to/myshop-mobile"
+      ],
+      "description": "Read/write project files. Replace /path/to/myshop-mobile with your actual repo path."
+    }
+  }
+}

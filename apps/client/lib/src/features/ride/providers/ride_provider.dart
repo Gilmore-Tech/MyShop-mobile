@@ -1,0 +1,382 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+// ── Models ────────────────────────────────────────────────────────────────────
+
+enum BookingPhase { idle, searching, driverFound }
+
+class VehicleOption {
+  final String id;
+  final String name;
+  final String description;
+  final int capacityPersons;
+  final int farePesewas; // 100 pesewas = ₵1
+  final String estimatedTime;
+  final bool isMotorcycle;
+
+  const VehicleOption({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.capacityPersons,
+    required this.farePesewas,
+    required this.estimatedTime,
+    required this.isMotorcycle,
+  });
+
+  String get fareDisplay {
+    final ghs = farePesewas / 100;
+    return '₵${ghs.toStringAsFixed(2)}';
+  }
+}
+
+class RecentDestination {
+  final String id;
+  final String label; // "Home", "Office"
+  final String address;
+  final bool isHome;
+
+  const RecentDestination({
+    required this.id,
+    required this.label,
+    required this.address,
+    required this.isHome,
+  });
+}
+
+class MatchedDriver {
+  final String name;
+  final String vehicle; // Full name e.g. "Midnight Black Toyota Camry Hybrid"
+  final String plateNumber;
+  final double rating;
+  final int minutesAway;
+  final int driversAvailable;
+  // Extended fields shown on the driver found screen
+  final int tripCount;
+  final bool isVerified;
+  final bool isPoliceChecked;
+  final String maskedPhone; // e.g. "+233 ••• ••• 42"
+  final String vehicleTier; // e.g. "Premier Comfort"
+  final int baseFarePesewas;
+  final int distanceFarePesewas;
+  final double distanceKm;
+  final int bookingFeePesewas;
+
+  /// Short vehicle name shown during active tracking, e.g. "Toyota Vitz"
+  final String vehicleShortName;
+  /// Confirmed fare once ride starts (may differ from estimate due to surge)
+  final int confirmedFarePesewas;
+  /// Payment method label shown on tracking screen
+  final String paymentMethod;
+
+  const MatchedDriver({
+    required this.name,
+    required this.vehicle,
+    required this.plateNumber,
+    required this.rating,
+    required this.minutesAway,
+    required this.driversAvailable,
+    this.tripCount = 0,
+    this.isVerified = false,
+    this.isPoliceChecked = false,
+    this.maskedPhone = '',
+    this.vehicleTier = '',
+    this.baseFarePesewas = 0,
+    this.distanceFarePesewas = 0,
+    this.distanceKm = 0,
+    this.bookingFeePesewas = 0,
+    this.vehicleShortName = '',
+    this.confirmedFarePesewas = 0,
+    this.paymentMethod = 'MTN Mobile Money',
+  });
+
+  int get totalFarePesewas =>
+      baseFarePesewas + distanceFarePesewas + bookingFeePesewas;
+
+  /// Active ride fare — confirmed amount or falls back to estimate
+  int get activeFarePesewas =>
+      confirmedFarePesewas > 0 ? confirmedFarePesewas : totalFarePesewas;
+
+  String _fmt(int pesewas) {
+    final ghs = pesewas / 100;
+    return 'GH₵ ${ghs.toStringAsFixed(2)}';
+  }
+
+  String get baseFareDisplay => _fmt(baseFarePesewas);
+  String get distanceFareDisplay => _fmt(distanceFarePesewas);
+  String get bookingFeeDisplay => _fmt(bookingFeePesewas);
+  String get totalFareDisplay => _fmt(totalFarePesewas);
+  String get activeFareDisplay => _fmt(activeFarePesewas);
+}
+
+// ── Static mock data ──────────────────────────────────────────────────────────
+
+const vehicleOptions = [
+  VehicleOption(
+    id: 'ride_comfort',
+    name: 'Ride Comfort',
+    description: 'Newer cars with extra legroom',
+    capacityPersons: 4,
+    farePesewas: 4200,
+    estimatedTime: '3-5m',
+    isMotorcycle: false,
+  ),
+  VehicleOption(
+    id: 'moto_ride_1',
+    name: 'Moto-Ride',
+    description: 'Beat the heavy Kumasi traffic',
+    capacityPersons: 1,
+    farePesewas: 1200,
+    estimatedTime: '1 min',
+    isMotorcycle: true,
+  ),
+  VehicleOption(
+    id: 'moto_ride_2',
+    name: 'Moto-Ride',
+    description: 'Beat the heavy Kumasi traffic',
+    capacityPersons: 1,
+    farePesewas: 1200,
+    estimatedTime: '1 km',
+    isMotorcycle: true,
+  ),
+];
+
+const recentDestinations = [
+  RecentDestination(
+    id: 'home',
+    label: 'Home',
+    address: 'Asolwa Residential',
+    isHome: true,
+  ),
+  RecentDestination(
+    id: 'office',
+    label: 'Office',
+    address: 'Tech Hub, KNUST',
+    isHome: false,
+  ),
+];
+
+const _mockMatchedDriver = MatchedDriver(
+  name: 'Kofi Mensah',
+  vehicle: 'Midnight Black Toyota Camry Hybrid',
+  plateNumber: 'GR-4557-23',
+  rating: 4.92,
+  minutesAway: 3,
+  driversAvailable: 3,
+  tripCount: 1450,
+  isVerified: true,
+  isPoliceChecked: true,
+  maskedPhone: '+233 ••• ••• 42',
+  vehicleTier: 'Premier Comfort',
+  baseFarePesewas: 1200,
+  distanceFarePesewas: 1550,
+  distanceKm: 5.2,
+  bookingFeePesewas: 250,
+  vehicleShortName: 'Toyota Vitz',
+  confirmedFarePesewas: 4250,
+  paymentMethod: 'Cash',
+);
+
+// ── Ride Receipt ─────────────────────────────────────────────────────────────
+
+/// Immutable receipt returned after a ride is completed.
+/// Populated from GET /v1/rides/:id once status == completed (EDD § Ride Module).
+class RideReceipt {
+  final String rideId;
+  final String driverName;
+
+  /// Short vehicle name + plate, e.g. "Toyota Vitz · GW-482-22"
+  final String vehicleDisplay;
+  final double driverRating;
+  final int driverTripCount;
+  final bool isDriverVerified;
+
+  /// Human-readable timestamp, e.g. "Thursday, 24 Oct | 14:32"
+  final String completedAt;
+  final String pickupAddress;
+  final String dropoffAddress;
+
+  // ── Fare components (all in pesewas) ──
+  final int baseFarePesewas;
+  final double distanceKm;
+  final int distanceFarePesewas;
+  final int durationMins;
+  final int timeFarePesewas;
+  final double surgeMultiplier;
+  final int surgeFarePesewas;
+  final int subtotalPesewas;
+  final int taxesPesewas;
+
+  /// Positive value — displayed as a deduction (–GHS X.XX)
+  final int promoDiscountPesewas;
+  final int totalPaidPesewas;
+
+  final String paymentMethod;
+
+  /// "SUCCESS" | "PENDING" | "FAILED"
+  final String paymentStatus;
+
+  const RideReceipt({
+    required this.rideId,
+    required this.driverName,
+    required this.vehicleDisplay,
+    required this.driverRating,
+    required this.driverTripCount,
+    required this.isDriverVerified,
+    required this.completedAt,
+    required this.pickupAddress,
+    required this.dropoffAddress,
+    required this.baseFarePesewas,
+    required this.distanceKm,
+    required this.distanceFarePesewas,
+    required this.durationMins,
+    required this.timeFarePesewas,
+    required this.surgeMultiplier,
+    required this.surgeFarePesewas,
+    required this.subtotalPesewas,
+    required this.taxesPesewas,
+    required this.promoDiscountPesewas,
+    required this.totalPaidPesewas,
+    required this.paymentMethod,
+    required this.paymentStatus,
+  });
+
+  String get driverFirstName => driverName.split(' ').first;
+}
+
+// ── Tip State ─────────────────────────────────────────────────────────────────
+
+class TipState {
+  /// One of the preset amounts (in pesewas), or null if none selected.
+  final int? selectedPresetPesewas;
+
+  /// Amount typed in the custom field (in pesewas). 0 means empty.
+  final int customPesewas;
+
+  const TipState({this.selectedPresetPesewas, this.customPesewas = 0});
+
+  /// Custom field wins when non-zero; otherwise use preset.
+  int get effectivePesewas =>
+      customPesewas > 0 ? customPesewas : (selectedPresetPesewas ?? 0);
+
+  bool get hasAmount => effectivePesewas > 0;
+}
+
+class TipNotifier extends StateNotifier<TipState> {
+  TipNotifier() : super(const TipState());
+
+  /// Tapping the same preset again deselects it.
+  void selectPreset(int pesewas) {
+    final alreadySelected = state.selectedPresetPesewas == pesewas;
+    state = alreadySelected
+        ? const TipState()
+        : TipState(selectedPresetPesewas: pesewas);
+  }
+
+  void setCustom(String text) {
+    final parsed = double.tryParse(text);
+    final pesewas = parsed != null ? (parsed * 100).round() : 0;
+    state = TipState(customPesewas: pesewas);
+  }
+
+  void reset() => state = const TipState();
+}
+
+final tipStateProvider =
+    StateNotifierProvider<TipNotifier, TipState>((_) => TipNotifier());
+
+// ── Mock receipt ──────────────────────────────────────────────────────────────
+
+const _mockRideReceipt = RideReceipt(
+  rideId: 'RID-92834',
+  driverName: 'Kwesi Mensah',
+  vehicleDisplay: 'Toyota Vitz · GW-482-22',
+  driverRating: 4.9,
+  driverTripCount: 1450,
+  isDriverVerified: true,
+  completedAt: 'Thursday, 24 Oct | 14:32',
+  pickupAddress: 'Makola Market, Accra Central',
+  dropoffAddress: 'Kotoka International Airport (T3)',
+  baseFarePesewas: 1200,
+  distanceKm: 8.4,
+  distanceFarePesewas: 3250,
+  durationMins: 24,
+  timeFarePesewas: 600,
+  surgeMultiplier: 1.2,
+  surgeFarePesewas: 920,
+  subtotalPesewas: 5970,
+  taxesPesewas: 180,
+  promoDiscountPesewas: 500,
+  totalPaidPesewas: 5650,
+  paymentMethod: 'MTN Mobile Money',
+  paymentStatus: 'SUCCESS',
+);
+
+final rideReceiptProvider = Provider<RideReceipt>((_) => _mockRideReceipt);
+
+// ── Providers ─────────────────────────────────────────────────────────────────
+
+/// Currently selected vehicle option id
+final selectedVehicleProvider = StateProvider<String>(
+  (_) => vehicleOptions.first.id,
+);
+
+/// Booking phase: idle → searching → driverFound
+final bookingPhaseProvider =
+    StateNotifierProvider<BookingPhaseNotifier, BookingPhase>(
+  (_) => BookingPhaseNotifier(),
+);
+
+class BookingPhaseNotifier extends StateNotifier<BookingPhase> {
+  BookingPhaseNotifier() : super(BookingPhase.idle);
+
+  void startSearch() => state = BookingPhase.searching;
+  void driverFound() => state = BookingPhase.driverFound;
+  void reset() => state = BookingPhase.idle;
+}
+
+/// Driver matched after search completes
+final matchedDriverProvider = StateProvider<MatchedDriver?>((_) => null);
+
+/// Countdown timer (seconds remaining during search phase)
+final searchCountdownProvider =
+    StateNotifierProvider<CountdownNotifier, int>((_) => CountdownNotifier(45));
+
+class CountdownNotifier extends StateNotifier<int> {
+  CountdownNotifier(super.seconds);
+
+  void tick() {
+    if (state > 0) state--;
+  }
+
+  void reset() => state = 45;
+}
+
+/// ETA countdown (minutes) during an active ride
+final rideEtaProvider =
+    StateNotifierProvider<EtaNotifier, int>((_) => EtaNotifier(4));
+
+class EtaNotifier extends StateNotifier<int> {
+  EtaNotifier(super.minutes);
+
+  void setEta(int minutes) => state = minutes;
+
+  void decrement() {
+    if (state > 0) state--;
+  }
+}
+
+/// Simulates the backend driver-matching flow.
+/// Call this after confirming the ride.
+Future<void> simulateDriverMatching(Ref ref) async {
+  ref.read(bookingPhaseProvider.notifier).startSearch();
+  ref.read(searchCountdownProvider.notifier).reset();
+
+  // Tick countdown every second for 8s then surface a driver
+  for (var i = 0; i < 8; i++) {
+    await Future.delayed(const Duration(seconds: 1));
+    ref.read(searchCountdownProvider.notifier).tick();
+  }
+
+  ref.read(matchedDriverProvider.notifier).state = _mockMatchedDriver;
+  ref.read(bookingPhaseProvider.notifier).driverFound();
+}

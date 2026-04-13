@@ -1,0 +1,159 @@
+import 'package:flutter/material.dart';
+import '../providers/ride_provider.dart';
+import '../screens/driver_found_screen.dart';
+
+// Design tokens
+const _gold = Color(0xFFF5A623);
+const _textPrimary = Color(0xFF161A1D);
+const _textSecondary = Color(0xFF555E68);
+const _success = Color(0xFF27AE60);
+const _successLight = Color(0xFFE8F8EF);
+
+class DriverInfoCard extends StatelessWidget {
+  final MatchedDriver driver;
+
+  const DriverInfoCard({super.key, required this.driver});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => DriverFoundScreen(driver: driver),
+        ),
+      ),
+      child: _DriverCardContent(driver: driver),
+    );
+  }
+}
+
+class _DriverCardContent extends StatelessWidget {
+  final MatchedDriver driver;
+  const _DriverCardContent({required this.driver});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 16,
+            offset: Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          _DriverAvatar(),
+          const SizedBox(width: 14),
+          Expanded(child: _DriverDetails(driver: driver)),
+          _AcceptedBadge(),
+        ],
+      ),
+    );
+  }
+}
+
+class _DriverAvatar extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0xFFE0E6FF),
+        border: Border.all(color: _gold, width: 2),
+      ),
+      child: const Icon(
+        Icons.person_rounded,
+        size: 30,
+        color: Color(0xFF46535D),
+      ),
+    );
+  }
+}
+
+class _DriverDetails extends StatelessWidget {
+  final MatchedDriver driver;
+  const _DriverDetails({required this.driver});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          driver.name,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: _textPrimary,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          '${driver.vehicle} • ${driver.plateNumber}',
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w400,
+            color: _textSecondary,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            const Icon(Icons.star_rounded, size: 14, color: _gold),
+            const SizedBox(width: 3),
+            Text(
+              driver.rating.toStringAsFixed(1),
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _textPrimary,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Icon(Icons.access_time_rounded,
+                size: 13, color: _textSecondary),
+            const SizedBox(width: 3),
+            Text(
+              '${driver.minutesAway} mins away',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w400,
+                color: _textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _AcceptedBadge extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: _successLight,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: const Text(
+        'Accepted',
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: _success,
+        ),
+      ),
+    );
+  }
+}
