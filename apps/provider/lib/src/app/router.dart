@@ -7,6 +7,7 @@ import 'package:shared_ui/shared_ui.dart';
 import '../features/auth/providers/auth_controller.dart';
 import '../features/auth/screens/otp_verification_screen.dart';
 import '../features/auth/screens/phone_input_screen.dart';
+import '../features/auth/screens/role_selection_screen.dart';
 import '../features/onboarding/screens/onboarding_screen.dart';
 import '../features/onboarding/screens/role_picker_screen.dart';
 import '../features/onboarding/screens/splash_screen.dart';
@@ -20,6 +21,7 @@ import '../features/artisan_home/screens/job_request_screen.dart';
 import '../features/artisan_home/widgets/bid_status_banner.dart';
 import '../features/driver_home/screens/active_ride_screen.dart';
 import '../features/driver_home/screens/driver_home_screen.dart';
+import '../core/providers/nav_badge_provider.dart';
 import '../features/profile/providers/provider_type_provider.dart';
 import '../features/driver_home/screens/driver_ride_complete_screen.dart';
 import '../features/driver_home/screens/ride_request_screen.dart';
@@ -48,16 +50,21 @@ import '../features/trips/screens/trips_history_screen.dart';
 final goRouterProvider = Provider<GoRouter>((ref) {
   final refresh = _AuthRouterRefresh(ref);
   return GoRouter(
-    initialLocation: '/onboarding',
+    initialLocation: '/splash',
     refreshListenable: refresh,
     redirect: (context, state) {
       final auth = ref.read(authControllerProvider);
       final loc = state.matchedLocation;
 
+      // Still bootstrapping — keep the splash visible.
+      if (auth is AuthUnknown) {
+        return loc == '/splash' ? null : '/splash';
+      }
+
       const unauthAllowed = {
-        '/splash',
         '/onboarding',
         '/signin/phone',
+        '/signin/role',
         '/signin/otp',
         '/signup/role',
         '/signup/driver',
@@ -79,15 +86,22 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         }
         return null;
       }
-      // From here on: signed out / mid-flow.
-      if (auth is AuthSignInOtp) {
-        return loc == '/signin/otp' ? null : '/signin/otp';
+      // Both roles found — force user to the role selection screen.
+      if (auth is AuthRoleSelection) {
+        return loc == '/signin/role' ? null : '/signin/role';
       }
-      if (auth is AuthSignUpOtp || auth is AuthSignUpReady) {
-        return loc == '/signup/otp' ? null : '/signup/otp';
+      // OTP sent — force user to the OTP screen.
+      if (auth is AuthOtpSent) {
+        final otpRoute = auth.isNewUser ? '/signup/otp' : '/signin/otp';
+        return loc == otpRoute ? null : otpRoute;
       }
-      // AuthUnauthenticated.
-      if (!unauthAllowed.contains(loc)) return '/onboarding';
+      // AuthUnauthenticated — decide between onboarding and sign-in.
+      if (!unauthAllowed.contains(loc)) {
+        // Returning user (has seen onboarding before) → go to sign-in.
+        // First-time user → show onboarding welcome.
+        final hasSeen = ref.read(hasSeenOnboardingProvider);
+        return hasSeen ? '/signin/phone' : '/onboarding';
+      }
       return null;
     },
     routes: [
@@ -104,6 +118,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ProviderPhoneInputScreen(
           mode: PhoneInputMode.signIn,
         ),
+      ),
+      GoRoute(
+        path: '/signin/role',
+        builder: (context, state) => const SignInRoleSelectionScreen(),
       ),
       GoRoute(
         path: '/signin/otp',
@@ -325,6 +343,9 @@ class _ProviderEarningsSwitcher extends ConsumerWidget {
 /// The tab set adapts to the active provider role:
 ///   - Driver:  Home, Earnings, Trips, Account
 ///   - Artisan: Jobs, Earnings, Messages, Account
+///
+/// Badge counts are driven by [navBadgeProvider]. When a tab is tapped its
+/// badge is cleared automatically — just like any normal notification badge.
 class _DriverShell extends ConsumerWidget {
   const _DriverShell({required this.child});
 
@@ -338,10 +359,16 @@ class _DriverShell extends ConsumerWidget {
     return index >= 0 ? index : 0;
   }
 
+  void _onTabTap(BuildContext context, WidgetRef ref, String path) {
+    ref.read(navBadgeProvider.notifier).clear(path);
+    context.go(path);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final currentIndex = _currentIndex(context);
     final isArtisan = ref.watch(providerTypeProvider).isArtisan;
+    final badges = ref.watch(navBadgeProvider);
 
     return Scaffold(
       body: child,
@@ -358,16 +385,16 @@ class _DriverShell extends ConsumerWidget {
             child: Row(
               children: isArtisan
                   ? [
-                      _NavTab(icon: Icons.work_outline, label: 'Jobs', isActive: currentIndex == 0, onTap: () => context.go('/home')),
-                      _NavTab(icon: Icons.account_balance_wallet_outlined, label: 'Earnings', isActive: currentIndex == 1, onTap: () => context.go('/earnings')),
-                      _NavTab(icon: Icons.chat_bubble_outline, label: 'Messages', isActive: currentIndex == 2, badgeCount: 9, onTap: () => context.go('/trips')),
-                      _NavTab(icon: Icons.account_circle_outlined, label: 'Account', isActive: currentIndex == 3, onTap: () => context.go('/account')),
+                      _NavTab(icon: Icons.work_outline, label: 'Jobs', isActive: currentIndex == 0, badgeCount: badges['/home'], onTap: () => _onTabTap(context, ref, '/home')),
+                      _NavTab(icon: Icons.account_balance_wallet_outlined, label: 'Earnings', isActive: currentIndex == 1, badgeCount: badges['/earnings'], onTap: () => _onTabTap(context, ref, '/earnings')),
+                      _NavTab(icon: Icons.chat_bubble_outline, label: 'Messages', isActive: currentIndex == 2, badgeCount: badges['/trips'], onTap: () => _onTabTap(context, ref, '/trips')),
+                      _NavTab(icon: Icons.account_circle_outlined, label: 'Account', isActive: currentIndex == 3, badgeCount: badges['/account'], onTap: () => _onTabTap(context, ref, '/account')),
                     ]
                   : [
-                      _NavTab(icon: Icons.dashboard_outlined, label: 'Home', isActive: currentIndex == 0, onTap: () => context.go('/home')),
-                      _NavTab(icon: Icons.account_balance_wallet_outlined, label: 'Earnings', isActive: currentIndex == 1, badgeCount: 9, onTap: () => context.go('/earnings')),
-                      _NavTab(icon: Icons.history, label: 'Trips', isActive: currentIndex == 2, onTap: () => context.go('/trips')),
-                      _NavTab(icon: Icons.account_circle_outlined, label: 'Account', isActive: currentIndex == 3, onTap: () => context.go('/account')),
+                      _NavTab(icon: Icons.dashboard_outlined, label: 'Home', isActive: currentIndex == 0, badgeCount: badges['/home'], onTap: () => _onTabTap(context, ref, '/home')),
+                      _NavTab(icon: Icons.account_balance_wallet_outlined, label: 'Earnings', isActive: currentIndex == 1, badgeCount: badges['/earnings'], onTap: () => _onTabTap(context, ref, '/earnings')),
+                      _NavTab(icon: Icons.history, label: 'Trips', isActive: currentIndex == 2, badgeCount: badges['/trips'], onTap: () => _onTabTap(context, ref, '/trips')),
+                      _NavTab(icon: Icons.account_circle_outlined, label: 'Account', isActive: currentIndex == 3, badgeCount: badges['/account'], onTap: () => _onTabTap(context, ref, '/account')),
                     ],
             ),
           ),
