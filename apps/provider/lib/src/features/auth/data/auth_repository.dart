@@ -11,6 +11,12 @@ class AuthRepository {
   final AuthService _service;
   final TokenStorage _tokenStorage;
 
+  /// Read the persisted active role and convert to [AuthRole].
+  Future<AuthRole?> _activeRole() async {
+    final saved = await _tokenStorage.readRole();
+    return saved != null ? AuthRole.fromString(saved) : null;
+  }
+
   /// Register a new account. Sends OTP — no tokens persisted yet.
   Future<void> register(RegisterRequest request) async {
     await _service.register(request);
@@ -60,7 +66,7 @@ class AuthRepository {
   /// Fetch the user's full profile from GET /users/me.
   Future<AuthUser> fetchProfile() async {
     final profile = await _service.getMe();
-    return AuthUser.fromProfile(profile);
+    return AuthUser.fromProfile(profile, activeRole: await _activeRole());
   }
 
   /// Try to restore a session from stored tokens.
@@ -70,7 +76,7 @@ class AuthRepository {
     if (token == null) return null;
     try {
       final profile = await _service.getMe();
-      return AuthUser.fromProfile(profile);
+      return AuthUser.fromProfile(profile, activeRole: await _activeRole());
     } catch (_) {
       return null;
     }
@@ -80,7 +86,7 @@ class AuthRepository {
   /// Returns the updated [AuthUser].
   Future<AuthUser> updateProfile(UpdateProfileRequest request) async {
     final profile = await _service.updateMe(request);
-    return AuthUser.fromProfile(profile);
+    return AuthUser.fromProfile(profile, activeRole: await _activeRole());
   }
 
   /// Update driver-specific fields via PUT /users/me/driver.
@@ -89,7 +95,7 @@ class AuthRepository {
     UpdateDriverProfileRequest request,
   ) async {
     final profile = await _service.updateDriver(request);
-    return AuthUser.fromProfile(profile);
+    return AuthUser.fromProfile(profile, activeRole: await _activeRole());
   }
 
   /// Update artisan-specific fields via PUT /users/me/artisan.
@@ -98,7 +104,7 @@ class AuthRepository {
     UpdateArtisanProfileRequest request,
   ) async {
     final profile = await _service.updateArtisan(request);
-    return AuthUser.fromProfile(profile);
+    return AuthUser.fromProfile(profile, activeRole: await _activeRole());
   }
 
   /// Clear all stored tokens and phone.

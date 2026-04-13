@@ -346,12 +346,12 @@ class AuthController extends StateNotifier<AuthState> {
         role: current.role,
         error: e.message,
       );
-    } catch (_) {
+    } catch (e) {
       state = AuthOtpSent(
         phone: current.phone,
         isNewUser: current.isNewUser,
         role: current.role,
-        error: 'Verification failed. Please try again.',
+        error: 'Verification failed: $e',
       );
     }
   }

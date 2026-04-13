@@ -25,8 +25,7 @@ class EditProviderProfileScreen extends ConsumerStatefulWidget {
 
 class _EditProviderProfileScreenState
     extends ConsumerState<EditProviderProfileScreen> {
-  late final TextEditingController _legalNameController;
-  late final TextEditingController _displayNameController;
+  late final TextEditingController _nameController;
   late final TextEditingController _emailController;
   bool _isSaving = false;
   bool _hasChanges = false;
@@ -36,21 +35,16 @@ class _EditProviderProfileScreenState
   void initState() {
     super.initState();
     final user = ref.read(currentUserProvider);
-    _legalNameController = TextEditingController(text: user?.fullName ?? '');
-    _displayNameController =
-        TextEditingController(text: user?.displayName ?? '');
+    _nameController = TextEditingController(text: user?.fullName ?? '');
     _emailController = TextEditingController(text: user?.email ?? '');
-    _legalNameController.addListener(_onFieldChanged);
-    _displayNameController.addListener(_onFieldChanged);
+    _nameController.addListener(_onFieldChanged);
     _emailController.addListener(_onFieldChanged);
   }
 
   void _onFieldChanged() {
     final user = ref.read(currentUserProvider);
-    final changed =
-        _legalNameController.text.trim() != (user?.fullName ?? '') ||
-            _displayNameController.text.trim() != (user?.displayName ?? '') ||
-            _emailController.text.trim() != (user?.email ?? '');
+    final changed = _nameController.text.trim() != (user?.fullName ?? '') ||
+        _emailController.text.trim() != (user?.email ?? '');
     if (changed != _hasChanges) {
       setState(() => _hasChanges = changed);
     }
@@ -58,8 +52,7 @@ class _EditProviderProfileScreenState
 
   @override
   void dispose() {
-    _legalNameController.dispose();
-    _displayNameController.dispose();
+    _nameController.dispose();
     _emailController.dispose();
     super.dispose();
   }
@@ -123,70 +116,41 @@ class _EditProviderProfileScreenState
   }
 
   Future<void> _saveProfile() async {
-    final legalName = _legalNameController.text.trim();
-    final displayName = _displayNameController.text.trim();
+    final name = _nameController.text.trim();
     final email = _emailController.text.trim();
 
-    if (legalName.isEmpty) {
+    if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Legal name cannot be empty')),
+        const SnackBar(content: Text('Name cannot be empty')),
       );
       return;
     }
 
     setState(() => _isSaving = true);
 
-    final notifier = ref.read(authControllerProvider.notifier);
-
-    // 1. Save legal name + email via PUT /users/me
-    final accountError = await notifier.updateProfile(
-      UpdateProfileRequest(
-        fullName: legalName,
-        email: email.isNotEmpty ? email : null,
-      ),
-    );
-
-    if (accountError != null) {
-      if (mounted) {
-        setState(() => _isSaving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(accountError)),
-        );
-      }
-      return;
-    }
-
-    // 2. Save display name via role-specific endpoint
-    if (displayName.isNotEmpty) {
-      final providerType = ref.read(providerTypeProvider);
-      final roleError = providerType.isDriver
-          ? await notifier
-                .updateDriverProfile(UpdateDriverProfileRequest(
-              displayName: displayName,
-            ))
-          : await notifier
-                .updateArtisanProfile(UpdateArtisanProfileRequest(
-              displayName: displayName,
-            ));
-
-      if (roleError != null && mounted) {
-        setState(() => _isSaving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(roleError)),
-        );
-        return;
-      }
-    }
+    final error =
+        await ref.read(authControllerProvider.notifier).updateProfile(
+              UpdateProfileRequest(
+                fullName: name,
+                email: email.isNotEmpty ? email : null,
+              ),
+            );
 
     if (!mounted) return;
     setState(() {
       _isSaving = false;
-      _hasChanges = false;
+      if (error == null) _hasChanges = false;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Profile updated')),
-    );
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile updated')),
+      );
+    }
   }
 
   @override
@@ -293,8 +257,7 @@ class _EditProviderProfileScreenState
             localPhoto: localPhoto,
             isUploadingPhoto: _isUploadingPhoto,
             onPhotoTap: _pickAndUploadPhoto,
-            legalNameController: _legalNameController,
-            displayNameController: _displayNameController,
+            nameController: _nameController,
             emailController: _emailController,
             phone: user?.phone ?? '',
           ),
@@ -518,8 +481,7 @@ class _EditProviderProfileScreenState
 
 class _IdentityCard extends StatelessWidget {
   const _IdentityCard({
-    required this.legalNameController,
-    required this.displayNameController,
+    required this.nameController,
     required this.emailController,
     required this.phone,
     required this.onPhotoTap,
@@ -528,8 +490,7 @@ class _IdentityCard extends StatelessWidget {
     this.isUploadingPhoto = false,
   });
 
-  final TextEditingController legalNameController;
-  final TextEditingController displayNameController;
+  final TextEditingController nameController;
   final TextEditingController emailController;
   final String phone;
   final String? photoUrl;
@@ -616,18 +577,10 @@ class _IdentityCard extends StatelessWidget {
                 ),
                 const SizedBox(height: MyShopSpacing.lg),
 
-                // Display Name (public-facing, per role)
+                // Full Name
                 _ProfileField(
-                  label: 'Display Name',
-                  controller: displayNameController,
-                  icon: Icons.badge_outlined,
-                ),
-                const SizedBox(height: MyShopSpacing.md),
-
-                // Legal Name (KYC / payments)
-                _ProfileField(
-                  label: 'Legal Name',
-                  controller: legalNameController,
+                  label: 'Full Name',
+                  controller: nameController,
                   icon: Icons.person_outline,
                 ),
                 const SizedBox(height: MyShopSpacing.md),
