@@ -1,0 +1,165 @@
+/// DTOs for the verification & document upload endpoints.
+/// Matches the contract in `docs/mobile-api-endpoints.md`.
+
+/// Types of documents that can be uploaded for verification.
+enum DocumentType {
+  profilePhoto('profile_photo'),
+  driversLicence('drivers_licence'),
+  vehicleRegistration('vehicle_registration'),
+  roadworthinessCertificate('roadworthiness_certificate'),
+  nationalId('national_id'),
+  ghanaCard('ghana_card'),
+  tradeCertificate('trade_certificate'),
+  businessRegistration('business_registration'),
+  portfolioPhoto('portfolio_photo');
+
+  const DocumentType(this.value);
+  final String value;
+
+  static DocumentType? fromString(String? s) {
+    if (s == null) return null;
+    return DocumentType.values.where((e) => e.value == s).firstOrNull;
+  }
+}
+
+/// POST /verification/documents — request body.
+class PresignedUrlRequest {
+  const PresignedUrlRequest({
+    required this.providerType,
+    required this.documentType,
+    required this.fileName,
+    required this.mimeType,
+    required this.fileSize,
+    this.fileHash,
+    this.expiresAt,
+  });
+
+  final String providerType;
+  final String documentType;
+  final String fileName;
+  final String mimeType;
+  final int fileSize;
+  final String? fileHash;
+  final String? expiresAt;
+
+  Map<String, dynamic> toJson() {
+    final json = <String, dynamic>{
+      'providerType': providerType,
+      'documentType': documentType,
+      'fileName': fileName,
+      'mimeType': mimeType,
+      'fileSize': fileSize,
+    };
+    if (fileHash != null) json['fileHash'] = fileHash;
+    if (expiresAt != null) json['expiresAt'] = expiresAt;
+    return json;
+  }
+}
+
+/// POST /verification/documents — response.
+class PresignedUrlResponse {
+  const PresignedUrlResponse({
+    required this.documentId,
+    required this.uploadUrl,
+    required this.expiresIn,
+    required this.s3Key,
+  });
+
+  factory PresignedUrlResponse.fromJson(Map<String, dynamic> json) {
+    return PresignedUrlResponse(
+      documentId: json['documentId'] as String,
+      uploadUrl: json['uploadUrl'] as String,
+      expiresIn: json['expiresIn'] as int,
+      s3Key: json['s3Key'] as String,
+    );
+  }
+
+  final String documentId;
+  final String uploadUrl;
+  final int expiresIn;
+  final String s3Key;
+}
+
+/// A single document from GET /verification/status → documents[].
+class DocumentInfo {
+  const DocumentInfo({
+    required this.id,
+    required this.providerType,
+    required this.documentType,
+    required this.status,
+    required this.isCurrent,
+    required this.createdAt,
+    this.fileUrl,
+    this.reviewedBy,
+    this.reviewedAt,
+    this.rejectionReason,
+    this.expiresAt,
+    this.version = 1,
+  });
+
+  factory DocumentInfo.fromJson(Map<String, dynamic> json) {
+    return DocumentInfo(
+      id: json['id'] as String,
+      providerType: json['providerType'] as String,
+      documentType: json['documentType'] as String,
+      status: json['status'] as String,
+      fileUrl: json['fileUrl'] as String?,
+      reviewedBy: json['reviewedBy'] as String?,
+      reviewedAt: json['reviewedAt'] as String?,
+      rejectionReason: json['rejectionReason'] as String?,
+      expiresAt: json['expiresAt'] as String?,
+      version: json['version'] as int? ?? 1,
+      isCurrent: json['isCurrent'] as bool? ?? true,
+      createdAt: json['createdAt'] as String,
+    );
+  }
+
+  final String id;
+  final String providerType;
+  final String documentType;
+  final String status; // uploaded, verified, rejected
+  final String? fileUrl;
+  final String? reviewedBy;
+  final String? reviewedAt;
+  final String? rejectionReason;
+  final String? expiresAt;
+  final int version;
+  final bool isCurrent;
+  final String createdAt;
+
+  bool get isVerified => status == 'verified';
+  bool get isRejected => status == 'rejected';
+  bool get isUploaded => status == 'uploaded';
+}
+
+/// GET /verification/status — full response.
+class VerificationStatusResponse {
+  const VerificationStatusResponse({
+    required this.documents,
+    this.driverData,
+    this.artisanData,
+  });
+
+  factory VerificationStatusResponse.fromJson(Map<String, dynamic> json) {
+    return VerificationStatusResponse(
+      driverData: json['driver'] as Map<String, dynamic>?,
+      artisanData: json['artisan'] as Map<String, dynamic>?,
+      documents: (json['documents'] as List<dynamic>?)
+              ?.map(
+                  (e) => DocumentInfo.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
+    );
+  }
+
+  final Map<String, dynamic>? driverData;
+  final Map<String, dynamic>? artisanData;
+  final List<DocumentInfo> documents;
+
+  /// Find the current document for a given type, or null if not uploaded.
+  DocumentInfo? documentFor(String type) {
+    return documents
+        .where((d) => d.documentType == type && d.isCurrent)
+        .firstOrNull;
+  }
+}

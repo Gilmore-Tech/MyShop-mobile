@@ -1,33 +1,55 @@
-import 'auth_models.dart';
+import '../models/auth_dtos.dart';
+import '../models/user_dtos.dart';
 
-/// Auth API contract. Implementations: [MockAuthService] for development,
-/// real Dio-backed impl to follow when the backend is live.
+/// Auth API contract.
+///
+/// Implementations:
+/// - [MockAuthService] for local UI development
+/// - [RealAuthService] for the live backend
 abstract class AuthService {
-  Future<OtpRequestResult> requestOtp(String phone);
+  /// Register a new account. Sends OTP to the phone.
+  /// POST /auth/register
+  Future<void> register(RegisterRequest request);
 
-  Future<OtpVerifyResult> verifyOtp({
-    required String otpId,
-    required String code,
-  });
+  /// Login as an existing driver. Sends OTP to the phone.
+  /// POST /auth/login/driver
+  Future<void> loginDriver(String phone);
 
-  Future<AuthUser> registerDriver({
-    required String accessToken,
-    required String phone,
-    required DriverRegistrationPayload payload,
-  });
+  /// Login as an existing artisan. Sends OTP to the phone.
+  /// POST /auth/login/artisan
+  Future<void> loginArtisan(String phone);
 
-  Future<AuthUser> registerArtisan({
-    required String accessToken,
-    required String phone,
-    required ArtisanRegistrationPayload payload,
-  });
+  /// Check which roles are registered to a phone number.
+  /// POST /auth/check-phone
+  /// Returns a list of roles (e.g. ["driver"], ["artisan"], ["driver", "artisan"]).
+  Future<List<String>> checkPhone(String phone);
 
-  Future<AuthUser?> currentUser(String accessToken);
+  /// Login with phone number, auto-detecting the user's role.
+  /// Tries driver first, then artisan. Returns the detected role.
+  Future<String> login(String phone);
+
+  /// Verify OTP and receive JWT tokens.
+  /// POST /auth/verify-otp
+  Future<TokenResponse> verifyOtp(VerifyOtpRequest request);
+
+  /// Refresh an expired access token.
+  /// POST /auth/refresh
+  Future<String> refreshToken(String refreshToken);
+
+  /// Get the current user's full profile.
+  /// GET /users/me
+  Future<UserProfile> getMe();
+
+  /// Update user profile fields.
+  /// PUT /users/me
+  Future<UserProfile> updateMe(UpdateProfileRequest request);
 }
 
+/// Generic auth exception with a user-facing message.
 class AuthException implements Exception {
-  AuthException(this.message);
+  AuthException(this.message, {this.code});
   final String message;
+  final String? code;
   @override
-  String toString() => 'AuthException: $message';
+  String toString() => 'AuthException($code): $message';
 }
