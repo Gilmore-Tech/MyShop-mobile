@@ -5,6 +5,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/current_user_provider.dart';
 import '../../driver_home/providers/driver_earnings_provider.dart';
+import '../../profile/providers/verification_provider.dart';
 import '../widgets/weekly_performance_chart.dart';
 
 /// Earnings dashboard — balance card, stats, weekly chart, commission, payouts.
@@ -18,6 +19,13 @@ class EarningsDashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
     final earningsAsync = ref.watch(driverEarningsProvider);
+    final photoState = ref.watch(localProfilePhotoProvider);
+    final backendPhotoUrl = user?.profilePhotoUrl;
+    final ImageProvider? avatarImage = photoState.localFile != null
+        ? FileImage(photoState.localFile!)
+        : (backendPhotoUrl ?? photoState.cloudinaryUrl) != null
+            ? NetworkImage(backendPhotoUrl ?? photoState.cloudinaryUrl!)
+            : null;
 
     final todayAmount = earningsAsync.whenOrNull(data: (e) => e.todayAmountPesewas) ?? 0;
     final weekAmount = earningsAsync.whenOrNull(data: (e) => e.weekAmountPesewas) ?? 0;
@@ -72,11 +80,14 @@ class EarningsDashboardScreen extends ConsumerWidget {
                       ),
                     ]),
                     const SizedBox(width: MyShopSpacing.md),
-                    const CircleAvatar(
+                    CircleAvatar(
                       radius: 18,
-                      backgroundColor: Color(0xFFFCEAE1),
-                      child: Icon(Icons.person,
-                          size: 18, color: MyShopColors.textSecondary),
+                      backgroundColor: const Color(0xFFFCEAE1),
+                      backgroundImage: avatarImage,
+                      child: avatarImage == null
+                          ? const Icon(Icons.person,
+                              size: 18, color: MyShopColors.textSecondary)
+                          : null,
                     ),
                   ]),
                 ],

@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/current_user_provider.dart';
+import '../../profile/providers/verification_provider.dart';
+import '../../profile/widgets/incomplete_profile_sheet.dart';
 import '../providers/artisan_earnings_provider.dart';
 import '../widgets/artisan_home_header.dart';
 import '../widgets/artisan_online_banner.dart';
@@ -26,7 +28,24 @@ class ArtisanHomeScreen extends ConsumerStatefulWidget {
 }
 
 class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
-  bool _isOnline = true;
+  bool _isOnline = false;
+
+  void _handleToggle() {
+    // Going offline is always allowed.
+    if (_isOnline) {
+      setState(() => _isOnline = false);
+      return;
+    }
+
+    // Going online requires a complete profile.
+    final completion = ref.read(profileCompletionProvider);
+    if (!completion.isComplete) {
+      showIncompleteProfileSheet(context, completion: completion);
+      return;
+    }
+
+    setState(() => _isOnline = true);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,12 +78,16 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
           children: [
             // 1. Header — real user data
             ArtisanHomeHeader(
-              businessName: user?.fullName ?? 'My Business',
+              businessName: user?.businessName ??
+                  user?.displayName ??
+                  'My Business',
               region: categories != null && categories.isNotEmpty
                   ? categories
                   : 'Ghana',
               hasUnreadNotifications: false,
-              avatarUrl: user?.artisanProfile?.profilePhotoUrl,
+              avatarUrl: user?.profilePhotoUrl
+                  ?? ref.watch(localProfilePhotoProvider).cloudinaryUrl,
+              localAvatarFile: ref.watch(localProfilePhotoProvider).localFile,
               onNotificationsTap: () {
                 // TODO: Navigate to notifications screen
               },
@@ -74,7 +97,7 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
             // 2. Online status banner
             ArtisanOnlineBanner(
               isOnline: _isOnline,
-              onToggle: () => setState(() => _isOnline = !_isOnline),
+              onToggle: () => _handleToggle(),
             ),
 
             const SizedBox(height: MyShopSpacing.lg),

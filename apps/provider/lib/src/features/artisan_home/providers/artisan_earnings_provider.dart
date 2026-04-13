@@ -14,3 +14,14 @@ final artisanEarningsProvider = FutureProvider<DriverEarnings>((ref) async {
     return DriverEarnings.empty;
   }
 });
+
+/// Provides earnings for a specific period (today, week, month).
+/// Usage: `ref.watch(artisanEarningsByPeriodProvider('week'))`
+final artisanEarningsByPeriodProvider =
+    FutureProvider.family<DriverEarnings, String>((ref, period) async {
+  try {
+    return await ref.watch(earningsServiceProvider).getEarnings(period: period);
+  } catch (_) {
+    return DriverEarnings.empty;
+  }
+});

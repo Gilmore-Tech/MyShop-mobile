@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 
@@ -11,6 +13,7 @@ class ArtisanHomeHeader extends StatelessWidget {
     required this.region,
     this.hasUnreadNotifications = false,
     this.avatarUrl,
+    this.localAvatarFile,
     this.onNotificationsTap,
     this.onAvatarTap,
   });
@@ -19,6 +22,7 @@ class ArtisanHomeHeader extends StatelessWidget {
   final String region;
   final bool hasUnreadNotifications;
   final String? avatarUrl;
+  final File? localAvatarFile;
   final VoidCallback? onNotificationsTap;
   final VoidCallback? onAvatarTap;
 
@@ -128,14 +132,19 @@ class ArtisanHomeHeader extends StatelessWidget {
                       color: MyShopColors.divider,
                       width: 1.5,
                     ),
-                    image: avatarUrl != null
+                    image: localAvatarFile != null
                         ? DecorationImage(
-                            image: NetworkImage(avatarUrl!),
+                            image: FileImage(localAvatarFile!),
                             fit: BoxFit.cover,
                           )
-                        : null,
+                        : avatarUrl != null
+                            ? DecorationImage(
+                                image: NetworkImage(avatarUrl!),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
                   ),
-                  child: avatarUrl == null
+                  child: localAvatarFile == null && avatarUrl == null
                       ? const Icon(
                           Icons.person,
                           color: MyShopColors.textSecondary,
