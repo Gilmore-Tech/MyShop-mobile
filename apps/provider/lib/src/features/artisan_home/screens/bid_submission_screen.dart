@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -56,6 +58,7 @@ class _BidSubmissionScreenState extends State<BidSubmissionScreen> {
   late final TextEditingController _eta;
   late final TextEditingController _notes;
   late final TextEditingController _duration;
+  final List<File> _attachments = [];
 
   @override
   void initState() {
@@ -180,7 +183,11 @@ class _BidSubmissionScreenState extends State<BidSubmissionScreen> {
             // Notes
             _FieldWithLabel(
               label: 'NOTES',
-              child: _NotesField(controller: _notes),
+              child: _NotesField(
+                controller: _notes,
+                attachments: _attachments,
+                onFilePicked: (file) => setState(() => _attachments.add(file)),
+              ),
             ),
             const SizedBox(height: MyShopSpacing.lg),
 
@@ -498,9 +505,15 @@ class _NumberField extends StatelessWidget {
 }
 
 class _NotesField extends StatelessWidget {
-  const _NotesField({required this.controller});
+  const _NotesField({
+    required this.controller,
+    required this.attachments,
+    required this.onFilePicked,
+  });
 
   final TextEditingController controller;
+  final List<File> attachments;
+  final ValueChanged<File> onFilePicked;
 
   @override
   Widget build(BuildContext context) {
@@ -536,13 +549,45 @@ class _NotesField extends StatelessWidget {
               ),
             ),
           ),
+          if (attachments.isNotEmpty) ...[
+            const SizedBox(height: MyShopSpacing.sm),
+            Wrap(
+              spacing: MyShopSpacing.sm,
+              runSpacing: MyShopSpacing.xs,
+              children: attachments
+                  .map((f) => Chip(
+                        label: Text(
+                          f.path.split('/').last,
+                          style: MyShopTypography.body2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        deleteIcon:
+                            const Icon(Icons.close, size: 14),
+                        onDeleted: () {},
+                        visualDensity: VisualDensity.compact,
+                      ))
+                  .toList(),
+            ),
+          ],
           const SizedBox(height: MyShopSpacing.sm),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              _IconBubble(icon: Icons.camera_alt_outlined, onTap: () {}),
+              _IconBubble(
+                icon: Icons.camera_alt_outlined,
+                onTap: () async {
+                  final file = await MediaPickerHelper.pickImage(context);
+                  if (file != null) onFilePicked(file);
+                },
+              ),
               const SizedBox(width: MyShopSpacing.sm),
-              _IconBubble(icon: Icons.attach_file, onTap: () {}),
+              _IconBubble(
+                icon: Icons.attach_file,
+                onTap: () async {
+                  final file = await MediaPickerHelper.pickAttachment(context);
+                  if (file != null) onFilePicked(file);
+                },
+              ),
             ],
           ),
         ],

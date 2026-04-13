@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../auth/providers/current_user_provider.dart';
+import '../providers/artisan_earnings_provider.dart';
 import '../widgets/artisan_home_header.dart';
 import '../widgets/artisan_online_banner.dart';
 import '../widgets/artisan_quick_actions.dart';
-import '../widgets/emergency_request_modal.dart';
-import '../widgets/live_job_card.dart';
 import '../widgets/performance_summary_section.dart';
-import '../widgets/special_offer_banner.dart';
 
 /// Artisan Home — card-first dashboard for artisan providers.
 ///
@@ -19,8 +17,7 @@ import '../widgets/special_offer_banner.dart';
 ///   2. Online/Offline status banner
 ///   3. Performance Summary (Earnings, Avg Rating, Jobs Done)
 ///   4. Quick actions row (Schedule, Inbox, Payout)
-///   5. Live Job Feed (cards)
-///   6. Special offer banner
+///   5. Live Job Feed (empty state — no endpoint yet)
 class ArtisanHomeScreen extends ConsumerStatefulWidget {
   const ArtisanHomeScreen({super.key});
 
@@ -31,21 +28,28 @@ class ArtisanHomeScreen extends ConsumerStatefulWidget {
 class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
   bool _isOnline = true;
 
-  Future<void> _showEmergencyRequest(BuildContext context) {
-    return EmergencyRequestModal.show(
-      context,
-      clientName: 'Ekow Taylor',
-      clientRating: 5.0,
-      jobTitle: 'AC Unit Leakage & Electrical Sparking',
-      locationLabel: 'Asokwa, Kumasi',
-      distanceKm: 0.8,
-      countdown: const Duration(minutes: 5),
-      onViewDetails: () => context.push('/job-request'),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final user = ref.watch(currentUserProvider);
+    final earningsAsync = ref.watch(artisanEarningsProvider);
+
+    // Derive service categories for the subtitle
+    final categories = user?.artisanProfile?.serviceCategories
+        ?.map((c) => c.category.name)
+        .join(', ');
+
+    // Format earnings from provider
+    final earningsDisplay = earningsAsync.when(
+      data: (e) => _formatGhs(e.todayAmountPesewas),
+      loading: () => '...',
+      error: (_, __) => '0',
+    );
+    final earningsTrend = earningsAsync.when(
+      data: (e) => e.weekAmountPesewas > 0 ? '+${_formatGhs(e.weekAmountPesewas)}/wk' : '--',
+      loading: () => '--',
+      error: (_, __) => '--',
+    );
+
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
       body: SafeArea(
@@ -53,12 +57,17 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
-            // 1. Header
+            // 1. Header — real user data
             ArtisanHomeHeader(
-              businessName: 'Jayso Ent.',
-              region: 'Ashanti Region',
-              hasUnreadNotifications: true,
-              onNotificationsTap: () => _showEmergencyRequest(context),
+              businessName: user?.fullName ?? 'My Business',
+              region: categories != null && categories.isNotEmpty
+                  ? categories
+                  : 'Ghana',
+              hasUnreadNotifications: false,
+              avatarUrl: user?.artisanProfile?.profilePhotoUrl,
+              onNotificationsTap: () {
+                // TODO: Navigate to notifications screen
+              },
               onAvatarTap: () {},
             ),
 
@@ -70,13 +79,13 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
 
             const SizedBox(height: MyShopSpacing.lg),
 
-            // 3. Performance summary
+            // 3. Performance summary — real data where available
             PerformanceSummarySection(
-              earnings: '450',
-              earningsTrend: '5%',
-              rating: '4.92',
-              ratingPercentile: 'Top 5%',
-              jobsDone: 25,
+              earnings: earningsDisplay,
+              earningsTrend: earningsTrend,
+              rating: '--',
+              ratingPercentile: 'No ratings yet',
+              jobsDone: user?.artisanProfile?.completedJobsCount ?? 0,
               onDetailsTap: () {},
             ),
 
@@ -97,8 +106,8 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
                   Container(
                     width: 8,
                     height: 8,
-                    decoration: const BoxDecoration(
-                      color: MyShopColors.error,
+                    decoration: BoxDecoration(
+                      color: MyShopColors.textSecondary.withValues(alpha: 0.4),
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -125,9 +134,9 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
                       border: Border.all(color: MyShopColors.divider),
                     ),
                     child: Text(
-                      '24 Nearby',
+                      '0 Nearby',
                       style: MyShopTypography.body2.copyWith(
-                        color: MyShopColors.textPrimary,
+                        color: MyShopColors.textSecondary,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -137,32 +146,55 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
             ),
             const SizedBox(height: MyShopSpacing.md),
 
-            // Live job card
+            // Live job feed — empty state
             Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: MyShopSpacing.md,
               ),
-              child: LiveJobCard(
-                clientName: 'Ama Serwaa',
-                isVerified: true,
-                locationLabel: 'Adum',
-                distanceKm: 1.2,
-                jobTitle: 'Burst Pipe in Kitchen - Emergency',
-                postedAgo: '2 mins ago',
-                bidsTaken: 2,
-                bidsTotal: 3,
-                isUrgent: true,
-                onQuickBid: () {},
-                onTap: () {},
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 40),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFAFAFB),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: MyShopColors.divider.withValues(alpha: 0.5),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: MyShopColors.surfaceGrey,
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: const Icon(
+                        Icons.work_outline,
+                        size: 24,
+                        color: MyShopColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: MyShopSpacing.md),
+                    Text(
+                      'No jobs nearby',
+                      style: MyShopTypography.body1.copyWith(
+                        color: MyShopColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: MyShopSpacing.xs),
+                    Text(
+                      'New job requests will appear here',
+                      style: MyShopTypography.body2.copyWith(
+                        color: MyShopColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-
-            const SizedBox(height: MyShopSpacing.lg),
-
-            // 6. Special offer banner
-            const SpecialOfferBanner(
-              title: 'GHS 50 Off Electrical Fix',
-              code: 'VOLT50',
             ),
 
             const SizedBox(height: MyShopSpacing.xxl),
@@ -170,5 +202,13 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
         ),
       ),
     );
+  }
+
+  String _formatGhs(int pesewas) {
+    final ghs = pesewas / 100;
+    if (ghs == ghs.truncateToDouble()) {
+      return ghs.toStringAsFixed(0);
+    }
+    return ghs.toStringAsFixed(2);
   }
 }
