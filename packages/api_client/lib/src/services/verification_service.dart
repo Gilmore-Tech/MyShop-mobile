@@ -93,6 +93,28 @@ class VerificationService {
     }
   }
 
+  /// Step 3: Confirm that the file was uploaded to cloud storage.
+  /// POST /verification/documents/confirm
+  ///
+  /// This writes the remote URL to the document record and, for
+  /// `profile_photo` documents, updates the role's `profilePhotoUrl`.
+  Future<void> confirmUpload({
+    required String documentId,
+    required String remoteUrl,
+  }) async {
+    try {
+      await _dio.post(
+        '/verification/documents/confirm',
+        data: {
+          'documentId': documentId,
+          'remoteUrl': remoteUrl,
+        },
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   /// Get the current verification status and all uploaded documents.
   /// GET /verification/status
   Future<VerificationStatusResponse> getVerificationStatus() async {
@@ -106,8 +128,12 @@ class VerificationService {
     }
   }
 
-  /// Convenience: request upload URL, then upload the file.
-  /// Returns an [UploadResult] with the documentId and optional remote URL.
+  /// Full 3-step upload flow:
+  ///   1. POST /verification/documents → get documentId + uploadUrl
+  ///   2. Upload file to Cloudinary/S3 using uploadUrl
+  ///   3. POST /verification/documents/confirm → write URL to profile
+  ///
+  /// Returns an [UploadResult] with the documentId and remote URL.
   Future<UploadResult> uploadDocument({
     required String providerType,
     required DocumentType documentType,
@@ -117,6 +143,7 @@ class VerificationService {
     final mimeType = _mimeFromExtension(fileName);
     final fileSize = await file.length();
 
+    // Step 1: Get upload URL from backend
     final uploadInfo = await requestUpload(PresignedUrlRequest(
       providerType: providerType,
       documentType: documentType.value,
@@ -125,11 +152,21 @@ class VerificationService {
       fileSize: fileSize,
     ),);
 
+    // Step 2: Upload file to cloud storage
     final remoteUrl = await uploadFile(
       uploadInfo: uploadInfo,
       file: file,
       mimeType: mimeType,
     );
+
+    // Step 3: Confirm upload — this writes the URL to the document record
+    // and for profile_photo, updates the role's profilePhotoUrl
+    if (remoteUrl != null) {
+      await confirmUpload(
+        documentId: uploadInfo.documentId,
+        remoteUrl: remoteUrl,
+      );
+    }
 
     return UploadResult(
       documentId: uploadInfo.documentId,

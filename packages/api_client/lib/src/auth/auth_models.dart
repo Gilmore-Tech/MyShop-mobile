@@ -28,12 +28,17 @@ class AuthUser {
   });
 
   /// Create an [AuthUser] from a [UserProfile] DTO.
-  factory AuthUser.fromProfile(UserProfile profile) {
-    final role = profile.driver != null
-        ? AuthRole.driver
-        : profile.artisan != null
-            ? AuthRole.artisan
-            : AuthRole.client;
+  ///
+  /// [activeRole] overrides role detection for dual-role accounts.
+  /// When null, falls back to checking which sub-profiles exist
+  /// (driver takes priority over artisan for backwards compatibility).
+  factory AuthUser.fromProfile(UserProfile profile, {AuthRole? activeRole}) {
+    final role = activeRole ??
+        (profile.driver != null
+            ? AuthRole.driver
+            : profile.artisan != null
+                ? AuthRole.artisan
+                : AuthRole.client);
 
     return AuthUser(
       id: profile.id,
@@ -63,10 +68,16 @@ class AuthUser {
   bool get isClient => role == AuthRole.client;
 
   /// The public-facing display name for the active role.
-  /// Falls back to [fullName] (legal name) if no role-specific name is set.
+  /// - **Driver**: always the legal name (fullName)
+  /// - **Artisan**: business name first, then display name, then legal name
+  /// - **Client**: display name, then legal name
   String get displayName {
-    if (isDriver) return driverProfile?.displayName ?? fullName;
-    if (isArtisan) return artisanProfile?.displayName ?? fullName;
+    if (isDriver) return fullName;
+    if (isArtisan) {
+      return artisanProfile?.businessName ??
+          artisanProfile?.displayName ??
+          fullName;
+    }
     if (isClient) return clientProfile?.displayName ?? fullName;
     return fullName;
   }

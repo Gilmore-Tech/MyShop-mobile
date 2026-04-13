@@ -84,12 +84,12 @@ class ClientProfile {
   factory ClientProfile.fromJson(Map<String, dynamic> json) {
     return ClientProfile(
       id: json['id'] as String,
-      displayName: json['displayName'] as String?,
-      profilePhotoUrl: json['profilePhotoUrl'] as String?,
-      loyaltyPointsBalance: json['loyaltyPointsBalance'] as int,
-      referralCode: json['referralCode'] as String?,
-      preferredPaymentMethod: json['preferredPaymentMethod'] as String?,
-      ghanaCardVerified: json['ghanaCardVerified'] as bool,
+      displayName: _asString(json['displayName']),
+      profilePhotoUrl: _asString(json['profilePhotoUrl']),
+      loyaltyPointsBalance: json['loyaltyPointsBalance'] as int? ?? 0,
+      referralCode: _asString(json['referralCode']),
+      preferredPaymentMethod: _asString(json['preferredPaymentMethod']),
+      ghanaCardVerified: json['ghanaCardVerified'] as bool? ?? false,
     );
   }
 
@@ -135,25 +135,25 @@ class DriverProfile {
   factory DriverProfile.fromJson(Map<String, dynamic> json) {
     return DriverProfile(
       id: json['id'] as String,
-      displayName: json['displayName'] as String?,
-      ghanaCardVerified: json['ghanaCardVerified'] as bool,
-      profilePhotoUrl: json['profilePhotoUrl'] as String?,
-      vehicleMake: json['vehicleMake'] as String?,
-      vehicleModel: json['vehicleModel'] as String?,
-      vehicleYear: json['vehicleYear'] as String?,
-      vehiclePlate: json['vehiclePlate'] as String?,
-      vehicleColor: json['vehicleColor'] as String?,
-      verificationStatus: json['verificationStatus'] as String,
-      kycStatus: json['kycStatus'] as String,
-      policeCheckStatus: json['policeCheckStatus'] as String,
-      onlineStatus: json['onlineStatus'] as String,
+      displayName: _asString(json['displayName']),
+      ghanaCardVerified: json['ghanaCardVerified'] as bool? ?? false,
+      profilePhotoUrl: _asString(json['profilePhotoUrl']),
+      vehicleMake: _asString(json['vehicleMake']),
+      vehicleModel: _asString(json['vehicleModel']),
+      vehicleYear: _asString(json['vehicleYear']),
+      vehiclePlate: _asString(json['vehiclePlate']),
+      vehicleColor: _asString(json['vehicleColor']),
+      verificationStatus: _asString(json['verificationStatus']) ?? 'pending',
+      kycStatus: _asString(json['kycStatus']) ?? 'pending',
+      policeCheckStatus: _asString(json['policeCheckStatus']) ?? 'pending',
+      onlineStatus: _asString(json['onlineStatus']) ?? 'offline',
       serviceRadiusKm: _parseDouble(json['serviceRadiusKm']),
-      payoutPreference: json['payoutPreference'] as String,
-      payoutMethod: json['payoutMethod'] as String?,
-      payoutAccountNumber: json['payoutAccountNumber'] as String?,
-      licenceNumber: json['licenceNumber'] as String?,
-      licenceExpiry: json['licenceExpiry'] as String?,
-      cancellationCount30d: json['cancellationCount30d'] as int,
+      payoutPreference: _asString(json['payoutPreference']) ?? 'standard',
+      payoutMethod: _asString(json['payoutMethod']),
+      payoutAccountNumber: _asString(json['payoutAccountNumber']),
+      licenceNumber: _asString(json['licenceNumber']),
+      licenceExpiry: _asString(json['licenceExpiry']),
+      cancellationCount30d: json['cancellationCount30d'] as int? ?? 0,
     );
   }
 
@@ -208,22 +208,22 @@ class ArtisanProfile {
   factory ArtisanProfile.fromJson(Map<String, dynamic> json) {
     return ArtisanProfile(
       id: json['id'] as String,
-      displayName: json['displayName'] as String?,
-      businessName: json['businessName'] as String?,
-      ghanaCardVerified: json['ghanaCardVerified'] as bool,
-      profilePhotoUrl: json['profilePhotoUrl'] as String?,
-      verificationStatus: json['verificationStatus'] as String,
-      kycStatus: json['kycStatus'] as String,
-      policeCheckStatus: json['policeCheckStatus'] as String,
-      onlineStatus: json['onlineStatus'] as String,
+      displayName: _asString(json['displayName']),
+      businessName: _asString(json['businessName']),
+      ghanaCardVerified: json['ghanaCardVerified'] as bool? ?? false,
+      profilePhotoUrl: _asString(json['profilePhotoUrl']),
+      verificationStatus: _asString(json['verificationStatus']) ?? 'pending',
+      kycStatus: _asString(json['kycStatus']) ?? 'pending',
+      policeCheckStatus: _asString(json['policeCheckStatus']) ?? 'pending',
+      onlineStatus: _asString(json['onlineStatus']) ?? 'offline',
       serviceRadiusKm: _parseDouble(json['serviceRadiusKm']),
-      shopCapacity: json['shopCapacity'] as String,
-      maxConcurrentJobs: json['maxConcurrentJobs'] as int,
-      payoutPreference: json['payoutPreference'] as String,
-      payoutMethod: json['payoutMethod'] as String?,
-      payoutAccountNumber: json['payoutAccountNumber'] as String?,
-      completedJobsCount: json['completedJobsCount'] as int,
-      cancellationCount30d: json['cancellationCount30d'] as int,
+      shopCapacity: _asString(json['shopCapacity']) ?? 'solo',
+      maxConcurrentJobs: json['maxConcurrentJobs'] as int? ?? 1,
+      payoutPreference: _asString(json['payoutPreference']) ?? 'standard',
+      payoutMethod: _asString(json['payoutMethod']),
+      payoutAccountNumber: _asString(json['payoutAccountNumber']),
+      completedJobsCount: json['completedJobsCount'] as int? ?? 0,
+      cancellationCount30d: json['cancellationCount30d'] as int? ?? 0,
       serviceCategories: (json['serviceCategories'] as List<dynamic>?)
           ?.map((e) => ServiceCategoryLink.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -438,4 +438,12 @@ double _parseDouble(dynamic value) {
   if (value is int) return value.toDouble();
   if (value is String) return double.parse(value);
   return 0.0;
+}
+
+/// Safely convert a value that may be a String or int to a String?.
+/// Handles backend inconsistencies (e.g. vehicleYear sent as 2022 instead of "2022").
+String? _asString(dynamic value) {
+  if (value == null) return null;
+  if (value is String) return value;
+  return value.toString();
 }
