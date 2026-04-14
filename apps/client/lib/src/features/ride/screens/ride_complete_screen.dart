@@ -1,21 +1,44 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-// ─── Design Tokens ─────────────────────────────────────────────────────────────
-// Source: CLAUDE.md §5.2
-const _kGold = Color(0xFFF5A623);
-const _kDarkSlate = Color(0xFF46535D);
-const _kDarkText = Color(0xFF161A1D);
-const _kTextSecondary = Color(0xFF555E68);
-const _kSurfaceGrey = Color(0xFFF3F5F6);
-const _kOffWhite = Color(0xFFF6F7F8);
-const _kSuccess = Color(0xFF27AE60);
+import '../providers/ride_provider.dart';
+import '../widgets/rate_ride_sheet.dart';
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
+// ── Design Tokens ──────────────────────────────────────────────────────────────
+const _offWhite = Color(0xFFF6F7F8);
+const _surfaceWhite = Color(0xFFFFFFFF);
+const _textPrimary = Color(0xFF161A1D);
+const _textSecondary = Color(0xFF555E68);
+const _gold = Color(0xFFF5A623);
+const _success = Color(0xFF27AE60);
+const _successLight = Color(0xFFE8F8EF);
+const _error = Color(0xFFEB5757);
+const _divider = Color(0xFFE0E0E0);
+const _darkSlate = Color(0xFF46535D);
+const _surfaceGrey = Color(0xFFF3F5F6);
+const _disabled = Color(0xFFBDBDBD);
+const _avatarBg = Color(0xFFE0E6FF);
 
-/// Ride complete screen — fare summary, tip submission, and payment receipt.
-/// PRD §4.3 | EDD §4: final fare from GPS trail, tip via POST /v1/payments/:id/tip
-/// Zero commission on tips; full amount goes directly to driver.
+// ── Viewport ratios (derived from 390×844 reference design) ───────────────────
+//
+// All spatial values are computed as fractions of the live screen dimensions so
+// the layout scales correctly across every phone size and orientation without
+// any conditional breakpoints.
+//
+// Width-relative  → horizontal padding, avatar size, icon size, gap widths
+// Height-relative → vertical spacing, input/button heights, nav bar height
+
+// ── Formatter ─────────────────────────────────────────────────────────────────
+
+String _fmtGhs(int pesewas) {
+  final ghs = pesewas / 100;
+  return 'GHS ${ghs.toStringAsFixed(2)}';
+}
+
+// ── Screen ────────────────────────────────────────────────────────────────────
+
+/// PRD 4.3 — Ride Completion: fare receipt, driver profile, optional tip.
+/// API: POST /v1/payments/:id/tip (EDD § Payments — zero commission, auto-retry)
 class RideCompleteScreen extends ConsumerStatefulWidget {
   const RideCompleteScreen({super.key});
 
@@ -24,9 +47,19 @@ class RideCompleteScreen extends ConsumerStatefulWidget {
 }
 
 class _RideCompleteScreenState extends ConsumerState<RideCompleteScreen> {
-  int? _selectedTipPreset; // null = no preset selected
   final _customTipController = TextEditingController();
-  int _navIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Show rating sheet automatically once the first frame is rendered.
+    // PRD 4.3 — driver marks ride complete → client rates driver.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        showRateRideSheet(context, ref.read(rideReceiptProvider));
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -34,502 +67,252 @@ class _RideCompleteScreenState extends ConsumerState<RideCompleteScreen> {
     super.dispose();
   }
 
-  bool get _tipConfirmEnabled =>
-      _selectedTipPreset != null || _customTipController.text.trim().isNotEmpty;
-
-  void _onPresetTap(int amount) {
-    setState(() {
-      _selectedTipPreset = _selectedTipPreset == amount ? null : amount;
-      if (_selectedTipPreset != null) _customTipController.clear();
-    });
-  }
-
-  void _onCustomChanged(String _) {
-    setState(() => _selectedTipPreset = null);
-  }
-
-  void _onConfirmTip() {
-    // TODO(MSP-XX): POST /v1/payments/:id/tip — zero commission, full to driver
-  }
-
   @override
   Widget build(BuildContext context) {
+    final receipt = ref.watch(rideReceiptProvider);
+    final tipState = ref.watch(tipStateProvider);
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
+
     return Scaffold(
-      backgroundColor: _kOffWhite,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        surfaceTintColor: Colors.white,
-        leading: const BackButton(color: _kDarkText),
-        titleSpacing: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            Text(
-              'Arrived Safe',
-              style: TextStyle(
-                color: _kDarkText,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Text(
-              'Thursday, 24 Oct • 14:32',
-              style: TextStyle(color: _kTextSecondary, fontSize: 12),
-            ),
-          ],
-        ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Divider(height: 1, thickness: 1, color: Colors.grey[200]!),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+      backgroundColor: _offWhite,
+      body: SafeArea(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 16),
-            const _DriverTripCard(),
-            const SizedBox(height: 12),
-            const _FareBreakdownCard(),
-            const SizedBox(height: 12),
-            _TipSection(
-              selectedTipPreset: _selectedTipPreset,
-              customTipController: _customTipController,
-              confirmEnabled: _tipConfirmEnabled,
-              onPresetTap: _onPresetTap,
-              onCustomChanged: _onCustomChanged,
-              onConfirm: _onConfirmTip,
+            _Header(receipt: receipt),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    SizedBox(height: h * 0.014), // ~12dp
+                    _DriverCard(receipt: receipt),
+                    SizedBox(height: h * 0.009), // ~8dp
+                    _RouteCard(receipt: receipt),
+                    SizedBox(height: h * 0.009),
+                    _FareBreakdownCard(receipt: receipt),
+                    SizedBox(height: h * 0.009),
+                    _TipSection(
+                      receipt: receipt,
+                      tipState: tipState,
+                      customController: _customTipController,
+                      onPresetSelected: (pesewas) {
+                        _customTipController.clear();
+                        ref.read(tipStateProvider.notifier).selectPreset(pesewas);
+                      },
+                      onCustomChanged: (text) =>
+                          ref.read(tipStateProvider.notifier).setCustom(text),
+                      onConfirm: tipState.hasAmount
+                          ? () => _submitTip(context, receipt, tipState)
+                          : null,
+                    ),
+                    SizedBox(height: h * 0.028), // ~24dp
+                  ],
+                ),
+              ),
             ),
-            const SizedBox(height: 16),
+            _BottomNav(w: w, h: h),
           ],
         ),
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _navIndex,
-        onTap: (i) => setState(() => _navIndex = i),
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.white,
-        selectedItemColor: _kGold,
-        unselectedItemColor: _kDarkSlate,
-        selectedLabelStyle: const TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
+    );
+  }
+
+  void _submitTip(BuildContext context, RideReceipt receipt, TipState tip) {
+    // TODO: POST /v1/payments/:id/tip — wire up once API client is available
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Tip of ${_fmtGhs(tip.effectivePesewas)} sent to ${receipt.driverFirstName}!',
         ),
-        unselectedLabelStyle: const TextStyle(fontSize: 10),
-        elevation: 8,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.near_me_outlined),
-            activeIcon: Icon(Icons.near_me),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.access_time_outlined),
-            activeIcon: Icon(Icons.access_time),
-            label: 'Activity',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.account_balance_wallet_outlined),
-            activeIcon: Icon(Icons.account_balance_wallet),
-            label: 'Wallet',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
-            label: 'Account',
-          ),
-        ],
+        backgroundColor: _success,
+        behavior: SnackBarBehavior.floating,
       ),
     );
+    ref.read(tipStateProvider.notifier).reset();
+    _customTipController.clear();
   }
 }
 
-// ─── Driver + Trip Card ───────────────────────────────────────────────────────
+// ── Header ────────────────────────────────────────────────────────────────────
 
-class _DriverTripCard extends StatelessWidget {
-  const _DriverTripCard();
+class _Header extends StatelessWidget {
+  final RideReceipt receipt;
+  const _Header({required this.receipt});
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
+
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A000000),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ],
+      color: _surfaceWhite,
+      padding: EdgeInsets.symmetric(
+        horizontal: w * 0.021, // ~8dp
+        vertical: h * 0.012,   // ~10dp
       ),
-      child: Column(
+      child: Row(
         children: [
-          // Driver info row
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Avatar with online dot
-                Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    ClipOval(
-                      child: Image.network(
-                        'https://i.pravatar.cc/150?img=52',
-                        width: 50,
-                        height: 50,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          width: 50,
-                          height: 50,
-                          color: _kSurfaceGrey,
-                          child: const Icon(
-                            Icons.person,
-                            size: 28,
-                            color: _kDarkSlate,
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 1,
-                      right: 1,
-                      child: Container(
-                        width: 13,
-                        height: 13,
-                        decoration: BoxDecoration(
-                          color: _kSuccess,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(width: 12),
-                // Name + car + verified badge
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Kwesi Mensah',
-                        style: TextStyle(
-                          color: _kDarkText,
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      const Text(
-                        'Toyota Vitz • GW-482-22',
-                        style: TextStyle(color: _kTextSecondary, fontSize: 12),
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: _kGold.withAlpha(80)),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.verified_outlined, size: 12, color: _kGold),
-                            SizedBox(width: 4),
-                            Text(
-                              'Verified',
-                              style: TextStyle(
-                                color: _kGold,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Rating
-                const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.star_border_rounded, size: 16, color: _kGold),
-                    SizedBox(width: 3),
-                    Text(
-                      '4.9',
-                      style: TextStyle(
-                        color: _kDarkText,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          const Divider(height: 1, thickness: 1, color: Color(0xFFF0F0F0)),
-
-          // Pickup → Destination route
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Left: icons + dashed connector
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Icon(
-                        Icons.trip_origin,
-                        size: 18,
-                        color: _kDarkSlate,
-                      ),
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: CustomPaint(
-                            painter: _VerticalDashPainter(),
-                            child: const SizedBox(width: 2),
-                          ),
-                        ),
-                      ),
-                      const Icon(
-                        Icons.circle_outlined,
-                        size: 18,
-                        color: _kGold,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(width: 14),
-                  // Right: labels + locations
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text(
-                          'PICKUP',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: _kTextSecondary,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        SizedBox(height: 3),
-                        Text(
-                          'Makola Market, Accra Central',
-                          style: TextStyle(
-                            color: _kDarkText,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        SizedBox(height: 16),
-                        Text(
-                          'DESTINATION',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: _kTextSecondary,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        SizedBox(height: 3),
-                        Text(
-                          'Kotoka International Airport (T3)',
-                          style: TextStyle(
-                            color: _kDarkText,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+          GestureDetector(
+            onTap: () => Navigator.of(context).maybePop(),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: w * 0.021,
+                vertical: h * 0.012,
+              ),
+              child: Icon(
+                Icons.arrow_back,
+                color: _textPrimary,
+                size: w * 0.056, // ~22dp
               ),
             ),
           ),
+          SizedBox(width: w * 0.010), // ~4dp
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Arrived Safe',
+                style: TextStyle(
+                  fontSize: w * 0.051, // ~20dp
+                  fontWeight: FontWeight.w700,
+                  color: _textPrimary,
+                ),
+              ),
+              Text(
+                receipt.completedAt,
+                style: TextStyle(
+                  fontSize: w * 0.031, // ~12dp
+                  fontWeight: FontWeight.w400,
+                  color: _textSecondary,
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 }
 
-// ─── Fare Breakdown Card ──────────────────────────────────────────────────────
+// ── Driver Card ───────────────────────────────────────────────────────────────
 
-/// Final fare calculated from actual GPS trail + duration (EDD §4).
-/// Components: base + distance (per km) + time (per min) + surge multiplier.
-class _FareBreakdownCard extends StatelessWidget {
-  const _FareBreakdownCard();
+class _DriverCard extends StatelessWidget {
+  final RideReceipt receipt;
+  const _DriverCard({required this.receipt});
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+
+    return Container(
+      color: _surfaceWhite,
+      padding: EdgeInsets.all(w * 0.041), // ~16dp
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          _DriverAvatar(w: w),
+          SizedBox(width: w * 0.036), // ~14dp
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  receipt.driverName,
+                  style: TextStyle(
+                    fontSize: w * 0.041, // ~16dp
+                    fontWeight: FontWeight.w700,
+                    color: _textPrimary,
+                  ),
+                ),
+                SizedBox(height: w * 0.008), // ~3dp
+                Text(
+                  receipt.vehicleDisplay,
+                  style: TextStyle(
+                    fontSize: w * 0.031, // ~12dp
+                    fontWeight: FontWeight.w400,
+                    color: _textSecondary,
+                  ),
+                ),
+                if (receipt.isDriverVerified) ...[
+                  SizedBox(height: w * 0.021), // ~8dp
+                  _VerifiedBadge(w: w),
+                ],
+              ],
+            ),
+          ),
+          _RatingPill(rating: receipt.driverRating, w: w),
+        ],
+      ),
+    );
+  }
+}
+
+class _DriverAvatar extends StatelessWidget {
+  final double w;
+  const _DriverAvatar({required this.w});
+
+  @override
+  Widget build(BuildContext context) {
+    final size = w * 0.144; // ~56dp
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: _avatarBg,
+        border: Border.all(color: _gold, width: w * 0.005), // ~2dp
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: w * 0.021,
+            offset: Offset(0, w * 0.005),
+          ),
+        ],
+      ),
+      child: Icon(
+        Icons.person_rounded,
+        size: w * 0.077, // ~30dp
+        color: _darkSlate,
+      ),
+    );
+  }
+}
+
+class _VerifiedBadge extends StatelessWidget {
+  final double w;
+  const _VerifiedBadge({required this.w});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A000000),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ],
+      padding: EdgeInsets.symmetric(
+        horizontal: w * 0.026, // ~10dp
+        vertical: w * 0.010,   // ~4dp
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      decoration: BoxDecoration(
+        color: _successLight,
+        borderRadius: BorderRadius.circular(w * 0.051), // ~20dp
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Section header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: const [
-                Text(
-                  'Fare Breakdown',
-                  style: TextStyle(
-                    color: _kDarkText,
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  'ID: #RID-92834',
-                  style: TextStyle(
-                    color: _kGold,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
+          Icon(
+            Icons.check_circle_rounded,
+            size: w * 0.031, // ~12dp
+            color: _success,
           ),
-          const Divider(height: 1, thickness: 1, color: Color(0xFFF0F0F0)),
-
-          // Fare rows
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
-            child: Column(
-              children: [
-                const _FareRow(label: 'Base Fare', value: 'GHS 12.00'),
-                const SizedBox(height: 10),
-                const _FareRow(
-                  label: 'Distance (8.4 km)',
-                  value: 'GHS 32.50',
-                ),
-                const SizedBox(height: 10),
-                const _FareRow(label: 'Time (24 mins)', value: 'GHS 6.00'),
-                const SizedBox(height: 10),
-                // Surge row with lightning icon
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: const [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.bolt, size: 14, color: _kTextSecondary),
-                        SizedBox(width: 4),
-                        Text(
-                          'Surge Pricing (1.2x)',
-                          style: TextStyle(
-                            color: _kTextSecondary,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      'GHS 9.20',
-                      style: TextStyle(color: _kTextSecondary, fontSize: 13),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                // Dashed separator before subtotals
-                const _HorizontalDashDivider(),
-                const SizedBox(height: 14),
-                const _FareRow(label: 'Subtotal', value: 'GHS 59.70'),
-                const SizedBox(height: 10),
-                const _FareRow(
-                  label: 'Taxes & Levies',
-                  value: 'GHS 1.80',
-                ),
-                const SizedBox(height: 10),
-                const _FareRow(
-                  label: 'Promotional Discount',
-                  value: '- GHS 5.00',
-                ),
-                const SizedBox(height: 14),
-                const Divider(
-                  height: 1,
-                  thickness: 1,
-                  color: Color(0xFFF0F0F0),
-                ),
-                const SizedBox(height: 14),
-                const _FareRow(
-                  label: 'Total Paid',
-                  value: 'GHS 56.50',
-                  bold: true,
-                ),
-                const SizedBox(height: 14),
-              ],
-            ),
-          ),
-
-          // Payment method row
-          const Divider(height: 1, thickness: 1, color: Color(0xFFF0F0F0)),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: _kSurfaceGrey,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Icon(
-                    Icons.credit_card_outlined,
-                    size: 20,
-                    color: _kDarkSlate,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    'MTN Mobile Money',
-                    style: TextStyle(
-                      color: _kDarkText,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-                const Text(
-                  'SUCCESS',
-                  style: TextStyle(
-                    color: _kTextSecondary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.8,
-                  ),
-                ),
-              ],
+          SizedBox(width: w * 0.010),
+          Text(
+            'Verified',
+            style: TextStyle(
+              fontSize: w * 0.028, // ~11dp
+              fontWeight: FontWeight.w600,
+              color: _success,
             ),
           ),
         ],
@@ -538,36 +321,24 @@ class _FareBreakdownCard extends StatelessWidget {
   }
 }
 
-class _FareRow extends StatelessWidget {
-  const _FareRow({
-    required this.label,
-    required this.value,
-    this.bold = false,
-  });
-
-  final String label;
-  final String value;
-  final bool bold;
+class _RatingPill extends StatelessWidget {
+  final double rating;
+  final double w;
+  const _RatingPill({required this.rating, required this.w});
 
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      mainAxisSize: MainAxisSize.min,
       children: [
+        Icon(Icons.star_rounded, size: w * 0.041, color: _gold), // ~16dp
+        SizedBox(width: w * 0.008),
         Text(
-          label,
+          rating.toStringAsFixed(1),
           style: TextStyle(
-            color: bold ? _kDarkText : _kTextSecondary,
-            fontSize: bold ? 14 : 13,
-            fontWeight: bold ? FontWeight.bold : FontWeight.normal,
-          ),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            color: _kDarkText,
-            fontSize: bold ? 16 : 13,
-            fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+            fontSize: w * 0.036, // ~14dp
+            fontWeight: FontWeight.w700,
+            color: _textPrimary,
           ),
         ),
       ],
@@ -575,155 +346,50 @@ class _FareRow extends StatelessWidget {
   }
 }
 
-// ─── Tip Section ──────────────────────────────────────────────────────────────
+// ── Route Card ────────────────────────────────────────────────────────────────
 
-/// Tip is submitted separately via POST /v1/payments/:id/tip (EDD §6).
-/// 0% platform commission — full tip amount goes to driver.
-class _TipSection extends StatelessWidget {
-  const _TipSection({
-    required this.selectedTipPreset,
-    required this.customTipController,
-    required this.confirmEnabled,
-    required this.onPresetTap,
-    required this.onCustomChanged,
-    required this.onConfirm,
-  });
-
-  final int? selectedTipPreset;
-  final TextEditingController customTipController;
-  final bool confirmEnabled;
-  final ValueChanged<int> onPresetTap;
-  final ValueChanged<String> onCustomChanged;
-  final VoidCallback onConfirm;
-
-  static const _kPresets = [2, 5, 10];
+class _RouteCard extends StatelessWidget {
+  final RideReceipt receipt;
+  const _RouteCard({required this.receipt});
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
+    // Icon is w*0.051 wide — connector sits at its horizontal centre
+    final connectorLeft = (w * 0.051 / 2) - 0.75;
+
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A000000),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ],
+      color: _surfaceWhite,
+      padding: EdgeInsets.symmetric(
+        horizontal: w * 0.041, // ~16dp
+        vertical: h * 0.017,   // ~14dp
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Add tip?',
-            style: TextStyle(
-              color: _kDarkText,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
+          _RouteStop(
+            icon: Icons.radio_button_checked,
+            iconColor: _textSecondary,
+            typeLabel: 'PICKUP',
+            address: receipt.pickupAddress,
+            w: w,
+          ),
+          Padding(
+            padding: EdgeInsets.only(left: connectorLeft),
+            child: Container(
+              width: 1.5,
+              height: h * 0.019, // ~16dp
+              color: _divider,
             ),
           ),
-          const SizedBox(height: 14),
-          // Preset tip chips
-          Row(
-            children: _kPresets.asMap().entries.map((entry) {
-              final i = entry.key;
-              final amount = entry.value;
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(right: i < _kPresets.length - 1 ? 8 : 0),
-                  child: _TipPresetChip(
-                    label: 'GHS $amount',
-                    isSelected: selectedTipPreset == amount,
-                    onTap: () => onPresetTap(amount),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 10),
-          // Custom amount field
-          TextField(
-            controller: customTipController,
-            onChanged: onCustomChanged,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: const TextStyle(color: _kDarkText, fontSize: 14),
-            decoration: InputDecoration(
-              prefixText: 'GHS   ',
-              prefixStyle: const TextStyle(
-                color: _kTextSecondary,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-              hintText: 'Other amount',
-              hintStyle: const TextStyle(color: _kTextSecondary, fontSize: 14),
-              filled: true,
-              fillColor: _kOffWhite,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 13,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFFE8E8E8)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFFE8E8E8)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: _kGold, width: 1.5),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          // Zero-commission note
-          const Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: EdgeInsets.only(top: 1),
-                child: Icon(Icons.info_outline, size: 14, color: _kGold),
-              ),
-              SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  '100% of tips go directly to Kwasi. Zero commission charged.',
-                  style: TextStyle(color: _kGold, fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          // Confirm tip button — active only when a tip is selected/entered
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton(
-              onPressed: confirmEnabled ? onConfirm : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    confirmEnabled ? _kDarkSlate : const Color(0xFFE0E0E0),
-                foregroundColor:
-                    confirmEnabled ? Colors.white : _kTextSecondary,
-                disabledBackgroundColor: const Color(0xFFE0E0E0),
-                disabledForegroundColor: _kTextSecondary,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              child: const Text(
-                'CONFIRM TIP',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.0,
-                ),
-              ),
-            ),
+          _RouteStop(
+            icon: Icons.location_on_rounded,
+            iconColor: _gold,
+            typeLabel: 'DESTINATION',
+            address: receipt.dropoffAddress,
+            w: w,
           ),
         ],
       ),
@@ -731,38 +397,444 @@ class _TipSection extends StatelessWidget {
   }
 }
 
-class _TipPresetChip extends StatelessWidget {
-  const _TipPresetChip({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
+class _RouteStop extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String typeLabel;
+  final String address;
+  final double w;
+
+  const _RouteStop({
+    required this.icon,
+    required this.iconColor,
+    required this.typeLabel,
+    required this.address,
+    required this.w,
   });
 
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: w * 0.051, color: iconColor), // ~20dp
+        SizedBox(width: w * 0.031),                    // ~12dp
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                typeLabel,
+                style: TextStyle(
+                  fontSize: w * 0.026, // ~10dp
+                  fontWeight: FontWeight.w700,
+                  color: _textSecondary,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              SizedBox(height: w * 0.005),
+              Text(
+                address,
+                style: TextStyle(
+                  fontSize: w * 0.033, // ~13dp
+                  fontWeight: FontWeight.w500,
+                  color: _textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Fare Breakdown Card ───────────────────────────────────────────────────────
+
+class _FareBreakdownCard extends StatelessWidget {
+  final RideReceipt receipt;
+  const _FareBreakdownCard({required this.receipt});
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
+    final pad = w * 0.041; // ~16dp
+
+    return Container(
+      color: _surfaceWhite,
+      padding: EdgeInsets.all(pad),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _FareBreakdownHeader(rideId: receipt.rideId, w: w),
+          SizedBox(height: h * 0.017), // ~14dp
+          _FareLineItem(
+            label: 'Base Fare',
+            amount: _fmtGhs(receipt.baseFarePesewas),
+            w: w,
+          ),
+          SizedBox(height: h * 0.012), // ~10dp
+          _FareLineItem(
+            label: 'Distance (${receipt.distanceKm.toStringAsFixed(1)} km)',
+            amount: _fmtGhs(receipt.distanceFarePesewas),
+            w: w,
+          ),
+          SizedBox(height: h * 0.012),
+          _FareLineItem(
+            label: 'Time (${receipt.durationMins} mins)',
+            amount: _fmtGhs(receipt.timeFarePesewas),
+            w: w,
+          ),
+          SizedBox(height: h * 0.012),
+          _FareLineItem(
+            label: '⚡ Surge Pricing (${receipt.surgeMultiplier}x)',
+            amount: _fmtGhs(receipt.surgeFarePesewas),
+            w: w,
+          ),
+          SizedBox(height: h * 0.017),
+          const Divider(height: 1, thickness: 1, color: _divider),
+          SizedBox(height: h * 0.017),
+          _FareLineItem(
+            label: 'Subtotal',
+            amount: _fmtGhs(receipt.subtotalPesewas),
+            w: w,
+          ),
+          SizedBox(height: h * 0.012),
+          _FareLineItem(
+            label: 'Taxes & Levies',
+            amount: _fmtGhs(receipt.taxesPesewas),
+            w: w,
+          ),
+          SizedBox(height: h * 0.012),
+          _FareLineItem(
+            label: 'Promotional Discount',
+            amount: '- ${_fmtGhs(receipt.promoDiscountPesewas)}',
+            amountColor: _error,
+            w: w,
+          ),
+          SizedBox(height: h * 0.017),
+          const Divider(height: 2, thickness: 2, color: _divider),
+          SizedBox(height: h * 0.017),
+          _TotalPaidRow(total: _fmtGhs(receipt.totalPaidPesewas), w: w),
+          SizedBox(height: h * 0.019), // ~16dp
+          const Divider(height: 1, thickness: 1, color: _divider),
+          SizedBox(height: h * 0.017),
+          _PaymentStatusRow(
+            method: receipt.paymentMethod,
+            status: receipt.paymentStatus,
+            w: w,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FareBreakdownHeader extends StatelessWidget {
+  final String rideId;
+  final double w;
+  const _FareBreakdownHeader({required this.rideId, required this.w});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          'Fare Breakdown',
+          style: TextStyle(
+            fontSize: w * 0.036, // ~14dp
+            fontWeight: FontWeight.w700,
+            color: _textPrimary,
+          ),
+        ),
+        Text(
+          'ID: #$rideId',
+          style: TextStyle(
+            fontSize: w * 0.031, // ~12dp
+            fontWeight: FontWeight.w600,
+            color: _gold,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FareLineItem extends StatelessWidget {
+  final String label;
+  final String amount;
+  final Color amountColor;
+  final double w;
+
+  const _FareLineItem({
+    required this.label,
+    required this.amount,
+    required this.w,
+    this.amountColor = _textPrimary,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: w * 0.033, // ~13dp
+            fontWeight: FontWeight.w400,
+            color: _textSecondary,
+          ),
+        ),
+        const Spacer(),
+        Text(
+          amount,
+          style: TextStyle(
+            fontSize: w * 0.033,
+            fontWeight: FontWeight.w500,
+            color: amountColor,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TotalPaidRow extends StatelessWidget {
+  final String total;
+  final double w;
+  const _TotalPaidRow({required this.total, required this.w});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text(
+          'Total Paid',
+          style: TextStyle(
+            fontSize: w * 0.041, // ~16dp
+            fontWeight: FontWeight.w700,
+            color: _textPrimary,
+          ),
+        ),
+        const Spacer(),
+        Text(
+          total,
+          style: TextStyle(
+            fontSize: w * 0.051, // ~20dp
+            fontWeight: FontWeight.w700,
+            color: _textPrimary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PaymentStatusRow extends StatelessWidget {
+  final String method;
+  final String status;
+  final double w;
+  const _PaymentStatusRow({
+    required this.method,
+    required this.status,
+    required this.w,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _MtnCircle(w: w),
+        SizedBox(width: w * 0.026), // ~10dp
+        Expanded(
+          child: Text(
+            method,
+            style: TextStyle(
+              fontSize: w * 0.033,
+              fontWeight: FontWeight.w600,
+              color: _textPrimary,
+            ),
+          ),
+        ),
+        _PaymentBadge(status: status, w: w),
+      ],
+    );
+  }
+}
+
+class _MtnCircle extends StatelessWidget {
+  final double w;
+  const _MtnCircle({required this.w});
+
+  @override
+  Widget build(BuildContext context) {
+    final size = w * 0.082; // ~32dp
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        color: Color(0xFFFFCC00),
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        'M',
+        style: TextStyle(
+          fontSize: w * 0.033,
+          fontWeight: FontWeight.w900,
+          color: _textPrimary,
+        ),
+      ),
+    );
+  }
+}
+
+class _PaymentBadge extends StatelessWidget {
+  final String status;
+  final double w;
+  const _PaymentBadge({required this.status, required this.w});
+
+  @override
+  Widget build(BuildContext context) {
+    final isSuccess = status == 'SUCCESS';
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: w * 0.026, // ~10dp
+        vertical: w * 0.010,   // ~4dp
+      ),
+      decoration: BoxDecoration(
+        color: isSuccess ? _successLight : const Color(0xFFFDE8E8),
+        borderRadius: BorderRadius.circular(w * 0.010),
+      ),
+      child: Text(
+        status,
+        style: TextStyle(
+          fontSize: w * 0.028, // ~11dp
+          fontWeight: FontWeight.w700,
+          color: isSuccess ? _success : _error,
+          letterSpacing: 0.4,
+        ),
+      ),
+    );
+  }
+}
+
+// ── Tip Section ───────────────────────────────────────────────────────────────
+
+class _TipSection extends StatelessWidget {
+  final RideReceipt receipt;
+  final TipState tipState;
+  final TextEditingController customController;
+  final void Function(int pesewas) onPresetSelected;
+  final void Function(String text) onCustomChanged;
+  final VoidCallback? onConfirm;
+
+  const _TipSection({
+    required this.receipt,
+    required this.tipState,
+    required this.customController,
+    required this.onPresetSelected,
+    required this.onCustomChanged,
+    required this.onConfirm,
+  });
+
+  static const _presets = [200, 500, 1000]; // GHS 2, 5, 10
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
+
+    return Container(
+      color: _surfaceWhite,
+      padding: EdgeInsets.all(w * 0.041),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Add tip?',
+            style: TextStyle(
+              fontSize: w * 0.041,
+              fontWeight: FontWeight.w700,
+              color: _textPrimary,
+            ),
+          ),
+          SizedBox(height: h * 0.017),
+          Row(
+            children: _presets
+                .map(
+                  (p) => Padding(
+                    padding: EdgeInsets.only(right: w * 0.021),
+                    child: _TipChip(
+                      label: 'GHS ${(p / 100).toStringAsFixed(0)}',
+                      isSelected: tipState.selectedPresetPesewas == p &&
+                          tipState.customPesewas == 0,
+                      onTap: () => onPresetSelected(p),
+                      w: w,
+                      h: h,
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+          SizedBox(height: h * 0.014),
+          _CustomTipInput(
+            controller: customController,
+            onChanged: onCustomChanged,
+            w: w,
+            h: h,
+          ),
+          SizedBox(height: h * 0.012),
+          _TipDisclaimer(driverFirstName: receipt.driverFirstName, w: w),
+          SizedBox(height: h * 0.019),
+          _ConfirmTipButton(onPressed: onConfirm, w: w, h: h),
+        ],
+      ),
+    );
+  }
+}
+
+class _TipChip extends StatelessWidget {
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
+  final double w;
+  final double h;
+
+  const _TipChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+    required this.w,
+    required this.h,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 13),
-        decoration: BoxDecoration(
-          color: isSelected ? _kGold.withAlpha(30) : _kSurfaceGrey,
-          borderRadius: BorderRadius.circular(8),
-          border: isSelected
-              ? Border.all(color: _kGold, width: 1.5)
-              : null,
+        padding: EdgeInsets.symmetric(
+          horizontal: w * 0.051, // ~20dp
+          vertical: h * 0.012,   // ~10dp
         ),
-        child: Center(
-          child: Text(
-            label,
-            style: TextStyle(
-              color: isSelected ? _kGold : _kDarkText,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
+        decoration: BoxDecoration(
+          color: isSelected ? _gold : _surfaceGrey,
+          borderRadius: BorderRadius.circular(w * 0.021),
+          border: Border.all(
+            color: isSelected ? _gold : _divider,
+            width: 1.5,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: w * 0.033,
+            fontWeight: FontWeight.w600,
+            color: isSelected ? Colors.white : _textPrimary,
           ),
         ),
       ),
@@ -770,65 +842,243 @@ class _TipPresetChip extends StatelessWidget {
   }
 }
 
-// ─── Painters ─────────────────────────────────────────────────────────────────
+class _CustomTipInput extends StatelessWidget {
+  final TextEditingController controller;
+  final void Function(String) onChanged;
+  final double w;
+  final double h;
 
-class _VerticalDashPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    const dashHeight = 4.0;
-    const dashSpace = 3.0;
-    final paint = Paint()
-      ..color = const Color(0xFFCCCCCC)
-      ..strokeWidth = 1.5
-      ..strokeCap = StrokeCap.round;
-    double startY = 0;
-    while (startY < size.height) {
-      canvas.drawLine(
-        Offset(size.width / 2, startY),
-        Offset(size.width / 2, startY + dashHeight),
-        paint,
-      );
-      startY += dashHeight + dashSpace;
-    }
-  }
-
-  @override
-  bool shouldRepaint(_VerticalDashPainter old) => false;
-}
-
-class _HorizontalDashDivider extends StatelessWidget {
-  const _HorizontalDashDivider();
+  const _CustomTipInput({
+    required this.controller,
+    required this.onChanged,
+    required this.w,
+    required this.h,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 1.5,
-      width: double.infinity,
-      child: CustomPaint(painter: _HorizontalDashPainter()),
+    return Container(
+      height: h * 0.057, // ~48dp
+      decoration: BoxDecoration(
+        border: Border.all(color: _divider),
+        borderRadius: BorderRadius.circular(w * 0.021),
+      ),
+      child: Row(
+        children: [
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: w * 0.031),
+            child: Text(
+              'GHS',
+              style: TextStyle(
+                fontSize: w * 0.033,
+                fontWeight: FontWeight.w600,
+                color: _textSecondary,
+              ),
+            ),
+          ),
+          Container(width: 1, color: _divider),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              onChanged: onChanged,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              style: TextStyle(
+                fontSize: w * 0.033,
+                fontWeight: FontWeight.w500,
+                color: _textPrimary,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Other amount',
+                hintStyle: TextStyle(
+                  fontSize: w * 0.033,
+                  fontWeight: FontWeight.w400,
+                  color: _disabled,
+                ),
+                border: InputBorder.none,
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: w * 0.031),
+                isDense: true,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _HorizontalDashPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    const dashWidth = 6.0;
-    const dashSpace = 4.0;
-    final paint = Paint()
-      ..color = const Color(0xFFDDDDDD)
-      ..strokeWidth = 1.5
-      ..strokeCap = StrokeCap.round;
-    double startX = 0;
-    while (startX < size.width) {
-      canvas.drawLine(
-        Offset(startX, 0),
-        Offset(startX + dashWidth, 0),
-        paint,
-      );
-      startX += dashWidth + dashSpace;
-    }
-  }
+class _TipDisclaimer extends StatelessWidget {
+  final String driverFirstName;
+  final double w;
+  const _TipDisclaimer({required this.driverFirstName, required this.w});
 
   @override
-  bool shouldRepaint(_HorizontalDashPainter old) => false;
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          Icons.info_outline_rounded,
+          size: w * 0.036, // ~14dp
+          color: _gold,
+        ),
+        SizedBox(width: w * 0.015),
+        Expanded(
+          child: Text(
+            '100% of tips go directly to $driverFirstName. Zero commission charged.',
+            style: TextStyle(
+              fontSize: w * 0.028, // ~11dp
+              fontWeight: FontWeight.w400,
+              color: _textSecondary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ConfirmTipButton extends StatelessWidget {
+  final VoidCallback? onPressed;
+  final double w;
+  final double h;
+  const _ConfirmTipButton({
+    required this.onPressed,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    return SizedBox(
+      width: double.infinity,
+      height: h * 0.062, // ~52dp
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: enabled ? _gold : _surfaceGrey,
+          foregroundColor: enabled ? Colors.white : _disabled,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(w * 0.021),
+          ),
+        ),
+        child: Text(
+          'CONFIRM TIP',
+          style: TextStyle(
+            fontSize: w * 0.036, // ~14dp
+            fontWeight: FontWeight.w600,
+            color: enabled ? Colors.white : _disabled,
+            letterSpacing: 0.5,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Bottom Navigation ─────────────────────────────────────────────────────────
+
+class _BottomNav extends StatelessWidget {
+  final double w;
+  final double h;
+  const _BottomNav({required this.w, required this.h});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: _surfaceWhite,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: w * 0.026,
+            offset: Offset(0, -(w * 0.005)),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: h * 0.071, // ~60dp
+          child: Row(
+            children: [
+              _NavItem(
+                icon: Icons.location_on_rounded,
+                label: 'Home',
+                isActive: true,
+                onTap: () =>
+                    Navigator.of(context).popUntil((r) => r.isFirst),
+                w: w,
+              ),
+              _NavItem(
+                icon: Icons.access_time_rounded,
+                label: 'Activity',
+                isActive: false,
+                onTap: () {},
+                w: w,
+              ),
+              _NavItem(
+                icon: Icons.account_balance_wallet_outlined,
+                label: 'Wallet',
+                isActive: false,
+                onTap: () {},
+                w: w,
+              ),
+              _NavItem(
+                icon: Icons.person_outline_rounded,
+                label: 'Account',
+                isActive: false,
+                onTap: () {},
+                w: w,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+  final double w;
+
+  const _NavItem({
+    required this.icon,
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+    required this.w,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isActive ? _gold : _darkSlate;
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: color, size: w * 0.056), // ~22dp
+            SizedBox(height: w * 0.008),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: w * 0.026, // ~10dp
+                fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

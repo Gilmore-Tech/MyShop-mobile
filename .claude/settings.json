@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls /Users/ayiks/Desktop/ayiks/gilmore/myshop-mobile/apps/provider/lib/src/features/*/screens/*.dart)",
+      "Bash(git add:*)",
+      "Bash(git reset:*)",
+      "Bash(git commit:*)",
+      "Bash(curl -s -X POST https://myshop-api-2hy2.onrender.com/v1/auth/login/driver -H 'Content-Type: application/json' -d '{\"phone\": \"+233241234567\"}')",
+      "Bash(curl -s -X GET https://myshop-api-2hy2.onrender.com/v1/users/me -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmMzM0MWRiMy0wZDlhLTQ3ZDctOWM0OS01ZmJjZDAyNWI3N2IiLCJyb2xlIjoiZHJpdmVyIiwicGhvbmUiOiIrMjMzMjQxMjM0NTY3IiwiaWF0IjoxNzc1OTk1NjkyLCJleHAiOjE3NzU5OTY1OTJ9.3PeKEu9zR-UjUHcQmACpzq7uqer58exjnv9GccpCjFM')",
+      "Bash(git push:*)"
+    ]
+  }
+}
