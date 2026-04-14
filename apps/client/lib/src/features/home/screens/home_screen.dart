@@ -25,6 +25,7 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final currentLocation = ref.watch(currentLocationProvider);
 
+    final h = MediaQuery.sizeOf(context).height;
     return Scaffold(
       backgroundColor: _offWhite,
       body: SafeArea(
@@ -36,22 +37,22 @@ class HomeScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 16),
+                    SizedBox(height: h * 0.019),
                     LocationSearchCard(
                       currentLocation: currentLocation,
                       onSearchTap: () {
                         // TODO: Navigate to destination_search_screen
                       },
                     ),
-                    const SizedBox(height: 16),
+                    SizedBox(height: h * 0.019),
                     _ServiceCardsRow(),
-                    const SizedBox(height: 24),
+                    SizedBox(height: h * 0.028),
                     _SpecialOffersSection(),
-                    const SizedBox(height: 24),
+                    SizedBox(height: h * 0.028),
                     _RecentPlacesSection(),
-                    const SizedBox(height: 16),
+                    SizedBox(height: h * 0.019),
                     const SafetyBanner(),
-                    const SizedBox(height: 24),
+                    SizedBox(height: h * 0.028),
                   ],
                 ),
               ),
@@ -68,34 +69,36 @@ class HomeScreen extends ConsumerWidget {
 class _HomeAppBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041, vertical: h * 0.015),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           IconButton(
             onPressed: () {},
-            icon: const Icon(Icons.menu_rounded, color: Color(0xFF161A1D)),
+            icon: Icon(Icons.menu_rounded, color: const Color(0xFF161A1D), size: w * 0.062),
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            constraints: BoxConstraints(minWidth: w * 0.123, minHeight: w * 0.123),
           ),
           GestureDetector(
             onTap: () {
               // TODO: Navigate to profile
             },
             child: Container(
-              width: 40,
-              height: 40,
+              width: w * 0.103,
+              height: w * 0.103,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: const Color(0xFFE0E6FF),
                 border: Border.all(color: _gold, width: 2),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.person_rounded,
                 color: _darkSlate,
-                size: 22,
+                size: w * 0.056,
               ),
             ),
           ),
@@ -110,8 +113,9 @@ class _HomeAppBar extends StatelessWidget {
 class _ServiceCardsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: Row(
         children: [
           Expanded(
@@ -120,7 +124,7 @@ class _ServiceCardsRow extends StatelessWidget {
               onTap: () => context.go(AppRoutes.rideEstimate),
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: w * 0.031),
           Expanded(
             child: ServiceCard(
               type: ServiceCardType.artisan,
@@ -149,7 +153,7 @@ class _SpecialOffersSection extends ConsumerWidget {
           actionLabel: 'View All',
           onActionTap: () {},
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: MediaQuery.sizeOf(context).height * 0.014),
         SizedBox(
           height: MediaQuery.sizeOf(context).height * 0.175,
           child: offersAsync.when(
@@ -197,7 +201,7 @@ class _RecentPlacesSection extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         _SectionHeader(title: 'RECENT PLACES'),
-        const SizedBox(height: 4),
+        SizedBox(height: MediaQuery.sizeOf(context).height * 0.005),
         Container(
           color: Colors.white,
           child: placesAsync.when(
@@ -226,41 +230,43 @@ class _RecentPlacesSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(
         3,
         (_) => Container(
-          height: 60,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          height: h * 0.071,
+          padding: EdgeInsets.symmetric(horizontal: w * 0.041, vertical: h * 0.012),
           child: Row(
             children: [
               Container(
-                width: 22,
-                height: 22,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE0E0E0),
+                width:  w * 0.056,
+                height: w * 0.056,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFE0E0E0),
                   shape: BoxShape.circle,
                 ),
               ),
-              const SizedBox(width: 14),
+              SizedBox(width: w * 0.036),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      height: 12,
-                      width: 120,
+                      height: h * 0.014,
+                      width:  w * 0.308,
                       decoration: BoxDecoration(
                         color: const Color(0xFFE0E0E0),
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    SizedBox(height: h * 0.007),
                     Container(
-                      height: 10,
-                      width: 180,
+                      height: h * 0.012,
+                      width:  w * 0.462,
                       decoration: BoxDecoration(
                         color: const Color(0xFFE0E0E0),
                         borderRadius: BorderRadius.circular(4),
@@ -292,15 +298,16 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
             title,
-            style: const TextStyle(
-              fontSize: 10,
+            style: TextStyle(
+              fontSize: w * 0.026,
               fontWeight: FontWeight.w900,
               color: _textSecondary,
               letterSpacing: 1.4,
@@ -311,8 +318,8 @@ class _SectionHeader extends StatelessWidget {
               onTap: onActionTap,
               child: Text(
                 actionLabel!,
-                style: const TextStyle(
-                  fontSize: 12,
+                style: TextStyle(
+                  fontSize: w * 0.031,
                   fontWeight: FontWeight.w600,
                   color: _gold,
                 ),

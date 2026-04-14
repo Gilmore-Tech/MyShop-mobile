@@ -71,16 +71,17 @@ class _DestinationIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Container(
-      width: 36,
-      height: 36,
-      decoration: BoxDecoration(
+      width:  w * 0.092,
+      height: w * 0.092,
+      decoration: const BoxDecoration(
         color: _surfaceGrey,
         shape: BoxShape.circle,
       ),
       child: Icon(
         isHome ? Icons.home_rounded : Icons.business_rounded,
-        size: 18,
+        size: w * 0.046,
         color: const Color(0xFF46535D),
       ),
     );

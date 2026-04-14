@@ -109,7 +109,7 @@ class _StopRow extends StatelessWidget {
           children: [
             // Left: connector + indicator
             SizedBox(
-              width: 36,
+              width: MediaQuery.sizeOf(context).width * 0.092,
               child: _StopIndicatorColumn(
                 type: stop.type,
                 showLineAbove: !isFirst,
@@ -177,10 +177,12 @@ class _StopDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final dotSize = w * 0.036;
     return switch (type) {
       StopType.pickup => Container(
-          width: 14,
-          height: 14,
+          width: dotSize,
+          height: dotSize,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: Colors.white,
@@ -188,19 +190,19 @@ class _StopDot extends StatelessWidget {
           ),
         ),
       StopType.intermediate => Container(
-          width: 14,
-          height: 14,
+          width: dotSize,
+          height: dotSize,
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
             color: _darkSlate,
           ),
         ),
       StopType.destination => Container(
-          width: 14,
-          height: 14,
+          width: dotSize,
+          height: dotSize,
           decoration: BoxDecoration(
             color: _textPrimary,
-            borderRadius: BorderRadius.circular(3),
+            borderRadius: BorderRadius.circular(w * 0.008),
           ),
         ),
     };
@@ -272,26 +274,26 @@ class _AddStopRow extends StatelessWidget {
         child: Row(
           children: [
             SizedBox(
-              width: 36,
+              width: MediaQuery.sizeOf(context).width * 0.092,
               child: Stack(
                 alignment: Alignment.center,
                 children: [
                   Positioned(
-                    left: 17,
+                    left: MediaQuery.sizeOf(context).width * 0.044,
                     top: 0,
                     bottom: 0,
                     child: Container(width: 2, color: _lineColor),
                   ),
                   Container(
-                    width: 20,
-                    height: 20,
+                    width:  MediaQuery.sizeOf(context).width * 0.051,
+                    height: MediaQuery.sizeOf(context).width * 0.051,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: _goldLight,
                       border: Border.all(
                           color: _gold.withValues(alpha: 0.5), width: 1.5),
                     ),
-                    child: const Icon(Icons.add, size: 12, color: _gold),
+                    child: Icon(Icons.add, size: MediaQuery.sizeOf(context).width * 0.031, color: _gold),
                   ),
                 ],
               ),

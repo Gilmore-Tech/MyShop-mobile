@@ -6,7 +6,6 @@ const _textPrimary = Color(0xFF161A1D);
 const _textHint = Color(0xFFBDBDBD);
 const _textSecondary = Color(0xFF555E68);
 const _border = Color(0xFFE0E0E0);
-const _surfaceGrey = Color(0xFFF3F5F6);
 
 class PickupDestinationFields extends StatelessWidget {
   final String pickupLocation;
@@ -22,16 +21,17 @@ class PickupDestinationFields extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final h = MediaQuery.sizeOf(context).height;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         _FieldLabel(label: 'PICKUP LOCATION'),
-        const SizedBox(height: 6),
+        SizedBox(height: h * 0.007),
         _PickupField(location: pickupLocation),
-        const SizedBox(height: 14),
+        SizedBox(height: h * 0.017),
         _FieldLabel(label: 'DESTINATION'),
-        const SizedBox(height: 6),
+        SizedBox(height: h * 0.007),
         _DestinationField(
           controller: destinationController,
           onTap: onDestinationTap,
@@ -47,10 +47,11 @@ class _FieldLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Text(
       label,
-      style: const TextStyle(
-        fontSize: 10,
+      style: TextStyle(
+        fontSize: w * 0.026,
         fontWeight: FontWeight.w900,
         color: _textSecondary,
         letterSpacing: 1.4,
@@ -65,30 +66,32 @@ class _PickupField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Container(
-      height: 48,
+      height: h * 0.057,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(w * 0.021),
         border: Border.all(color: _border),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.031),
       child: Row(
         children: [
           Container(
-            width: 18,
-            height: 18,
+            width:  w * 0.046,
+            height: w * 0.046,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(color: _gold, width: 2),
             ),
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: w * 0.026),
           Expanded(
             child: Text(
               location,
-              style: const TextStyle(
-                fontSize: 14,
+              style: TextStyle(
+                fontSize: w * 0.036,
                 fontWeight: FontWeight.w500,
                 color: _textPrimary,
               ),
@@ -109,39 +112,41 @@ class _DestinationField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Container(
-      height: 48,
+      height: h * 0.057,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(w * 0.021),
         border: Border.all(color: _border),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.031),
       child: Row(
         children: [
           Container(
-            width: 16,
-            height: 16,
+            width:  w * 0.041,
+            height: w * 0.041,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(2),
+              borderRadius: BorderRadius.circular(w * 0.005),
               border: Border.all(color: _textSecondary, width: 2),
             ),
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: w * 0.026),
           Expanded(
             child: TextField(
               controller: controller,
               onTap: onTap,
               readOnly: onTap != null,
-              style: const TextStyle(
-                fontSize: 14,
+              style: TextStyle(
+                fontSize: w * 0.036,
                 fontWeight: FontWeight.w400,
                 color: _textPrimary,
               ),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: 'Where to?',
                 hintStyle: TextStyle(
-                  fontSize: 14,
+                  fontSize: w * 0.036,
                   fontWeight: FontWeight.w400,
                   color: _textHint,
                 ),
@@ -151,7 +156,7 @@ class _DestinationField extends StatelessWidget {
               ),
             ),
           ),
-          const Icon(Icons.location_on_outlined, color: _gold, size: 20),
+          Icon(Icons.location_on_outlined, color: _gold, size: w * 0.051),
         ],
       ),
     );

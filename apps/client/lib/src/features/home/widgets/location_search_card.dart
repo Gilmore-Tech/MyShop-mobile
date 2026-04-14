@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-// Design tokens — will migrate to MyShopColors / MyShopTypography once shared_ui is exported
+// Design tokens
 const _gold = Color(0xFFF5A623);
 const _textPrimary = Color(0xFF161A1D);
 const _textHint = Color(0xFFBDBDBD);
@@ -20,11 +20,12 @@ class LocationSearchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+      margin: EdgeInsets.symmetric(horizontal: w * 0.041),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(w * 0.031),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.06),
@@ -56,24 +57,26 @@ class _LocationRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041, vertical: h * 0.017),
       child: Row(
         children: [
           Container(
-            width: 10,
-            height: 10,
+            width:  w * 0.026,
+            height: w * 0.026,
             decoration: const BoxDecoration(
               color: _gold,
               shape: BoxShape.circle,
             ),
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: w * 0.026),
           Expanded(
             child: Text(
               'Current: $currentLocation',
-              style: const TextStyle(
-                fontSize: 13,
+              style: TextStyle(
+                fontSize: w * 0.033,
                 fontWeight: FontWeight.w600,
                 color: _gold,
               ),
@@ -82,7 +85,7 @@ class _LocationRow extends StatelessWidget {
           ),
           GestureDetector(
             onTap: onDestinationTap,
-            child: const Icon(Icons.location_on, color: _gold, size: 20),
+            child: Icon(Icons.location_on, color: _gold, size: w * 0.051),
           ),
         ],
       ),
@@ -97,19 +100,21 @@ class _SearchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return InkWell(
       onTap: onTap,
-      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+      borderRadius: BorderRadius.vertical(bottom: Radius.circular(w * 0.031)),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: EdgeInsets.symmetric(horizontal: w * 0.041, vertical: h * 0.017),
         child: Row(
           children: [
-            const Icon(Icons.search, color: _textHint, size: 20),
-            const SizedBox(width: 10),
+            Icon(Icons.search, color: _textHint, size: w * 0.051),
+            SizedBox(width: w * 0.026),
             Text(
               'Where are you going?',
-              style: const TextStyle(
-                fontSize: 14,
+              style: TextStyle(
+                fontSize: w * 0.036,
                 fontWeight: FontWeight.w400,
                 color: _textHint,
               ),

@@ -20,12 +20,14 @@ class ServiceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(w * 0.031),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.06),
@@ -34,44 +36,44 @@ class ServiceCard extends StatelessWidget {
             ),
           ],
         ),
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(w * 0.041),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _ServiceIcon(type: type),
-            const SizedBox(height: 12),
+            SizedBox(height: h * 0.014),
             Text(
               type == ServiceCardType.ride ? 'Book Ride' : 'Artisan',
-              style: const TextStyle(
-                fontSize: 16,
+              style: TextStyle(
+                fontSize: w * 0.041,
                 fontWeight: FontWeight.w700,
                 color: _textPrimary,
               ),
             ),
-            const SizedBox(height: 4),
+            SizedBox(height: h * 0.005),
             Text(
               type == ServiceCardType.ride
                   ? 'Safe, verified drivers nearby'
                   : 'Hire pro help instantly',
-              style: const TextStyle(
-                fontSize: 11,
+              style: TextStyle(
+                fontSize: w * 0.028,
                 fontWeight: FontWeight.w400,
                 color: _textSecondary,
               ),
             ),
-            const SizedBox(height: 10),
-            const Row(
+            SizedBox(height: h * 0.012),
+            Row(
               children: [
                 Text(
                   'Get started',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: w * 0.031,
                     fontWeight: FontWeight.w600,
                     color: _gold,
                   ),
                 ),
-                SizedBox(width: 2),
-                Icon(Icons.arrow_forward, size: 12, color: _gold),
+                SizedBox(width: w * 0.005),
+                Icon(Icons.arrow_forward, size: w * 0.031, color: _gold),
               ],
             ),
           ],
@@ -88,18 +90,19 @@ class _ServiceIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     final isRide = type == ServiceCardType.ride;
     return Container(
-      width: 48,
-      height: 48,
+      width: w * 0.123,
+      height: w * 0.123,
       decoration: BoxDecoration(
         color: isRide ? _darkSlate : _gold,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(w * 0.026),
       ),
       child: Icon(
         isRide ? Icons.directions_car_rounded : Icons.build_rounded,
         color: Colors.white,
-        size: 26,
+        size: w * 0.067,
       ),
     );
   }

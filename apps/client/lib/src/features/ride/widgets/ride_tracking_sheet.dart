@@ -20,6 +20,8 @@ class RideTrackingSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -39,18 +41,18 @@ class RideTrackingSheet extends StatelessWidget {
           _FareRow(driver: driver),
           const Divider(height: 1, thickness: 1, color: _divider),
           _DriverRow(driver: driver),
-          const SizedBox(height: 14),
+          SizedBox(height: h * 0.017),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: EdgeInsets.symmetric(horizontal: w * 0.041),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 _ChatButton(driverFirstName: driver.name.split(' ').first),
-                const SizedBox(height: 10),
+                SizedBox(height: h * 0.012),
                 _SecondaryActions(),
-                const SizedBox(height: 14),
+                SizedBox(height: h * 0.017),
                 _SafetyNotice(),
-                const SizedBox(height: 20),
+                SizedBox(height: h * 0.024),
               ],
             ),
           ),
@@ -65,12 +67,14 @@ class RideTrackingSheet extends StatelessWidget {
 class _DragHandle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Padding(
-      padding: const EdgeInsets.only(top: 10, bottom: 6),
+      padding: EdgeInsets.only(top: h * 0.012, bottom: h * 0.007),
       child: Center(
         child: Container(
-          width: 40,
-          height: 4,
+          width:  w * 0.103,
+          height: h * 0.005,
           decoration: BoxDecoration(
             color: const Color(0xFFE0E0E0),
             borderRadius: BorderRadius.circular(2),
@@ -89,15 +93,17 @@ class _FareRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+      padding: EdgeInsets.fromLTRB(w * 0.041, h * 0.009, w * 0.041, h * 0.017),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
             driver.activeFareDisplay,
-            style: const TextStyle(
-              fontSize: 26,
+            style: TextStyle(
+              fontSize: w * 0.067,
               fontWeight: FontWeight.w700,
               color: _textPrimary,
             ),
@@ -116,12 +122,14 @@ class _PaymentBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     final isCash = method.toLowerCase() == 'cash';
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.031, vertical: h * 0.006),
       decoration: BoxDecoration(
         color: isCash ? _goldLight : const Color(0xFFE8F8EF),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(w * 0.051),
         border: Border.all(
           color: isCash
               ? _gold.withValues(alpha: 0.4)
@@ -131,7 +139,7 @@ class _PaymentBadge extends StatelessWidget {
       child: Text(
         isCash ? 'CASH TRIP' : method.toUpperCase(),
         style: TextStyle(
-          fontSize: 10,
+          fontSize: w * 0.026,
           fontWeight: FontWeight.w800,
           color: isCash ? _gold : _success,
           letterSpacing: 0.8,
@@ -149,16 +157,18 @@ class _DriverRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     final shortVehicle = driver.vehicleShortName.isNotEmpty
         ? driver.vehicleShortName
         : driver.vehicle.split(' ').take(2).join(' ');
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041, vertical: h * 0.017),
       child: Row(
         children: [
           _DriverAvatar(),
-          const SizedBox(width: 12),
+          SizedBox(width: w * 0.031),
           Expanded(child: _DriverMeta(driver: driver)),
           _VehicleInfo(
             vehicleName: shortVehicle,
@@ -173,15 +183,16 @@ class _DriverRow extends StatelessWidget {
 class _DriverAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Container(
-      width: 48,
-      height: 48,
+      width:  w * 0.123,
+      height: w * 0.123,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: _avatarBg,
         border: Border.all(color: _gold, width: 1.5),
       ),
-      child: const Icon(Icons.person_rounded, size: 26, color: _darkSlate),
+      child: Icon(Icons.person_rounded, size: w * 0.067, color: _darkSlate),
     );
   }
 }
@@ -192,38 +203,40 @@ class _DriverMeta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           driver.name,
-          style: const TextStyle(
-            fontSize: 14,
+          style: TextStyle(
+            fontSize: w * 0.036,
             fontWeight: FontWeight.w700,
             color: _textPrimary,
           ),
         ),
-        const SizedBox(height: 3),
+        SizedBox(height: h * 0.004),
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.star_rounded, size: 13, color: _gold),
-            const SizedBox(width: 3),
+            Icon(Icons.star_rounded, size: w * 0.033, color: _gold),
+            SizedBox(width: w * 0.008),
             Text(
               driver.rating.toStringAsFixed(1),
-              style: const TextStyle(
-                fontSize: 12,
+              style: TextStyle(
+                fontSize: w * 0.031,
                 fontWeight: FontWeight.w600,
                 color: _textPrimary,
               ),
             ),
             if (driver.isVerified) ...[
-              const SizedBox(width: 8),
-              const Text(
+              SizedBox(width: w * 0.021),
+              Text(
                 '· Verified',
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: w * 0.031,
                   fontWeight: FontWeight.w500,
                   color: _success,
                 ),
@@ -244,24 +257,25 @@ class _VehicleInfo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Format plate: "GR-4557-23" → "GR 492 · 22" style (display dots)
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           vehicleName,
-          style: const TextStyle(
-            fontSize: 11,
+          style: TextStyle(
+            fontSize: w * 0.028,
             fontWeight: FontWeight.w400,
             color: _textSecondary,
           ),
         ),
-        const SizedBox(height: 3),
+        SizedBox(height: h * 0.004),
         Text(
           plateNumber,
-          style: const TextStyle(
-            fontSize: 13,
+          style: TextStyle(
+            fontSize: w * 0.033,
             fontWeight: FontWeight.w700,
             color: _textPrimary,
           ),
@@ -279,9 +293,11 @@ class _ChatButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return SizedBox(
       width: double.infinity,
-      height: 50,
+      height: h * 0.059,
       child: ElevatedButton.icon(
         onPressed: () {
           // TODO: Navigate to chat screen
@@ -290,15 +306,15 @@ class _ChatButton extends StatelessWidget {
           backgroundColor: _buttonBg,
           foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(w * 0.026),
           ),
           elevation: 0,
         ),
-        icon: const Icon(Icons.chat_bubble_rounded, size: 18),
+        icon: Icon(Icons.chat_bubble_rounded, size: w * 0.046),
         label: Text(
           'Chat with $driverFirstName',
-          style: const TextStyle(
-            fontSize: 14,
+          style: TextStyle(
+            fontSize: w * 0.036,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -310,6 +326,7 @@ class _ChatButton extends StatelessWidget {
 class _SecondaryActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Row(
       children: [
         Expanded(
@@ -319,7 +336,7 @@ class _SecondaryActions extends StatelessWidget {
             onTap: () {},
           ),
         ),
-        const SizedBox(width: 10),
+        SizedBox(width: w * 0.026),
         Expanded(
           child: _OutlinedActionButton(
             icon: Icons.schedule_rounded,
@@ -345,21 +362,23 @@ class _OutlinedActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return OutlinedButton.icon(
       onPressed: onTap,
       style: OutlinedButton.styleFrom(
         foregroundColor: _textPrimary,
         side: const BorderSide(color: _outlinedBorder, width: 1.5),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(w * 0.026),
         ),
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: EdgeInsets.symmetric(vertical: h * 0.014),
       ),
-      icon: Icon(icon, size: 16, color: _textPrimary),
+      icon: Icon(icon, size: w * 0.041, color: _textPrimary),
       label: Text(
         label,
-        style: const TextStyle(
-          fontSize: 13,
+        style: TextStyle(
+          fontSize: w * 0.033,
           fontWeight: FontWeight.w600,
           color: _textPrimary,
         ),
@@ -373,17 +392,18 @@ class _OutlinedActionButton extends StatelessWidget {
 class _SafetyNotice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Icon(Icons.shield_outlined, size: 15, color: _textSecondary),
-        const SizedBox(width: 8),
+        Icon(Icons.shield_outlined, size: w * 0.038, color: _textSecondary),
+        SizedBox(width: w * 0.021),
         Expanded(
           child: Text(
             'Your safety is our priority. In-app recording is active for this trip. '
             'Share your live location with family for extra peace of mind.',
-            style: const TextStyle(
-              fontSize: 11,
+            style: TextStyle(
+              fontSize: w * 0.028,
               fontWeight: FontWeight.w400,
               color: _textSecondary,
               height: 1.5,

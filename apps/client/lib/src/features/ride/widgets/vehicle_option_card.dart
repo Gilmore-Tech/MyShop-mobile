@@ -54,16 +54,18 @@ class _VehicleIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Container(
-      width: 56,
-      height: 40,
+      width:  w * 0.144,
+      height: h * 0.047,
       decoration: BoxDecoration(
         color: _surfaceGrey,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(w * 0.015),
       ),
       child: Icon(
         isMotorcycle ? Icons.two_wheeler_rounded : Icons.directions_car_rounded,
-        size: isMotorcycle ? 26 : 30,
+        size: isMotorcycle ? w * 0.067 : w * 0.077,
         color: const Color(0xFF46535D),
       ),
     );

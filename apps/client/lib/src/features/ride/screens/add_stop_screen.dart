@@ -239,9 +239,10 @@ class _SectionHeader extends StatelessWidget {
 class _SosChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Container(
-      width: 36,
-      height: 36,
+      width:  w * 0.092,
+      height: w * 0.092,
       decoration: BoxDecoration(
         color: _error,
         shape: BoxShape.circle,
@@ -253,11 +254,11 @@ class _SosChip extends StatelessWidget {
           ),
         ],
       ),
-      child: const Center(
+      child: Center(
         child: Text(
           'SOS',
           style: TextStyle(
-            fontSize: 10,
+            fontSize: w * 0.026,
             fontWeight: FontWeight.w900,
             color: Colors.white,
             letterSpacing: 0.4,

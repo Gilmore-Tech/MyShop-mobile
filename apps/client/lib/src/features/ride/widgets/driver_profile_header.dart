@@ -18,30 +18,32 @@ class DriverProfileHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.062, vertical: h * 0.024),
       child: Column(
         children: [
           _ArrivalHeadline(driverName: driver.name),
-          const SizedBox(height: 20),
+          SizedBox(height: h * 0.024),
           _DriverAvatar(),
-          const SizedBox(height: 14),
+          SizedBox(height: h * 0.017),
           Text(
             driver.name,
-            style: const TextStyle(
-              fontSize: 20,
+            style: TextStyle(
+              fontSize: w * 0.051,
               fontWeight: FontWeight.w700,
               color: _textPrimary,
             ),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: h * 0.007),
           _RatingRow(rating: driver.rating, tripCount: driver.tripCount),
-          const SizedBox(height: 10),
+          SizedBox(height: h * 0.012),
           _BadgeRow(
             isVerified: driver.isVerified,
             isPoliceChecked: driver.isPoliceChecked,
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: h * 0.012),
           _PhoneRow(maskedPhone: driver.maskedPhone),
         ],
       ),
@@ -55,23 +57,25 @@ class _ArrivalHeadline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           '${driverName.split(' ').first} is arriving!',
-          style: const TextStyle(
-            fontSize: 22,
+          style: TextStyle(
+            fontSize: w * 0.056,
             fontWeight: FontWeight.w700,
             color: _textPrimary,
           ),
         ),
-        const SizedBox(height: 4),
+        SizedBox(height: h * 0.005),
         RichText(
           textAlign: TextAlign.center,
           text: TextSpan(
-            style: const TextStyle(
-              fontSize: 13,
+            style: TextStyle(
+              fontSize: w * 0.033,
               fontWeight: FontWeight.w400,
               color: _textSecondary,
             ),
@@ -79,7 +83,7 @@ class _ArrivalHeadline extends StatelessWidget {
               const TextSpan(text: "We've found a highly-rated driver near\n"),
               TextSpan(
                 text: 'Kumasi Central Market',
-                style: const TextStyle(
+                style: TextStyle(
                   color: _gold,
                   fontWeight: FontWeight.w600,
                 ),
@@ -95,12 +99,13 @@ class _ArrivalHeadline extends StatelessWidget {
 class _DriverAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Container(
-          width: 84,
-          height: 84,
+          width:  w * 0.215,
+          height: w * 0.215,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: _avatarBg,
@@ -113,14 +118,14 @@ class _DriverAvatar extends StatelessWidget {
               ),
             ],
           ),
-          child: const Icon(Icons.person_rounded, size: 46, color: _darkSlate),
+          child: Icon(Icons.person_rounded, size: w * 0.118, color: _darkSlate),
         ),
         Positioned(
-          bottom: 4,
-          right: 4,
+          bottom: w * 0.010,
+          right:  w * 0.010,
           child: Container(
-            width: 16,
-            height: 16,
+            width:  w * 0.041,
+            height: w * 0.041,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: _success,
@@ -140,24 +145,25 @@ class _RatingRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.star_rounded, size: 16, color: _gold),
-        const SizedBox(width: 4),
+        Icon(Icons.star_rounded, size: w * 0.041, color: _gold),
+        SizedBox(width: w * 0.010),
         Text(
           rating.toStringAsFixed(2),
-          style: const TextStyle(
-            fontSize: 13,
+          style: TextStyle(
+            fontSize: w * 0.033,
             fontWeight: FontWeight.w700,
             color: _textPrimary,
           ),
         ),
-        const SizedBox(width: 6),
+        SizedBox(width: w * 0.015),
         Text(
           '· ${_formatCount(tripCount)} trips',
-          style: const TextStyle(
-            fontSize: 13,
+          style: TextStyle(
+            fontSize: w * 0.033,
             fontWeight: FontWeight.w400,
             color: _textSecondary,
           ),
@@ -181,6 +187,7 @@ class _BadgeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -190,7 +197,7 @@ class _BadgeRow extends StatelessWidget {
           color: _success,
           bgColor: _successLight,
         ),
-        if (isVerified && isPoliceChecked) const SizedBox(width: 8),
+        if (isVerified && isPoliceChecked) SizedBox(width: w * 0.021),
         if (isPoliceChecked) _StatusBadge(
           label: 'Police Checked',
           icon: Icons.shield_rounded,
@@ -217,21 +224,23 @@ class _StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.026, vertical: h * 0.006),
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(w * 0.051),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: color),
-          const SizedBox(width: 4),
+          Icon(icon, size: w * 0.031, color: color),
+          SizedBox(width: w * 0.010),
           Text(
             label,
             style: TextStyle(
-              fontSize: 11,
+              fontSize: w * 0.028,
               fontWeight: FontWeight.w600,
               color: color,
             ),
@@ -248,15 +257,16 @@ class _PhoneRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.phone_rounded, size: 14, color: _textSecondary),
-        const SizedBox(width: 6),
+        Icon(Icons.phone_rounded, size: w * 0.036, color: _textSecondary),
+        SizedBox(width: w * 0.015),
         Text(
           maskedPhone,
-          style: const TextStyle(
-            fontSize: 13,
+          style: TextStyle(
+            fontSize: w * 0.033,
             fontWeight: FontWeight.w500,
             color: _textSecondary,
           ),
