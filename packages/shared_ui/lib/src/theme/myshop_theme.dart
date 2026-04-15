@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'myshop_colors.dart';
+import 'myshop_radius.dart';
 import 'myshop_typography.dart';
 
 abstract final class MyShopTheme {
@@ -20,18 +21,21 @@ abstract final class MyShopTheme {
           backgroundColor: MyShopColors.surfaceWhite,
           foregroundColor: MyShopColors.textPrimary,
           elevation: 0,
-          centerTitle: true,
+          centerTitle: false,
           titleTextStyle: MyShopTypography.h3,
         ),
+        // Global primary button style — pulls from MyShopColors.buttonPrimary
+        // and MyShopRadius.button, so both can be updated in one place.
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            backgroundColor: MyShopColors.primaryGold,
+            backgroundColor: MyShopColors.buttonPrimary,
             foregroundColor: MyShopColors.textOnPrimary,
             minimumSize: const Size(double.infinity, 52),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(MyShopRadius.button),
             ),
             textStyle: MyShopTypography.button,
+            elevation: 0,
           ),
         ),
         cardTheme: CardThemeData(

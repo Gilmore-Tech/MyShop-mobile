@@ -6,6 +6,11 @@ abstract final class MyShopColors {
   static const primaryGoldDark = Color(0xFFD48E1A);
   static const primaryGoldLight = Color(0xFFFFF8EC);
   static const darkSlate = Color(0xFF46535D);
+
+  /// Global primary button background. Alias of [darkSlate]. Change this
+  /// single value to restyle every primary button in the app — the theme
+  /// and any button that respects the theme inherits from here.
+  static const buttonPrimary = darkSlate;
   static const darkText = Color(0xFF161A1D);
   static const offWhite = Color(0xFFF6F7F8);
 
