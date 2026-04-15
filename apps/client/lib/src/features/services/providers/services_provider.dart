@@ -10,11 +10,18 @@ class ServiceCategory {
   final String name;
   final IconData icon;
 
+  /// Nested subcategories. Backend allows one level of nesting
+  /// (see EDD — ServiceCategory.parentId). `null` or empty = leaf category.
+  final List<ServiceCategory>? children;
+
   const ServiceCategory({
     required this.id,
     required this.name,
     required this.icon,
+    this.children,
   });
+
+  bool get hasChildren => children != null && children!.isNotEmpty;
 }
 
 // ── Featured Artisan ──────────────────────────────────────────────────────────
@@ -88,7 +95,17 @@ const _mockCategories = [
   ServiceCategory(id: 'carpenter',   name: 'Carpenter',    icon: Icons.carpenter),
   ServiceCategory(id: 'plumber',     name: 'Plumber',      icon: Icons.plumbing),
   ServiceCategory(id: 'satellite',   name: 'Satellite TV', icon: Icons.satellite_alt),
-  ServiceCategory(id: 'repairs',     name: 'Repairs',      icon: Icons.handyman),
+  ServiceCategory(
+    id: 'repairs',
+    name: 'Repairs',
+    icon: Icons.handyman,
+    children: [
+      ServiceCategory(id: 'repair-laptop', name: 'Laptop Repair',     icon: Icons.laptop_mac),
+      ServiceCategory(id: 'repair-fridge', name: 'Fridge Repair',     icon: Icons.kitchen),
+      ServiceCategory(id: 'repair-tv',     name: 'Television Repair', icon: Icons.tv),
+      ServiceCategory(id: 'repair-phone',  name: 'Phone Repair',      icon: Icons.phone_android),
+    ],
+  ),
 ];
 
 const _mockFeatured = [

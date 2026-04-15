@@ -79,77 +79,57 @@ class _JobFormScreenState extends ConsumerState<JobFormScreen> {
           _AppBar(w: w, h: h),
           Expanded(
             child: SingleChildScrollView(
-              padding: EdgeInsets.only(
-                bottom: h * 0.024, // breathing room above bottom nav
-              ),
+              padding: EdgeInsets.only(bottom: h * 0.024),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(height: h * 0.019), // ~16dp
-                  _SectionLabel(label: 'JOB DETAILS', w: w, h: h),
-                  SizedBox(height: h * 0.010),
-                  _FormCard(
+                  SizedBox(height: h * 0.024),
+                  _SectionHeading(
+                    title: 'Job Details',
+                    subtitle: 'What service do you need today?',
                     w: w,
                     h: h,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _CategoryDropdown(w: w, h: h, formState: formState),
-                        _FieldDivider(w: w),
-                        _TitleField(
-                          controller: _titleController,
-                          w: w, h: h,
-                          onChanged: (v) =>
-                              ref.read(jobFormProvider.notifier).setTitle(v),
-                        ),
-                        _FieldDivider(w: w),
-                        _DescriptionField(
-                          controller: _descriptionController,
-                          w: w, h: h,
-                          onChanged: (v) =>
-                              ref.read(jobFormProvider.notifier).setDescription(v),
-                        ),
-                        _FieldDivider(w: w),
-                        _PhotoUploadField(
-                          photoCount: formState.photoCount,
-                          onTap: () =>
-                              ref.read(jobFormProvider.notifier).incrementPhotos(),
-                          w: w, h: h,
-                        ),
-                      ],
-                    ),
                   ),
-
-                  SizedBox(height: h * 0.019),
-                  _SectionLabel(label: 'DESTINATION', w: w, h: h),
-                  SizedBox(height: h * 0.010),
-                  _FormCard(
-                    w: w,
-                    h: h,
-                    child: Column(
-                      children: [
-                        _DestinationField(
-                          controller: _destinationController,
-                          w: w, h: h,
-                          onChanged: (v) => ref
-                              .read(jobFormProvider.notifier)
-                              .setDestinationAddress(v),
-                        ),
-                        _FieldDivider(w: w),
-                        _LandmarkField(
-                          controller: _landmarkController,
-                          w: w, h: h,
-                          onChanged: (v) => ref
-                              .read(jobFormProvider.notifier)
-                              .setLandmarkNote(v),
-                        ),
-                      ],
-                    ),
+                  SizedBox(height: h * 0.022),
+                  _CategoryDropdown(w: w, h: h, formState: formState),
+                  SizedBox(height: h * 0.022),
+                  _TitleField(
+                    controller: _titleController,
+                    w: w, h: h,
+                    onChanged: (v) =>
+                        ref.read(jobFormProvider.notifier).setTitle(v),
                   ),
-
-                  SizedBox(height: h * 0.019),
-                  _SectionLabel(label: 'SERVICE TIMING', w: w, h: h),
-                  SizedBox(height: h * 0.010),
+                  SizedBox(height: h * 0.022),
+                  _DescriptionField(
+                    controller: _descriptionController,
+                    w: w, h: h,
+                    onChanged: (v) =>
+                        ref.read(jobFormProvider.notifier).setDescription(v),
+                  ),
+                  SizedBox(height: h * 0.022),
+                  _PhotoUploadField(
+                    photoCount: formState.photoCount,
+                    onTap: () =>
+                        ref.read(jobFormProvider.notifier).incrementPhotos(),
+                    w: w, h: h,
+                  ),
+                  SizedBox(height: h * 0.022),
+                  _DestinationField(
+                    controller: _destinationController,
+                    w: w, h: h,
+                    onChanged: (v) => ref
+                        .read(jobFormProvider.notifier)
+                        .setDestinationAddress(v),
+                  ),
+                  SizedBox(height: h * 0.014),
+                  _LandmarkField(
+                    controller: _landmarkController,
+                    w: w, h: h,
+                    onChanged: (v) => ref
+                        .read(jobFormProvider.notifier)
+                        .setLandmarkNote(v),
+                  ),
+                  SizedBox(height: h * 0.022),
                   _TimingCard(
                     isImmediate:  formState.isImmediate,
                     scheduledFor: formState.scheduledFor,
@@ -159,10 +139,9 @@ class _JobFormScreenState extends ConsumerState<JobFormScreen> {
                         ref.read(jobFormProvider.notifier).setScheduledFor(dt),
                     w: w, h: h,
                   ),
-
                   SizedBox(height: h * 0.019),
                   _BidTimeInfoCard(w: w, h: h),
-                  SizedBox(height: h * 0.012),
+                  SizedBox(height: h * 0.014),
                   _SafetyInfoCard(w: w, h: h),
                   SizedBox(height: h * 0.024),
                   _SubmitButton(
@@ -171,9 +150,9 @@ class _JobFormScreenState extends ConsumerState<JobFormScreen> {
                         ref.read(jobFormProvider.notifier).submit(),
                     w: w, h: h,
                   ),
-                  SizedBox(height: h * 0.010),
+                  SizedBox(height: h * 0.014),
                   _Disclaimer(w: w, h: h),
-                  SizedBox(height: h * 0.012),
+                  SizedBox(height: h * 0.014),
                 ],
               ),
             ),
@@ -196,50 +175,55 @@ class _AppBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final topPad = MediaQuery.paddingOf(context).top;
     return Container(
-      color: _surfaceWhite,
+      decoration: const BoxDecoration(
+        color: _surfaceWhite,
+        border: Border(bottom: BorderSide(color: _divider)),
+      ),
       padding: EdgeInsets.only(
-        top: topPad + h * 0.010,
-        bottom: h * 0.019,
+        top: topPad + h * 0.012,
+        bottom: h * 0.016,
         left: w * 0.041,
         right: w * 0.041,
       ),
-      child: Row(
+      child: Stack(
+        alignment: Alignment.center,
         children: [
-          GestureDetector(
-            onTap: () => Navigator.of(context).maybePop(),
-            behavior: HitTestBehavior.opaque,
-            child: Padding(
-              padding: EdgeInsets.only(right: w * 0.031),
-              child: Icon(
-                Icons.arrow_back,
-                size: w * 0.056,
-                color: _textPrimary,
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Create Request',
+                style: TextStyle(
+                  fontSize:   w * 0.046,
+                  fontWeight: FontWeight.w700,
+                  color:      _textPrimary,
+                  height:     1.2,
+                ),
               ),
-            ),
+              SizedBox(height: h * 0.004),
+              Text(
+                'Find the best local artisans',
+                style: TextStyle(
+                  fontSize:   w * 0.031,
+                  fontWeight: FontWeight.w400,
+                  color:      _textSecondary,
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Create Request',
-                  style: TextStyle(
-                    fontSize: w * 0.051, // ~20dp
-                    fontWeight: FontWeight.w700,
-                    color: _textPrimary,
-                    height: 1.2,
-                  ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: GestureDetector(
+              onTap: () => Navigator.of(context).maybePop(),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: EdgeInsets.all(w * 0.015),
+                child: Icon(
+                  Icons.arrow_back,
+                  size: w * 0.056,
+                  color: _textPrimary,
                 ),
-                SizedBox(height: h * 0.004),
-                Text(
-                  'Find the best local artisans',
-                  style: TextStyle(
-                    fontSize: w * 0.031, // ~12dp
-                    fontWeight: FontWeight.w400,
-                    color: _textSecondary,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ],
@@ -248,65 +232,47 @@ class _AppBar extends StatelessWidget {
   }
 }
 
-// ── Section Label ──────────────────────────────────────────────────────────────
+// ── Section Heading (top of form) ──────────────────────────────────────────────
 
-class _SectionLabel extends StatelessWidget {
-  final String label;
+class _SectionHeading extends StatelessWidget {
+  final String title;
+  final String subtitle;
   final double w;
   final double h;
-  const _SectionLabel({required this.label, required this.w, required this.h});
+  const _SectionHeading({
+    required this.title,
+    required this.subtitle,
+    required this.w,
+    required this.h,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: w * 0.028, // ~11dp
-          fontWeight: FontWeight.w900,
-          color: _textSecondary,
-          letterSpacing: 1.4,
-          height: 1.4,
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize:   w * 0.051, // ~20dp
+              fontWeight: FontWeight.w700,
+              color:      _textPrimary,
+              height:     1.2,
+            ),
+          ),
+          SizedBox(height: h * 0.005),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize:   w * 0.033,
+              fontWeight: FontWeight.w400,
+              color:      _textSecondary,
+            ),
+          ),
+        ],
       ),
-    );
-  }
-}
-
-// ── White form card wrapper ────────────────────────────────────────────────────
-
-class _FormCard extends StatelessWidget {
-  final Widget child;
-  final double w;
-  final double h;
-  const _FormCard({required this.child, required this.w, required this.h});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: w * 0.041),
-      decoration: BoxDecoration(
-        color: _surfaceWhite,
-        borderRadius: BorderRadius.circular(w * 0.031), // ~12dp
-        border: Border.all(color: _divider, width: 1),
-      ),
-      child: child,
-    );
-  }
-}
-
-// ── Thin divider between form rows ────────────────────────────────────────────
-
-class _FieldDivider extends StatelessWidget {
-  final double w;
-  const _FieldDivider({required this.w});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: w * 0.041),
-      child: const Divider(height: 1, thickness: 1, color: _divider),
     );
   }
 }
@@ -350,10 +316,7 @@ class _CategoryDropdown extends ConsumerWidget {
     final categoriesAsync = ref.watch(serviceCategoriesProvider);
 
     return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: w * 0.041,
-        vertical: h * 0.017,
-      ),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -604,10 +567,7 @@ class _TitleField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: w * 0.041,
-        vertical: h * 0.017,
-      ),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -622,7 +582,7 @@ class _TitleField extends StatelessWidget {
               color: _textPrimary,
             ),
             decoration: InputDecoration(
-              hintText: 'e.g. Fix electrical wiring in living room',
+              hintText: 'e.g. Master Carpenter for Wardrobe',
               hintStyle: TextStyle(
                 fontSize: w * 0.036,
                 fontWeight: FontWeight.w400,
@@ -648,7 +608,7 @@ class _TitleField extends StatelessWidget {
           ),
           SizedBox(height: h * 0.007),
           Text(
-            'Be specific so artisans know exactly what you need',
+            'Be specific to get better bids',
             style: TextStyle(
               fontSize: w * 0.028,
               fontWeight: FontWeight.w400,
@@ -678,10 +638,7 @@ class _DescriptionField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: w * 0.041,
-        vertical: h * 0.017,
-      ),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -698,8 +655,7 @@ class _DescriptionField extends StatelessWidget {
               color: _textPrimary,
             ),
             decoration: InputDecoration(
-              hintText:
-                  'Describe the work in detail — materials needed, current state, etc.',
+              hintText: 'Describe your requirements in detail...',
               hintStyle: TextStyle(
                 fontSize: w * 0.036,
                 fontWeight: FontWeight.w400,
@@ -746,80 +702,60 @@ class _PhotoUploadField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: w * 0.041,
-        vertical: h * 0.017,
-      ),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              _FieldLabel(text: 'WORK SITE PHOTOS', w: w, h: h),
-              SizedBox(width: w * 0.015),
-              Text(
-                '(optional)',
-                style: TextStyle(
-                  fontSize: w * 0.028,
-                  fontWeight: FontWeight.w400,
-                  color: _textHint,
-                ),
-              ),
-            ],
-          ),
+          _FieldLabel(text: 'WORK SITE PHOTOS', w: w, h: h),
           SizedBox(height: h * 0.010),
           GestureDetector(
             onTap: onTap,
-            child: Container(
-              width: double.infinity,
-              height: h * 0.119, // ~100dp
-              decoration: BoxDecoration(
-                color: _surfaceGrey,
-                borderRadius: BorderRadius.circular(w * 0.021),
-                border: Border.all(
-                  color: _divider,
-                  width: 1.5,
-                  // dashed style via custom painter — approximated with strokeDashArray
-                ),
+            child: CustomPaint(
+              painter: _DashedBorderPainter(
+                color: _divider,
+                radius: w * 0.021,
+                strokeWidth: 1.5,
+                dashLength: w * 0.018,
+                gapLength: w * 0.012,
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: w * 0.113,
-                    height: w * 0.113,
-                    decoration: const BoxDecoration(
-                      color: _surfaceWhite,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
+              child: Container(
+                width: double.infinity,
+                height: h * 0.119,
+                decoration: BoxDecoration(
+                  color: _surfaceWhite,
+                  borderRadius: BorderRadius.circular(w * 0.021),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
                       Icons.camera_alt_outlined,
-                      size: w * 0.056,
+                      size:  w * 0.072,
                       color: _textSecondary,
                     ),
-                  ),
-                  SizedBox(height: h * 0.009),
-                  Text(
-                    photoCount > 0
-                        ? '$photoCount photo${photoCount > 1 ? 's' : ''} added — tap to add more'
-                        : 'Tap to add photos',
-                    style: TextStyle(
-                      fontSize: w * 0.033,
-                      fontWeight: FontWeight.w500,
-                      color: _textSecondary,
+                    SizedBox(height: h * 0.009),
+                    Text(
+                      photoCount > 0
+                          ? '$photoCount photo${photoCount > 1 ? 's' : ''} added — tap to add more'
+                          : 'Upload images',
+                      style: TextStyle(
+                        fontSize:   w * 0.036,
+                        fontWeight: FontWeight.w500,
+                        color:      _textSecondary,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
           SizedBox(height: h * 0.007),
           Text(
-            'Photos help artisans give more accurate bids',
+            'Upload up to 4 photos for a better bid',
             style: TextStyle(
-              fontSize: w * 0.028,
+              fontSize:   w * 0.028,
               fontWeight: FontWeight.w400,
-              color: _textHint,
+              color:      _textHint,
             ),
           ),
         ],
@@ -845,14 +781,11 @@ class _DestinationField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: w * 0.041,
-        vertical: h * 0.017,
-      ),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _FieldLabel(text: 'WORK LOCATION', w: w, h: h),
+          _FieldLabel(text: 'DESTINATION', w: w, h: h),
           SizedBox(height: h * 0.010),
           TextField(
             controller: controller,
@@ -863,7 +796,7 @@ class _DestinationField extends StatelessWidget {
               color: _textPrimary,
             ),
             decoration: InputDecoration(
-              hintText: 'Enter address or drop a pin',
+              hintText: 'Kotoka International Airport (T3)',
               hintStyle: TextStyle(
                 fontSize: w * 0.036,
                 fontWeight: FontWeight.w400,
@@ -901,6 +834,15 @@ class _DestinationField extends StatelessWidget {
               ),
             ),
           ),
+          SizedBox(height: h * 0.007),
+          Text(
+            'Auto selects your default location. Change location if it varies.',
+            style: TextStyle(
+              fontSize:   w * 0.028,
+              fontWeight: FontWeight.w400,
+              color:      _textHint,
+            ),
+          ),
         ],
       ),
     );
@@ -924,15 +866,10 @@ class _LandmarkField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: w * 0.041,
-        vertical: h * 0.017,
-      ),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _FieldLabel(text: 'LANDMARK / DIRECTIONS', w: w, h: h),
-          SizedBox(height: h * 0.010),
           TextField(
             controller: controller,
             onChanged: onChanged,
@@ -942,7 +879,7 @@ class _LandmarkField extends StatelessWidget {
               color: _textPrimary,
             ),
             decoration: InputDecoration(
-              hintText: 'e.g. Near Kejetia Market, blue gate',
+              hintText: 'Enter specific landmark or street',
               hintStyle: TextStyle(
                 fontSize: w * 0.036,
                 fontWeight: FontWeight.w400,
@@ -964,6 +901,15 @@ class _LandmarkField extends StatelessWidget {
                 borderRadius: BorderRadius.circular(w * 0.021),
                 borderSide: const BorderSide(color: _gold, width: 1.5),
               ),
+            ),
+          ),
+          SizedBox(height: h * 0.007),
+          Text(
+            "Add any closest landmark to help artisans (optional)",
+            style: TextStyle(
+              fontSize:   w * 0.028,
+              fontWeight: FontWeight.w400,
+              color:      _textHint,
             ),
           ),
         ],
@@ -996,9 +942,8 @@ class _TimingCard extends StatelessWidget {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: w * 0.041),
       decoration: BoxDecoration(
-        color:        _surfaceWhite,
-        borderRadius: BorderRadius.circular(w * 0.031),
-        border:       Border.all(color: _divider),
+        color:        _surfaceGrey,
+        borderRadius: BorderRadius.circular(w * 0.041),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1006,11 +951,32 @@ class _TimingCard extends StatelessWidget {
           // ── Header row ──────────────────────────────────────────────────────
           Padding(
             padding: EdgeInsets.symmetric(
-              horizontal: w * 0.041,
-              vertical:   h * 0.019,
+              horizontal: w * 0.031,
+              vertical:   h * 0.014,
             ),
             child: Row(
               children: [
+                Container(
+                  width:  w * 0.100,
+                  height: w * 0.100,
+                  decoration: BoxDecoration(
+                    color:        _surfaceWhite,
+                    borderRadius: BorderRadius.circular(w * 0.026),
+                    boxShadow: [
+                      BoxShadow(
+                        color:      Colors.black.withValues(alpha: 0.04),
+                        blurRadius: w * 0.010,
+                        offset:     Offset(0, w * 0.002),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.access_time_rounded,
+                    size:  w * 0.046,
+                    color: _textPrimary,
+                  ),
+                ),
+                SizedBox(width: w * 0.031),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1018,7 +984,7 @@ class _TimingCard extends StatelessWidget {
                       Text(
                         'Service Timing',
                         style: TextStyle(
-                          fontSize:   w * 0.038,
+                          fontSize:   w * 0.032,
                           fontWeight: FontWeight.w700,
                           color:      _textPrimary,
                         ),
@@ -1027,7 +993,7 @@ class _TimingCard extends StatelessWidget {
                       Text(
                         'When do you need the help?',
                         style: TextStyle(
-                          fontSize:   w * 0.031,
+                          fontSize:   w * 0.024,
                           fontWeight: FontWeight.w400,
                           color:      _textSecondary,
                         ),
@@ -1235,12 +1201,8 @@ class _TimingToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: h * 0.038, // ~32dp
-      decoration: BoxDecoration(
-        color: _surfaceGrey,
-        borderRadius: BorderRadius.circular(w * 0.051),
-      ),
+    return Padding(
+      padding: EdgeInsets.all(w * 0.010),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1282,23 +1244,33 @@ class _ToggleOption extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         curve: Curves.easeInOut,
         padding: EdgeInsets.symmetric(
-          horizontal: w * 0.046,
-          vertical: h * 0.005,
+          horizontal: w * 0.051,
+          vertical:   h * 0.009,
         ),
         decoration: BoxDecoration(
-          color: isSelected ? _gold : Colors.transparent,
-          borderRadius: BorderRadius.circular(w * 0.051),
+          color: isSelected ? _surfaceWhite : Colors.transparent,
+          borderRadius: BorderRadius.circular(w * 0.031),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color:      Colors.black.withValues(alpha: 0.06),
+                    blurRadius: w * 0.013,
+                    offset:     Offset(0, w * 0.003),
+                  ),
+                ]
+              : null,
         ),
         child: Text(
           label,
           style: TextStyle(
-            fontSize: w * 0.033,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-            color: isSelected ? _surfaceWhite : _textSecondary,
+            fontSize:   w * 0.038,
+            fontWeight: FontWeight.w700,
+            color:      _textPrimary,
           ),
         ),
       ),
@@ -1315,57 +1287,47 @@ class _BidTimeInfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: w * 0.041),
-      padding: EdgeInsets.symmetric(
-        horizontal: w * 0.041,
-        vertical: h * 0.017,
-      ),
-      decoration: BoxDecoration(
-        color: _surfaceWhite,
-        borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _divider),
-      ),
-      child: Row(
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041),
+      child: Column(
         children: [
-          Icon(
-            Icons.bolt_rounded,
-            size: w * 0.056,
-            color: _gold,
-          ),
-          SizedBox(width: w * 0.026),
-          Expanded(
-            child: RichText(
-              text: TextSpan(
-                children: [
-                  TextSpan(
-                    text: 'Est. time for first bid: ',
-                    style: TextStyle(
-                      fontSize: w * 0.033,
-                      fontWeight: FontWeight.w400,
-                      color: _textSecondary,
-                    ),
-                  ),
-                  TextSpan(
-                    text: '~5 mins',
-                    style: TextStyle(
-                      fontSize: w * 0.033,
-                      fontWeight: FontWeight.w700,
-                      color: _textPrimary,
-                    ),
-                  ),
-                  TextSpan(
-                    text: ' once posted',
-                    style: TextStyle(
-                      fontSize: w * 0.033,
-                      fontWeight: FontWeight.w400,
-                      color: _textSecondary,
-                    ),
-                  ),
-                ],
+          _DashedLine(color: _divider, dashLength: w * 0.010, gapLength: w * 0.008),
+          SizedBox(height: h * 0.014),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.timer_outlined,
+                size:  w * 0.046,
+                color: _textPrimary,
               ),
-            ),
+              SizedBox(width: w * 0.021),
+              RichText(
+                text: TextSpan(
+                  children: [
+                    TextSpan(
+                      text: 'Est. time for first bid: ',
+                      style: TextStyle(
+                        fontSize:   w * 0.036,
+                        fontWeight: FontWeight.w400,
+                        color:      _textPrimary,
+                      ),
+                    ),
+                    TextSpan(
+                      text: '~5 mins',
+                      style: TextStyle(
+                        fontSize:   w * 0.036,
+                        fontWeight: FontWeight.w700,
+                        color:      _textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
+          SizedBox(height: h * 0.014),
+          _DashedLine(color: _divider, dashLength: w * 0.010, gapLength: w * 0.008),
         ],
       ),
     );
@@ -1396,7 +1358,7 @@ class _SafetyInfoCard extends StatelessWidget {
         children: [
           Icon(
             Icons.verified_user_outlined,
-            size: w * 0.051,
+            size: w * 0.056,
             color: _gold,
           ),
           SizedBox(width: w * 0.026),
@@ -1414,7 +1376,7 @@ class _SafetyInfoCard extends StatelessWidget {
                 ),
                 SizedBox(height: h * 0.004),
                 Text(
-                  'All artisans on MyShop are background-checked and identity-verified before being listed.',
+                  'All bidders are screened via Ghana Police background checks and Smile Identity KYC.',
                   style: TextStyle(
                     fontSize: w * 0.028,
                     fontWeight: FontWeight.w400,
@@ -1448,7 +1410,7 @@ class _SubmitButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final canSubmit = formState.canSubmit;
-    final label     = formState.isImmediate ? 'Post Job Now' : 'Post Job Later';
+    final label     = 'Post Job Post Now';
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
@@ -1512,13 +1474,13 @@ class _Disclaimer extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.082),
       child: Text(
-        'By posting you agree to MyShop\'s Terms of Service. '
-        'A 20% platform fee applies to the agreed job price.',
+        'BY POSTING, YOU AGREE TO OUR ESCROW & SAFETY TERMS',
         style: TextStyle(
-          fontSize: w * 0.028,
-          fontWeight: FontWeight.w400,
-          color: _textHint,
-          height: 1.5,
+          fontSize:      w * 0.026,
+          fontWeight:    FontWeight.w600,
+          color:         _textHint,
+          letterSpacing: 0.8,
+          height:        1.5,
         ),
         textAlign: TextAlign.center,
       ),
@@ -1590,4 +1552,115 @@ class _NavItem extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── Horizontal dashed line (used above/below bid-time row) ─────────────────────
+
+class _DashedLine extends StatelessWidget {
+  final Color  color;
+  final double dashLength;
+  final double gapLength;
+
+  const _DashedLine({
+    required this.color,
+    required this.dashLength,
+    required this.gapLength,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 1,
+      child: CustomPaint(
+        painter: _DashedLinePainter(
+          color: color,
+          dashLength: dashLength,
+          gapLength: gapLength,
+        ),
+      ),
+    );
+  }
+}
+
+class _DashedLinePainter extends CustomPainter {
+  final Color  color;
+  final double dashLength;
+  final double gapLength;
+
+  const _DashedLinePainter({
+    required this.color,
+    required this.dashLength,
+    required this.gapLength,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color       = color
+      ..strokeWidth = 1
+      ..style       = PaintingStyle.stroke;
+
+    var x = 0.0;
+    final y = size.height / 2;
+    while (x < size.width) {
+      final end = (x + dashLength).clamp(0.0, size.width);
+      canvas.drawLine(Offset(x, y), Offset(end, y), paint);
+      x = end + gapLength;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedLinePainter old) =>
+      old.color      != color      ||
+      old.dashLength != dashLength ||
+      old.gapLength  != gapLength;
+}
+
+// ── Dashed rounded-rect border painter (used by photo upload zone) ─────────────
+
+class _DashedBorderPainter extends CustomPainter {
+  final Color  color;
+  final double radius;
+  final double strokeWidth;
+  final double dashLength;
+  final double gapLength;
+
+  const _DashedBorderPainter({
+    required this.color,
+    required this.radius,
+    required this.strokeWidth,
+    required this.dashLength,
+    required this.gapLength,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+
+    final rrect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      Radius.circular(radius),
+    );
+    final path = Path()..addRRect(rrect);
+
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final end = (distance + dashLength).clamp(0.0, metric.length);
+        canvas.drawPath(metric.extractPath(distance, end), paint);
+        distance = end + gapLength;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedBorderPainter old) =>
+      old.color       != color       ||
+      old.radius      != radius      ||
+      old.strokeWidth != strokeWidth ||
+      old.dashLength  != dashLength  ||
+      old.gapLength   != gapLength;
 }

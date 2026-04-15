@@ -73,12 +73,15 @@ class _AppBar extends StatelessWidget {
     final size = MediaQuery.sizeOf(context);
     final w = size.width;
     final h = size.height;
+    final topPad = MediaQuery.paddingOf(context).top;
 
     return Container(
       color: _surfaceWhite,
-      padding: EdgeInsets.symmetric(
-        horizontal: w * 0.041,
-        vertical:   h * 0.019,
+      padding: EdgeInsets.fromLTRB(
+        w * 0.041,
+        topPad + h * 0.019,
+        w * 0.041,
+        h * 0.019,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -130,7 +133,7 @@ class _HeroSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Find skilled help nearby',
+            'What do you need done?',
             style: TextStyle(
               fontSize:   w * 0.051,
               fontWeight: FontWeight.w700,
@@ -140,7 +143,7 @@ class _HeroSection extends StatelessWidget {
           ),
           SizedBox(height: h * 0.007),
           Text(
-            'Over 500+ verified artisans ready to help today.',
+            'Pick a category to post a request — verified artisans will bid.',
             style: TextStyle(
               fontSize:   w * 0.033,
               fontWeight: FontWeight.w400,
@@ -209,14 +212,160 @@ class _CategoryGrid extends StatelessWidget {
         itemCount:   categories.length,
         itemBuilder: (context, i) => _CategoryCard(
           category: categories[i],
-          onTap: () => context.push(
-            AppRoutes.jobNew,
-            extra: {
-              'categoryId':   categories[i].id,
-              'categoryName': categories[i].name,
+          onTap: () => _onCategoryTap(context, categories[i]),
+        ),
+      ),
+    );
+  }
+
+  void _onCategoryTap(BuildContext context, ServiceCategory category) {
+    if (category.hasChildren) {
+      _showSubcategorySheet(context, category);
+      return;
+    }
+    _goToJobForm(context, category);
+  }
+
+  void _goToJobForm(BuildContext context, ServiceCategory category) {
+    context.push(
+      AppRoutes.jobNew,
+      extra: {
+        'categoryId':   category.id,
+        'categoryName': category.name,
+      },
+    );
+  }
+
+  void _showSubcategorySheet(BuildContext context, ServiceCategory parent) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => _SubcategorySheet(
+        parent: parent,
+        onSelected: (child) {
+          Navigator.of(sheetCtx).pop();
+          _goToJobForm(context, child);
+        },
+      ),
+    );
+  }
+}
+
+class _SubcategorySheet extends StatelessWidget {
+  final ServiceCategory parent;
+  final ValueChanged<ServiceCategory> onSelected;
+
+  const _SubcategorySheet({required this.parent, required this.onSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
+    final children = parent.children ?? const [];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: _surfaceWhite,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(w * 0.041)),
+      ),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.viewInsetsOf(context).bottom + h * 0.028,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(height: h * 0.014),
+          Container(
+            width: w * 0.103,
+            height: h * 0.005,
+            decoration: BoxDecoration(
+              color: _divider,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          SizedBox(height: h * 0.019),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: w * 0.041),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Choose ${parent.name.toLowerCase()} type',
+                  style: TextStyle(
+                    fontSize:   w * 0.046,
+                    fontWeight: FontWeight.w700,
+                    color:      _textPrimary,
+                  ),
+                ),
+                SizedBox(height: h * 0.005),
+                Text(
+                  'Select what you need repaired to post your request.',
+                  style: TextStyle(
+                    fontSize:   w * 0.031,
+                    fontWeight: FontWeight.w400,
+                    color:      _textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: h * 0.014),
+          const Divider(height: 1, color: _divider),
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: children.length,
+            separatorBuilder: (_, __) =>
+                const Divider(height: 1, color: _divider),
+            itemBuilder: (_, i) {
+              final child = children[i];
+              return InkWell(
+                onTap: () => onSelected(child),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: w * 0.041,
+                    vertical:   h * 0.017,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width:  w * 0.092,
+                        height: w * 0.092,
+                        decoration: const BoxDecoration(
+                          color: _surfaceGrey,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          child.icon,
+                          size:  w * 0.046,
+                          color: _darkSlate,
+                        ),
+                      ),
+                      SizedBox(width: w * 0.038),
+                      Expanded(
+                        child: Text(
+                          child.name,
+                          style: TextStyle(
+                            fontSize:   w * 0.038,
+                            fontWeight: FontWeight.w500,
+                            color:      _textPrimary,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        size:  w * 0.056,
+                        color: _textSecondary,
+                      ),
+                    ],
+                  ),
+                ),
+              );
             },
           ),
-        ),
+        ],
       ),
     );
   }
