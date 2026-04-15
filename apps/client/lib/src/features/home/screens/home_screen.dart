@@ -31,6 +31,7 @@ class HomeScreen extends ConsumerWidget {
         search.pickup?.name ?? ref.watch(currentLocationProvider);
     final destinationName = search.destination?.name;
 
+    final h = MediaQuery.sizeOf(context).height;
     return Scaffold(
       backgroundColor: _offWhite,
       body: SafeArea(
@@ -42,7 +43,7 @@ class HomeScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 40),
+                    SizedBox(height: h * 0.05),
                     LocationSearchCard(
                       pickupLabel: pickupName,
                       destinationLabel: destinationName,
@@ -55,15 +56,15 @@ class HomeScreen extends ConsumerWidget {
                       onDestinationPinTap: () => context.push(
                           AppRoutes.ridePinPickerPath('destination')),
                     ),
-                    const SizedBox(height: 40),
+                    SizedBox(height: h * 0.05),
                     _ServiceCardsRow(),
-                    const SizedBox(height: 24),
+                    SizedBox(height: h * 0.028),
                     _SpecialOffersSection(),
-                    const SizedBox(height: 24),
+                    SizedBox(height: h * 0.028),
                     _RecentPlacesSection(),
-                    const SizedBox(height: 16),
+                    SizedBox(height: h * 0.019),
                     const SafetyBanner(),
-                    const SizedBox(height: 24),
+                    SizedBox(height: h * 0.028),
                   ],
                 ),
               ),
@@ -85,9 +86,11 @@ class _HomeGreeting extends ConsumerWidget {
     final accountAsync = ref.watch(accountScreenProvider);
     final profile = accountAsync.value?.profile;
     final firstName = profile?.displayName.trim().split(' ').first ?? '';
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+      padding: EdgeInsets.fromLTRB(w * 0.041, h * 0.024, w * 0.041, h * 0.01),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -96,19 +99,19 @@ class _HomeGreeting extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
+                Text(
                   'Welcome',
                   style: TextStyle(
-                    fontSize: 13,
+                    fontSize: w * 0.034,
                     fontWeight: FontWeight.w400,
                     color: _textSecondary,
                   ),
                 ),
-                const SizedBox(height: 2),
+                SizedBox(height: h * 0.0025),
                 Text(
                   firstName.isEmpty ? '\u00A0' : firstName,
-                  style: const TextStyle(
-                    fontSize: 22,
+                  style: TextStyle(
+                    fontSize: w * 0.057,
                     fontWeight: FontWeight.w700,
                     color: _textPrimary,
                     height: 1.1,
@@ -174,8 +177,9 @@ class _Avatar extends StatelessWidget {
 class _ServiceCardsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: Row(
         children: [
           Expanded(
@@ -184,7 +188,7 @@ class _ServiceCardsRow extends StatelessWidget {
               onTap: () => context.push(AppRoutes.rideEstimate),
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: w * 0.031),
           Expanded(
             child: ServiceCard(
               type: ServiceCardType.artisan,
@@ -214,7 +218,7 @@ class _SpecialOffersSection extends ConsumerWidget {
           actionLabel: 'View All',
           onActionTap: () {},
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: MediaQuery.sizeOf(context).height * 0.014),
         SizedBox(
           height: MediaQuery.sizeOf(context).height * 0.175,
           child: offersAsync.when(
@@ -262,7 +266,7 @@ class _RecentPlacesSection extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         _SectionHeader(title: 'RECENT PLACES'),
-        const SizedBox(height: 4),
+        SizedBox(height: MediaQuery.sizeOf(context).height * 0.005),
         Container(
           color: Colors.white,
           child: placesAsync.when(
@@ -291,41 +295,43 @@ class _RecentPlacesSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(
         3,
         (_) => Container(
-          height: 60,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          height: h * 0.071,
+          padding: EdgeInsets.symmetric(horizontal: w * 0.041, vertical: h * 0.012),
           child: Row(
             children: [
               Container(
-                width: 22,
-                height: 22,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE0E0E0),
+                width:  w * 0.056,
+                height: w * 0.056,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFE0E0E0),
                   shape: BoxShape.circle,
                 ),
               ),
-              const SizedBox(width: 14),
+              SizedBox(width: w * 0.036),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      height: 12,
-                      width: 120,
+                      height: h * 0.014,
+                      width:  w * 0.308,
                       decoration: BoxDecoration(
                         color: const Color(0xFFE0E0E0),
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    SizedBox(height: h * 0.007),
                     Container(
-                      height: 10,
-                      width: 180,
+                      height: h * 0.012,
+                      width:  w * 0.462,
                       decoration: BoxDecoration(
                         color: const Color(0xFFE0E0E0),
                         borderRadius: BorderRadius.circular(4),
@@ -359,8 +365,9 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -368,13 +375,13 @@ class _SectionHeader extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (leadingIcon != null) ...[
-                Icon(leadingIcon, size: 14, color: _gold),
-                const SizedBox(width: 6),
+                Icon(leadingIcon, size: w * 0.036, color: _gold),
+                SizedBox(width: w * 0.015),
               ],
               Text(
                 title,
-                style: const TextStyle(
-                  fontSize: 10,
+                style: TextStyle(
+                  fontSize: w * 0.026,
                   fontWeight: FontWeight.w900,
                   color: _textSecondary,
                   letterSpacing: 1.4,
@@ -390,13 +397,13 @@ class _SectionHeader extends StatelessWidget {
                 children: [
                   Text(
                     actionLabel!,
-                    style: const TextStyle(
-                      fontSize: 12,
+                    style: TextStyle(
+                      fontSize: w * 0.031,
                       fontWeight: FontWeight.w600,
                       color: _gold,
                     ),
                   ),
-                  const Icon(Icons.chevron_right_rounded, size: 16, color: _gold),
+                  Icon(Icons.chevron_right_rounded, size: w * 0.041, color: _gold),
                 ],
               ),
             ),

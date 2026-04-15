@@ -30,16 +30,17 @@ class PickupDestinationFields extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final h = MediaQuery.sizeOf(context).height;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         const _FieldLabel(label: 'PICKUP LOCATION'),
-        const SizedBox(height: 6),
+        SizedBox(height: h * 0.007),
         _PickupField(location: pickupLabel, onTap: onPickupTap),
-        const SizedBox(height: 14),
+        SizedBox(height: h * 0.017),
         const _FieldLabel(label: 'DESTINATION'),
-        const SizedBox(height: 6),
+        SizedBox(height: h * 0.007),
         _DestinationField(
           label: destinationLabel,
           onTap: onDestinationTap,
@@ -56,10 +57,11 @@ class _FieldLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Text(
       label,
-      style: const TextStyle(
-        fontSize: 10,
+      style: TextStyle(
+        fontSize: w * 0.026,
         fontWeight: FontWeight.w900,
         color: _textSecondary,
         letterSpacing: 1.4,
@@ -75,33 +77,39 @@ class _PickupField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(w * 0.026),
       child: Container(
-        height: 52,
+        height: h * 0.062,
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(w * 0.026),
           border: Border.all(color: _border),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        padding: EdgeInsets.symmetric(horizontal: w * 0.036),
         child: Row(
           children: [
             const _PickupIndicator(),
-            const SizedBox(width: 12),
+            SizedBox(width: w * 0.031),
             Expanded(
               child: Text(
                 location,
-                style: const TextStyle(
-                  fontSize: 14,
+                style: TextStyle(
+                  fontSize: w * 0.036,
                   fontWeight: FontWeight.w500,
                   color: _textPrimary,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            const Icon(Icons.location_on_outlined, color: _textSecondary, size: 20),
+            Icon(
+              Icons.location_on_outlined,
+              color: _textSecondary,
+              size: w * 0.051,
+            ),
           ],
         ),
       ),
@@ -118,27 +126,29 @@ class _DestinationField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     final hasValue = label != null && label!.isNotEmpty;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(w * 0.026),
       child: Container(
-        height: 52,
+        height: h * 0.062,
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(w * 0.026),
           border: Border.all(color: _border),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        padding: EdgeInsets.symmetric(horizontal: w * 0.036),
         child: Row(
           children: [
             const _DestinationIndicator(),
-            const SizedBox(width: 12),
+            SizedBox(width: w * 0.031),
             Expanded(
               child: Text(
                 hasValue ? label! : 'Where to?',
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: w * 0.036,
                   fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
                   color: hasValue ? _textPrimary : _textHint,
                 ),
@@ -148,10 +158,13 @@ class _DestinationField extends StatelessWidget {
             GestureDetector(
               onTap: onPinTap,
               behavior: HitTestBehavior.opaque,
-              child: const Padding(
-                padding: EdgeInsets.only(left: 8),
-                child: Icon(Icons.location_on_outlined,
-                    color: _textSecondary, size: 20),
+              child: Padding(
+                padding: EdgeInsets.only(left: w * 0.021),
+                child: Icon(
+                  Icons.location_on_outlined,
+                  color: _textSecondary,
+                  size: w * 0.051,
+                ),
               ),
             ),
           ],
@@ -167,9 +180,10 @@ class _PickupIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Container(
-      width: 20,
-      height: 20,
+      width: w * 0.051,
+      height: w * 0.051,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: Colors.white,
@@ -177,8 +191,8 @@ class _PickupIndicator extends StatelessWidget {
       ),
       child: Center(
         child: Container(
-          width: 8,
-          height: 8,
+          width: w * 0.021,
+          height: w * 0.021,
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
             color: _gold,
@@ -195,11 +209,12 @@ class _DestinationIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Container(
-      width: 18,
-      height: 18,
+      width: w * 0.046,
+      height: w * 0.046,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(w * 0.010),
         border: Border.all(color: _border, width: 2),
       ),
     );

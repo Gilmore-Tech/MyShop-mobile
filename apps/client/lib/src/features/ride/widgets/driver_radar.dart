@@ -177,9 +177,10 @@ class _PinMarker extends StatelessWidget {
 class _CarIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Container(
-      width:  36,
-      height: 36,
+      width:  w * 0.092,
+      height: w * 0.092,
       decoration: BoxDecoration(
         color:  Colors.white,
         shape:  BoxShape.circle,

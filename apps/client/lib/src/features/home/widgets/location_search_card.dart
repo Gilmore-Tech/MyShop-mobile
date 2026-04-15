@@ -33,11 +33,12 @@ class LocationSearchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+      margin: EdgeInsets.symmetric(horizontal: w * 0.041),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(w * 0.036),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.06),
@@ -46,15 +47,15 @@ class LocationSearchCard extends StatelessWidget {
           ),
         ],
       ),
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: EdgeInsets.symmetric(vertical: w * 0.01),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           _LocationRow(
             leading: const _PickupDot(),
             valueLabel: 'Current: $pickupLabel',
-            valueStyle: const TextStyle(
-              fontSize: 13,
+            valueStyle: TextStyle(
+              fontSize: w * 0.033,
               fontWeight: FontWeight.w600,
               color: _gold,
             ),
@@ -64,14 +65,14 @@ class LocationSearchCard extends StatelessWidget {
           ),
           const _RowDivider(),
           _LocationRow(
-            leading: const Icon(
+            leading: Icon(
               Icons.search_rounded,
-              size: 20,
+              size: w * 0.051,
               color: _textSecondary,
             ),
             valueLabel: destinationLabel ?? 'Where are you going?',
             valueStyle: TextStyle(
-              fontSize: 14,
+              fontSize: w * 0.036,
               fontWeight: destinationLabel == null
                   ? FontWeight.w400
                   : FontWeight.w600,
@@ -108,21 +109,25 @@ class _LocationRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.026, vertical: h * 0.005),
       child: Row(
         children: [
           Expanded(
             child: InkWell(
               onTap: onTap,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(w * 0.02),
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+                padding: EdgeInsets.symmetric(
+                  horizontal: w * 0.015,
+                  vertical: h * 0.012,
+                ),
                 child: Row(
                   children: [
-                    SizedBox(width: 20, child: Center(child: leading)),
-                    const SizedBox(width: 12),
+                    SizedBox(width: w * 0.051, child: Center(child: leading)),
+                    SizedBox(width: w * 0.031),
                     Expanded(
                       child: Text(
                         valueLabel,
@@ -136,7 +141,7 @@ class _LocationRow extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 6),
+          SizedBox(width: w * 0.015),
           _PinChip(onTap: onPinTap, tooltip: pinTooltip),
         ],
       ),
@@ -151,9 +156,10 @@ class _PickupDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Container(
-      width: 14,
-      height: 14,
+      width: w * 0.036,
+      height: w * 0.036,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(color: _gold, width: 2),
@@ -169,9 +175,10 @@ class _RowDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(left: 38, right: 16),
-      child: Divider(height: 1, thickness: 1, color: _divider),
+    final w = MediaQuery.sizeOf(context).width;
+    return Padding(
+      padding: EdgeInsets.only(left: w * 0.097, right: w * 0.041),
+      child: const Divider(height: 1, thickness: 1, color: _divider),
     );
   }
 }
@@ -186,18 +193,19 @@ class _PinChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Tooltip(
       message: tooltip,
       child: Material(
         color: _goldSoft,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(w * 0.026),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: const SizedBox(
-            width: 38,
-            height: 38,
-            child: Icon(Icons.location_on, color: _gold, size: 20),
+          borderRadius: BorderRadius.circular(w * 0.026),
+          child: SizedBox(
+            width: w * 0.097,
+            height: w * 0.097,
+            child: Icon(Icons.location_on, color: _gold, size: w * 0.051),
           ),
         ),
       ),

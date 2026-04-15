@@ -42,6 +42,8 @@ class RideTrackingSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     final firstName = driver.name.split(' ').first;
     final isOvertime = !isInProgress &&
         waitingSeconds != null &&
@@ -73,26 +75,26 @@ class RideTrackingSheet extends StatelessWidget {
             if (isInProgress) const _TripInProgressNotice(),
             const Divider(height: 1, thickness: 1, color: _divider),
             _DriverRow(driver: driver),
-            const SizedBox(height: 10),
+            SizedBox(height: h * 0.012),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: EdgeInsets.symmetric(horizontal: w * 0.041),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _ChatRow(driverFirstName: firstName),
-                  const SizedBox(height: 10),
+                  SizedBox(height: h * 0.012),
                   const _SecondaryActions(),
-                  const SizedBox(height: 14),
+                  SizedBox(height: h * 0.017),
                   const _SafetyNotice(),
-                  const SizedBox(height: 18),
+                  SizedBox(height: h * 0.021),
                   if (isInProgress)
                     _AddStopButton(onTap: onAddStop)
                   else ...[
                     const Divider(height: 1, thickness: 1, color: _divider),
-                    const SizedBox(height: 14),
+                    SizedBox(height: h * 0.017),
                     _CancelRequestButton(onTap: onCancel),
                   ],
-                  const SizedBox(height: 28),
+                  SizedBox(height: h * 0.033),
                 ],
               ),
             ),
@@ -110,12 +112,14 @@ class _DragHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Padding(
-      padding: const EdgeInsets.only(top: 10, bottom: 6),
+      padding: EdgeInsets.only(top: h * 0.012, bottom: h * 0.007),
       child: Center(
         child: Container(
-          width: 40,
-          height: 4,
+          width:  w * 0.103,
+          height: h * 0.005,
           decoration: BoxDecoration(
             color: const Color(0xFFE0E0E0),
             borderRadius: BorderRadius.circular(2),
@@ -136,9 +140,11 @@ class _FareRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     final showTimer = waitingSeconds != null;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+      padding: EdgeInsets.fromLTRB(w * 0.041, h * 0.009, w * 0.041, h * 0.017),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -149,14 +155,14 @@ class _FareRow extends StatelessWidget {
               children: [
                 Text(
                   driver.activeFareDisplay,
-                  style: const TextStyle(
-                    fontSize: 26,
+                  style: TextStyle(
+                    fontSize: w * 0.067,
                     fontWeight: FontWeight.w700,
                     color: _textPrimary,
                     height: 1.1,
                   ),
                 ),
-                const SizedBox(height: 6),
+                SizedBox(height: h * 0.007),
                 _PaymentMethod(method: driver.paymentMethod),
               ],
             ),
@@ -174,6 +180,7 @@ class _PaymentMethod extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     final isCash = method.toLowerCase() == 'cash';
     final label = isCash ? 'Cash trip' : method;
     final icon = isCash
@@ -182,12 +189,12 @@ class _PaymentMethod extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: _textSecondary),
-        const SizedBox(width: 6),
+        Icon(icon, size: w * 0.036, color: _textSecondary),
+        SizedBox(width: w * 0.015),
         Text(
           label,
-          style: const TextStyle(
-            fontSize: 12,
+          style: TextStyle(
+            fontSize: w * 0.031,
             fontWeight: FontWeight.w500,
             color: _textSecondary,
           ),
@@ -247,19 +254,21 @@ class _OvertimeNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041, vertical: h * 0.012),
       color: const Color(0xFFFDECEC),
       child: Row(
         children: [
-          Icon(Icons.info_outline_rounded, size: 16, color: _error),
-          const SizedBox(width: 8),
+          Icon(Icons.info_outline_rounded, size: w * 0.041, color: _error),
+          SizedBox(width: w * 0.021),
           Expanded(
             child: Text(
               'Free wait time is up — extra waiting will be added to your fare.',
               style: TextStyle(
-                fontSize: 12,
+                fontSize: w * 0.031,
                 fontWeight: FontWeight.w500,
                 color: _error,
                 height: 1.35,
@@ -279,19 +288,21 @@ class _TripInProgressNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041, vertical: h * 0.012),
       color: const Color(0xFFE8F8EF),
       child: Row(
-        children: const [
-          Icon(Icons.navigation_rounded, size: 16, color: _success),
-          SizedBox(width: 8),
+        children: [
+          Icon(Icons.navigation_rounded, size: w * 0.041, color: _success),
+          SizedBox(width: w * 0.021),
           Expanded(
             child: Text(
               'Trip in progress. Enjoy the ride.',
               style: TextStyle(
-                fontSize: 12,
+                fontSize: w * 0.031,
                 fontWeight: FontWeight.w500,
                 color: _success,
                 height: 1.35,
@@ -312,6 +323,8 @@ class _DriverRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     final shortVehicle = driver.vehicleShortName.isNotEmpty
         ? driver.vehicleShortName
         : driver.vehicle.split(' ').take(2).join(' ');
@@ -320,19 +333,25 @@ class _DriverRow extends StatelessWidget {
       onTap: () =>
           context.push(AppRoutes.rideDriverFound, extra: driver),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: EdgeInsets.symmetric(
+          horizontal: w * 0.041,
+          vertical: h * 0.017,
+        ),
         child: Row(
           children: [
             const _DriverAvatar(),
-            const SizedBox(width: 12),
+            SizedBox(width: w * 0.031),
             Expanded(child: _DriverMeta(driver: driver)),
             _VehicleInfo(
               vehicleName: shortVehicle,
               plateNumber: driver.plateNumber,
             ),
-            const SizedBox(width: 6),
-            const Icon(Icons.chevron_right_rounded,
-                size: 18, color: _textSecondary),
+            SizedBox(width: w * 0.015),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: w * 0.046,
+              color: _textSecondary,
+            ),
           ],
         ),
       ),
@@ -345,15 +364,16 @@ class _DriverAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Container(
-      width: 48,
-      height: 48,
+      width:  w * 0.123,
+      height: w * 0.123,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: _avatarBg,
         border: Border.all(color: _gold, width: 1.5),
       ),
-      child: const Icon(Icons.person_rounded, size: 26, color: _darkSlate),
+      child: Icon(Icons.person_rounded, size: w * 0.067, color: _darkSlate),
     );
   }
 }
@@ -364,38 +384,40 @@ class _DriverMeta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           driver.name,
-          style: const TextStyle(
-            fontSize: 14,
+          style: TextStyle(
+            fontSize: w * 0.036,
             fontWeight: FontWeight.w700,
             color: _textPrimary,
           ),
         ),
-        const SizedBox(height: 3),
+        SizedBox(height: h * 0.004),
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.star_rounded, size: 13, color: _gold),
-            const SizedBox(width: 3),
+            Icon(Icons.star_rounded, size: w * 0.033, color: _gold),
+            SizedBox(width: w * 0.008),
             Text(
               driver.rating.toStringAsFixed(1),
-              style: const TextStyle(
-                fontSize: 12,
+              style: TextStyle(
+                fontSize: w * 0.031,
                 fontWeight: FontWeight.w600,
                 color: _textPrimary,
               ),
             ),
             if (driver.isVerified) ...[
-              const SizedBox(width: 8),
-              const Text(
+              SizedBox(width: w * 0.021),
+              Text(
                 '· Verified',
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: w * 0.031,
                   fontWeight: FontWeight.w500,
                   color: _success,
                 ),
@@ -416,23 +438,25 @@ class _VehicleInfo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           vehicleName,
-          style: const TextStyle(
-            fontSize: 11,
+          style: TextStyle(
+            fontSize: w * 0.028,
             fontWeight: FontWeight.w400,
             color: _textSecondary,
           ),
         ),
-        const SizedBox(height: 3),
+        SizedBox(height: h * 0.004),
         Text(
           plateNumber,
-          style: const TextStyle(
-            fontSize: 13,
+          style: TextStyle(
+            fontSize: w * 0.033,
             fontWeight: FontWeight.w700,
             color: _textPrimary,
           ),
@@ -450,11 +474,13 @@ class _ChatRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Row(
       children: [
         Expanded(
           child: SizedBox(
-            height: 50,
+            height: h * 0.059,
             child: ElevatedButton.icon(
               onPressed: () {
                 // TODO: Navigate to chat screen
@@ -463,22 +489,22 @@ class _ChatRow extends StatelessWidget {
                 backgroundColor: _darkSlate,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(w * 0.026),
                 ),
                 elevation: 0,
               ),
-              icon: const Icon(Icons.chat_bubble_rounded, size: 18),
+              icon: Icon(Icons.chat_bubble_rounded, size: w * 0.046),
               label: Text(
                 'Chat with $driverFirstName',
-                style: const TextStyle(
-                  fontSize: 14,
+                style: TextStyle(
+                  fontSize: w * 0.036,
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ),
           ),
         ),
-        const SizedBox(width: 10),
+        SizedBox(width: w * 0.026),
         _PhoneCircleButton(onTap: () {}),
       ],
     );
@@ -515,6 +541,7 @@ class _SecondaryActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Row(
       children: [
         Expanded(
@@ -524,7 +551,7 @@ class _SecondaryActions extends StatelessWidget {
             onTap: () {},
           ),
         ),
-        const SizedBox(width: 10),
+        SizedBox(width: w * 0.026),
         Expanded(
           child: _OutlinedActionButton(
             icon: Icons.schedule_rounded,
@@ -550,21 +577,23 @@ class _OutlinedActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return OutlinedButton.icon(
       onPressed: onTap,
       style: OutlinedButton.styleFrom(
         foregroundColor: _textPrimary,
         side: const BorderSide(color: _outlinedBorder, width: 1.5),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(w * 0.026),
         ),
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: EdgeInsets.symmetric(vertical: h * 0.014),
       ),
-      icon: Icon(icon, size: 16, color: _textPrimary),
+      icon: Icon(icon, size: w * 0.041, color: _textPrimary),
       label: Text(
         label,
-        style: const TextStyle(
-          fontSize: 13,
+        style: TextStyle(
+          fontSize: w * 0.033,
           fontWeight: FontWeight.w600,
           color: _textPrimary,
         ),
@@ -580,17 +609,18 @@ class _SafetyNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: const [
-        Icon(Icons.shield_outlined, size: 15, color: _textSecondary),
-        SizedBox(width: 8),
+      children: [
+        Icon(Icons.shield_outlined, size: w * 0.038, color: _textSecondary),
+        SizedBox(width: w * 0.021),
         Expanded(
           child: Text(
             'Your safety is our priority. In-app recording is active for this trip. '
             'Share your live location with family for extra peace of mind.',
             style: TextStyle(
-              fontSize: 11,
+              fontSize: w * 0.028,
               fontWeight: FontWeight.w400,
               color: _textSecondary,
               height: 1.5,

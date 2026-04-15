@@ -34,6 +34,7 @@ class RouteStopList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     final pickup = stops.firstWhere((s) => s.type == StopType.pickup);
     final destination =
         stops.firstWhere((s) => s.type == StopType.destination);
@@ -48,7 +49,7 @@ class RouteStopList extends StatelessWidget {
           onTap: () => onEditStop(pickup),
           showDragHandle: false,
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: w * 0.026),
         if (intermediates.isNotEmpty) ...[
           ReorderableListView.builder(
             shrinkWrap: true,
@@ -64,7 +65,7 @@ class RouteStopList extends StatelessWidget {
             proxyDecorator: (child, _, __) => Material(
               color: Colors.transparent,
               elevation: 6,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(w * 0.026),
               child: child,
             ),
             itemCount: intermediates.length,
@@ -72,7 +73,7 @@ class RouteStopList extends StatelessWidget {
               final stop = intermediates[index];
               return Padding(
                 key: ValueKey(stop.id),
-                padding: const EdgeInsets.only(bottom: 10),
+                padding: EdgeInsets.only(bottom: w * 0.026),
                 child: _StopCard(
                   stop: stop,
                   onTap: () => onEditStop(stop),
@@ -84,7 +85,7 @@ class RouteStopList extends StatelessWidget {
           ),
         ],
         _AddStopCard(onTap: onAddStop),
-        const SizedBox(height: 10),
+        SizedBox(height: w * 0.026),
         _StopCard(
           stop: destination,
           onTap: () => onEditStop(destination),
@@ -114,22 +115,29 @@ class _StopCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(w * 0.026),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+          padding: EdgeInsets.fromLTRB(
+            w * 0.036,
+            h * 0.012,
+            w * 0.021,
+            h * 0.012,
+          ),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(w * 0.026),
             border: Border.all(color: _border),
           ),
           child: Row(
             children: [
               _StopIndicator(type: stop.type),
-              const SizedBox(width: 12),
+              SizedBox(width: w * 0.031),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -137,18 +145,18 @@ class _StopCard extends StatelessWidget {
                   children: [
                     Text(
                       stop.typeLabel,
-                      style: const TextStyle(
-                        fontSize: 10,
+                      style: TextStyle(
+                        fontSize: w * 0.026,
                         fontWeight: FontWeight.w800,
                         color: _textSecondary,
                         letterSpacing: 1.2,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    SizedBox(height: h * 0.0025),
                     Text(
                       stop.address,
-                      style: const TextStyle(
-                        fontSize: 14,
+                      style: TextStyle(
+                        fontSize: w * 0.036,
                         fontWeight: FontWeight.w600,
                         color: _textPrimary,
                       ),
@@ -161,29 +169,41 @@ class _StopCard extends StatelessWidget {
               if (onRemove != null)
                 IconButton(
                   onPressed: onRemove,
-                  icon: const Icon(Icons.delete_outline_rounded,
-                      size: 20, color: _error),
+                  icon: Icon(
+                    Icons.delete_outline_rounded,
+                    size: w * 0.051,
+                    color: _error,
+                  ),
                   visualDensity: VisualDensity.compact,
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  constraints: BoxConstraints(
+                    minWidth: w * 0.082,
+                    minHeight: w * 0.082,
+                  ),
                 ),
               if (showDragHandle && dragIndex != null)
                 ReorderableDragStartListener(
                   index: dragIndex!,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6),
-                    child: Icon(Icons.drag_indicator_rounded,
-                        size: 22, color: _textHint),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: w * 0.015),
+                    child: Icon(
+                      Icons.drag_indicator_rounded,
+                      size: w * 0.056,
+                      color: _textHint,
+                    ),
                   ),
                 )
               else if (showDragHandle)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 6),
-                  child: Icon(Icons.drag_indicator_rounded,
-                      size: 22, color: _textHint),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: w * 0.015),
+                  child: Icon(
+                    Icons.drag_indicator_rounded,
+                    size: w * 0.056,
+                    color: _textHint,
+                  ),
                 )
               else
-                const SizedBox(width: 6),
+                SizedBox(width: w * 0.015),
             ],
           ),
         ),
@@ -200,13 +220,14 @@ class _StopIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     switch (type) {
       case StopType.pickup:
-        return _Ring(color: _gold, fillColor: _gold);
+        return const _Ring(color: _gold, fillColor: _gold);
       case StopType.intermediate:
-        return _Ring(color: _darkSlate, fillColor: Colors.white);
+        return const _Ring(color: _darkSlate, fillColor: Colors.white);
       case StopType.destination:
-        return const Icon(Icons.location_on_rounded, color: _gold, size: 22);
+        return Icon(Icons.location_on_rounded, color: _gold, size: w * 0.056);
     }
   }
 }
@@ -218,9 +239,10 @@ class _Ring extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Container(
-      width: 18,
-      height: 18,
+      width: w * 0.046,
+      height: w * 0.046,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: fillColor,
@@ -228,8 +250,8 @@ class _Ring extends StatelessWidget {
       ),
       child: Center(
         child: Container(
-          width: 6,
-          height: 6,
+          width: w * 0.015,
+          height: w * 0.015,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: fillColor == color ? Colors.white : color,
@@ -248,33 +270,35 @@ class _AddStopCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(w * 0.026),
       child: Container(
-        height: 50,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        height: h * 0.059,
+        padding: EdgeInsets.symmetric(horizontal: w * 0.036),
         decoration: BoxDecoration(
           color: _goldLight,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(w * 0.026),
           border: Border.all(color: _gold.withValues(alpha: 0.4)),
         ),
         child: Row(
           children: [
             Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
+              width: w * 0.056,
+              height: w * 0.056,
+              decoration: const BoxDecoration(
                 color: _gold,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.add, size: 14, color: Colors.white),
+              child: Icon(Icons.add, size: w * 0.036, color: Colors.white),
             ),
-            const SizedBox(width: 12),
-            const Text(
+            SizedBox(width: w * 0.031),
+            Text(
               'Add intermediate stop...',
               style: TextStyle(
-                fontSize: 13,
+                fontSize: w * 0.033,
                 fontWeight: FontWeight.w600,
                 color: _gold,
               ),

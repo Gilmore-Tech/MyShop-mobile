@@ -15,10 +15,11 @@ class VehicleDetailsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(w * 0.031),
         border: Border.all(color: _border),
       ),
       clipBehavior: Clip.antiAlias,
@@ -27,7 +28,7 @@ class VehicleDetailsCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+            padding: EdgeInsets.fromLTRB(w * 0.036, w * 0.036, w * 0.036, w * 0.026),
             child: _VehicleInfo(driver: driver),
           ),
           _CarImage(tier: driver.vehicleTier),
@@ -43,29 +44,31 @@ class _VehicleInfo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text(
+        Text(
           'VEHICLE',
           style: TextStyle(
-            fontSize: 10,
+            fontSize: w * 0.026,
             fontWeight: FontWeight.w900,
             color: _textSecondary,
             letterSpacing: 1.4,
           ),
         ),
-        const SizedBox(height: 4),
+        SizedBox(height: h * 0.005),
         Text(
           driver.vehicle,
-          style: const TextStyle(
-            fontSize: 15,
+          style: TextStyle(
+            fontSize: w * 0.038,
             fontWeight: FontWeight.w700,
             color: _textPrimary,
           ),
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: h * 0.012),
         Row(
           children: [
             _PlateBadge(plate: driver.plateNumber),
@@ -84,16 +87,18 @@ class _PlateBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.026, vertical: h * 0.006),
       decoration: BoxDecoration(
         color: _gold,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(w * 0.015),
       ),
       child: Text(
         plate,
-        style: const TextStyle(
-          fontSize: 12,
+        style: TextStyle(
+          fontSize: w * 0.031,
           fontWeight: FontWeight.w700,
           color: Colors.white,
           letterSpacing: 0.5,
@@ -109,6 +114,8 @@ class _EtaInfo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
@@ -116,23 +123,23 @@ class _EtaInfo extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.access_time_rounded, size: 13, color: _gold),
-            const SizedBox(width: 4),
+            Icon(Icons.access_time_rounded, size: w * 0.033, color: _gold),
+            SizedBox(width: w * 0.010),
             Text(
               '$minutesAway mins away',
-              style: const TextStyle(
-                fontSize: 13,
+              style: TextStyle(
+                fontSize: w * 0.033,
                 fontWeight: FontWeight.w700,
                 color: _gold,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 2),
-        const Text(
+        SizedBox(height: h * 0.002),
+        Text(
           'Est. Arrival',
           style: TextStyle(
-            fontSize: 10,
+            fontSize: w * 0.026,
             fontWeight: FontWeight.w400,
             color: _textSecondary,
           ),
@@ -148,35 +155,39 @@ class _CarImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Stack(
       children: [
         Container(
-          height: 140,
+          height: h * 0.166,
           width: double.infinity,
           color: const Color(0xFFEAECEE),
-          child: const Center(
+          child: Center(
             child: Icon(
               Icons.directions_car_rounded,
-              size: 72,
+              size: w * 0.185,
               color: _darkSlate,
             ),
           ),
         ),
         if (tier.isNotEmpty)
           Positioned(
-            bottom: 10,
-            right: 10,
+            bottom: h * 0.012,
+            right: w * 0.026,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: EdgeInsets.symmetric(
+                horizontal: w * 0.026,
+                vertical:   h * 0.005,
+              ),
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.65),
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(w * 0.010),
               ),
               child: Text(
                 tier,
-                style: const TextStyle(
-                  fontSize: 11,
+                style: TextStyle(
+                  fontSize: w * 0.028,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
                   letterSpacing: 0.3,

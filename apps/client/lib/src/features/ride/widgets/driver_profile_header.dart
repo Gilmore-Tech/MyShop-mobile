@@ -19,10 +19,11 @@ class DriverProfileHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final h = MediaQuery.sizeOf(context).height;
     return Column(
       children: [
         _ArrivalHeadline(driverName: driver.name),
-        const SizedBox(height: 16),
+        SizedBox(height: h * 0.019),
         _DriverIdentityCard(driver: driver),
       ],
     );
@@ -35,28 +36,30 @@ class _ArrivalHeadline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           '${driverName.split(' ').first} is arriving!',
-          style: const TextStyle(
-            fontSize: 22,
+          style: TextStyle(
+            fontSize: w * 0.056,
             fontWeight: FontWeight.w700,
             color: _textPrimary,
           ),
         ),
-        const SizedBox(height: 6),
+        SizedBox(height: h * 0.007),
         RichText(
           textAlign: TextAlign.center,
-          text: const TextSpan(
+          text: TextSpan(
             style: TextStyle(
-              fontSize: 13,
+              fontSize: w * 0.033,
               fontWeight: FontWeight.w400,
               color: _textSecondary,
               height: 1.4,
             ),
-            children: [
+            children: const [
               TextSpan(text: "We've found a highly-rated driver near\n"),
               TextSpan(
                 text: 'Kumasi Central Market',
@@ -79,33 +82,40 @@ class _DriverIdentityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Container(
-      padding: const EdgeInsets.fromLTRB(60, 24, 60, 20),
+      padding: EdgeInsets.fromLTRB(
+        w * 0.154,
+        h * 0.028,
+        w * 0.154,
+        h * 0.024,
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(w * 0.036),
         border: Border.all(color: _border),
       ),
       child: Column(
         children: [
           const _DriverAvatar(),
-          const SizedBox(height: 12),
+          SizedBox(height: h * 0.014),
           Text(
             driver.name,
-            style: const TextStyle(
-              fontSize: 18,
+            style: TextStyle(
+              fontSize: w * 0.046,
               fontWeight: FontWeight.w700,
               color: _textPrimary,
             ),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: h * 0.007),
           _RatingRow(rating: driver.rating, tripCount: driver.tripCount),
-          const SizedBox(height: 14),
+          SizedBox(height: h * 0.017),
           _BadgeRow(
             isVerified: driver.isVerified,
             isPoliceChecked: driver.isPoliceChecked,
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: h * 0.017),
           _PhoneChip(maskedPhone: driver.maskedPhone),
         ],
       ),
@@ -118,12 +128,13 @@ class _DriverAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Container(
-          width: 76,
-          height: 76,
+          width: w * 0.195,
+          height: w * 0.195,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: _avatarBg,
@@ -136,14 +147,18 @@ class _DriverAvatar extends StatelessWidget {
               ),
             ],
           ),
-          child: const Icon(Icons.person_rounded, size: 42, color: _darkSlate),
+          child: Icon(
+            Icons.person_rounded,
+            size: w * 0.108,
+            color: _darkSlate,
+          ),
         ),
         Positioned(
-          bottom: 2,
-          right: 2,
+          bottom: w * 0.005,
+          right: w * 0.005,
           child: Container(
-            width: 14,
-            height: 14,
+            width: w * 0.036,
+            height: w * 0.036,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: _success,
@@ -163,24 +178,25 @@ class _RatingRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.star_rounded, size: 15, color: _gold),
-        const SizedBox(width: 4),
+        Icon(Icons.star_rounded, size: w * 0.038, color: _gold),
+        SizedBox(width: w * 0.010),
         Text(
           rating.toStringAsFixed(2),
-          style: const TextStyle(
-            fontSize: 13,
+          style: TextStyle(
+            fontSize: w * 0.033,
             fontWeight: FontWeight.w700,
             color: _textPrimary,
           ),
         ),
-        const SizedBox(width: 6),
+        SizedBox(width: w * 0.015),
         Text(
           '· ${_formatCount(tripCount)} trips',
-          style: const TextStyle(
-            fontSize: 13,
+          style: TextStyle(
+            fontSize: w * 0.033,
             fontWeight: FontWeight.w400,
             color: _textSecondary,
           ),
@@ -204,6 +220,7 @@ class _BadgeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -213,7 +230,7 @@ class _BadgeRow extends StatelessWidget {
             icon: Icons.check_circle_rounded,
             color: _success,
           ),
-        if (isVerified && isPoliceChecked) const SizedBox(width: 8),
+        if (isVerified && isPoliceChecked) SizedBox(width: w * 0.021),
         if (isPoliceChecked)
           const _OutlinedBadge(
             label: 'Police Checked',
@@ -238,22 +255,27 @@ class _OutlinedBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: EdgeInsets.symmetric(
+        horizontal: w * 0.026,
+        vertical: h * 0.006,
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(w * 0.051),
         border: Border.all(color: _border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: color),
-          const SizedBox(width: 5),
+          Icon(icon, size: w * 0.033, color: color),
+          SizedBox(width: w * 0.013),
           Text(
             label,
             style: TextStyle(
-              fontSize: 11,
+              fontSize: w * 0.028,
               fontWeight: FontWeight.w600,
               color: color,
             ),
@@ -270,21 +292,26 @@ class _PhoneChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      padding: EdgeInsets.symmetric(
+        horizontal: w * 0.031,
+        vertical: h * 0.008,
+      ),
       decoration: BoxDecoration(
         color: _chipBg,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(w * 0.051),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.phone_rounded, size: 13, color: _textSecondary),
-          const SizedBox(width: 6),
+          Icon(Icons.phone_rounded, size: w * 0.033, color: _textSecondary),
+          SizedBox(width: w * 0.015),
           Text(
             maskedPhone,
-            style: const TextStyle(
-              fontSize: 12,
+            style: TextStyle(
+              fontSize: w * 0.031,
               fontWeight: FontWeight.w500,
               color: _textSecondary,
             ),

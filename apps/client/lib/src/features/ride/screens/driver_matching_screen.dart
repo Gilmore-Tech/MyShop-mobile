@@ -147,13 +147,15 @@ class _TopBar extends StatelessWidget {
 class _SearchingBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Container(
       key:    const ValueKey('searching'),
-      height: 46,
-      padding: const EdgeInsets.symmetric(horizontal: 18),
+      height: h * 0.055,
+      padding: EdgeInsets.symmetric(horizontal: w * 0.046),
       decoration: BoxDecoration(
         color:        Colors.white,
-        borderRadius: BorderRadius.circular(23),
+        borderRadius: BorderRadius.circular(h * 0.027),
         boxShadow: [
           BoxShadow(
             color:      Colors.black.withValues(alpha: 0.08),
@@ -162,15 +164,15 @@ class _SearchingBar extends StatelessWidget {
           ),
         ],
       ),
-      child: const Row(
+      child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.search_rounded, size: 17, color: _textSecondary),
-          SizedBox(width: 8),
+          Icon(Icons.search_rounded, size: w * 0.044, color: _textSecondary),
+          SizedBox(width: w * 0.021),
           Text(
             'Finding nearby drivers...',
             style: TextStyle(
-              fontSize:   14,
+              fontSize:   w * 0.036,
               fontWeight: FontWeight.w500,
               color:      _textSecondary,
             ),
@@ -187,12 +189,14 @@ class _DriversAvailablePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
     return Container(
       key: const ValueKey('found'),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.051, vertical: h * 0.012),
       decoration: BoxDecoration(
         color: _gold,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(h * 0.026),
         boxShadow: [
           BoxShadow(
             color: _gold.withValues(alpha: 0.3),
@@ -203,8 +207,8 @@ class _DriversAvailablePill extends StatelessWidget {
       ),
       child: Text(
         '$count Drivers available',
-        style: const TextStyle(
-          fontSize: 13,
+        style: TextStyle(
+          fontSize: w * 0.033,
           fontWeight: FontWeight.w700,
           color: Colors.white,
         ),
