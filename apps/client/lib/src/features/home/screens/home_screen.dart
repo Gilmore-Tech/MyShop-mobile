@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
+import '../../profile/providers/profile_provider.dart';
+import '../../ride/providers/ride_search_provider.dart';
 import '../providers/home_provider.dart';
 import '../widgets/location_search_card.dart';
 import '../widgets/recent_place_tile.dart';
@@ -14,6 +16,7 @@ import '../widgets/special_offer_card.dart';
 const _gold = Color(0xFFF5A623);
 const _darkSlate = Color(0xFF46535D);
 const _offWhite = Color(0xFFF6F7F8);
+const _textPrimary = Color(0xFF161A1D);
 const _textSecondary = Color(0xFF555E68);
 
 /// PRD 4.2 — Client Home Screen
@@ -23,27 +26,36 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final currentLocation = ref.watch(currentLocationProvider);
+    final search = ref.watch(rideSearchProvider);
+    final String pickupName =
+        search.pickup?.name ?? ref.watch(currentLocationProvider);
+    final destinationName = search.destination?.name;
 
     return Scaffold(
       backgroundColor: _offWhite,
       body: SafeArea(
         child: Column(
           children: [
-            _HomeAppBar(),
+            const _HomeGreeting(),
             Expanded(
               child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 40),
                     LocationSearchCard(
-                      currentLocation: currentLocation,
-                      onSearchTap: () {
-                        // TODO: Navigate to destination_search_screen
-                      },
+                      pickupLabel: pickupName,
+                      destinationLabel: destinationName,
+                      onPickupTap: () => context.push(
+                          AppRoutes.rideSearchPath('pickup')),
+                      onDestinationTap: () => context.push(
+                          AppRoutes.rideSearchPath('destination')),
+                      onPickupPinTap: () => context.push(
+                          AppRoutes.ridePinPickerPath('pickup')),
+                      onDestinationPinTap: () => context.push(
+                          AppRoutes.ridePinPickerPath('destination')),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 40),
                     _ServiceCardsRow(),
                     const SizedBox(height: 24),
                     _SpecialOffersSection(),
@@ -63,44 +75,96 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-// ── App Bar ───────────────────────────────────────────────────────────────────
+// ── Greeting header ───────────────────────────────────────────────────────────
 
-class _HomeAppBar extends StatelessWidget {
+class _HomeGreeting extends ConsumerWidget {
+  const _HomeGreeting();
+
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final accountAsync = ref.watch(accountScreenProvider);
+    final profile = accountAsync.value?.profile;
+    final firstName = profile?.displayName.trim().split(' ').first ?? '';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.menu_rounded, color: Color(0xFF161A1D)),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Welcome',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                    color: _textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  firstName.isEmpty ? '\u00A0' : firstName,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: _textPrimary,
+                    height: 1.1,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
           GestureDetector(
-            onTap: () {
-              // TODO: Navigate to profile
-            },
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFFE0E6FF),
-                border: Border.all(color: _gold, width: 2),
-              ),
-              child: const Icon(
-                Icons.person_rounded,
-                color: _darkSlate,
-                size: 22,
-              ),
+            onTap: () => context.go(AppRoutes.profile),
+            child: _Avatar(
+              avatarUrl: profile?.avatarUrl,
+              initials: profile?.initials ?? '',
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _Avatar extends StatelessWidget {
+  final String? avatarUrl;
+  final String initials;
+
+  const _Avatar({required this.avatarUrl, required this.initials});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0xFFE6EAF0),
+        border: Border.all(color: _gold, width: 2),
+        image: avatarUrl != null
+            ? DecorationImage(
+                image: NetworkImage(avatarUrl!),
+                fit: BoxFit.cover,
+              )
+            : null,
+      ),
+      alignment: Alignment.center,
+      child: avatarUrl == null
+          ? Text(
+              initials.isEmpty ? '?' : initials,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: _darkSlate,
+              ),
+            )
+          : null,
     );
   }
 }
@@ -117,7 +181,7 @@ class _ServiceCardsRow extends StatelessWidget {
           Expanded(
             child: ServiceCard(
               type: ServiceCardType.ride,
-              onTap: () => context.go(AppRoutes.rideEstimate),
+              onTap: () => context.push(AppRoutes.rideEstimate),
             ),
           ),
           const SizedBox(width: 12),
@@ -146,6 +210,7 @@ class _SpecialOffersSection extends ConsumerWidget {
       children: [
         _SectionHeader(
           title: 'SPECIAL OFFERS',
+          leadingIcon: Icons.local_offer_rounded,
           actionLabel: 'View All',
           onActionTap: () {},
         ),
@@ -281,11 +346,13 @@ class _RecentPlacesSkeleton extends StatelessWidget {
 
 class _SectionHeader extends StatelessWidget {
   final String title;
+  final IconData? leadingIcon;
   final String? actionLabel;
   final VoidCallback? onActionTap;
 
   const _SectionHeader({
     required this.title,
+    this.leadingIcon,
     this.actionLabel,
     this.onActionTap,
   });
@@ -297,25 +364,40 @@ class _SectionHeader extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w900,
-              color: _textSecondary,
-              letterSpacing: 1.4,
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (leadingIcon != null) ...[
+                Icon(leadingIcon, size: 14, color: _gold),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  color: _textSecondary,
+                  letterSpacing: 1.4,
+                ),
+              ),
+            ],
           ),
           if (actionLabel != null)
             GestureDetector(
               onTap: onActionTap,
-              child: Text(
-                actionLabel!,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: _gold,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    actionLabel!,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: _gold,
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right_rounded, size: 16, color: _gold),
+                ],
               ),
             ),
         ],

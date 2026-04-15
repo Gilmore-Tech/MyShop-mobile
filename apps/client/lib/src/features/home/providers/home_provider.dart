@@ -42,7 +42,7 @@ const _mockOffers = [
     title: '20% Off Your First Ride',
     subtitle: 'Use code: AKWAABA',
     promoCode: 'AKWAABA',
-    backgroundColor: Color(0xFF1C2526),
+    backgroundColor: Color(0xFF8B1E1E), // deep brick red
   ),
   SpecialOffer(
     id: '2',
@@ -50,7 +50,7 @@ const _mockOffers = [
     title: 'GHS 10 Off Artisan Services',
     subtitle: 'Use code: CRAFT10',
     promoCode: 'CRAFT10',
-    backgroundColor: Color(0xFF2C3E50),
+    backgroundColor: Color(0xFF1F4E3D), // deep forest green
   ),
 ];
 

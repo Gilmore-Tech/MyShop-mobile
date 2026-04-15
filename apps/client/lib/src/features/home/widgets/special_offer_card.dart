@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import '../providers/home_provider.dart';
 
 // Design tokens
-const _gold = Color(0xFFF5A623);
+const _saleRed    = Color(0xFFE03131); // stamp red for SALE badge + tag
+const _tagDeepRed = Color(0xFFB91C1C); // slightly darker for the chip
 
 class SpecialOfferCard extends StatelessWidget {
   final SpecialOffer offer;
@@ -17,17 +18,30 @@ class SpecialOfferCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width:           w * 0.560,   // ~218dp on 390px screen
+        width: w * 0.70, // ~273dp on 390 screen — wider like the design
         decoration: BoxDecoration(
-          color:        offer.backgroundColor,
-          borderRadius: BorderRadius.circular(w * 0.031),
+          color: offer.backgroundColor,
+          borderRadius: BorderRadius.circular(6),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
         ),
         clipBehavior: Clip.antiAlias,
         child: Stack(
           children: [
-            _BackgroundDecoration(),
+            // Large stamp-style SALE graphic on the right
+            const Positioned(
+              right: -8,
+              top: 0,
+              bottom: 0,
+              child: Center(child: _SaleStamp()),
+            ),
             Padding(
-              padding: EdgeInsets.all(w * 0.041),
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
               child: _CardContent(offer: offer),
             ),
           ],
@@ -37,25 +51,7 @@ class SpecialOfferCard extends StatelessWidget {
   }
 }
 
-class _BackgroundDecoration extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final w = MediaQuery.sizeOf(context).width;
-
-    return Positioned(
-      right: -(w * 0.051),
-      top:   -(w * 0.051),
-      child: Container(
-        width:  w * 0.256,
-        height: w * 0.256,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white.withValues(alpha: 0.04),
-        ),
-      ),
-    );
-  }
-}
+// ── Content (tag + title + subtitle) ─────────────────────────────────────────
 
 class _CardContent extends StatelessWidget {
   final SpecialOffer offer;
@@ -63,47 +59,50 @@ class _CardContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final w = size.width;
-    final h = size.height;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Row(
-          children: [
-            _TagChip(label: offer.tag),
-            const Spacer(),
-            _SaleBadge(),
-          ],
-        ),
-        SizedBox(height: h * 0.015),
-        Text(
-          offer.title,
-          style: TextStyle(
-            fontSize:   w * 0.041,
-            fontWeight: FontWeight.w700,
-            color:      Colors.white,
+        _TagChip(label: offer.tag),
+        const Spacer(),
+        // Title + subtitle sit in the left 60% so the SALE stamp can breathe
+        SizedBox(
+          width: MediaQuery.sizeOf(context).width * 0.42,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                offer.title,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  height: 1.15,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                offer.subtitle,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white.withValues(alpha: 0.85),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        SizedBox(height: h * 0.005),
-        Text(
-          offer.subtitle,
-          style: TextStyle(
-            fontSize:   w * 0.031,
-            fontWeight: FontWeight.w400,
-            color:      Colors.white.withValues(alpha: 0.8),
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
         ),
       ],
     );
   }
 }
+
+// ── "SPECIAL OFFER" tag chip (red pill, top-left) ────────────────────────────
 
 class _TagChip extends StatelessWidget {
   final String label;
@@ -111,75 +110,77 @@ class _TagChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final w = MediaQuery.sizeOf(context).width;
-
     return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: w * 0.021,
-        vertical:   w * 0.008,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color:        _gold,
-        borderRadius: BorderRadius.circular(w * 0.010),
+        color: _tagDeepRed,
+        borderRadius: BorderRadius.circular(3),
       ),
       child: Text(
         label,
-        style: TextStyle(
-          fontSize:      w * 0.023,
-          fontWeight:    FontWeight.w900,
-          color:         Colors.white,
-          letterSpacing: 0.8,
+        style: const TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.w900,
+          color: Colors.white,
+          letterSpacing: 1.0,
         ),
       ),
     );
   }
 }
 
-class _SaleBadge extends StatelessWidget {
+// ── Big stamp-style SALE graphic ─────────────────────────────────────────────
+
+class _SaleStamp extends StatelessWidget {
+  const _SaleStamp();
+
   @override
   Widget build(BuildContext context) {
-    final w = MediaQuery.sizeOf(context).width;
-
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: w * 0.021,
-        vertical:   w * 0.008,
-      ),
-      decoration: BoxDecoration(
-        color:        Colors.white.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(w * 0.010),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        'SALE',
-        style: TextStyle(
-          fontSize:      w * 0.023,
-          fontWeight:    FontWeight.w900,
-          color:         Colors.white,
-          letterSpacing: 0.8,
+    return Transform.rotate(
+      angle: -0.17, // ~ -10°
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: _saleRed,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.9), width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: const Text(
+          'SALE',
+          style: TextStyle(
+            fontSize: 32,
+            fontWeight: FontWeight.w900,
+            color: Colors.white,
+            letterSpacing: 2,
+            fontStyle: FontStyle.italic,
+            height: 1,
+          ),
         ),
       ),
     );
   }
 }
 
-// ── Skeleton loader ────────────────────────────────────────────────────────────
+// ── Skeleton loader ──────────────────────────────────────────────────────────
 
 class SpecialOfferCardSkeleton extends StatelessWidget {
   const SpecialOfferCardSkeleton({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final w = size.width;
-    final h = size.height;
-
+    final w = MediaQuery.sizeOf(context).width;
     return Container(
-      width:  w * 0.560,
-      height: h * 0.175,
+      width: w * 0.70,
       decoration: BoxDecoration(
-        color:        const Color(0xFFE0E0E0),
-        borderRadius: BorderRadius.circular(w * 0.031),
+        color: const Color(0xFFE0E0E0),
+        borderRadius: BorderRadius.circular(6),
       ),
     );
   }
