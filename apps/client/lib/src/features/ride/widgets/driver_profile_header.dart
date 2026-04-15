@@ -6,11 +6,12 @@ const _gold = Color(0xFFF5A623);
 const _textPrimary = Color(0xFF161A1D);
 const _textSecondary = Color(0xFF555E68);
 const _success = Color(0xFF27AE60);
-const _successLight = Color(0xFFE8F8EF);
-const _goldLight = Color(0xFFFFF8EC);
 const _avatarBg = Color(0xFFE0E6FF);
 const _darkSlate = Color(0xFF46535D);
+const _border = Color(0xFFE0E0E0);
+const _chipBg = Color(0xFFF3F5F6);
 
+/// Arrival headline + bordered driver identity card stacked vertically.
 class DriverProfileHeader extends StatelessWidget {
   final MatchedDriver driver;
 
@@ -18,33 +19,12 @@ class DriverProfileHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      child: Column(
-        children: [
-          _ArrivalHeadline(driverName: driver.name),
-          const SizedBox(height: 20),
-          _DriverAvatar(),
-          const SizedBox(height: 14),
-          Text(
-            driver.name,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: _textPrimary,
-            ),
-          ),
-          const SizedBox(height: 6),
-          _RatingRow(rating: driver.rating, tripCount: driver.tripCount),
-          const SizedBox(height: 10),
-          _BadgeRow(
-            isVerified: driver.isVerified,
-            isPoliceChecked: driver.isPoliceChecked,
-          ),
-          const SizedBox(height: 10),
-          _PhoneRow(maskedPhone: driver.maskedPhone),
-        ],
-      ),
+    return Column(
+      children: [
+        _ArrivalHeadline(driverName: driver.name),
+        const SizedBox(height: 16),
+        _DriverIdentityCard(driver: driver),
+      ],
     );
   }
 }
@@ -66,20 +46,21 @@ class _ArrivalHeadline extends StatelessWidget {
             color: _textPrimary,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         RichText(
           textAlign: TextAlign.center,
-          text: TextSpan(
-            style: const TextStyle(
+          text: const TextSpan(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w400,
               color: _textSecondary,
+              height: 1.4,
             ),
             children: [
-              const TextSpan(text: "We've found a highly-rated driver near\n"),
+              TextSpan(text: "We've found a highly-rated driver near\n"),
               TextSpan(
                 text: 'Kumasi Central Market',
-                style: const TextStyle(
+                style: TextStyle(
                   color: _gold,
                   fontWeight: FontWeight.w600,
                 ),
@@ -92,19 +73,61 @@ class _ArrivalHeadline extends StatelessWidget {
   }
 }
 
+class _DriverIdentityCard extends StatelessWidget {
+  final MatchedDriver driver;
+  const _DriverIdentityCard({required this.driver});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(60, 24, 60, 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _border),
+      ),
+      child: Column(
+        children: [
+          const _DriverAvatar(),
+          const SizedBox(height: 12),
+          Text(
+            driver.name,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: _textPrimary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          _RatingRow(rating: driver.rating, tripCount: driver.tripCount),
+          const SizedBox(height: 14),
+          _BadgeRow(
+            isVerified: driver.isVerified,
+            isPoliceChecked: driver.isPoliceChecked,
+          ),
+          const SizedBox(height: 14),
+          _PhoneChip(maskedPhone: driver.maskedPhone),
+        ],
+      ),
+    );
+  }
+}
+
 class _DriverAvatar extends StatelessWidget {
+  const _DriverAvatar();
+
   @override
   Widget build(BuildContext context) {
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Container(
-          width: 84,
-          height: 84,
+          width: 76,
+          height: 76,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: _avatarBg,
-            border: Border.all(color: _gold, width: 2.5),
+            border: Border.all(color: Colors.white, width: 3),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.08),
@@ -113,14 +136,14 @@ class _DriverAvatar extends StatelessWidget {
               ),
             ],
           ),
-          child: const Icon(Icons.person_rounded, size: 46, color: _darkSlate),
+          child: const Icon(Icons.person_rounded, size: 42, color: _darkSlate),
         ),
         Positioned(
-          bottom: 4,
-          right: 4,
+          bottom: 2,
+          right: 2,
           child: Container(
-            width: 16,
-            height: 16,
+            width: 14,
+            height: 14,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: _success,
@@ -143,7 +166,7 @@ class _RatingRow extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.star_rounded, size: 16, color: _gold),
+        const Icon(Icons.star_rounded, size: 15, color: _gold),
         const SizedBox(width: 4),
         Text(
           rating.toStringAsFixed(2),
@@ -167,10 +190,10 @@ class _RatingRow extends StatelessWidget {
   }
 
   String _formatCount(int count) {
-    if (count >= 1000) {
-      return '${(count / 1000).toStringAsFixed(count % 1000 == 0 ? 0 : 3).replaceAll(RegExp(r'\.?0+$'), '')},${(count % 1000).toString().padLeft(3, '0')}';
-    }
-    return count.toString();
+    if (count < 1000) return count.toString();
+    final thousands = count ~/ 1000;
+    final rest = (count % 1000).toString().padLeft(3, '0');
+    return '$thousands,$rest';
   }
 }
 
@@ -184,35 +207,33 @@ class _BadgeRow extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (isVerified) _StatusBadge(
-          label: 'Verified',
-          icon: Icons.check_circle_rounded,
-          color: _success,
-          bgColor: _successLight,
-        ),
+        if (isVerified)
+          const _OutlinedBadge(
+            label: 'Verified',
+            icon: Icons.check_circle_rounded,
+            color: _success,
+          ),
         if (isVerified && isPoliceChecked) const SizedBox(width: 8),
-        if (isPoliceChecked) _StatusBadge(
-          label: 'Police Checked',
-          icon: Icons.shield_rounded,
-          color: _gold,
-          bgColor: _goldLight,
-        ),
+        if (isPoliceChecked)
+          const _OutlinedBadge(
+            label: 'Police Checked',
+            icon: Icons.shield_rounded,
+            color: _textPrimary,
+          ),
       ],
     );
   }
 }
 
-class _StatusBadge extends StatelessWidget {
+class _OutlinedBadge extends StatelessWidget {
   final String label;
   final IconData icon;
   final Color color;
-  final Color bgColor;
 
-  const _StatusBadge({
+  const _OutlinedBadge({
     required this.label,
     required this.icon,
     required this.color,
-    required this.bgColor,
   });
 
   @override
@@ -220,14 +241,15 @@ class _StatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: bgColor,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: color),
-          const SizedBox(width: 4),
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 5),
           Text(
             label,
             style: TextStyle(
@@ -242,26 +264,33 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
-class _PhoneRow extends StatelessWidget {
+class _PhoneChip extends StatelessWidget {
   final String maskedPhone;
-  const _PhoneRow({required this.maskedPhone});
+  const _PhoneChip({required this.maskedPhone});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Icon(Icons.phone_rounded, size: 14, color: _textSecondary),
-        const SizedBox(width: 6),
-        Text(
-          maskedPhone,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: _textSecondary,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: _chipBg,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.phone_rounded, size: 13, color: _textSecondary),
+          const SizedBox(width: 6),
+          Text(
+            maskedPhone,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: _textSecondary,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

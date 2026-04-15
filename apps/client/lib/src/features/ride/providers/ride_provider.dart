@@ -25,7 +25,7 @@ class VehicleOption {
 
   String get fareDisplay {
     final ghs = farePesewas / 100;
-    return '₵${ghs.toStringAsFixed(2)}';
+    return 'GH₵ ${ghs.toStringAsFixed(2)}';
   }
 }
 
@@ -117,7 +117,7 @@ const vehicleOptions = [
     description: 'Newer cars with extra legroom',
     capacityPersons: 4,
     farePesewas: 4200,
-    estimatedTime: '3-5m',
+    estimatedTime: '3 min',
     isMotorcycle: false,
   ),
   VehicleOption(
@@ -135,7 +135,7 @@ const vehicleOptions = [
     description: 'Beat the heavy Kumasi traffic',
     capacityPersons: 1,
     farePesewas: 1200,
-    estimatedTime: '1 km',
+    estimatedTime: '1 min',
     isMotorcycle: true,
   ),
 ];
@@ -151,6 +151,12 @@ const recentDestinations = [
     id: 'office',
     label: 'Office',
     address: 'Tech Hub, KNUST',
+    isHome: false,
+  ),
+  RecentDestination(
+    id: 'mall',
+    label: 'City Mall',
+    address: 'Lake Road, Suame',
     isHome: false,
   ),
 ];
@@ -363,6 +369,38 @@ class EtaNotifier extends StateNotifier<int> {
   void decrement() {
     if (state > 0) state--;
   }
+}
+
+/// Phase of the live ride once a driver has accepted.
+///   enRoute     — driver is heading to the pickup (ETA pill visible)
+///   arrived     — driver has reached the pickup; waiting countdown running
+///   inProgress  — trip has started; ETA counts down toward destination
+enum RideTrackingPhase { enRoute, arrived, inProgress }
+
+final rideTrackingPhaseProvider = StateProvider<RideTrackingPhase>(
+  (_) => RideTrackingPhase.enRoute,
+);
+
+/// ETA countdown (minutes) while the trip is in progress.
+final tripEtaProvider =
+    StateNotifierProvider<EtaNotifier, int>((_) => EtaNotifier(12));
+
+/// Free waiting period (seconds) once the driver has arrived.
+/// Default 180 (3 minutes) matches the "Free cancellation within 3 minutes"
+/// policy surfaced elsewhere in the UI.
+final waitingCountdownProvider =
+    StateNotifierProvider<WaitingCountdownNotifier, int>(
+  (_) => WaitingCountdownNotifier(180),
+);
+
+class WaitingCountdownNotifier extends StateNotifier<int> {
+  WaitingCountdownNotifier(super.seconds);
+
+  /// Decrements unbounded — once it passes 0, negative values represent
+  /// overtime (waiting that will be added to the fare).
+  void tick() => state--;
+
+  void reset([int seconds = 180]) => state = seconds;
 }
 
 /// Simulates the backend driver-matching flow.

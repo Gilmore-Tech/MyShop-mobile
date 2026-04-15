@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../app/router.dart';
 import '../providers/edit_trip_provider.dart';
+import '../screens/destination_search_screen.dart' show kNewStopSentinel;
 import '../widgets/fare_recalculation_card.dart';
 import '../widgets/route_stop_list.dart';
 
@@ -12,11 +15,9 @@ const _success = Color(0xFF27AE60);
 const _successLight = Color(0xFFE8F8EF);
 const _textPrimary = Color(0xFF161A1D);
 const _textSecondary = Color(0xFF555E68);
-const _error = Color(0xFFEB5757);
-const _divider = Color(0xFFE0E0E0);
 
 /// PRD 4.4 — Edit Your Trip / Add Stop Screen
-/// Reorder stops, add intermediate stops, view fare recalculation with surge notice.
+/// Reorder stops, add intermediate stops, view fare recalculation + surge.
 class AddStopScreen extends ConsumerWidget {
   const AddStopScreen({super.key});
 
@@ -31,64 +32,49 @@ class AddStopScreen extends ConsumerWidget {
       body: Stack(
         children: [
           SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: 160),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // ── YOUR ROUTE ───────────────────────────────────────────
-                _SectionHeader(
+                const _SectionHeader(
                   title: 'YOUR ROUTE',
                   trailing: 'Drag to reorder',
                 ),
-                Container(
-                  color: Colors.white,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Divider(height: 1, thickness: 1, color: _divider),
-                      RouteStopList(
-                        stops: stops,
-                        onReorder: (old, next) => ref
-                            .read(tripStopsProvider.notifier)
-                            .reorder(old, next),
-                        onRemove: (id) =>
-                            ref.read(tripStopsProvider.notifier).removeStop(id),
-                        onAddStop: () => _showAddStopDialog(context, ref),
-                      ),
-                      const Divider(height: 1, thickness: 1, color: _divider),
-                    ],
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: RouteStopList(
+                    stops: stops,
+                    onReorder: (old, next) => ref
+                        .read(tripStopsProvider.notifier)
+                        .reorder(old, next),
+                    onRemove: (id) =>
+                        ref.read(tripStopsProvider.notifier).removeStop(id),
+                    onEditStop: (stop) => _openSearch(context, stop: stop),
+                    onAddStop: () => _openSearch(context, addingIntermediate: true),
                   ),
                 ),
                 const SizedBox(height: 20),
                 // ── FARE RECALCULATION ───────────────────────────────────
-                _SectionHeader(title: 'FARE RECALCULATION'),
+                const _SectionHeader(title: 'FARE RECALCULATION'),
+                const SizedBox(height: 10),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      FareRecalculationCard(fare: fare),
-                      // SOS button overlapping top-right of card
-                      Positioned(
-                        right: -6,
-                        top: -6,
-                        child: _SosChip(),
-                      ),
-                    ],
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: FareRecalculationCard(fare: fare),
                 ),
                 const SizedBox(height: 12),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: SurgePricingActiveBanner(fare: fare),
                 ),
-                const SizedBox(height: 24),
-                // ── FARE SUMMARY + ACTIONS ───────────────────────────────
+                const SizedBox(height: 20),
+                // ── FARE SUMMARY (original + difference) ─────────────────
                 _FareSummaryRow(fare: fare),
-                const SizedBox(height: 120), // Bottom padding for sticky footer
               ],
             ),
           ),
-          // Sticky bottom actions
+          // Sticky footer: Confirm Changes + Discard link
           Positioned(
             bottom: 0,
             left: 0,
@@ -102,11 +88,8 @@ class AddStopScreen extends ConsumerWidget {
 
   PreferredSizeWidget _buildAppBar(BuildContext context) {
     return AppBar(
-      backgroundColor: Colors.white,
-      elevation: 0,
-      scrolledUnderElevation: 0,
       leading: IconButton(
-        onPressed: () => Navigator.of(context).pop(),
+        onPressed: () => context.pop(),
         icon: const Icon(Icons.arrow_back_rounded, color: _textPrimary),
       ),
       title: const Text(
@@ -121,7 +104,8 @@ class AddStopScreen extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.only(right: 16),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: BoxDecoration(
               color: _successLight,
               borderRadius: BorderRadius.circular(20),
@@ -140,58 +124,20 @@ class AddStopScreen extends ConsumerWidget {
     );
   }
 
-  void _showAddStopDialog(BuildContext context, WidgetRef ref) {
-    final controller = TextEditingController();
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text(
-          'Add Stop',
-          style: TextStyle(fontWeight: FontWeight.w700, color: _textPrimary),
-        ),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(
-            hintText: 'Enter stop address',
-            hintStyle: const TextStyle(color: Color(0xFFBDBDBD)),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: _divider),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: _gold),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel',
-                style: TextStyle(color: _textSecondary)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (controller.text.trim().isNotEmpty) {
-                ref
-                    .read(tripStopsProvider.notifier)
-                    .addIntermediateStop(controller.text.trim());
-              }
-              Navigator.of(ctx).pop();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _gold,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
-            ),
-            child: const Text('Add Stop'),
-          ),
-        ],
-      ),
-    );
+  /// Pushes the destination search screen (same flow as the pickup/destination
+  /// inputs on the fare-estimate screen). Either:
+  ///   - [stop]: editing an existing stop (pickup / intermediate / destination)
+  ///   - [addingIntermediate]: creating a new intermediate stop
+  /// When the user picks a place (or drops a pin via the screen's "Set
+  /// location on map" action) the selection writes back to tripStopsProvider.
+  void _openSearch(
+    BuildContext context, {
+    TripStop? stop,
+    bool addingIntermediate = false,
+  }) {
+    final fieldArg = (stop?.type == StopType.pickup) ? 'pickup' : 'destination';
+    final extra = addingIntermediate ? kNewStopSentinel : stop?.id;
+    context.push(AppRoutes.rideSearchPath(fieldArg), extra: extra);
   }
 }
 
@@ -206,7 +152,7 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Row(
         children: [
           Text(
@@ -229,40 +175,6 @@ class _SectionHeader extends StatelessWidget {
               ),
             ),
         ],
-      ),
-    );
-  }
-}
-
-// ── SOS chip (overlapping card) ───────────────────────────────────────────────
-
-class _SosChip extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 36,
-      height: 36,
-      decoration: BoxDecoration(
-        color: _error,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: _error.withValues(alpha: 0.4),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: const Center(
-        child: Text(
-          'SOS',
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w900,
-            color: Colors.white,
-            letterSpacing: 0.4,
-          ),
-        ),
       ),
     );
   }
@@ -323,23 +235,16 @@ class _StickyFooter extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
             width: double.infinity,
             height: 52,
+            // Theme supplies the dark-slate background; no override needed.
             child: ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _textPrimary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                elevation: 0,
-              ),
+              onPressed: () => context.pop(true),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: const [
@@ -358,7 +263,7 @@ class _StickyFooter extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () => Navigator.of(context).pop(false),
+            onTap: () => context.pop(false),
             child: const Text(
               'Discard & Return to Map',
               style: TextStyle(
@@ -373,3 +278,4 @@ class _StickyFooter extends StatelessWidget {
     );
   }
 }
+

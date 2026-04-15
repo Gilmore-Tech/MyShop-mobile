@@ -5,6 +5,7 @@ import '../providers/ride_provider.dart';
 const _textPrimary = Color(0xFF161A1D);
 const _textSecondary = Color(0xFF555E68);
 const _divider = Color(0xFFE0E0E0);
+const _border = Color(0xFFE0E0E0);
 
 class FareBreakdownCard extends StatelessWidget {
   final MatchedDriver driver;
@@ -14,8 +15,12 @@ class FareBreakdownCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.white,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _border),
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

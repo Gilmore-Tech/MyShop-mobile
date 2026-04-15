@@ -4,12 +4,13 @@ import '../providers/edit_trip_provider.dart';
 // Design tokens
 const _gold = Color(0xFFF5A623);
 const _goldLight = Color(0xFFFFF8EC);
-const _warning = Color(0xFFF2994A);
-const _warningLight = Color(0xFFFEF3E8);
 const _textPrimary = Color(0xFF161A1D);
 const _textSecondary = Color(0xFF555E68);
 const _border = Color(0xFFE0E0E0);
 
+/// Two-section card:
+///   Top — gold "PRICE UPDATE" header with a surge badge on the right.
+///   Bottom — white body with original estimate vs new fare + trip deltas.
 class FareRecalculationCard extends StatelessWidget {
   final FareRecalculation fare;
 
@@ -19,80 +20,75 @@ class FareRecalculationCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: _goldLight,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _gold.withValues(alpha: 0.3)),
+        border: Border.all(color: _border),
       ),
-      padding: const EdgeInsets.all(14),
+      clipBehavior: Clip.antiAlias,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _BadgeRow(fare: fare),
-          const SizedBox(height: 14),
-          _FareComparison(fare: fare),
-          const SizedBox(height: 12),
-          _TripDeltas(fare: fare),
+          _PriceUpdateHeader(fare: fare),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _FareComparison(fare: fare),
+                const SizedBox(height: 14),
+                _TripDeltas(fare: fare),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-// ── Badge row: PRICE UPDATE + Surge Active ────────────────────────────────────
+// ── Top header band — PRICE UPDATE | surge ──────────────────────────────────
 
-class _BadgeRow extends StatelessWidget {
+class _PriceUpdateHeader extends StatelessWidget {
   final FareRecalculation fare;
-  const _BadgeRow({required this.fare});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        _PillBadge(
-          label: 'PRICE UPDATE',
-          bgColor: _gold,
-          textColor: Colors.white,
-        ),
-        const SizedBox(width: 8),
-        if (fare.surgeActive)
-          _PillBadge(
-            label: fare.surgeLabel,
-            bgColor: _warning,
-            textColor: Colors.white,
-          ),
-      ],
-    );
-  }
-}
-
-class _PillBadge extends StatelessWidget {
-  final String label;
-  final Color bgColor;
-  final Color textColor;
-
-  const _PillBadge({
-    required this.label,
-    required this.bgColor,
-    required this.textColor,
-  });
+  const _PriceUpdateHeader({required this.fare});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w800,
-          color: textColor,
-          letterSpacing: 0.4,
-        ),
+      color: _gold,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: Row(
+        children: [
+          const Text(
+            'PRICE UPDATE',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const Spacer(),
+          if (fare.surgeActive)
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                fare.surgeLabel,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: _gold,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -109,7 +105,6 @@ class _FareComparison extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        // Left: original (greyed out, smaller)
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -117,7 +112,7 @@ class _FareComparison extends StatelessWidget {
             const Text(
               'Original Estimate',
               style: TextStyle(
-                fontSize: 10,
+                fontSize: 11,
                 fontWeight: FontWeight.w500,
                 color: _textSecondary,
               ),
@@ -126,7 +121,7 @@ class _FareComparison extends StatelessWidget {
             Text(
               fare.originalFareDisplay,
               style: const TextStyle(
-                fontSize: 14,
+                fontSize: 15,
                 fontWeight: FontWeight.w500,
                 color: _textSecondary,
                 decoration: TextDecoration.lineThrough,
@@ -136,7 +131,6 @@ class _FareComparison extends StatelessWidget {
           ],
         ),
         const Spacer(),
-        // Right: new fare (large bold)
         Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           mainAxisSize: MainAxisSize.min,
@@ -144,7 +138,7 @@ class _FareComparison extends StatelessWidget {
             const Text(
               'New Upfront Fare',
               style: TextStyle(
-                fontSize: 10,
+                fontSize: 11,
                 fontWeight: FontWeight.w500,
                 color: _textSecondary,
               ),
@@ -154,8 +148,9 @@ class _FareComparison extends StatelessWidget {
               fare.newFareDisplay,
               style: const TextStyle(
                 fontSize: 26,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w800,
                 color: _textPrimary,
+                height: 1.1,
               ),
             ),
           ],
@@ -179,7 +174,7 @@ class _TripDeltas extends StatelessWidget {
           icon: Icons.access_time_rounded,
           label: '+${fare.extraMinutes} mins travel',
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 8),
         _DeltaChip(
           icon: Icons.location_on_rounded,
           label: '+${fare.extraKm.toStringAsFixed(1)} km extra',
@@ -197,20 +192,27 @@ class _DeltaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 13, color: _textSecondary),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            color: _textSecondary,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: _goldLight,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: _textSecondary),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: _textPrimary,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -283,7 +285,7 @@ class _SurgeMultiplierBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
-        color: _warning,
+        color: _gold,
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(

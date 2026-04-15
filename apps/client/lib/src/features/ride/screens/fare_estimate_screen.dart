@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
 import '../providers/ride_provider.dart';
+import '../providers/ride_search_provider.dart';
 import '../widgets/payment_method_row.dart';
 import '../widgets/pickup_destination_fields.dart';
 import '../widgets/recent_destination_card.dart';
@@ -18,62 +19,87 @@ const _gold = Color(0xFFF5A623);
 const _divider = Color(0xFFE0E0E0);
 
 /// PRD 4.3 — Plan Your Trip
-/// Pickup + destination entry, vehicle selection, fare display, payment method, confirm CTA.
-class FareEstimateScreen extends ConsumerStatefulWidget {
+///
+/// Vehicle selection, surge banner, payment, and the confirm CTA only appear
+/// once both pickup and destination are set — EDD POST /v1/rides/estimate
+/// requires both endpoints before the backend can return ride categories.
+class FareEstimateScreen extends ConsumerWidget {
   const FareEstimateScreen({super.key});
 
   @override
-  ConsumerState<FareEstimateScreen> createState() => _FareEstimateScreenState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final search = ref.watch(rideSearchProvider);
+    final hasPickup = search.pickup != null;
+    final hasDestination = search.destination != null;
+    final ready = hasPickup && hasDestination;
 
-class _FareEstimateScreenState extends ConsumerState<FareEstimateScreen> {
-  final _destinationController = TextEditingController();
-
-  @override
-  void dispose() {
-    _destinationController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _offWhite,
-      appBar: _buildAppBar(),
+      appBar: _buildAppBar(context),
       body: Column(
         children: [
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(vertical: 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  PickupDestinationFields(
-                    pickupLocation: 'Kejetia Market, Kumasi',
-                    destinationController: _destinationController,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: PickupDestinationFields(
+                      pickupLabel: search.pickup?.name ?? 'Choose pickup',
+                      destinationLabel: search.destination?.name,
+                      onPickupTap: () => context
+                          .push(AppRoutes.rideSearchPath('pickup')),
+                      onDestinationTap: () => context
+                          .push(AppRoutes.rideSearchPath('destination')),
+                      onDestinationPinTap: () => context
+                          .push(AppRoutes.ridePinPickerPath('destination')),
+                    ),
                   ),
                   const SizedBox(height: 20),
-                  _RecentDestinationsSection(),
-                  const SizedBox(height: 16),
-                  const SurgePricingBanner(),
-                  const SizedBox(height: 20),
-                  _VehicleSelectionSection(),
-                  const SizedBox(height: 16),
-                  const Divider(color: _divider),
-                  const SizedBox(height: 10),
-                  _PaymentSection(),
-                  const SizedBox(height: 16),
+                  _RecentDestinationsSection(
+                    onSelect: (d) => ref
+                        .read(rideSearchProvider.notifier)
+                        .setLocation(
+                          RideSearchField.destination,
+                          RideLocation(name: d.label, address: d.address),
+                        ),
+                  ),
+                  if (ready) ...[
+                    const SizedBox(height: 16),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: SurgePricingBanner(),
+                    ),
+                    const SizedBox(height: 20),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: _VehicleSelectionSection(),
+                    ),
+                    const SizedBox(height: 16),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: Divider(color: _divider),
+                    ),
+                    const SizedBox(height: 10),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: _PaymentSection(),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                 ],
               ),
             ),
           ),
-          _BottomActions(onConfirm: _onConfirmRide),
+          if (ready) _BottomActions(onConfirm: () => _onConfirmRide(context)),
         ],
       ),
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
     return AppBar(
       backgroundColor: Colors.white,
       elevation: 0,
@@ -93,7 +119,7 @@ class _FareEstimateScreenState extends ConsumerState<FareEstimateScreen> {
     );
   }
 
-  void _onConfirmRide() {
+  void _onConfirmRide(BuildContext context) {
     context.go(AppRoutes.rideMatching);
   }
 }
@@ -101,27 +127,41 @@ class _FareEstimateScreenState extends ConsumerState<FareEstimateScreen> {
 // ── Sections ──────────────────────────────────────────────────────────────────
 
 class _RecentDestinationsSection extends StatelessWidget {
+  final ValueChanged<RecentDestination> onSelect;
+
+  const _RecentDestinationsSection({required this.onSelect});
+
   @override
   Widget build(BuildContext context) {
+    // Fixed card width so cards stay compact and the 3rd peeks past the edge.
+    const cardWidth = 150.0;
+    const cardHeight = 72.0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _SectionHeader(title: 'RECENT DESTINATIONS', actionLabel: 'View All'),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: _SectionHeader(
+              title: 'RECENT DESTINATIONS', actionLabel: 'View All'),
+        ),
         const SizedBox(height: 10),
-        Row(
-          children: recentDestinations
-              .map(
-                (d) => Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(
-                      right: d == recentDestinations.last ? 0 : 10,
-                    ),
-                    child: RecentDestinationCard(destination: d),
-                  ),
-                ),
-              )
-              .toList(),
+        SizedBox(
+          height: cardHeight,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: recentDestinations.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (_, i) => SizedBox(
+              width: cardWidth,
+              child: RecentDestinationCard(
+                destination: recentDestinations[i],
+                onTap: () => onSelect(recentDestinations[i]),
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -129,6 +169,8 @@ class _RecentDestinationsSection extends StatelessWidget {
 }
 
 class _VehicleSelectionSection extends ConsumerWidget {
+  const _VehicleSelectionSection();
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedId = ref.watch(selectedVehicleProvider);
@@ -136,8 +178,28 @@ class _VehicleSelectionSection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _SectionHeader(title: 'Select Vehicle', actionLabel: 'View All'),
-        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: const [
+            Text(
+              'Select Vehicle',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: _textPrimary,
+              ),
+            ),
+            Text(
+              'View All',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _gold,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
         ...vehicleOptions.map(
           (v) => Padding(
             padding: const EdgeInsets.only(bottom: 10),
@@ -155,6 +217,8 @@ class _VehicleSelectionSection extends ConsumerWidget {
 }
 
 class _PaymentSection extends StatelessWidget {
+  const _PaymentSection();
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -197,7 +261,7 @@ class _BottomActions extends StatelessWidget {
             child: ElevatedButton(
               onPressed: onConfirm,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF161A1D),
+                backgroundColor: const Color(0xFF46535D),
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -215,7 +279,7 @@ class _BottomActions extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
+            onTap: () => context.pop(),
             child: const Text(
               'Cancel Request',
               style: TextStyle(

@@ -80,10 +80,11 @@ class _DriverMatchingScreenState extends ConsumerState<DriverMatchingScreen> {
       );
       ref.read(matchedDriverProvider.notifier).state = driver;
       ref.read(bookingPhaseProvider.notifier).driverFound();
-      // Brief pause to show "Accepted" card, then auto-navigate to detail screen
+      // Brief pause so the rider sees "Accepted", then jump straight into the
+      // live tracking screen — driver has already accepted, no confirm needed.
       Future.delayed(const Duration(milliseconds: 1200), () {
         if (!mounted) return;
-        context.go(AppRoutes.rideDriverFound, extra: driver);
+        context.go(AppRoutes.rideTracking, extra: driver);
       });
     });
   }

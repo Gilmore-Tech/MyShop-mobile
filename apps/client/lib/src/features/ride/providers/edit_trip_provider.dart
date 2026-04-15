@@ -115,6 +115,13 @@ class TripStopsNotifier extends StateNotifier<List<TripStop>> {
     state = updated;
   }
 
+  void updateStopAddress(String id, String address) {
+    state = [
+      for (final stop in state)
+        if (stop.id == id) stop.copyWith(address: address) else stop,
+    ];
+  }
+
   void removeStop(String id) {
     state = state.where((s) => s.id != id).toList();
   }

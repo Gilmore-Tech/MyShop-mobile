@@ -24,26 +24,56 @@ class VehicleOptionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: isSelected ? _gold : _border,
-            width: isSelected ? 2 : 1,
+      behavior: HitTestBehavior.opaque,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isSelected ? _gold : _border,
+                width: isSelected ? 2 : 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                _VehicleIcon(isMotorcycle: option.isMotorcycle),
+                const SizedBox(width: 12),
+                Expanded(child: _VehicleInfo(option: option)),
+                _FareInfo(option: option, isSelected: isSelected),
+              ],
+            ),
           ),
-        ),
-        child: Row(
-          children: [
-            _VehicleIcon(isMotorcycle: option.isMotorcycle),
-            const SizedBox(width: 12),
-            Expanded(child: _VehicleInfo(option: option)),
-            _FareInfo(option: option, isSelected: isSelected),
-          ],
-        ),
+          if (isSelected)
+            const Positioned(
+              top: -6,
+              right: -6,
+              child: _SelectedBadge(),
+            ),
+        ],
       ),
+    );
+  }
+}
+
+class _SelectedBadge extends StatelessWidget {
+  const _SelectedBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: _gold,
+        border: Border.all(color: Colors.white, width: 2),
+      ),
+      child: const Icon(Icons.check_rounded, color: Colors.white, size: 14),
     );
   }
 }

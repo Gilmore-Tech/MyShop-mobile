@@ -3,6 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
+import '../providers/edit_trip_provider.dart';
+import '../providers/ride_search_provider.dart';
+
+/// Sentinel passed via `GoRouterState.extra` to signal "create a new
+/// intermediate stop" instead of editing an existing one.
+const kNewStopSentinel = '__new_stop__';
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const _bg            = Color(0xFFF6F7F8);
@@ -77,7 +83,18 @@ const _recentPlaces = [
 // EDD: POST /v1/rides/estimate  { origin, destination }
 
 class DestinationSearchScreen extends ConsumerStatefulWidget {
-  const DestinationSearchScreen({super.key});
+  final RideSearchField field;
+
+  /// When non-null we're editing a trip stop (from the Edit Your Trip screen)
+  /// rather than the pickup/destination on the fare-estimate flow. Pass the
+  /// sentinel [kNewStopSentinel] to create a fresh intermediate stop.
+  final String? stopId;
+
+  const DestinationSearchScreen({
+    super.key,
+    this.field = RideSearchField.destination,
+    this.stopId,
+  });
 
   @override
   ConsumerState<DestinationSearchScreen> createState() =>
@@ -89,6 +106,9 @@ class _DestinationSearchScreenState
   final _controller  = TextEditingController();
   final _focusNode   = FocusNode();
   String _query = '';
+
+  bool get _isPickup => widget.field == RideSearchField.pickup;
+  bool get _isStopEdit => widget.stopId != null;
 
   // Simple client-side filter — replace with Google Places API call.
   List<_Place> get _filteredRecents => _query.isEmpty
@@ -115,7 +135,31 @@ class _DestinationSearchScreenState
   }
 
   void _selectPlace(_Place place) {
-    context.go(AppRoutes.rideEstimate);
+    final fullAddress = '${place.name}, ${place.address}';
+    if (_isStopEdit) {
+      final stops = ref.read(tripStopsProvider.notifier);
+      if (widget.stopId == kNewStopSentinel) {
+        stops.addIntermediateStop(fullAddress);
+      } else {
+        stops.updateStopAddress(widget.stopId!, fullAddress);
+      }
+    } else {
+      ref.read(rideSearchProvider.notifier).setLocation(
+            widget.field,
+            RideLocation(name: place.name, address: place.address),
+          );
+    }
+    if (context.canPop()) context.pop();
+  }
+
+  void _openPinPicker() {
+    final fieldArg =
+        _isPickup ? 'pickup' : 'destination';
+    // Forward the stopId so the pin picker writes back to the same target.
+    context.push(
+      AppRoutes.ridePinPickerPath(fieldArg),
+      extra: widget.stopId,
+    );
   }
 
   @override
@@ -135,6 +179,8 @@ class _DestinationSearchScreenState
             top:         top,
             w:           w,
             h:           h,
+            title:       _isPickup ? 'Pickup location' : 'Where to?',
+            hintText:    _isPickup ? 'Search pickup' : 'Search destination',
             onChanged:   (v) => setState(() { _query = v; }),
             onBack:      () => context.pop(),
           ),
@@ -148,7 +194,7 @@ class _DestinationSearchScreenState
                   iconBg:  _darkSlate,
                   title:   'Set location on map',
                   subtitle:'Drop a pin to choose any location',
-                  onTap:   () => context.pop(),
+                  onTap:   _openPinPicker,
                   w: w, h: h,
                 ),
                 if (_query.isEmpty) ...[
@@ -177,6 +223,8 @@ class _SearchHeader extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode             focusNode;
   final double                top, w, h;
+  final String                title;
+  final String                hintText;
   final ValueChanged<String>  onChanged;
   final VoidCallback          onBack;
 
@@ -186,6 +234,8 @@ class _SearchHeader extends StatelessWidget {
     required this.top,
     required this.w,
     required this.h,
+    required this.title,
+    required this.hintText,
     required this.onChanged,
     required this.onBack,
   });
@@ -206,7 +256,7 @@ class _SearchHeader extends StatelessWidget {
                     color: _textPrimary),
               ),
               Text(
-                'Where to?',
+                title,
                 style: TextStyle(
                   color:      _textPrimary,
                   fontSize:   w * 0.048,
@@ -240,7 +290,7 @@ class _SearchHeader extends StatelessWidget {
                           color:    _textPrimary,
                           fontSize: w * 0.038),
                       decoration: InputDecoration(
-                        hintText: 'Search destination',
+                        hintText: hintText,
                         hintStyle: TextStyle(
                           color:    _textSecondary.withAlpha(140),
                           fontSize: w * 0.036,

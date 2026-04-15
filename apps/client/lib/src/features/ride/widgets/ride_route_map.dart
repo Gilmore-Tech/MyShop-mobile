@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../providers/ride_provider.dart' show RideTrackingPhase;
+
 // Design tokens
 const _gold = Color(0xFFF5A623);
 const _mapBg = Color(0xFFEDEDE6);      // Warm off-white map background
@@ -7,17 +9,18 @@ const _mapGrid = Color(0xFFE2E2DB);    // Subtle grid lines
 const _routeColor = Color(0xFF1C1C1E); // Dark route line
 const _textPrimary = Color(0xFF161A1D);
 const _textSecondary = Color(0xFF555E68);
+const _success = Color(0xFF27AE60);
 
 class RideRouteMap extends StatelessWidget {
   final String destination;
   final int etaMinutes;
-  final VoidCallback? onBack;
+  final RideTrackingPhase phase;
 
   const RideRouteMap({
     super.key,
     required this.destination,
     required this.etaMinutes,
-    this.onBack,
+    this.phase = RideTrackingPhase.enRoute,
   });
 
   @override
@@ -25,25 +28,32 @@ class RideRouteMap extends StatelessWidget {
     final statusBarHeight = MediaQuery.paddingOf(context).top;
     return Stack(
       children: [
-        // Map background + route
         Positioned.fill(child: _MapCanvas()),
-        // Back button — flush against the status bar
-        Positioned(
-          top: statusBarHeight + 6,
-          left: 12,
-          child: _BackButton(onTap: onBack),
-        ),
-        // ETA pill — centred, slightly lower so it clears the back button
         Positioned(
           top: statusBarHeight + 10,
           left: 0,
           right: 0,
-          child: Center(child: _EtaPill(etaMinutes: etaMinutes)),
+          child: Center(child: _topPill()),
         ),
-        // Destination label overlay (top-left of route)
-        _DestinationOverlay(destination: destination),
+        Positioned(
+          top: statusBarHeight + 62,
+          left: 16,
+          right: 16,
+          child: _DestinationOverlay(destination: destination),
+        ),
       ],
     );
+  }
+
+  Widget _topPill() {
+    switch (phase) {
+      case RideTrackingPhase.enRoute:
+        return _EtaPill(etaMinutes: etaMinutes);
+      case RideTrackingPhase.arrived:
+        return const _ArrivedPill();
+      case RideTrackingPhase.inProgress:
+        return _InProgressPill(minutes: etaMinutes);
+    }
   }
 }
 
@@ -170,35 +180,6 @@ class _RoutePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class _BackButton extends StatelessWidget {
-  final VoidCallback? onTap;
-  const _BackButton({this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap ?? () => Navigator.of(context).pop(),
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: const Icon(Icons.arrow_back_rounded,
-            size: 20, color: _textPrimary),
-      ),
-    );
-  }
-}
-
 class _EtaPill extends StatelessWidget {
   final int etaMinutes;
   const _EtaPill({required this.etaMinutes});
@@ -206,7 +187,7 @@ class _EtaPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 9),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
@@ -218,20 +199,41 @@ class _EtaPill extends StatelessWidget {
           ),
         ],
       ),
-      child: Text(
-        'ARRIVING IN $etaMinutes MINS',
-        style: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: _textPrimary,
-          letterSpacing: 0.6,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.timer_outlined, size: 14, color: _textPrimary),
+          const SizedBox(width: 6),
+          Text(
+            'ARRIVING IN $etaMinutes MINS',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: _textPrimary,
+              letterSpacing: 0.6,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-// ── Destination label overlay ─────────────────────────────────────────────────
+// ── Card shell ───────────────────────────────────────────────────────────────
+
+BoxDecoration _cardDecoration() => BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.08),
+          blurRadius: 12,
+          offset: const Offset(0, 3),
+        ),
+      ],
+    );
+
+// ── Destination (HEADING TO) card ─────────────────────────────────────────────
 
 class _DestinationOverlay extends StatelessWidget {
   final String destination;
@@ -239,43 +241,194 @@ class _DestinationOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      top: MediaQuery.of(context).padding.top + 64,
-      left: 20,
-      right: 20,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text(
-            'HEADING TO',
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: _textSecondary,
-              letterSpacing: 1.4,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              const Icon(Icons.location_on_rounded, color: _gold, size: 16),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  destination,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: _textPrimary,
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+      decoration: _cardDecoration(),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const _RouteRail(),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'HEADING TO',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: _textSecondary,
+                      letterSpacing: 1.4,
+                    ),
                   ),
-                  overflow: TextOverflow.ellipsis,
-                ),
+                  const SizedBox(height: 12),
+                  Text(
+                    destination,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: _textPrimary,
+                      height: 1.25,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
-            ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Arrived pill + waiting card ──────────────────────────────────────────────
+
+class _ArrivedPill extends StatelessWidget {
+  const _ArrivedPill();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+      decoration: BoxDecoration(
+        color: _success,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: _success.withValues(alpha: 0.35),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          Icon(Icons.check_circle_rounded, size: 14, color: Colors.white),
+          SizedBox(width: 6),
+          Text(
+            'YOUR DRIVER IS HERE',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+              letterSpacing: 0.6,
+            ),
           ),
         ],
       ),
     );
   }
+}
+
+class _InProgressPill extends StatelessWidget {
+  final int minutes;
+  const _InProgressPill({required this.minutes});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+      decoration: BoxDecoration(
+        color: const Color(0xFF46535D),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.navigation_rounded, size: 14, color: Colors.white),
+          const SizedBox(width: 6),
+          Text(
+            'IN TRANSIT · $minutes MIN',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+              letterSpacing: 0.6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+/// Gold rail: filled dot → dashed vertical line → outlined circle.
+class _RouteRail extends StatelessWidget {
+  const _RouteRail();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 14,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Top — solid gold dot (origin marker)
+          Container(
+            width: 12,
+            height: 12,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: _gold,
+            ),
+          ),
+          // Middle — dashed connector
+          const Expanded(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 3),
+              child: CustomPaint(painter: _DashedLinePainter()),
+            ),
+          ),
+          // Bottom — hollow gold ring (destination marker)
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white,
+              border: Border.all(color: _gold, width: 2),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashedLinePainter extends CustomPainter {
+  const _DashedLinePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = _gold
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round;
+
+    const dash = 2.0;
+    const gap = 3.0;
+    final cx = size.width / 2;
+    double y = 0;
+    while (y < size.height) {
+      canvas.drawLine(Offset(cx, y), Offset(cx, y + dash), paint);
+      y += dash + gap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

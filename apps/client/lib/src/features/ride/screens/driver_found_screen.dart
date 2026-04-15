@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../app/router.dart';
 import '../providers/ride_provider.dart';
 import '../widgets/driver_profile_header.dart';
 import '../widgets/fare_breakdown_card.dart';
 import '../widgets/ride_safety_banner.dart';
 import '../widgets/vehicle_details_card.dart';
-import 'ride_tracking_screen.dart';
 
 // Design tokens
 const _offWhite = Color(0xFFF6F7F8);
@@ -13,11 +14,12 @@ const _textPrimary = Color(0xFF161A1D);
 const _textSecondary = Color(0xFF555E68);
 const _success = Color(0xFF27AE60);
 const _error = Color(0xFFEB5757);
-const _divider = Color(0xFFE0E0E0);
 
-/// PRD 4.3 — Driver Found / Acceptance Screen
-/// Shows full driver profile, vehicle details, fare breakdown,
-/// safety tip, and confirm / cancel actions.
+/// PRD 4.3 — Driver Details Screen
+///
+/// Reached from the tracking screen (tap the driver row in the bottom sheet).
+/// Shows full driver profile, vehicle details, fare breakdown, and a cancel
+/// request action. Back arrow returns to the map.
 class DriverFoundScreen extends StatelessWidget {
   final MatchedDriver driver;
 
@@ -32,38 +34,25 @@ class DriverFoundScreen extends StatelessWidget {
         children: [
           Expanded(
             child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // ── Profile hero ────────────────────────────────────────
-                  ColoredBox(
-                    color: Colors.white,
-                    child: Column(
-                      children: [
-                        DriverProfileHeader(driver: driver),
-                        const Divider(
-                            height: 1, thickness: 1, color: _divider),
-                      ],
-                    ),
-                  ),
-                  // ── Trip details ────────────────────────────────────────
-                  _TripDetailsSection(driver: driver),
+                  DriverProfileHeader(driver: driver),
+                  const SizedBox(height: 20),
+                  const _SectionLabel(text: 'TRIP DETAILS'),
+                  const SizedBox(height: 12),
+                  VehicleDetailsCard(driver: driver),
+                  const SizedBox(height: 12),
+                  FareBreakdownCard(driver: driver),
+                  const SizedBox(height: 14),
+                  const RideSafetyBanner(),
                 ],
               ),
             ),
           ),
-          // ── Sticky bottom actions ───────────────────────────────────────
           _BottomActions(
-            onConfirm: () => Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (_) => RideTrackingScreen(
-                  driver: driver,
-                  destination: 'Kumasi City Mall, Lake Road',
-                ),
-              ),
-            ),
-            onCancel: () =>
-                Navigator.of(context).popUntil((route) => route.isFirst),
+            onCancel: () => context.go(AppRoutes.home),
           ),
         ],
       ),
@@ -76,15 +65,16 @@ class DriverFoundScreen extends StatelessWidget {
       elevation: 0,
       scrolledUnderElevation: 0,
       leading: IconButton(
-        onPressed: () => Navigator.of(context).pop(),
+        onPressed: () => context.pop(),
         icon: const Icon(Icons.arrow_back_rounded, color: _textPrimary),
       ),
+      centerTitle: false,
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           const Text(
-            'Driver Found',
+            'Driver Details',
             style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w700,
@@ -104,7 +94,7 @@ class DriverFoundScreen extends StatelessWidget {
               ),
               const SizedBox(width: 5),
               const Text(
-                'ACTIVE SEARCH',
+                'TRIP IN PROGRESS',
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
@@ -120,32 +110,7 @@ class DriverFoundScreen extends StatelessWidget {
   }
 }
 
-// ── Trip details section ──────────────────────────────────────────────────────
-
-class _TripDetailsSection extends StatelessWidget {
-  final MatchedDriver driver;
-  const _TripDetailsSection({required this.driver});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _SectionLabel(text: 'TRIP DETAILS'),
-          const SizedBox(height: 12),
-          VehicleDetailsCard(driver: driver),
-          const SizedBox(height: 2),
-          FareBreakdownCard(driver: driver),
-          const SizedBox(height: 14),
-          RideSafetyBanner(),
-          const SizedBox(height: 16),
-        ],
-      ),
-    );
-  }
-}
+// ── Section label ────────────────────────────────────────────────────────────
 
 class _SectionLabel extends StatelessWidget {
   final String text;
@@ -168,10 +133,9 @@ class _SectionLabel extends StatelessWidget {
 // ── Bottom actions ────────────────────────────────────────────────────────────
 
 class _BottomActions extends StatelessWidget {
-  final VoidCallback onConfirm;
   final VoidCallback onCancel;
 
-  const _BottomActions({required this.onConfirm, required this.onCancel});
+  const _BottomActions({required this.onCancel});
 
   @override
   Widget build(BuildContext context) {
@@ -183,50 +147,28 @@ class _BottomActions extends StatelessWidget {
         children: [
           SizedBox(
             width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed: onConfirm,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF161A1D),
-                foregroundColor: Colors.white,
+            height: 48,
+            child: OutlinedButton.icon(
+              onPressed: onCancel,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _error,
+                side: BorderSide(color: _error.withValues(alpha: 0.5), width: 1.5),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                elevation: 0,
               ),
-              child: const Text(
-                'Confirm Ride',
+              icon: const Icon(Icons.cancel_outlined, size: 18, color: _error),
+              label: const Text(
+                'Cancel Request',
                 style: TextStyle(
-                  fontSize: 15,
+                  fontSize: 14,
                   fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: onCancel,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.cancel_outlined,
-                  size: 16,
                   color: _error,
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  'Cancel Request',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: _error,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           const Text(
             'Free cancellation within 3 minutes of match.',
             style: TextStyle(
