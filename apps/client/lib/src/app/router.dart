@@ -20,7 +20,10 @@ import '../features/home/screens/home_screen.dart';
 
 // ── Ride ───────────────────────────────────────────────────────────────────────
 import '../features/ride/screens/destination_search_screen.dart';
+import '../features/ride/screens/map_pin_picker_screen.dart';
 import '../features/ride/screens/fare_estimate_screen.dart';
+import '../features/ride/providers/ride_search_provider.dart'
+    show parseRideSearchField;
 import '../features/ride/screens/add_stop_screen.dart';
 import '../features/ride/screens/driver_matching_screen.dart';
 import '../features/ride/screens/driver_found_screen.dart';
@@ -87,7 +90,8 @@ abstract final class AppRoutes {
   static const profile         = '/profile';
 
   // Ride sub-flow
-  static const rideSearch      = '/ride/search';
+  static const rideSearch      = '/ride/search/:field';
+  static const ridePinPicker   = '/ride/pin-picker/:field';
   static const rideEstimate    = '/ride/estimate';
   static const rideStops       = '/ride/stops';
   static const rideMatching    = '/ride/matching';
@@ -97,8 +101,10 @@ abstract final class AppRoutes {
   static const rideReceipt     = '/ride/:rideId/receipt';
   static const rideDispute     = '/ride/:rideId/dispute';
 
-  static String rideReceiptPath(String rideId)  => '/ride/$rideId/receipt';
-  static String rideDisputePath(String rideId)  => '/ride/$rideId/dispute';
+  static String rideSearchPath(String field)      => '/ride/search/$field';
+  static String ridePinPickerPath(String field)   => '/ride/pin-picker/$field';
+  static String rideReceiptPath(String rideId)    => '/ride/$rideId/receipt';
+  static String rideDisputePath(String rideId)    => '/ride/$rideId/dispute';
 
   // Services sub-flow
   static const jobNew           = '/services/job/new';
@@ -172,7 +178,9 @@ final routerProvider = Provider<GoRouter>((ref) => _buildRouter());
 GoRouter _buildRouter() {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
-    initialLocation: AppRoutes.splash,
+    // TEMP: land directly on home for UI testing of the redesigned homepage.
+    // Revert to AppRoutes.splash when wiring auth/onboarding gate.
+    initialLocation: AppRoutes.home,
     debugLogDiagnostics: false,
     routes: [
 
@@ -253,7 +261,18 @@ GoRouter _buildRouter() {
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.rideSearch,
-        builder: (_, __) => const DestinationSearchScreen(),
+        builder: (_, state) => DestinationSearchScreen(
+          field: parseRideSearchField(state.pathParameters['field']),
+          stopId: state.extra is String ? state.extra as String : null,
+        ),
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: AppRoutes.ridePinPicker,
+        builder: (_, state) => MapPinPickerScreen(
+          field: parseRideSearchField(state.pathParameters['field']),
+          stopId: state.extra is String ? state.extra as String : null,
+        ),
       ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,

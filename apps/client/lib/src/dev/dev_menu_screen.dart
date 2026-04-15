@@ -96,7 +96,8 @@ class DevMenuScreen extends StatelessWidget {
 
           // ── Ride Flow ────────────────────────────────────────────────────────
           _Section(label: 'RIDE FLOW', color: const Color(0xFF2F80ED), children: [
-            _Tile('Destination Search',  () => context.push(AppRoutes.rideSearch)),
+            _Tile('Destination Search',  () => context.push(AppRoutes.rideSearchPath('destination'))),
+            _Tile('Map Pin Picker',      () => context.push(AppRoutes.ridePinPickerPath('destination'))),
             _Tile('Fare Estimate / Plan Trip', () => context.push(AppRoutes.rideEstimate)),
             _Tile('Add Stop',            () => context.push(AppRoutes.rideStops)),
             _Tile('Driver Matching',     () => context.push(AppRoutes.rideMatching)),
