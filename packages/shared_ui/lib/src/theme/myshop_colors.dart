@@ -49,4 +49,7 @@ abstract final class MyShopColors {
   // -- Rating --
   static const ratingStar = Color(0xFFF5A623);
   static const ratingStarEmpty = Color(0xFFE0E0E0);
+
+  // -- Payment provider brands --
+  static const mtnYellow = Color(0xFFFFCC00);
 }
