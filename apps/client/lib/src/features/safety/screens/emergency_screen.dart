@@ -1,17 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
-// ── Design tokens ──────────────────────────────────────────────────────────────
-const _bg            = Color(0xFFF6F7F8);
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _gold          = Color(0xFFF5A623);
-const _danger        = Color(0xFFEB5757);
-const _dangerLight   = Color(0xFFFDE8E8);
-const _success       = Color(0xFF27AE60);
-const _successLight  = Color(0xFFE8F8EE);
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD § 4.10 — Two-step SOS confirmation to prevent accidental triggers.
@@ -86,22 +76,22 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen>
     final bot  = MediaQuery.paddingOf(context).bottom;
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: MyShopColors.offWhite,
       body: Column(
         children: [
           // Header
           Container(
-            color:   _surfaceWhite,
+            color:   MyShopColors.surfaceWhite,
             padding: EdgeInsets.only(top: top),
             child: Row(
               children: [
                 IconButton(
-                  icon: const Icon(Icons.close_rounded, color: _textPrimary),
+                  icon: const Icon(Icons.close_rounded, color: MyShopColors.textPrimary),
                   onPressed: () => context.pop(),
                 ),
                 Text('Emergency',
                     style: TextStyle(
-                      color:      _textPrimary,
+                      color:      MyShopColors.textPrimary,
                       fontSize:   w * 0.044,
                       fontWeight: FontWeight.w700,
                     )),
@@ -158,21 +148,21 @@ class _HoldState extends StatelessWidget {
           Container(
             padding: EdgeInsets.all(w * 0.04),
             decoration: BoxDecoration(
-              color:        _dangerLight,
+              color:        MyShopColors.errorLight,
               borderRadius: BorderRadius.circular(12),
-              border:       Border.all(color: _danger.withAlpha(60)),
+              border:       Border.all(color: MyShopColors.error.withAlpha(60)),
             ),
             child: Column(
               children: [
                 Row(
                   children: [
                     const Icon(Icons.warning_amber_rounded,
-                        color: _danger, size: 22),
+                        color: MyShopColors.error, size: 22),
                     SizedBox(width: w * 0.024),
                     Expanded(
                       child: Text('Use in genuine emergencies only',
                           style: TextStyle(
-                            color:      _danger,
+                            color:      MyShopColors.error,
                             fontSize:   w * 0.036,
                             fontWeight: FontWeight.w700,
                           )),
@@ -184,7 +174,7 @@ class _HoldState extends StatelessWidget {
                   'Triggering SOS will call 191 (Ghana Police), share your '
                   'live location, and alert your emergency contacts.',
                   style: TextStyle(
-                      color:    _danger.withAlpha(180),
+                      color:    MyShopColors.error.withAlpha(180),
                       fontSize: w * 0.031,
                       height:   1.5),
                 ),
@@ -196,7 +186,7 @@ class _HoldState extends StatelessWidget {
           Text('Hold for 3 seconds to trigger SOS',
               textAlign: TextAlign.center,
               style: TextStyle(
-                  color:    _textSecondary,
+                  color:    MyShopColors.textSecondary,
                   fontSize: w * 0.034)),
           SizedBox(height: h * 0.032),
           AnimatedBuilder(
@@ -215,8 +205,8 @@ class _HoldState extends StatelessWidget {
                       child: CircularProgressIndicator(
                         value:      holdCtrl.value,
                         strokeWidth: 6,
-                        color:      _danger,
-                        backgroundColor: _danger.withAlpha(30),
+                        color:      MyShopColors.error,
+                        backgroundColor: MyShopColors.error.withAlpha(30),
                       ),
                     ),
                     Container(
@@ -225,10 +215,10 @@ class _HoldState extends StatelessWidget {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: holdCtrl.value > 0
-                            ? _danger
-                            : _dangerLight,
+                            ? MyShopColors.error
+                            : MyShopColors.errorLight,
                         border: Border.all(
-                            color: _danger, width: 2),
+                            color: MyShopColors.error, width: 2),
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -236,14 +226,14 @@ class _HoldState extends StatelessWidget {
                           Icon(Icons.sos_rounded,
                               color: holdCtrl.value > 0
                                   ? Colors.white
-                                  : _danger,
+                                  : MyShopColors.error,
                               size: w * 0.092),
                           const SizedBox(height: 4),
                           Text('SOS',
                               style: TextStyle(
                                 color:      holdCtrl.value > 0
                                     ? Colors.white
-                                    : _danger,
+                                    : MyShopColors.error,
                                 fontSize:   w * 0.040,
                                 fontWeight: FontWeight.w900,
                               )),
@@ -289,14 +279,14 @@ class _ConfirmDialog extends StatelessWidget {
           Container(
             padding: EdgeInsets.all(w * 0.04),
             decoration: const BoxDecoration(
-                color: _dangerLight, shape: BoxShape.circle),
+                color: MyShopColors.errorLight, shape: BoxShape.circle),
             child: const Icon(Icons.sos_rounded,
-                color: _danger, size: 40),
+                color: MyShopColors.error, size: 40),
           ),
           SizedBox(height: w * 0.040),
           Text('Trigger SOS?',
               style: TextStyle(
-                color:      _textPrimary,
+                color:      MyShopColors.textPrimary,
                 fontSize:   w * 0.048,
                 fontWeight: FontWeight.w800,
               )),
@@ -306,7 +296,7 @@ class _ConfirmDialog extends StatelessWidget {
             'with your live location.',
             textAlign: TextAlign.center,
             style: TextStyle(
-                color:    _textSecondary,
+                color:    MyShopColors.textSecondary,
                 fontSize: w * 0.034,
                 height:   1.5),
           ),
@@ -317,7 +307,7 @@ class _ConfirmDialog extends StatelessWidget {
             child: ElevatedButton(
               onPressed: onConfirm,
               style: ElevatedButton.styleFrom(
-                backgroundColor: _danger,
+                backgroundColor: MyShopColors.error,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
@@ -334,7 +324,7 @@ class _ConfirmDialog extends StatelessWidget {
             onPressed: onCancel,
             child: Text('Cancel',
                 style: TextStyle(
-                    color:    _textSecondary,
+                    color:    MyShopColors.textSecondary,
                     fontSize: w * 0.036)),
           ),
         ],
@@ -355,7 +345,7 @@ class _QuickDialRow extends StatelessWidget {
       children: [
         Text('Quick access',
             style: TextStyle(
-                color:    _textSecondary,
+                color:    MyShopColors.textSecondary,
                 fontSize: w * 0.030)),
         SizedBox(height: h * 0.012),
         Row(
@@ -363,19 +353,19 @@ class _QuickDialRow extends StatelessWidget {
           children: [
             _DialBtn(
                 label: 'Police\n191',
-                color: _danger,
+                color: MyShopColors.error,
                 icon:  Icons.local_police_rounded,
                 w:     w),
             SizedBox(width: w * 0.060),
             _DialBtn(
                 label: 'Ambulance\n193',
-                color: const Color(0xFF27AE60),
+                color: MyShopColors.success,
                 icon:  Icons.local_hospital_rounded,
                 w:     w),
             SizedBox(width: w * 0.060),
             _DialBtn(
                 label: 'Fire\n192',
-                color: const Color(0xFFF2994A),
+                color: MyShopColors.warning,
                 icon:  Icons.local_fire_department_rounded,
                 w:     w),
           ],
@@ -456,14 +446,14 @@ class _SentState extends StatelessWidget {
             width:  w * 0.24,
             height: w * 0.24,
             decoration: const BoxDecoration(
-                color: _successLight, shape: BoxShape.circle),
+                color: MyShopColors.successLight, shape: BoxShape.circle),
             child: const Icon(Icons.check_circle_outline_rounded,
-                color: _success, size: 60),
+                color: MyShopColors.success, size: 60),
           ),
           SizedBox(height: h * 0.032),
           Text('SOS Sent',
               style: TextStyle(
-                color:      _textPrimary,
+                color:      MyShopColors.textPrimary,
                 fontSize:   w * 0.060,
                 fontWeight: FontWeight.w800,
               )),
@@ -473,7 +463,7 @@ class _SentState extends StatelessWidget {
             'location. Help is on the way.',
             textAlign: TextAlign.center,
             style: TextStyle(
-                color:    _textSecondary,
+                color:    MyShopColors.textSecondary,
                 fontSize: w * 0.036,
                 height:   1.6),
           ),
@@ -484,7 +474,7 @@ class _SentState extends StatelessWidget {
             child: ElevatedButton(
               onPressed: onDone,
               style: ElevatedButton.styleFrom(
-                backgroundColor: _gold,
+                backgroundColor: MyShopColors.primaryGold,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),

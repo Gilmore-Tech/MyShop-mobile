@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
@@ -23,7 +24,7 @@ class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   // ── Design tokens ──────────────────────────────────────────────────────────
   static const _bg   = Color(0xFF0F1923); // rich dark navy
-  static const _gold = Color(0xFFF5A623);
+  static const _gold = MyShopColors.primaryGold;
 
   // ── Animation ──────────────────────────────────────────────────────────────
   // Total controller duration: 1 400 ms
@@ -244,7 +245,7 @@ class _RadialGlow extends StatelessWidget {
         shape: BoxShape.circle,
         gradient: RadialGradient(
           colors: [
-            const Color(0xFFF5A623).withAlpha(30),
+            MyShopColors.primaryGold.withAlpha(30),
             Colors.transparent,
           ],
         ),
@@ -257,8 +258,8 @@ class _LogoMark extends StatelessWidget {
   final double w;
   const _LogoMark({required this.w});
 
-  static const _gold     = Color(0xFFF5A623);
-  static const _goldDark = Color(0xFFD48E1A);
+  static const _gold     = MyShopColors.primaryGold;
+  static const _goldDark = MyShopColors.primaryGoldDark;
 
   @override
   Widget build(BuildContext context) {
@@ -322,7 +323,7 @@ class _BagPainter extends CustomPainter {
 
     // Handle cut-out — oval hole at top of body
     final cutoutPaint = Paint()
-      ..color = const Color(0xFFD48E1A)  // matches logo gradient end
+      ..color = MyShopColors.primaryGoldDark  // matches logo gradient end
       ..style = PaintingStyle.fill;
     final handlePath = Path()
       ..addOval(Rect.fromCenter(
@@ -376,7 +377,7 @@ class _Wordmark extends StatelessWidget {
           TextSpan(
             text: 'Shop',
             style: TextStyle(
-              color: const Color(0xFFF5A623),
+              color: MyShopColors.primaryGold,
               fontSize: w * 0.092,
               fontWeight: FontWeight.w800,
               letterSpacing: -0.5,
@@ -444,7 +445,7 @@ class _TagDot extends StatelessWidget {
       width: w * 0.012,
       height: w * 0.012,
       decoration: const BoxDecoration(
-        color: Color(0xFFF5A623),
+        color: MyShopColors.primaryGold,
         shape: BoxShape.circle,
       ),
     );
@@ -501,7 +502,7 @@ class _LoadingDotsState extends State<_LoadingDots>
                   width:  widget.w * 0.022,
                   height: widget.w * 0.022,
                   decoration: const BoxDecoration(
-                    color: Color(0xFFF5A623),
+                    color: MyShopColors.primaryGold,
                     shape: BoxShape.circle,
                   ),
                 ),

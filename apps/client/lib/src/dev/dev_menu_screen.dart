@@ -1,15 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../app/router.dart';
 import '../features/ride/providers/ride_provider.dart' show MatchedDriver;
-
-// Design tokens
-const _bg          = Color(0xFFF6F7F8);
-const _gold        = Color(0xFFF5A623);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _surfaceWhite = Color(0xFFFFFFFF);
 
 // ── Mock objects needed by screens that require route extras ───────────────────
 
@@ -45,9 +39,9 @@ class DevMenuScreen extends StatelessWidget {
     final w = MediaQuery.sizeOf(context).width;
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: MyShopColors.offWhite,
       appBar: AppBar(
-        backgroundColor: _textPrimary,
+        backgroundColor: MyShopColors.textPrimary,
         foregroundColor: Colors.white,
         title: Text(
           'Dev Screen Navigator',
@@ -62,7 +56,7 @@ class DevMenuScreen extends StatelessWidget {
             margin: EdgeInsets.only(right: w * 0.041, top: 8, bottom: 8),
             padding: EdgeInsets.symmetric(horizontal: w * 0.026, vertical: 4),
             decoration: BoxDecoration(
-              color:        _gold,
+              color:        MyShopColors.primaryGold,
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
@@ -95,7 +89,7 @@ class DevMenuScreen extends StatelessWidget {
           ]),
 
           // ── Ride Flow ────────────────────────────────────────────────────────
-          _Section(label: 'RIDE FLOW', color: const Color(0xFF2F80ED), children: [
+          _Section(label: 'RIDE FLOW', color: MyShopColors.info, children: [
             _Tile('Destination Search',  () => context.push(AppRoutes.rideSearchPath('destination'))),
             _Tile('Map Pin Picker',      () => context.push(AppRoutes.ridePinPickerPath('destination'))),
             _Tile('Fare Estimate / Plan Trip', () => context.push(AppRoutes.rideEstimate)),
@@ -109,7 +103,7 @@ class DevMenuScreen extends StatelessWidget {
           ]),
 
           // ── Services Flow ────────────────────────────────────────────────────
-          _Section(label: 'SERVICES FLOW', color: _gold, children: [
+          _Section(label: 'SERVICES FLOW', color: MyShopColors.primaryGold, children: [
             _Tile('Job Form (New Job)',   () => context.push(AppRoutes.jobNew)),
             _Tile('Job Detail',          () => context.push(AppRoutes.jobDetailPath(_mockJobId))),
             _Tile('Bid Detail',          () => context.push(AppRoutes.jobBidsPath(_mockJobId, _mockBidId))),
@@ -127,14 +121,14 @@ class DevMenuScreen extends StatelessWidget {
           ]),
 
           // ── Activity & History ───────────────────────────────────────────────
-          _Section(label: 'ACTIVITY & HISTORY', color: const Color(0xFF27AE60), children: [
+          _Section(label: 'ACTIVITY & HISTORY', color: MyShopColors.success, children: [
             _Tile('Activity List',        () => context.push(AppRoutes.activity)),
             _Tile('Ride History Detail',  () => context.push(AppRoutes.activityRidePath(_mockRideId))),
             _Tile('Job History Detail',   () => context.push(AppRoutes.activityJobPath(_mockJobId))),
           ]),
 
           // ── Profile & Settings ───────────────────────────────────────────────
-          _Section(label: 'PROFILE & SETTINGS', color: const Color(0xFF46535D), children: [
+          _Section(label: 'PROFILE & SETTINGS', color: MyShopColors.darkSlate, children: [
             _Tile('Profile',              () => context.push(AppRoutes.profile)),
             _Tile('Edit Profile',         () => context.push(AppRoutes.profileEdit)),
             _Tile('Saved Locations',      () => context.push(AppRoutes.profileSavedPlaces)),
@@ -150,7 +144,7 @@ class DevMenuScreen extends StatelessWidget {
           ]),
 
           // ── Overlays & Utilities ─────────────────────────────────────────────
-          _Section(label: 'OVERLAYS & UTILITIES', color: const Color(0xFFEB5757), children: [
+          _Section(label: 'OVERLAYS & UTILITIES', color: MyShopColors.error, children: [
             _Tile('In-App Chat',          () => context.push(AppRoutes.chat)),
             _Tile('Emergency / SOS',      () => context.push(AppRoutes.safetyEmergency)),
             _Tile('Share Tracking',       () => context.push(AppRoutes.safetyShare)),
@@ -174,7 +168,7 @@ class _Section extends StatelessWidget {
   const _Section({
     required this.label,
     required this.children,
-    this.color = _textPrimary,
+    this.color = MyShopColors.textPrimary,
   });
 
   @override
@@ -202,7 +196,7 @@ class _Section extends StatelessWidget {
                 style: TextStyle(
                   fontSize:      w * 0.028,
                   fontWeight:    FontWeight.w900,
-                  color:         _textSecondary,
+                  color:         MyShopColors.textSecondary,
                   letterSpacing: 1.2,
                 ),
               ),
@@ -212,7 +206,7 @@ class _Section extends StatelessWidget {
         Container(
           margin: EdgeInsets.symmetric(horizontal: w * 0.041),
           decoration: BoxDecoration(
-            color:        _surfaceWhite,
+            color:        MyShopColors.surfaceWhite,
             borderRadius: BorderRadius.circular(w * 0.031),
             boxShadow: [
               BoxShadow(
@@ -259,14 +253,14 @@ class _Tile extends StatelessWidget {
                     style: TextStyle(
                       fontSize:   w * 0.038,
                       fontWeight: FontWeight.w500,
-                      color:      _textPrimary,
+                      color:      MyShopColors.textPrimary,
                     ),
                   ),
                 ),
                 Icon(
                   Icons.chevron_right_rounded,
                   size:  w * 0.051,
-                  color: _textSecondary,
+                  color: MyShopColors.textSecondary,
                 ),
               ],
             ),

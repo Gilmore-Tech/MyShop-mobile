@@ -1,19 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
-// ── Design tokens ──────────────────────────────────────────────────────────────
-const _bg            = Color(0xFFF6F7F8);
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _surfaceGrey   = Color(0xFFF3F5F6);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _gold          = Color(0xFFF5A623);
-const _goldLight     = Color(0xFFFFF8EC);
-const _success       = Color(0xFF27AE60);
-const _successLight  = Color(0xFFE8F8EE);
-const _divider       = Color(0xFFE8EAEC);
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD § 4.6 / § 4.10 — Share a live tracking link with trusted contacts.
@@ -55,17 +44,17 @@ class _ShareTrackingScreenState
     final bot  = MediaQuery.paddingOf(context).bottom;
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: MyShopColors.offWhite,
       appBar: AppBar(
-        backgroundColor: _surfaceWhite,
+        backgroundColor: MyShopColors.surfaceWhite,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: _textPrimary),
+          icon: const Icon(Icons.arrow_back,
+              color: MyShopColors.textPrimary),
           onPressed: () => context.pop(),
         ),
         title: Text('Share My Location',
             style: TextStyle(
-                color:      _textPrimary,
+                color:      MyShopColors.textPrimary,
                 fontSize:   w * 0.044,
                 fontWeight: FontWeight.w700)),
         centerTitle: false,
@@ -107,9 +96,9 @@ class _ShareTrackingScreenState
                 child: ElevatedButton(
                   onPressed: _isGenerating ? null : _generateLink,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor:         _gold,
+                    backgroundColor:         MyShopColors.primaryGold,
                     foregroundColor:         Colors.white,
-                    disabledBackgroundColor: _gold.withAlpha(120),
+                    disabledBackgroundColor: MyShopColors.primaryGold.withAlpha(120),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
@@ -143,14 +132,14 @@ class _InfoCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        _goldLight,
+        color:        MyShopColors.primaryGoldLight,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: _gold.withAlpha(60)),
+        border:       Border.all(color: MyShopColors.primaryGold.withAlpha(60)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.location_on_rounded, color: _gold, size: 22),
+          const Icon(Icons.location_on_rounded, color: MyShopColors.primaryGold, size: 22),
           SizedBox(width: w * 0.030),
           Expanded(
             child: Column(
@@ -158,7 +147,7 @@ class _InfoCard extends StatelessWidget {
               children: [
                 Text('Share your live location',
                     style: TextStyle(
-                      color:      _textPrimary,
+                      color:      MyShopColors.textPrimary,
                       fontSize:   w * 0.036,
                       fontWeight: FontWeight.w700,
                     )),
@@ -167,7 +156,7 @@ class _InfoCard extends StatelessWidget {
                   'Generate a link and send it to someone you trust. '
                   'They can follow your journey in real time — no app needed.',
                   style: TextStyle(
-                      color:    _textSecondary,
+                      color:    MyShopColors.textSecondary,
                       fontSize: w * 0.031,
                       height:   1.5),
                 ),
@@ -196,19 +185,19 @@ class _GeneratePrompt extends StatelessWidget {
             width:  w * 0.22,
             height: w * 0.22,
             decoration: const BoxDecoration(
-                color: _surfaceGrey, shape: BoxShape.circle),
+                color: MyShopColors.surfaceGrey, shape: BoxShape.circle),
             child: Icon(Icons.link_rounded,
-                color: _textSecondary.withAlpha(120), size: w * 0.10),
+                color: MyShopColors.textSecondary.withAlpha(120), size: w * 0.10),
           ),
           SizedBox(height: h * 0.016),
           Text('No link generated yet',
               style: TextStyle(
-                  color: _textSecondary, fontSize: w * 0.036)),
+                  color: MyShopColors.textSecondary, fontSize: w * 0.036)),
           SizedBox(height: h * 0.008),
           Text('Tap the button below to create a shareable link.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                  color:    _textSecondary.withAlpha(160),
+                  color:    MyShopColors.textSecondary.withAlpha(160),
                   fontSize: w * 0.030)),
         ],
       ),
@@ -235,9 +224,9 @@ class _LinkCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        _successLight,
+        color:        MyShopColors.successLight,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: _success.withAlpha(60)),
+        border:       Border.all(color: MyShopColors.success.withAlpha(60)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -245,11 +234,11 @@ class _LinkCard extends StatelessWidget {
           Row(
             children: [
               const Icon(Icons.check_circle_rounded,
-                  color: _success, size: 18),
+                  color: MyShopColors.success, size: 18),
               SizedBox(width: w * 0.020),
               Text('Link ready to share',
                   style: TextStyle(
-                    color:      _success,
+                    color:      MyShopColors.success,
                     fontSize:   w * 0.034,
                     fontWeight: FontWeight.w700,
                   )),
@@ -263,16 +252,16 @@ class _LinkCard extends StatelessWidget {
                   padding: EdgeInsets.symmetric(
                       horizontal: w * 0.030, vertical: h * 0.012),
                   decoration: BoxDecoration(
-                    color:        _surfaceWhite,
+                    color:        MyShopColors.surfaceWhite,
                     borderRadius: BorderRadius.circular(8),
-                    border:       Border.all(color: _divider),
+                    border:       Border.all(color: MyShopColors.divider),
                   ),
                   child: Text(
                     link,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        color:    _textPrimary,
+                        color:    MyShopColors.textPrimary,
                         fontSize: w * 0.030),
                   ),
                 ),
@@ -283,12 +272,12 @@ class _LinkCard extends StatelessWidget {
                 child: Container(
                   padding: EdgeInsets.all(w * 0.028),
                   decoration: BoxDecoration(
-                    color:        _surfaceWhite,
+                    color:        MyShopColors.surfaceWhite,
                     borderRadius: BorderRadius.circular(8),
-                    border:       Border.all(color: _divider),
+                    border:       Border.all(color: MyShopColors.divider),
                   ),
                   child: Icon(Icons.copy_rounded,
-                      color: _textSecondary, size: w * 0.048),
+                      color: MyShopColors.textSecondary, size: w * 0.048),
                 ),
               ),
             ],
@@ -306,9 +295,9 @@ class _ShareMethods extends StatelessWidget {
   const _ShareMethods({required this.w, required this.h});
 
   static const _methods = [
-    (icon: Icons.sms_rounded,       label: 'SMS',       color: Color(0xFF27AE60)),
-    (icon: Icons.share_rounded,     label: 'Share',     color: Color(0xFF2F80ED)),
-    (icon: Icons.copy_all_rounded,  label: 'Copy',      color: Color(0xFF46535D)),
+    (icon: Icons.sms_rounded,       label: 'SMS',       color: MyShopColors.success),
+    (icon: Icons.share_rounded,     label: 'Share',     color: MyShopColors.info),
+    (icon: Icons.copy_all_rounded,  label: 'Copy',      color: MyShopColors.darkSlate),
   ];
 
   @override
@@ -362,13 +351,13 @@ class _ExpiryNote extends StatelessWidget {
     return Row(
       children: [
         const Icon(Icons.timer_outlined,
-            color: _textSecondary, size: 14),
+            color: MyShopColors.textSecondary, size: 14),
         SizedBox(width: w * 0.016),
         Expanded(
           child: Text(
             'This link expires automatically when your ride or job ends.',
             style: TextStyle(
-                color:    _textSecondary,
+                color:    MyShopColors.textSecondary,
                 fontSize: w * 0.030,
                 height:   1.5),
           ),

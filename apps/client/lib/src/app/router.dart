@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -219,6 +220,12 @@ GoRouter _buildRouter() {
                 path: AppRoutes.home,
                 builder: (_, __) => const HomeScreen(),
               ),
+              // Ride completion lives inside the shell so the shared
+              // bottom nav wraps it and users can jump to any tab.
+              GoRoute(
+                path: AppRoutes.rideComplete,
+                builder: (_, __) => const RideCompleteScreen(),
+              ),
             ],
           ),
 
@@ -309,15 +316,14 @@ GoRouter _buildRouter() {
       ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
-        path: AppRoutes.rideComplete,
-        builder: (_, __) => const RideCompleteScreen(),
-      ),
-      GoRoute(
-        parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.rideReceipt,
         builder: (_, state) {
           final rideId = state.pathParameters['rideId']!;
-          return RideReceiptScreen(rideId: rideId);
+          final fromCompletion = state.extra == true;
+          return RideReceiptScreen(
+            rideId: rideId,
+            fromCompletion: fromCompletion,
+          );
         },
       ),
       GoRoute(
@@ -513,7 +519,7 @@ GoRouter _buildRouter() {
       body: Center(
         child: Text(
           'Page not found: ${state.uri}',
-          style: const TextStyle(color: Color(0xFF555E68)),
+          style: const TextStyle(color: MyShopColors.textSecondary),
         ),
       ),
     ),

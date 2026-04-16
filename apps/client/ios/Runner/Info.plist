@@ -59,6 +59,10 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>MyShop needs camera access so you can add photos to your job requests.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>MyShop needs photo library access so you can attach photos to your job requests.</string>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

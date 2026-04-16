@@ -1,22 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
-// ── Design tokens ──────────────────────────────────────────────────────────────
-const _bg            = Color(0xFFF6F7F8);
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _gold          = Color(0xFFF5A623);
-const _goldLight     = Color(0xFFFFF8EC);
-const _success       = Color(0xFF27AE60);
-const _successLight  = Color(0xFFE8F8EE);
-const _info          = Color(0xFF2F80ED);
-const _infoLight     = Color(0xFFE8F0FD);
-const _warning       = Color(0xFFF2994A);
-const _warningLight  = Color(0xFFFEF3E8);
-const _danger        = Color(0xFFEB5757);
-const _dangerLight   = Color(0xFFFDE8E8);
 
 // ── Model ──────────────────────────────────────────────────────────────────────
 
@@ -87,19 +72,19 @@ class NotificationsListScreen extends ConsumerWidget {
     final unread  = notifs.where((n) => !n.isRead).length;
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: MyShopColors.offWhite,
       appBar: AppBar(
-        backgroundColor: _surfaceWhite,
+        backgroundColor: MyShopColors.surfaceWhite,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: _textPrimary),
+          icon: const Icon(Icons.arrow_back,
+              color: MyShopColors.textPrimary),
           onPressed: () => context.pop(),
         ),
         title: Row(
           children: [
             Text('Notifications',
                 style: TextStyle(
-                    color:      _textPrimary,
+                    color:      MyShopColors.textPrimary,
                     fontSize:   w * 0.044,
                     fontWeight: FontWeight.w700)),
             if (unread > 0) ...[
@@ -108,7 +93,7 @@ class NotificationsListScreen extends ConsumerWidget {
                 padding: EdgeInsets.symmetric(
                     horizontal: w * 0.020, vertical: 2),
                 decoration: BoxDecoration(
-                  color:        _gold,
+                  color:        MyShopColors.primaryGold,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text('$unread',
@@ -128,7 +113,7 @@ class NotificationsListScreen extends ConsumerWidget {
                   ref.read(_notifsProvider.notifier).markAllRead(),
               child: Text('Mark all read',
                   style: TextStyle(
-                      color:    _gold,
+                      color:    MyShopColors.primaryGold,
                       fontSize: w * 0.032)),
             ),
         ],
@@ -201,7 +186,7 @@ class _GroupLabel extends StatelessWidget {
           w * 0.05, w * 0.036, w * 0.05, w * 0.016),
       child: Text(label,
           style: TextStyle(
-            color:         _textSecondary,
+            color:         MyShopColors.textSecondary,
             fontSize:      w * 0.026,
             fontWeight:    FontWeight.w900,
             letterSpacing: 1.2,
@@ -231,7 +216,7 @@ class _NotifTile extends StatelessWidget {
     return InkWell(
       onTap: () => onTap(notif.id),
       child: Container(
-        color: notif.isRead ? _bg : _surfaceWhite,
+        color: notif.isRead ? MyShopColors.offWhite : MyShopColors.surfaceWhite,
         padding: EdgeInsets.symmetric(
             horizontal: w * 0.05, vertical: h * 0.016),
         child: Row(
@@ -257,7 +242,7 @@ class _NotifTile extends StatelessWidget {
                       Expanded(
                         child: Text(notif.title,
                             style: TextStyle(
-                              color:      _textPrimary,
+                              color:      MyShopColors.textPrimary,
                               fontSize:   w * 0.036,
                               fontWeight: notif.isRead
                                   ? FontWeight.w500
@@ -267,14 +252,14 @@ class _NotifTile extends StatelessWidget {
                       SizedBox(width: w * 0.020),
                       Text(notif.time,
                           style: TextStyle(
-                              color:    _textSecondary,
+                              color:    MyShopColors.textSecondary,
                               fontSize: w * 0.028)),
                     ],
                   ),
                   const SizedBox(height: 4),
                   Text(notif.body,
                       style: TextStyle(
-                          color:    _textSecondary,
+                          color:    MyShopColors.textSecondary,
                           fontSize: w * 0.032,
                           height:   1.4)),
                 ],
@@ -287,7 +272,7 @@ class _NotifTile extends StatelessWidget {
                 height: 8,
                 margin: EdgeInsets.only(top: h * 0.006),
                 decoration: const BoxDecoration(
-                    color: _gold, shape: BoxShape.circle),
+                    color: MyShopColors.primaryGold, shape: BoxShape.circle),
               ),
             ],
           ],
@@ -298,13 +283,13 @@ class _NotifTile extends StatelessWidget {
 
   static (IconData, Color, Color) _iconFor(_NotifType type) =>
       switch (type) {
-        _NotifType.ride    => (Icons.directions_car_rounded, _info,    _infoLight),
-        _NotifType.job     => (Icons.work_rounded,           _gold,    _goldLight),
-        _NotifType.payment => (Icons.payments_rounded,       _success, _successLight),
-        _NotifType.promo   => (Icons.local_offer_rounded,    _warning, _warningLight),
-        _NotifType.safety  => (Icons.security_rounded,       _danger,  _dangerLight),
-        _NotifType.system  => (Icons.notifications_rounded,  const Color(0xFF46535D),
-                               const Color(0xFFF3F5F6)),
+        _NotifType.ride    => (Icons.directions_car_rounded, MyShopColors.info,    MyShopColors.infoLight),
+        _NotifType.job     => (Icons.work_rounded,           MyShopColors.primaryGold,    MyShopColors.primaryGoldLight),
+        _NotifType.payment => (Icons.payments_rounded,       MyShopColors.success, MyShopColors.successLight),
+        _NotifType.promo   => (Icons.local_offer_rounded,    MyShopColors.warning, MyShopColors.warningLight),
+        _NotifType.safety  => (Icons.security_rounded,       MyShopColors.error,  MyShopColors.errorLight),
+        _NotifType.system  => (Icons.notifications_rounded,  MyShopColors.darkSlate,
+                               MyShopColors.surfaceGrey),
       };
 }
 
@@ -321,18 +306,18 @@ class _EmptyState extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.notifications_none_rounded,
-              color: _textSecondary.withAlpha(80), size: w * 0.18),
+              color: MyShopColors.textSecondary.withAlpha(80), size: w * 0.18),
           SizedBox(height: h * 0.016),
           Text('No notifications yet',
               style: TextStyle(
-                color:      _textPrimary,
+                color:      MyShopColors.textPrimary,
                 fontSize:   w * 0.042,
                 fontWeight: FontWeight.w700,
               )),
           SizedBox(height: h * 0.008),
           Text("You're all caught up!",
               style: TextStyle(
-                  color:    _textSecondary,
+                  color:    MyShopColors.textSecondary,
                   fontSize: w * 0.034)),
         ],
       ),
