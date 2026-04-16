@@ -1,18 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
-// ── Design tokens ──────────────────────────────────────────────────────────────
-const _bg            = Color(0xFFF6F7F8);
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _gold          = Color(0xFFF5A623);
-const _goldDark      = Color(0xFFD48E1A);
-const _goldLight     = Color(0xFFFFF8EC);
-const _success       = Color(0xFF27AE60);
-const _successLight  = Color(0xFFE8F8EE);
-const _divider       = Color(0xFFE8EAEC);
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD § 4.9 — Loyalty points: earned per ride/job, redeemable for ride discounts.
@@ -29,17 +18,17 @@ class LoyaltyPointsScreen extends ConsumerWidget {
     final h    = size.height;
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: MyShopColors.offWhite,
       appBar: AppBar(
-        backgroundColor: _surfaceWhite,
+        backgroundColor: MyShopColors.surfaceWhite,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: _textPrimary),
+          icon: const Icon(Icons.arrow_back,
+              color: MyShopColors.textPrimary),
           onPressed: () => context.pop(),
         ),
         title: Text('Loyalty Points',
             style: TextStyle(
-                color:      _textPrimary,
+                color:      MyShopColors.textPrimary,
                 fontSize:   w * 0.044,
                 fontWeight: FontWeight.w700)),
         centerTitle: false,
@@ -86,7 +75,7 @@ class _BalanceCard extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end:   Alignment.bottomRight,
-          colors: [_gold, _goldDark],
+          colors: [MyShopColors.primaryGold, MyShopColors.primaryGoldDark],
         ),
         borderRadius: BorderRadius.circular(16),
       ),
@@ -177,9 +166,9 @@ class _TierProgress extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        _surfaceWhite,
+        color:        MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: _divider),
+        border:       Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         children: [
@@ -197,7 +186,7 @@ class _TierProgress extends StatelessWidget {
             child: LinearProgressIndicator(
               value:           progress,
               backgroundColor: const Color(0xFFE8EAEC),
-              valueColor:      const AlwaysStoppedAnimation<Color>(_gold),
+              valueColor:      const AlwaysStoppedAnimation<Color>(MyShopColors.primaryGold),
               minHeight:       8,
             ),
           ),
@@ -207,13 +196,13 @@ class _TierProgress extends StatelessWidget {
             children: [
               Text('720 pts',
                   style: TextStyle(
-                    color:      _textPrimary,
+                    color:      MyShopColors.textPrimary,
                     fontSize:   w * 0.030,
                     fontWeight: FontWeight.w600,
                   )),
               Text('1,280 pts to Gold',
                   style: TextStyle(
-                      color:    _textSecondary,
+                      color:    MyShopColors.textSecondary,
                       fontSize: w * 0.030)),
             ],
           ),
@@ -236,14 +225,14 @@ class _TierChip extends StatelessWidget {
       padding: EdgeInsets.symmetric(
           horizontal: w * 0.030, vertical: 5),
       decoration: BoxDecoration(
-        color:        isActive ? _goldLight : const Color(0xFFF3F5F6),
+        color:        isActive ? MyShopColors.primaryGoldLight : MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-            color: isActive ? _gold : const Color(0xFFE8EAEC)),
+            color: isActive ? MyShopColors.primaryGold : const Color(0xFFE8EAEC)),
       ),
       child: Text(label,
           style: TextStyle(
-            color:      isActive ? _gold : _textSecondary,
+            color:      isActive ? MyShopColors.primaryGold : MyShopColors.textSecondary,
             fontSize:   w * 0.028,
             fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
           )),
@@ -277,25 +266,25 @@ class _EarnGrid extends StatelessWidget {
         return Container(
           padding: EdgeInsets.all(w * 0.036),
           decoration: BoxDecoration(
-            color:        _surfaceWhite,
+            color:        MyShopColors.surfaceWhite,
             borderRadius: BorderRadius.circular(12),
-            border:       Border.all(color: _divider),
+            border:       Border.all(color: MyShopColors.divider),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(item.icon, color: _gold, size: w * 0.052),
+              Icon(item.icon, color: MyShopColors.primaryGold, size: w * 0.052),
               const Spacer(),
               Text(item.pts,
                   style: TextStyle(
-                    color:      _gold,
+                    color:      MyShopColors.primaryGold,
                     fontSize:   w * 0.036,
                     fontWeight: FontWeight.w800,
                   )),
               const SizedBox(height: 2),
               Text(item.label,
                   style: TextStyle(
-                      color:    _textSecondary,
+                      color:    MyShopColors.textSecondary,
                       fontSize: w * 0.028)),
             ],
           ),
@@ -316,20 +305,20 @@ class _RedeemCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        _successLight,
+        color:        MyShopColors.successLight,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: _success.withAlpha(60)),
+        border:       Border.all(color: MyShopColors.success.withAlpha(60)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.redeem_rounded, color: _success, size: 22),
+              const Icon(Icons.redeem_rounded, color: MyShopColors.success, size: 22),
               SizedBox(width: w * 0.024),
               Text('Ride Discount',
                   style: TextStyle(
-                    color:      _success,
+                    color:      MyShopColors.success,
                     fontSize:   w * 0.038,
                     fontWeight: FontWeight.w700,
                   )),
@@ -340,7 +329,7 @@ class _RedeemCard extends StatelessWidget {
             'Redeem 100 points for GHS 1.00 off your next ride. '
             'Points are applied automatically at checkout.',
             style: TextStyle(
-                color:    _success,
+                color:    MyShopColors.success,
                 fontSize: w * 0.032,
                 height:   1.5),
           ),
@@ -352,7 +341,7 @@ class _RedeemCard extends StatelessWidget {
                 // TODO: POST /v1/loyalty/redeem { amount: 100 }
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: _success,
+                backgroundColor: MyShopColors.success,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
@@ -381,7 +370,7 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(text,
         style: TextStyle(
-          color:      _textPrimary,
+          color:      MyShopColors.textPrimary,
           fontSize:   w * 0.040,
           fontWeight: FontWeight.w700,
         ));
@@ -404,9 +393,9 @@ class _LedgerList extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color:        _surfaceWhite,
+        color:        MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: _divider),
+        border:       Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         children: _entries.map((e) {
@@ -422,14 +411,14 @@ class _LedgerList extends StatelessWidget {
                       width:  w * 0.10,
                       height: w * 0.10,
                       decoration: BoxDecoration(
-                        color: e.earn ? _goldLight : const Color(0xFFFDE8E8),
+                        color: e.earn ? MyShopColors.primaryGoldLight : MyShopColors.errorLight,
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
                         e.earn
                             ? Icons.add_circle_outline_rounded
                             : Icons.remove_circle_outline_rounded,
-                        color: e.earn ? _gold : const Color(0xFFEB5757),
+                        color: e.earn ? MyShopColors.primaryGold : MyShopColors.error,
                         size: w * 0.048,
                       ),
                     ),
@@ -440,21 +429,21 @@ class _LedgerList extends StatelessWidget {
                         children: [
                           Text(e.label,
                               style: TextStyle(
-                                color:      _textPrimary,
+                                color:      MyShopColors.textPrimary,
                                 fontSize:   w * 0.036,
                                 fontWeight: FontWeight.w600,
                               )),
                           const SizedBox(height: 2),
                           Text(e.date,
                               style: TextStyle(
-                                  color:    _textSecondary,
+                                  color:    MyShopColors.textSecondary,
                                   fontSize: w * 0.030)),
                         ],
                       ),
                     ),
                     Text(e.pts,
                         style: TextStyle(
-                          color:      e.earn ? _gold : const Color(0xFFEB5757),
+                          color:      e.earn ? MyShopColors.primaryGold : MyShopColors.error,
                           fontSize:   w * 0.038,
                           fontWeight: FontWeight.w800,
                         )),
@@ -464,7 +453,7 @@ class _LedgerList extends StatelessWidget {
               if (!isLast)
                 const Divider(
                     height: 1, indent: 16, endIndent: 16,
-                    color: _divider),
+                    color: MyShopColors.divider),
             ],
           );
         }).toList(),

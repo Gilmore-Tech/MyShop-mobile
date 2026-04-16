@@ -1,20 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/app_preferences_provider.dart';
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _offWhite      = Color(0xFFF6F7F8);
-const _surfaceGrey   = Color(0xFFF3F5F6);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _textHint      = Color(0xFFBDBDBD);
-const _gold          = Color(0xFFF5A623);
-const _goldLight     = Color(0xFFFFF8EC);
-const _darkSlate     = Color(0xFF46535D);
-const _disabled      = Color(0xFFBDBDBD);
-const _divider       = Color(0xFFE0E0E0);
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 // PRD § 11 Localisation: English + Twi at launch, further languages post-pilot.
@@ -33,7 +21,7 @@ class AppPreferencesScreen extends ConsumerWidget {
     final state  = ref.watch(appPreferencesProvider);
 
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       appBar: _buildAppBar(context, ref, state, w),
       body: SingleChildScrollView(
         padding: EdgeInsets.only(bottom: bottom + h * 0.032),
@@ -141,13 +129,13 @@ class AppPreferencesScreen extends ConsumerWidget {
     double w,
   ) {
     return AppBar(
-      backgroundColor: _surfaceWhite,
+      backgroundColor: MyShopColors.surfaceWhite,
       elevation: 0,
       scrolledUnderElevation: 0,
       leading: IconButton(
         icon: Icon(
-          Icons.arrow_back_ios_new_rounded,
-          color: _textPrimary,
+          Icons.arrow_back,
+          color: MyShopColors.textPrimary,
           size: w * 0.052,
         ),
         onPressed: () => Navigator.of(context).maybePop(),
@@ -158,7 +146,7 @@ class AppPreferencesScreen extends ConsumerWidget {
           fontFamily: 'Raleway',
           fontSize: w * 0.050,
           fontWeight: FontWeight.w700,
-          color: _textPrimary,
+          color: MyShopColors.textPrimary,
           height: 1.3,
         ),
       ),
@@ -171,7 +159,7 @@ class AppPreferencesScreen extends ConsumerWidget {
                   width: w * 0.046,
                   height: w * 0.046,
                   child: const CircularProgressIndicator(
-                    color: _gold,
+                    color: MyShopColors.primaryGold,
                     strokeWidth: 2,
                   ),
                 )
@@ -189,7 +177,7 @@ class AppPreferencesScreen extends ConsumerWidget {
                       fontFamily: 'Raleway',
                       fontSize: w * 0.042,
                       fontWeight: FontWeight.w700,
-                      color: state.isSaved ? _darkSlate : _gold,
+                      color: state.isSaved ? MyShopColors.darkSlate : MyShopColors.primaryGold,
                       height: 1.3,
                     ),
                   ),
@@ -208,7 +196,7 @@ class AppPreferencesScreen extends ConsumerWidget {
   ) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: _surfaceWhite,
+      backgroundColor: MyShopColors.surfaceWhite,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -226,7 +214,7 @@ class AppPreferencesScreen extends ConsumerWidget {
                   width: w * 0.092,
                   height: h * 0.005,
                   decoration: BoxDecoration(
-                    color: _divider,
+                    color: MyShopColors.divider,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -238,7 +226,7 @@ class AppPreferencesScreen extends ConsumerWidget {
                   fontFamily: 'Raleway',
                   fontSize: w * 0.046,
                   fontWeight: FontWeight.w700,
-                  color: _textPrimary,
+                  color: MyShopColors.textPrimary,
                   height: 1.3,
                 ),
               ),
@@ -260,16 +248,16 @@ class AppPreferencesScreen extends ConsumerWidget {
                     ),
                     decoration: isSelected
                         ? BoxDecoration(
-                            color: _goldLight,
+                            color: MyShopColors.primaryGoldLight,
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                                color: _gold.withValues(alpha: 0.4), width: 1),
+                                color: MyShopColors.primaryGold.withValues(alpha: 0.4), width: 1),
                           )
                         : null,
                     child: Row(
                       children: [
                         Icon(Icons.language_rounded,
-                            color: isSelected ? _gold : _textSecondary,
+                            color: isSelected ? MyShopColors.primaryGold : MyShopColors.textSecondary,
                             size: w * 0.046),
                         SizedBox(width: w * 0.028),
                         Expanded(
@@ -281,7 +269,7 @@ class AppPreferencesScreen extends ConsumerWidget {
                               fontWeight: isSelected
                                   ? FontWeight.w700
                                   : FontWeight.w500,
-                              color: isSelected ? _gold : _textPrimary,
+                              color: isSelected ? MyShopColors.primaryGold : MyShopColors.textPrimary,
                               height: 1.3,
                             ),
                           ),
@@ -290,7 +278,7 @@ class AppPreferencesScreen extends ConsumerWidget {
                           _DefaultTag(w: w, h: h),
                         if (isSelected)
                           Icon(Icons.check_rounded,
-                              color: _gold, size: w * 0.046),
+                              color: MyShopColors.primaryGold, size: w * 0.046),
                       ],
                     ),
                   ),
@@ -325,7 +313,7 @@ class _CustomizationHeader extends StatelessWidget {
               fontFamily: 'Raleway',
               fontSize: w * 0.060,
               fontWeight: FontWeight.w700,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
               height: 1.2,
             ),
           ),
@@ -336,7 +324,7 @@ class _CustomizationHeader extends StatelessWidget {
               fontFamily: 'Raleway',
               fontSize: w * 0.034,
               fontWeight: FontWeight.w400,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
               height: 1.55,
             ),
           ),
@@ -365,7 +353,7 @@ class _SectionLabel extends StatelessWidget {
           fontFamily: 'Raleway',
           fontSize: w * 0.026,
           fontWeight: FontWeight.w900,
-          color: _textSecondary,
+          color: MyShopColors.textSecondary,
           letterSpacing: 1.4,
           height: 1.4,
         ),
@@ -386,7 +374,7 @@ class _SectionCard extends StatelessWidget {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: w * 0.044),
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
         boxShadow: const [
           BoxShadow(
@@ -415,7 +403,7 @@ class _RowDivider extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.only(
           left: w * 0.041 + w * 0.092 + w * 0.031),
-      child: const Divider(color: _divider, height: 1, thickness: 1),
+      child: const Divider(color: MyShopColors.divider, height: 1, thickness: 1),
     );
   }
 }
@@ -446,9 +434,9 @@ class _MapUnitsRow extends StatelessWidget {
             width: w * 0.092,
             height: w * 0.092,
             decoration: const BoxDecoration(
-                color: _surfaceGrey, shape: BoxShape.circle),
+                color: MyShopColors.surfaceGrey, shape: BoxShape.circle),
             child: Icon(Icons.map_outlined,
-                color: _textSecondary, size: w * 0.046),
+                color: MyShopColors.textSecondary, size: w * 0.046),
           ),
           SizedBox(width: w * 0.031),
           // Title + subtitle
@@ -462,7 +450,7 @@ class _MapUnitsRow extends StatelessWidget {
                     fontFamily: 'Raleway',
                     fontSize: w * 0.038,
                     fontWeight: FontWeight.w600,
-                    color: _textPrimary,
+                    color: MyShopColors.textPrimary,
                     height: 1.3,
                   ),
                 ),
@@ -473,7 +461,7 @@ class _MapUnitsRow extends StatelessWidget {
                     fontFamily: 'Raleway',
                     fontSize: w * 0.030,
                     fontWeight: FontWeight.w400,
-                    color: _textSecondary,
+                    color: MyShopColors.textSecondary,
                     height: 1.4,
                   ),
                 ),
@@ -525,9 +513,9 @@ class _LanguageRow extends StatelessWidget {
               width: w * 0.092,
               height: w * 0.092,
               decoration: const BoxDecoration(
-                  color: _surfaceGrey, shape: BoxShape.circle),
+                  color: MyShopColors.surfaceGrey, shape: BoxShape.circle),
               child: Icon(Icons.language_rounded,
-                  color: _textSecondary, size: w * 0.046),
+                  color: MyShopColors.textSecondary, size: w * 0.046),
             ),
             SizedBox(width: w * 0.031),
             // Title + subtitle
@@ -541,7 +529,7 @@ class _LanguageRow extends StatelessWidget {
                       fontFamily: 'Raleway',
                       fontSize: w * 0.038,
                       fontWeight: FontWeight.w600,
-                      color: _textPrimary,
+                      color: MyShopColors.textPrimary,
                       height: 1.3,
                     ),
                   ),
@@ -552,7 +540,7 @@ class _LanguageRow extends StatelessWidget {
                       fontFamily: 'Raleway',
                       fontSize: w * 0.030,
                       fontWeight: FontWeight.w400,
-                      color: _textSecondary,
+                      color: MyShopColors.textSecondary,
                       height: 1.4,
                     ),
                   ),
@@ -591,15 +579,15 @@ class _LanguageChip extends StatelessWidget {
       padding: EdgeInsets.symmetric(
           horizontal: w * 0.025, vertical: h * 0.005),
       decoration: BoxDecoration(
-        color: _surfaceGrey,
+        color: MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: _divider, width: 1),
+        border: Border.all(color: MyShopColors.divider, width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.language_rounded,
-              color: _textSecondary, size: w * 0.034),
+              color: MyShopColors.textSecondary, size: w * 0.034),
           SizedBox(width: w * 0.012),
           Text(
             label,
@@ -607,7 +595,7 @@ class _LanguageChip extends StatelessWidget {
               fontFamily: 'Raleway',
               fontSize: w * 0.031,
               fontWeight: FontWeight.w500,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
               height: 1.3,
             ),
           ),
@@ -630,7 +618,7 @@ class _DefaultTag extends StatelessWidget {
         fontFamily: 'Raleway',
         fontSize: w * 0.028,
         fontWeight: FontWeight.w700,
-        color: _gold,
+        color: MyShopColors.primaryGold,
         height: 1.3,
       ),
     );
@@ -662,9 +650,9 @@ class _InterfaceThemeRow extends StatelessWidget {
             width: w * 0.092,
             height: w * 0.092,
             decoration: const BoxDecoration(
-                color: _surfaceGrey, shape: BoxShape.circle),
+                color: MyShopColors.surfaceGrey, shape: BoxShape.circle),
             child: Icon(Icons.tune_rounded,
-                color: _textSecondary, size: w * 0.046),
+                color: MyShopColors.textSecondary, size: w * 0.046),
           ),
           SizedBox(width: w * 0.031),
           Expanded(
@@ -677,7 +665,7 @@ class _InterfaceThemeRow extends StatelessWidget {
                     fontFamily: 'Raleway',
                     fontSize: w * 0.038,
                     fontWeight: FontWeight.w600,
-                    color: _textPrimary,
+                    color: MyShopColors.textPrimary,
                     height: 1.3,
                   ),
                 ),
@@ -688,7 +676,7 @@ class _InterfaceThemeRow extends StatelessWidget {
                     fontFamily: 'Raleway',
                     fontSize: w * 0.030,
                     fontWeight: FontWeight.w400,
-                    color: _textSecondary,
+                    color: MyShopColors.textSecondary,
                     height: 1.4,
                   ),
                 ),
@@ -744,8 +732,8 @@ class _ToggleRow extends StatelessWidget {
             width: w * 0.092,
             height: w * 0.092,
             decoration: const BoxDecoration(
-                color: _surfaceGrey, shape: BoxShape.circle),
-            child: Icon(icon, color: _textSecondary, size: w * 0.046),
+                color: MyShopColors.surfaceGrey, shape: BoxShape.circle),
+            child: Icon(icon, color: MyShopColors.textSecondary, size: w * 0.046),
           ),
           SizedBox(width: w * 0.031),
           Expanded(
@@ -758,7 +746,7 @@ class _ToggleRow extends StatelessWidget {
                     fontFamily: 'Raleway',
                     fontSize: w * 0.038,
                     fontWeight: FontWeight.w600,
-                    color: _textPrimary,
+                    color: MyShopColors.textPrimary,
                     height: 1.3,
                   ),
                 ),
@@ -769,7 +757,7 @@ class _ToggleRow extends StatelessWidget {
                     fontFamily: 'Raleway',
                     fontSize: w * 0.030,
                     fontWeight: FontWeight.w400,
-                    color: _textSecondary,
+                    color: MyShopColors.textSecondary,
                     height: 1.4,
                   ),
                 ),
@@ -780,9 +768,9 @@ class _ToggleRow extends StatelessWidget {
           Switch(
             value:              value,
             activeThumbColor:   Colors.white,
-            activeTrackColor:   _darkSlate,
+            activeTrackColor:   MyShopColors.darkSlate,
             inactiveThumbColor: Colors.white,
-            inactiveTrackColor: _disabled,
+            inactiveTrackColor: MyShopColors.disabled,
             trackOutlineColor:
                 const WidgetStatePropertyAll(Colors.transparent),
             onChanged: onChanged,
@@ -817,11 +805,11 @@ class _ProTipRow extends StatelessWidget {
             width: w * 0.092,
             height: w * 0.092,
             decoration: const BoxDecoration(
-              color: _goldLight,
+              color: MyShopColors.primaryGoldLight,
               shape: BoxShape.circle,
             ),
             child: Icon(Icons.tips_and_updates_outlined,
-                color: _gold, size: w * 0.046),
+                color: MyShopColors.primaryGold, size: w * 0.046),
           ),
           SizedBox(width: w * 0.031),
           Expanded(
@@ -834,7 +822,7 @@ class _ProTipRow extends StatelessWidget {
                     fontFamily: 'Raleway',
                     fontSize: w * 0.038,
                     fontWeight: FontWeight.w700,
-                    color: _textPrimary,
+                    color: MyShopColors.textPrimary,
                     height: 1.3,
                   ),
                 ),
@@ -846,7 +834,7 @@ class _ProTipRow extends StatelessWidget {
                     fontFamily: 'Raleway',
                     fontSize: w * 0.030,
                     fontWeight: FontWeight.w400,
-                    color: _textSecondary,
+                    color: MyShopColors.textSecondary,
                     height: 1.55,
                   ),
                 ),
@@ -883,9 +871,9 @@ class _TextSegmented<T> extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: _surfaceGrey,
+        color: MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _divider, width: 1),
+        border: Border.all(color: MyShopColors.divider, width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -899,10 +887,10 @@ class _TextSegmented<T> extends StatelessWidget {
               padding: EdgeInsets.symmetric(
                   horizontal: w * 0.030, vertical: h * 0.009),
               decoration: BoxDecoration(
-                color: isSelected ? _surfaceWhite : Colors.transparent,
+                color: isSelected ? MyShopColors.surfaceWhite : Colors.transparent,
                 borderRadius: BorderRadius.circular(6),
                 border: isSelected
-                    ? Border.all(color: _divider, width: 1)
+                    ? Border.all(color: MyShopColors.divider, width: 1)
                     : null,
                 boxShadow: isSelected
                     ? [
@@ -921,7 +909,7 @@ class _TextSegmented<T> extends StatelessWidget {
                   fontSize: w * 0.033,
                   fontWeight:
                       isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected ? _textPrimary : _textSecondary,
+                  color: isSelected ? MyShopColors.textPrimary : MyShopColors.textSecondary,
                   height: 1.3,
                 ),
               ),
@@ -959,9 +947,9 @@ class _IconSegmented<T> extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: _surfaceGrey,
+        color: MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _divider, width: 1),
+        border: Border.all(color: MyShopColors.divider, width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -975,10 +963,10 @@ class _IconSegmented<T> extends StatelessWidget {
               padding: EdgeInsets.symmetric(
                   horizontal: w * 0.028, vertical: h * 0.009),
               decoration: BoxDecoration(
-                color: isSelected ? _surfaceWhite : Colors.transparent,
+                color: isSelected ? MyShopColors.surfaceWhite : Colors.transparent,
                 borderRadius: BorderRadius.circular(6),
                 border: isSelected
-                    ? Border.all(color: _divider, width: 1)
+                    ? Border.all(color: MyShopColors.divider, width: 1)
                     : null,
                 boxShadow: isSelected
                     ? [
@@ -997,7 +985,7 @@ class _IconSegmented<T> extends StatelessWidget {
                     iconOf(opt),
                     size: w * 0.036,
                     color:
-                        isSelected ? _textPrimary : _textSecondary,
+                        isSelected ? MyShopColors.textPrimary : MyShopColors.textSecondary,
                   ),
                   SizedBox(width: w * 0.012),
                   Text(
@@ -1009,7 +997,7 @@ class _IconSegmented<T> extends StatelessWidget {
                           ? FontWeight.w700
                           : FontWeight.w500,
                       color:
-                          isSelected ? _textPrimary : _textSecondary,
+                          isSelected ? MyShopColors.textPrimary : MyShopColors.textSecondary,
                       height: 1.3,
                     ),
                   ),
@@ -1039,7 +1027,7 @@ class _Footer extends StatelessWidget {
           fontFamily: 'Raleway',
           fontSize: w * 0.028,
           fontWeight: FontWeight.w400,
-          color: _textHint,
+          color: MyShopColors.textHint,
           height: 1.5,
         ),
       ),

@@ -1,19 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
-
-// ── Design tokens ──────────────────────────────────────────────────────────────
-const _bg            = Color(0xFFF6F7F8);
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _gold          = Color(0xFFF5A623);
-const _success       = Color(0xFF27AE60);
-const _successLight  = Color(0xFFE8F8EE);
-const _danger        = Color(0xFFEB5757);
-const _divider       = Color(0xFFE8EAEC);
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD § 4.9 — Historical ride detail; client can view receipt or raise a dispute.
@@ -31,17 +21,17 @@ class RideDetailScreen extends ConsumerWidget {
     final rideId = GoRouterState.of(context).pathParameters['rideId'] ?? 'RIDE-2041';
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: MyShopColors.offWhite,
       appBar: AppBar(
-        backgroundColor: _surfaceWhite,
+        backgroundColor: MyShopColors.surfaceWhite,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: _textPrimary),
+          icon: const Icon(Icons.arrow_back,
+              color: MyShopColors.textPrimary),
           onPressed: () => context.pop(),
         ),
         title: Text('Ride Detail',
             style: TextStyle(
-                color:      _textPrimary,
+                color:      MyShopColors.textPrimary,
                 fontSize:   w * 0.044,
                 fontWeight: FontWeight.w700)),
         centerTitle: false,
@@ -51,7 +41,7 @@ class RideDetailScreen extends ConsumerWidget {
                 context.push(AppRoutes.rideReceiptPath(rideId)),
             child: Text('Receipt',
                 style: TextStyle(
-                    color:      _gold,
+                    color:      MyShopColors.primaryGold,
                     fontSize:   w * 0.036,
                     fontWeight: FontWeight.w600)),
           ),
@@ -92,7 +82,7 @@ class _StatusCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        _surfaceWhite,
+        color:        MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
@@ -106,9 +96,9 @@ class _StatusCard extends StatelessWidget {
           Container(
             padding: EdgeInsets.all(w * 0.032),
             decoration: const BoxDecoration(
-                color: _successLight, shape: BoxShape.circle),
+                color: MyShopColors.successLight, shape: BoxShape.circle),
             child: const Icon(Icons.directions_car_rounded,
-                color: _success, size: 24),
+                color: MyShopColors.success, size: 24),
           ),
           SizedBox(width: w * 0.036),
           Expanded(
@@ -117,14 +107,14 @@ class _StatusCard extends StatelessWidget {
               children: [
                 Text('Work Shuttle (Corporate)',
                     style: TextStyle(
-                      color:      _textPrimary,
+                      color:      MyShopColors.textPrimary,
                       fontSize:   w * 0.040,
                       fontWeight: FontWeight.w700,
                     )),
                 const SizedBox(height: 4),
                 Text('Today, 08:45 AM',
                     style: TextStyle(
-                        color:    _textSecondary,
+                        color:    MyShopColors.textSecondary,
                         fontSize: w * 0.032)),
               ],
             ),
@@ -133,12 +123,12 @@ class _StatusCard extends StatelessWidget {
             padding: EdgeInsets.symmetric(
                 horizontal: w * 0.024, vertical: 5),
             decoration: BoxDecoration(
-              color:        _successLight,
+              color:        MyShopColors.successLight,
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text('Completed',
                 style: TextStyle(
-                  color:      _success,
+                  color:      MyShopColors.success,
                   fontSize:   w * 0.028,
                   fontWeight: FontWeight.w600,
                 )),
@@ -160,15 +150,15 @@ class _RouteCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        _surfaceWhite,
+        color:        MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: _divider),
+        border:       Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         children: [
           _RouteRow(
             icon:    Icons.radio_button_checked_rounded,
-            color:   _gold,
+            color:   MyShopColors.primaryGold,
             label:   'Pickup',
             address: 'Airport Residential Area, Accra',
             time:    '08:45 AM',
@@ -183,13 +173,13 @@ class _RouteCard extends StatelessWidget {
                         height: 6,
                         width:  1.5,
                         margin: const EdgeInsets.symmetric(vertical: 2),
-                        color:  _divider,
+                        color:  MyShopColors.divider,
                       )),
             ),
           ),
           _RouteRow(
             icon:    Icons.location_on_rounded,
-            color:   _danger,
+            color:   MyShopColors.error,
             label:   'Drop-off',
             address: 'Ridge, Accra',
             time:    '09:12 AM',
@@ -229,12 +219,12 @@ class _RouteRow extends StatelessWidget {
             children: [
               Text(label,
                   style: TextStyle(
-                      color:    _textSecondary,
+                      color:    MyShopColors.textSecondary,
                       fontSize: w * 0.028)),
               const SizedBox(height: 2),
               Text(address,
                   style: TextStyle(
-                    color:      _textPrimary,
+                    color:      MyShopColors.textPrimary,
                     fontSize:   w * 0.036,
                     fontWeight: FontWeight.w600,
                   )),
@@ -243,7 +233,7 @@ class _RouteRow extends StatelessWidget {
         ),
         Text(time,
             style: TextStyle(
-                color:    _textSecondary,
+                color:    MyShopColors.textSecondary,
                 fontSize: w * 0.030)),
       ],
     );
@@ -261,9 +251,9 @@ class _DriverCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        _surfaceWhite,
+        color:        MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: _divider),
+        border:       Border.all(color: MyShopColors.divider),
       ),
       child: Row(
         children: [
@@ -282,22 +272,22 @@ class _DriverCard extends StatelessWidget {
               children: [
                 Text('Kwame Asante',
                     style: TextStyle(
-                      color:      _textPrimary,
+                      color:      MyShopColors.textPrimary,
                       fontSize:   w * 0.040,
                       fontWeight: FontWeight.w700,
                     )),
                 const SizedBox(height: 3),
                 Text('Toyota Corolla  •  GT 1234-22',
                     style: TextStyle(
-                        color:    _textSecondary,
+                        color:    MyShopColors.textSecondary,
                         fontSize: w * 0.032)),
                 const SizedBox(height: 4),
                 Row(children: [
-                  const Icon(Icons.star_rounded, color: _gold, size: 14),
+                  const Icon(Icons.star_rounded, color: MyShopColors.primaryGold, size: 14),
                   const SizedBox(width: 3),
                   Text('4.8',
                       style: TextStyle(
-                        color:      _textPrimary,
+                        color:      MyShopColors.textPrimary,
                         fontSize:   w * 0.032,
                         fontWeight: FontWeight.w600,
                       )),
@@ -310,14 +300,14 @@ class _DriverCard extends StatelessWidget {
             children: [
               Text('27 min',
                   style: TextStyle(
-                    color:      _textPrimary,
+                    color:      MyShopColors.textPrimary,
                     fontSize:   w * 0.036,
                     fontWeight: FontWeight.w700,
                   )),
               const SizedBox(height: 2),
               Text('Trip duration',
                   style: TextStyle(
-                      color:    _textSecondary,
+                      color:    MyShopColors.textSecondary,
                       fontSize: w * 0.028)),
             ],
           ),
@@ -338,9 +328,9 @@ class _FareCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        _surfaceWhite,
+        color:        MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: _divider),
+        border:       Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         children: [
@@ -349,20 +339,20 @@ class _FareCard extends StatelessWidget {
           _FareRow(label: 'Booking fee',        value: 'GHS 2.50',  w: w, h: h),
           Padding(
             padding: EdgeInsets.symmetric(vertical: h * 0.010),
-            child: const Divider(height: 1, color: _divider),
+            child: const Divider(height: 1, color: MyShopColors.divider),
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('Total',
                   style: TextStyle(
-                    color:      _textPrimary,
+                    color:      MyShopColors.textPrimary,
                     fontSize:   w * 0.038,
                     fontWeight: FontWeight.w700,
                   )),
               Text('GHS 42.90',
                   style: TextStyle(
-                    color:      _textPrimary,
+                    color:      MyShopColors.textPrimary,
                     fontSize:   w * 0.044,
                     fontWeight: FontWeight.w800,
                   )),
@@ -372,11 +362,11 @@ class _FareCard extends StatelessWidget {
           Row(
             children: [
               const Icon(Icons.phone_android_rounded,
-                  color: _textSecondary, size: 14),
+                  color: MyShopColors.textSecondary, size: 14),
               SizedBox(width: w * 0.016),
               Text('Paid via MTN MoMo',
                   style: TextStyle(
-                      color:    _textSecondary,
+                      color:    MyShopColors.textSecondary,
                       fontSize: w * 0.030)),
             ],
           ),
@@ -404,10 +394,10 @@ class _FareRow extends StatelessWidget {
         children: [
           Text(label,
               style: TextStyle(
-                  color: _textSecondary, fontSize: w * 0.034)),
+                  color: MyShopColors.textSecondary, fontSize: w * 0.034)),
           Text(value,
               style: TextStyle(
-                color:      _textPrimary,
+                color:      MyShopColors.textPrimary,
                 fontSize:   w * 0.034,
                 fontWeight: FontWeight.w500,
               )),
@@ -439,8 +429,8 @@ class _ActionRow extends StatelessWidget {
             icon: const Icon(Icons.flag_outlined, size: 18),
             label: const Text('Dispute Fare'),
             style: OutlinedButton.styleFrom(
-              foregroundColor: _danger,
-              side:  const BorderSide(color: _danger),
+              foregroundColor: MyShopColors.error,
+              side:  const BorderSide(color: MyShopColors.error),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)),
               padding:
@@ -456,7 +446,7 @@ class _ActionRow extends StatelessWidget {
             icon: const Icon(Icons.receipt_long_rounded, size: 18),
             label: const Text('View Receipt'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: _gold,
+              backgroundColor: MyShopColors.primaryGold,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)),

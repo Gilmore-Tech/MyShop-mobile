@@ -1,16 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
-// ── Design tokens ──────────────────────────────────────────────────────────────
-const _bg            = Color(0xFFF6F7F8);
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _gold          = Color(0xFFF5A623);
-const _success       = Color(0xFF27AE60);
-const _successLight  = Color(0xFFE8F8EE);
-const _divider       = Color(0xFFE8EAEC);
 
 // ── Provider ───────────────────────────────────────────────────────────────────
 
@@ -58,17 +49,17 @@ class LanguageSettingsScreen extends ConsumerWidget {
     final selected = ref.watch(_languageProvider);
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: MyShopColors.offWhite,
       appBar: AppBar(
-        backgroundColor: _surfaceWhite,
+        backgroundColor: MyShopColors.surfaceWhite,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: _textPrimary),
+          icon: const Icon(Icons.arrow_back,
+              color: MyShopColors.textPrimary),
           onPressed: () => context.pop(),
         ),
         title: Text('Language',
             style: TextStyle(
-                color:      _textPrimary,
+                color:      MyShopColors.textPrimary,
                 fontSize:   w * 0.044,
                 fontWeight: FontWeight.w700)),
         centerTitle: false,
@@ -80,14 +71,14 @@ class LanguageSettingsScreen extends ConsumerWidget {
           children: [
             Text('Choose your language',
                 style: TextStyle(
-                  color:      _textPrimary,
+                  color:      MyShopColors.textPrimary,
                   fontSize:   w * 0.040,
                   fontWeight: FontWeight.w700,
                 )),
             SizedBox(height: h * 0.008),
             Text('App content and notifications will appear in your chosen language.',
                 style: TextStyle(
-                    color:    _textSecondary,
+                    color:    MyShopColors.textSecondary,
                     fontSize: w * 0.033,
                     height:   1.5)),
             SizedBox(height: h * 0.028),
@@ -136,10 +127,10 @@ class _LanguageTile extends StatelessWidget {
         duration: const Duration(milliseconds: 180),
         padding: EdgeInsets.all(w * 0.04),
         decoration: BoxDecoration(
-          color:        isSelected ? _gold.withAlpha(12) : _surfaceWhite,
+          color:        isSelected ? MyShopColors.primaryGold.withAlpha(12) : MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-              color: isSelected ? _gold : _divider,
+              color: isSelected ? MyShopColors.primaryGold : MyShopColors.divider,
               width: isSelected ? 1.5 : 1),
           boxShadow: [
             BoxShadow(
@@ -161,7 +152,7 @@ class _LanguageTile extends StatelessWidget {
                     children: [
                       Text(language.nativeName,
                           style: TextStyle(
-                            color:      _textPrimary,
+                            color:      MyShopColors.textPrimary,
                             fontSize:   w * 0.040,
                             fontWeight: FontWeight.w700,
                           )),
@@ -171,12 +162,12 @@ class _LanguageTile extends StatelessWidget {
                           padding: EdgeInsets.symmetric(
                               horizontal: w * 0.018, vertical: 2),
                           decoration: BoxDecoration(
-                            color:        const Color(0xFFFFF8EC),
+                            color:        MyShopColors.primaryGoldLight,
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text('Beta',
                               style: TextStyle(
-                                color:      _gold,
+                                color:      MyShopColors.primaryGold,
                                 fontSize:   w * 0.024,
                                 fontWeight: FontWeight.w600,
                               )),
@@ -187,7 +178,7 @@ class _LanguageTile extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(language.description,
                       style: TextStyle(
-                          color:    _textSecondary,
+                          color:    MyShopColors.textSecondary,
                           fontSize: w * 0.030,
                           height:   1.4)),
                 ],
@@ -200,9 +191,9 @@ class _LanguageTile extends StatelessWidget {
               height: w * 0.058,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: isSelected ? _gold : Colors.transparent,
+                color: isSelected ? MyShopColors.primaryGold : Colors.transparent,
                 border: Border.all(
-                    color: isSelected ? _gold : _divider,
+                    color: isSelected ? MyShopColors.primaryGold : MyShopColors.divider,
                     width: 1.5),
               ),
               child: isSelected
@@ -228,21 +219,21 @@ class _ComingSoonNote extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        _successLight,
+        color:        MyShopColors.successLight,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: _success.withAlpha(60)),
+        border:       Border.all(color: MyShopColors.success.withAlpha(60)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.translate_rounded, color: _success, size: 20),
+          const Icon(Icons.translate_rounded, color: MyShopColors.success, size: 20),
           SizedBox(width: w * 0.030),
           Expanded(
             child: Text(
               'More languages — Ga, Ewe, and Hausa — are planned for a '
               'future update. Reach out via Support if you\'d like to help translate.',
               style: TextStyle(
-                  color:    _success,
+                  color:    MyShopColors.success,
                   fontSize: w * 0.032,
                   height:   1.5),
             ),

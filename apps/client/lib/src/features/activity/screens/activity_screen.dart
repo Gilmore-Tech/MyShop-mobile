@@ -1,23 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../services/providers/bid_list_provider.dart';
 import '../../services/providers/job_detail_provider.dart';
 import '../../services/widgets/bid_list_sheet.dart';
 import '../providers/activity_provider.dart';
-
-// ── Design Tokens ─────────────────────────────────────────────────────────────
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _surfaceGrey   = Color(0xFFF3F5F6);
-const _offWhite      = Color(0xFFF6F7F8);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _textHint      = Color(0xFFBDBDBD);
-const _gold      = Color(0xFFF5A623);
-const _darkSlate = Color(0xFF46535D);
-const _warning   = Color(0xFFF2994A);
-const _error     = Color(0xFFEB5757);
-const _divider   = Color(0xFFE0E0E0);
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD 4 — Activity tab: client views all their artisan job requests, filtered
@@ -50,7 +38,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     final jobs          = ref.watch(filteredJobsProvider);
 
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       body: Column(
         children: [
           _TopSection(
@@ -102,7 +90,7 @@ class _TopSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final topPad = MediaQuery.paddingOf(context).top;
     return Container(
-      color: _surfaceWhite,
+      color: MyShopColors.surfaceWhite,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -115,7 +103,7 @@ class _TopSection extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.064, // ~25dp
                 fontWeight: FontWeight.w700,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
                 height: 1.2,
               ),
             ),
@@ -128,7 +116,7 @@ class _TopSection extends StatelessWidget {
             w: w,
             h: h,
           ),
-          const Divider(height: 1, thickness: 1, color: _divider),
+          const Divider(height: 1, thickness: 1, color: MyShopColors.divider),
           SizedBox(height: h * 0.014),
           // ── Search row ──
           _SearchRow(
@@ -183,7 +171,7 @@ class _FilterTabBar extends StatelessWidget {
                       fontWeight: isActive
                           ? FontWeight.w700
                           : FontWeight.w400,
-                      color: isActive ? _textPrimary : _textSecondary,
+                      color: isActive ? MyShopColors.textPrimary : MyShopColors.textSecondary,
                     ),
                   ),
                   SizedBox(height: h * 0.007),
@@ -192,7 +180,7 @@ class _FilterTabBar extends StatelessWidget {
                     height: 2.5,
                     width: isActive ? w * 0.077 : 0,
                     decoration: BoxDecoration(
-                      color: _gold,
+                      color: MyShopColors.primaryGold,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -231,7 +219,7 @@ class _SearchRow extends StatelessWidget {
             child: Container(
               height: h * 0.054, // ~46dp
               decoration: BoxDecoration(
-                color: _surfaceGrey,
+                color: MyShopColors.surfaceGrey,
                 borderRadius: BorderRadius.circular(w * 0.021),
               ),
               child: TextField(
@@ -239,19 +227,19 @@ class _SearchRow extends StatelessWidget {
                 onChanged: onChanged,
                 style: TextStyle(
                   fontSize: w * 0.036,
-                  color: _textPrimary,
+                  color: MyShopColors.textPrimary,
                 ),
                 decoration: InputDecoration(
                   hintText: 'Search requests...',
                   hintStyle: TextStyle(
                     fontSize: w * 0.036,
                     fontWeight: FontWeight.w400,
-                    color: _textHint,
+                    color: MyShopColors.textHint,
                   ),
                   prefixIcon: Icon(
                     Icons.search_rounded,
                     size: w * 0.051,
-                    color: _textHint,
+                    color: MyShopColors.textHint,
                   ),
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.symmetric(
@@ -267,13 +255,13 @@ class _SearchRow extends StatelessWidget {
             width: h * 0.054,
             height: h * 0.054,
             decoration: BoxDecoration(
-              color: _surfaceGrey,
+              color: MyShopColors.surfaceGrey,
               borderRadius: BorderRadius.circular(w * 0.021),
             ),
             child: Icon(
               Icons.tune_rounded,
               size: w * 0.051,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
             ),
           ),
         ],
@@ -315,7 +303,7 @@ class _JobList extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.033,
                 fontWeight: FontWeight.w400,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
               ),
             ),
           );
@@ -341,9 +329,9 @@ class _JobCard extends StatelessWidget {
     return Container(
       margin: EdgeInsets.only(bottom: h * 0.007),
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(w * 0.031),
@@ -365,13 +353,13 @@ class _JobCard extends StatelessWidget {
                     width: w * 0.103,
                     height: w * 0.103,
                     decoration: const BoxDecoration(
-                      color: _surfaceGrey,
+                      color: MyShopColors.surfaceGrey,
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
                       job.categoryIcon,
                       size: w * 0.051,
-                      color: _textSecondary,
+                      color: MyShopColors.textSecondary,
                     ),
                   ),
                   SizedBox(width: w * 0.031),
@@ -389,7 +377,7 @@ class _JobCard extends StatelessWidget {
                                 style: TextStyle(
                                   fontSize: w * 0.041,
                                   fontWeight: FontWeight.w700,
-                                  color: _textPrimary,
+                                  color: MyShopColors.textPrimary,
                                   height: 1.25,
                                 ),
                               ),
@@ -402,7 +390,7 @@ class _JobCard extends StatelessWidget {
                                 child: Icon(
                                   Icons.more_vert_rounded,
                                   size: w * 0.051,
-                                  color: _textSecondary,
+                                  color: MyShopColors.textSecondary,
                                 ),
                               ),
                             ),
@@ -415,7 +403,7 @@ class _JobCard extends StatelessWidget {
                             Icon(
                               Icons.location_on_outlined,
                               size: w * 0.031,
-                              color: _textHint,
+                              color: MyShopColors.textHint,
                             ),
                             SizedBox(width: w * 0.010),
                             Expanded(
@@ -424,7 +412,7 @@ class _JobCard extends StatelessWidget {
                                 style: TextStyle(
                                   fontSize: w * 0.031,
                                   fontWeight: FontWeight.w400,
-                                  color: _textSecondary,
+                                  color: MyShopColors.textSecondary,
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -450,7 +438,7 @@ class _JobCard extends StatelessWidget {
               // ── Active bids row (only for ongoing jobs) ──
               if (job.showBidRow) ...[
                 SizedBox(height: h * 0.012),
-                const Divider(height: 1, color: _divider),
+                const Divider(height: 1, color: MyShopColors.divider),
                 SizedBox(height: h * 0.012),
                 _BidRow(job: job, w: w, h: h),
               ],
@@ -517,16 +505,16 @@ class _StatusBadge extends StatelessWidget {
 
   (Color bg, Color fg) _colors(JobStatus s) => switch (s) {
         JobStatus.completed =>
-          (const Color(0xFFE8F8EF), const Color(0xFF27AE60)),
+          (MyShopColors.successLight, MyShopColors.success),
         JobStatus.cancelled =>
-          (const Color(0xFFFDE8E8), const Color(0xFFEB5757)),
+          (MyShopColors.errorLight, MyShopColors.error),
         JobStatus.inProgress ||
         JobStatus.selectingArtisan ||
         JobStatus.enRoute ||
         JobStatus.arrived ||
         JobStatus.confirmed =>
-          (const Color(0xFFE8F8EF), const Color(0xFF27AE60)),
-        _ => (const Color(0xFFFEF3E8), const Color(0xFFF2994A)),
+          (MyShopColors.successLight, MyShopColors.success),
+        _ => (MyShopColors.warningLight, MyShopColors.warning),
       };
 }
 
@@ -550,7 +538,7 @@ class _BidRow extends StatelessWidget {
         Icon(
           Icons.people_alt_outlined,
           size: w * 0.041,
-          color: _gold,
+          color: MyShopColors.primaryGold,
         ),
         SizedBox(width: w * 0.015),
         Text(
@@ -558,7 +546,7 @@ class _BidRow extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.033,
             fontWeight: FontWeight.w500,
-            color: _textSecondary,
+            color: MyShopColors.textSecondary,
           ),
         ),
         const Spacer(),
@@ -577,7 +565,7 @@ class _BidRow extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.033,
               fontWeight: FontWeight.w700,
-              color: _gold,
+              color: MyShopColors.primaryGold,
             ),
           ),
         ),
@@ -606,7 +594,7 @@ class _CardMenuSheet extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.vertical(top: Radius.circular(w * 0.041)),
       ),
       padding: EdgeInsets.only(
@@ -621,7 +609,7 @@ class _CardMenuSheet extends StatelessWidget {
             width: w * 0.103,
             height: h * 0.005,
             decoration: BoxDecoration(
-              color: _divider,
+              color: MyShopColors.divider,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -633,34 +621,34 @@ class _CardMenuSheet extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.038,
                 fontWeight: FontWeight.w700,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
           ),
           SizedBox(height: h * 0.010),
-          const Divider(height: 1, color: _divider),
+          const Divider(height: 1, color: MyShopColors.divider),
           _SheetMenuItem(
             icon: Icons.info_outline_rounded,
             label: 'View Details',
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
             onTap: () => Navigator.of(context).pop(),
             w: w, h: h,
           ),
           if (isActive) ...[
-            const Divider(height: 1, color: _divider),
+            const Divider(height: 1, color: MyShopColors.divider),
             _SheetMenuItem(
               icon: Icons.cancel_outlined,
               label: 'Cancel Request',
-              color: _error,
+              color: MyShopColors.error,
               onTap: () => Navigator.of(context).pop(),
               w: w, h: h,
             ),
           ],
-          const Divider(height: 1, color: _divider),
+          const Divider(height: 1, color: MyShopColors.divider),
           _SheetMenuItem(
             icon: Icons.share_outlined,
             label: 'Share',
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
             onTap: () => Navigator.of(context).pop(),
             w: w, h: h,
           ),
@@ -764,14 +752,14 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: w * 0.154, color: const Color(0xFFBDBDBD)),
+            Icon(icon, size: w * 0.154, color: MyShopColors.disabled),
             SizedBox(height: h * 0.019),
             Text(
               title,
               style: TextStyle(
                 fontSize: w * 0.041,
                 fontWeight: FontWeight.w700,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -781,7 +769,7 @@ class _EmptyState extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.033,
                 fontWeight: FontWeight.w400,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
                 height: 1.5,
               ),
               textAlign: TextAlign.center,
@@ -795,7 +783,7 @@ class _EmptyState extends StatelessWidget {
                   vertical: h * 0.017,
                 ),
                 decoration: BoxDecoration(
-                  color: _darkSlate,
+                  color: MyShopColors.darkSlate,
                   borderRadius: BorderRadius.circular(w * 0.021),
                 ),
                 child: Text(
@@ -803,7 +791,7 @@ class _EmptyState extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.038,
                     fontWeight: FontWeight.w600,
-                    color: _surfaceWhite,
+                    color: MyShopColors.surfaceWhite,
                   ),
                 ),
               ),
@@ -830,8 +818,8 @@ class _BottomNav extends ConsumerWidget {
     return Container(
       height: h * 0.071 + bottomPad,
       decoration: const BoxDecoration(
-        color: _surfaceWhite,
-        border: Border(top: BorderSide(color: _divider)),
+        color: MyShopColors.surfaceWhite,
+        border: Border(top: BorderSide(color: MyShopColors.divider)),
       ),
       padding: EdgeInsets.only(bottom: bottomPad),
       child: Row(
@@ -888,7 +876,7 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isActive ? _gold : _darkSlate;
+    final color = isActive ? MyShopColors.primaryGold : MyShopColors.darkSlate;
     return Expanded(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -928,7 +916,7 @@ class _NavItemWithBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isActive ? _gold : _darkSlate;
+    final color = isActive ? MyShopColors.primaryGold : MyShopColors.darkSlate;
     return Expanded(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -945,9 +933,9 @@ class _NavItemWithBadge extends StatelessWidget {
                     width: w * 0.051,
                     height: w * 0.051,
                     decoration: BoxDecoration(
-                      color: _warning,
+                      color: MyShopColors.warning,
                       shape: BoxShape.circle,
-                      border: Border.all(color: _surfaceWhite, width: 1.5),
+                      border: Border.all(color: MyShopColors.surfaceWhite, width: 1.5),
                     ),
                     child: Center(
                       child: Text(
@@ -955,7 +943,7 @@ class _NavItemWithBadge extends StatelessWidget {
                         style: TextStyle(
                           fontSize: w * 0.023,
                           fontWeight: FontWeight.w700,
-                          color: _surfaceWhite,
+                          color: MyShopColors.surfaceWhite,
                         ),
                       ),
                     ),

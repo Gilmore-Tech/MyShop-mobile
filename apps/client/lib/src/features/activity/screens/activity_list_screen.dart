@@ -1,19 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../app/router.dart';
 import '../providers/activity_history_provider.dart';
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _offWhite      = Color(0xFFF6F7F8);
-const _surfaceGrey   = Color(0xFFF3F5F6);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _textHint      = Color(0xFFBDBDBD);
-const _gold          = Color(0xFFF5A623);
-const _goldLight     = Color(0xFFFFF8EC);
-const _darkSlate     = Color(0xFF46535D);
-const _divider       = Color(0xFFE0E0E0);
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 // PRD § 4.6 Activity & History: unified ride + job transaction feed.
@@ -56,7 +47,7 @@ class _ActivityListScreenState
     final groups = ref.watch(filteredActivityGroupsProvider);
 
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       appBar: _buildAppBar(context, w),
       body: state.isLoading
           ? _LoadingSkeleton(w: w, h: h)
@@ -112,7 +103,7 @@ class _ActivityListScreenState
                             fontFamily: 'Raleway',
                             fontSize: w * 0.046,
                             fontWeight: FontWeight.w700,
-                            color: _textPrimary,
+                            color: MyShopColors.textPrimary,
                             height: 1.3,
                           ),
                         ),
@@ -165,24 +156,18 @@ class _ActivityListScreenState
 
   PreferredSizeWidget _buildAppBar(BuildContext context, double w) {
     return AppBar(
-      backgroundColor: _surfaceWhite,
+      backgroundColor: MyShopColors.surfaceWhite,
       elevation: 0,
       scrolledUnderElevation: 0,
-      leading: IconButton(
-        icon: Icon(
-          Icons.arrow_back_ios_new_rounded,
-          color: _textPrimary,
-          size: w * 0.052,
-        ),
-        onPressed: () => Navigator.of(context).maybePop(),
-      ),
+      automaticallyImplyLeading: false,
+      titleSpacing: w * 0.044,
       title: Text(
         'Activity & History',
         style: TextStyle(
           fontFamily: 'Raleway',
           fontSize: w * 0.050,
           fontWeight: FontWeight.w700,
-          color: _textPrimary,
+          color: MyShopColors.textPrimary,
           height: 1.3,
         ),
       ),
@@ -212,9 +197,9 @@ class _SearchBar extends StatelessWidget {
       child: Container(
         height: h * 0.056,
         decoration: BoxDecoration(
-          color: _surfaceWhite,
+          color: MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: _divider, width: 1),
+          border: Border.all(color: MyShopColors.divider, width: 1),
           boxShadow: const [
             BoxShadow(
                 color: Color(0x08000000), blurRadius: 4, offset: Offset(0, 1))
@@ -226,7 +211,7 @@ class _SearchBar extends StatelessWidget {
           style: TextStyle(
             fontFamily: 'Raleway',
             fontSize: w * 0.036,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
             height: 1.3,
           ),
           decoration: InputDecoration(
@@ -234,11 +219,11 @@ class _SearchBar extends StatelessWidget {
             hintStyle: TextStyle(
               fontFamily: 'Raleway',
               fontSize: w * 0.034,
-              color: _textHint,
+              color: MyShopColors.textHint,
               height: 1.3,
             ),
             prefixIcon: Icon(Icons.search_rounded,
-                color: _textHint, size: w * 0.048),
+                color: MyShopColors.textHint, size: w * 0.048),
             border: InputBorder.none,
             contentPadding: EdgeInsets.symmetric(vertical: h * 0.014),
           ),
@@ -309,10 +294,10 @@ class _FilterChip extends StatelessWidget {
         padding: EdgeInsets.symmetric(
             horizontal: w * 0.034, vertical: h * 0.010),
         decoration: BoxDecoration(
-          color: isSelected ? _darkSlate : _surfaceWhite,
+          color: isSelected ? MyShopColors.darkSlate : MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isSelected ? _darkSlate : _divider,
+            color: isSelected ? MyShopColors.darkSlate : MyShopColors.divider,
             width: 1,
           ),
         ),
@@ -322,7 +307,7 @@ class _FilterChip extends StatelessWidget {
             Icon(
               filter.icon,
               size: w * 0.038,
-              color: isSelected ? Colors.white : _textSecondary,
+              color: isSelected ? Colors.white : MyShopColors.textSecondary,
             ),
             SizedBox(width: w * 0.016),
             Text(
@@ -332,7 +317,7 @@ class _FilterChip extends StatelessWidget {
                 fontSize: w * 0.034,
                 fontWeight:
                     isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected ? Colors.white : _textPrimary,
+                color: isSelected ? Colors.white : MyShopColors.textPrimary,
                 height: 1.3,
               ),
             ),
@@ -360,9 +345,9 @@ class _SummaryCard extends StatelessWidget {
         padding: EdgeInsets.symmetric(
             horizontal: w * 0.044, vertical: h * 0.018),
         decoration: BoxDecoration(
-          color: _surfaceWhite,
+          color: MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: _divider, width: 1),
+          border: Border.all(color: MyShopColors.divider, width: 1),
           boxShadow: const [
             BoxShadow(
                 color: Color(0x0A000000),
@@ -384,7 +369,7 @@ class _SummaryCard extends StatelessWidget {
                       fontFamily: 'Raleway',
                       fontSize: w * 0.031,
                       fontWeight: FontWeight.w400,
-                      color: _textSecondary,
+                      color: MyShopColors.textSecondary,
                       height: 1.4,
                     ),
                   ),
@@ -395,7 +380,7 @@ class _SummaryCard extends StatelessWidget {
                       fontFamily: 'Raleway',
                       fontSize: w * 0.060,
                       fontWeight: FontWeight.w700,
-                      color: _textPrimary,
+                      color: MyShopColors.textPrimary,
                       height: 1.15,
                     ),
                   ),
@@ -408,7 +393,7 @@ class _SummaryCard extends StatelessWidget {
                         fontFamily: 'Raleway',
                         fontSize: w * 0.028,
                         fontWeight: FontWeight.w700,
-                        color: _gold,
+                        color: MyShopColors.primaryGold,
                         letterSpacing: 0.4,
                         height: 1.4,
                       ),
@@ -440,33 +425,44 @@ class _TripCountBadge extends StatelessWidget {
       padding: EdgeInsets.symmetric(
           horizontal: w * 0.030, vertical: h * 0.014),
       decoration: BoxDecoration(
-        color: _goldLight,
+        color: MyShopColors.primaryGoldLight,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-            color: _gold.withValues(alpha: 0.30), width: 1),
+            color: MyShopColors.primaryGold.withValues(alpha: 0.30), width: 1),
       ),
-      child: Column(
+      child: Stack(
+        alignment: Alignment.center,
         children: [
-          Text(
-            '$count',
-            style: TextStyle(
-              fontFamily: 'Raleway',
-              fontSize: w * 0.044,
-              fontWeight: FontWeight.w700,
-              color: _gold,
-              height: 1.2,
-            ),
+          Icon(
+            Icons.donut_large_rounded,
+            size: w * 0.120,
+            color: MyShopColors.primaryGold.withValues(alpha: 0.18),
           ),
-          Text(
-            'TRIPS',
-            style: TextStyle(
-              fontFamily: 'Raleway',
-              fontSize: w * 0.024,
-              fontWeight: FontWeight.w900,
-              color: _gold,
-              letterSpacing: 1.0,
-              height: 1.4,
-            ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '$count',
+                style: TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: w * 0.044,
+                  fontWeight: FontWeight.w700,
+                  color: MyShopColors.primaryGold,
+                  height: 1.2,
+                ),
+              ),
+              Text(
+                'TRIPS',
+                style: TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: w * 0.024,
+                  fontWeight: FontWeight.w900,
+                  color: MyShopColors.primaryGold,
+                  letterSpacing: 1.0,
+                  height: 1.4,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -494,7 +490,7 @@ class _DateGroupHeader extends StatelessWidget {
           fontFamily: 'Raleway',
           fontSize: w * 0.026,
           fontWeight: FontWeight.w900,
-          color: _textHint,
+          color: MyShopColors.textHint,
           letterSpacing: 1.4,
           height: 1.6,
         ),
@@ -520,15 +516,15 @@ class _TransactionCard extends StatelessWidget {
           right: w * 0.044,
           bottom: h * 0.010),
       child: Material(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
-          onTap: () {/* TODO: navigate to ride/job detail */},
+          onTap: () => _openReceipt(context, item),
           borderRadius: BorderRadius.circular(12),
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _divider, width: 1),
+              border: Border.all(color: MyShopColors.divider, width: 1),
             ),
             padding: EdgeInsets.symmetric(
                 horizontal: w * 0.041, vertical: h * 0.016),
@@ -540,12 +536,12 @@ class _TransactionCard extends StatelessWidget {
                   width: w * 0.100,
                   height: w * 0.100,
                   decoration: const BoxDecoration(
-                    color: _surfaceGrey,
+                    color: MyShopColors.surfaceGrey,
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     item.typeIcon,
-                    color: _darkSlate,
+                    color: MyShopColors.darkSlate,
                     size: w * 0.048,
                   ),
                 ),
@@ -566,7 +562,7 @@ class _TransactionCard extends StatelessWidget {
                                 fontFamily: 'Raleway',
                                 fontSize: w * 0.038,
                                 fontWeight: FontWeight.w700,
-                                color: _textPrimary,
+                                color: MyShopColors.textPrimary,
                                 height: 1.25,
                               ),
                             ),
@@ -580,7 +576,7 @@ class _TransactionCard extends StatelessWidget {
                                   EdgeInsets.only(left: w * 0.018),
                               child: Icon(
                                 Icons.more_horiz_rounded,
-                                color: _textSecondary,
+                                color: MyShopColors.textSecondary,
                                 size: w * 0.048,
                               ),
                             ),
@@ -595,27 +591,31 @@ class _TransactionCard extends StatelessWidget {
                           fontFamily: 'Raleway',
                           fontSize: w * 0.031,
                           fontWeight: FontWeight.w400,
-                          color: _textSecondary,
+                          color: MyShopColors.textSecondary,
                           height: 1.4,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      SizedBox(height: h * 0.004),
-                      // Time
-                      Text(
-                        item.timeLabel,
-                        style: TextStyle(
-                          fontFamily: 'Raleway',
-                          fontSize: w * 0.030,
-                          fontWeight: FontWeight.w400,
-                          color: _textHint,
-                          height: 1.4,
-                        ),
+                      SizedBox(height: h * 0.006),
+                      // Time + status badge on same row
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Text(
+                            item.timeLabel,
+                            style: TextStyle(
+                              fontFamily: 'Raleway',
+                              fontSize: w * 0.030,
+                              fontWeight: FontWeight.w400,
+                              color: MyShopColors.textHint,
+                              height: 1.4,
+                            ),
+                          ),
+                          SizedBox(width: w * 0.022),
+                          _StatusBadge(status: item.status, w: w),
+                        ],
                       ),
-                      SizedBox(height: h * 0.010),
-                      // Status badge
-                      _StatusBadge(status: item.status, w: w),
                     ],
                   ),
                 ),
@@ -634,6 +634,14 @@ class _TransactionCard extends StatelessWidget {
       backgroundColor: Colors.transparent,
       builder: (_) => _ItemMenuSheet(item: item, w: w, h: h),
     );
+  }
+
+  void _openReceipt(BuildContext context, TransactionItem item) {
+    final path = switch (item.type) {
+      TransactionType.ride => AppRoutes.rideReceiptPath(item.id),
+      TransactionType.job  => AppRoutes.jobReceiptPath(item.id),
+    };
+    context.push(path);
   }
 }
 
@@ -688,7 +696,7 @@ class _ItemMenuSheet extends StatelessWidget {
     final bottomPad = MediaQuery.paddingOf(context).bottom;
     return Container(
       decoration: const BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius:
             BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -703,7 +711,7 @@ class _ItemMenuSheet extends StatelessWidget {
               width: w * 0.092,
               height: h * 0.005,
               decoration: BoxDecoration(
-                  color: _divider,
+                  color: MyShopColors.divider,
                   borderRadius: BorderRadius.circular(4)),
             ),
           ),
@@ -716,30 +724,37 @@ class _ItemMenuSheet extends StatelessWidget {
                 fontFamily: 'Raleway',
                 fontSize: w * 0.040,
                 fontWeight: FontWeight.w700,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
           ),
           SizedBox(height: h * 0.010),
-          const Divider(color: _divider, height: 1),
+          const Divider(color: MyShopColors.divider, height: 1),
           _MenuItem(
             icon: Icons.receipt_long_outlined,
             label: 'View Details',
-            onTap: () => Navigator.of(context).pop(),
+            onTap: () {
+              Navigator.of(context).pop();
+              final path = switch (item.type) {
+                TransactionType.ride => AppRoutes.rideReceiptPath(item.id),
+                TransactionType.job  => AppRoutes.jobReceiptPath(item.id),
+              };
+              context.push(path);
+            },
             w: w, h: h,
           ),
-          const Divider(color: _divider, height: 1),
+          const Divider(color: MyShopColors.divider, height: 1),
           _MenuItem(
             icon: Icons.share_outlined,
             label: 'Share Receipt',
             onTap: () => Navigator.of(context).pop(),
             w: w, h: h,
           ),
-          const Divider(color: _divider, height: 1),
+          const Divider(color: MyShopColors.divider, height: 1),
           _MenuItem(
             icon: Icons.flag_outlined,
             label: 'Report an Issue',
-            color: const Color(0xFFEB5757),
+            color: MyShopColors.error,
             onTap: () => Navigator.of(context).pop(),
             w: w, h: h,
           ),
@@ -759,7 +774,7 @@ class _MenuItem extends StatelessWidget {
   const _MenuItem({
     required this.icon,
     required this.label,
-    this.color = _textPrimary,
+    this.color = MyShopColors.textPrimary,
     required this.onTap,
     required this.w,
     required this.h,
@@ -804,59 +819,66 @@ class _MissingTripSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.symmetric(
-          horizontal: w * 0.044, vertical: h * 0.024),
-      child: Column(
-        children: [
-          Icon(
-            Icons.description_outlined,
-            color: _textHint,
-            size: w * 0.110,
-          ),
-          SizedBox(height: h * 0.014),
-          Text(
-            'Missing a trip?',
-            style: TextStyle(
-              fontFamily: 'Raleway',
-              fontSize: w * 0.042,
-              fontWeight: FontWeight.w700,
-              color: _textPrimary,
-              height: 1.3,
+          horizontal: w * 0.044, vertical: h * 0.018),
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.symmetric(
+            horizontal: w * 0.044, vertical: h * 0.024),
+        decoration: BoxDecoration(
+          color: MyShopColors.surfaceGrey,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              Icons.description_outlined,
+              color: MyShopColors.textHint,
+              size: w * 0.080,
             ),
-          ),
-          SizedBox(height: h * 0.008),
-          Text(
-            "If you can't find a specific transaction, our support team can help you recover it.",
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontFamily: 'Raleway',
-              fontSize: w * 0.032,
-              fontWeight: FontWeight.w400,
-              color: _textSecondary,
-              height: 1.55,
-            ),
-          ),
-          SizedBox(height: h * 0.020),
-          OutlinedButton(
-            onPressed: () {/* TODO: navigate to support */},
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: _darkSlate, width: 1.5),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
-              padding: EdgeInsets.symmetric(
-                  horizontal: w * 0.060, vertical: h * 0.015),
-            ),
-            child: Text(
-              'Contact Support',
+            SizedBox(height: h * 0.014),
+            Text(
+              'Missing a trip?',
               style: TextStyle(
                 fontFamily: 'Raleway',
-                fontSize: w * 0.036,
+                fontSize: w * 0.040,
                 fontWeight: FontWeight.w700,
-                color: _darkSlate,
+                color: MyShopColors.textPrimary,
                 height: 1.3,
               ),
             ),
-          ),
-        ],
+            SizedBox(height: h * 0.008),
+            Text(
+              "If you can't find a specific transaction,\nour support team can help you recover it.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'Raleway',
+                fontSize: w * 0.032,
+                fontWeight: FontWeight.w400,
+                color: MyShopColors.textSecondary,
+                height: 1.5,
+              ),
+            ),
+            SizedBox(height: h * 0.016),
+            GestureDetector(
+              onTap: () {/* TODO: navigate to support */},
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                    horizontal: w * 0.020, vertical: h * 0.006),
+                child: Text(
+                  'Contact Support',
+                  style: TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: w * 0.036,
+                    fontWeight: FontWeight.w700,
+                    color: MyShopColors.textPrimary,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -897,7 +919,7 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: w * 0.154, color: _textHint),
+            Icon(icon, size: w * 0.154, color: MyShopColors.textHint),
             SizedBox(height: h * 0.018),
             Text(
               title,
@@ -905,7 +927,7 @@ class _EmptyState extends StatelessWidget {
                 fontFamily: 'Raleway',
                 fontSize: w * 0.042,
                 fontWeight: FontWeight.w700,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
                 height: 1.3,
               ),
               textAlign: TextAlign.center,
@@ -917,7 +939,7 @@ class _EmptyState extends StatelessWidget {
                 fontFamily: 'Raleway',
                 fontSize: w * 0.033,
                 fontWeight: FontWeight.w400,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
                 height: 1.55,
               ),
               textAlign: TextAlign.center,
@@ -982,7 +1004,7 @@ class _Shimmer extends StatelessWidget {
       width: w,
       height: h,
       decoration: BoxDecoration(
-        color: const Color(0xFFE0E0E0),
+        color: MyShopColors.divider,
         borderRadius: BorderRadius.circular(8),
       ),
     );

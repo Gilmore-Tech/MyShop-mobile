@@ -1,22 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../providers/profile_provider.dart';
 import '../../../app/router.dart' show AppRoutes;
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _surfaceGrey   = Color(0xFFF3F5F6);
-const _offWhite      = Color(0xFFF6F7F8);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _textHint      = Color(0xFFBDBDBD);
-const _gold          = Color(0xFFF5A623);
-const _darkSlate     = Color(0xFF46535D);
-const _error         = Color(0xFFEB5757);
-const _errorLight    = Color(0xFFFDE8E8);
-const _divider       = Color(0xFFE0E0E0);
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 // PRD 4.9 — Profile tab: masked identity, KYC badge, settings navigation.
@@ -34,7 +22,7 @@ class ProfileScreen extends ConsumerWidget {
     final dataAsync = ref.watch(accountScreenProvider);
 
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       body: dataAsync.when(
         loading: () => _LoadingSkeleton(w: w, h: h),
         error: (_, __) => _ErrorBody(
@@ -252,7 +240,7 @@ class _AppBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: _surfaceWhite,
+      color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.only(
         top:    topPad + h * 0.012,
         bottom: h * 0.017,
@@ -266,7 +254,7 @@ class _AppBar extends StatelessWidget {
             style: TextStyle(
               fontSize:   w * 0.056,
               fontWeight: FontWeight.w700,
-              color:      _textPrimary,
+              color:      MyShopColors.textPrimary,
             ),
           ),
           const Spacer(),
@@ -283,7 +271,7 @@ class _AppBar extends StatelessWidget {
                   Icon(
                     Icons.notifications_outlined,
                     size:  w * 0.056,
-                    color: _textPrimary,
+                    color: MyShopColors.textPrimary,
                   ),
                   if (hasUnread)
                     Positioned(
@@ -293,7 +281,7 @@ class _AppBar extends StatelessWidget {
                         width:  w * 0.021,
                         height: w * 0.021,
                         decoration: const BoxDecoration(
-                          color: _error,
+                          color: MyShopColors.error,
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -320,7 +308,7 @@ class _ProfileHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: _surfaceWhite,
+      color: MyShopColors.surfaceWhite,
       width: double.infinity,
       padding: EdgeInsets.symmetric(vertical: h * 0.028),
       child: Column(
@@ -351,7 +339,7 @@ class _ProfileHeader extends StatelessWidget {
                           style: TextStyle(
                             fontSize:   w * 0.082,
                             fontWeight: FontWeight.w700,
-                            color:      _surfaceWhite,
+                            color:      MyShopColors.surfaceWhite,
                           ),
                         ),
                       ),
@@ -361,14 +349,14 @@ class _ProfileHeader extends StatelessWidget {
                 width:  w * 0.077,
                 height: w * 0.077,
                 decoration: BoxDecoration(
-                  color:  _gold,
+                  color:  MyShopColors.primaryGold,
                   shape:  BoxShape.circle,
-                  border: Border.all(color: _surfaceWhite, width: 2.5),
+                  border: Border.all(color: MyShopColors.surfaceWhite, width: 2.5),
                 ),
                 child: Icon(
                   Icons.photo_camera_rounded,
                   size:  w * 0.038,
-                  color: _surfaceWhite,
+                  color: MyShopColors.surfaceWhite,
                 ),
               ),
             ],
@@ -382,7 +370,7 @@ class _ProfileHeader extends StatelessWidget {
             style: TextStyle(
               fontSize:   w * 0.051,
               fontWeight: FontWeight.w700,
-              color:      _textPrimary,
+              color:      MyShopColors.textPrimary,
             ),
           ),
           SizedBox(height: h * 0.005),
@@ -393,7 +381,7 @@ class _ProfileHeader extends StatelessWidget {
             style: TextStyle(
               fontSize:   w * 0.033,
               fontWeight: FontWeight.w400,
-              color:      _textSecondary,
+              color:      MyShopColors.textSecondary,
             ),
           ),
           SizedBox(height: h * 0.003),
@@ -404,7 +392,7 @@ class _ProfileHeader extends StatelessWidget {
             style: TextStyle(
               fontSize:   w * 0.033,
               fontWeight: FontWeight.w400,
-              color:      _textSecondary,
+              color:      MyShopColors.textSecondary,
             ),
           ),
           SizedBox(height: h * 0.017),
@@ -432,20 +420,20 @@ class _KycBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color:        Colors.transparent,
         borderRadius: BorderRadius.circular(w * 0.051),
-        border:       Border.all(color: _gold, width: 1.5),
+        border:       Border.all(color: MyShopColors.primaryGold, width: 1.5),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.verified_rounded,
-              size: w * 0.033, color: _gold),
+              size: w * 0.033, color: MyShopColors.primaryGold),
           SizedBox(width: w * 0.010),
           Text(
             'KYC VERIFIED',
             style: TextStyle(
               fontSize:      w * 0.026,
               fontWeight:    FontWeight.w700,
-              color:         _gold,
+              color:         MyShopColors.primaryGold,
               letterSpacing: 0.6,
             ),
           ),
@@ -476,7 +464,7 @@ class _SectionLabel extends StatelessWidget {
         style: TextStyle(
           fontSize:      w * 0.023,
           fontWeight:    FontWeight.w900,
-          color:         _textSecondary,
+          color:         MyShopColors.textSecondary,
           letterSpacing: 0.8,
         ),
       ),
@@ -494,7 +482,7 @@ class _SectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: _surfaceWhite,
+      color: MyShopColors.surfaceWhite,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: children,
@@ -516,7 +504,7 @@ class _RowDivider extends StatelessWidget {
       padding: EdgeInsets.only(
         left: w * 0.041 + w * 0.115 + w * 0.031,
       ),
-      child: const Divider(height: 1, color: _divider),
+      child: const Divider(height: 1, color: MyShopColors.divider),
     );
   }
 }
@@ -559,10 +547,10 @@ class _MenuRow extends StatelessWidget {
               width:  w * 0.115,
               height: w * 0.115,
               decoration: const BoxDecoration(
-                color: _surfaceGrey,
+                color: MyShopColors.surfaceGrey,
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: w * 0.051, color: _textSecondary),
+              child: Icon(icon, size: w * 0.051, color: MyShopColors.textSecondary),
             ),
             SizedBox(width: w * 0.031),
 
@@ -576,7 +564,7 @@ class _MenuRow extends StatelessWidget {
                     style: TextStyle(
                       fontSize:   w * 0.036,
                       fontWeight: FontWeight.w600,
-                      color:      _textPrimary,
+                      color:      MyShopColors.textPrimary,
                     ),
                   ),
                   SizedBox(height: h * 0.003),
@@ -585,7 +573,7 @@ class _MenuRow extends StatelessWidget {
                     style: TextStyle(
                       fontSize:   w * 0.028,
                       fontWeight: FontWeight.w400,
-                      color:      _textSecondary,
+                      color:      MyShopColors.textSecondary,
                     ),
                   ),
                 ],
@@ -602,7 +590,7 @@ class _MenuRow extends StatelessWidget {
             Icon(
               Icons.chevron_right_rounded,
               size:  w * 0.051,
-              color: _textHint,
+              color: MyShopColors.textHint,
             ),
           ],
         ),
@@ -624,7 +612,7 @@ class _NewBadge extends StatelessWidget {
         vertical:   w * 0.008,
       ),
       decoration: BoxDecoration(
-        color:        _gold,
+        color:        MyShopColors.primaryGold,
         borderRadius: BorderRadius.circular(w * 0.041),
       ),
       child: Text(
@@ -632,7 +620,7 @@ class _NewBadge extends StatelessWidget {
         style: TextStyle(
           fontSize:   w * 0.026,
           fontWeight: FontWeight.w700,
-          color:      _surfaceWhite,
+          color:      MyShopColors.surfaceWhite,
         ),
       ),
     );
@@ -663,13 +651,13 @@ class _SignOutRow extends StatelessWidget {
               width:  w * 0.115,
               height: w * 0.115,
               decoration: const BoxDecoration(
-                color: _errorLight,
+                color: MyShopColors.errorLight,
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 Icons.logout_rounded,
                 size:  w * 0.051,
-                color: _error,
+                color: MyShopColors.error,
               ),
             ),
             SizedBox(width: w * 0.031),
@@ -681,7 +669,7 @@ class _SignOutRow extends StatelessWidget {
                 style: TextStyle(
                   fontSize:   w * 0.036,
                   fontWeight: FontWeight.w600,
-                  color:      _error,
+                  color:      MyShopColors.error,
                 ),
               ),
             ),
@@ -689,7 +677,7 @@ class _SignOutRow extends StatelessWidget {
             Icon(
               Icons.chevron_right_rounded,
               size:  w * 0.051,
-              color: _error.withValues(alpha: 0.50),
+              color: MyShopColors.error.withValues(alpha: 0.50),
             ),
           ],
         ),
@@ -706,14 +694,14 @@ class _SignOutRow extends StatelessWidget {
           style: TextStyle(
             fontSize:   MediaQuery.sizeOf(context).width * 0.046,
             fontWeight: FontWeight.w700,
-            color:      _textPrimary,
+            color:      MyShopColors.textPrimary,
           ),
         ),
         content: Text(
           'Are you sure you want to sign out?',
           style: TextStyle(
             fontSize: MediaQuery.sizeOf(context).width * 0.033,
-            color:    _textSecondary,
+            color:    MyShopColors.textSecondary,
           ),
         ),
         shape: RoundedRectangleBorder(
@@ -726,7 +714,7 @@ class _SignOutRow extends StatelessWidget {
             onPressed: () => Navigator.of(ctx).pop(),
             child: Text(
               'Cancel',
-              style: TextStyle(color: _darkSlate),
+              style: TextStyle(color: MyShopColors.darkSlate),
             ),
           ),
           TextButton(
@@ -737,7 +725,7 @@ class _SignOutRow extends StatelessWidget {
             child: Text(
               'Sign Out',
               style: TextStyle(
-                color:      _error,
+                color:      MyShopColors.error,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -770,9 +758,9 @@ class _DeactivateLink extends StatelessWidget {
             style: TextStyle(
               fontSize:   w * 0.033,
               fontWeight: FontWeight.w500,
-              color:      _error,
+              color:      MyShopColors.error,
               decoration: TextDecoration.underline,
-              decorationColor: _error,
+              decorationColor: MyShopColors.error,
             ),
           ),
         ),
@@ -790,7 +778,7 @@ class _DeactivateLink extends StatelessWidget {
           style: TextStyle(
             fontSize:   w * 0.046,
             fontWeight: FontWeight.w700,
-            color:      _textPrimary,
+            color:      MyShopColors.textPrimary,
           ),
         ),
         content: Text(
@@ -798,7 +786,7 @@ class _DeactivateLink extends StatelessWidget {
           'and you can recover within 24 hours.',
           style: TextStyle(
             fontSize: w * 0.033,
-            color:    _textSecondary,
+            color:    MyShopColors.textSecondary,
             height:   1.4,
           ),
         ),
@@ -808,7 +796,7 @@ class _DeactivateLink extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('Cancel', style: TextStyle(color: _darkSlate)),
+            child: Text('Cancel', style: TextStyle(color: MyShopColors.darkSlate)),
           ),
           TextButton(
             onPressed: () {
@@ -818,7 +806,7 @@ class _DeactivateLink extends StatelessWidget {
             child: Text(
               'Deactivate',
               style: TextStyle(
-                color:      _error,
+                color:      MyShopColors.error,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -843,7 +831,7 @@ class _LoadingSkeleton extends StatelessWidget {
       children: [
         // App bar shimmer
         Container(
-          color:   _surfaceWhite,
+          color:   MyShopColors.surfaceWhite,
           padding: EdgeInsets.only(
               top:    topPad + h * 0.012,
               bottom: h * 0.017,
@@ -863,7 +851,7 @@ class _LoadingSkeleton extends StatelessWidget {
               children: [
                 // Profile header skeleton
                 Container(
-                  color:   _surfaceWhite,
+                  color:   MyShopColors.surfaceWhite,
                   padding: EdgeInsets.symmetric(vertical: h * 0.028),
                   child: Column(
                     children: [
@@ -913,7 +901,7 @@ class _Shimmer extends StatelessWidget {
       width:  w,
       height: h,
       decoration: BoxDecoration(
-        color:        const Color(0xFFE0E0E0),
+        color:        MyShopColors.divider,
         borderRadius: BorderRadius.circular(r),
       ),
     );
@@ -938,14 +926,14 @@ class _ErrorBody extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.person_off_outlined,
-                size: w * 0.154, color: _textHint),
+                size: w * 0.154, color: MyShopColors.textHint),
             SizedBox(height: h * 0.019),
             Text(
               'Could not load account',
               style: TextStyle(
                 fontSize:   w * 0.041,
                 fontWeight: FontWeight.w700,
-                color:      _textPrimary,
+                color:      MyShopColors.textPrimary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -953,7 +941,7 @@ class _ErrorBody extends StatelessWidget {
             Text(
               'Check your connection and try again.',
               style: TextStyle(
-                  fontSize: w * 0.033, color: _textSecondary),
+                  fontSize: w * 0.033, color: MyShopColors.textSecondary),
               textAlign: TextAlign.center,
             ),
             SizedBox(height: h * 0.028),
@@ -963,7 +951,7 @@ class _ErrorBody extends StatelessWidget {
                 padding: EdgeInsets.symmetric(
                     horizontal: w * 0.077, vertical: h * 0.017),
                 decoration: BoxDecoration(
-                  color:        _darkSlate,
+                  color:        MyShopColors.darkSlate,
                   borderRadius: BorderRadius.circular(w * 0.021),
                 ),
                 child: Text(
@@ -971,7 +959,7 @@ class _ErrorBody extends StatelessWidget {
                   style: TextStyle(
                     fontSize:   w * 0.038,
                     fontWeight: FontWeight.w600,
-                    color:      _surfaceWhite,
+                    color:      MyShopColors.surfaceWhite,
                   ),
                 ),
               ),

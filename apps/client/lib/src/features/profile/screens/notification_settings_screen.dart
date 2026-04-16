@@ -1,20 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/notification_settings_provider.dart';
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _offWhite      = Color(0xFFF6F7F8);
-const _surfaceGrey   = Color(0xFFF3F5F6);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _gold          = Color(0xFFF5A623);
-const _darkSlate     = Color(0xFF46535D);
-const _disabled      = Color(0xFFBDBDBD);
-const _divider       = Color(0xFFE0E0E0);
-const _warning       = Color(0xFFF2994A);
-const _warningLight  = Color(0xFFFEF3E8);
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 // PRD § 10 Notification Strategy: push, SMS, email, emergency alerts, promos.
@@ -35,7 +23,7 @@ class NotificationSettingsScreen extends ConsumerWidget {
     final state = ref.watch(notificationSettingsProvider);
 
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       appBar: _buildAppBar(context, w, h),
       body: SingleChildScrollView(
         padding: EdgeInsets.only(
@@ -145,13 +133,13 @@ class NotificationSettingsScreen extends ConsumerWidget {
   PreferredSizeWidget _buildAppBar(
       BuildContext context, double w, double h) {
     return AppBar(
-      backgroundColor: _surfaceWhite,
+      backgroundColor: MyShopColors.surfaceWhite,
       elevation: 0,
       scrolledUnderElevation: 0,
       leading: IconButton(
         icon: Icon(
-          Icons.arrow_back_ios_new_rounded,
-          color: _textPrimary,
+          Icons.arrow_back,
+          color: MyShopColors.textPrimary,
           size: w * 0.052,
         ),
         onPressed: () => Navigator.of(context).maybePop(),
@@ -162,7 +150,7 @@ class NotificationSettingsScreen extends ConsumerWidget {
           fontFamily: 'Raleway',
           fontSize: w * 0.050,
           fontWeight: FontWeight.w700,
-          color: _textPrimary,
+          color: MyShopColors.textPrimary,
           height: 1.3,
         ),
       ),
@@ -172,7 +160,7 @@ class NotificationSettingsScreen extends ConsumerWidget {
           padding: EdgeInsets.only(right: w * 0.038),
           child: Icon(
             Icons.notifications_outlined,
-            color: _textSecondary,
+            color: MyShopColors.textSecondary,
             size: w * 0.060,
           ),
         ),
@@ -202,7 +190,7 @@ class _SectionLabel extends StatelessWidget {
           fontFamily: 'Raleway',
           fontSize: w * 0.026,
           fontWeight: FontWeight.w900,
-          color: _textSecondary,
+          color: MyShopColors.textSecondary,
           letterSpacing: 1.4,
           height: 1.4,
         ),
@@ -223,7 +211,7 @@ class _SectionCard extends StatelessWidget {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: w * 0.044),
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
         boxShadow: const [
           BoxShadow(
@@ -252,7 +240,7 @@ class _RowDivider extends StatelessWidget {
     // Left-indent aligns to the text (after icon circle + gap).
     return Padding(
       padding: EdgeInsets.only(left: w * 0.041 + w * 0.092 + w * 0.031),
-      child: const Divider(color: _divider, height: 1, thickness: 1),
+      child: const Divider(color: MyShopColors.divider, height: 1, thickness: 1),
     );
   }
 }
@@ -292,10 +280,10 @@ class _ToggleRow extends StatelessWidget {
             width:  w * 0.092,
             height: w * 0.092,
             decoration: const BoxDecoration(
-              color:        _surfaceGrey,
+              color:        MyShopColors.surfaceGrey,
               shape:        BoxShape.circle,
             ),
-            child: Icon(icon, color: _textSecondary, size: w * 0.046),
+            child: Icon(icon, color: MyShopColors.textSecondary, size: w * 0.046),
           ),
           SizedBox(width: w * 0.031),
           // Title + subtitle
@@ -309,7 +297,7 @@ class _ToggleRow extends StatelessWidget {
                     fontFamily: 'Raleway',
                     fontSize: w * 0.038,
                     fontWeight: FontWeight.w600,
-                    color: _textPrimary,
+                    color: MyShopColors.textPrimary,
                     height: 1.3,
                   ),
                 ),
@@ -320,7 +308,7 @@ class _ToggleRow extends StatelessWidget {
                     fontFamily: 'Raleway',
                     fontSize: w * 0.031,
                     fontWeight: FontWeight.w400,
-                    color: _textSecondary,
+                    color: MyShopColors.textSecondary,
                     height: 1.4,
                   ),
                 ),
@@ -332,9 +320,9 @@ class _ToggleRow extends StatelessWidget {
           Switch(
             value:              value,
             activeThumbColor:   Colors.white,
-            activeTrackColor:   _gold,
+            activeTrackColor:   MyShopColors.primaryGold,
             inactiveThumbColor: Colors.white,
-            inactiveTrackColor: _disabled,
+            inactiveTrackColor: MyShopColors.disabled,
             trackOutlineColor:  const WidgetStatePropertyAll(Colors.transparent),
             onChanged: onChanged,
           ),
@@ -369,12 +357,12 @@ class _EmergencyRow extends StatelessWidget {
             width:  w * 0.092,
             height: w * 0.092,
             decoration: const BoxDecoration(
-              color: _warningLight,
+              color: MyShopColors.warningLight,
               shape: BoxShape.circle,
             ),
             child: Icon(
               Icons.warning_amber_rounded,
-              color: _warning,
+              color: MyShopColors.warning,
               size: w * 0.046,
             ),
           ),
@@ -389,7 +377,7 @@ class _EmergencyRow extends StatelessWidget {
                     fontFamily: 'Raleway',
                     fontSize: w * 0.038,
                     fontWeight: FontWeight.w600,
-                    color: _textPrimary,
+                    color: MyShopColors.textPrimary,
                     height: 1.3,
                   ),
                 ),
@@ -401,7 +389,7 @@ class _EmergencyRow extends StatelessWidget {
                     fontFamily: 'Raleway',
                     fontSize: w * 0.031,
                     fontWeight: FontWeight.w400,
-                    color: _textSecondary,
+                    color: MyShopColors.textSecondary,
                     height: 1.45,
                   ),
                 ),
@@ -443,9 +431,9 @@ class _CriticalSafetyRow extends StatelessWidget {
           vertical:   h * 0.013,
         ),
         decoration: BoxDecoration(
-          color:        _surfaceGrey,
+          color:        MyShopColors.surfaceGrey,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: _divider, width: 1),
+          border: Border.all(color: MyShopColors.divider, width: 1),
         ),
         child: Row(
           children: [
@@ -456,7 +444,7 @@ class _CriticalSafetyRow extends StatelessWidget {
                   fontFamily: 'Raleway',
                   fontSize: w * 0.038,
                   fontWeight: FontWeight.w600,
-                  color: _textPrimary,
+                  color: MyShopColors.textPrimary,
                   height: 1.3,
                 ),
               ),
@@ -464,9 +452,9 @@ class _CriticalSafetyRow extends StatelessWidget {
             Switch(
               value:              value,
               activeThumbColor:   Colors.white,
-              activeTrackColor:   _gold,
+              activeTrackColor:   MyShopColors.primaryGold,
               inactiveThumbColor: Colors.white,
-              inactiveTrackColor: _disabled,
+              inactiveTrackColor: MyShopColors.disabled,
               trackOutlineColor:  const WidgetStatePropertyAll(Colors.transparent),
               onChanged: onChanged,
             ),
@@ -506,12 +494,12 @@ class _PromoFrequencyRow extends StatelessWidget {
             width:  w * 0.092,
             height: w * 0.092,
             decoration: const BoxDecoration(
-              color: _surfaceGrey,
+              color: MyShopColors.surfaceGrey,
               shape: BoxShape.circle,
             ),
             child: Icon(
               Icons.access_time_rounded,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
               size: w * 0.046,
             ),
           ),
@@ -526,7 +514,7 @@ class _PromoFrequencyRow extends StatelessWidget {
                     fontFamily: 'Raleway',
                     fontSize: w * 0.038,
                     fontWeight: FontWeight.w600,
-                    color: _textPrimary,
+                    color: MyShopColors.textPrimary,
                     height: 1.3,
                   ),
                 ),
@@ -566,9 +554,9 @@ class _PromoSegmented extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color:        _surfaceGrey,
+        color:        MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _divider, width: 1),
+        border: Border.all(color: MyShopColors.divider, width: 1),
       ),
       child: Row(
         children: PromoFrequency.values.map((freq) {
@@ -583,7 +571,7 @@ class _PromoSegmented extends StatelessWidget {
                 curve: Curves.easeInOut,
                 padding: EdgeInsets.symmetric(vertical: h * 0.011),
                 decoration: BoxDecoration(
-                  color: isSelected ? _gold : Colors.transparent,
+                  color: isSelected ? MyShopColors.primaryGold : Colors.transparent,
                   borderRadius: BorderRadius.horizontal(
                     left:  isFirst ? const Radius.circular(7) : Radius.zero,
                     right: isLast  ? const Radius.circular(7) : Radius.zero,
@@ -597,7 +585,7 @@ class _PromoSegmented extends StatelessWidget {
                     fontSize: w * 0.034,
                     fontWeight:
                         isSelected ? FontWeight.w700 : FontWeight.w500,
-                    color: isSelected ? Colors.white : _textSecondary,
+                    color: isSelected ? Colors.white : MyShopColors.textSecondary,
                     height: 1.3,
                   ),
                 ),
@@ -622,7 +610,7 @@ class _PreviewCard extends StatelessWidget {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: w * 0.044),
       decoration: BoxDecoration(
-        color:        _surfaceWhite,
+        color:        MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
         boxShadow: const [
           BoxShadow(
@@ -649,13 +637,13 @@ class _PreviewCard extends StatelessWidget {
                 fontFamily: 'Raleway',
                 fontSize: w * 0.031,
                 fontWeight: FontWeight.w400,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
                 height: 1.4,
               ),
             ),
           ),
           // Divider
-          const Divider(color: _divider, height: 1, thickness: 1),
+          const Divider(color: MyShopColors.divider, height: 1, thickness: 1),
           // Notification preview item
           Padding(
             padding: EdgeInsets.symmetric(
@@ -671,7 +659,7 @@ class _PreviewCard extends StatelessWidget {
                   height: w * 0.100,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFF46535D), _gold],
+                      colors: [MyShopColors.darkSlate, MyShopColors.primaryGold],
                       begin: Alignment.topLeft,
                       end:   Alignment.bottomRight,
                     ),
@@ -697,7 +685,7 @@ class _PreviewCard extends StatelessWidget {
                                 fontFamily: 'Raleway',
                                 fontSize: w * 0.036,
                                 fontWeight: FontWeight.w700,
-                                color: _textPrimary,
+                                color: MyShopColors.textPrimary,
                                 height: 1.3,
                               ),
                             ),
@@ -708,7 +696,7 @@ class _PreviewCard extends StatelessWidget {
                               fontFamily: 'Raleway',
                               fontSize: w * 0.028,
                               fontWeight: FontWeight.w400,
-                              color: _textSecondary,
+                              color: MyShopColors.textSecondary,
                               height: 1.4,
                             ),
                           ),
@@ -721,7 +709,7 @@ class _PreviewCard extends StatelessWidget {
                           fontFamily: 'Raleway',
                           fontSize: w * 0.031,
                           fontWeight: FontWeight.w400,
-                          color: _textSecondary,
+                          color: MyShopColors.textSecondary,
                           height: 1.4,
                         ),
                         maxLines: 2,
@@ -763,7 +751,7 @@ class _SendTestButtonState extends ConsumerState<_SendTestButton> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: const Text('Test notification sent!'),
-        backgroundColor: _darkSlate,
+        backgroundColor: MyShopColors.darkSlate,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         margin: EdgeInsets.fromLTRB(
@@ -787,7 +775,7 @@ class _SendTestButtonState extends ConsumerState<_SendTestButton> {
       width:  double.infinity,
       height: h * 0.064,
       child: Material(
-        color:        _darkSlate,
+        color:        MyShopColors.darkSlate,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           onTap:        _loading ? null : _onTap,
@@ -843,7 +831,7 @@ class _Footer extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(Icons.lock_outline_rounded, color: _disabled, size: w * 0.036),
+        Icon(Icons.lock_outline_rounded, color: MyShopColors.disabled, size: w * 0.036),
         SizedBox(width: w * 0.015),
         Text(
           'End-to-End Encrypted',
@@ -851,7 +839,7 @@ class _Footer extends StatelessWidget {
             fontFamily: 'Raleway',
             fontSize: w * 0.029,
             fontWeight: FontWeight.w400,
-            color: _disabled,
+            color: MyShopColors.disabled,
             height: 1.4,
           ),
         ),
@@ -860,12 +848,12 @@ class _Footer extends StatelessWidget {
           width:  w * 0.010,
           height: w * 0.010,
           decoration: const BoxDecoration(
-            color: _disabled,
+            color: MyShopColors.disabled,
             shape: BoxShape.circle,
           ),
         ),
         SizedBox(width: w * 0.025),
-        Icon(Icons.sync_rounded, color: _disabled, size: w * 0.036),
+        Icon(Icons.sync_rounded, color: MyShopColors.disabled, size: w * 0.036),
         SizedBox(width: w * 0.015),
         Text(
           'Device Synced',
@@ -873,7 +861,7 @@ class _Footer extends StatelessWidget {
             fontFamily: 'Raleway',
             fontSize: w * 0.029,
             fontWeight: FontWeight.w400,
-            color: _disabled,
+            color: MyShopColors.disabled,
             height: 1.4,
           ),
         ),

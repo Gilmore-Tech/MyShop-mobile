@@ -1,19 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
-// ── Design tokens ──────────────────────────────────────────────────────────────
-const _bg            = Color(0xFFF6F7F8);
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _gold          = Color(0xFFF5A623);
-const _goldDark      = Color(0xFFD48E1A);
-const _goldLight     = Color(0xFFFFF8EC);
-const _success       = Color(0xFF27AE60);
-const _successLight  = Color(0xFFE8F8EE);
-const _divider       = Color(0xFFE8EAEC);
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD § 4.9 — Referral programme: share code, earn loyalty points per referral.
@@ -29,17 +18,17 @@ class ReferralScreen extends ConsumerWidget {
     final h    = size.height;
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: MyShopColors.offWhite,
       appBar: AppBar(
-        backgroundColor: _surfaceWhite,
+        backgroundColor: MyShopColors.surfaceWhite,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: _textPrimary),
+          icon: const Icon(Icons.arrow_back,
+              color: MyShopColors.textPrimary),
           onPressed: () => context.pop(),
         ),
         title: Text('Refer & Earn',
             style: TextStyle(
-                color:      _textPrimary,
+                color:      MyShopColors.textPrimary,
                 fontSize:   w * 0.044,
                 fontWeight: FontWeight.w700)),
         centerTitle: false,
@@ -84,7 +73,7 @@ class _HeroBanner extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end:   Alignment.bottomRight,
-          colors: [_gold, _goldDark],
+          colors: [MyShopColors.primaryGold, MyShopColors.primaryGoldDark],
         ),
         borderRadius: BorderRadius.circular(16),
       ),
@@ -136,7 +125,7 @@ class _CodeCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        _surfaceWhite,
+        color:        MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
@@ -149,23 +138,23 @@ class _CodeCard extends StatelessWidget {
         children: [
           Text('Your referral code',
               style: TextStyle(
-                  color:    _textSecondary,
+                  color:    MyShopColors.textSecondary,
                   fontSize: w * 0.032)),
           SizedBox(height: h * 0.012),
           Container(
             padding: EdgeInsets.symmetric(
                 horizontal: w * 0.06, vertical: h * 0.018),
             decoration: BoxDecoration(
-              color:        _goldLight,
+              color:        MyShopColors.primaryGoldLight,
               borderRadius: BorderRadius.circular(10),
               border:       Border.all(
-                  color: _gold.withAlpha(80),
+                  color: MyShopColors.primaryGold.withAlpha(80),
                   width: 1.5,
                   style: BorderStyle.solid),
             ),
             child: Text(code,
                 style: TextStyle(
-                  color:         _textPrimary,
+                  color:         MyShopColors.textPrimary,
                   fontSize:      w * 0.056,
                   fontWeight:    FontWeight.w900,
                   letterSpacing: 4,
@@ -234,7 +223,7 @@ class _ActionBtn extends StatelessWidget {
               icon:  Icon(icon, size: 18),
               label: Text(label),
               style: ElevatedButton.styleFrom(
-                backgroundColor: _gold,
+                backgroundColor: MyShopColors.primaryGold,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
@@ -246,8 +235,8 @@ class _ActionBtn extends StatelessWidget {
               icon:  Icon(icon, size: 18),
               label: Text(label),
               style: OutlinedButton.styleFrom(
-                foregroundColor: _textPrimary,
-                side:  const BorderSide(color: _divider),
+                foregroundColor: MyShopColors.textPrimary,
+                side:  const BorderSide(color: MyShopColors.divider),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
               ),
@@ -304,25 +293,25 @@ class _StatCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        _surfaceWhite,
+        color:        MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: _divider),
+        border:       Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: _gold, size: w * 0.052),
+          Icon(icon, color: MyShopColors.primaryGold, size: w * 0.052),
           SizedBox(height: h * 0.010),
           Text(value,
               style: TextStyle(
-                color:      _textPrimary,
+                color:      MyShopColors.textPrimary,
                 fontSize:   w * 0.048,
                 fontWeight: FontWeight.w800,
               )),
           const SizedBox(height: 3),
           Text(label,
               style: TextStyle(
-                  color:    _textSecondary,
+                  color:    MyShopColors.textSecondary,
                   fontSize: w * 0.030)),
         ],
       ),
@@ -359,9 +348,9 @@ class _HowItWorks extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        _surfaceWhite,
+        color:        MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: _divider),
+        border:       Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         children: _steps.map((s) {
@@ -374,10 +363,10 @@ class _HowItWorks extends StatelessWidget {
                   Container(
                     padding: EdgeInsets.all(w * 0.028),
                     decoration: BoxDecoration(
-                      color:        _goldLight,
+                      color:        MyShopColors.primaryGoldLight,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(s.icon, color: _gold, size: w * 0.048),
+                    child: Icon(s.icon, color: MyShopColors.primaryGold, size: w * 0.048),
                   ),
                   SizedBox(width: w * 0.030),
                   Expanded(
@@ -386,14 +375,14 @@ class _HowItWorks extends StatelessWidget {
                       children: [
                         Text(s.title,
                             style: TextStyle(
-                              color:      _textPrimary,
+                              color:      MyShopColors.textPrimary,
                               fontSize:   w * 0.036,
                               fontWeight: FontWeight.w700,
                             )),
                         const SizedBox(height: 4),
                         Text(s.desc,
                             style: TextStyle(
-                                color:    _textSecondary,
+                                color:    MyShopColors.textSecondary,
                                 fontSize: w * 0.032,
                                 height:   1.4)),
                       ],
@@ -403,7 +392,7 @@ class _HowItWorks extends StatelessWidget {
               ),
               if (!isLast) ...[
                 SizedBox(height: h * 0.016),
-                const Divider(height: 1, color: _divider),
+                const Divider(height: 1, color: MyShopColors.divider),
                 SizedBox(height: h * 0.016),
               ],
             ],
@@ -425,7 +414,7 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(text,
         style: TextStyle(
-          color:      _textPrimary,
+          color:      MyShopColors.textPrimary,
           fontSize:   w * 0.040,
           fontWeight: FontWeight.w700,
         ));
@@ -446,9 +435,9 @@ class _ReferralList extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color:        _surfaceWhite,
+        color:        MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: _divider),
+        border:       Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         children: _items.map((item) {
@@ -464,11 +453,11 @@ class _ReferralList extends StatelessWidget {
                       width:  w * 0.10,
                       height: w * 0.10,
                       decoration: const BoxDecoration(
-                        color:  Color(0xFFF3F5F6),
+                        color:  MyShopColors.surfaceGrey,
                         shape:  BoxShape.circle,
                       ),
                       child: Icon(Icons.person_rounded,
-                          color: _textSecondary, size: w * 0.050),
+                          color: MyShopColors.textSecondary, size: w * 0.050),
                     ),
                     SizedBox(width: w * 0.030),
                     Expanded(
@@ -477,14 +466,14 @@ class _ReferralList extends StatelessWidget {
                         children: [
                           Text(item.name,
                               style: TextStyle(
-                                color:      _textPrimary,
+                                color:      MyShopColors.textPrimary,
                                 fontSize:   w * 0.036,
                                 fontWeight: FontWeight.w600,
                               )),
                           const SizedBox(height: 2),
                           Text(item.date,
                               style: TextStyle(
-                                  color:    _textSecondary,
+                                  color:    MyShopColors.textSecondary,
                                   fontSize: w * 0.030)),
                         ],
                       ),
@@ -493,13 +482,13 @@ class _ReferralList extends StatelessWidget {
                       padding: EdgeInsets.symmetric(
                           horizontal: w * 0.024, vertical: 5),
                       decoration: BoxDecoration(
-                        color:        earned ? _successLight : const Color(0xFFFEF3E8),
+                        color:        earned ? MyShopColors.successLight : MyShopColors.warningLight,
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
                         earned ? '+GHS 10' : 'Pending',
                         style: TextStyle(
-                          color:      earned ? _success : const Color(0xFFF2994A),
+                          color:      earned ? MyShopColors.success : MyShopColors.warning,
                           fontSize:   w * 0.028,
                           fontWeight: FontWeight.w600,
                         ),
@@ -510,7 +499,7 @@ class _ReferralList extends StatelessWidget {
               ),
               if (item != _items.last)
                 const Divider(height: 1, indent: 16, endIndent: 16,
-                    color: _divider),
+                    color: MyShopColors.divider),
             ],
           );
         }).toList(),

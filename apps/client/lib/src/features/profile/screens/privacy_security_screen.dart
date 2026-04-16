@@ -1,22 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/privacy_security_provider.dart';
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _offWhite      = Color(0xFFF6F7F8);
-const _surfaceGrey   = Color(0xFFF3F5F6);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _textHint      = Color(0xFFBDBDBD);
-const _divider       = Color(0xFFE0E0E0);
-const _success       = Color(0xFF27AE60);
-const _successLight  = Color(0xFFE8F8EF);
-const _error         = Color(0xFFEB5757);
-const _errorLight    = Color(0xFFFDE8E8);
-const _info          = Color(0xFF2F80ED);
-const _infoLight     = Color(0xFFE8F0FD);
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 // PRD § 9 Safety & Security, § 9.5 Ghana DPA Compliance, § 9.6 Client KYC.
@@ -36,7 +22,7 @@ class PrivacySecurityScreen extends ConsumerWidget {
     final state = ref.watch(privacySecurityProvider);
 
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       appBar: _buildAppBar(context, w),
       body: state.isLoading
           ? _LoadingSkeleton(w: w, h: h)
@@ -101,13 +87,13 @@ class PrivacySecurityScreen extends ConsumerWidget {
 
   PreferredSizeWidget _buildAppBar(BuildContext context, double w) {
     return AppBar(
-      backgroundColor: _surfaceWhite,
+      backgroundColor: MyShopColors.surfaceWhite,
       elevation: 0,
       scrolledUnderElevation: 0,
       leading: IconButton(
         icon: Icon(
-          Icons.arrow_back_ios_new_rounded,
-          color: _textPrimary,
+          Icons.arrow_back,
+          color: MyShopColors.textPrimary,
           size: w * 0.052,
         ),
         onPressed: () => Navigator.of(context).maybePop(),
@@ -118,7 +104,7 @@ class PrivacySecurityScreen extends ConsumerWidget {
           fontFamily: 'Raleway',
           fontSize: w * 0.050,
           fontWeight: FontWeight.w700,
-          color: _textPrimary,
+          color: MyShopColors.textPrimary,
           height: 1.3,
         ),
       ),
@@ -146,7 +132,7 @@ class _SectionTitle extends StatelessWidget {
           fontFamily: 'Raleway',
           fontSize: w * 0.044,
           fontWeight: FontWeight.w700,
-          color: _textPrimary,
+          color: MyShopColors.textPrimary,
           height: 1.3,
         ),
       ),
@@ -236,35 +222,35 @@ class _KycStatusCard extends StatelessWidget {
       KycStatus s) {
     return switch (s) {
       KycStatus.verified => (
-          _successLight,
-          _success,
-          _success.withValues(alpha: 0.18),
-          _success,
-          _success,
+          MyShopColors.successLight,
+          MyShopColors.success,
+          MyShopColors.success.withValues(alpha: 0.18),
+          MyShopColors.success,
+          MyShopColors.success,
           'Verified',
         ),
       KycStatus.pending => (
-          const Color(0xFFFEF3E8),
-          const Color(0xFFF2994A),
-          const Color(0xFFF2994A).withValues(alpha: 0.18),
-          const Color(0xFFF2994A),
-          const Color(0xFFF2994A),
+          MyShopColors.warningLight,
+          MyShopColors.warning,
+          MyShopColors.warning.withValues(alpha: 0.18),
+          MyShopColors.warning,
+          MyShopColors.warning,
           'Pending',
         ),
       KycStatus.rejected => (
-          _errorLight,
-          _error,
-          _error.withValues(alpha: 0.18),
-          _error,
-          _error,
+          MyShopColors.errorLight,
+          MyShopColors.error,
+          MyShopColors.error.withValues(alpha: 0.18),
+          MyShopColors.error,
+          MyShopColors.error,
           'Rejected',
         ),
       KycStatus.unverified => (
-          _surfaceGrey,
-          _divider,
-          _divider.withValues(alpha: 0.5),
-          _textHint,
-          _textSecondary,
+          MyShopColors.surfaceGrey,
+          MyShopColors.divider,
+          MyShopColors.divider.withValues(alpha: 0.5),
+          MyShopColors.textHint,
+          MyShopColors.textSecondary,
           'Not Verified',
         ),
     };
@@ -312,7 +298,7 @@ class _KycDescription extends StatelessWidget {
           fontFamily: 'Raleway',
           fontSize: w * 0.033,
           fontWeight: FontWeight.w400,
-          color: _textSecondary,
+          color: MyShopColors.textSecondary,
           height: 1.55,
         ),
       ),
@@ -334,7 +320,7 @@ class _AccountSecurityCard extends StatelessWidget {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: w * 0.044),
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
         boxShadow: const [
           BoxShadow(
@@ -411,10 +397,10 @@ class _SecurityRow extends StatelessWidget {
               width: w * 0.092,
               height: w * 0.092,
               decoration: const BoxDecoration(
-                color: _surfaceGrey,
+                color: MyShopColors.surfaceGrey,
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, color: _textSecondary, size: w * 0.046),
+              child: Icon(icon, color: MyShopColors.textSecondary, size: w * 0.046),
             ),
             SizedBox(width: w * 0.031),
             Expanded(
@@ -427,7 +413,7 @@ class _SecurityRow extends StatelessWidget {
                       fontFamily: 'Raleway',
                       fontSize: w * 0.038,
                       fontWeight: FontWeight.w600,
-                      color: _textPrimary,
+                      color: MyShopColors.textPrimary,
                       height: 1.3,
                     ),
                   ),
@@ -438,7 +424,7 @@ class _SecurityRow extends StatelessWidget {
                       fontFamily: 'Raleway',
                       fontSize: w * 0.031,
                       fontWeight: FontWeight.w400,
-                      color: _textSecondary,
+                      color: MyShopColors.textSecondary,
                       height: 1.4,
                     ),
                   ),
@@ -447,7 +433,7 @@ class _SecurityRow extends StatelessWidget {
             ),
             Icon(
               Icons.chevron_right_rounded,
-              color: _textHint,
+              color: MyShopColors.textHint,
               size: w * 0.052,
             ),
           ],
@@ -466,7 +452,7 @@ class _RowDivider extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.only(
           left: w * 0.041 + w * 0.092 + w * 0.031),
-      child: const Divider(color: _divider, height: 1, thickness: 1),
+      child: const Divider(color: MyShopColors.divider, height: 1, thickness: 1),
     );
   }
 }
@@ -489,16 +475,16 @@ class _DataPrivacyInfoBox extends StatelessWidget {
           vertical: h * 0.016,
         ),
         decoration: BoxDecoration(
-          color: _infoLight,
+          color: MyShopColors.infoLight,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: _info.withValues(alpha: 0.35), width: 1),
+          border: Border.all(color: MyShopColors.info.withValues(alpha: 0.35), width: 1),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(
               Icons.info_outline_rounded,
-              color: _info,
+              color: MyShopColors.info,
               size: w * 0.046,
             ),
             SizedBox(width: w * 0.028),
@@ -511,7 +497,7 @@ class _DataPrivacyInfoBox extends StatelessWidget {
                   fontFamily: 'Raleway',
                   fontSize: w * 0.033,
                   fontWeight: FontWeight.w400,
-                  color: _info,
+                  color: MyShopColors.info,
                   height: 1.55,
                 ),
               ),
@@ -547,7 +533,7 @@ class _DangerZoneSection extends ConsumerWidget {
             children: [
               Icon(
                 Icons.report_problem_outlined,
-                color: _error,
+                color: MyShopColors.error,
                 size: w * 0.044,
               ),
               SizedBox(width: w * 0.018),
@@ -557,7 +543,7 @@ class _DangerZoneSection extends ConsumerWidget {
                   fontFamily: 'Raleway',
                   fontSize: w * 0.040,
                   fontWeight: FontWeight.w700,
-                  color: _error,
+                  color: MyShopColors.error,
                   height: 1.3,
                 ),
               ),
@@ -572,7 +558,7 @@ class _DangerZoneSection extends ConsumerWidget {
               fontFamily: 'Raleway',
               fontSize: w * 0.042,
               fontWeight: FontWeight.w700,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
               height: 1.3,
             ),
           ),
@@ -586,7 +572,7 @@ class _DangerZoneSection extends ConsumerWidget {
               fontFamily: 'Raleway',
               fontSize: w * 0.033,
               fontWeight: FontWeight.w400,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
               height: 1.55,
             ),
           ),
@@ -597,7 +583,7 @@ class _DangerZoneSection extends ConsumerWidget {
             width: double.infinity,
             height: h * 0.064,
             child: Material(
-              color: _error,
+              color: MyShopColors.error,
               borderRadius: BorderRadius.circular(8),
               child: InkWell(
                 onTap: isDeleting
@@ -667,11 +653,11 @@ class _DangerZoneSection extends ConsumerWidget {
                 width: w * 0.114,
                 height: w * 0.114,
                 decoration: const BoxDecoration(
-                  color: _errorLight,
+                  color: MyShopColors.errorLight,
                   shape: BoxShape.circle,
                 ),
                 child: Icon(Icons.delete_forever_rounded,
-                    color: _error, size: w * 0.058),
+                    color: MyShopColors.error, size: w * 0.058),
               ),
               SizedBox(height: h * 0.016),
               Text(
@@ -680,7 +666,7 @@ class _DangerZoneSection extends ConsumerWidget {
                   fontFamily: 'Raleway',
                   fontSize: w * 0.044,
                   fontWeight: FontWeight.w700,
-                  color: _textPrimary,
+                  color: MyShopColors.textPrimary,
                   height: 1.3,
                 ),
               ),
@@ -693,7 +679,7 @@ class _DangerZoneSection extends ConsumerWidget {
                   fontFamily: 'Raleway',
                   fontSize: w * 0.033,
                   fontWeight: FontWeight.w400,
-                  color: _textSecondary,
+                  color: MyShopColors.textSecondary,
                   height: 1.55,
                 ),
               ),
@@ -704,7 +690,7 @@ class _DangerZoneSection extends ConsumerWidget {
                     child: OutlinedButton(
                       onPressed: () => Navigator.of(ctx).pop(false),
                       style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: _divider),
+                        side: const BorderSide(color: MyShopColors.divider),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8)),
                         padding:
@@ -716,7 +702,7 @@ class _DangerZoneSection extends ConsumerWidget {
                           fontFamily: 'Raleway',
                           fontSize: w * 0.036,
                           fontWeight: FontWeight.w600,
-                          color: _textSecondary,
+                          color: MyShopColors.textSecondary,
                         ),
                       ),
                     ),
@@ -726,7 +712,7 @@ class _DangerZoneSection extends ConsumerWidget {
                     child: ElevatedButton(
                       onPressed: () => Navigator.of(ctx).pop(true),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: _error,
+                        backgroundColor: MyShopColors.error,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8)),
@@ -790,7 +776,7 @@ class _Footer extends StatelessWidget {
                 fontFamily: 'Raleway',
                 fontSize: w * 0.026,
                 fontWeight: FontWeight.w600,
-                color: _textHint,
+                color: MyShopColors.textHint,
                 letterSpacing: 1.0,
                 height: 1.5,
               ),
@@ -804,7 +790,7 @@ class _Footer extends StatelessWidget {
                 fontFamily: 'Raleway',
                 fontSize: w * 0.026,
                 fontWeight: FontWeight.w400,
-                color: _textHint,
+                color: MyShopColors.textHint,
                 height: 1.5,
               ),
             ),
@@ -860,7 +846,7 @@ class _Shimmer extends StatelessWidget {
       width: w,
       height: h,
       decoration: BoxDecoration(
-        color: const Color(0xFFE0E0E0),
+        color: MyShopColors.divider,
         borderRadius: BorderRadius.circular(8),
       ),
     );
@@ -883,7 +869,7 @@ class _ErrorBody extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.error_outline_rounded,
-              color: const Color(0xFFBDBDBD), size: w * 0.130),
+              color: MyShopColors.disabled, size: w * 0.130),
           SizedBox(height: h * 0.016),
           Text(
             'Could not load security settings',
@@ -891,7 +877,7 @@ class _ErrorBody extends StatelessWidget {
               fontFamily: 'Raleway',
               fontSize: w * 0.038,
               fontWeight: FontWeight.w600,
-              color: const Color(0xFF555E68),
+              color: MyShopColors.textSecondary,
             ),
           ),
           SizedBox(height: h * 0.022),
@@ -903,7 +889,7 @@ class _ErrorBody extends StatelessWidget {
                 fontFamily: 'Raleway',
                 fontSize: w * 0.038,
                 fontWeight: FontWeight.w600,
-                color: const Color(0xFFF5A623),
+                color: MyShopColors.primaryGold,
               ),
             ),
           ),

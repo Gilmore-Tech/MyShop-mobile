@@ -1,19 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/edit_profile_provider.dart';
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _surfaceGrey   = Color(0xFFF3F5F6);
-const _offWhite      = Color(0xFFF6F7F8);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _textHint      = Color(0xFFBDBDBD);
-const _gold          = Color(0xFFF5A623);
-const _goldLight     = Color(0xFFFFF8EC);
-const _darkSlate     = Color(0xFF46535D);
-const _divider       = Color(0xFFE0E0E0);
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 // PRD 4.11 — Edit full name, email, phone, Ghana Card.
@@ -100,7 +89,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     final state = ref.watch(editProfileProvider);
 
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       body: Column(
         children: [
           _AppBar(w: w, h: h),
@@ -155,7 +144,7 @@ class _AppBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final topPad = MediaQuery.paddingOf(context).top;
     return Container(
-      color: _surfaceWhite,
+      color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.only(
         top:    topPad + h * 0.010,
         bottom: h * 0.017,
@@ -170,7 +159,7 @@ class _AppBar extends StatelessWidget {
             child: Padding(
               padding: EdgeInsets.only(right: w * 0.031),
               child: Icon(Icons.arrow_back,
-                  size: w * 0.056, color: _textPrimary),
+                  size: w * 0.056, color: MyShopColors.textPrimary),
             ),
           ),
           Text(
@@ -178,7 +167,7 @@ class _AppBar extends StatelessWidget {
             style: TextStyle(
               fontSize:   w * 0.051,
               fontWeight: FontWeight.w700,
-              color:      _textPrimary,
+              color:      MyShopColors.textPrimary,
             ),
           ),
         ],
@@ -197,7 +186,7 @@ class _PhotoSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: _surfaceWhite,
+      color: MyShopColors.surfaceWhite,
       width: double.infinity,
       padding: EdgeInsets.symmetric(vertical: h * 0.028),
       child: Column(
@@ -211,7 +200,7 @@ class _PhotoSection extends StatelessWidget {
                 width:  w * 0.256,
                 height: w * 0.256,
                 decoration: BoxDecoration(
-                  color:  _goldLight,
+                  color:  MyShopColors.primaryGoldLight,
                   shape:  BoxShape.circle,
                 ),
                 child: ClipOval(
@@ -231,14 +220,14 @@ class _PhotoSection extends StatelessWidget {
                   width:  w * 0.082,
                   height: w * 0.082,
                   decoration: BoxDecoration(
-                    color:  _darkSlate,
+                    color:  MyShopColors.darkSlate,
                     shape:  BoxShape.circle,
-                    border: Border.all(color: _surfaceWhite, width: 2.5),
+                    border: Border.all(color: MyShopColors.surfaceWhite, width: 2.5),
                   ),
                   child: Icon(
                     Icons.photo_camera_rounded,
                     size:  w * 0.041,
-                    color: _surfaceWhite,
+                    color: MyShopColors.surfaceWhite,
                   ),
                 ),
               ),
@@ -257,7 +246,7 @@ class _PhotoSection extends StatelessWidget {
               style: TextStyle(
                 fontSize:   w * 0.033,
                 fontWeight: FontWeight.w500,
-                color:      _textSecondary,
+                color:      MyShopColors.textSecondary,
               ),
             ),
           ),
@@ -301,7 +290,7 @@ class _FormCard extends ConsumerWidget {
     final notifier = ref.read(editProfileProvider.notifier);
 
     return Container(
-      color: _surfaceWhite,
+      color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.symmetric(
         horizontal: w * 0.041,
         vertical:   h * 0.022,
@@ -339,7 +328,7 @@ class _FormCard extends ConsumerWidget {
                     style: TextStyle(
                       fontSize:      w * 0.028,
                       fontWeight:    FontWeight.w800,
-                      color:         _gold,
+                      color:         MyShopColors.primaryGold,
                       letterSpacing: 0.6,
                     ),
                   ),
@@ -406,7 +395,7 @@ class _FieldLabel extends StatelessWidget {
       style: TextStyle(
         fontSize:      w * 0.023,
         fontWeight:    FontWeight.w900,
-        color:         _textSecondary,
+        color:         MyShopColors.textSecondary,
         letterSpacing: 0.7,
       ),
     );
@@ -441,10 +430,10 @@ class _ProfileInput extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 150),
       decoration: BoxDecoration(
-        color:        isActive ? _surfaceWhite : _surfaceGrey,
+        color:        isActive ? MyShopColors.surfaceWhite : MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(w * 0.021),
         border: Border.all(
-          color: isActive ? _gold : _divider,
+          color: isActive ? MyShopColors.primaryGold : MyShopColors.divider,
           width: isActive ? 1.5 : 1.0,
         ),
       ),
@@ -456,13 +445,13 @@ class _ProfileInput extends StatelessWidget {
         style: TextStyle(
           fontSize:   w * 0.036,
           fontWeight: FontWeight.w400,
-          color:      _textPrimary,
+          color:      MyShopColors.textPrimary,
         ),
         decoration: InputDecoration(
           hintText:  hintText,
           hintStyle: TextStyle(
             fontSize: w * 0.036,
-            color:    _textHint,
+            color:    MyShopColors.textHint,
           ),
           contentPadding: EdgeInsets.symmetric(
             horizontal: w * 0.041,
@@ -499,9 +488,9 @@ class _WarningBox extends StatelessWidget {
           vertical:   h * 0.017,
         ),
         decoration: BoxDecoration(
-          color:        _goldLight,
+          color:        MyShopColors.primaryGoldLight,
           borderRadius: BorderRadius.circular(w * 0.026),
-          border:       Border.all(color: _gold, width: 1.5),
+          border:       Border.all(color: MyShopColors.primaryGold, width: 1.5),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -512,7 +501,7 @@ class _WarningBox extends StatelessWidget {
               child: Icon(
                 Icons.verified_user_outlined,
                 size:  w * 0.051,
-                color: _gold,
+                color: MyShopColors.primaryGold,
               ),
             ),
             SizedBox(width: w * 0.026),
@@ -524,7 +513,7 @@ class _WarningBox extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.031,
                     height:   1.45,
-                    color:    _textSecondary,
+                    color:    MyShopColors.textSecondary,
                   ),
                   children: const [
                     TextSpan(
@@ -562,8 +551,8 @@ class _BottomBar extends ConsumerWidget {
 
     return Container(
       decoration: const BoxDecoration(
-        color:  _surfaceWhite,
-        border: Border(top: BorderSide(color: _divider)),
+        color:  MyShopColors.surfaceWhite,
+        border: Border(top: BorderSide(color: MyShopColors.divider)),
       ),
       padding: EdgeInsets.only(
         left:   w * 0.041,
@@ -581,9 +570,9 @@ class _BottomBar extends ConsumerWidget {
               child: Container(
                 height: h * 0.066,
                 decoration: BoxDecoration(
-                  color:        _surfaceWhite,
+                  color:        MyShopColors.surfaceWhite,
                   borderRadius: BorderRadius.circular(w * 0.031),
-                  border:       Border.all(color: _divider, width: 1.5),
+                  border:       Border.all(color: MyShopColors.divider, width: 1.5),
                 ),
                 child: Center(
                   child: Text(
@@ -591,7 +580,7 @@ class _BottomBar extends ConsumerWidget {
                     style: TextStyle(
                       fontSize:   w * 0.038,
                       fontWeight: FontWeight.w600,
-                      color:      _textPrimary,
+                      color:      MyShopColors.textPrimary,
                     ),
                   ),
                 ),
@@ -611,8 +600,8 @@ class _BottomBar extends ConsumerWidget {
                         .saveChanges()
                     : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor:         _darkSlate,
-                  disabledBackgroundColor: _surfaceGrey,
+                  backgroundColor:         MyShopColors.darkSlate,
+                  disabledBackgroundColor: MyShopColors.surfaceGrey,
                   elevation:               0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(w * 0.031),
@@ -624,7 +613,7 @@ class _BottomBar extends ConsumerWidget {
                         height: w * 0.046,
                         child: const CircularProgressIndicator(
                           strokeWidth: 2,
-                          color:       _surfaceWhite,
+                          color:       MyShopColors.surfaceWhite,
                         ),
                       )
                     : Text(
@@ -632,7 +621,7 @@ class _BottomBar extends ConsumerWidget {
                         style: TextStyle(
                           fontSize:   w * 0.038,
                           fontWeight: FontWeight.w600,
-                          color:      _surfaceWhite,
+                          color:      MyShopColors.surfaceWhite,
                         ),
                       ),
               ),

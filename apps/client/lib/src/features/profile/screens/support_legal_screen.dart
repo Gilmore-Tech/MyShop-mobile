@@ -1,19 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/support_legal_provider.dart';
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _offWhite      = Color(0xFFF6F7F8);
-const _surfaceGrey   = Color(0xFFF3F5F6);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _textHint      = Color(0xFFBDBDBD);
-const _gold          = Color(0xFFF5A623);
-const _goldLight     = Color(0xFFFFF8EC);
-const _darkSlate     = Color(0xFF46535D);
-const _divider       = Color(0xFFE0E0E0);
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 // Contact Support  → in-app chat / WhatsApp support link
@@ -51,7 +40,7 @@ class _SupportLegalScreenState extends ConsumerState<SupportLegalScreen> {
     final bottom = MediaQuery.paddingOf(context).bottom;
 
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       appBar: _buildAppBar(context, w),
       body: SingleChildScrollView(
         padding: EdgeInsets.only(bottom: bottom + h * 0.032),
@@ -104,13 +93,13 @@ class _SupportLegalScreenState extends ConsumerState<SupportLegalScreen> {
 
   PreferredSizeWidget _buildAppBar(BuildContext context, double w) {
     return AppBar(
-      backgroundColor: _surfaceWhite,
+      backgroundColor: MyShopColors.surfaceWhite,
       elevation: 0,
       scrolledUnderElevation: 0,
       leading: IconButton(
         icon: Icon(
-          Icons.arrow_back_ios_new_rounded,
-          color: _textPrimary,
+          Icons.arrow_back,
+          color: MyShopColors.textPrimary,
           size: w * 0.052,
         ),
         onPressed: () => Navigator.of(context).maybePop(),
@@ -121,7 +110,7 @@ class _SupportLegalScreenState extends ConsumerState<SupportLegalScreen> {
           fontFamily: 'Raleway',
           fontSize: w * 0.050,
           fontWeight: FontWeight.w700,
-          color: _textPrimary,
+          color: MyShopColors.textPrimary,
           height: 1.3,
         ),
       ),
@@ -147,9 +136,9 @@ class _SearchBar extends StatelessWidget {
       child: Container(
         height: h * 0.058,
         decoration: BoxDecoration(
-          color: _surfaceWhite,
+          color: MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: _divider, width: 1),
+          border: Border.all(color: MyShopColors.divider, width: 1),
           boxShadow: const [
             BoxShadow(
               color: Color(0x08000000),
@@ -166,7 +155,7 @@ class _SearchBar extends StatelessWidget {
             fontFamily: 'Raleway',
             fontSize: w * 0.036,
             fontWeight: FontWeight.w400,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
             height: 1.3,
           ),
           decoration: InputDecoration(
@@ -175,12 +164,12 @@ class _SearchBar extends StatelessWidget {
               fontFamily: 'Raleway',
               fontSize: w * 0.036,
               fontWeight: FontWeight.w400,
-              color: _textHint,
+              color: MyShopColors.textHint,
               height: 1.3,
             ),
             prefixIcon: Icon(
               Icons.search_rounded,
-              color: _textHint,
+              color: MyShopColors.textHint,
               size: w * 0.050,
             ),
             border: InputBorder.none,
@@ -214,7 +203,7 @@ class _CommonlySearched extends StatelessWidget {
               fontFamily: 'Raleway',
               fontSize: w * 0.030,
               fontWeight: FontWeight.w400,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
               height: 1.5,
             ),
           ),
@@ -232,7 +221,7 @@ class _CommonlySearched extends StatelessWidget {
                       fontFamily: 'Raleway',
                       fontSize: w * 0.030,
                       fontWeight: FontWeight.w600,
-                      color: _gold,
+                      color: MyShopColors.primaryGold,
                       height: 1.5,
                     ),
                   ),
@@ -242,7 +231,7 @@ class _CommonlySearched extends StatelessWidget {
                     '·',
                     style: TextStyle(
                       fontSize: w * 0.030,
-                      color: _textSecondary,
+                      color: MyShopColors.textSecondary,
                       height: 1.5,
                     ),
                   ),
@@ -275,7 +264,7 @@ class _SectionLabel extends StatelessWidget {
           fontFamily: 'Raleway',
           fontSize: w * 0.026,
           fontWeight: FontWeight.w900,
-          color: _textSecondary,
+          color: MyShopColors.textSecondary,
           letterSpacing: 1.4,
           height: 1.4,
         ),
@@ -313,7 +302,7 @@ class _SectionLabelWithAction extends StatelessWidget {
               fontFamily: 'Raleway',
               fontSize: w * 0.026,
               fontWeight: FontWeight.w900,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
               letterSpacing: 1.4,
               height: 1.4,
             ),
@@ -327,7 +316,7 @@ class _SectionLabelWithAction extends StatelessWidget {
                 fontFamily: 'Raleway',
                 fontSize: w * 0.034,
                 fontWeight: FontWeight.w700,
-                color: _gold,
+                color: MyShopColors.primaryGold,
                 height: 1.4,
               ),
             ),
@@ -350,9 +339,9 @@ class _ContactSupportCard extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.044),
       child: _DirectHelpCard(
-        iconBg: _goldLight,
+        iconBg: MyShopColors.primaryGoldLight,
         icon: Icons.headset_mic_outlined,
-        iconColor: _gold,
+        iconColor: MyShopColors.primaryGold,
         title: 'Contact Support',
         subtitle: 'Typical response time: < 10 mins',
         onTap: () {/* TODO: open in-app support chat */},
@@ -375,7 +364,7 @@ class _ReportIssueCard extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.044),
       child: _DirectHelpCard(
-        iconBg: _darkSlate,
+        iconBg: MyShopColors.darkSlate,
         icon: Icons.flag_outlined,
         iconColor: Colors.white,
         title: 'Report an Issue',
@@ -411,7 +400,7 @@ class _DirectHelpCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: _surfaceWhite,
+      color: MyShopColors.surfaceWhite,
       borderRadius: BorderRadius.circular(12),
       elevation: 0,
       child: InkWell(
@@ -420,7 +409,7 @@ class _DirectHelpCard extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _divider, width: 1),
+            border: Border.all(color: MyShopColors.divider, width: 1),
           ),
           padding: EdgeInsets.symmetric(
             horizontal: w * 0.041,
@@ -448,7 +437,7 @@ class _DirectHelpCard extends StatelessWidget {
                         fontFamily: 'Raleway',
                         fontSize: w * 0.040,
                         fontWeight: FontWeight.w700,
-                        color: _textPrimary,
+                        color: MyShopColors.textPrimary,
                         height: 1.3,
                       ),
                     ),
@@ -459,7 +448,7 @@ class _DirectHelpCard extends StatelessWidget {
                         fontFamily: 'Raleway',
                         fontSize: w * 0.031,
                         fontWeight: FontWeight.w400,
-                        color: _textSecondary,
+                        color: MyShopColors.textSecondary,
                         height: 1.4,
                       ),
                     ),
@@ -469,7 +458,7 @@ class _DirectHelpCard extends StatelessWidget {
               SizedBox(width: w * 0.020),
               Icon(
                 Icons.chevron_right_rounded,
-                color: _textHint,
+                color: MyShopColors.textHint,
                 size: w * 0.052,
               ),
             ],
@@ -567,7 +556,7 @@ class _TopicCard extends StatelessWidget {
     return SizedBox(
       width: cardW,
       child: Material(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: () {/* TODO: navigate to topic article list */},
@@ -575,7 +564,7 @@ class _TopicCard extends StatelessWidget {
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _divider, width: 1),
+              border: Border.all(color: MyShopColors.divider, width: 1),
             ),
             padding: EdgeInsets.symmetric(
               horizontal: w * 0.034,
@@ -587,10 +576,10 @@ class _TopicCard extends StatelessWidget {
                   width: w * 0.086,
                   height: w * 0.086,
                   decoration: const BoxDecoration(
-                    color: _surfaceGrey,
+                    color: MyShopColors.surfaceGrey,
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(icon, color: _textSecondary, size: w * 0.042),
+                  child: Icon(icon, color: MyShopColors.textSecondary, size: w * 0.042),
                 ),
                 SizedBox(width: w * 0.022),
                 Expanded(
@@ -600,7 +589,7 @@ class _TopicCard extends StatelessWidget {
                       fontFamily: 'Raleway',
                       fontSize: w * 0.033,
                       fontWeight: FontWeight.w600,
-                      color: _textPrimary,
+                      color: MyShopColors.textPrimary,
                       height: 1.3,
                     ),
                   ),
@@ -626,7 +615,7 @@ class _LegalSection extends StatelessWidget {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: w * 0.044),
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
         boxShadow: const [
           BoxShadow(
@@ -656,7 +645,7 @@ class _LegalSection extends StatelessWidget {
                 Padding(
                   padding: EdgeInsets.only(left: w * 0.044),
                   child: const Divider(
-                      color: _divider, height: 1, thickness: 1),
+                      color: MyShopColors.divider, height: 1, thickness: 1),
                 ),
             ],
           );
@@ -702,7 +691,7 @@ class _LegalRow extends StatelessWidget {
                   fontFamily: 'Raleway',
                   fontSize: w * 0.038,
                   fontWeight: FontWeight.w500,
-                  color: _textPrimary,
+                  color: MyShopColors.textPrimary,
                   height: 1.3,
                 ),
               ),
@@ -711,7 +700,7 @@ class _LegalRow extends StatelessWidget {
               item.isExternal
                   ? Icons.open_in_new_rounded
                   : Icons.chevron_right_rounded,
-              color: _textHint,
+              color: MyShopColors.textHint,
               size: item.isExternal ? w * 0.042 : w * 0.052,
             ),
           ],
@@ -739,7 +728,7 @@ class _Footer extends StatelessWidget {
               fontFamily: 'Raleway',
               fontSize: w * 0.028,
               fontWeight: FontWeight.w600,
-              color: _textHint,
+              color: MyShopColors.textHint,
               letterSpacing: 0.4,
               height: 1.5,
             ),
@@ -753,7 +742,7 @@ class _Footer extends StatelessWidget {
               fontFamily: 'Raleway',
               fontSize: w * 0.027,
               fontWeight: FontWeight.w400,
-              color: _textHint,
+              color: MyShopColors.textHint,
               height: 1.5,
             ),
           ),

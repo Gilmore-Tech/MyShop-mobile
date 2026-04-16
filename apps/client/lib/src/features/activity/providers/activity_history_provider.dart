@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 // ── Activity Filter ───────────────────────────────────────────────────────────
@@ -34,17 +35,17 @@ extension TransactionStatusX on TransactionStatus {
       };
 
   Color get badgeBg => switch (this) {
-        TransactionStatus.completed  => const Color(0xFFE8F8EF),
-        TransactionStatus.cancelled  => const Color(0xFFFDE8E8),
-        TransactionStatus.inProgress => const Color(0xFFFEF3E8),
-        TransactionStatus.pending    => const Color(0xFFE8F0FD),
+        TransactionStatus.completed  => MyShopColors.successLight,
+        TransactionStatus.cancelled  => MyShopColors.errorLight,
+        TransactionStatus.inProgress => MyShopColors.warningLight,
+        TransactionStatus.pending    => MyShopColors.infoLight,
       };
 
   Color get badgeFg => switch (this) {
-        TransactionStatus.completed  => const Color(0xFF27AE60),
-        TransactionStatus.cancelled  => const Color(0xFFEB5757),
-        TransactionStatus.inProgress => const Color(0xFFF2994A),
-        TransactionStatus.pending    => const Color(0xFF2F80ED),
+        TransactionStatus.completed  => MyShopColors.success,
+        TransactionStatus.cancelled  => MyShopColors.error,
+        TransactionStatus.inProgress => MyShopColors.warning,
+        TransactionStatus.pending    => MyShopColors.info,
       };
 
   IconData get badgeIcon => switch (this) {
