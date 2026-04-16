@@ -1,12 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 
 // Design tokens — will migrate to MyShopColors once shared_ui is exported here.
-const _gold          = Color(0xFFF5A623);
 const _goldSoft      = Color(0xFFFDF3E1); // subtle gold background for pin tap target
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _textHint      = Color(0xFFBDBDBD);
-const _divider       = Color(0xFFE8EAEC);
 
 /// Home-screen location card with two tappable rows (pickup + destination).
 ///
@@ -57,7 +53,7 @@ class LocationSearchCard extends StatelessWidget {
             valueStyle: TextStyle(
               fontSize: w * 0.033,
               fontWeight: FontWeight.w600,
-              color: _gold,
+              color: MyShopColors.primaryGold,
             ),
             onTap: onPickupTap,
             onPinTap: onPickupPinTap,
@@ -68,7 +64,7 @@ class LocationSearchCard extends StatelessWidget {
             leading: Icon(
               Icons.search_rounded,
               size: w * 0.051,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
             ),
             valueLabel: destinationLabel ?? 'Where are you going?',
             valueStyle: TextStyle(
@@ -76,7 +72,7 @@ class LocationSearchCard extends StatelessWidget {
               fontWeight: destinationLabel == null
                   ? FontWeight.w400
                   : FontWeight.w600,
-              color: destinationLabel == null ? _textHint : _textPrimary,
+              color: destinationLabel == null ? MyShopColors.textHint : MyShopColors.textPrimary,
             ),
             onTap: onDestinationTap,
             onPinTap: onDestinationPinTap,
@@ -162,7 +158,7 @@ class _PickupDot extends StatelessWidget {
       height: w * 0.036,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: _gold, width: 2),
+        border: Border.all(color: MyShopColors.primaryGold, width: 2),
       ),
     );
   }
@@ -178,7 +174,7 @@ class _RowDivider extends StatelessWidget {
     final w = MediaQuery.sizeOf(context).width;
     return Padding(
       padding: EdgeInsets.only(left: w * 0.097, right: w * 0.041),
-      child: const Divider(height: 1, thickness: 1, color: _divider),
+      child: const Divider(height: 1, thickness: 1, color: MyShopColors.divider),
     );
   }
 }
@@ -205,7 +201,7 @@ class _PinChip extends StatelessWidget {
           child: SizedBox(
             width: w * 0.097,
             height: w * 0.097,
-            child: Icon(Icons.location_on, color: _gold, size: w * 0.051),
+            child: Icon(Icons.location_on, color: MyShopColors.primaryGold, size: w * 0.051),
           ),
         ),
       ),

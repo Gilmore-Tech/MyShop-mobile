@@ -1,9 +1,5 @@
 import 'package:flutter/material.dart';
-
-// Design tokens
-const _gold          = Color(0xFFF5A623);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
+import 'package:shared_ui/shared_ui.dart';
 
 class SafetyBanner extends StatelessWidget {
   const SafetyBanner({super.key});
@@ -16,11 +12,11 @@ class SafetyBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _gold, width: 1.5),
+        border: Border.all(color: MyShopColors.primaryGold, width: 1.5),
       ),
       child: Row(
         children: [
-          const Icon(Icons.verified_rounded, color: _gold, size: 26),
+          const Icon(Icons.verified_rounded, color: MyShopColors.primaryGold, size: 26),
           const SizedBox(width: 12),
           const Expanded(child: _BannerText()),
         ],
@@ -43,7 +39,7 @@ class _BannerText extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
         SizedBox(height: 2),
@@ -52,7 +48,7 @@ class _BannerText extends StatelessWidget {
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w400,
-            color: _textSecondary,
+            color: MyShopColors.textSecondary,
           ),
         ),
       ],

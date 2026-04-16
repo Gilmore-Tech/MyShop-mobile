@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import '../providers/home_provider.dart';
 
 // Design tokens
@@ -179,7 +180,7 @@ class SpecialOfferCardSkeleton extends StatelessWidget {
     return Container(
       width: w * 0.70,
       decoration: BoxDecoration(
-        color: const Color(0xFFE0E0E0),
+        color: MyShopColors.divider,
         borderRadius: BorderRadius.circular(6),
       ),
     );

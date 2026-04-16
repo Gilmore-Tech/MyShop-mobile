@@ -1,10 +1,5 @@
 import 'package:flutter/material.dart';
-
-// Design tokens
-const _gold = Color(0xFFF5A623);
-const _darkSlate = Color(0xFF46535D);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
+import 'package:shared_ui/shared_ui.dart';
 
 enum ServiceCardType { ride, artisan }
 
@@ -47,7 +42,7 @@ class ServiceCard extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.041,
                 fontWeight: FontWeight.w700,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
             SizedBox(height: h * 0.005),
@@ -58,7 +53,7 @@ class ServiceCard extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.028,
                 fontWeight: FontWeight.w400,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
               ),
             ),
             SizedBox(height: h * 0.012),
@@ -69,11 +64,11 @@ class ServiceCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.031,
                     fontWeight: FontWeight.w600,
-                    color: _gold,
+                    color: MyShopColors.primaryGold,
                   ),
                 ),
                 SizedBox(width: w * 0.005),
-                Icon(Icons.arrow_forward, size: w * 0.031, color: _gold),
+                Icon(Icons.arrow_forward, size: w * 0.031, color: MyShopColors.primaryGold),
               ],
             ),
           ],
@@ -96,7 +91,7 @@ class _ServiceIcon extends StatelessWidget {
       width: w * 0.123,
       height: w * 0.123,
       decoration: BoxDecoration(
-        color: isRide ? _darkSlate : _gold,
+        color: isRide ? MyShopColors.darkSlate : MyShopColors.primaryGold,
         borderRadius: BorderRadius.circular(w * 0.026),
       ),
       child: Icon(

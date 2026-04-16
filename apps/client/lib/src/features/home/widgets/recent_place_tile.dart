@@ -1,11 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import '../providers/home_provider.dart';
-
-// Design tokens
-const _gold = Color(0xFFF5A623);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _divider = Color(0xFFE0E0E0);
 
 class RecentPlaceTile extends StatelessWidget {
   final RecentPlace place;
@@ -24,7 +19,7 @@ class RecentPlaceTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
               children: [
-                const Icon(Icons.access_time_rounded, color: _gold, size: 22),
+                const Icon(Icons.access_time_rounded, color: MyShopColors.primaryGold, size: 22),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
@@ -36,7 +31,7 @@ class RecentPlaceTile extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: _textPrimary,
+                          color: MyShopColors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -45,7 +40,7 @@ class RecentPlaceTile extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w400,
-                          color: _textSecondary,
+                          color: MyShopColors.textSecondary,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -55,7 +50,7 @@ class RecentPlaceTile extends StatelessWidget {
                 const SizedBox(width: 8),
                 const Icon(
                   Icons.chevron_right_rounded,
-                  color: _textSecondary,
+                  color: MyShopColors.textSecondary,
                   size: 20,
                 ),
               ],
@@ -67,7 +62,7 @@ class RecentPlaceTile extends StatelessWidget {
           thickness: 1,
           indent: 52,
           endIndent: 16,
-          color: _divider,
+          color: MyShopColors.divider,
         ),
       ],
     );

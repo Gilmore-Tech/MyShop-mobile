@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -11,13 +12,6 @@ import '../widgets/recent_place_tile.dart';
 import '../widgets/safety_banner.dart';
 import '../widgets/service_card.dart';
 import '../widgets/special_offer_card.dart';
-
-// Design tokens
-const _gold = Color(0xFFF5A623);
-const _darkSlate = Color(0xFF46535D);
-const _offWhite = Color(0xFFF6F7F8);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
 
 /// PRD 4.2 — Client Home Screen
 /// Card-based entry point for ride booking and artisan services.
@@ -33,7 +27,7 @@ class HomeScreen extends ConsumerWidget {
 
     final h = MediaQuery.sizeOf(context).height;
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       body: SafeArea(
         child: Column(
           children: [
@@ -104,7 +98,7 @@ class _HomeGreeting extends ConsumerWidget {
                   style: TextStyle(
                     fontSize: w * 0.034,
                     fontWeight: FontWeight.w400,
-                    color: _textSecondary,
+                    color: MyShopColors.textSecondary,
                   ),
                 ),
                 SizedBox(height: h * 0.0025),
@@ -113,7 +107,7 @@ class _HomeGreeting extends ConsumerWidget {
                   style: TextStyle(
                     fontSize: w * 0.057,
                     fontWeight: FontWeight.w700,
-                    color: _textPrimary,
+                    color: MyShopColors.textPrimary,
                     height: 1.1,
                   ),
                   maxLines: 1,
@@ -149,7 +143,7 @@ class _Avatar extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: const Color(0xFFE6EAF0),
-        border: Border.all(color: _gold, width: 2),
+        border: Border.all(color: MyShopColors.primaryGold, width: 2),
         image: avatarUrl != null
             ? DecorationImage(
                 image: NetworkImage(avatarUrl!),
@@ -164,7 +158,7 @@ class _Avatar extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
-                color: _darkSlate,
+                color: MyShopColors.darkSlate,
               ),
             )
           : null,
@@ -310,7 +304,7 @@ class _RecentPlacesSkeleton extends StatelessWidget {
                 width:  w * 0.056,
                 height: w * 0.056,
                 decoration: const BoxDecoration(
-                  color: Color(0xFFE0E0E0),
+                  color: MyShopColors.divider,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -324,7 +318,7 @@ class _RecentPlacesSkeleton extends StatelessWidget {
                       height: h * 0.014,
                       width:  w * 0.308,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE0E0E0),
+                        color: MyShopColors.divider,
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
@@ -333,7 +327,7 @@ class _RecentPlacesSkeleton extends StatelessWidget {
                       height: h * 0.012,
                       width:  w * 0.462,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE0E0E0),
+                        color: MyShopColors.divider,
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
@@ -375,7 +369,7 @@ class _SectionHeader extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (leadingIcon != null) ...[
-                Icon(leadingIcon, size: w * 0.036, color: _gold),
+                Icon(leadingIcon, size: w * 0.036, color: MyShopColors.primaryGold),
                 SizedBox(width: w * 0.015),
               ],
               Text(
@@ -383,7 +377,7 @@ class _SectionHeader extends StatelessWidget {
                 style: TextStyle(
                   fontSize: w * 0.026,
                   fontWeight: FontWeight.w900,
-                  color: _textSecondary,
+                  color: MyShopColors.textSecondary,
                   letterSpacing: 1.4,
                 ),
               ),
@@ -400,10 +394,10 @@ class _SectionHeader extends StatelessWidget {
                     style: TextStyle(
                       fontSize: w * 0.031,
                       fontWeight: FontWeight.w600,
-                      color: _gold,
+                      color: MyShopColors.primaryGold,
                     ),
                   ),
-                  Icon(Icons.chevron_right_rounded, size: w * 0.041, color: _gold),
+                  Icon(Icons.chevron_right_rounded, size: w * 0.041, color: MyShopColors.primaryGold),
                 ],
               ),
             ),
@@ -412,5 +406,4 @@ class _SectionHeader extends StatelessWidget {
     );
   }
 }
-
 
