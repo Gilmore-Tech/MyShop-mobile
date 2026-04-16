@@ -1,21 +1,15 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io';
 
+import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../../../app/router.dart';
+import '../../../app/widgets/app_bottom_nav.dart';
 import '../providers/job_form_provider.dart';
 import '../providers/services_provider.dart';
-
-// ── Design Tokens ─────────────────────────────────────────────────────────────
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _surfaceGrey   = Color(0xFFF3F5F6);
-const _offWhite      = Color(0xFFF6F7F8);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _textHint      = Color(0xFFBDBDBD);
-const _gold          = Color(0xFFF5A623);
-const _goldLight     = Color(0xFFFFF8EC);
-const _darkSlate     = Color(0xFF46535D);
-const _divider       = Color(0xFFE0E0E0);
-const _disabled      = Color(0xFFBDBDBD);
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD 4.5 — Client creates an artisan job request.
@@ -73,7 +67,7 @@ class _JobFormScreenState extends ConsumerState<JobFormScreen> {
     final formState = ref.watch(jobFormProvider);
 
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       body: Column(
         children: [
           _AppBar(w: w, h: h),
@@ -108,9 +102,12 @@ class _JobFormScreenState extends ConsumerState<JobFormScreen> {
                   ),
                   SizedBox(height: h * 0.022),
                   _PhotoUploadField(
-                    photoCount: formState.photoCount,
-                    onTap: () =>
-                        ref.read(jobFormProvider.notifier).incrementPhotos(),
+                    photos:   formState.photoPaths,
+                    onAdd:    (paths) =>
+                        ref.read(jobFormProvider.notifier).addPhotos(paths),
+                    onRemove: (index) => ref
+                        .read(jobFormProvider.notifier)
+                        .removePhotoAt(index),
                     w: w, h: h,
                   ),
                   SizedBox(height: h * 0.022),
@@ -146,8 +143,15 @@ class _JobFormScreenState extends ConsumerState<JobFormScreen> {
                   SizedBox(height: h * 0.024),
                   _SubmitButton(
                     formState: formState,
-                    onPressed: () =>
-                        ref.read(jobFormProvider.notifier).submit(),
+                    onPressed: () async {
+                      final jobId = await ref
+                          .read(jobFormProvider.notifier)
+                          .submit();
+                      if (jobId == null || !context.mounted) return;
+                      context.pushReplacement(
+                        AppRoutes.jobDetailPath(jobId),
+                      );
+                    },
                     w: w, h: h,
                   ),
                   SizedBox(height: h * 0.014),
@@ -157,7 +161,10 @@ class _JobFormScreenState extends ConsumerState<JobFormScreen> {
               ),
             ),
           ),
-          _BottomNav(w: w, h: h),
+          AppBottomNav.routing(
+            context:   context,
+            activeTab: AppTab.services,
+          ),
         ],
       ),
     );
@@ -176,8 +183,8 @@ class _AppBar extends StatelessWidget {
     final topPad = MediaQuery.paddingOf(context).top;
     return Container(
       decoration: const BoxDecoration(
-        color: _surfaceWhite,
-        border: Border(bottom: BorderSide(color: _divider)),
+        color: MyShopColors.surfaceWhite,
+        border: Border(bottom: BorderSide(color: MyShopColors.divider)),
       ),
       padding: EdgeInsets.only(
         top: topPad + h * 0.012,
@@ -185,45 +192,45 @@ class _AppBar extends StatelessWidget {
         left: w * 0.041,
         right: w * 0.041,
       ),
-      child: Stack(
-        alignment: Alignment.center,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Create Request',
-                style: TextStyle(
-                  fontSize:   w * 0.046,
-                  fontWeight: FontWeight.w700,
-                  color:      _textPrimary,
-                  height:     1.2,
-                ),
+          GestureDetector(
+            onTap: () => Navigator.of(context).maybePop(),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: EdgeInsets.only(right: w * 0.031),
+              child: Icon(
+                Icons.arrow_back,
+                size: w * 0.056,
+                color: MyShopColors.textPrimary,
               ),
-              SizedBox(height: h * 0.004),
-              Text(
-                'Find the best local artisans',
-                style: TextStyle(
-                  fontSize:   w * 0.031,
-                  fontWeight: FontWeight.w400,
-                  color:      _textSecondary,
-                ),
-              ),
-            ],
+            ),
           ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: GestureDetector(
-              onTap: () => Navigator.of(context).maybePop(),
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: EdgeInsets.all(w * 0.015),
-                child: Icon(
-                  Icons.arrow_back,
-                  size: w * 0.056,
-                  color: _textPrimary,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Create Request',
+                  style: TextStyle(
+                    fontSize:   w * 0.046,
+                    fontWeight: FontWeight.w700,
+                    color:      MyShopColors.textPrimary,
+                    height:     1.2,
+                  ),
                 ),
-              ),
+                SizedBox(height: h * 0.004),
+                Text(
+                  'Find the best local artisans',
+                  style: TextStyle(
+                    fontSize:   w * 0.031,
+                    fontWeight: FontWeight.w400,
+                    color:      MyShopColors.textSecondary,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -258,7 +265,7 @@ class _SectionHeading extends StatelessWidget {
             style: TextStyle(
               fontSize:   w * 0.051, // ~20dp
               fontWeight: FontWeight.w700,
-              color:      _textPrimary,
+              color:      MyShopColors.textPrimary,
               height:     1.2,
             ),
           ),
@@ -268,7 +275,7 @@ class _SectionHeading extends StatelessWidget {
             style: TextStyle(
               fontSize:   w * 0.033,
               fontWeight: FontWeight.w400,
-              color:      _textSecondary,
+              color:      MyShopColors.textSecondary,
             ),
           ),
         ],
@@ -292,7 +299,7 @@ class _FieldLabel extends StatelessWidget {
       style: TextStyle(
         fontSize: w * 0.028,
         fontWeight: FontWeight.w700,
-        color: _textSecondary,
+        color: MyShopColors.textSecondary,
         letterSpacing: 0.8,
       ),
     );
@@ -351,7 +358,7 @@ class _CategorySkeleton extends StatelessWidget {
     return Container(
       height: h * 0.054,
       decoration: BoxDecoration(
-        color: _surfaceGrey,
+        color: MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(w * 0.021),
       ),
     );
@@ -384,10 +391,10 @@ class _CategorySelector extends StatelessWidget {
         height: h * 0.054, // ~46dp
         padding: EdgeInsets.symmetric(horizontal: w * 0.038),
         decoration: BoxDecoration(
-          color: hasSelection ? _goldLight : _surfaceWhite,
+          color: hasSelection ? MyShopColors.primaryGoldLight : MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(w * 0.021),
           border: Border.all(
-            color: hasSelection ? _gold : _divider,
+            color: hasSelection ? MyShopColors.primaryGold : MyShopColors.divider,
             width: 1.5,
           ),
         ),
@@ -396,7 +403,7 @@ class _CategorySelector extends StatelessWidget {
             Icon(
               Icons.grid_view_rounded,
               size: w * 0.046,
-              color: hasSelection ? _gold : _textHint,
+              color: hasSelection ? MyShopColors.primaryGold : MyShopColors.textHint,
             ),
             SizedBox(width: w * 0.026),
             Expanded(
@@ -405,14 +412,14 @@ class _CategorySelector extends StatelessWidget {
                 style: TextStyle(
                   fontSize: w * 0.038,
                   fontWeight: hasSelection ? FontWeight.w600 : FontWeight.w400,
-                  color: hasSelection ? _textPrimary : _textHint,
+                  color: hasSelection ? MyShopColors.textPrimary : MyShopColors.textHint,
                 ),
               ),
             ),
             Icon(
               Icons.keyboard_arrow_down_rounded,
               size: w * 0.056,
-              color: hasSelection ? _gold : _textSecondary,
+              color: hasSelection ? MyShopColors.primaryGold : MyShopColors.textSecondary,
             ),
           ],
         ),
@@ -455,7 +462,7 @@ class _CategorySheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.vertical(top: Radius.circular(w * 0.041)),
       ),
       padding: EdgeInsets.only(
@@ -470,7 +477,7 @@ class _CategorySheet extends StatelessWidget {
             width: w * 0.103,
             height: h * 0.005,
             decoration: BoxDecoration(
-              color: _divider,
+              color: MyShopColors.divider,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -482,18 +489,18 @@ class _CategorySheet extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.046,
                 fontWeight: FontWeight.w700,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
           ),
           SizedBox(height: h * 0.014),
-          const Divider(height: 1, color: _divider),
+          const Divider(height: 1, color: MyShopColors.divider),
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: categories.length,
             separatorBuilder: (_, __) =>
-                const Divider(height: 1, color: _divider),
+                const Divider(height: 1, color: MyShopColors.divider),
             itemBuilder: (_, i) {
               final cat = categories[i];
               final isSelected = cat.id == selectedId;
@@ -513,13 +520,13 @@ class _CategorySheet extends StatelessWidget {
                         width: w * 0.092,
                         height: w * 0.092,
                         decoration: BoxDecoration(
-                          color: isSelected ? _goldLight : _surfaceGrey,
+                          color: isSelected ? MyShopColors.primaryGoldLight : MyShopColors.surfaceGrey,
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
                           cat.icon,
                           size: w * 0.046,
-                          color: isSelected ? _gold : _textSecondary,
+                          color: isSelected ? MyShopColors.primaryGold : MyShopColors.textSecondary,
                         ),
                       ),
                       SizedBox(width: w * 0.038),
@@ -531,13 +538,13 @@ class _CategorySheet extends StatelessWidget {
                             fontWeight: isSelected
                                 ? FontWeight.w600
                                 : FontWeight.w400,
-                            color: isSelected ? _textPrimary : _textSecondary,
+                            color: isSelected ? MyShopColors.textPrimary : MyShopColors.textSecondary,
                           ),
                         ),
                       ),
                       if (isSelected)
                         Icon(Icons.check_circle_rounded,
-                            size: w * 0.056, color: _gold),
+                            size: w * 0.056, color: MyShopColors.primaryGold),
                     ],
                   ),
                 ),
@@ -579,14 +586,14 @@ class _TitleField extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.038,
               fontWeight: FontWeight.w400,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
             ),
             decoration: InputDecoration(
               hintText: 'e.g. Master Carpenter for Wardrobe',
               hintStyle: TextStyle(
                 fontSize: w * 0.036,
                 fontWeight: FontWeight.w400,
-                color: _textHint,
+                color: MyShopColors.textHint,
               ),
               contentPadding: EdgeInsets.symmetric(
                 horizontal: w * 0.038,
@@ -594,15 +601,15 @@ class _TitleField extends StatelessWidget {
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(w * 0.021),
-                borderSide: const BorderSide(color: _divider),
+                borderSide: const BorderSide(color: MyShopColors.divider),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(w * 0.021),
-                borderSide: const BorderSide(color: _divider),
+                borderSide: const BorderSide(color: MyShopColors.divider),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(w * 0.021),
-                borderSide: const BorderSide(color: _gold, width: 1.5),
+                borderSide: const BorderSide(color: MyShopColors.primaryGold, width: 1.5),
               ),
             ),
           ),
@@ -612,7 +619,7 @@ class _TitleField extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.028,
               fontWeight: FontWeight.w400,
-              color: _textHint,
+              color: MyShopColors.textHint,
             ),
           ),
         ],
@@ -652,14 +659,14 @@ class _DescriptionField extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.038,
               fontWeight: FontWeight.w400,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
             ),
             decoration: InputDecoration(
               hintText: 'Describe your requirements in detail...',
               hintStyle: TextStyle(
                 fontSize: w * 0.036,
                 fontWeight: FontWeight.w400,
-                color: _textHint,
+                color: MyShopColors.textHint,
               ),
               contentPadding: EdgeInsets.symmetric(
                 horizontal: w * 0.038,
@@ -667,15 +674,15 @@ class _DescriptionField extends StatelessWidget {
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(w * 0.021),
-                borderSide: const BorderSide(color: _divider),
+                borderSide: const BorderSide(color: MyShopColors.divider),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(w * 0.021),
-                borderSide: const BorderSide(color: _divider),
+                borderSide: const BorderSide(color: MyShopColors.divider),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(w * 0.021),
-                borderSide: const BorderSide(color: _gold, width: 1.5),
+                borderSide: const BorderSide(color: MyShopColors.primaryGold, width: 1.5),
               ),
             ),
           ),
@@ -688,16 +695,22 @@ class _DescriptionField extends StatelessWidget {
 // ── WORK SITE PHOTOS upload zone ───────────────────────────────────────────────
 
 class _PhotoUploadField extends StatelessWidget {
-  final int photoCount;
-  final VoidCallback onTap;
+  final List<String>            photos;
+  final void Function(List<String>) onAdd;
+  final void Function(int)      onRemove;
   final double w;
   final double h;
+
   const _PhotoUploadField({
-    required this.photoCount,
-    required this.onTap,
+    required this.photos,
+    required this.onAdd,
+    required this.onRemove,
     required this.w,
     required this.h,
   });
+
+  int  get _slotsLeft => kMaxJobPhotos - photos.length;
+  bool get _canAdd    => _slotsLeft > 0;
 
   @override
   Widget build(BuildContext context) {
@@ -706,59 +719,423 @@ class _PhotoUploadField extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _FieldLabel(text: 'WORK SITE PHOTOS', w: w, h: h),
-          SizedBox(height: h * 0.010),
-          GestureDetector(
-            onTap: onTap,
-            child: CustomPaint(
-              painter: _DashedBorderPainter(
-                color: _divider,
-                radius: w * 0.021,
-                strokeWidth: 1.5,
-                dashLength: w * 0.018,
-                gapLength: w * 0.012,
-              ),
-              child: Container(
-                width: double.infinity,
-                height: h * 0.119,
-                decoration: BoxDecoration(
-                  color: _surfaceWhite,
-                  borderRadius: BorderRadius.circular(w * 0.021),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.camera_alt_outlined,
-                      size:  w * 0.072,
-                      color: _textSecondary,
-                    ),
-                    SizedBox(height: h * 0.009),
-                    Text(
-                      photoCount > 0
-                          ? '$photoCount photo${photoCount > 1 ? 's' : ''} added — tap to add more'
-                          : 'Upload images',
-                      style: TextStyle(
-                        fontSize:   w * 0.036,
-                        fontWeight: FontWeight.w500,
-                        color:      _textSecondary,
-                      ),
-                    ),
-                  ],
+          Row(
+            children: [
+              _FieldLabel(text: 'WORK SITE PHOTOS', w: w, h: h),
+              SizedBox(width: w * 0.015),
+              Text(
+                '(Optional)',
+                style: TextStyle(
+                  fontSize:   w * 0.028,
+                  fontWeight: FontWeight.w400,
+                  color:      MyShopColors.textHint,
                 ),
               ),
-            ),
+              const Spacer(),
+              Text(
+                '${photos.length}/$kMaxJobPhotos',
+                style: TextStyle(
+                  fontSize:   w * 0.028,
+                  fontWeight: FontWeight.w500,
+                  color:      MyShopColors.textSecondary,
+                ),
+              ),
+            ],
           ),
+          SizedBox(height: h * 0.010),
+          if (photos.isEmpty)
+            _EmptyUploadZone(
+              onTap: () => _openPickerSheet(context),
+              w: w, h: h,
+            )
+          else
+            _PhotoGrid(
+              photos:   photos,
+              canAdd:   _canAdd,
+              onAddTap: () => _openPickerSheet(context),
+              onRemove: onRemove,
+              w: w, h: h,
+            ),
           SizedBox(height: h * 0.007),
           Text(
-            'Upload up to 4 photos for a better bid',
+            'Upload up to $kMaxJobPhotos photos for a better bid',
             style: TextStyle(
               fontSize:   w * 0.028,
               fontWeight: FontWeight.w400,
-              color:      _textHint,
+              color:      MyShopColors.textHint,
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _openPickerSheet(BuildContext context) async {
+    if (!_canAdd) return;
+    final source = await showModalBottomSheet<_PhotoSource>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => _PhotoSourceSheet(w: w, h: h),
+    );
+    if (source == null || !context.mounted) return;
+    final paths = await _pickPhotos(source);
+    if (paths.isNotEmpty) onAdd(paths);
+  }
+
+  Future<List<String>> _pickPhotos(_PhotoSource source) async {
+    final picker = ImagePicker();
+    try {
+      switch (source) {
+        case _PhotoSource.camera:
+          final shot = await picker.pickImage(
+            source: ImageSource.camera,
+            imageQuality: 80,
+          );
+          return shot == null ? const [] : [shot.path];
+        case _PhotoSource.gallery:
+          final shots = await picker.pickMultiImage(
+            imageQuality: 80,
+            limit: _slotsLeft,
+          );
+          return shots.take(_slotsLeft).map((x) => x.path).toList();
+      }
+    } catch (_) {
+      return const [];
+    }
+  }
+}
+
+enum _PhotoSource { camera, gallery }
+
+class _EmptyUploadZone extends StatelessWidget {
+  final VoidCallback onTap;
+  final double w;
+  final double h;
+  const _EmptyUploadZone({
+    required this.onTap,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: CustomPaint(
+        painter: _DashedBorderPainter(
+          color: MyShopColors.divider,
+          radius: w * 0.021,
+          strokeWidth: 1.5,
+          dashLength: w * 0.018,
+          gapLength: w * 0.012,
+        ),
+        child: Container(
+          width: double.infinity,
+          height: h * 0.119,
+          decoration: BoxDecoration(
+            color: MyShopColors.surfaceWhite,
+            borderRadius: BorderRadius.circular(w * 0.021),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.camera_alt_outlined,
+                size:  w * 0.072,
+                color: MyShopColors.textSecondary,
+              ),
+              SizedBox(height: h * 0.009),
+              Text(
+                'Upload images',
+                style: TextStyle(
+                  fontSize:   w * 0.036,
+                  fontWeight: FontWeight.w500,
+                  color:      MyShopColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PhotoGrid extends StatelessWidget {
+  final List<String>        photos;
+  final bool                canAdd;
+  final VoidCallback        onAddTap;
+  final void Function(int)  onRemove;
+  final double w;
+  final double h;
+
+  const _PhotoGrid({
+    required this.photos,
+    required this.canAdd,
+    required this.onAddTap,
+    required this.onRemove,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const spacing = 8.0;
+    // Fit up to 4 tiles across the available row width.
+    final columns = kMaxJobPhotos;
+    return LayoutBuilder(
+      builder: (_, cons) {
+        final tile = (cons.maxWidth - spacing * (columns - 1)) / columns;
+        return Wrap(
+          spacing:     spacing,
+          runSpacing:  spacing,
+          children: [
+            for (var i = 0; i < photos.length; i++)
+              _PhotoTile(
+                path:  photos[i],
+                size:  tile,
+                onRemove: () => onRemove(i),
+                w: w,
+              ),
+            if (canAdd)
+              _AddMoreTile(
+                size:  tile,
+                onTap: onAddTap,
+                w:     w,
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _PhotoTile extends StatelessWidget {
+  final String       path;
+  final double       size;
+  final VoidCallback onRemove;
+  final double       w;
+
+  const _PhotoTile({
+    required this.path,
+    required this.size,
+    required this.onRemove,
+    required this.w,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = w * 0.021;
+    return SizedBox(
+      width:  size,
+      height: size,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(radius),
+            child: Image.file(
+              File(path),
+              width:  size,
+              height: size,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                color: MyShopColors.surfaceGrey,
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.broken_image_outlined,
+                  size:  w * 0.056,
+                  color: MyShopColors.textHint,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top:   -w * 0.015,
+            right: -w * 0.015,
+            child: GestureDetector(
+              onTap: onRemove,
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                width:  w * 0.056,
+                height: w * 0.056,
+                decoration: const BoxDecoration(
+                  color: MyShopColors.textPrimary,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.close_rounded,
+                  size:  w * 0.038,
+                  color: MyShopColors.surfaceWhite,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddMoreTile extends StatelessWidget {
+  final double       size;
+  final VoidCallback onTap;
+  final double       w;
+
+  const _AddMoreTile({
+    required this.size,
+    required this.onTap,
+    required this.w,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = w * 0.021;
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width:  size,
+        height: size,
+        child: CustomPaint(
+          painter: _DashedBorderPainter(
+            color: MyShopColors.divider,
+            radius: radius,
+            strokeWidth: 1.5,
+            dashLength: w * 0.018,
+            gapLength:  w * 0.012,
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              color:        MyShopColors.surfaceWhite,
+              borderRadius: BorderRadius.circular(radius),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              Icons.add_rounded,
+              size:  w * 0.062,
+              color: MyShopColors.textSecondary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PhotoSourceSheet extends StatelessWidget {
+  final double w;
+  final double h;
+  const _PhotoSourceSheet({required this.w, required this.h});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: MyShopColors.surfaceWhite,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(w * 0.041)),
+      ),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.viewInsetsOf(context).bottom + h * 0.024,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(height: h * 0.014),
+          Container(
+            width: w * 0.103,
+            height: h * 0.005,
+            decoration: BoxDecoration(
+              color: MyShopColors.divider,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          SizedBox(height: h * 0.019),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: w * 0.041),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Add photos',
+                style: TextStyle(
+                  fontSize:   w * 0.046,
+                  fontWeight: FontWeight.w700,
+                  color:      MyShopColors.textPrimary,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: h * 0.014),
+          const Divider(height: 1, color: MyShopColors.divider),
+          _PhotoSourceTile(
+            icon:  Icons.camera_alt_outlined,
+            label: 'Take photo',
+            onTap: () => Navigator.of(context).pop(_PhotoSource.camera),
+            w: w, h: h,
+          ),
+          const Divider(height: 1, color: MyShopColors.divider),
+          _PhotoSourceTile(
+            icon:  Icons.photo_library_outlined,
+            label: 'Choose from gallery',
+            onTap: () => Navigator.of(context).pop(_PhotoSource.gallery),
+            w: w, h: h,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PhotoSourceTile extends StatelessWidget {
+  final IconData     icon;
+  final String       label;
+  final VoidCallback onTap;
+  final double       w;
+  final double       h;
+
+  const _PhotoSourceTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: w * 0.041,
+          vertical:   h * 0.019,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width:  w * 0.092,
+              height: w * 0.092,
+              decoration: const BoxDecoration(
+                color: MyShopColors.surfaceGrey,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                size:  w * 0.046,
+                color: MyShopColors.textSecondary,
+              ),
+            ),
+            SizedBox(width: w * 0.038),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize:   w * 0.038,
+                fontWeight: FontWeight.w500,
+                color:      MyShopColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -793,14 +1170,14 @@ class _DestinationField extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.038,
               fontWeight: FontWeight.w400,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
             ),
             decoration: InputDecoration(
               hintText: 'Kotoka International Airport (T3)',
               hintStyle: TextStyle(
                 fontSize: w * 0.036,
                 fontWeight: FontWeight.w400,
-                color: _textHint,
+                color: MyShopColors.textHint,
               ),
               prefixIcon: Padding(
                 padding: EdgeInsets.only(
@@ -810,7 +1187,7 @@ class _DestinationField extends StatelessWidget {
                 child: Icon(
                   Icons.location_on,
                   size: w * 0.051,
-                  color: _gold,
+                  color: MyShopColors.primaryGold,
                 ),
               ),
               prefixIconConstraints: BoxConstraints(
@@ -822,15 +1199,15 @@ class _DestinationField extends StatelessWidget {
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(w * 0.021),
-                borderSide: const BorderSide(color: _divider),
+                borderSide: const BorderSide(color: MyShopColors.divider),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(w * 0.021),
-                borderSide: const BorderSide(color: _divider),
+                borderSide: const BorderSide(color: MyShopColors.divider),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(w * 0.021),
-                borderSide: const BorderSide(color: _gold, width: 1.5),
+                borderSide: const BorderSide(color: MyShopColors.primaryGold, width: 1.5),
               ),
             ),
           ),
@@ -840,7 +1217,7 @@ class _DestinationField extends StatelessWidget {
             style: TextStyle(
               fontSize:   w * 0.028,
               fontWeight: FontWeight.w400,
-              color:      _textHint,
+              color:      MyShopColors.textHint,
             ),
           ),
         ],
@@ -876,14 +1253,14 @@ class _LandmarkField extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.038,
               fontWeight: FontWeight.w400,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
             ),
             decoration: InputDecoration(
               hintText: 'Enter specific landmark or street',
               hintStyle: TextStyle(
                 fontSize: w * 0.036,
                 fontWeight: FontWeight.w400,
-                color: _textHint,
+                color: MyShopColors.textHint,
               ),
               contentPadding: EdgeInsets.symmetric(
                 horizontal: w * 0.038,
@@ -891,15 +1268,15 @@ class _LandmarkField extends StatelessWidget {
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(w * 0.021),
-                borderSide: const BorderSide(color: _divider),
+                borderSide: const BorderSide(color: MyShopColors.divider),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(w * 0.021),
-                borderSide: const BorderSide(color: _divider),
+                borderSide: const BorderSide(color: MyShopColors.divider),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(w * 0.021),
-                borderSide: const BorderSide(color: _gold, width: 1.5),
+                borderSide: const BorderSide(color: MyShopColors.primaryGold, width: 1.5),
               ),
             ),
           ),
@@ -909,7 +1286,7 @@ class _LandmarkField extends StatelessWidget {
             style: TextStyle(
               fontSize:   w * 0.028,
               fontWeight: FontWeight.w400,
-              color:      _textHint,
+              color:      MyShopColors.textHint,
             ),
           ),
         ],
@@ -942,7 +1319,7 @@ class _TimingCard extends StatelessWidget {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: w * 0.041),
       decoration: BoxDecoration(
-        color:        _surfaceGrey,
+        color:        MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(w * 0.041),
       ),
       child: Column(
@@ -960,7 +1337,7 @@ class _TimingCard extends StatelessWidget {
                   width:  w * 0.100,
                   height: w * 0.100,
                   decoration: BoxDecoration(
-                    color:        _surfaceWhite,
+                    color:        MyShopColors.surfaceWhite,
                     borderRadius: BorderRadius.circular(w * 0.026),
                     boxShadow: [
                       BoxShadow(
@@ -973,7 +1350,7 @@ class _TimingCard extends StatelessWidget {
                   child: Icon(
                     Icons.access_time_rounded,
                     size:  w * 0.046,
-                    color: _textPrimary,
+                    color: MyShopColors.textPrimary,
                   ),
                 ),
                 SizedBox(width: w * 0.031),
@@ -986,7 +1363,7 @@ class _TimingCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize:   w * 0.032,
                           fontWeight: FontWeight.w700,
-                          color:      _textPrimary,
+                          color:      MyShopColors.textPrimary,
                         ),
                       ),
                       SizedBox(height: h * 0.004),
@@ -995,7 +1372,7 @@ class _TimingCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize:   w * 0.024,
                           fontWeight: FontWeight.w400,
-                          color:      _textSecondary,
+                          color:      MyShopColors.textSecondary,
                         ),
                       ),
                     ],
@@ -1020,7 +1397,7 @@ class _TimingCard extends StatelessWidget {
                 ? const SizedBox.shrink()
                 : Column(
                     children: [
-                      Divider(height: 1, thickness: 1, color: _divider),
+                      Divider(height: 1, thickness: 1, color: MyShopColors.divider),
                       Padding(
                         padding: EdgeInsets.symmetric(
                           horizontal: w * 0.041,
@@ -1097,7 +1474,7 @@ class _TimingCard extends StatelessWidget {
       lastDate:     now.add(const Duration(days: 30)),
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.light(primary: _gold),
+          colorScheme: const ColorScheme.light(primary: MyShopColors.primaryGold),
         ),
         child: child!,
       ),
@@ -1117,7 +1494,7 @@ class _TimingCard extends StatelessWidget {
       initialTime: TimeOfDay(hour: base.hour, minute: base.minute),
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.light(primary: _gold),
+          colorScheme: const ColorScheme.light(primary: MyShopColors.primaryGold),
         ),
         child: child!,
       ),
@@ -1158,13 +1535,13 @@ class _PickerButton extends StatelessWidget {
           vertical:   h * 0.014,
         ),
         decoration: BoxDecoration(
-          color:        _surfaceGrey,
+          color:        MyShopColors.surfaceGrey,
           borderRadius: BorderRadius.circular(w * 0.026),
-          border:       Border.all(color: _divider),
+          border:       Border.all(color: MyShopColors.divider),
         ),
         child: Row(
           children: [
-            Icon(icon, size: w * 0.046, color: _textSecondary),
+            Icon(icon, size: w * 0.046, color: MyShopColors.textSecondary),
             SizedBox(width: w * 0.021),
             Expanded(
               child: Text(
@@ -1172,14 +1549,14 @@ class _PickerButton extends StatelessWidget {
                 style: TextStyle(
                   fontSize:   w * 0.036,
                   fontWeight: FontWeight.w500,
-                  color:      _textPrimary,
+                  color:      MyShopColors.textPrimary,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
             Icon(Icons.keyboard_arrow_down_rounded,
-                size: w * 0.046, color: _textSecondary),
+                size: w * 0.046, color: MyShopColors.textSecondary),
           ],
         ),
       ),
@@ -1253,7 +1630,7 @@ class _ToggleOption extends StatelessWidget {
           vertical:   h * 0.009,
         ),
         decoration: BoxDecoration(
-          color: isSelected ? _surfaceWhite : Colors.transparent,
+          color: isSelected ? MyShopColors.surfaceWhite : Colors.transparent,
           borderRadius: BorderRadius.circular(w * 0.031),
           boxShadow: isSelected
               ? [
@@ -1270,7 +1647,7 @@ class _ToggleOption extends StatelessWidget {
           style: TextStyle(
             fontSize:   w * 0.038,
             fontWeight: FontWeight.w700,
-            color:      _textPrimary,
+            color:      MyShopColors.textPrimary,
           ),
         ),
       ),
@@ -1291,7 +1668,7 @@ class _BidTimeInfoCard extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: Column(
         children: [
-          _DashedLine(color: _divider, dashLength: w * 0.010, gapLength: w * 0.008),
+          _DashedLine(color: MyShopColors.divider, dashLength: w * 0.010, gapLength: w * 0.008),
           SizedBox(height: h * 0.014),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1299,7 +1676,7 @@ class _BidTimeInfoCard extends StatelessWidget {
               Icon(
                 Icons.timer_outlined,
                 size:  w * 0.046,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
               SizedBox(width: w * 0.021),
               RichText(
@@ -1310,7 +1687,7 @@ class _BidTimeInfoCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize:   w * 0.036,
                         fontWeight: FontWeight.w400,
-                        color:      _textPrimary,
+                        color:      MyShopColors.textPrimary,
                       ),
                     ),
                     TextSpan(
@@ -1318,7 +1695,7 @@ class _BidTimeInfoCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize:   w * 0.036,
                         fontWeight: FontWeight.w700,
-                        color:      _textPrimary,
+                        color:      MyShopColors.textPrimary,
                       ),
                     ),
                   ],
@@ -1327,7 +1704,7 @@ class _BidTimeInfoCard extends StatelessWidget {
             ],
           ),
           SizedBox(height: h * 0.014),
-          _DashedLine(color: _divider, dashLength: w * 0.010, gapLength: w * 0.008),
+          _DashedLine(color: MyShopColors.divider, dashLength: w * 0.010, gapLength: w * 0.008),
         ],
       ),
     );
@@ -1350,16 +1727,16 @@ class _SafetyInfoCard extends StatelessWidget {
         vertical: h * 0.017,
       ),
       decoration: BoxDecoration(
-        color: _goldLight,
+        color: MyShopColors.primaryGoldLight,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _gold.withValues(alpha: 0.4)),
+        border: Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.4)),
       ),
       child: Row(
         children: [
           Icon(
             Icons.verified_user_outlined,
             size: w * 0.056,
-            color: _gold,
+            color: MyShopColors.primaryGold,
           ),
           SizedBox(width: w * 0.026),
           Expanded(
@@ -1371,7 +1748,7 @@ class _SafetyInfoCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.036,
                     fontWeight: FontWeight.w700,
-                    color: _textPrimary,
+                    color: MyShopColors.textPrimary,
                   ),
                 ),
                 SizedBox(height: h * 0.004),
@@ -1380,7 +1757,7 @@ class _SafetyInfoCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.028,
                     fontWeight: FontWeight.w400,
-                    color: _textSecondary,
+                    color: MyShopColors.textSecondary,
                     height: 1.5,
                   ),
                 ),
@@ -1420,8 +1797,8 @@ class _SubmitButton extends StatelessWidget {
         child: ElevatedButton(
           onPressed: canSubmit ? onPressed : null,
           style: ElevatedButton.styleFrom(
-            backgroundColor:         canSubmit ? _darkSlate : _surfaceGrey,
-            disabledBackgroundColor: _surfaceGrey,
+            backgroundColor:         canSubmit ? MyShopColors.darkSlate : MyShopColors.surfaceGrey,
+            disabledBackgroundColor: MyShopColors.surfaceGrey,
             elevation:   0,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(w * 0.036),
@@ -1433,7 +1810,7 @@ class _SubmitButton extends StatelessWidget {
                   height: w * 0.051,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: canSubmit ? _surfaceWhite : _disabled,
+                    color: canSubmit ? MyShopColors.surfaceWhite : MyShopColors.disabled,
                   ),
                 )
               : Row(
@@ -1444,7 +1821,7 @@ class _SubmitButton extends StatelessWidget {
                       style: TextStyle(
                         fontSize:   w * 0.044,
                         fontWeight: FontWeight.w700,
-                        color:      canSubmit ? _surfaceWhite : _disabled,
+                        color:      canSubmit ? MyShopColors.surfaceWhite : MyShopColors.disabled,
                         letterSpacing: 0.2,
                       ),
                     ),
@@ -1452,7 +1829,7 @@ class _SubmitButton extends StatelessWidget {
                     Icon(
                       Icons.add_circle_outline_rounded,
                       size:  w * 0.051,
-                      color: canSubmit ? _surfaceWhite : _disabled,
+                      color: canSubmit ? MyShopColors.surfaceWhite : MyShopColors.disabled,
                     ),
                   ],
                 ),
@@ -1478,77 +1855,11 @@ class _Disclaimer extends StatelessWidget {
         style: TextStyle(
           fontSize:      w * 0.026,
           fontWeight:    FontWeight.w600,
-          color:         _textHint,
+          color:         MyShopColors.textHint,
           letterSpacing: 0.8,
           height:        1.5,
         ),
         textAlign: TextAlign.center,
-      ),
-    );
-  }
-}
-
-// ── Bottom Navigation ──────────────────────────────────────────────────────────
-
-class _BottomNav extends StatelessWidget {
-  final double w;
-  final double h;
-  const _BottomNav({required this.w, required this.h});
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomPad = MediaQuery.paddingOf(context).bottom;
-    return Container(
-      height: h * 0.071 + bottomPad,
-      decoration: const BoxDecoration(
-        color: _surfaceWhite,
-        border: Border(top: BorderSide(color: _divider)),
-      ),
-      padding: EdgeInsets.only(bottom: bottomPad),
-      child: Row(
-        children: [
-          _NavItem(icon: Icons.home_outlined, label: 'Home', isActive: false, w: w, h: h),
-          _NavItem(icon: Icons.grid_view_rounded, label: 'Services', isActive: true, w: w, h: h),
-          _NavItem(icon: Icons.history_rounded, label: 'Activity', isActive: false, w: w, h: h),
-          _NavItem(icon: Icons.person_outline_rounded, label: 'Account', isActive: false, w: w, h: h),
-        ],
-      ),
-    );
-  }
-}
-
-class _NavItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isActive;
-  final double w;
-  final double h;
-  const _NavItem({
-    required this.icon,
-    required this.label,
-    required this.isActive,
-    required this.w,
-    required this.h,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isActive ? _gold : _darkSlate;
-    return Expanded(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: w * 0.062, color: color),
-          SizedBox(height: h * 0.004),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: w * 0.026,
-              fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
-              color: color,
-            ),
-          ),
-        ],
       ),
     );
   }

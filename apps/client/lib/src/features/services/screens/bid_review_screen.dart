@@ -1,21 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../providers/bid_detail_provider.dart';
 import '../../../app/router.dart';
-
-// ── Design tokens ──────────────────────────────────────────────────────────────
-const _bg            = Color(0xFFF6F7F8);
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _gold          = Color(0xFFF5A623);
-const _goldLight     = Color(0xFFFFF8EC);
-const _success       = Color(0xFF27AE60);
-const _successLight  = Color(0xFFE8F8EE);
-const _danger        = Color(0xFFEB5757);
-const _divider       = Color(0xFFE8EAEC);
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD § 4.5 — Client reviews a specific artisan bid and decides to accept/decline.
@@ -53,28 +42,28 @@ class _BidReviewScreenState extends ConsumerState<BidReviewScreen> {
     final state = ref.watch(bidDetailProvider(widget.bidId));
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: MyShopColors.offWhite,
       appBar: AppBar(
-        backgroundColor: _surfaceWhite,
+        backgroundColor: MyShopColors.surfaceWhite,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: _textPrimary),
+          icon: const Icon(Icons.arrow_back,
+              color: MyShopColors.textPrimary),
           onPressed: () => context.pop(),
         ),
         title: Text('Review Bid',
             style: TextStyle(
-                color:      _textPrimary,
+                color:      MyShopColors.textPrimary,
                 fontSize:   w * 0.044,
                 fontWeight: FontWeight.w700)),
         centerTitle: false,
       ),
       body: state.when(
         loading: () => const Center(
-            child: CircularProgressIndicator(color: _gold)),
+            child: CircularProgressIndicator(color: MyShopColors.primaryGold)),
         error: (_, __) => Center(
             child: Text('Failed to load bid.',
                 style: TextStyle(
-                    color: _textSecondary, fontSize: w * 0.036))),
+                    color: MyShopColors.textSecondary, fontSize: w * 0.036))),
         data: (bid) => Column(
           children: [
             Expanded(
@@ -127,7 +116,7 @@ class _ArtisanCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
@@ -155,30 +144,30 @@ class _ArtisanCard extends StatelessWidget {
                   children: [
                     Text(a.name,
                         style: TextStyle(
-                          color:      _textPrimary,
+                          color:      MyShopColors.textPrimary,
                           fontSize:   w * 0.042,
                           fontWeight: FontWeight.w700,
                         )),
                     const SizedBox(height: 4),
                     Text(a.tradeTitle,
                         style: TextStyle(
-                            color:    _textSecondary,
+                            color:    MyShopColors.textSecondary,
                             fontSize: w * 0.033)),
                     const SizedBox(height: 6),
                     Row(children: [
                       const Icon(Icons.star_rounded,
-                          color: _gold, size: 16),
+                          color: MyShopColors.primaryGold, size: 16),
                       const SizedBox(width: 4),
                       Text(a.rating.toStringAsFixed(1),
                           style: TextStyle(
-                            color:      _textPrimary,
+                            color:      MyShopColors.textPrimary,
                             fontSize:   w * 0.033,
                             fontWeight: FontWeight.w600,
                           )),
                       SizedBox(width: w * 0.016),
                       Text('(${a.reviewCount} reviews)',
                           style: TextStyle(
-                              color:    _textSecondary,
+                              color:    MyShopColors.textSecondary,
                               fontSize: w * 0.030)),
                     ]),
                   ],
@@ -189,18 +178,18 @@ class _ArtisanCard extends StatelessWidget {
                   padding: EdgeInsets.symmetric(
                       horizontal: w * 0.024, vertical: 4),
                   decoration: BoxDecoration(
-                    color:        _successLight,
+                    color:        MyShopColors.successLight,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(Icons.verified_rounded,
-                          color: _success, size: 14),
+                          color: MyShopColors.success, size: 14),
                       const SizedBox(width: 4),
                       Text('Verified',
                           style: TextStyle(
-                            color:      _success,
+                            color:      MyShopColors.success,
                             fontSize:   w * 0.028,
                             fontWeight: FontWeight.w600,
                           )),
@@ -210,7 +199,7 @@ class _ArtisanCard extends StatelessWidget {
             ],
           ),
           SizedBox(height: h * 0.016),
-          const Divider(height: 1, color: _divider),
+          const Divider(height: 1, color: MyShopColors.divider),
           SizedBox(height: h * 0.016),
           Row(
             children: [
@@ -243,11 +232,11 @@ class _StatChip extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, color: _textSecondary, size: 14),
+        Icon(icon, color: MyShopColors.textSecondary, size: 14),
         const SizedBox(width: 4),
         Text(label,
             style: TextStyle(
-                color: _textSecondary, fontSize: w * 0.030)),
+                color: MyShopColors.textSecondary, fontSize: w * 0.030)),
       ],
     );
   }
@@ -266,9 +255,9 @@ class _BidAmountCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        _goldLight,
+        color:        MyShopColors.primaryGoldLight,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: _gold.withAlpha(60)),
+        border:       Border.all(color: MyShopColors.primaryGold.withAlpha(60)),
       ),
       child: Row(
         children: [
@@ -278,19 +267,19 @@ class _BidAmountCard extends StatelessWidget {
               children: [
                 Text('Bid Amount',
                     style: TextStyle(
-                        color:    _textSecondary,
+                        color:    MyShopColors.textSecondary,
                         fontSize: w * 0.030)),
                 const SizedBox(height: 4),
                 Text(bid.breakdown.totalDisplay,
                     style: TextStyle(
-                      color:      _textPrimary,
+                      color:      MyShopColors.textPrimary,
                       fontSize:   w * 0.060,
                       fontWeight: FontWeight.w800,
                     )),
                 const SizedBox(height: 4),
                 Text('Covers labour + estimated materials',
                     style: TextStyle(
-                        color:    _textSecondary,
+                        color:    MyShopColors.textSecondary,
                         fontSize: w * 0.030)),
                 const SizedBox(height: 8),
                 Row(children: [
@@ -310,9 +299,9 @@ class _BidAmountCard extends StatelessWidget {
           Container(
             padding: EdgeInsets.all(w * 0.032),
             decoration: BoxDecoration(
-                color: _gold.withAlpha(30), shape: BoxShape.circle),
+                color: MyShopColors.primaryGold.withAlpha(30), shape: BoxShape.circle),
             child: Icon(Icons.receipt_long_rounded,
-                color: _gold, size: w * 0.06),
+                color: MyShopColors.primaryGold, size: w * 0.06),
           ),
         ],
       ),
@@ -332,11 +321,11 @@ class _InfoPill extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, color: _textSecondary, size: 13),
+        Icon(icon, color: MyShopColors.textSecondary, size: 13),
         const SizedBox(width: 4),
         Text(label,
             style: TextStyle(
-                color:    _textSecondary,
+                color:    MyShopColors.textSecondary,
                 fontSize: w * 0.030)),
       ],
     );
@@ -360,9 +349,9 @@ class _MessageCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        _surfaceWhite,
+        color:        MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: _divider),
+        border:       Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -371,7 +360,7 @@ class _MessageCard extends StatelessWidget {
             children: [
               Text('Message from artisan',
                   style: TextStyle(
-                    color:      _textSecondary,
+                    color:      MyShopColors.textSecondary,
                     fontSize:   w * 0.030,
                     fontWeight: FontWeight.w600,
                   )),
@@ -379,7 +368,7 @@ class _MessageCard extends StatelessWidget {
                 const Spacer(),
                 Text(timestamp!,
                     style: TextStyle(
-                        color:    _textSecondary,
+                        color:    MyShopColors.textSecondary,
                         fontSize: w * 0.028)),
               ],
             ],
@@ -387,7 +376,7 @@ class _MessageCard extends StatelessWidget {
           SizedBox(height: h * 0.010),
           Text(message,
               style: TextStyle(
-                  color:    _textPrimary,
+                  color:    MyShopColors.textPrimary,
                   fontSize: w * 0.034,
                   height:   1.6)),
         ],
@@ -404,13 +393,13 @@ class _GuaranteeNote extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Icon(Icons.security_rounded, color: _success, size: 16),
+        const Icon(Icons.security_rounded, color: MyShopColors.success, size: 16),
         SizedBox(width: w * 0.020),
         Expanded(
           child: Text(
             'Payment is held in escrow and only released after you confirm the job is complete.',
             style: TextStyle(
-                color:    _textSecondary,
+                color:    MyShopColors.textSecondary,
                 fontSize: w * 0.030,
                 height:   1.5),
           ),
@@ -440,7 +429,7 @@ class _ActionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color:   _surfaceWhite,
+      color:   MyShopColors.surfaceWhite,
       padding: EdgeInsets.fromLTRB(
           w * 0.05, h * 0.016, w * 0.05, bot + h * 0.020),
       child: Row(
@@ -450,8 +439,8 @@ class _ActionBar extends StatelessWidget {
             child: OutlinedButton(
               onPressed: onDecline,
               style: OutlinedButton.styleFrom(
-                foregroundColor: _danger,
-                side:  const BorderSide(color: _danger),
+                foregroundColor: MyShopColors.error,
+                side:  const BorderSide(color: MyShopColors.error),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
                 padding: EdgeInsets.symmetric(horizontal: w * 0.06),
@@ -469,9 +458,9 @@ class _ActionBar extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: isAccepting ? null : onAccept,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor:        _gold,
+                  backgroundColor:        MyShopColors.primaryGold,
                   foregroundColor:        Colors.white,
-                  disabledBackgroundColor: _gold.withAlpha(120),
+                  disabledBackgroundColor: MyShopColors.primaryGold.withAlpha(120),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10)),
                   elevation: 0,

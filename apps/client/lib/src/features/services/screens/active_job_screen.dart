@@ -1,22 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/active_job_provider.dart';
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _surfaceGrey   = Color(0xFFF3F5F6);
-const _offWhite      = Color(0xFFF6F7F8);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _textHint      = Color(0xFFBDBDBD);
-const _gold          = Color(0xFFF5A623);
-const _goldLight     = Color(0xFFFFF8EC);
-const _darkSlate     = Color(0xFF46535D);
-const _success       = Color(0xFF27AE60);
-const _error         = Color(0xFFEB5757);
-const _divider       = Color(0xFFE0E0E0);
-const _disabled      = Color(0xFFBDBDBD);
 
 // ── Timeline step model ───────────────────────────────────────────────────────
 
@@ -127,7 +113,7 @@ class ActiveJobScreen extends ConsumerWidget {
     final jobAsync = ref.watch(activeJobProvider(jobId));
 
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       body: jobAsync.when(
         loading: () => _LoadingSkeleton(w: w, h: h),
         error: (_, __) => _ErrorBody(
@@ -195,7 +181,7 @@ class _AppBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final topPad = MediaQuery.paddingOf(context).top;
     return Container(
-      color: _surfaceWhite,
+      color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.only(
         top: topPad + h * 0.010,
         bottom: h * 0.017,
@@ -210,7 +196,7 @@ class _AppBar extends StatelessWidget {
             child: Padding(
               padding: EdgeInsets.only(right: w * 0.031),
               child: Icon(Icons.arrow_back,
-                  size: w * 0.056, color: _textPrimary),
+                  size: w * 0.056, color: MyShopColors.textPrimary),
             ),
           ),
           Expanded(
@@ -219,7 +205,7 @@ class _AppBar extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.051,
                 fontWeight: FontWeight.w700,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
           ),
@@ -230,11 +216,11 @@ class _AppBar extends StatelessWidget {
               width: w * 0.092,
               height: w * 0.092,
               decoration: BoxDecoration(
-                color: _surfaceGrey,
+                color: MyShopColors.surfaceGrey,
                 shape: BoxShape.circle,
               ),
               child: Icon(Icons.info_outline_rounded,
-                  size: w * 0.046, color: _textSecondary),
+                  size: w * 0.046, color: MyShopColors.textSecondary),
             ),
           ),
         ],
@@ -258,9 +244,9 @@ class _JobHeaderCard extends StatelessWidget {
       margin: EdgeInsets.symmetric(horizontal: w * 0.041),
       padding: EdgeInsets.all(w * 0.041),
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -284,7 +270,7 @@ class _JobHeaderCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: w * 0.051,
                   fontWeight: FontWeight.w700,
-                  color: _surfaceWhite,
+                  color: MyShopColors.surfaceWhite,
                 ),
               ),
             ),
@@ -304,7 +290,7 @@ class _JobHeaderCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: w * 0.041,
                           fontWeight: FontWeight.w700,
-                          color: _textPrimary,
+                          color: MyShopColors.textPrimary,
                           height: 1.25,
                         ),
                       ),
@@ -319,7 +305,7 @@ class _JobHeaderCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.028,
                     fontWeight: FontWeight.w400,
-                    color: _textSecondary,
+                    color: MyShopColors.textSecondary,
                   ),
                 ),
                 SizedBox(height: h * 0.009),
@@ -331,7 +317,7 @@ class _JobHeaderCard extends StatelessWidget {
                         w: w),
                     SizedBox(width: w * 0.018),
                     Icon(Icons.location_on_rounded,
-                        size: w * 0.031, color: _gold),
+                        size: w * 0.031, color: MyShopColors.primaryGold),
                     SizedBox(width: w * 0.005),
                     Expanded(
                       child: Text(
@@ -339,7 +325,7 @@ class _JobHeaderCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: w * 0.028,
                           fontWeight: FontWeight.w400,
-                          color: _textSecondary,
+                          color: MyShopColors.textSecondary,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -395,20 +381,20 @@ class _CategoryChip extends StatelessWidget {
       padding: EdgeInsets.symmetric(
           horizontal: w * 0.018, vertical: w * 0.008),
       decoration: BoxDecoration(
-        color: _surfaceGrey,
+        color: MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(w * 0.041),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: w * 0.028, color: _textSecondary),
+          Icon(icon, size: w * 0.028, color: MyShopColors.textSecondary),
           SizedBox(width: w * 0.008),
           Text(
             name,
             style: TextStyle(
               fontSize: w * 0.028,
               fontWeight: FontWeight.w500,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
             ),
           ),
         ],
@@ -432,9 +418,9 @@ class _StatsRow extends StatelessWidget {
       padding: EdgeInsets.symmetric(
           vertical: h * 0.014, horizontal: w * 0.031),
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Row(
         children: [
@@ -449,7 +435,7 @@ class _StatsRow extends StatelessWidget {
               h: h,
             ),
           ),
-          Container(width: 1, height: h * 0.050, color: _divider),
+          Container(width: 1, height: h * 0.050, color: MyShopColors.divider),
           Expanded(
             child: _StatCell(
               icon: Icons.calendar_today_outlined,
@@ -492,14 +478,14 @@ class _StatCell extends StatelessWidget {
           mainAxisAlignment:
               isEnd ? MainAxisAlignment.end : MainAxisAlignment.start,
           children: [
-            Icon(icon, size: w * 0.033, color: _textHint),
+            Icon(icon, size: w * 0.033, color: MyShopColors.textHint),
             SizedBox(width: w * 0.008),
             Text(
               label,
               style: TextStyle(
                 fontSize: w * 0.023,
                 fontWeight: FontWeight.w900,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
                 letterSpacing: 0.6,
               ),
             ),
@@ -511,7 +497,7 @@ class _StatCell extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.038,
             fontWeight: FontWeight.w700,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
       ],
@@ -534,7 +520,7 @@ class _MapSection extends StatelessWidget {
       height: h * 0.178, // ~150dp
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(w * 0.031 - 1),
@@ -559,7 +545,7 @@ class _MapSection extends StatelessWidget {
                   padding: EdgeInsets.symmetric(
                       horizontal: w * 0.031, vertical: h * 0.007),
                   decoration: BoxDecoration(
-                    color: _surfaceWhite,
+                    color: MyShopColors.surfaceWhite,
                     borderRadius: BorderRadius.circular(w * 0.041),
                     boxShadow: [
                       BoxShadow(
@@ -577,12 +563,12 @@ class _MapSection extends StatelessWidget {
                         style: TextStyle(
                           fontSize: w * 0.028,
                           fontWeight: FontWeight.w600,
-                          color: _textPrimary,
+                          color: MyShopColors.textPrimary,
                         ),
                       ),
                       SizedBox(width: w * 0.010),
                       Icon(Icons.chevron_right_rounded,
-                          size: w * 0.036, color: _textSecondary),
+                          size: w * 0.036, color: MyShopColors.textSecondary),
                     ],
                   ),
                 ),
@@ -608,7 +594,7 @@ class _ActiveJobMapPainter extends CustomPainter {
     );
 
     final roadPaint = Paint()
-      ..color = const Color(0xFFFFFFFF).withValues(alpha: 0.55)
+      ..color = MyShopColors.surfaceWhite.withValues(alpha: 0.55)
       ..strokeWidth = 6
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
@@ -644,7 +630,7 @@ class _ActiveJobMapPainter extends CustomPainter {
     canvas.drawPath(
       routePath,
       Paint()
-        ..color = _gold
+        ..color = MyShopColors.primaryGold
         ..strokeWidth = 3.5
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round,
@@ -652,18 +638,18 @@ class _ActiveJobMapPainter extends CustomPainter {
 
     // Artisan marker (dark circle + white inner)
     canvas.drawCircle(
-        artisanPt, 10, Paint()..color = const Color(0xFF46535D));
+        artisanPt, 10, Paint()..color = MyShopColors.darkSlate);
     canvas.drawCircle(
-        artisanPt, 5, Paint()..color = _surfaceWhite);
+        artisanPt, 5, Paint()..color = MyShopColors.surfaceWhite);
 
     // Client marker (red pin circle)
-    canvas.drawCircle(clientPt, 10, Paint()..color = _error);
-    canvas.drawCircle(clientPt, 5, Paint()..color = _surfaceWhite);
+    canvas.drawCircle(clientPt, 10, Paint()..color = MyShopColors.error);
+    canvas.drawCircle(clientPt, 5, Paint()..color = MyShopColors.surfaceWhite);
 
     // Labels
     _drawLabel(canvas, size, artisanFirstName, artisanPt,
-        const Color(0xFF46535D));
-    _drawLabel(canvas, size, 'You', clientPt, _error);
+        MyShopColors.darkSlate);
+    _drawLabel(canvas, size, 'You', clientPt, MyShopColors.error);
   }
 
   void _drawLabel(Canvas canvas, Size size, String text, Offset anchor,
@@ -690,7 +676,7 @@ class _ActiveJobMapPainter extends CustomPainter {
       const Radius.circular(9),
     );
     canvas.drawRRect(
-        pillRect, Paint()..color = _surfaceWhite.withValues(alpha: 0.9));
+        pillRect, Paint()..color = MyShopColors.surfaceWhite.withValues(alpha: 0.9));
 
     tp.paint(
       canvas,
@@ -764,21 +750,21 @@ class _OutlinedActionButton extends StatelessWidget {
       child: Container(
         height: h * 0.054,
         decoration: BoxDecoration(
-          color: _surfaceWhite,
+          color: MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(w * 0.021),
-          border: Border.all(color: _divider),
+          border: Border.all(color: MyShopColors.divider),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: w * 0.038, color: _textPrimary),
+            Icon(icon, size: w * 0.038, color: MyShopColors.textPrimary),
             SizedBox(width: w * 0.015),
             Text(
               label,
               style: TextStyle(
                 fontSize: w * 0.033,
                 fontWeight: FontWeight.w600,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
           ],
@@ -804,9 +790,9 @@ class _ProgressSection extends StatelessWidget {
       margin: EdgeInsets.symmetric(horizontal: w * 0.041),
       padding: EdgeInsets.all(w * 0.041),
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -817,7 +803,7 @@ class _ProgressSection extends StatelessWidget {
               Container(
                 width: w * 0.010,
                 height: h * 0.026,
-                color: _gold,
+                color: MyShopColors.primaryGold,
               ),
               SizedBox(width: w * 0.021),
               Text(
@@ -825,7 +811,7 @@ class _ProgressSection extends StatelessWidget {
                 style: TextStyle(
                   fontSize: w * 0.033,
                   fontWeight: FontWeight.w900,
-                  color: _textPrimary,
+                  color: MyShopColors.textPrimary,
                   letterSpacing: 0.8,
                 ),
               ),
@@ -838,7 +824,7 @@ class _ProgressSection extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.028,
                     fontWeight: FontWeight.w700,
-                    color: _gold,
+                    color: MyShopColors.primaryGold,
                     letterSpacing: 0.5,
                   ),
                 ),
@@ -901,7 +887,7 @@ class _TimelineRow extends StatelessWidget {
                           width: w * 0.054,
                           height: w * 0.054,
                           decoration: const BoxDecoration(
-                            color: _error,
+                            color: MyShopColors.error,
                             shape: BoxShape.circle,
                           ),
                           child: Center(
@@ -910,7 +896,7 @@ class _TimelineRow extends StatelessWidget {
                               style: TextStyle(
                                 fontSize: w * 0.023,
                                 fontWeight: FontWeight.w700,
-                                color: _surfaceWhite,
+                                color: MyShopColors.surfaceWhite,
                               ),
                             ),
                           ),
@@ -924,8 +910,8 @@ class _TimelineRow extends StatelessWidget {
                       child: Container(
                         width: 2,
                         color: isCompleted
-                            ? _success.withValues(alpha: 0.35)
-                            : _divider,
+                            ? MyShopColors.success.withValues(alpha: 0.35)
+                            : MyShopColors.divider,
                       ),
                     ),
                   ),
@@ -954,10 +940,10 @@ class _TimelineRow extends StatelessWidget {
                                 ? FontWeight.w700
                                 : FontWeight.w600,
                             color: isActive
-                                ? _gold
+                                ? MyShopColors.primaryGold
                                 : isCompleted
-                                    ? _textPrimary
-                                    : _textSecondary,
+                                    ? MyShopColors.textPrimary
+                                    : MyShopColors.textSecondary,
                           ),
                         ),
                       ),
@@ -968,7 +954,7 @@ class _TimelineRow extends StatelessWidget {
                           style: TextStyle(
                             fontSize: w * 0.026,
                             fontWeight: FontWeight.w600,
-                            color: isActive ? _gold : _textSecondary,
+                            color: isActive ? MyShopColors.primaryGold : MyShopColors.textSecondary,
                           ),
                         ),
                       ],
@@ -981,7 +967,7 @@ class _TimelineRow extends StatelessWidget {
                       style: TextStyle(
                         fontSize: w * 0.028,
                         fontWeight: FontWeight.w400,
-                        color: _textSecondary,
+                        color: MyShopColors.textSecondary,
                         height: 1.4,
                       ),
                     ),
@@ -1013,11 +999,11 @@ class _TimelineIcon extends StatelessWidget {
           width: size,
           height: size,
           decoration: const BoxDecoration(
-            color: _success,
+            color: MyShopColors.success,
             shape: BoxShape.circle,
           ),
           child: Icon(Icons.check_rounded,
-              size: size * 0.56, color: _surfaceWhite),
+              size: size * 0.56, color: MyShopColors.surfaceWhite),
         );
 
       case _TLStatus.active:
@@ -1027,12 +1013,12 @@ class _TimelineIcon extends StatelessWidget {
             width: size,
             height: size,
             decoration: BoxDecoration(
-              color: _gold.withValues(alpha: 0.15),
+              color: MyShopColors.primaryGold.withValues(alpha: 0.15),
               shape: BoxShape.circle,
-              border: Border.all(color: _gold, width: 2),
+              border: Border.all(color: MyShopColors.primaryGold, width: 2),
             ),
             child: Icon(step.activeIcon,
-                size: size * 0.50, color: _gold),
+                size: size * 0.50, color: MyShopColors.primaryGold),
           );
         }
         // Standard pulsing ring indicator
@@ -1040,16 +1026,16 @@ class _TimelineIcon extends StatelessWidget {
           width: size,
           height: size,
           decoration: BoxDecoration(
-            color: _goldLight,
+            color: MyShopColors.primaryGoldLight,
             shape: BoxShape.circle,
-            border: Border.all(color: _gold, width: 2),
+            border: Border.all(color: MyShopColors.primaryGold, width: 2),
           ),
           child: Center(
             child: Container(
               width: size * 0.35,
               height: size * 0.35,
               decoration: const BoxDecoration(
-                color: _gold,
+                color: MyShopColors.primaryGold,
                 shape: BoxShape.circle,
               ),
             ),
@@ -1061,9 +1047,9 @@ class _TimelineIcon extends StatelessWidget {
           width: size,
           height: size,
           decoration: BoxDecoration(
-            color: _surfaceGrey,
+            color: MyShopColors.surfaceGrey,
             shape: BoxShape.circle,
-            border: Border.all(color: _divider, width: 2),
+            border: Border.all(color: MyShopColors.divider, width: 2),
           ),
         );
     }
@@ -1086,9 +1072,9 @@ class _CostCard extends ConsumerWidget {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: w * 0.041),
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         children: [
@@ -1111,7 +1097,7 @@ class _CostCard extends ConsumerWidget {
                           style: TextStyle(
                             fontSize: w * 0.038,
                             fontWeight: FontWeight.w700,
-                            color: _textPrimary,
+                            color: MyShopColors.textPrimary,
                           ),
                         ),
                         if (!cost.isFinalized) ...[
@@ -1121,7 +1107,7 @@ class _CostCard extends ConsumerWidget {
                             style: TextStyle(
                               fontSize: w * 0.028,
                               fontWeight: FontWeight.w400,
-                              color: _textSecondary,
+                              color: MyShopColors.textSecondary,
                             ),
                           ),
                         ],
@@ -1132,7 +1118,7 @@ class _CostCard extends ConsumerWidget {
                     turns: expanded ? 0.5 : 0,
                     duration: const Duration(milliseconds: 200),
                     child: Icon(Icons.keyboard_arrow_down_rounded,
-                        size: w * 0.056, color: _textSecondary),
+                        size: w * 0.056, color: MyShopColors.textSecondary),
                   ),
                 ],
               ),
@@ -1149,7 +1135,7 @@ class _CostCard extends ConsumerWidget {
               ),
               child: Column(
                 children: [
-                  const Divider(height: 1, color: _divider),
+                  const Divider(height: 1, color: MyShopColors.divider),
                   SizedBox(height: h * 0.014),
                   _CostRow(
                     label: 'Service Fee (Emergency)',
@@ -1165,7 +1151,7 @@ class _CostCard extends ConsumerWidget {
                     h: h,
                   ),
                   SizedBox(height: h * 0.012),
-                  const Divider(height: 1, color: _divider),
+                  const Divider(height: 1, color: MyShopColors.divider),
                   SizedBox(height: h * 0.012),
                   _CostRow(
                     label: cost.totalLabel,
@@ -1181,7 +1167,7 @@ class _CostCard extends ConsumerWidget {
                           horizontal: w * 0.026,
                           vertical: h * 0.010),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFEF3E8),
+                        color: MyShopColors.warningLight,
                         borderRadius:
                             BorderRadius.circular(w * 0.021),
                       ),
@@ -1190,7 +1176,7 @@ class _CostCard extends ConsumerWidget {
                         children: [
                           Icon(Icons.info_outline_rounded,
                               size: w * 0.033,
-                              color: const Color(0xFFF2994A)),
+                              color: MyShopColors.warning),
                           SizedBox(width: w * 0.013),
                           Expanded(
                             child: Text(
@@ -1198,7 +1184,7 @@ class _CostCard extends ConsumerWidget {
                               'market prices. Artisan will provide receipts.',
                               style: TextStyle(
                                 fontSize: w * 0.026,
-                                color: const Color(0xFFF2994A),
+                                color: MyShopColors.warning,
                                 height: 1.4,
                               ),
                             ),
@@ -1245,7 +1231,7 @@ class _CostRow extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.033,
               fontWeight: isBold ? FontWeight.w700 : FontWeight.w400,
-              color: isBold ? _textPrimary : _textSecondary,
+              color: isBold ? MyShopColors.textPrimary : MyShopColors.textSecondary,
             ),
           ),
         ),
@@ -1254,7 +1240,7 @@ class _CostRow extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.033,
             fontWeight: isBold ? FontWeight.w700 : FontWeight.w500,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
       ],
@@ -1275,14 +1261,14 @@ class _SafetyCard extends StatelessWidget {
       margin: EdgeInsets.symmetric(horizontal: w * 0.041),
       padding: EdgeInsets.all(w * 0.041),
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.shield_outlined, size: w * 0.051, color: _success),
+          Icon(Icons.shield_outlined, size: w * 0.051, color: MyShopColors.success),
           SizedBox(width: w * 0.026),
           Expanded(
             child: Column(
@@ -1293,7 +1279,7 @@ class _SafetyCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.036,
                     fontWeight: FontWeight.w700,
-                    color: _textPrimary,
+                    color: MyShopColors.textPrimary,
                   ),
                 ),
                 SizedBox(height: h * 0.005),
@@ -1303,7 +1289,7 @@ class _SafetyCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.028,
                     fontWeight: FontWeight.w400,
-                    color: _textSecondary,
+                    color: MyShopColors.textSecondary,
                     height: 1.4,
                   ),
                 ),
@@ -1332,8 +1318,8 @@ class _BottomBar extends ConsumerWidget {
 
     return Container(
       decoration: const BoxDecoration(
-        color: _surfaceWhite,
-        border: Border(top: BorderSide(color: _divider)),
+        color: MyShopColors.surfaceWhite,
+        border: Border(top: BorderSide(color: MyShopColors.divider)),
       ),
       padding: EdgeInsets.only(
         left: w * 0.041,
@@ -1350,13 +1336,13 @@ class _BottomBar extends ConsumerWidget {
               if (phase == ActiveJobPhase.inProgress ||
                   phase == ActiveJobPhase.awaitingApproval)
                 Icon(Icons.info_rounded,
-                    size: w * 0.036, color: _gold)
+                    size: w * 0.036, color: MyShopColors.primaryGold)
               else
                 Container(
                   width: w * 0.023,
                   height: w * 0.023,
                   decoration: BoxDecoration(
-                    color: _gold,
+                    color: MyShopColors.primaryGold,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -1367,7 +1353,7 @@ class _BottomBar extends ConsumerWidget {
                   style: TextStyle(
                     fontSize: w * 0.028,
                     fontWeight: FontWeight.w500,
-                    color: _textSecondary,
+                    color: MyShopColors.textSecondary,
                   ),
                 ),
               ),
@@ -1383,7 +1369,7 @@ class _BottomBar extends ConsumerWidget {
                       style: TextStyle(
                         fontSize: w * 0.028,
                         fontWeight: FontWeight.w500,
-                        color: _textHint,
+                        color: MyShopColors.textHint,
                       ),
                     ),
                   ),
@@ -1403,7 +1389,7 @@ class _BottomBar extends ConsumerWidget {
                       : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: _ctaBgColor(phase, actionState),
-                disabledBackgroundColor: _surfaceGrey,
+                disabledBackgroundColor: MyShopColors.surfaceGrey,
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(w * 0.031),
@@ -1434,8 +1420,8 @@ class _BottomBar extends ConsumerWidget {
       };
 
   Color _ctaBgColor(ActiveJobPhase phase, ActiveJobActionState state) {
-    if (state.isBusy) return _surfaceGrey;
-    return _isCtaEnabled(phase) ? _darkSlate : _surfaceGrey;
+    if (state.isBusy) return MyShopColors.surfaceGrey;
+    return _isCtaEnabled(phase) ? MyShopColors.darkSlate : MyShopColors.surfaceGrey;
   }
 
   void _onCtaTap(WidgetRef ref, ActiveJobData job) {
@@ -1451,7 +1437,7 @@ class _BottomBar extends ConsumerWidget {
       double w, double h) {
     final isEnabled = _isCtaEnabled(phase);
     final labelColor =
-        (state.isBusy || !isEnabled) ? _disabled : _surfaceWhite;
+        (state.isBusy || !isEnabled) ? MyShopColors.disabled : MyShopColors.surfaceWhite;
 
     if (state.isConfirmingArrival || state.isMarkingComplete) {
       return SizedBox(
@@ -1459,7 +1445,7 @@ class _BottomBar extends ConsumerWidget {
         height: w * 0.051,
         child: const CircularProgressIndicator(
           strokeWidth: 2,
-          color: _surfaceWhite,
+          color: MyShopColors.surfaceWhite,
         ),
       );
     }
@@ -1493,7 +1479,7 @@ class _LoadingSkeleton extends StatelessWidget {
     return Column(
       children: [
         Container(
-          color: _surfaceWhite,
+          color: MyShopColors.surfaceWhite,
           padding: EdgeInsets.only(
             top: topPad + h * 0.010,
             bottom: h * 0.017,
@@ -1544,7 +1530,7 @@ class _Shimmer extends StatelessWidget {
       width: w,
       height: h,
       decoration: BoxDecoration(
-        color: const Color(0xFFE0E0E0),
+        color: MyShopColors.divider,
         borderRadius: BorderRadius.circular(r),
       ),
     );
@@ -1569,14 +1555,14 @@ class _ErrorBody extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.error_outline_rounded,
-                size: w * 0.154, color: _textHint),
+                size: w * 0.154, color: MyShopColors.textHint),
             SizedBox(height: h * 0.019),
             Text(
               'Could not load job details',
               style: TextStyle(
                 fontSize: w * 0.041,
                 fontWeight: FontWeight.w700,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -1584,7 +1570,7 @@ class _ErrorBody extends StatelessWidget {
             Text(
               'Check your connection and try again.',
               style: TextStyle(
-                  fontSize: w * 0.033, color: _textSecondary),
+                  fontSize: w * 0.033, color: MyShopColors.textSecondary),
               textAlign: TextAlign.center,
             ),
             SizedBox(height: h * 0.028),
@@ -1594,7 +1580,7 @@ class _ErrorBody extends StatelessWidget {
                 padding: EdgeInsets.symmetric(
                     horizontal: w * 0.077, vertical: h * 0.017),
                 decoration: BoxDecoration(
-                  color: _darkSlate,
+                  color: MyShopColors.darkSlate,
                   borderRadius: BorderRadius.circular(w * 0.021),
                 ),
                 child: Text(
@@ -1602,7 +1588,7 @@ class _ErrorBody extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.038,
                     fontWeight: FontWeight.w600,
-                    color: _surfaceWhite,
+                    color: MyShopColors.surfaceWhite,
                   ),
                 ),
               ),

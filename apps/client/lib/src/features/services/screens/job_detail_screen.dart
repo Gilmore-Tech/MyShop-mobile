@@ -1,25 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/bid_list_provider.dart';
 import '../providers/job_detail_provider.dart';
 import '../widgets/bid_list_sheet.dart';
-
-// ── Design Tokens ─────────────────────────────────────────────────────────────
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _surfaceGrey   = Color(0xFFF3F5F6);
-const _offWhite      = Color(0xFFF6F7F8);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _textHint      = Color(0xFFBDBDBD);
-const _gold          = Color(0xFFF5A623);
-const _goldLight     = Color(0xFFFFF8EC);
-const _darkSlate     = Color(0xFF46535D);
-const _success       = Color(0xFF27AE60);
-const _successLight  = Color(0xFFE8F8EF);
-const _warning       = Color(0xFFF2994A);
-const _divider       = Color(0xFFE0E0E0);
-const _disabled      = Color(0xFFBDBDBD);
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD 4.5 — Client views full job request detail, timeline progression,
@@ -39,7 +24,7 @@ class JobDetailScreen extends ConsumerWidget {
     final jobAsync = ref.watch(jobDetailProvider(jobId));
 
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       body: jobAsync.when(
         loading: () => _LoadingSkeleton(w: w, h: h),
         error: (e, _) => _ErrorBody(
@@ -71,22 +56,26 @@ class _JobDetailBody extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(height: h * 0.019),
+                SizedBox(height: h * 0.024),
                 _JobSummaryCard(job: job, w: w, h: h),
-                SizedBox(height: h * 0.019),
+                SizedBox(height: h * 0.033),
                 _DescriptionSection(description: job.description, w: w, h: h),
-                SizedBox(height: h * 0.019),
+                SizedBox(height: h * 0.033),
                 _ReferencePhotosSection(
                   photoCount: job.photoCount,
                   photoColors: job.photoColors,
                   w: w,
                   h: h,
                 ),
-                SizedBox(height: h * 0.019),
-                _TimingSection(isImmediate: job.isImmediate, w: w, h: h),
-                SizedBox(height: h * 0.019),
+                SizedBox(height: h * 0.033),
+                _TimingSection(
+                  isImmediate:  job.isImmediate,
+                  scheduledFor: job.scheduledFor,
+                  w: w, h: h,
+                ),
+                SizedBox(height: h * 0.033),
                 _TimelineSection(steps: job.timeline, w: w, h: h),
-                SizedBox(height: h * 0.028),
+                SizedBox(height: h * 0.033),
               ],
             ),
           ),
@@ -115,7 +104,7 @@ class _AppBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final topPad = MediaQuery.paddingOf(context).top;
     return Container(
-      color: _surfaceWhite,
+      color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.only(
         top: topPad + h * 0.010,
         bottom: h * 0.017,
@@ -132,7 +121,7 @@ class _AppBar extends StatelessWidget {
               child: Icon(
                 Icons.arrow_back,
                 size: w * 0.056,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
           ),
@@ -145,7 +134,7 @@ class _AppBar extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.051, // ~20dp
                     fontWeight: FontWeight.w700,
-                    color: _textPrimary,
+                    color: MyShopColors.textPrimary,
                     height: 1.2,
                   ),
                 ),
@@ -155,7 +144,7 @@ class _AppBar extends StatelessWidget {
                     Icon(
                       Icons.location_on,
                       size: w * 0.033,
-                      color: _gold,
+                      color: MyShopColors.primaryGold,
                     ),
                     SizedBox(width: w * 0.010),
                     Text(
@@ -163,7 +152,7 @@ class _AppBar extends StatelessWidget {
                       style: TextStyle(
                         fontSize: w * 0.028,
                         fontWeight: FontWeight.w400,
-                        color: _textSecondary,
+                        color: MyShopColors.textSecondary,
                       ),
                     ),
                   ],
@@ -179,7 +168,7 @@ class _AppBar extends StatelessWidget {
               child: Icon(
                 Icons.more_vert_rounded,
                 size: w * 0.056,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
           ),
@@ -207,7 +196,7 @@ class _MoreMenuSheet extends StatelessWidget {
     final bottomPad = MediaQuery.paddingOf(context).bottom;
     return Container(
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.vertical(top: Radius.circular(w * 0.041)),
       ),
       padding: EdgeInsets.only(
@@ -220,16 +209,16 @@ class _MoreMenuSheet extends StatelessWidget {
           _MenuRow(
             icon: Icons.cancel_outlined,
             label: 'Cancel Request',
-            color: const Color(0xFFEB5757),
+            color: MyShopColors.error,
             onTap: () => Navigator.of(context).pop(),
             w: w,
             h: h,
           ),
-          const Divider(height: 1, color: _divider),
+          const Divider(height: 1, color: MyShopColors.divider),
           _MenuRow(
             icon: Icons.share_outlined,
             label: 'Share Job Link',
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
             onTap: () => Navigator.of(context).pop(),
             w: w,
             h: h,
@@ -296,11 +285,17 @@ class _JobSummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: w * 0.041),
-      padding: EdgeInsets.all(w * 0.041),
+      padding: EdgeInsets.all(w * 0.046),
       decoration: BoxDecoration(
-        color: _surfaceWhite,
-        borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _divider),
+        color:        MyShopColors.surfaceWhite,
+        borderRadius: BorderRadius.circular(w * 0.041),
+        boxShadow: [
+          BoxShadow(
+            color:      Colors.black.withValues(alpha: 0.04),
+            blurRadius: w * 0.031,
+            offset:     Offset(0, w * 0.005),
+          ),
+        ],
       ),
       child: Column(
         children: [
@@ -312,13 +307,13 @@ class _JobSummaryCard extends StatelessWidget {
                 width: w * 0.113,
                 height: w * 0.113,
                 decoration: const BoxDecoration(
-                  color: _surfaceGrey,
+                  color: MyShopColors.surfaceGrey,
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   Icons.handyman_rounded,
                   size: w * 0.056,
-                  color: _textSecondary,
+                  color: MyShopColors.textSecondary,
                 ),
               ),
               SizedBox(width: w * 0.038),
@@ -331,7 +326,7 @@ class _JobSummaryCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: w * 0.046,
                         fontWeight: FontWeight.w700,
-                        color: _textPrimary,
+                        color: MyShopColors.textPrimary,
                         height: 1.2,
                       ),
                     ),
@@ -341,7 +336,7 @@ class _JobSummaryCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: w * 0.033,
                         fontWeight: FontWeight.w400,
-                        color: _textSecondary,
+                        color: MyShopColors.textSecondary,
                       ),
                     ),
                   ],
@@ -352,46 +347,47 @@ class _JobSummaryCard extends StatelessWidget {
               _StatusBadge(status: job.status, w: w),
             ],
           ),
-          SizedBox(height: h * 0.019),
-          const Divider(height: 1, color: _divider),
-          SizedBox(height: h * 0.017),
-          // Bids received row
-          Row(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'BIDS RECEIVED',
-                    style: TextStyle(
-                      fontSize: w * 0.026,
-                      fontWeight: FontWeight.w900,
-                      color: _textSecondary,
-                      letterSpacing: 1.2,
+          if (job.bids.count > 0) ...[
+            SizedBox(height: h * 0.019),
+            const Divider(height: 1, color: MyShopColors.divider),
+            SizedBox(height: h * 0.017),
+            Row(
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'BIDS RECEIVED',
+                      style: TextStyle(
+                        fontSize:      w * 0.026,
+                        fontWeight:    FontWeight.w900,
+                        color:         MyShopColors.textSecondary,
+                        letterSpacing: 1.2,
+                      ),
                     ),
-                  ),
-                  SizedBox(height: h * 0.005),
-                  Row(
-                    children: [
-                      Text(
-                        '${job.bids.count} Artisans',
-                        style: TextStyle(
-                          fontSize: w * 0.038,
-                          fontWeight: FontWeight.w700,
-                          color: _textPrimary,
+                    SizedBox(height: h * 0.005),
+                    Row(
+                      children: [
+                        Text(
+                          '${job.bids.count} Artisans',
+                          style: TextStyle(
+                            fontSize:   w * 0.038,
+                            fontWeight: FontWeight.w700,
+                            color:      MyShopColors.textPrimary,
+                          ),
                         ),
-                      ),
-                      SizedBox(width: w * 0.021),
-                      _AvatarStack(
-                        colors: job.bids.avatarColors,
-                        w: w,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ],
-          ),
+                        SizedBox(width: w * 0.021),
+                        _AvatarStack(
+                          colors: job.bids.avatarColors,
+                          w: w,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -453,13 +449,13 @@ class _AvatarStack extends StatelessWidget {
                 color: colors[i],
                 shape: BoxShape.circle,
                 border: const Border.fromBorderSide(
-                  BorderSide(color: _surfaceWhite, width: 1.5),
+                  BorderSide(color: MyShopColors.surfaceWhite, width: 1.5),
                 ),
               ),
               child: Icon(
                 Icons.person,
                 size: size * 0.55,
-                color: _surfaceWhite.withValues(alpha: 0.8),
+                color: MyShopColors.surfaceWhite.withValues(alpha: 0.8),
               ),
             ),
           );
@@ -483,14 +479,8 @@ class _DescriptionSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: w * 0.041),
-      padding: EdgeInsets.all(w * 0.041),
-      decoration: BoxDecoration(
-        color: _surfaceWhite,
-        borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _divider),
-      ),
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -501,7 +491,7 @@ class _DescriptionSection extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.036,
               fontWeight: FontWeight.w400,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
               height: 1.6,
             ),
           ),
@@ -527,68 +517,64 @@ class _ReferencePhotosSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final extraCount = photoCount - photoColors.length;
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: w * 0.041),
-      padding: EdgeInsets.all(w * 0.041),
-      decoration: BoxDecoration(
-        color: _surfaceWhite,
-        borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _divider),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    final cardWidth = w * 0.475; // ~half screen so the next one peeks in
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: w * 0.041),
+          child: Row(
             children: [
               _SectionTitle(label: 'Reference Photos', w: w, h: h),
               const Spacer(),
-              if (extraCount > 0)
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: w * 0.026,
-                    vertical: h * 0.005,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _goldLight,
-                    borderRadius: BorderRadius.circular(w * 0.051),
-                    border: Border.all(color: _gold.withValues(alpha: 0.4)),
-                  ),
-                  child: Text(
-                    '+$extraCount PHOTOS',
-                    style: TextStyle(
-                      fontSize: w * 0.026,
-                      fontWeight: FontWeight.w700,
-                      color: _gold,
-                      letterSpacing: 0.6,
-                    ),
+              if (photoCount > 0)
+                Text(
+                  '$photoCount PHOTOS',
+                  style: TextStyle(
+                    fontSize:      w * 0.026,
+                    fontWeight:    FontWeight.w700,
+                    color:         MyShopColors.primaryGold,
+                    letterSpacing: 0.8,
                   ),
                 ),
             ],
           ),
-          SizedBox(height: h * 0.014),
-          Row(
-            children: photoColors.asMap().entries.map((entry) {
-              final isLast = entry.key == photoColors.length - 1;
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(right: isLast ? 0 : w * 0.026),
-                  child: _PhotoCard(color: entry.value, w: w, h: h),
-                ),
-              );
-            }).toList(),
+        ),
+        SizedBox(height: h * 0.014),
+        SizedBox(
+          height: cardWidth * (11 / 16),
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding:         EdgeInsets.symmetric(horizontal: w * 0.041),
+            itemCount:       photoColors.length,
+            separatorBuilder: (_, __) => SizedBox(width: w * 0.026),
+            itemBuilder: (_, i) => SizedBox(
+              width: cardWidth,
+              child: _PhotoCard(
+                color: photoColors[i],
+                index: i + 1,
+                w: w,
+                h: h,
+              ),
+            ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
 class _PhotoCard extends StatelessWidget {
-  final Color color;
+  final Color  color;
+  final int    index;
   final double w;
   final double h;
-  const _PhotoCard({required this.color, required this.w, required this.h});
+  const _PhotoCard({
+    required this.color,
+    required this.index,
+    required this.w,
+    required this.h,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -620,11 +606,11 @@ class _PhotoCard extends StatelessWidget {
               right: 0,
               child: Center(
                 child: Text(
-                  'VIEW REFERENCE',
+                  'VIEW REFERENCE $index',
                   style: TextStyle(
                     fontSize: w * 0.026,
                     fontWeight: FontWeight.w700,
-                    color: _surfaceWhite,
+                    color: MyShopColors.surfaceWhite,
                     letterSpacing: 0.8,
                   ),
                 ),
@@ -640,14 +626,36 @@ class _PhotoCard extends StatelessWidget {
 // ── Timing Section ─────────────────────────────────────────────────────────────
 
 class _TimingSection extends StatelessWidget {
-  final bool isImmediate;
-  final double w;
-  final double h;
+  final bool      isImmediate;
+  final DateTime? scheduledFor;
+  final double    w;
+  final double    h;
+
   const _TimingSection({
     required this.isImmediate,
+    required this.scheduledFor,
     required this.w,
     required this.h,
   });
+
+  String _valueLabel() {
+    if (isImmediate || scheduledFor == null) return 'Now';
+    final dt = scheduledFor!;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final that  = DateTime(dt.year, dt.month, dt.day);
+    final diff  = that.difference(today).inDays;
+
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final mm = dt.minute.toString().padLeft(2, '0');
+    final time = '$hh:$mm';
+
+    if (diff == 0)  return 'Today, $time';
+    if (diff == 1)  return 'Tomorrow, $time';
+    const months = ['Jan','Feb','Mar','Apr','May','Jun',
+                    'Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '${dt.day} ${months[dt.month - 1]}, $time';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -655,115 +663,57 @@ class _TimingSection extends StatelessWidget {
       margin: EdgeInsets.symmetric(horizontal: w * 0.041),
       padding: EdgeInsets.symmetric(
         horizontal: w * 0.041,
-        vertical: h * 0.019,
+        vertical:   h * 0.014,
       ),
       decoration: BoxDecoration(
-        color: _surfaceWhite,
-        borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _divider),
+        color:        MyShopColors.surfaceGrey,
+        borderRadius: BorderRadius.circular(w * 0.041),
       ),
       child: Row(
         children: [
-          Container(
-            width: w * 0.092,
-            height: w * 0.092,
-            decoration: const BoxDecoration(
-              color: _surfaceGrey,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.access_time_rounded,
-              size: w * 0.046,
-              color: _textSecondary,
-            ),
-          ),
-          SizedBox(width: w * 0.038),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Service Timing',
-                  style: TextStyle(
-                    fontSize: w * 0.036,
-                    fontWeight: FontWeight.w600,
-                    color: _textPrimary,
-                  ),
-                ),
-                SizedBox(height: h * 0.004),
-                Text(
-                  'When do you need the help?',
-                  style: TextStyle(
-                    fontSize: w * 0.031,
-                    fontWeight: FontWeight.w400,
-                    color: _textSecondary,
-                  ),
-                ),
-              ],
-            ),
+          Icon(
+            Icons.access_time_rounded,
+            size:  w * 0.051,
+            color: MyShopColors.textPrimary,
           ),
           SizedBox(width: w * 0.026),
-          // Read-only toggle display
-          Container(
-            height: h * 0.038,
-            decoration: BoxDecoration(
-              color: _surfaceGrey,
-              borderRadius: BorderRadius.circular(w * 0.051),
+          Expanded(
+            child: Text(
+              'Service Timing',
+              style: TextStyle(
+                fontSize:   w * 0.036,
+                fontWeight: FontWeight.w700,
+                color:      MyShopColors.textPrimary,
+              ),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _ReadOnlyToggleTab(
-                  label: 'Now',
-                  isSelected: isImmediate,
-                  w: w,
-                  h: h,
-                ),
-                _ReadOnlyToggleTab(
-                  label: 'Later',
-                  isSelected: !isImmediate,
-                  w: w,
-                  h: h,
+          ),
+          SizedBox(width: w * 0.021),
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: w * 0.041,
+              vertical:   h * 0.009,
+            ),
+            decoration: BoxDecoration(
+              color:        MyShopColors.surfaceWhite,
+              borderRadius: BorderRadius.circular(w * 0.026),
+              boxShadow: [
+                BoxShadow(
+                  color:      Colors.black.withValues(alpha: 0.06),
+                  blurRadius: w * 0.013,
+                  offset:     Offset(0, w * 0.003),
                 ),
               ],
+            ),
+            child: Text(
+              _valueLabel(),
+              style: TextStyle(
+                fontSize:   w * 0.033,
+                fontWeight: FontWeight.w700,
+                color:      MyShopColors.textPrimary,
+              ),
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _ReadOnlyToggleTab extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final double w;
-  final double h;
-  const _ReadOnlyToggleTab({
-    required this.label,
-    required this.isSelected,
-    required this.w,
-    required this.h,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: w * 0.046,
-        vertical: h * 0.005,
-      ),
-      decoration: BoxDecoration(
-        color: isSelected ? _gold : Colors.transparent,
-        borderRadius: BorderRadius.circular(w * 0.051),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: w * 0.033,
-          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-          color: isSelected ? _surfaceWhite : _textSecondary,
-        ),
       ),
     );
   }
@@ -783,14 +733,8 @@ class _TimelineSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: w * 0.041),
-      padding: EdgeInsets.all(w * 0.041),
-      decoration: BoxDecoration(
-        color: _surfaceWhite,
-        borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _divider),
-      ),
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -839,11 +783,12 @@ class _TimelineRow extends StatelessWidget {
                 _TimelineIcon(status: step.status, w: w),
                 if (!isLast)
                   Expanded(
-                    child: Container(
-                      width: 2,
+                    child: _DashedVerticalLine(
                       color: step.status == TimelineStepStatus.completed
-                          ? _success
-                          : _divider,
+                          ? MyShopColors.textPrimary
+                          : MyShopColors.divider,
+                      dashLength: 4,
+                      gapLength:  4,
                     ),
                   ),
               ],
@@ -867,8 +812,8 @@ class _TimelineRow extends StatelessWidget {
                             fontSize: w * 0.038,
                             fontWeight: FontWeight.w700,
                             color: step.status == TimelineStepStatus.pending
-                                ? _textHint
-                                : _textPrimary,
+                                ? MyShopColors.textHint
+                                : MyShopColors.textPrimary,
                           ),
                         ),
                       ),
@@ -878,7 +823,7 @@ class _TimelineRow extends StatelessWidget {
                           style: TextStyle(
                             fontSize: w * 0.028,
                             fontWeight: FontWeight.w400,
-                            color: _textSecondary,
+                            color: MyShopColors.textSecondary,
                           ),
                         ),
                       if (step.badgeLabel != null)
@@ -896,8 +841,8 @@ class _TimelineRow extends StatelessWidget {
                       fontSize: w * 0.031,
                       fontWeight: FontWeight.w400,
                       color: step.status == TimelineStepStatus.pending
-                          ? _textHint
-                          : _textSecondary,
+                          ? MyShopColors.textHint
+                          : MyShopColors.textSecondary,
                       height: 1.5,
                     ),
                   ),
@@ -924,29 +869,29 @@ class _TimelineIcon extends StatelessWidget {
           width: size,
           height: size,
           decoration: const BoxDecoration(
-            color: _success,
+            color: MyShopColors.textPrimary,
             shape: BoxShape.circle,
           ),
           child: Icon(
             Icons.check_rounded,
             size: size * 0.6,
-            color: _surfaceWhite,
+            color: MyShopColors.surfaceWhite,
           ),
         ),
       TimelineStepStatus.active => Container(
           width: size,
           height: size,
           decoration: BoxDecoration(
-            color: _gold.withValues(alpha: 0.15),
+            color: MyShopColors.primaryGold.withValues(alpha: 0.15),
             shape: BoxShape.circle,
-            border: Border.all(color: _gold, width: 2),
+            border: Border.all(color: MyShopColors.primaryGold, width: 2),
           ),
           child: Center(
             child: Container(
               width: size * 0.38,
               height: size * 0.38,
               decoration: const BoxDecoration(
-                color: _gold,
+                color: MyShopColors.primaryGold,
                 shape: BoxShape.circle,
               ),
             ),
@@ -956,9 +901,9 @@ class _TimelineIcon extends StatelessWidget {
           width: size,
           height: size,
           decoration: BoxDecoration(
-            color: _surfaceGrey,
+            color: MyShopColors.surfaceGrey,
             shape: BoxShape.circle,
-            border: Border.all(color: _divider, width: 2),
+            border: Border.all(color: MyShopColors.divider, width: 2),
           ),
         ),
     };
@@ -978,9 +923,9 @@ class _TimelineBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (bg, fg) = switch (status) {
-      TimelineStepStatus.active  => (_goldLight, _gold),
-      TimelineStepStatus.pending => (_surfaceGrey, _disabled),
-      _                          => (_successLight, _success),
+      TimelineStepStatus.active  => (MyShopColors.primaryGoldLight, MyShopColors.primaryGold),
+      TimelineStepStatus.pending => (MyShopColors.surfaceGrey, MyShopColors.disabled),
+      _                          => (MyShopColors.successLight, MyShopColors.success),
     };
     return Container(
       padding: EdgeInsets.symmetric(
@@ -1031,8 +976,8 @@ class _BottomActionBar extends StatelessWidget {
         bottom: h * 0.014 + bottomPad,
       ),
       decoration: const BoxDecoration(
-        color: _surfaceWhite,
-        border: Border(top: BorderSide(color: _divider)),
+        color: MyShopColors.surfaceWhite,
+        border: Border(top: BorderSide(color: MyShopColors.divider)),
       ),
       child: Row(
         children: [
@@ -1068,9 +1013,9 @@ class _ChatButton extends StatelessWidget {
         height: h * 0.062,
         width: w * 0.231, // ~90dp
         decoration: BoxDecoration(
-          color: _surfaceWhite,
+          color: MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(w * 0.021),
-          border: Border.all(color: _divider, width: 1.5),
+          border: Border.all(color: MyShopColors.divider, width: 1.5),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1078,7 +1023,7 @@ class _ChatButton extends StatelessWidget {
             Icon(
               Icons.chat_bubble_outline_rounded,
               size: w * 0.046,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
             ),
             SizedBox(width: w * 0.015),
             Text(
@@ -1086,7 +1031,7 @@ class _ChatButton extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.036,
                 fontWeight: FontWeight.w600,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
           ],
@@ -1126,55 +1071,66 @@ class _ViewBidsButton extends StatelessWidget {
         children: [
           Container(
             height: h * 0.062,
+            padding: EdgeInsets.symmetric(horizontal: w * 0.041),
             decoration: BoxDecoration(
-              color: _darkSlate,
+              color:        MyShopColors.darkSlate,
               borderRadius: BorderRadius.circular(w * 0.021),
             ),
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'ACTION NEEDED',
-                    style: TextStyle(
-                      fontSize: w * 0.026,
-                      fontWeight: FontWeight.w700,
-                      color: _surfaceWhite.withValues(alpha: 0.7),
-                      letterSpacing: 0.8,
-                    ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        'ACTION NEEDED',
+                        style: TextStyle(
+                          fontSize:      w * 0.026,
+                          fontWeight:    FontWeight.w700,
+                          color:         MyShopColors.surfaceWhite.withValues(alpha: 0.7),
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      SizedBox(height: h * 0.002),
+                      Text(
+                        'View $bidCount Bids',
+                        style: TextStyle(
+                          fontSize:   w * 0.038,
+                          fontWeight: FontWeight.w700,
+                          color:      MyShopColors.surfaceWhite,
+                        ),
+                      ),
+                    ],
                   ),
-                  SizedBox(height: h * 0.002),
-                  Text(
-                    'View $bidCount Bids',
-                    style: TextStyle(
-                      fontSize: w * 0.038,
-                      fontWeight: FontWeight.w700,
-                      color: _surfaceWhite,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size:  w * 0.056,
+                  color: MyShopColors.surfaceWhite,
+                ),
+              ],
             ),
           ),
-          // Orange badge
+          // Bid-count badge (primary gold)
           Positioned(
-            top: -(h * 0.012),
+            top:   -(h * 0.012),
             right: -(w * 0.015),
             child: Container(
-              width: w * 0.072,
-              height: w * 0.072,
+              width:  w * 0.077,
+              height: w * 0.077,
               decoration: BoxDecoration(
-                color: _warning,
+                color: MyShopColors.primaryGold,
                 shape: BoxShape.circle,
-                border: Border.all(color: _surfaceWhite, width: 2),
+                border: Border.all(color: MyShopColors.surfaceWhite, width: 2),
               ),
               child: Center(
                 child: Text(
                   '$bidCount',
                   style: TextStyle(
-                    fontSize: w * 0.028,
+                    fontSize:   w * 0.028,
                     fontWeight: FontWeight.w700,
-                    color: _surfaceWhite,
+                    color:      MyShopColors.surfaceWhite,
                   ),
                 ),
               ),
@@ -1199,9 +1155,10 @@ class _SectionTitle extends StatelessWidget {
     return Text(
       label,
       style: TextStyle(
-        fontSize: w * 0.041,
-        fontWeight: FontWeight.w700,
-        color: _textPrimary,
+        fontSize:   w * 0.038,
+        fontWeight: FontWeight.w600,
+        color:      MyShopColors.textPrimary,
+        letterSpacing: -0.2,
       ),
     );
   }
@@ -1221,7 +1178,7 @@ class _LoadingSkeleton extends StatelessWidget {
       children: [
         // AppBar skeleton
         Container(
-          color: _surfaceWhite,
+          color: MyShopColors.surfaceWhite,
           padding: EdgeInsets.only(
             top: topPad + h * 0.010,
             bottom: h * 0.017,
@@ -1277,7 +1234,7 @@ class _ShimmerCard extends StatelessWidget {
       width: double.infinity,
       height: h,
       decoration: BoxDecoration(
-        color: const Color(0xFFE0E0E0),
+        color: MyShopColors.divider,
         borderRadius: BorderRadius.circular(w * 0.031),
       ),
     );
@@ -1296,7 +1253,7 @@ class _Shimmer extends StatelessWidget {
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: const Color(0xFFE0E0E0),
+        color: MyShopColors.divider,
         borderRadius: BorderRadius.circular(radius ?? 4),
       ),
     );
@@ -1322,7 +1279,7 @@ class _ErrorBody extends StatelessWidget {
             Icon(
               Icons.error_outline_rounded,
               size: w * 0.154,
-              color: _textHint,
+              color: MyShopColors.textHint,
             ),
             SizedBox(height: h * 0.019),
             Text(
@@ -1330,7 +1287,7 @@ class _ErrorBody extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.041,
                 fontWeight: FontWeight.w700,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -1340,7 +1297,7 @@ class _ErrorBody extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.033,
                 fontWeight: FontWeight.w400,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -1353,7 +1310,7 @@ class _ErrorBody extends StatelessWidget {
                   vertical: h * 0.017,
                 ),
                 decoration: BoxDecoration(
-                  color: _darkSlate,
+                  color: MyShopColors.darkSlate,
                   borderRadius: BorderRadius.circular(w * 0.021),
                 ),
                 child: Text(
@@ -1361,7 +1318,7 @@ class _ErrorBody extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.038,
                     fontWeight: FontWeight.w600,
-                    color: _surfaceWhite,
+                    color: MyShopColors.surfaceWhite,
                   ),
                 ),
               ),
@@ -1371,4 +1328,66 @@ class _ErrorBody extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── Dashed vertical line (timeline connector) ─────────────────────────────────
+
+class _DashedVerticalLine extends StatelessWidget {
+  final Color  color;
+  final double dashLength;
+  final double gapLength;
+
+  const _DashedVerticalLine({
+    required this.color,
+    required this.dashLength,
+    required this.gapLength,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 2,
+      child: CustomPaint(
+        painter: _DashedVerticalLinePainter(
+          color:      color,
+          dashLength: dashLength,
+          gapLength:  gapLength,
+        ),
+      ),
+    );
+  }
+}
+
+class _DashedVerticalLinePainter extends CustomPainter {
+  final Color  color;
+  final double dashLength;
+  final double gapLength;
+
+  const _DashedVerticalLinePainter({
+    required this.color,
+    required this.dashLength,
+    required this.gapLength,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color       = color
+      ..strokeWidth = 2
+      ..style       = PaintingStyle.stroke;
+
+    final x = size.width / 2;
+    var y = 0.0;
+    while (y < size.height) {
+      final end = (y + dashLength).clamp(0.0, size.height);
+      canvas.drawLine(Offset(x, y), Offset(x, end), paint);
+      y = end + gapLength;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedVerticalLinePainter old) =>
+      old.color      != color      ||
+      old.dashLength != dashLength ||
+      old.gapLength  != gapLength;
 }

@@ -1,26 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/bid_detail_provider.dart';
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _surfaceGrey   = Color(0xFFF3F5F6);
-const _offWhite      = Color(0xFFF6F7F8);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _textHint      = Color(0xFFBDBDBD);
-const _gold      = Color(0xFFF5A623);
-const _darkSlate = Color(0xFF46535D);
-const _success       = Color(0xFF27AE60);
-const _successLight  = Color(0xFFE8F8EF);
-const _warning       = Color(0xFFF2994A);
-const _warningLight  = Color(0xFFFEF3E8);
-const _error         = Color(0xFFEB5757);
-const _divider       = Color(0xFFE0E0E0);
-const _disabled      = Color(0xFFBDBDBD);
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD 4.5 — Client reviews full bid details: artisan profile, bid breakdown,
@@ -40,7 +24,7 @@ class BidDetailScreen extends ConsumerWidget {
     final bidAsync = ref.watch(bidDetailProvider(bidId));
 
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       body: bidAsync.when(
         loading: () => _LoadingSkeleton(w: w, h: h),
         error: (_, __) => _ErrorBody(
@@ -152,7 +136,7 @@ class _AppBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final topPad = MediaQuery.paddingOf(context).top;
     return Container(
-      color: _surfaceWhite,
+      color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.only(
         top: topPad + h * 0.010,
         bottom: h * 0.017,
@@ -166,7 +150,7 @@ class _AppBar extends StatelessWidget {
             behavior: HitTestBehavior.opaque,
             child: Padding(
               padding: EdgeInsets.only(right: w * 0.031),
-              child: Icon(Icons.arrow_back, size: w * 0.056, color: _textPrimary),
+              child: Icon(Icons.arrow_back, size: w * 0.056, color: MyShopColors.textPrimary),
             ),
           ),
           Text(
@@ -174,7 +158,7 @@ class _AppBar extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.051,
               fontWeight: FontWeight.w700,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
         ],
@@ -216,7 +200,7 @@ class _ArtisanProfileCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: w * 0.054,
                   fontWeight: FontWeight.w700,
-                  color: _surfaceWhite,
+                  color: MyShopColors.surfaceWhite,
                 ),
               ),
             ),
@@ -235,7 +219,7 @@ class _ArtisanProfileCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: w * 0.043,
                           fontWeight: FontWeight.w700,
-                          color: _textPrimary,
+                          color: MyShopColors.textPrimary,
                         ),
                       ),
                     ),
@@ -254,7 +238,7 @@ class _ArtisanProfileCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.033,
                     fontWeight: FontWeight.w400,
-                    color: _textSecondary,
+                    color: MyShopColors.textSecondary,
                   ),
                 ),
                 SizedBox(height: h * 0.007),
@@ -262,21 +246,21 @@ class _ArtisanProfileCard extends StatelessWidget {
                 Row(
                   children: [
                     Icon(Icons.star_rounded,
-                        size: w * 0.036, color: _gold),
+                        size: w * 0.036, color: MyShopColors.primaryGold),
                     SizedBox(width: w * 0.008),
                     Text(
                       artisan.rating.toStringAsFixed(1),
                       style: TextStyle(
                         fontSize: w * 0.033,
                         fontWeight: FontWeight.w600,
-                        color: _textPrimary,
+                        color: MyShopColors.textPrimary,
                       ),
                     ),
                     Text(
                       ' (${artisan.reviewCount} reviews)',
                       style: TextStyle(
                         fontSize: w * 0.031,
-                        color: _textSecondary,
+                        color: MyShopColors.textSecondary,
                       ),
                     ),
                   ],
@@ -286,13 +270,13 @@ class _ArtisanProfileCard extends StatelessWidget {
                 Row(
                   children: [
                     Icon(Icons.location_on_outlined,
-                        size: w * 0.033, color: _textHint),
+                        size: w * 0.033, color: MyShopColors.textHint),
                     SizedBox(width: w * 0.008),
                     Text(
                       'Base: ${artisan.baseName} · ETA ${artisan.etaMinutes} min',
                       style: TextStyle(
                         fontSize: w * 0.031,
-                        color: _textSecondary,
+                        color: MyShopColors.textSecondary,
                       ),
                     ),
                   ],
@@ -319,21 +303,21 @@ class _VerifyBadge extends StatelessWidget {
         vertical: w * 0.010,
       ),
       decoration: BoxDecoration(
-        color: _successLight,
+        color: MyShopColors.successLight,
         borderRadius: BorderRadius.circular(w * 0.041),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.verified_rounded,
-              size: w * 0.028, color: _success),
+              size: w * 0.028, color: MyShopColors.success),
           SizedBox(width: w * 0.008),
           Text(
             label,
             style: TextStyle(
               fontSize: w * 0.026,
               fontWeight: FontWeight.w700,
-              color: _success,
+              color: MyShopColors.success,
             ),
           ),
         ],
@@ -370,7 +354,7 @@ class _TotalBidCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: w * 0.026,
                         fontWeight: FontWeight.w900,
-                        color: _textSecondary,
+                        color: MyShopColors.textSecondary,
                         letterSpacing: 1.0,
                       ),
                     ),
@@ -380,7 +364,7 @@ class _TotalBidCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: w * 0.072, // ~28dp — large price
                         fontWeight: FontWeight.w800,
-                        color: _textPrimary,
+                        color: MyShopColors.textPrimary,
                         height: 1.0,
                       ),
                     ),
@@ -391,7 +375,7 @@ class _TotalBidCard extends StatelessWidget {
             ],
           ),
           SizedBox(height: h * 0.017),
-          const Divider(height: 1, color: _divider),
+          const Divider(height: 1, color: MyShopColors.divider),
           SizedBox(height: h * 0.017),
           // Duration + Availability row
           Row(
@@ -405,7 +389,7 @@ class _TotalBidCard extends StatelessWidget {
                   h: h,
                 ),
               ),
-              Container(width: 1, height: h * 0.050, color: _divider),
+              Container(width: 1, height: h * 0.050, color: MyShopColors.divider),
               Expanded(
                 child: _MetaCell(
                   icon: Icons.calendar_today_outlined,
@@ -479,14 +463,14 @@ class _MetaCell extends StatelessWidget {
               ? MainAxisAlignment.end
               : MainAxisAlignment.start,
           children: [
-            Icon(icon, size: w * 0.036, color: _textHint),
+            Icon(icon, size: w * 0.036, color: MyShopColors.textHint),
             SizedBox(width: w * 0.010),
             Text(
               label,
               style: TextStyle(
                 fontSize: w * 0.026,
                 fontWeight: FontWeight.w900,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
                 letterSpacing: 0.8,
               ),
             ),
@@ -498,7 +482,7 @@ class _MetaCell extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.038,
             fontWeight: FontWeight.w600,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
       ],
@@ -530,7 +514,7 @@ class _BidBreakdownCard extends ConsumerWidget {
             style: TextStyle(
               fontSize: w * 0.041,
               fontWeight: FontWeight.w700,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
           SizedBox(height: h * 0.017),
@@ -558,7 +542,7 @@ class _BidBreakdownCard extends ConsumerWidget {
                       style: TextStyle(
                         fontSize: w * 0.036,
                         fontWeight: FontWeight.w400,
-                        color: _textPrimary,
+                        color: MyShopColors.textPrimary,
                       ),
                     ),
                     SizedBox(width: w * 0.010),
@@ -568,7 +552,7 @@ class _BidBreakdownCard extends ConsumerWidget {
                       child: Icon(
                         Icons.keyboard_arrow_down_rounded,
                         size: w * 0.046,
-                        color: _textSecondary,
+                        color: MyShopColors.textSecondary,
                       ),
                     ),
                     const Spacer(),
@@ -577,7 +561,7 @@ class _BidBreakdownCard extends ConsumerWidget {
                       style: TextStyle(
                         fontSize: w * 0.036,
                         fontWeight: FontWeight.w600,
-                        color: _textPrimary,
+                        color: MyShopColors.textPrimary,
                       ),
                     ),
                   ],
@@ -601,7 +585,7 @@ class _BidBreakdownCard extends ConsumerWidget {
                                 '• ',
                                 style: TextStyle(
                                   fontSize: w * 0.031,
-                                  color: _textSecondary,
+                                  color: MyShopColors.textSecondary,
                                 ),
                               ),
                               Text(
@@ -609,7 +593,7 @@ class _BidBreakdownCard extends ConsumerWidget {
                                 style: TextStyle(
                                   fontSize: w * 0.031,
                                   fontWeight: FontWeight.w400,
-                                  color: _textSecondary,
+                                  color: MyShopColors.textSecondary,
                                 ),
                               ),
                             ],
@@ -634,11 +618,11 @@ class _BidBreakdownCard extends ConsumerWidget {
             amount: br.vatDisplay,
             w: w,
             h: h,
-            labelColor: _textSecondary,
+            labelColor: MyShopColors.textSecondary,
           ),
           SizedBox(height: h * 0.014),
 
-          const Divider(height: 1, color: _divider),
+          const Divider(height: 1, color: MyShopColors.divider),
           SizedBox(height: h * 0.014),
 
           // Total
@@ -659,7 +643,7 @@ class _BidBreakdownCard extends ConsumerWidget {
               vertical: h * 0.012,
             ),
             decoration: BoxDecoration(
-              color: _warningLight,
+              color: MyShopColors.warningLight,
               borderRadius: BorderRadius.circular(w * 0.021),
             ),
             child: Row(
@@ -668,7 +652,7 @@ class _BidBreakdownCard extends ConsumerWidget {
                 Icon(
                   Icons.info_outline_rounded,
                   size: w * 0.036,
-                  color: _warning,
+                  color: MyShopColors.warning,
                 ),
                 SizedBox(width: w * 0.015),
                 Expanded(
@@ -678,7 +662,7 @@ class _BidBreakdownCard extends ConsumerWidget {
                     style: TextStyle(
                       fontSize: w * 0.028,
                       fontWeight: FontWeight.w400,
-                      color: _warning,
+                      color: MyShopColors.warning,
                       height: 1.5,
                     ),
                   ),
@@ -721,7 +705,7 @@ class _BreakdownRow extends StatelessWidget {
             style: TextStyle(
               fontSize: size,
               fontWeight: weight,
-              color: labelColor ?? _textPrimary,
+              color: labelColor ?? MyShopColors.textPrimary,
             ),
           ),
         ),
@@ -730,7 +714,7 @@ class _BreakdownRow extends StatelessWidget {
           style: TextStyle(
             fontSize: size,
             fontWeight: isBold ? FontWeight.w700 : FontWeight.w600,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
       ],
@@ -766,7 +750,7 @@ class _LocationSection extends StatelessWidget {
                 style: TextStyle(
                   fontSize: w * 0.041,
                   fontWeight: FontWeight.w700,
-                  color: _textPrimary,
+                  color: MyShopColors.textPrimary,
                 ),
               ),
               const Spacer(),
@@ -780,12 +764,12 @@ class _LocationSection extends StatelessWidget {
                       style: TextStyle(
                         fontSize: w * 0.033,
                         fontWeight: FontWeight.w600,
-                        color: _gold,
+                        color: MyShopColors.primaryGold,
                       ),
                     ),
                     SizedBox(width: w * 0.008),
                     Icon(Icons.open_in_new_rounded,
-                        size: w * 0.036, color: _gold),
+                        size: w * 0.036, color: MyShopColors.primaryGold),
                   ],
                 ),
               ),
@@ -813,7 +797,7 @@ class _LocationSection extends StatelessWidget {
                       vertical: h * 0.007,
                     ),
                     decoration: BoxDecoration(
-                      color: _surfaceWhite,
+                      color: MyShopColors.surfaceWhite,
                       borderRadius: BorderRadius.circular(w * 0.041),
                       boxShadow: [
                         BoxShadow(
@@ -827,14 +811,14 @@ class _LocationSection extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.near_me_rounded,
-                            size: w * 0.033, color: _gold),
+                            size: w * 0.033, color: MyShopColors.primaryGold),
                         SizedBox(width: w * 0.010),
                         Text(
                           '${artisan.distanceKm.toStringAsFixed(1)} km away',
                           style: TextStyle(
                             fontSize: w * 0.031,
                             fontWeight: FontWeight.w600,
-                            color: _textPrimary,
+                            color: MyShopColors.textPrimary,
                           ),
                         ),
                       ],
@@ -847,7 +831,7 @@ class _LocationSection extends StatelessWidget {
                     child: Icon(
                       Icons.location_on_rounded,
                       size: w * 0.082,
-                      color: _error,
+                      color: MyShopColors.error,
                     ),
                   ),
                 ),
@@ -870,7 +854,7 @@ class _MapPlaceholderPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final road = Paint()
-      ..color = const Color(0xFFFFFFFF).withValues(alpha: 0.6)
+      ..color = MyShopColors.surfaceWhite.withValues(alpha: 0.6)
       ..strokeWidth = 3
       ..style = PaintingStyle.stroke;
 
@@ -896,7 +880,7 @@ class _MapPlaceholderPainter extends CustomPainter {
     if (showRoute) {
       // Gold route line: artisan origin (lower-left) → job site (centre)
       final routePaint = Paint()
-        ..color = const Color(0xFFF5A623)
+        ..color = MyShopColors.primaryGold
         ..strokeWidth = 4
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
@@ -915,12 +899,12 @@ class _MapPlaceholderPainter extends CustomPainter {
       canvas.drawCircle(
         origin,
         6,
-        Paint()..color = const Color(0xFF46535D),
+        Paint()..color = MyShopColors.darkSlate,
       );
       canvas.drawCircle(
         origin,
         4,
-        Paint()..color = const Color(0xFFFFFFFF),
+        Paint()..color = MyShopColors.surfaceWhite,
       );
     }
   }
@@ -956,7 +940,7 @@ class _ArtisanNoteCard extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.041,
               fontWeight: FontWeight.w700,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
           SizedBox(height: h * 0.014),
@@ -965,7 +949,7 @@ class _ArtisanNoteCard extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.036,
               fontWeight: FontWeight.w400,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
               height: 1.6,
               fontStyle: FontStyle.italic,
             ),
@@ -979,7 +963,7 @@ class _ArtisanNoteCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: w * 0.028,
                   fontWeight: FontWeight.w400,
-                  color: _textHint,
+                  color: MyShopColors.textHint,
                 ),
               ),
             ),
@@ -1014,7 +998,7 @@ class _RelatedPortfolioSection extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.041,
               fontWeight: FontWeight.w700,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
           SizedBox(height: h * 0.014),
@@ -1063,9 +1047,9 @@ class _TrustBadgesRow extends StatelessWidget {
         horizontal: w * 0.026,
       ),
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Row(
         children: _badges.asMap().entries.map((e) {
@@ -1077,14 +1061,14 @@ class _TrustBadgesRow extends StatelessWidget {
                 Expanded(
                   child: Column(
                     children: [
-                      Icon(icon, size: w * 0.051, color: _textSecondary),
+                      Icon(icon, size: w * 0.051, color: MyShopColors.textSecondary),
                       SizedBox(height: h * 0.006),
                       Text(
                         label,
                         style: TextStyle(
                           fontSize: w * 0.026,
                           fontWeight: FontWeight.w400,
-                          color: _textSecondary,
+                          color: MyShopColors.textSecondary,
                           height: 1.3,
                         ),
                         textAlign: TextAlign.center,
@@ -1096,7 +1080,7 @@ class _TrustBadgesRow extends StatelessWidget {
                   Container(
                     width: 1,
                     height: h * 0.050,
-                    color: _divider,
+                    color: MyShopColors.divider,
                   ),
               ],
             ),
@@ -1122,8 +1106,8 @@ class _BottomActionBar extends ConsumerWidget {
 
     return Container(
       decoration: const BoxDecoration(
-        color: _surfaceWhite,
-        border: Border(top: BorderSide(color: _divider)),
+        color: MyShopColors.surfaceWhite,
+        border: Border(top: BorderSide(color: MyShopColors.divider)),
       ),
       padding: EdgeInsets.only(
         left: w * 0.041,
@@ -1175,43 +1159,22 @@ class _PendingActionContent extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // ── Primary CTA row ──
-        Row(
-          children: [
-            _IconCircleButton(
-              icon: Icons.chat_bubble_outline_rounded,
-              onTap: () {}, // TODO: navigate to chat
-              w: w,
-              h: h,
-            ),
-            SizedBox(width: w * 0.026),
-            _IconCircleButton(
-              icon: Icons.phone_outlined,
-              onTap: () {}, // TODO: initiate masked call
-              w: w,
-              h: h,
-            ),
-            SizedBox(width: w * 0.026),
-            Expanded(
-              child: _AcceptButton(
-                artisanFirstName: bid.artisan.firstName,
-                isLoading: actionState.isAccepting,
-                isDisabled: actionState.isBusy,
-                onPressed: () => ref
-                    .read(bidDetailActionProvider.notifier)
-                    .acceptBid(jobId: bid.jobId, bidId: bid.bidId),
-                w: w,
-                h: h,
-              ),
-            ),
-          ],
+        _AcceptButton(
+          artisanFirstName: bid.artisan.firstName,
+          isLoading: actionState.isAccepting,
+          isDisabled: actionState.isBusy,
+          onPressed: () => ref
+              .read(bidDetailActionProvider.notifier)
+              .acceptBid(jobId: bid.jobId, bidId: bid.bidId),
+          w: w,
+          h: h,
         ),
         SizedBox(height: h * 0.010),
         // ── Pending hint ──
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.bolt_rounded, size: w * 0.033, color: _gold),
+            Icon(Icons.bolt_rounded, size: w * 0.033, color: MyShopColors.primaryGold),
             SizedBox(width: w * 0.010),
             Expanded(
               child: Text(
@@ -1220,7 +1183,7 @@ class _PendingActionContent extends StatelessWidget {
                 style: TextStyle(
                   fontSize: w * 0.028,
                   fontWeight: FontWeight.w400,
-                  color: _textSecondary,
+                  color: MyShopColors.textSecondary,
                 ),
                 maxLines: 2,
               ),
@@ -1228,7 +1191,7 @@ class _PendingActionContent extends StatelessWidget {
           ],
         ),
         SizedBox(height: h * 0.010),
-        const Divider(height: 1, color: _divider),
+        const Divider(height: 1, color: MyShopColors.divider),
         SizedBox(height: h * 0.010),
         // ── Decline + Report row ──
         Row(
@@ -1251,7 +1214,7 @@ class _PendingActionContent extends StatelessWidget {
                     Icon(
                       Icons.close_rounded,
                       size: w * 0.036,
-                      color: actionState.isBusy ? _disabled : _error,
+                      color: actionState.isBusy ? MyShopColors.disabled : MyShopColors.error,
                     ),
                     SizedBox(width: w * 0.010),
                     Text(
@@ -1259,7 +1222,7 @@ class _PendingActionContent extends StatelessWidget {
                       style: TextStyle(
                         fontSize: w * 0.033,
                         fontWeight: FontWeight.w600,
-                        color: actionState.isBusy ? _disabled : _error,
+                        color: actionState.isBusy ? MyShopColors.disabled : MyShopColors.error,
                       ),
                     ),
                   ],
@@ -1280,7 +1243,7 @@ class _PendingActionContent extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.033,
                     fontWeight: FontWeight.w400,
-                    color: _textSecondary,
+                    color: MyShopColors.textSecondary,
                   ),
                 ),
               ),
@@ -1313,49 +1276,29 @@ class _AwaitingActionContent extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // ── Icon buttons + "Acceptance Sent" greyed label ──
-        Row(
-          children: [
-            _IconCircleButton(
-              icon: Icons.chat_bubble_outline_rounded,
-              onTap: () {}, // TODO: navigate to chat
-              w: w,
-              h: h,
-            ),
-            SizedBox(width: w * 0.026),
-            _IconCircleButton(
-              icon: Icons.phone_outlined,
-              onTap: () {}, // TODO: initiate masked call
-              w: w,
-              h: h,
-            ),
-            SizedBox(width: w * 0.026),
-            Expanded(
-              child: Container(
-                height: h * 0.062,
-                decoration: BoxDecoration(
-                  color: _surfaceGrey,
-                  borderRadius: BorderRadius.circular(w * 0.021),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.check_circle_outline_rounded,
-                        size: w * 0.041, color: _disabled),
-                    SizedBox(width: w * 0.015),
-                    Text(
-                      'Acceptance Sent',
-                      style: TextStyle(
-                        fontSize: w * 0.038,
-                        fontWeight: FontWeight.w600,
-                        color: _disabled,
-                      ),
-                    ),
-                  ],
+        Container(
+          width:  double.infinity,
+          height: h * 0.062,
+          decoration: BoxDecoration(
+            color:        MyShopColors.surfaceGrey,
+            borderRadius: BorderRadius.circular(w * 0.021),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.check_circle_outline_rounded,
+                  size: w * 0.041, color: MyShopColors.disabled),
+              SizedBox(width: w * 0.015),
+              Text(
+                'Acceptance Sent',
+                style: TextStyle(
+                  fontSize:   w * 0.038,
+                  fontWeight: FontWeight.w600,
+                  color:      MyShopColors.disabled,
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         SizedBox(height: h * 0.012),
         // ── Countdown timer ──
@@ -1368,7 +1311,7 @@ class _AwaitingActionContent extends StatelessWidget {
             h: h,
           ),
         SizedBox(height: h * 0.010),
-        const Divider(height: 1, color: _divider),
+        const Divider(height: 1, color: MyShopColors.divider),
         SizedBox(height: h * 0.010),
         // ── Cancel Job Request (PRD 4.5.5 free cancellation window) ──
         GestureDetector(
@@ -1385,7 +1328,7 @@ class _AwaitingActionContent extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.033,
                 fontWeight: FontWeight.w600,
-                color: actionState.isBusy ? _disabled : _error,
+                color: actionState.isBusy ? MyShopColors.disabled : MyShopColors.error,
               ),
               textAlign: TextAlign.center,
             ),
@@ -1416,11 +1359,11 @@ class _IconCircleButton extends StatelessWidget {
         width: h * 0.062,
         height: h * 0.062,
         decoration: BoxDecoration(
-          color: _surfaceWhite,
+          color: MyShopColors.surfaceWhite,
           shape: BoxShape.circle,
-          border: Border.all(color: _divider, width: 1.5),
+          border: Border.all(color: MyShopColors.divider, width: 1.5),
         ),
-        child: Icon(icon, size: w * 0.051, color: _textPrimary),
+        child: Icon(icon, size: w * 0.051, color: MyShopColors.textPrimary),
       ),
     );
   }
@@ -1450,10 +1393,10 @@ class _AcceptButton extends StatelessWidget {
       child: ElevatedButton(
         onPressed: canTap ? onPressed : null,
         style: ElevatedButton.styleFrom(
-          backgroundColor: canTap ? _darkSlate : _surfaceGrey,
-          foregroundColor: canTap ? _surfaceWhite : _disabled,
-          disabledBackgroundColor: _surfaceGrey,
-          disabledForegroundColor: _disabled,
+          backgroundColor: canTap ? MyShopColors.darkSlate : MyShopColors.surfaceGrey,
+          foregroundColor: canTap ? MyShopColors.surfaceWhite : MyShopColors.disabled,
+          disabledBackgroundColor: MyShopColors.surfaceGrey,
+          disabledForegroundColor: MyShopColors.disabled,
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(w * 0.021),
@@ -1465,7 +1408,7 @@ class _AcceptButton extends StatelessWidget {
                 height: w * 0.051,
                 child: const CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: _surfaceWhite,
+                  color: MyShopColors.surfaceWhite,
                 ),
               )
             : Text(
@@ -1473,7 +1416,7 @@ class _AcceptButton extends StatelessWidget {
                 style: TextStyle(
                   fontSize: w * 0.038,
                   fontWeight: FontWeight.w600,
-                  color: canTap ? _surfaceWhite : _disabled,
+                  color: canTap ? MyShopColors.surfaceWhite : MyShopColors.disabled,
                   letterSpacing: 0.2,
                 ),
               ),
@@ -1502,9 +1445,9 @@ class _AwaitingConfirmationBanner extends StatelessWidget {
       margin: EdgeInsets.symmetric(horizontal: w * 0.041),
       padding: EdgeInsets.all(w * 0.041),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF8EC),
+        color: MyShopColors.primaryGoldLight,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _gold.withValues(alpha: 0.4)),
+        border: Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.4)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1513,11 +1456,11 @@ class _AwaitingConfirmationBanner extends StatelessWidget {
             width: w * 0.105,
             height: w * 0.105,
             decoration: BoxDecoration(
-              color: _gold.withValues(alpha: 0.15),
+              color: MyShopColors.primaryGold.withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
             child: Icon(Icons.access_time_rounded,
-                size: w * 0.051, color: _gold),
+                size: w * 0.051, color: MyShopColors.primaryGold),
           ),
           SizedBox(width: w * 0.031),
           Expanded(
@@ -1617,7 +1560,7 @@ class _CountdownTimerRowState extends State<_CountdownTimerRow> {
         Container(
           width: w * 0.023,
           height: w * 0.023,
-          decoration: const BoxDecoration(color: _gold, shape: BoxShape.circle),
+          decoration: const BoxDecoration(color: MyShopColors.primaryGold, shape: BoxShape.circle),
         ),
         SizedBox(width: w * 0.026),
         Expanded(
@@ -1626,7 +1569,7 @@ class _CountdownTimerRowState extends State<_CountdownTimerRow> {
             style: TextStyle(
               fontSize: w * 0.031,
               fontWeight: FontWeight.w400,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
             ),
           ),
         ),
@@ -1635,7 +1578,7 @@ class _CountdownTimerRowState extends State<_CountdownTimerRow> {
           style: TextStyle(
             fontSize: w * 0.041,
             fontWeight: FontWeight.w700,
-            color: _gold,
+            color: MyShopColors.primaryGold,
           ),
         ),
       ],
@@ -1665,9 +1608,9 @@ class _BidConfirmedBanner extends StatelessWidget {
       margin: EdgeInsets.symmetric(horizontal: w * 0.041),
       padding: EdgeInsets.all(w * 0.041),
       decoration: BoxDecoration(
-        color: _successLight,
+        color: MyShopColors.successLight,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _success.withValues(alpha: 0.35)),
+        border: Border.all(color: MyShopColors.success.withValues(alpha: 0.35)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1676,11 +1619,11 @@ class _BidConfirmedBanner extends StatelessWidget {
             width: w * 0.105,
             height: w * 0.105,
             decoration: BoxDecoration(
-              color: _success,
+              color: MyShopColors.success,
               shape: BoxShape.circle,
             ),
             child: Icon(Icons.check_rounded,
-                size: w * 0.054, color: _surfaceWhite),
+                size: w * 0.054, color: MyShopColors.surfaceWhite),
           ),
           SizedBox(width: w * 0.031),
           Expanded(
@@ -1736,7 +1679,7 @@ class _BidExpiredBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFFFF0F0),
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _error.withValues(alpha: 0.30)),
+        border: Border.all(color: MyShopColors.error.withValues(alpha: 0.30)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1745,11 +1688,11 @@ class _BidExpiredBanner extends StatelessWidget {
             width: w * 0.105,
             height: w * 0.105,
             decoration: BoxDecoration(
-              color: _error.withValues(alpha: 0.12),
+              color: MyShopColors.error.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(w * 0.021),
             ),
             child: Icon(Icons.calendar_month_outlined,
-                size: w * 0.051, color: _error),
+                size: w * 0.051, color: MyShopColors.error),
           ),
           SizedBox(width: w * 0.031),
           Expanded(
@@ -1761,7 +1704,7 @@ class _BidExpiredBanner extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.038,
                     fontWeight: FontWeight.w700,
-                    color: _error,
+                    color: MyShopColors.error,
                   ),
                 ),
                 SizedBox(height: h * 0.005),
@@ -1771,7 +1714,7 @@ class _BidExpiredBanner extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.031,
                     fontWeight: FontWeight.w400,
-                    color: _error,
+                    color: MyShopColors.error,
                     height: 1.4,
                   ),
                 ),
@@ -1823,8 +1766,8 @@ class _ConfirmedActionContent extends StatelessWidget {
                 child: ElevatedButton(
                   onPressed: () {}, // TODO: navigate to ride_tracking_screen
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _darkSlate,
-                    foregroundColor: _surfaceWhite,
+                    backgroundColor: MyShopColors.darkSlate,
+                    foregroundColor: MyShopColors.surfaceWhite,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(w * 0.021),
@@ -1834,14 +1777,14 @@ class _ConfirmedActionContent extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(Icons.near_me_rounded,
-                          size: w * 0.041, color: _surfaceWhite),
+                          size: w * 0.041, color: MyShopColors.surfaceWhite),
                       SizedBox(width: w * 0.015),
                       Text(
                         'Track Artisan',
                         style: TextStyle(
                           fontSize: w * 0.038,
                           fontWeight: FontWeight.w600,
-                          color: _surfaceWhite,
+                          color: MyShopColors.surfaceWhite,
                         ),
                       ),
                     ],
@@ -1879,8 +1822,8 @@ class _ExpiredActionContent extends StatelessWidget {
           child: ElevatedButton(
             onPressed: () {}, // TODO: navigate to job_form_screen (re-post)
             style: ElevatedButton.styleFrom(
-              backgroundColor: _darkSlate,
-              foregroundColor: _surfaceWhite,
+              backgroundColor: MyShopColors.darkSlate,
+              foregroundColor: MyShopColors.surfaceWhite,
               elevation: 0,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(w * 0.021),
@@ -1891,13 +1834,13 @@ class _ExpiredActionContent extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.038,
                 fontWeight: FontWeight.w600,
-                color: _surfaceWhite,
+                color: MyShopColors.surfaceWhite,
               ),
             ),
           ),
         ),
         SizedBox(height: h * 0.010),
-        const Divider(height: 1, color: _divider),
+        const Divider(height: 1, color: MyShopColors.divider),
         SizedBox(height: h * 0.010),
         GestureDetector(
           onTap: () => Navigator.of(context).maybePop(),
@@ -1909,7 +1852,7 @@ class _ExpiredActionContent extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.033,
                 fontWeight: FontWeight.w600,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -1933,9 +1876,9 @@ class _Card extends StatelessWidget {
       margin: EdgeInsets.symmetric(horizontal: w * 0.041),
       padding: EdgeInsets.all(w * 0.041),
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: child,
     );
@@ -1955,7 +1898,7 @@ class _LoadingSkeleton extends StatelessWidget {
     return Column(
       children: [
         Container(
-          color: _surfaceWhite,
+          color: MyShopColors.surfaceWhite,
           padding: EdgeInsets.only(
             top: topPad + h * 0.010,
             bottom: h * 0.017,
@@ -2005,7 +1948,7 @@ class _Shimmer extends StatelessWidget {
       width: w,
       height: h,
       decoration: BoxDecoration(
-        color: const Color(0xFFE0E0E0),
+        color: MyShopColors.divider,
         borderRadius: BorderRadius.circular(r),
       ),
     );
@@ -2029,14 +1972,14 @@ class _ErrorBody extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.error_outline_rounded,
-                size: w * 0.154, color: _textHint),
+                size: w * 0.154, color: MyShopColors.textHint),
             SizedBox(height: h * 0.019),
             Text(
               'Could not load bid details',
               style: TextStyle(
                 fontSize: w * 0.041,
                 fontWeight: FontWeight.w700,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -2045,7 +1988,7 @@ class _ErrorBody extends StatelessWidget {
               'Check your connection and try again.',
               style: TextStyle(
                 fontSize: w * 0.033,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -2058,7 +2001,7 @@ class _ErrorBody extends StatelessWidget {
                   vertical: h * 0.017,
                 ),
                 decoration: BoxDecoration(
-                  color: _darkSlate,
+                  color: MyShopColors.darkSlate,
                   borderRadius: BorderRadius.circular(w * 0.021),
                 ),
                 child: Text(
@@ -2066,7 +2009,7 @@ class _ErrorBody extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.038,
                     fontWeight: FontWeight.w600,
-                    color: _surfaceWhite,
+                    color: MyShopColors.surfaceWhite,
                   ),
                 ),
               ),

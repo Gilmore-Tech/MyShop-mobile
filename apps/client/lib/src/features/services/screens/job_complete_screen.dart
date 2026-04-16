@@ -1,19 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
 import '../providers/job_summary_provider.dart';
-
-// ── Design tokens ──────────────────────────────────────────────────────────────
-const _bg            = Color(0xFFF6F7F8);
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _gold          = Color(0xFFF5A623);
-const _success       = Color(0xFF27AE60);
-const _successLight  = Color(0xFFE8F8EE);
-const _divider       = Color(0xFFE8EAEC);
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD § 4.5 / § 4.8 — Post-job completion: rate artisan, leave a comment.
@@ -32,24 +23,24 @@ class JobCompleteScreen extends ConsumerWidget {
     final state = ref.watch(jobSummaryProvider(jobId));
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: MyShopColors.offWhite,
       appBar: AppBar(
-        backgroundColor: _surfaceWhite,
+        backgroundColor: MyShopColors.surfaceWhite,
         automaticallyImplyLeading: false,
         title: Text('Job Complete',
             style: TextStyle(
-                color:      _textPrimary,
+                color:      MyShopColors.textPrimary,
                 fontSize:   w * 0.044,
                 fontWeight: FontWeight.w700)),
         centerTitle: false,
       ),
       body: state.when(
         loading: () => const Center(
-            child: CircularProgressIndicator(color: _gold)),
+            child: CircularProgressIndicator(color: MyShopColors.primaryGold)),
         error: (_, __) => Center(
             child: Text('Failed to load.',
                 style: TextStyle(
-                    color: _textSecondary, fontSize: w * 0.036))),
+                    color: MyShopColors.textSecondary, fontSize: w * 0.036))),
         data: (summary) => _Body(w: w, h: h, summary: summary),
       ),
     );
@@ -105,21 +96,21 @@ class _BodyState extends ConsumerState<_Body> {
                   width:  w * 0.20,
                   height: w * 0.20,
                   decoration: const BoxDecoration(
-                      color: _successLight, shape: BoxShape.circle),
+                      color: MyShopColors.successLight, shape: BoxShape.circle),
                   child: const Icon(Icons.check_circle_outline_rounded,
-                      color: _success, size: 52),
+                      color: MyShopColors.success, size: 52),
                 ),
                 SizedBox(height: h * 0.020),
                 Text('Job Completed!',
                     style: TextStyle(
-                      color:      _textPrimary,
+                      color:      MyShopColors.textPrimary,
                       fontSize:   w * 0.056,
                       fontWeight: FontWeight.w800,
                     )),
                 SizedBox(height: h * 0.008),
                 Text('Payment released from escrow.',
                     style: TextStyle(
-                        color:    _textSecondary,
+                        color:    MyShopColors.textSecondary,
                         fontSize: w * 0.036)),
                 SizedBox(height: h * 0.028),
                 // Summary card
@@ -168,7 +159,7 @@ class _SummaryCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        _surfaceWhite,
+        color:        MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
@@ -196,14 +187,14 @@ class _SummaryCard extends StatelessWidget {
                   children: [
                     Text(a.name,
                         style: TextStyle(
-                          color:      _textPrimary,
+                          color:      MyShopColors.textPrimary,
                           fontSize:   w * 0.040,
                           fontWeight: FontWeight.w700,
                         )),
                     const SizedBox(height: 2),
                     Text(a.role,
                         style: TextStyle(
-                            color:    _textSecondary,
+                            color:    MyShopColors.textSecondary,
                             fontSize: w * 0.032)),
                   ],
                 ),
@@ -213,31 +204,31 @@ class _SummaryCard extends StatelessWidget {
                 children: [
                   Text(summary.totalPaidDisplay,
                       style: TextStyle(
-                        color:      _textPrimary,
+                        color:      MyShopColors.textPrimary,
                         fontSize:   w * 0.042,
                         fontWeight: FontWeight.w800,
                       )),
                   const SizedBox(height: 2),
                   Text('Total paid',
                       style: TextStyle(
-                          color:    _textSecondary,
+                          color:    MyShopColors.textSecondary,
                           fontSize: w * 0.028)),
                 ],
               ),
             ],
           ),
           SizedBox(height: h * 0.014),
-          const Divider(height: 1, color: _divider),
+          const Divider(height: 1, color: MyShopColors.divider),
           SizedBox(height: h * 0.014),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('Labour',
                   style: TextStyle(
-                      color: _textSecondary, fontSize: w * 0.032)),
+                      color: MyShopColors.textSecondary, fontSize: w * 0.032)),
               Text(summary.laborChargeDisplay,
                   style: TextStyle(
-                      color:      _textPrimary,
+                      color:      MyShopColors.textPrimary,
                       fontSize:   w * 0.032,
                       fontWeight: FontWeight.w600)),
             ],
@@ -248,10 +239,10 @@ class _SummaryCard extends StatelessWidget {
             children: [
               Text('Materials',
                   style: TextStyle(
-                      color: _textSecondary, fontSize: w * 0.032)),
+                      color: MyShopColors.textSecondary, fontSize: w * 0.032)),
               Text(summary.materialCostDisplay,
                   style: TextStyle(
-                      color:      _textPrimary,
+                      color:      MyShopColors.textPrimary,
                       fontSize:   w * 0.032,
                       fontWeight: FontWeight.w600)),
             ],
@@ -275,7 +266,7 @@ class _RateSection extends ConsumerWidget {
       children: [
         Text('How was your experience?',
             style: TextStyle(
-              color:      _textPrimary,
+              color:      MyShopColors.textPrimary,
               fontSize:   w * 0.042,
               fontWeight: FontWeight.w700,
             )),
@@ -292,7 +283,7 @@ class _RateSection extends ConsumerWidget {
                 padding: EdgeInsets.symmetric(horizontal: w * 0.020),
                 child: Icon(
                   filled ? Icons.star_rounded : Icons.star_outline_rounded,
-                  color: filled ? _gold : const Color(0xFFD0D8DC),
+                  color: filled ? MyShopColors.primaryGold : const Color(0xFFD0D8DC),
                   size: w * 0.092,
                 ),
               ),
@@ -303,7 +294,7 @@ class _RateSection extends ConsumerWidget {
         if (stars > 0)
           Text(_ratingLabel(stars),
               style: TextStyle(
-                color:      _textSecondary,
+                color:      MyShopColors.textSecondary,
                 fontSize:   w * 0.034,
               )),
       ],
@@ -337,20 +328,20 @@ class _CommentField extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color:        _surfaceWhite,
+        color:        MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: _divider),
+        border:       Border.all(color: MyShopColors.divider),
       ),
       child: TextField(
         controller: controller,
         onChanged:  onChanged,
         maxLines:   4,
         minLines:   3,
-        style: TextStyle(color: _textPrimary, fontSize: w * 0.036),
+        style: TextStyle(color: MyShopColors.textPrimary, fontSize: w * 0.036),
         decoration: InputDecoration(
           hintText: 'Leave a comment (optional)…',
           hintStyle: TextStyle(
-              color: _textSecondary.withAlpha(120), fontSize: w * 0.034),
+              color: MyShopColors.textSecondary.withAlpha(120), fontSize: w * 0.034),
           contentPadding: EdgeInsets.all(w * 0.04),
           border: InputBorder.none,
         ),
@@ -381,7 +372,7 @@ class _SubmitBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color:   _surfaceWhite,
+      color:   MyShopColors.surfaceWhite,
       padding: EdgeInsets.fromLTRB(
           w * 0.05, h * 0.016, w * 0.05, bot + h * 0.020),
       child: Column(
@@ -396,9 +387,9 @@ class _SubmitBar extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: canSubmit ? onSubmit : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor:         _gold,
+                  backgroundColor:         MyShopColors.primaryGold,
                   foregroundColor:         Colors.white,
-                  disabledBackgroundColor: _gold.withAlpha(80),
+                  disabledBackgroundColor: MyShopColors.primaryGold.withAlpha(80),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10)),
                   elevation: 0,
@@ -421,7 +412,7 @@ class _SubmitBar extends StatelessWidget {
             onPressed: onSkip,
             child: Text('Skip for now',
                 style: TextStyle(
-                    color:    _textSecondary, fontSize: w * 0.036)),
+                    color:    MyShopColors.textSecondary, fontSize: w * 0.036)),
           ),
         ],
       ),
@@ -455,15 +446,15 @@ class _ThankYouState extends StatelessWidget {
             width:  w * 0.22,
             height: w * 0.22,
             decoration: const BoxDecoration(
-                color: _successLight, shape: BoxShape.circle),
+                color: MyShopColors.successLight, shape: BoxShape.circle),
             child: const Icon(Icons.favorite_rounded,
-                color: _success, size: 56),
+                color: MyShopColors.success, size: 56),
           ),
           SizedBox(height: h * 0.032),
           Text('Thanks for your feedback!',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color:      _textPrimary,
+                color:      MyShopColors.textPrimary,
                 fontSize:   w * 0.052,
                 fontWeight: FontWeight.w800,
               )),
@@ -473,7 +464,7 @@ class _ThankYouState extends StatelessWidget {
             'the MyShop community.',
             textAlign: TextAlign.center,
             style: TextStyle(
-                color:    _textSecondary,
+                color:    MyShopColors.textSecondary,
                 fontSize: w * 0.036,
                 height:   1.6),
           ),
@@ -484,7 +475,7 @@ class _ThankYouState extends StatelessWidget {
             child: ElevatedButton(
               onPressed: onDone,
               style: ElevatedButton.styleFrom(
-                backgroundColor: _gold,
+                backgroundColor: MyShopColors.primaryGold,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),

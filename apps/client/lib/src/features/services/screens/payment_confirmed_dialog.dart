@@ -1,17 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 
 import '../providers/payment_provider.dart';
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _surfaceGrey   = Color(0xFFF3F5F6);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _gold          = Color(0xFFF5A623);
-const _darkSlate     = Color(0xFF46535D);
-const _success       = Color(0xFF27AE60);
-const _successLight  = Color(0xFFE8F8EF);
-const _divider       = Color(0xFFE0E0E0);
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 // PRD 7.2 / EDD § Payment Endpoints
@@ -114,7 +104,7 @@ class _DialogSheetState extends State<_DialogSheet> {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(w * 0.051),
       ),
       child: ClipRRect(
@@ -136,7 +126,7 @@ class _DialogSheetState extends State<_DialogSheet> {
                 style: TextStyle(
                   fontSize: w * 0.056,
                   fontWeight: FontWeight.w800,
-                  color: _textPrimary,
+                  color: MyShopColors.textPrimary,
                 ),
               ),
               SizedBox(height: h * 0.007),
@@ -149,7 +139,7 @@ class _DialogSheetState extends State<_DialogSheet> {
                   style: TextStyle(
                     fontSize: w * 0.033,
                     fontWeight: FontWeight.w400,
-                    color: _textSecondary,
+                    color: MyShopColors.textSecondary,
                     height: 1.4,
                   ),
                   textAlign: TextAlign.center,
@@ -163,7 +153,7 @@ class _DialogSheetState extends State<_DialogSheet> {
                 style: TextStyle(
                   fontSize: w * 0.082,
                   fontWeight: FontWeight.w900,
-                  color: _textPrimary,
+                  color: MyShopColors.textPrimary,
                   height: 1.0,
                 ),
               ),
@@ -176,7 +166,7 @@ class _DialogSheetState extends State<_DialogSheet> {
                   vertical:   h * 0.005,
                 ),
                 decoration: BoxDecoration(
-                  color: _surfaceGrey,
+                  color: MyShopColors.surfaceGrey,
                   borderRadius: BorderRadius.circular(w * 0.051),
                 ),
                 child: Text(
@@ -184,14 +174,14 @@ class _DialogSheetState extends State<_DialogSheet> {
                   style: TextStyle(
                     fontSize: w * 0.031,
                     fontWeight: FontWeight.w500,
-                    color: _textSecondary,
+                    color: MyShopColors.textSecondary,
                   ),
                 ),
               ),
               SizedBox(height: h * 0.022),
 
               // ── Divider ──
-              const Divider(height: 1, color: _divider),
+              const Divider(height: 1, color: MyShopColors.divider),
 
               // ── View Payment Details expandable ──
               _ExpandableDetails(
@@ -205,7 +195,7 @@ class _DialogSheetState extends State<_DialogSheet> {
               ),
 
               // ── Divider ──
-              const Divider(height: 1, color: _divider),
+              const Divider(height: 1, color: MyShopColors.divider),
               SizedBox(height: h * 0.019),
 
               // ── Buttons ──
@@ -223,7 +213,7 @@ class _DialogSheetState extends State<_DialogSheet> {
                           Navigator.of(context).maybePop();
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: _gold,
+                          backgroundColor: MyShopColors.primaryGold,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(w * 0.031),
@@ -234,7 +224,7 @@ class _DialogSheetState extends State<_DialogSheet> {
                           style: TextStyle(
                             fontSize: w * 0.041,
                             fontWeight: FontWeight.w700,
-                            color: _surfaceWhite,
+                            color: MyShopColors.surfaceWhite,
                           ),
                         ),
                       ),
@@ -328,13 +318,13 @@ class _CloseRow extends StatelessWidget {
             width:  w * 0.082,
             height: w * 0.082,
             decoration: BoxDecoration(
-              color: _surfaceGrey,
+              color: MyShopColors.surfaceGrey,
               shape: BoxShape.circle,
             ),
             child: Icon(
               Icons.close_rounded,
               size:  w * 0.041,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
             ),
           ),
         ),
@@ -355,14 +345,14 @@ class _CheckCircle extends StatelessWidget {
       width:  w * 0.164,
       height: w * 0.164,
       decoration: BoxDecoration(
-        color:  _successLight,
+        color:  MyShopColors.successLight,
         shape:  BoxShape.circle,
-        border: Border.all(color: _success, width: 2.5),
+        border: Border.all(color: MyShopColors.success, width: 2.5),
       ),
       child: Icon(
         Icons.check_rounded,
         size:  w * 0.082,
-        color: _success,
+        color: MyShopColors.success,
       ),
     );
   }
@@ -408,7 +398,7 @@ class _ExpandableDetails extends StatelessWidget {
                   style: TextStyle(
                     fontSize:   w * 0.036,
                     fontWeight: FontWeight.w600,
-                    color:      _darkSlate,
+                    color:      MyShopColors.darkSlate,
                   ),
                 ),
                 const Spacer(),
@@ -418,7 +408,7 @@ class _ExpandableDetails extends StatelessWidget {
                   child: Icon(
                     Icons.keyboard_arrow_down_rounded,
                     size:  w * 0.056,
-                    color: _textSecondary,
+                    color: MyShopColors.textSecondary,
                   ),
                 ),
               ],
@@ -540,7 +530,7 @@ class _DetailRow extends StatelessWidget {
             style: TextStyle(
               fontSize:   w * 0.031,
               fontWeight: FontWeight.w400,
-              color:      _textSecondary,
+              color:      MyShopColors.textSecondary,
             ),
           ),
         ),
@@ -550,7 +540,7 @@ class _DetailRow extends StatelessWidget {
             style: TextStyle(
               fontSize:   w * 0.031,
               fontWeight: FontWeight.w600,
-              color:      _textPrimary,
+              color:      MyShopColors.textPrimary,
             ),
             textAlign: TextAlign.end,
           ),
@@ -584,21 +574,21 @@ class _OutlinedActionButton extends StatelessWidget {
       child: Container(
         height: h * 0.060,
         decoration: BoxDecoration(
-          color:        _surfaceWhite,
+          color:        MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(w * 0.026),
-          border:       Border.all(color: _divider, width: 1.5),
+          border:       Border.all(color: MyShopColors.divider, width: 1.5),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: w * 0.041, color: _darkSlate),
+            Icon(icon, size: w * 0.041, color: MyShopColors.darkSlate),
             SizedBox(width: w * 0.015),
             Text(
               label,
               style: TextStyle(
                 fontSize:   w * 0.033,
                 fontWeight: FontWeight.w600,
-                color:      _darkSlate,
+                color:      MyShopColors.darkSlate,
               ),
             ),
           ],
@@ -634,14 +624,14 @@ class _TextLinkButton extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: w * 0.041, color: _textSecondary),
+            Icon(icon, size: w * 0.041, color: MyShopColors.textSecondary),
             SizedBox(width: w * 0.018),
             Text(
               label,
               style: TextStyle(
                 fontSize:   w * 0.036,
                 fontWeight: FontWeight.w500,
-                color:      _textSecondary,
+                color:      MyShopColors.textSecondary,
               ),
             ),
           ],

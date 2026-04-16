@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 // ── Artisan (job summary context) ─────────────────────────────────────────────
@@ -182,7 +183,7 @@ const _mockArtisan = JobSummaryArtisan(
   firstName:       'Kofi',
   role:            'Master Electrician',
   experienceLabel: '8+ Years',
-  avatarColor:     Color(0xFF46535D),
+  avatarColor:     MyShopColors.darkSlate,
   isVerified:      true,
   rating:          4.9,
   reviewCount:     324,

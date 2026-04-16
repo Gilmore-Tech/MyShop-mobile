@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 // ── Bid Status ────────────────────────────────────────────────────────────────
@@ -14,10 +15,10 @@ extension BidStatusX on BidStatus {
       };
 
   Color get color => switch (this) {
-        BidStatus.pendingReview        => const Color(0xFFF2994A),
-        BidStatus.awaitingConfirmation => const Color(0xFFF5A623),
-        BidStatus.accepted             => const Color(0xFF27AE60),
-        BidStatus.declined             => const Color(0xFFEB5757),
+        BidStatus.pendingReview        => MyShopColors.warning,
+        BidStatus.awaitingConfirmation => MyShopColors.primaryGold,
+        BidStatus.accepted             => MyShopColors.success,
+        BidStatus.declined             => MyShopColors.error,
       };
 }
 
@@ -239,7 +240,7 @@ class BidDetailNotifier extends StateNotifier<BidDetailActionState> {
     state = state.copyWith(
       isAccepting: false,
       isAwaitingConfirmation: true,
-      countdownEndTime: DateTime.now().add(const Duration(minutes: 20)),
+      countdownEndTime: DateTime.now().add(const Duration(minutes: 5)),
     );
   }
 

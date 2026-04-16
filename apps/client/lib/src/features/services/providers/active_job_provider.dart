@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 // ── Active Job Phase ──────────────────────────────────────────────────────────
@@ -27,10 +28,10 @@ extension ActiveJobPhaseX on ActiveJobPhase {
       };
 
   Color get statusColor => switch (this) {
-        ActiveJobPhase.enRoute          => const Color(0xFFF5A623),
-        ActiveJobPhase.arrived          => const Color(0xFFF5A623),
-        ActiveJobPhase.inProgress       => const Color(0xFFF5A623),
-        ActiveJobPhase.awaitingApproval => const Color(0xFF555E68),
+        ActiveJobPhase.enRoute          => MyShopColors.primaryGold,
+        ActiveJobPhase.arrived          => MyShopColors.primaryGold,
+        ActiveJobPhase.inProgress       => MyShopColors.primaryGold,
+        ActiveJobPhase.awaitingApproval => MyShopColors.textSecondary,
       };
 
   /// Left stat cell label.

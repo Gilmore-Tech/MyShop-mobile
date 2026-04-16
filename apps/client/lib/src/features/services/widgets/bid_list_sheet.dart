@@ -1,21 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../app/router.dart';
 import '../providers/bid_list_provider.dart';
-
-// ── Design Tokens ─────────────────────────────────────────────────────────────
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _surfaceGrey   = Color(0xFFF3F5F6);
-const _offWhite      = Color(0xFFF6F7F8);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _textHint      = Color(0xFFBDBDBD);
-const _gold          = Color(0xFFF5A623);
-const _goldLight     = Color(0xFFFFF8EC);
-const _darkSlate     = Color(0xFF46535D);
-const _success       = Color(0xFF27AE60);
-const _divider       = Color(0xFFE0E0E0);
-const _disabled      = Color(0xFFBDBDBD);
 
 // ── Public entry-point ────────────────────────────────────────────────────────
 
@@ -56,7 +45,7 @@ class BidListSheet extends ConsumerWidget {
       // Sheet fills ~85 % of screen height so cards are scrollable
       height: h * 0.85,
       decoration: BoxDecoration(
-        color: _offWhite,
+        color: MyShopColors.offWhite,
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(w * 0.051), // ~20dp
         ),
@@ -112,7 +101,7 @@ class _DragHandle extends StatelessWidget {
       width: w * 0.103, // ~40dp
       height: h * 0.005, // ~4dp
       decoration: BoxDecoration(
-        color: _divider,
+        color: MyShopColors.divider,
         borderRadius: BorderRadius.circular(2),
       ),
     );
@@ -139,7 +128,7 @@ class _SheetHeader extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.046, // ~18dp
                 fontWeight: FontWeight.w700,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
                 height: 1.2,
               ),
               maxLines: 1,
@@ -154,13 +143,13 @@ class _SheetHeader extends StatelessWidget {
               width: w * 0.082,
               height: w * 0.082,
               decoration: const BoxDecoration(
-                color: _surfaceGrey,
+                color: MyShopColors.surfaceGrey,
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 Icons.close_rounded,
                 size: w * 0.046,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
           ),
@@ -191,9 +180,9 @@ class _ActiveRequestCard extends StatelessWidget {
         vertical: h * 0.014,
       ),
       decoration: BoxDecoration(
-        color: _goldLight,
+        color: MyShopColors.primaryGoldLight,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _gold.withValues(alpha: 0.35)),
+        border: Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.35)),
       ),
       child: Row(
         children: [
@@ -201,13 +190,13 @@ class _ActiveRequestCard extends StatelessWidget {
             width: w * 0.082,
             height: w * 0.082,
             decoration: BoxDecoration(
-              color: _gold.withValues(alpha: 0.15),
+              color: MyShopColors.primaryGold.withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
             child: Icon(
               Icons.bolt_rounded,
               size: w * 0.046,
-              color: _gold,
+              color: MyShopColors.primaryGold,
             ),
           ),
           SizedBox(width: w * 0.031),
@@ -220,7 +209,7 @@ class _ActiveRequestCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.026,
                     fontWeight: FontWeight.w900,
-                    color: _gold,
+                    color: MyShopColors.primaryGold,
                     letterSpacing: 1.0,
                   ),
                 ),
@@ -230,7 +219,7 @@ class _ActiveRequestCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.036,
                     fontWeight: FontWeight.w600,
-                    color: _textPrimary,
+                    color: MyShopColors.textPrimary,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -305,9 +294,9 @@ class _BidCard extends ConsumerWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       padding: EdgeInsets.all(w * 0.041),
       child: Column(
@@ -337,7 +326,7 @@ class _BidCard extends ConsumerWidget {
                             style: TextStyle(
                               fontSize: w * 0.038,
                               fontWeight: FontWeight.w700,
-                              color: _textPrimary,
+                              color: MyShopColors.textPrimary,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -348,7 +337,7 @@ class _BidCard extends ConsumerWidget {
                           Icon(
                             Icons.verified_rounded,
                             size: w * 0.038,
-                            color: _success,
+                            color: MyShopColors.success,
                           ),
                         ],
                       ],
@@ -360,7 +349,7 @@ class _BidCard extends ConsumerWidget {
                         Icon(
                           Icons.star_rounded,
                           size: w * 0.033,
-                          color: _gold,
+                          color: MyShopColors.primaryGold,
                         ),
                         SizedBox(width: w * 0.008),
                         Text(
@@ -368,7 +357,7 @@ class _BidCard extends ConsumerWidget {
                           style: TextStyle(
                             fontSize: w * 0.031,
                             fontWeight: FontWeight.w600,
-                            color: _textPrimary,
+                            color: MyShopColors.textPrimary,
                           ),
                         ),
                         Text(
@@ -376,7 +365,7 @@ class _BidCard extends ConsumerWidget {
                           style: TextStyle(
                             fontSize: w * 0.028,
                             fontWeight: FontWeight.w400,
-                            color: _textSecondary,
+                            color: MyShopColors.textSecondary,
                           ),
                         ),
                       ],
@@ -387,7 +376,7 @@ class _BidCard extends ConsumerWidget {
                       style: TextStyle(
                         fontSize: w * 0.031,
                         fontWeight: FontWeight.w500,
-                        color: _textSecondary,
+                        color: MyShopColors.textSecondary,
                       ),
                     ),
                   ],
@@ -400,7 +389,7 @@ class _BidCard extends ConsumerWidget {
                 style: TextStyle(
                   fontSize: w * 0.043,
                   fontWeight: FontWeight.w800,
-                  color: _textPrimary,
+                  color: MyShopColors.textPrimary,
                   height: 1.1,
                 ),
               ),
@@ -415,7 +404,7 @@ class _BidCard extends ConsumerWidget {
               Icon(
                 Icons.access_time_rounded,
                 size: w * 0.036,
-                color: _textHint,
+                color: MyShopColors.textHint,
               ),
               SizedBox(width: w * 0.015),
               Text(
@@ -423,7 +412,7 @@ class _BidCard extends ConsumerWidget {
                 style: TextStyle(
                   fontSize: w * 0.031,
                   fontWeight: FontWeight.w400,
-                  color: _textSecondary,
+                  color: MyShopColors.textSecondary,
                 ),
               ),
             ],
@@ -439,7 +428,7 @@ class _BidCard extends ConsumerWidget {
                 vertical: h * 0.010,
               ),
               decoration: BoxDecoration(
-                color: _surfaceGrey,
+                color: MyShopColors.surfaceGrey,
                 borderRadius: BorderRadius.circular(w * 0.021),
               ),
               child: Text(
@@ -447,7 +436,7 @@ class _BidCard extends ConsumerWidget {
                 style: TextStyle(
                   fontSize: w * 0.028,
                   fontWeight: FontWeight.w400,
-                  color: _textSecondary,
+                  color: MyShopColors.textSecondary,
                   height: 1.5,
                 ),
               ),
@@ -456,31 +445,21 @@ class _BidCard extends ConsumerWidget {
 
           SizedBox(height: h * 0.014),
 
-          // ── Action buttons ──
-          Row(
-            children: [
-              Expanded(
-                child: _SelectBidButton(
-                  isLoading: isThisBidSelecting,
-                  isDisabled: anySelecting && !isThisBidSelecting,
-                  onPressed: () => ref
-                      .read(bidListNotifierProvider.notifier)
-                      .selectBid(jobId: job.jobId, bidId: bid.bidId),
-                  w: w,
-                  h: h,
-                ),
-              ),
-              SizedBox(width: w * 0.026),
-              Expanded(
-                child: _MessageButton(
-                  artisanName: bid.artisanName.split(' ').first,
-                  isDisabled: anySelecting,
-                  onPressed: () {}, // TODO: navigate to chat screen
-                  w: w,
-                  h: h,
-                ),
-              ),
-            ],
+          // ── Action button ──
+          SizedBox(
+            width: double.infinity,
+            child: _SelectBidButton(
+              isLoading: isThisBidSelecting,
+              isDisabled: anySelecting && !isThisBidSelecting,
+              onPressed: () {
+                Navigator.of(context).pop();
+                context.push(
+                  AppRoutes.jobBidsPath(job.jobId, bid.bidId),
+                );
+              },
+              w: w,
+              h: h,
+            ),
           ),
         ],
       ),
@@ -554,10 +533,10 @@ class _SelectBidButton extends StatelessWidget {
       child: ElevatedButton(
         onPressed: canTap ? onPressed : null,
         style: ElevatedButton.styleFrom(
-          backgroundColor: canTap ? _darkSlate : const Color(0xFFF3F5F6),
-          foregroundColor: canTap ? _surfaceWhite : _disabled,
-          disabledBackgroundColor: const Color(0xFFF3F5F6),
-          disabledForegroundColor: _disabled,
+          backgroundColor: canTap ? MyShopColors.darkSlate : MyShopColors.surfaceGrey,
+          foregroundColor: canTap ? MyShopColors.surfaceWhite : MyShopColors.disabled,
+          disabledBackgroundColor: MyShopColors.surfaceGrey,
+          disabledForegroundColor: MyShopColors.disabled,
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(w * 0.021),
@@ -569,7 +548,7 @@ class _SelectBidButton extends StatelessWidget {
                 height: w * 0.046,
                 child: const CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: _surfaceWhite,
+                  color: MyShopColors.surfaceWhite,
                 ),
               )
             : Text(
@@ -586,50 +565,6 @@ class _SelectBidButton extends StatelessWidget {
 }
 
 // ── Message Button ────────────────────────────────────────────────────────────
-
-class _MessageButton extends StatelessWidget {
-  final String artisanName;
-  final bool isDisabled;
-  final VoidCallback onPressed;
-  final double w;
-  final double h;
-
-  const _MessageButton({
-    required this.artisanName,
-    required this.isDisabled,
-    required this.onPressed,
-    required this.w,
-    required this.h,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: h * 0.054,
-      child: OutlinedButton(
-        onPressed: isDisabled ? null : onPressed,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: isDisabled ? _disabled : _textPrimary,
-          side: BorderSide(
-            color: isDisabled ? _disabled : _divider,
-            width: 1.5,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(w * 0.021),
-          ),
-        ),
-        child: Text(
-          'Message',
-          style: TextStyle(
-            fontSize: w * 0.036,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.2,
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 // ── Skeleton loader ───────────────────────────────────────────────────────────
 
@@ -662,9 +597,9 @@ class _SkeletonCard extends StatelessWidget {
     return Container(
       height: h * 0.19,
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       padding: EdgeInsets.all(w * 0.041),
       child: Row(
@@ -716,7 +651,7 @@ class _Shimmer extends StatelessWidget {
       width: size ?? width,
       height: size ?? height,
       decoration: BoxDecoration(
-        color: const Color(0xFFE0E0E0),
+        color: MyShopColors.divider,
         borderRadius: BorderRadius.circular(radius ?? 4),
       ),
     );
@@ -741,7 +676,7 @@ class _NoBidsState extends StatelessWidget {
             Icon(
               Icons.hourglass_empty_rounded,
               size: w * 0.154,
-              color: _textHint,
+              color: MyShopColors.textHint,
             ),
             SizedBox(height: h * 0.019),
             Text(
@@ -749,7 +684,7 @@ class _NoBidsState extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.041,
                 fontWeight: FontWeight.w700,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
             SizedBox(height: h * 0.009),
@@ -758,7 +693,7 @@ class _NoBidsState extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.033,
                 fontWeight: FontWeight.w400,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
                 height: 1.5,
               ),
               textAlign: TextAlign.center,
@@ -793,7 +728,7 @@ class _ErrorState extends StatelessWidget {
             Icon(
               Icons.error_outline_rounded,
               size: w * 0.154,
-              color: _textHint,
+              color: MyShopColors.textHint,
             ),
             SizedBox(height: h * 0.019),
             Text(
@@ -801,7 +736,7 @@ class _ErrorState extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.041,
                 fontWeight: FontWeight.w700,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
             SizedBox(height: h * 0.009),
@@ -810,7 +745,7 @@ class _ErrorState extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.033,
                 fontWeight: FontWeight.w400,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -823,7 +758,7 @@ class _ErrorState extends StatelessWidget {
                   vertical: h * 0.017,
                 ),
                 decoration: BoxDecoration(
-                  color: _darkSlate,
+                  color: MyShopColors.darkSlate,
                   borderRadius: BorderRadius.circular(w * 0.021),
                 ),
                 child: Text(
@@ -831,7 +766,7 @@ class _ErrorState extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.038,
                     fontWeight: FontWeight.w600,
-                    color: _surfaceWhite,
+                    color: MyShopColors.surfaceWhite,
                   ),
                 ),
               ),

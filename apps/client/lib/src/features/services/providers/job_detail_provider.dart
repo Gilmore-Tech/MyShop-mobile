@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 // ── Job Status ────────────────────────────────────────────────────────────────
@@ -35,14 +36,14 @@ extension JobStatusX on JobStatus {
       };
 
   Color get badgeColor => switch (this) {
-        JobStatus.completed        => const Color(0xFF27AE60),
-        JobStatus.cancelled        => const Color(0xFFEB5757),
-        JobStatus.inProgress       => const Color(0xFFF5A623),
-        JobStatus.enRoute          => const Color(0xFFF5A623),
-        JobStatus.arrived          => const Color(0xFFF5A623),
-        JobStatus.selectingArtisan => const Color(0xFFF5A623),
-        JobStatus.confirmed        => const Color(0xFF27AE60),
-        _                          => const Color(0xFFF2994A),
+        JobStatus.completed        => MyShopColors.success,
+        JobStatus.cancelled        => MyShopColors.error,
+        JobStatus.inProgress       => MyShopColors.primaryGold,
+        JobStatus.enRoute          => MyShopColors.primaryGold,
+        JobStatus.arrived          => MyShopColors.primaryGold,
+        JobStatus.selectingArtisan => MyShopColors.primaryGold,
+        JobStatus.confirmed        => MyShopColors.success,
+        _                          => MyShopColors.warning,
       };
 }
 
@@ -96,6 +97,10 @@ class JobDetail {
   final String location;
   final JobStatus status;
   final bool isImmediate;
+
+  /// Only set when [isImmediate] is false — the scheduled appointment time.
+  final DateTime? scheduledFor;
+
   final String description;
 
   /// Number of reference photos attached.
@@ -114,6 +119,7 @@ class JobDetail {
     required this.location,
     required this.status,
     required this.isImmediate,
+    this.scheduledFor,
     required this.description,
     required this.photoCount,
     required this.photoColors,
@@ -136,13 +142,15 @@ final _mockJobDetail = JobDetail(
       'cabinets. The space is roughly 4×3 meters. I already have the materials '
       'delivered, just need expert assembly and precision fitting. Focus on '
       'soft-close hinges and seamless handles.',
-  photoCount: 6,
+  photoCount: 4,
   photoColors: [
-    const Color(0xFF6D4C3D), // warm wood tone placeholder
-    const Color(0xFF607D8B), // cool grey placeholder
+    Color(0xFF6D4C3D), // warm wood tone placeholder
+    Color(0xFF607D8B), // cool grey placeholder
+    Color(0xFF4E342E), // dark brown placeholder
+    Color(0xFF455A64), // slate placeholder
   ],
   bids: const BidSummary(
-    count: 3,
+    count: 12,
     avatarColors: [
       Color(0xFF5D4037), // Samuel Kwaku
       Color(0xFF795548), // Isaac Osei

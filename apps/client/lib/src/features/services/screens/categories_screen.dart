@@ -1,23 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
 import '../providers/services_provider.dart';
-
-// ── Design Tokens ──────────────────────────────────────────────────────────────
-const _offWhite      = Color(0xFFF6F7F8);
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _gold          = Color(0xFFF5A623);
-const _success       = Color(0xFF27AE60);
-const _successLight  = Color(0xFFE8F8EF);
-const _divider       = Color(0xFFE0E0E0);
-const _darkSlate     = Color(0xFF46535D);
-const _surfaceGrey   = Color(0xFFF3F5F6);
-const _avatarBg      = Color(0xFFE0E6FF);
-const _errorRed      = Color(0xFFEB5757);
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 //
@@ -33,7 +20,7 @@ class CategoriesScreen extends StatelessWidget {
     final h = MediaQuery.sizeOf(context).height;
 
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       body: SafeArea(
         child: Column(
           children: [
@@ -76,7 +63,7 @@ class _AppBar extends StatelessWidget {
     final topPad = MediaQuery.paddingOf(context).top;
 
     return Container(
-      color: _surfaceWhite,
+      color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.fromLTRB(
         w * 0.041,
         topPad + h * 0.019,
@@ -91,21 +78,21 @@ class _AppBar extends StatelessWidget {
             style: TextStyle(
               fontSize:   w * 0.062,
               fontWeight: FontWeight.w700,
-              color:      _textPrimary,
+              color:      MyShopColors.textPrimary,
               height:     1.2,
             ),
           ),
           SizedBox(height: h * 0.005),
           Row(
             children: [
-              Icon(Icons.location_on_rounded, size: w * 0.036, color: _gold),
+              Icon(Icons.location_on_rounded, size: w * 0.036, color: MyShopColors.primaryGold),
               SizedBox(width: w * 0.010),
               Text(
                 'Kumasi, Ashanti Region',
                 style: TextStyle(
                   fontSize:   w * 0.031,
                   fontWeight: FontWeight.w400,
-                  color:      _textSecondary,
+                  color:      MyShopColors.textSecondary,
                 ),
               ),
             ],
@@ -137,7 +124,7 @@ class _HeroSection extends StatelessWidget {
             style: TextStyle(
               fontSize:   w * 0.051,
               fontWeight: FontWeight.w700,
-              color:      _textPrimary,
+              color:      MyShopColors.textPrimary,
               height:     1.3,
             ),
           ),
@@ -147,7 +134,7 @@ class _HeroSection extends StatelessWidget {
             style: TextStyle(
               fontSize:   w * 0.033,
               fontWeight: FontWeight.w400,
-              color:      _textSecondary,
+              color:      MyShopColors.textSecondary,
               height:     1.4,
             ),
           ),
@@ -267,7 +254,7 @@ class _SubcategorySheet extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.vertical(top: Radius.circular(w * 0.041)),
       ),
       padding: EdgeInsets.only(
@@ -281,7 +268,7 @@ class _SubcategorySheet extends StatelessWidget {
             width: w * 0.103,
             height: h * 0.005,
             decoration: BoxDecoration(
-              color: _divider,
+              color: MyShopColors.divider,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -296,7 +283,7 @@ class _SubcategorySheet extends StatelessWidget {
                   style: TextStyle(
                     fontSize:   w * 0.046,
                     fontWeight: FontWeight.w700,
-                    color:      _textPrimary,
+                    color:      MyShopColors.textPrimary,
                   ),
                 ),
                 SizedBox(height: h * 0.005),
@@ -305,20 +292,20 @@ class _SubcategorySheet extends StatelessWidget {
                   style: TextStyle(
                     fontSize:   w * 0.031,
                     fontWeight: FontWeight.w400,
-                    color:      _textSecondary,
+                    color:      MyShopColors.textSecondary,
                   ),
                 ),
               ],
             ),
           ),
           SizedBox(height: h * 0.014),
-          const Divider(height: 1, color: _divider),
+          const Divider(height: 1, color: MyShopColors.divider),
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: children.length,
             separatorBuilder: (_, __) =>
-                const Divider(height: 1, color: _divider),
+                const Divider(height: 1, color: MyShopColors.divider),
             itemBuilder: (_, i) {
               final child = children[i];
               return InkWell(
@@ -334,13 +321,13 @@ class _SubcategorySheet extends StatelessWidget {
                         width:  w * 0.092,
                         height: w * 0.092,
                         decoration: const BoxDecoration(
-                          color: _surfaceGrey,
+                          color: MyShopColors.surfaceGrey,
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
                           child.icon,
                           size:  w * 0.046,
-                          color: _darkSlate,
+                          color: MyShopColors.darkSlate,
                         ),
                       ),
                       SizedBox(width: w * 0.038),
@@ -350,14 +337,14 @@ class _SubcategorySheet extends StatelessWidget {
                           style: TextStyle(
                             fontSize:   w * 0.038,
                             fontWeight: FontWeight.w500,
-                            color:      _textPrimary,
+                            color:      MyShopColors.textPrimary,
                           ),
                         ),
                       ),
                       Icon(
                         Icons.chevron_right_rounded,
                         size:  w * 0.056,
-                        color: _textSecondary,
+                        color: MyShopColors.textSecondary,
                       ),
                     ],
                   ),
@@ -387,7 +374,7 @@ class _CategoryCard extends StatelessWidget {
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
-          color:        _surfaceWhite,
+          color:        MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(w * 0.031),
           boxShadow: [
             BoxShadow(
@@ -404,10 +391,10 @@ class _CategoryCard extends StatelessWidget {
               width:  w * 0.103,
               height: w * 0.103,
               decoration: const BoxDecoration(
-                color: _surfaceGrey,
+                color: MyShopColors.surfaceGrey,
                 shape: BoxShape.circle,
               ),
-              child: Icon(category.icon, size: w * 0.056, color: _darkSlate),
+              child: Icon(category.icon, size: w * 0.056, color: MyShopColors.darkSlate),
             ),
             SizedBox(height: h * 0.009),
             Padding(
@@ -417,7 +404,7 @@ class _CategoryCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize:   w * 0.028,
                   fontWeight: FontWeight.w500,
-                  color:      _textPrimary,
+                  color:      MyShopColors.textPrimary,
                   height:     1.3,
                 ),
                 textAlign: TextAlign.center,
@@ -452,7 +439,7 @@ class _CategoriesSkeletonGrid extends StatelessWidget {
           9,
           (_) => Container(
             decoration: BoxDecoration(
-              color:        _surfaceGrey,
+              color:        MyShopColors.surfaceGrey,
               borderRadius: BorderRadius.circular(w * 0.031),
             ),
           ),
@@ -574,7 +561,7 @@ class _RatingBadge extends StatelessWidget {
         vertical:   w * 0.010,
       ),
       decoration: BoxDecoration(
-        color:        _gold,
+        color:        MyShopColors.primaryGold,
         borderRadius: BorderRadius.circular(w * 0.036),
       ),
       child: Row(
@@ -670,20 +657,20 @@ class _VerifiedChip extends StatelessWidget {
         vertical:   w * 0.005,
       ),
       decoration: BoxDecoration(
-        color:        _successLight,
+        color:        MyShopColors.successLight,
         borderRadius: BorderRadius.circular(w * 0.015),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.check_rounded, size: w * 0.026, color: _success),
+          Icon(Icons.check_rounded, size: w * 0.026, color: MyShopColors.success),
           SizedBox(width: w * 0.008),
           Text(
             'VERIFIED',
             style: TextStyle(
               fontSize:      w * 0.023,
               fontWeight:    FontWeight.w700,
-              color:         _success,
+              color:         MyShopColors.success,
               letterSpacing: 0.3,
             ),
           ),
@@ -708,7 +695,7 @@ class _FeaturedSkeletonList extends StatelessWidget {
       itemBuilder: (_, __) => Container(
         width: w * 0.440,
         decoration: BoxDecoration(
-          color:        _surfaceGrey,
+          color:        MyShopColors.surfaceGrey,
           borderRadius: BorderRadius.circular(w * 0.031),
         ),
       ),
@@ -776,7 +763,7 @@ class _RecentArtisanRow extends StatelessWidget {
         InkWell(
           onTap: onTap,
           child: Container(
-            color:   _surfaceWhite,
+            color:   MyShopColors.surfaceWhite,
             padding: EdgeInsets.symmetric(
               horizontal: w * 0.041,
               vertical:   h * 0.016,
@@ -794,7 +781,7 @@ class _RecentArtisanRow extends StatelessWidget {
                         style: TextStyle(
                           fontSize:   w * 0.038,
                           fontWeight: FontWeight.w600,
-                          color:      _textPrimary,
+                          color:      MyShopColors.textPrimary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -805,7 +792,7 @@ class _RecentArtisanRow extends StatelessWidget {
                         style: TextStyle(
                           fontSize:   w * 0.031,
                           fontWeight: FontWeight.w400,
-                          color:      _textSecondary,
+                          color:      MyShopColors.textSecondary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -821,7 +808,7 @@ class _RecentArtisanRow extends StatelessWidget {
                 Icon(
                   Icons.chevron_right_rounded,
                   size:  w * 0.056,
-                  color: _textSecondary,
+                  color: MyShopColors.textSecondary,
                 ),
               ],
             ),
@@ -831,7 +818,7 @@ class _RecentArtisanRow extends StatelessWidget {
           Divider(
             height:    1,
             thickness: 1,
-            color:     _divider,
+            color:     MyShopColors.divider,
             indent:    w * 0.041 + w * 0.123 + w * 0.036,
           ),
       ],
@@ -856,12 +843,12 @@ class _ArtisanAvatar extends StatelessWidget {
           height: size,
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            color: _avatarBg,
+            color: MyShopColors.avatarPlaceholder,
           ),
           child: Icon(
             Icons.person_rounded,
             size:  size * 0.55,
-            color: _darkSlate,
+            color: MyShopColors.darkSlate,
           ),
         ),
         if (artisan.unreadCount != null && artisan.unreadCount! > 0)
@@ -890,7 +877,7 @@ class _UnreadBadge extends StatelessWidget {
       ),
       padding: EdgeInsets.symmetric(horizontal: w * 0.008),
       decoration: BoxDecoration(
-        color:        _errorRed,
+        color:        MyShopColors.error,
         borderRadius: BorderRadius.circular(w * 0.023),
       ),
       alignment: Alignment.center,
@@ -917,7 +904,7 @@ class _StarRating extends StatelessWidget {
 
     return Row(
       children: [
-        Icon(Icons.star_rounded, size: w * 0.033, color: _gold),
+        Icon(Icons.star_rounded, size: w * 0.033, color: MyShopColors.primaryGold),
         SizedBox(width: w * 0.008),
         Flexible(
           child: Text(
@@ -925,7 +912,7 @@ class _StarRating extends StatelessWidget {
             style: TextStyle(
               fontSize:   w * 0.028,
               fontWeight: FontWeight.w400,
-              color:      _textSecondary,
+              color:      MyShopColors.textSecondary,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -949,7 +936,7 @@ class _RecentSkeletonList extends StatelessWidget {
         2,
         (_) => Container(
           height: h * 0.095,
-          color:  _surfaceWhite,
+          color:  MyShopColors.surfaceWhite,
           margin: EdgeInsets.only(bottom: h * 0.002),
         ),
       ),
@@ -992,7 +979,7 @@ class _SectionHeader extends StatelessWidget {
                   style: TextStyle(
                     fontSize:   w * 0.046,
                     fontWeight: FontWeight.w700,
-                    color:      _textPrimary,
+                    color:      MyShopColors.textPrimary,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -1009,7 +996,7 @@ class _SectionHeader extends StatelessWidget {
                       style: TextStyle(
                         fontSize:   w * 0.033,
                         fontWeight: FontWeight.w600,
-                        color:      _gold,
+                        color:      MyShopColors.primaryGold,
                       ),
                     ),
                   ),
@@ -1023,7 +1010,7 @@ class _SectionHeader extends StatelessWidget {
               style: TextStyle(
                 fontSize:   w * 0.031,
                 fontWeight: FontWeight.w400,
-                color:      _textSecondary,
+                color:      MyShopColors.textSecondary,
               ),
             ),
           ],

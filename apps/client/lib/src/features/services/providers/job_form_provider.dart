@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 // photos, destination, and preferred timing (immediate or scheduled).
 // API: POST /v1/jobs (EDD § Marketplace Endpoints)
 
+/// Maximum number of photos a client can attach to a job request.
+const int kMaxJobPhotos = 4;
+
 class JobFormState {
   /// ID of the selected ServiceCategory (null = nothing chosen yet).
   final String? selectedCategoryId;
@@ -18,8 +21,8 @@ class JobFormState {
   /// Detailed description of the work required.
   final String description;
 
-  /// Number of photos attached (local path list kept separately in UI layer).
-  final int photoCount;
+  /// Local file paths of attached photos (max [kMaxJobPhotos]).
+  final List<String> photoPaths;
 
   /// Human-readable destination address (geocoded or typed).
   final String destinationAddress;
@@ -44,7 +47,7 @@ class JobFormState {
     this.selectedCategoryName,
     this.title = '',
     this.description = '',
-    this.photoCount = 0,
+    this.photoPaths = const [],
     this.destinationAddress = '',
     this.landmarkNote = '',
     this.isImmediate = true,
@@ -53,10 +56,16 @@ class JobFormState {
     this.errorMessage,
   });
 
-  /// Form is ready to submit once the three required fields are filled.
+  int  get photoCount    => photoPaths.length;
+  int  get photoSlotsLeft => kMaxJobPhotos - photoPaths.length;
+  bool get canAddPhoto   => photoSlotsLeft > 0;
+
+  /// Form is ready to submit once the required fields are filled.
+  /// Photos and landmark note are optional.
   bool get canSubmit =>
       selectedCategoryId != null &&
       title.trim().isNotEmpty &&
+      description.trim().isNotEmpty &&
       destinationAddress.trim().isNotEmpty &&
       !isSubmitting;
 
@@ -65,7 +74,7 @@ class JobFormState {
     String? selectedCategoryName,
     String? title,
     String? description,
-    int? photoCount,
+    List<String>? photoPaths,
     String? destinationAddress,
     String? landmarkNote,
     bool? isImmediate,
@@ -80,7 +89,7 @@ class JobFormState {
       selectedCategoryName: selectedCategoryName ?? this.selectedCategoryName,
       title: title ?? this.title,
       description: description ?? this.description,
-      photoCount: photoCount ?? this.photoCount,
+      photoPaths: photoPaths ?? this.photoPaths,
       destinationAddress: destinationAddress ?? this.destinationAddress,
       landmarkNote: landmarkNote ?? this.landmarkNote,
       isImmediate: isImmediate ?? this.isImmediate,
@@ -105,8 +114,21 @@ class JobFormNotifier extends StateNotifier<JobFormState> {
   void setDescription(String value) =>
       state = state.copyWith(description: value);
 
-  void incrementPhotos() =>
-      state = state.copyWith(photoCount: state.photoCount + 1);
+  /// Append [paths] up to [kMaxJobPhotos]. Extras silently dropped.
+  void addPhotos(List<String> paths) {
+    final room = state.photoSlotsLeft;
+    if (room <= 0 || paths.isEmpty) return;
+    final toAdd = paths.take(room).toList();
+    state = state.copyWith(
+      photoPaths: [...state.photoPaths, ...toAdd],
+    );
+  }
+
+  void removePhotoAt(int index) {
+    if (index < 0 || index >= state.photoPaths.length) return;
+    final next = [...state.photoPaths]..removeAt(index);
+    state = state.copyWith(photoPaths: next);
+  }
 
   void setDestinationAddress(String value) =>
       state = state.copyWith(destinationAddress: value, clearError: true);
@@ -124,15 +146,18 @@ class JobFormNotifier extends StateNotifier<JobFormState> {
   void setScheduledFor(DateTime dt) =>
       state = state.copyWith(scheduledFor: dt, isImmediate: false);
 
-  /// Submits the job request to POST /v1/jobs.
+  /// Submits the job request to POST /v1/jobs and returns the new job id on
+  /// success (or null on failure / invalid state).
   /// EDD: payload = { categoryId, title, description, photos[], lat, lng,
   ///                  scheduledFor? }
-  Future<void> submit() async {
-    if (!state.canSubmit) return;
+  Future<String?> submit() async {
+    if (!state.canSubmit) return null;
     state = state.copyWith(isSubmitting: true, clearError: true);
     // TODO: replace with real POST /v1/jobs via API client
     await Future.delayed(const Duration(milliseconds: 800)); // simulate network
     state = state.copyWith(isSubmitting: false);
+    // Mock id — real impl returns the server-generated job id.
+    return 'JOB-${DateTime.now().millisecondsSinceEpoch}';
   }
 
   void reset() => state = const JobFormState();

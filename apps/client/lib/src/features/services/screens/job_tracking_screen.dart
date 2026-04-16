@@ -1,19 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
-
-// ── Design tokens ──────────────────────────────────────────────────────────────
-const _bg            = Color(0xFFF6F7F8);
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _surfaceGrey   = Color(0xFFF3F5F6);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _gold          = Color(0xFFF5A623);
-const _goldLight     = Color(0xFFFFF8EC);
-const _divider       = Color(0xFFE8EAEC);
-const _darkSlate     = Color(0xFF46535D);
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD § 4.6 — Live artisan location tracking while en route to job site.
@@ -32,7 +22,7 @@ class JobTrackingScreen extends ConsumerWidget {
     final jobId = GoRouterState.of(context).pathParameters['jobId'] ?? '';
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: MyShopColors.offWhite,
       body: Stack(
         children: [
           // Map placeholder
@@ -89,7 +79,7 @@ class _GridPainter extends CustomPainter {
     final cy = size.height * 0.42;
     canvas.drawCircle(
         Offset(cx, cy), 18,
-        Paint()..color = const Color(0xFFF5A623));
+        Paint()..color = MyShopColors.primaryGold);
     canvas.drawCircle(
         Offset(cx, cy), 10,
         Paint()..color = Colors.white);
@@ -98,7 +88,7 @@ class _GridPainter extends CustomPainter {
     final dy = size.height * 0.30;
     canvas.drawCircle(
         Offset(dx, dy), 16,
-        Paint()..color = const Color(0xFF27AE60));
+        Paint()..color = MyShopColors.success);
     canvas.drawCircle(
         Offset(dx, dy), 8,
         Paint()..color = Colors.white);
@@ -122,7 +112,7 @@ class _TopBar extends StatelessWidget {
       top: top + 8, left: 16, right: 16,
       child: Row(
         children: [
-          _CircleBtn(icon: Icons.arrow_back_ios_new_rounded, onTap: onBack),
+          _CircleBtn(icon: Icons.arrow_back, onTap: onBack),
           const Spacer(),
           _CircleBtn(icon: Icons.my_location_rounded, onTap: () {}),
         ],
@@ -139,7 +129,7 @@ class _CircleBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color:        _surfaceWhite,
+      color:        MyShopColors.surfaceWhite,
       shape:        const CircleBorder(),
       elevation:    4,
       shadowColor:  Colors.black26,
@@ -148,7 +138,7 @@ class _CircleBtn extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(10),
-          child: Icon(icon, color: _textPrimary, size: 20),
+          child: Icon(icon, color: MyShopColors.textPrimary, size: 20),
         ),
       ),
     );
@@ -170,7 +160,7 @@ class _BottomSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        color:        _surfaceWhite,
+        color:        MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
           BoxShadow(
@@ -188,7 +178,7 @@ class _BottomSheet extends StatelessWidget {
             width:  w * 0.10,
             height: 4,
             decoration: BoxDecoration(
-              color:        _surfaceGrey,
+              color:        MyShopColors.surfaceGrey,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -198,21 +188,21 @@ class _BottomSheet extends StatelessWidget {
             padding: EdgeInsets.symmetric(
                 horizontal: w * 0.040, vertical: h * 0.014),
             decoration: BoxDecoration(
-              color:        _goldLight,
+              color:        MyShopColors.primaryGoldLight,
               borderRadius: BorderRadius.circular(12),
-              border:       Border.all(color: _gold.withAlpha(60)),
+              border:       Border.all(color: MyShopColors.primaryGold.withAlpha(60)),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.timer_outlined, color: _gold, size: 20),
+                const Icon(Icons.timer_outlined, color: MyShopColors.primaryGold, size: 20),
                 SizedBox(width: w * 0.024),
                 Text('Artisan arriving in  ',
                     style: TextStyle(
-                        color: _textSecondary, fontSize: w * 0.036)),
+                        color: MyShopColors.textSecondary, fontSize: w * 0.036)),
                 Text('12 mins',
                     style: TextStyle(
-                      color:      _textPrimary,
+                      color:      MyShopColors.textPrimary,
                       fontSize:   w * 0.040,
                       fontWeight: FontWeight.w800,
                     )),
@@ -220,7 +210,7 @@ class _BottomSheet extends StatelessWidget {
             ),
           ),
           SizedBox(height: h * 0.020),
-          const Divider(height: 1, color: _divider),
+          const Divider(height: 1, color: MyShopColors.divider),
           SizedBox(height: h * 0.020),
           // Artisan row
           Row(
@@ -240,18 +230,18 @@ class _BottomSheet extends StatelessWidget {
                   children: [
                     Text('Kofi Mensah',
                         style: TextStyle(
-                          color:      _textPrimary,
+                          color:      MyShopColors.textPrimary,
                           fontSize:   w * 0.040,
                           fontWeight: FontWeight.w700,
                         )),
                     const SizedBox(height: 3),
                     Row(children: [
                       const Icon(Icons.star_rounded,
-                          color: _gold, size: 14),
+                          color: MyShopColors.primaryGold, size: 14),
                       const SizedBox(width: 3),
                       Text('4.9  •  Master Electrician',
                           style: TextStyle(
-                              color:    _textSecondary,
+                              color:    MyShopColors.textSecondary,
                               fontSize: w * 0.032)),
                     ]),
                   ],
@@ -260,7 +250,7 @@ class _BottomSheet extends StatelessWidget {
               // Call button
               _ContactBtn(
                 icon:  Icons.phone_rounded,
-                color: _darkSlate,
+                color: MyShopColors.darkSlate,
                 onTap: () {},
                 w:     w,
               ),
@@ -268,7 +258,7 @@ class _BottomSheet extends StatelessWidget {
               // Chat button
               _ContactBtn(
                 icon:  Icons.chat_bubble_outline_rounded,
-                color: _gold,
+                color: MyShopColors.primaryGold,
                 onTap: () => context.push(AppRoutes.chat),
                 w:     w,
               ),
@@ -279,12 +269,12 @@ class _BottomSheet extends StatelessWidget {
           Row(
             children: [
               const Icon(Icons.location_on_rounded,
-                  color: _textSecondary, size: 16),
+                  color: MyShopColors.textSecondary, size: 16),
               SizedBox(width: w * 0.016),
               Expanded(
                 child: Text('Heading to East Legon, Accra',
                     style: TextStyle(
-                        color: _textSecondary, fontSize: w * 0.034)),
+                        color: MyShopColors.textSecondary, fontSize: w * 0.034)),
               ),
             ],
           ),
