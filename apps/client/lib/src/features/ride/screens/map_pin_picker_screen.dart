@@ -1,17 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../providers/edit_trip_provider.dart';
 import '../providers/ride_search_provider.dart';
 import 'destination_search_screen.dart' show kNewStopSentinel;
-
-// Design tokens
-const _gold          = Color(0xFFF5A623);
-const _darkSlate     = Color(0xFF46535D);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _offWhite      = Color(0xFFF6F7F8);
 
 /// Full-screen map pin picker. A crosshair at screen center lets the user
 /// drop a pin; "Confirm" writes the location back to ride-search state and
@@ -68,7 +62,7 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       body: Stack(
         children: [
           const Positioned.fill(child: _MapPlaceholder()),
@@ -133,7 +127,7 @@ class _CenterCrosshair extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.location_on, color: _gold, size: 44),
+            const Icon(Icons.location_on, color: MyShopColors.primaryGold, size: 44),
             Container(
               width: 8,
               height: 8,
@@ -173,7 +167,7 @@ class _TopBar extends StatelessWidget {
               elevation: 2,
               child: IconButton(
                 onPressed: onBack,
-                icon: const Icon(Icons.arrow_back_rounded, color: _textPrimary),
+                icon: const Icon(Icons.arrow_back_rounded, color: MyShopColors.textPrimary),
               ),
             ),
             const SizedBox(width: 12),
@@ -197,7 +191,7 @@ class _TopBar extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: _textPrimary,
+                    color: MyShopColors.textPrimary,
                   ),
                 ),
               ),
@@ -244,14 +238,14 @@ class _BottomSheet extends StatelessWidget {
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w900,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
                 letterSpacing: 1.4,
               ),
             ),
             const SizedBox(height: 8),
             Row(
               children: [
-                const Icon(Icons.place_rounded, color: _darkSlate, size: 20),
+                const Icon(Icons.place_rounded, color: MyShopColors.darkSlate, size: 20),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -259,7 +253,7 @@ class _BottomSheet extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
-                      color: _textPrimary,
+                      color: MyShopColors.textPrimary,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -274,7 +268,7 @@ class _BottomSheet extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: onConfirm,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _gold,
+                  backgroundColor: MyShopColors.primaryGold,
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shape: RoundedRectangleBorder(

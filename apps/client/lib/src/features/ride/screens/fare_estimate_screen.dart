@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -10,13 +11,6 @@ import '../widgets/pickup_destination_fields.dart';
 import '../widgets/recent_destination_card.dart';
 import '../widgets/surge_pricing_banner.dart';
 import '../widgets/vehicle_option_card.dart';
-
-// Design tokens
-const _offWhite = Color(0xFFF6F7F8);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _gold = Color(0xFFF5A623);
-const _divider = Color(0xFFE0E0E0);
 
 /// PRD 4.3 — Plan Your Trip
 ///
@@ -34,7 +28,7 @@ class FareEstimateScreen extends ConsumerWidget {
     final ready = hasPickup && hasDestination;
 
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       appBar: _buildAppBar(context),
       body: Column(
         children: [
@@ -80,7 +74,7 @@ class FareEstimateScreen extends ConsumerWidget {
                     const SizedBox(height: 16),
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Divider(color: _divider),
+                      child: Divider(color: MyShopColors.divider),
                     ),
                     const SizedBox(height: 10),
                     const Padding(
@@ -106,14 +100,14 @@ class FareEstimateScreen extends ConsumerWidget {
       scrolledUnderElevation: 0,
       leading: IconButton(
         onPressed: () => context.pop(),
-        icon: const Icon(Icons.arrow_back_rounded, color: _textPrimary),
+        icon: const Icon(Icons.arrow_back_rounded, color: MyShopColors.textPrimary),
       ),
       title: const Text(
         'Plan Your Trip',
         style: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.w700,
-          color: _textPrimary,
+          color: MyShopColors.textPrimary,
         ),
       ),
     );
@@ -186,7 +180,7 @@ class _VehicleSelectionSection extends ConsumerWidget {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
             Text(
@@ -194,7 +188,7 @@ class _VehicleSelectionSection extends ConsumerWidget {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: _gold,
+                color: MyShopColors.primaryGold,
               ),
             ),
           ],
@@ -230,7 +224,7 @@ class _PaymentSection extends StatelessWidget {
           style: TextStyle(
             fontSize: 10,
             fontWeight: FontWeight.w900,
-            color: _textSecondary,
+            color: MyShopColors.textSecondary,
             letterSpacing: 1.4,
           ),
         ),
@@ -261,7 +255,7 @@ class _BottomActions extends StatelessWidget {
             child: ElevatedButton(
               onPressed: onConfirm,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF46535D),
+                backgroundColor: MyShopColors.darkSlate,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -285,7 +279,7 @@ class _BottomActions extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
           ),
@@ -295,7 +289,7 @@ class _BottomActions extends StatelessWidget {
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w400,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
             ),
           ),
         ],
@@ -322,7 +316,7 @@ class _SectionHeader extends StatelessWidget {
           style: const TextStyle(
             fontSize: 10,
             fontWeight: FontWeight.w900,
-            color: _textSecondary,
+            color: MyShopColors.textSecondary,
             letterSpacing: 1.4,
           ),
         ),
@@ -332,7 +326,7 @@ class _SectionHeader extends StatelessWidget {
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: _gold,
+              color: MyShopColors.primaryGold,
             ),
           ),
       ],

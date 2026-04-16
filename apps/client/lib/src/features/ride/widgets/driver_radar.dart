@@ -1,10 +1,9 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 
-// Design tokens
-const _gold       = Color(0xFFF5A623);
 const _radarFill  = Color(0xFFF5E8D0); // warm sand/cream
-const _pinColor   = Color(0xFF161A1D); // dark navy pin
+const _pinColor   = MyShopColors.textPrimary; // dark navy pin
 
 /// Radar widget — full-size static circle with an outward-expanding pulse ring.
 /// The main disc stays at full size; the ring expands from the edge and fades.
@@ -98,7 +97,7 @@ class _RadarBody extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: _gold.withAlpha((ringOpacity * 255).round()),
+                      color: MyShopColors.primaryGold.withAlpha((ringOpacity * 255).round()),
                       width: 3,
                     ),
                   ),
@@ -112,7 +111,7 @@ class _RadarBody extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: _radarFill,
-                  border: Border.all(color: _gold, width: 2.5),
+                  border: Border.all(color: MyShopColors.primaryGold, width: 2.5),
                 ),
               ),
 
@@ -195,7 +194,7 @@ class _CarIcon extends StatelessWidget {
       child: const Icon(
         Icons.directions_car_rounded,
         size:  18,
-        color: Color(0xFF46535D),
+        color: MyShopColors.darkSlate,
       ),
     );
   }

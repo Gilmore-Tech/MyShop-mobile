@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 
-const _warningBg = Color(0xFFFFF8EC);   // primaryGoldLight
-const _gold = Color(0xFFF5A623);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
+const _warningBg = MyShopColors.primaryGoldLight;   // primaryGoldLight
 
 class SurgePricingBanner extends StatelessWidget {
   const SurgePricingBanner({super.key});
@@ -15,12 +13,12 @@ class SurgePricingBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: _warningBg,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _gold.withValues(alpha: 0.4)),
+        border: Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.4)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.bolt_rounded, color: _gold, size: 20),
+          const Icon(Icons.bolt_rounded, color: MyShopColors.primaryGold, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -34,7 +32,7 @@ class SurgePricingBanner extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: _textPrimary,
+                        color: MyShopColors.textPrimary,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -47,7 +45,7 @@ class SurgePricingBanner extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w400,
-                    color: _textSecondary,
+                    color: MyShopColors.textSecondary,
                   ),
                 ),
               ],
@@ -65,7 +63,7 @@ class _LiveBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: _gold,
+        color: MyShopColors.primaryGold,
         borderRadius: BorderRadius.circular(4),
       ),
       child: const Text(

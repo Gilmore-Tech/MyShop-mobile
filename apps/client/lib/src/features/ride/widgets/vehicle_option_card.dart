@@ -1,12 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import '../providers/ride_provider.dart';
-
-// Design tokens
-const _gold = Color(0xFFF5A623);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _border = Color(0xFFE0E0E0);
-const _surfaceGrey = Color(0xFFF3F5F6);
 
 class VehicleOptionCard extends StatelessWidget {
   final VehicleOption option;
@@ -35,7 +29,7 @@ class VehicleOptionCard extends StatelessWidget {
               color: Colors.white,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: isSelected ? _gold : _border,
+                color: isSelected ? MyShopColors.primaryGold : MyShopColors.divider,
                 width: isSelected ? 2 : 1,
               ),
             ),
@@ -70,7 +64,7 @@ class _SelectedBadge extends StatelessWidget {
       height: 22,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: _gold,
+        color: MyShopColors.primaryGold,
         border: Border.all(color: Colors.white, width: 2),
       ),
       child: const Icon(Icons.check_rounded, color: Colors.white, size: 14),
@@ -90,13 +84,13 @@ class _VehicleIcon extends StatelessWidget {
       width:  w * 0.144,
       height: h * 0.047,
       decoration: BoxDecoration(
-        color: _surfaceGrey,
+        color: MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(w * 0.015),
       ),
       child: Icon(
         isMotorcycle ? Icons.two_wheeler_rounded : Icons.directions_car_rounded,
         size: isMotorcycle ? w * 0.067 : w * 0.077,
-        color: const Color(0xFF46535D),
+        color: MyShopColors.darkSlate,
       ),
     );
   }
@@ -119,19 +113,19 @@ class _VehicleInfo extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
             const SizedBox(width: 6),
             const Icon(Icons.person_outline_rounded,
-                size: 13, color: _textSecondary),
+                size: 13, color: MyShopColors.textSecondary),
             const SizedBox(width: 2),
             Text(
               '${option.capacityPersons}',
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w400,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
               ),
             ),
           ],
@@ -142,7 +136,7 @@ class _VehicleInfo extends StatelessWidget {
           style: const TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w400,
-            color: _textSecondary,
+            color: MyShopColors.textSecondary,
           ),
         ),
       ],
@@ -167,7 +161,7 @@ class _FareInfo extends StatelessWidget {
           style: const TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w700,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
         const SizedBox(height: 4),
@@ -177,7 +171,7 @@ class _FareInfo extends StatelessWidget {
             Icon(
               Icons.access_time_rounded,
               size: 11,
-              color: isSelected ? _gold : _textSecondary,
+              color: isSelected ? MyShopColors.primaryGold : MyShopColors.textSecondary,
             ),
             const SizedBox(width: 3),
             Text(
@@ -185,7 +179,7 @@ class _FareInfo extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
-                color: isSelected ? _gold : _textSecondary,
+                color: isSelected ? MyShopColors.primaryGold : MyShopColors.textSecondary,
               ),
             ),
           ],

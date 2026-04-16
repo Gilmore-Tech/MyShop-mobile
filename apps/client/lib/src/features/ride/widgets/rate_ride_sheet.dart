@@ -1,20 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/rate_ride_provider.dart';
 import '../providers/ride_provider.dart';
-
-// ── Design Tokens ─────────────────────────────────────────────────────────────
-const _surfaceWhite = Color(0xFFFFFFFF);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _gold = Color(0xFFF5A623);
-const _goldLight = Color(0xFFFFF8EC);
-const _success = Color(0xFF27AE60);
-const _divider = Color(0xFFE0E0E0);
-const _darkSlate = Color(0xFF46535D);
-const _surfaceGrey = Color(0xFFF3F5F6);
-const _disabled = Color(0xFFBDBDBD);
 
 // ── Public entry-point ────────────────────────────────────────────────────────
 
@@ -23,8 +12,8 @@ const _disabled = Color(0xFFBDBDBD);
 ///
 /// PRD 4.3 — client rates driver after ride completion.
 /// API: POST /v1/ratings (EDD § Other REST Endpoints — blind 24h window).
-void showRateRideSheet(BuildContext context, RideReceipt receipt) {
-  showModalBottomSheet<void>(
+Future<void> showRateRideSheet(BuildContext context, RideReceipt receipt) {
+  return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
@@ -62,7 +51,7 @@ class _RateRideSheetState extends ConsumerState<RateRideSheet> {
 
     return Container(
       decoration: BoxDecoration(
-        color: _surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(w * 0.041), // ~16dp
         ),
@@ -133,7 +122,7 @@ class _RateRideSheetState extends ConsumerState<RateRideSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Thanks for your feedback!'),
-          backgroundColor: _success,
+          backgroundColor: MyShopColors.success,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -154,7 +143,7 @@ class _DragHandle extends StatelessWidget {
       width: w * 0.103,  // ~40dp
       height: h * 0.005, // ~4dp
       decoration: BoxDecoration(
-        color: _divider,
+        color: MyShopColors.divider,
         borderRadius: BorderRadius.circular(2),
       ),
     );
@@ -179,7 +168,7 @@ class _SheetHeader extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.051,       // ~20dp
               fontWeight: FontWeight.w700,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
           SizedBox(height: h * 0.007),   // ~6dp
@@ -188,7 +177,7 @@ class _SheetHeader extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.033,       // ~13dp
               fontWeight: FontWeight.w400,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
             ),
             textAlign: TextAlign.center,
           ),
@@ -226,7 +215,7 @@ class _StarRow extends StatelessWidget {
             child: Icon(
               filled ? Icons.star_rounded : Icons.star_border_rounded,
               size: w * 0.092,  // ~36dp
-              color: _gold,
+              color: MyShopColors.primaryGold,
             ),
           ),
         );
@@ -321,9 +310,9 @@ class _TagChip extends StatelessWidget {
         height: h * 0.047,   // ~40dp
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: isSelected ? _goldLight : _surfaceWhite,
+          color: isSelected ? MyShopColors.primaryGoldLight : MyShopColors.surfaceWhite,
           border: Border.all(
-            color: isSelected ? _gold : _divider,
+            color: isSelected ? MyShopColors.primaryGold : MyShopColors.divider,
             width: 1.5,
           ),
           borderRadius: BorderRadius.circular(w * 0.051), // pill
@@ -333,7 +322,7 @@ class _TagChip extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.033,  // ~13dp
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-            color: isSelected ? _gold : _textPrimary,
+            color: isSelected ? MyShopColors.primaryGold : MyShopColors.textPrimary,
           ),
           textAlign: TextAlign.center,
         ),
@@ -366,7 +355,7 @@ class _NoteInput extends StatelessWidget {
       child: Container(
         constraints: BoxConstraints(minHeight: h * 0.107), // ~90dp min
         decoration: BoxDecoration(
-          border: Border.all(color: _divider),
+          border: Border.all(color: MyShopColors.divider),
           borderRadius: BorderRadius.circular(w * 0.021), // ~8dp
         ),
         child: TextField(
@@ -377,14 +366,14 @@ class _NoteInput extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.033,
             fontWeight: FontWeight.w400,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
           ),
           decoration: InputDecoration(
             hintText: 'Write a note to $driverFirstName (optional)...',
             hintStyle: TextStyle(
               fontSize: w * 0.033,
               fontWeight: FontWeight.w400,
-              color: _disabled,
+              color: MyShopColors.disabled,
             ),
             border: InputBorder.none,
             contentPadding: EdgeInsets.symmetric(
@@ -425,10 +414,10 @@ class _SubmitButton extends StatelessWidget {
         child: ElevatedButton(
           onPressed: canSubmit ? onPressed : null,
           style: ElevatedButton.styleFrom(
-            backgroundColor: canSubmit ? _darkSlate : _surfaceGrey,
-            foregroundColor: canSubmit ? _surfaceWhite : _disabled,
-            disabledBackgroundColor: _surfaceGrey,
-            disabledForegroundColor: _disabled,
+            backgroundColor: canSubmit ? MyShopColors.darkSlate : MyShopColors.surfaceGrey,
+            foregroundColor: canSubmit ? MyShopColors.surfaceWhite : MyShopColors.disabled,
+            disabledBackgroundColor: MyShopColors.surfaceGrey,
+            disabledForegroundColor: MyShopColors.disabled,
             elevation: 0,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(w * 0.021),
@@ -440,7 +429,7 @@ class _SubmitButton extends StatelessWidget {
                   height: w * 0.051,
                   child: const CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: _surfaceWhite,
+                    color: MyShopColors.surfaceWhite,
                   ),
                 )
               : Text(
@@ -448,7 +437,7 @@ class _SubmitButton extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.036,  // ~14dp
                     fontWeight: FontWeight.w600,
-                    color: canSubmit ? _surfaceWhite : _disabled,
+                    color: canSubmit ? MyShopColors.surfaceWhite : MyShopColors.disabled,
                     letterSpacing: 0.3,
                   ),
                 ),
@@ -486,7 +475,7 @@ class _SkipLink extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.033,
             fontWeight: FontWeight.w500,
-            color: _textSecondary,
+            color: MyShopColors.textSecondary,
           ),
           textAlign: TextAlign.center,
         ),
@@ -509,7 +498,7 @@ class _SafetyDisclaimer extends StatelessWidget {
         Icon(
           Icons.shield_outlined,
           size: w * 0.036,   // ~14dp
-          color: _textSecondary,
+          color: MyShopColors.textSecondary,
         ),
         SizedBox(width: w * 0.015),
         Text(
@@ -517,7 +506,7 @@ class _SafetyDisclaimer extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.028,   // ~11dp
             fontWeight: FontWeight.w400,
-            color: _textSecondary,
+            color: MyShopColors.textSecondary,
           ),
         ),
       ],

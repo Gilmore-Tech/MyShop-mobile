@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
@@ -7,13 +8,6 @@ import '../widgets/driver_profile_header.dart';
 import '../widgets/fare_breakdown_card.dart';
 import '../widgets/ride_safety_banner.dart';
 import '../widgets/vehicle_details_card.dart';
-
-// Design tokens
-const _offWhite = Color(0xFFF6F7F8);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _success = Color(0xFF27AE60);
-const _error = Color(0xFFEB5757);
 
 /// PRD 4.3 — Driver Details Screen
 ///
@@ -28,7 +22,7 @@ class DriverFoundScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       appBar: _buildAppBar(context),
       body: Column(
         children: [
@@ -66,7 +60,7 @@ class DriverFoundScreen extends StatelessWidget {
       scrolledUnderElevation: 0,
       leading: IconButton(
         onPressed: () => context.pop(),
-        icon: const Icon(Icons.arrow_back_rounded, color: _textPrimary),
+        icon: const Icon(Icons.arrow_back_rounded, color: MyShopColors.textPrimary),
       ),
       centerTitle: false,
       title: Column(
@@ -78,7 +72,7 @@ class DriverFoundScreen extends StatelessWidget {
             style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w700,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
           Row(
@@ -89,7 +83,7 @@ class DriverFoundScreen extends StatelessWidget {
                 height: 7,
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  color: _success,
+                  color: MyShopColors.success,
                 ),
               ),
               const SizedBox(width: 5),
@@ -98,7 +92,7 @@ class DriverFoundScreen extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
-                  color: _textSecondary,
+                  color: MyShopColors.textSecondary,
                   letterSpacing: 1.0,
                 ),
               ),
@@ -123,7 +117,7 @@ class _SectionLabel extends StatelessWidget {
       style: const TextStyle(
         fontSize: 10,
         fontWeight: FontWeight.w900,
-        color: _textSecondary,
+        color: MyShopColors.textSecondary,
         letterSpacing: 1.4,
       ),
     );
@@ -151,19 +145,19 @@ class _BottomActions extends StatelessWidget {
             child: OutlinedButton.icon(
               onPressed: onCancel,
               style: OutlinedButton.styleFrom(
-                foregroundColor: _error,
-                side: BorderSide(color: _error.withValues(alpha: 0.5), width: 1.5),
+                foregroundColor: MyShopColors.error,
+                side: BorderSide(color: MyShopColors.error.withValues(alpha: 0.5), width: 1.5),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              icon: const Icon(Icons.cancel_outlined, size: 18, color: _error),
+              icon: const Icon(Icons.cancel_outlined, size: 18, color: MyShopColors.error),
               label: const Text(
                 'Cancel Request',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                  color: _error,
+                  color: MyShopColors.error,
                 ),
               ),
             ),
@@ -174,7 +168,7 @@ class _BottomActions extends StatelessWidget {
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w400,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
             ),
             textAlign: TextAlign.center,
           ),

@@ -1,12 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import '../providers/ride_provider.dart';
-
-// Design tokens
-const _gold = Color(0xFFF5A623);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _border = Color(0xFFE0E0E0);
-const _darkSlate = Color(0xFF46535D);
 
 class VehicleDetailsCard extends StatelessWidget {
   final MatchedDriver driver;
@@ -20,7 +14,7 @@ class VehicleDetailsCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: _border),
+        border: Border.all(color: MyShopColors.divider),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -55,7 +49,7 @@ class _VehicleInfo extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.026,
             fontWeight: FontWeight.w900,
-            color: _textSecondary,
+            color: MyShopColors.textSecondary,
             letterSpacing: 1.4,
           ),
         ),
@@ -65,7 +59,7 @@ class _VehicleInfo extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.038,
             fontWeight: FontWeight.w700,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
         SizedBox(height: h * 0.012),
@@ -92,7 +86,7 @@ class _PlateBadge extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: w * 0.026, vertical: h * 0.006),
       decoration: BoxDecoration(
-        color: _gold,
+        color: MyShopColors.primaryGold,
         borderRadius: BorderRadius.circular(w * 0.015),
       ),
       child: Text(
@@ -123,14 +117,14 @@ class _EtaInfo extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.access_time_rounded, size: w * 0.033, color: _gold),
+            Icon(Icons.access_time_rounded, size: w * 0.033, color: MyShopColors.primaryGold),
             SizedBox(width: w * 0.010),
             Text(
               '$minutesAway mins away',
               style: TextStyle(
                 fontSize: w * 0.033,
                 fontWeight: FontWeight.w700,
-                color: _gold,
+                color: MyShopColors.primaryGold,
               ),
             ),
           ],
@@ -141,7 +135,7 @@ class _EtaInfo extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.026,
             fontWeight: FontWeight.w400,
-            color: _textSecondary,
+            color: MyShopColors.textSecondary,
           ),
         ),
       ],
@@ -167,7 +161,7 @@ class _CarImage extends StatelessWidget {
             child: Icon(
               Icons.directions_car_rounded,
               size: w * 0.185,
-              color: _darkSlate,
+              color: MyShopColors.darkSlate,
             ),
           ),
         ),

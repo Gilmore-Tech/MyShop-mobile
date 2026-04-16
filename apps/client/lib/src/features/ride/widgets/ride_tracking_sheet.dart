@@ -1,19 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
 import '../providers/ride_provider.dart';
-
-// Design tokens
-const _gold = Color(0xFFF5A623);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _success = Color(0xFF27AE60);
-const _error = Color(0xFFEB5757);
-const _divider = Color(0xFFE0E0E0);
-const _darkSlate = Color(0xFF46535D);
-const _avatarBg = Color(0xFFE0E6FF);
-const _outlinedBorder = Color(0xFFE0E0E0);
 
 class RideTrackingSheet extends StatelessWidget {
   final MatchedDriver driver;
@@ -73,7 +63,7 @@ class RideTrackingSheet extends StatelessWidget {
             _FareRow(driver: driver, waitingSeconds: effectiveWaiting),
             if (isOvertime) const _OvertimeNotice(),
             if (isInProgress) const _TripInProgressNotice(),
-            const Divider(height: 1, thickness: 1, color: _divider),
+            const Divider(height: 1, thickness: 1, color: MyShopColors.divider),
             _DriverRow(driver: driver),
             SizedBox(height: h * 0.012),
             Padding(
@@ -90,7 +80,7 @@ class RideTrackingSheet extends StatelessWidget {
                   if (isInProgress)
                     _AddStopButton(onTap: onAddStop)
                   else ...[
-                    const Divider(height: 1, thickness: 1, color: _divider),
+                    const Divider(height: 1, thickness: 1, color: MyShopColors.divider),
                     SizedBox(height: h * 0.017),
                     _CancelRequestButton(onTap: onCancel),
                   ],
@@ -121,7 +111,7 @@ class _DragHandle extends StatelessWidget {
           width:  w * 0.103,
           height: h * 0.005,
           decoration: BoxDecoration(
-            color: const Color(0xFFE0E0E0),
+            color: MyShopColors.divider,
             borderRadius: BorderRadius.circular(2),
           ),
         ),
@@ -158,7 +148,7 @@ class _FareRow extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.067,
                     fontWeight: FontWeight.w700,
-                    color: _textPrimary,
+                    color: MyShopColors.textPrimary,
                     height: 1.1,
                   ),
                 ),
@@ -189,14 +179,14 @@ class _PaymentMethod extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: w * 0.036, color: _textSecondary),
+        Icon(icon, size: w * 0.036, color: MyShopColors.textSecondary),
         SizedBox(width: w * 0.015),
         Text(
           label,
           style: TextStyle(
             fontSize: w * 0.031,
             fontWeight: FontWeight.w500,
-            color: _textSecondary,
+            color: MyShopColors.textSecondary,
           ),
         ),
       ],
@@ -216,7 +206,7 @@ class _WaitingTimer extends StatelessWidget {
     final absSeconds = seconds.abs();
     final mm = (absSeconds ~/ 60).toString().padLeft(2, '0');
     final ss = (absSeconds % 60).toString().padLeft(2, '0');
-    final accent = isOvertime ? _error : _success;
+    final accent = isOvertime ? MyShopColors.error : MyShopColors.success;
     final prefix = isOvertime ? '+' : '';
 
     return Column(
@@ -239,7 +229,7 @@ class _WaitingTimer extends StatelessWidget {
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w500,
-            color: _textSecondary,
+            color: MyShopColors.textSecondary,
           ),
         ),
       ],
@@ -262,7 +252,7 @@ class _OvertimeNotice extends StatelessWidget {
       color: const Color(0xFFFDECEC),
       child: Row(
         children: [
-          Icon(Icons.info_outline_rounded, size: w * 0.041, color: _error),
+          Icon(Icons.info_outline_rounded, size: w * 0.041, color: MyShopColors.error),
           SizedBox(width: w * 0.021),
           Expanded(
             child: Text(
@@ -270,7 +260,7 @@ class _OvertimeNotice extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.031,
                 fontWeight: FontWeight.w500,
-                color: _error,
+                color: MyShopColors.error,
                 height: 1.35,
               ),
             ),
@@ -293,10 +283,10 @@ class _TripInProgressNotice extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: EdgeInsets.symmetric(horizontal: w * 0.041, vertical: h * 0.012),
-      color: const Color(0xFFE8F8EF),
+      color: MyShopColors.successLight,
       child: Row(
         children: [
-          Icon(Icons.navigation_rounded, size: w * 0.041, color: _success),
+          Icon(Icons.navigation_rounded, size: w * 0.041, color: MyShopColors.success),
           SizedBox(width: w * 0.021),
           Expanded(
             child: Text(
@@ -304,7 +294,7 @@ class _TripInProgressNotice extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.031,
                 fontWeight: FontWeight.w500,
-                color: _success,
+                color: MyShopColors.success,
                 height: 1.35,
               ),
             ),
@@ -350,7 +340,7 @@ class _DriverRow extends StatelessWidget {
             Icon(
               Icons.chevron_right_rounded,
               size: w * 0.046,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
             ),
           ],
         ),
@@ -370,10 +360,10 @@ class _DriverAvatar extends StatelessWidget {
       height: w * 0.123,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: _avatarBg,
-        border: Border.all(color: _gold, width: 1.5),
+        color: MyShopColors.avatarPlaceholder,
+        border: Border.all(color: MyShopColors.primaryGold, width: 1.5),
       ),
-      child: Icon(Icons.person_rounded, size: w * 0.067, color: _darkSlate),
+      child: Icon(Icons.person_rounded, size: w * 0.067, color: MyShopColors.darkSlate),
     );
   }
 }
@@ -395,21 +385,21 @@ class _DriverMeta extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.036,
             fontWeight: FontWeight.w700,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
         SizedBox(height: h * 0.004),
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.star_rounded, size: w * 0.033, color: _gold),
+            Icon(Icons.star_rounded, size: w * 0.033, color: MyShopColors.primaryGold),
             SizedBox(width: w * 0.008),
             Text(
               driver.rating.toStringAsFixed(1),
               style: TextStyle(
                 fontSize: w * 0.031,
                 fontWeight: FontWeight.w600,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
             if (driver.isVerified) ...[
@@ -419,7 +409,7 @@ class _DriverMeta extends StatelessWidget {
                 style: TextStyle(
                   fontSize: w * 0.031,
                   fontWeight: FontWeight.w500,
-                  color: _success,
+                  color: MyShopColors.success,
                 ),
               ),
             ],
@@ -449,7 +439,7 @@ class _VehicleInfo extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.028,
             fontWeight: FontWeight.w400,
-            color: _textSecondary,
+            color: MyShopColors.textSecondary,
           ),
         ),
         SizedBox(height: h * 0.004),
@@ -458,7 +448,7 @@ class _VehicleInfo extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.033,
             fontWeight: FontWeight.w700,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
       ],
@@ -486,7 +476,7 @@ class _ChatRow extends StatelessWidget {
                 // TODO: Navigate to chat screen
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: _darkSlate,
+                backgroundColor: MyShopColors.darkSlate,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(w * 0.026),
@@ -526,9 +516,9 @@ class _PhoneCircleButton extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: Colors.white,
-          border: Border.all(color: _outlinedBorder, width: 1.5),
+          border: Border.all(color: MyShopColors.divider, width: 1.5),
         ),
-        child: const Icon(Icons.phone_rounded, size: 20, color: _textPrimary),
+        child: const Icon(Icons.phone_rounded, size: 20, color: MyShopColors.textPrimary),
       ),
     );
   }
@@ -582,20 +572,20 @@ class _OutlinedActionButton extends StatelessWidget {
     return OutlinedButton.icon(
       onPressed: onTap,
       style: OutlinedButton.styleFrom(
-        foregroundColor: _textPrimary,
-        side: const BorderSide(color: _outlinedBorder, width: 1.5),
+        foregroundColor: MyShopColors.textPrimary,
+        side: const BorderSide(color: MyShopColors.divider, width: 1.5),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(w * 0.026),
         ),
         padding: EdgeInsets.symmetric(vertical: h * 0.014),
       ),
-      icon: Icon(icon, size: w * 0.041, color: _textPrimary),
+      icon: Icon(icon, size: w * 0.041, color: MyShopColors.textPrimary),
       label: Text(
         label,
         style: TextStyle(
           fontSize: w * 0.033,
           fontWeight: FontWeight.w600,
-          color: _textPrimary,
+          color: MyShopColors.textPrimary,
         ),
       ),
     );
@@ -613,7 +603,7 @@ class _SafetyNotice extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(Icons.shield_outlined, size: w * 0.038, color: _textSecondary),
+        Icon(Icons.shield_outlined, size: w * 0.038, color: MyShopColors.textSecondary),
         SizedBox(width: w * 0.021),
         Expanded(
           child: Text(
@@ -622,7 +612,7 @@ class _SafetyNotice extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.028,
               fontWeight: FontWeight.w400,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
               height: 1.5,
             ),
           ),
@@ -646,20 +636,20 @@ class _AddStopButton extends StatelessWidget {
       child: OutlinedButton.icon(
         onPressed: onTap,
         style: OutlinedButton.styleFrom(
-          foregroundColor: _darkSlate,
-          side: const BorderSide(color: _outlinedBorder, width: 1.5),
+          foregroundColor: MyShopColors.darkSlate,
+          side: const BorderSide(color: MyShopColors.divider, width: 1.5),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),
         ),
         icon: const Icon(Icons.add_location_alt_outlined,
-            size: 18, color: _darkSlate),
+            size: 18, color: MyShopColors.darkSlate),
         label: const Text(
           'Add a Stop',
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w700,
-            color: _darkSlate,
+            color: MyShopColors.darkSlate,
           ),
         ),
       ),
@@ -684,19 +674,19 @@ class _CancelRequestButton extends StatelessWidget {
           child: OutlinedButton.icon(
             onPressed: onTap,
             style: OutlinedButton.styleFrom(
-              foregroundColor: _error,
-              side: BorderSide(color: _error.withValues(alpha: 0.5), width: 1.5),
+              foregroundColor: MyShopColors.error,
+              side: BorderSide(color: MyShopColors.error.withValues(alpha: 0.5), width: 1.5),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
-            icon: const Icon(Icons.cancel_outlined, size: 18, color: _error),
+            icon: const Icon(Icons.cancel_outlined, size: 18, color: MyShopColors.error),
             label: const Text(
               'Cancel Request',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
-                color: _error,
+                color: MyShopColors.error,
               ),
             ),
           ),
@@ -707,7 +697,7 @@ class _CancelRequestButton extends StatelessWidget {
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w400,
-            color: _textSecondary,
+            color: MyShopColors.textSecondary,
           ),
         ),
       ],

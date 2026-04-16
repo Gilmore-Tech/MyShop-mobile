@@ -1,15 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import '../providers/ride_provider.dart';
-
-// Design tokens
-const _gold = Color(0xFFF5A623);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _success = Color(0xFF27AE60);
-const _avatarBg = Color(0xFFE0E6FF);
-const _darkSlate = Color(0xFF46535D);
-const _border = Color(0xFFE0E0E0);
-const _chipBg = Color(0xFFF3F5F6);
 
 /// Arrival headline + bordered driver identity card stacked vertically.
 class DriverProfileHeader extends StatelessWidget {
@@ -46,7 +37,7 @@ class _ArrivalHeadline extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.056,
             fontWeight: FontWeight.w700,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
         SizedBox(height: h * 0.007),
@@ -56,7 +47,7 @@ class _ArrivalHeadline extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.033,
               fontWeight: FontWeight.w400,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
               height: 1.4,
             ),
             children: const [
@@ -64,7 +55,7 @@ class _ArrivalHeadline extends StatelessWidget {
               TextSpan(
                 text: 'Kumasi Central Market',
                 style: TextStyle(
-                  color: _gold,
+                  color: MyShopColors.primaryGold,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -94,7 +85,7 @@ class _DriverIdentityCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(w * 0.036),
-        border: Border.all(color: _border),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         children: [
@@ -105,7 +96,7 @@ class _DriverIdentityCard extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.046,
               fontWeight: FontWeight.w700,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
           SizedBox(height: h * 0.007),
@@ -137,7 +128,7 @@ class _DriverAvatar extends StatelessWidget {
           height: w * 0.195,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: _avatarBg,
+            color: MyShopColors.avatarPlaceholder,
             border: Border.all(color: Colors.white, width: 3),
             boxShadow: [
               BoxShadow(
@@ -150,7 +141,7 @@ class _DriverAvatar extends StatelessWidget {
           child: Icon(
             Icons.person_rounded,
             size: w * 0.108,
-            color: _darkSlate,
+            color: MyShopColors.darkSlate,
           ),
         ),
         Positioned(
@@ -161,7 +152,7 @@ class _DriverAvatar extends StatelessWidget {
             height: w * 0.036,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: _success,
+              color: MyShopColors.success,
               border: Border.all(color: Colors.white, width: 2),
             ),
           ),
@@ -182,14 +173,14 @@ class _RatingRow extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.star_rounded, size: w * 0.038, color: _gold),
+        Icon(Icons.star_rounded, size: w * 0.038, color: MyShopColors.primaryGold),
         SizedBox(width: w * 0.010),
         Text(
           rating.toStringAsFixed(2),
           style: TextStyle(
             fontSize: w * 0.033,
             fontWeight: FontWeight.w700,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
         SizedBox(width: w * 0.015),
@@ -198,7 +189,7 @@ class _RatingRow extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.033,
             fontWeight: FontWeight.w400,
-            color: _textSecondary,
+            color: MyShopColors.textSecondary,
           ),
         ),
       ],
@@ -228,14 +219,14 @@ class _BadgeRow extends StatelessWidget {
           const _OutlinedBadge(
             label: 'Verified',
             icon: Icons.check_circle_rounded,
-            color: _success,
+            color: MyShopColors.success,
           ),
         if (isVerified && isPoliceChecked) SizedBox(width: w * 0.021),
         if (isPoliceChecked)
           const _OutlinedBadge(
             label: 'Police Checked',
             icon: Icons.shield_rounded,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
           ),
       ],
     );
@@ -265,7 +256,7 @@ class _OutlinedBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(w * 0.051),
-        border: Border.all(color: _border),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -300,20 +291,20 @@ class _PhoneChip extends StatelessWidget {
         vertical: h * 0.008,
       ),
       decoration: BoxDecoration(
-        color: _chipBg,
+        color: MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(w * 0.051),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.phone_rounded, size: w * 0.033, color: _textSecondary),
+          Icon(Icons.phone_rounded, size: w * 0.033, color: MyShopColors.textSecondary),
           SizedBox(width: w * 0.015),
           Text(
             maskedPhone,
             style: TextStyle(
               fontSize: w * 0.031,
               fontWeight: FontWeight.w500,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
             ),
           ),
         ],

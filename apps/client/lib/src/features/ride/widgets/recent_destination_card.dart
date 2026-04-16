@@ -1,11 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import '../providers/ride_provider.dart';
-
-// Design tokens
-const _gold = Color(0xFFF5A623);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _surfaceGrey = Color(0xFFF3F5F6);
 
 class RecentDestinationCard extends StatelessWidget {
   final RecentDestination destination;
@@ -26,7 +21,7 @@ class RecentDestinationCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFFE0E0E0)),
+          border: Border.all(color: MyShopColors.divider),
         ),
         child: Row(
           children: [
@@ -42,7 +37,7 @@ class RecentDestinationCard extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
-                      color: _textPrimary,
+                      color: MyShopColors.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -51,7 +46,7 @@ class RecentDestinationCard extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w400,
-                      color: _textSecondary,
+                      color: MyShopColors.textSecondary,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -76,13 +71,13 @@ class _DestinationIcon extends StatelessWidget {
       width:  w * 0.092,
       height: w * 0.092,
       decoration: const BoxDecoration(
-        color: _surfaceGrey,
+        color: MyShopColors.surfaceGrey,
         shape: BoxShape.circle,
       ),
       child: Icon(
         isHome ? Icons.home_rounded : Icons.business_rounded,
         size: w * 0.046,
-        color: const Color(0xFF46535D),
+        color: MyShopColors.darkSlate,
       ),
     );
   }

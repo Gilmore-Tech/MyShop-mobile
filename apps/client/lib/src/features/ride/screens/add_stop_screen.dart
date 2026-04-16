@@ -1,20 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_ui/shared_ui.dart';
 
 import '../../../app/router.dart';
 import '../providers/edit_trip_provider.dart';
 import '../screens/destination_search_screen.dart' show kNewStopSentinel;
 import '../widgets/fare_recalculation_card.dart';
 import '../widgets/route_stop_list.dart';
-
-// Design tokens
-const _offWhite = Color(0xFFF6F7F8);
-const _gold = Color(0xFFF5A623);
-const _success = Color(0xFF27AE60);
-const _successLight = Color(0xFFE8F8EF);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
 
 /// PRD 4.4 — Edit Your Trip / Add Stop Screen
 /// Reorder stops, add intermediate stops, view fare recalculation + surge.
@@ -27,7 +20,7 @@ class AddStopScreen extends ConsumerWidget {
     final fare = ref.watch(fareRecalculationProvider);
 
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       appBar: _buildAppBar(context),
       body: Stack(
         children: [
@@ -90,14 +83,15 @@ class AddStopScreen extends ConsumerWidget {
     return AppBar(
       leading: IconButton(
         onPressed: () => context.pop(),
-        icon: const Icon(Icons.arrow_back_rounded, color: _textPrimary),
+        icon: const Icon(Icons.arrow_back_rounded, color: MyShopColors.textPrimary),
       ),
+      centerTitle: false,
       title: const Text(
         'Edit Your Trip',
         style: TextStyle(
           fontSize: 17,
           fontWeight: FontWeight.w700,
-          color: _textPrimary,
+          color: MyShopColors.textPrimary,
         ),
       ),
       actions: [
@@ -107,7 +101,7 @@ class AddStopScreen extends ConsumerWidget {
             padding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: BoxDecoration(
-              color: _successLight,
+              color: MyShopColors.successLight,
               borderRadius: BorderRadius.circular(20),
             ),
             child: const Text(
@@ -115,7 +109,7 @@ class AddStopScreen extends ConsumerWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
-                color: _success,
+                color: MyShopColors.success,
               ),
             ),
           ),
@@ -160,7 +154,7 @@ class _SectionHeader extends StatelessWidget {
             style: const TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w900,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
               letterSpacing: 1.4,
             ),
           ),
@@ -171,7 +165,7 @@ class _SectionHeader extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w400,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
               ),
             ),
         ],
@@ -197,7 +191,7 @@ class _FareSummaryRow extends StatelessWidget {
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w500,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
             ),
           ),
           const Spacer(),
@@ -210,11 +204,11 @@ class _FareSummaryRow extends StatelessWidget {
               children: [
                 const TextSpan(
                   text: 'Difference: ',
-                  style: TextStyle(color: _textSecondary),
+                  style: TextStyle(color: MyShopColors.textSecondary),
                 ),
                 TextSpan(
                   text: fare.differenceDisplay,
-                  style: const TextStyle(color: _gold),
+                  style: const TextStyle(color: MyShopColors.primaryGold),
                 ),
               ],
             ),
@@ -239,27 +233,10 @@ class _StickyFooter extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            // Theme supplies the dark-slate background; no override needed.
-            child: ElevatedButton(
-              onPressed: () => context.pop(true),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Text(
-                    'Confirm Changes',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  SizedBox(width: 6),
-                  Icon(Icons.chevron_right_rounded, size: 20),
-                ],
-              ),
-            ),
+          MyShopPrimaryButton(
+            label: 'Confirm Changes',
+            trailingIcon: Icons.chevron_right_rounded,
+            onPressed: () => context.pop(true),
           ),
           const SizedBox(height: 12),
           GestureDetector(
@@ -269,7 +246,7 @@ class _StickyFooter extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
               ),
             ),
           ),

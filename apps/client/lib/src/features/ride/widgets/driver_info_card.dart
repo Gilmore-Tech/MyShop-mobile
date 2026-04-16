@@ -1,13 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import '../providers/ride_provider.dart';
 import '../screens/driver_found_screen.dart';
-
-// Design tokens
-const _gold = Color(0xFFF5A623);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _success = Color(0xFF27AE60);
-const _successLight = Color(0xFFE8F8EF);
 
 class DriverInfoCard extends StatelessWidget {
   final MatchedDriver driver;
@@ -66,13 +60,13 @@ class _DriverAvatar extends StatelessWidget {
       height: 56,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: const Color(0xFFE0E6FF),
-        border: Border.all(color: _gold, width: 2),
+        color: MyShopColors.avatarPlaceholder,
+        border: Border.all(color: MyShopColors.primaryGold, width: 2),
       ),
       child: const Icon(
         Icons.person_rounded,
         size: 30,
-        color: Color(0xFF46535D),
+        color: MyShopColors.darkSlate,
       ),
     );
   }
@@ -93,7 +87,7 @@ class _DriverDetails extends StatelessWidget {
           style: const TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w700,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
         const SizedBox(height: 2),
@@ -102,32 +96,32 @@ class _DriverDetails extends StatelessWidget {
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w400,
-            color: _textSecondary,
+            color: MyShopColors.textSecondary,
           ),
         ),
         const SizedBox(height: 4),
         Row(
           children: [
-            const Icon(Icons.star_rounded, size: 14, color: _gold),
+            const Icon(Icons.star_rounded, size: 14, color: MyShopColors.primaryGold),
             const SizedBox(width: 3),
             Text(
               driver.rating.toStringAsFixed(1),
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
             const SizedBox(width: 10),
             const Icon(Icons.access_time_rounded,
-                size: 13, color: _textSecondary),
+                size: 13, color: MyShopColors.textSecondary),
             const SizedBox(width: 3),
             Text(
               '${driver.minutesAway} mins away',
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w400,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
               ),
             ),
           ],
@@ -143,7 +137,7 @@ class _AcceptedBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: _successLight,
+        color: MyShopColors.successLight,
         borderRadius: BorderRadius.circular(20),
       ),
       child: const Text(
@@ -151,7 +145,7 @@ class _AcceptedBadge extends StatelessWidget {
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w700,
-          color: _success,
+          color: MyShopColors.success,
         ),
       ),
     );

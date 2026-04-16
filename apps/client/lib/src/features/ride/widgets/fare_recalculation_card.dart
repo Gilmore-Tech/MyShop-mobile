@@ -1,12 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import '../providers/edit_trip_provider.dart';
-
-// Design tokens
-const _gold = Color(0xFFF5A623);
-const _goldLight = Color(0xFFFFF8EC);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _border = Color(0xFFE0E0E0);
 
 /// Two-section card:
 ///   Top — gold "PRICE UPDATE" header with a surge badge on the right.
@@ -22,7 +16,7 @@ class FareRecalculationCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _border),
+        border: Border.all(color: MyShopColors.divider),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -57,7 +51,7 @@ class _PriceUpdateHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: _gold,
+      color: MyShopColors.primaryGold,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       child: Row(
         children: [
@@ -84,7 +78,7 @@ class _PriceUpdateHeader extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: _gold,
+                  color: MyShopColors.primaryGold,
                 ),
               ),
             ),
@@ -114,7 +108,7 @@ class _FareComparison extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
               ),
             ),
             const SizedBox(height: 4),
@@ -123,9 +117,9 @@ class _FareComparison extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w500,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
                 decoration: TextDecoration.lineThrough,
-                decorationColor: _textSecondary,
+                decorationColor: MyShopColors.textSecondary,
               ),
             ),
           ],
@@ -140,7 +134,7 @@ class _FareComparison extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
               ),
             ),
             const SizedBox(height: 4),
@@ -149,7 +143,7 @@ class _FareComparison extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 26,
                 fontWeight: FontWeight.w800,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
                 height: 1.1,
               ),
             ),
@@ -195,20 +189,20 @@ class _DeltaChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: _goldLight,
+        color: MyShopColors.primaryGoldLight,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: _textSecondary),
+          Icon(icon, size: 13, color: MyShopColors.textSecondary),
           const SizedBox(width: 4),
           Text(
             label,
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w500,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
         ],
@@ -229,14 +223,14 @@ class SurgePricingActiveBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: _goldLight,
+        color: MyShopColors.primaryGoldLight,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _gold.withValues(alpha: 0.35)),
+        border: Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.35)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.bolt_rounded, color: _gold, size: 20),
+          const Icon(Icons.bolt_rounded, color: MyShopColors.primaryGold, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -250,7 +244,7 @@ class SurgePricingActiveBanner extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: _textPrimary,
+                        color: MyShopColors.textPrimary,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -264,7 +258,7 @@ class SurgePricingActiveBanner extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w400,
-                    color: _textSecondary,
+                    color: MyShopColors.textSecondary,
                   ),
                 ),
               ],
@@ -285,7 +279,7 @@ class _SurgeMultiplierBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
-        color: _gold,
+        color: MyShopColors.primaryGold,
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(

@@ -1,15 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 
 import '../providers/ride_provider.dart' show RideTrackingPhase;
 
-// Design tokens
-const _gold = Color(0xFFF5A623);
 const _mapBg = Color(0xFFEDEDE6);      // Warm off-white map background
 const _mapGrid = Color(0xFFE2E2DB);    // Subtle grid lines
 const _routeColor = Color(0xFF1C1C1E); // Dark route line
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _success = Color(0xFF27AE60);
 
 class RideRouteMap extends StatelessWidget {
   final String destination;
@@ -133,7 +129,7 @@ class _RoutePainter extends CustomPainter {
     canvas.drawCircle(
       Offset(cx, cy),
       6,
-      Paint()..color = _gold,
+      Paint()..color = MyShopColors.primaryGold,
     );
   }
 
@@ -202,14 +198,14 @@ class _EtaPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.timer_outlined, size: 14, color: _textPrimary),
+          const Icon(Icons.timer_outlined, size: 14, color: MyShopColors.textPrimary),
           const SizedBox(width: 6),
           Text(
             'ARRIVING IN $etaMinutes MINS',
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
               letterSpacing: 0.6,
             ),
           ),
@@ -260,7 +256,7 @@ class _DestinationOverlay extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
-                      color: _textSecondary,
+                      color: MyShopColors.textSecondary,
                       letterSpacing: 1.4,
                     ),
                   ),
@@ -270,7 +266,7 @@ class _DestinationOverlay extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
-                      color: _textPrimary,
+                      color: MyShopColors.textPrimary,
                       height: 1.25,
                     ),
                     maxLines: 2,
@@ -296,11 +292,11 @@ class _ArrivedPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
       decoration: BoxDecoration(
-        color: _success,
+        color: MyShopColors.success,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: _success.withValues(alpha: 0.35),
+            color: MyShopColors.success.withValues(alpha: 0.35),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -335,7 +331,7 @@ class _InProgressPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
       decoration: BoxDecoration(
-        color: const Color(0xFF46535D),
+        color: MyShopColors.darkSlate,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
@@ -365,7 +361,6 @@ class _InProgressPill extends StatelessWidget {
   }
 }
 
-
 /// Gold rail: filled dot → dashed vertical line → outlined circle.
 class _RouteRail extends StatelessWidget {
   const _RouteRail();
@@ -383,7 +378,7 @@ class _RouteRail extends StatelessWidget {
             height: 12,
             decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              color: _gold,
+              color: MyShopColors.primaryGold,
             ),
           ),
           // Middle — dashed connector
@@ -400,7 +395,7 @@ class _RouteRail extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: Colors.white,
-              border: Border.all(color: _gold, width: 2),
+              border: Border.all(color: MyShopColors.primaryGold, width: 2),
             ),
           ),
         ],
@@ -415,7 +410,7 @@ class _DashedLinePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = _gold
+      ..color = MyShopColors.primaryGold
       ..strokeWidth = 1.5
       ..strokeCap = StrokeCap.round;
 

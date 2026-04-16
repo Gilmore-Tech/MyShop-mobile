@@ -1,23 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../app/router.dart';
 import '../providers/ride_provider.dart';
 import '../widgets/rate_ride_sheet.dart';
-
-// ── Design Tokens ──────────────────────────────────────────────────────────────
-const _offWhite = Color(0xFFF6F7F8);
-const _surfaceWhite = Color(0xFFFFFFFF);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _gold = Color(0xFFF5A623);
-const _success = Color(0xFF27AE60);
-const _successLight = Color(0xFFE8F8EF);
-const _error = Color(0xFFEB5757);
-const _divider = Color(0xFFE0E0E0);
-const _darkSlate = Color(0xFF46535D);
-const _surfaceGrey = Color(0xFFF3F5F6);
-const _disabled = Color(0xFFBDBDBD);
-const _avatarBg = Color(0xFFE0E6FF);
 
 // ── Viewport ratios (derived from 390×844 reference design) ───────────────────
 //
@@ -54,10 +42,18 @@ class _RideCompleteScreenState extends ConsumerState<RideCompleteScreen> {
     super.initState();
     // Show rating sheet automatically once the first frame is rendered.
     // PRD 4.3 — driver marks ride complete → client rates driver.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        showRateRideSheet(context, ref.read(rideReceiptProvider));
-      }
+    // Once the sheet closes (submit or skip) we advance the rider to the
+    // receipt screen as the "ride summary" — fromCompletion=true makes the
+    // back button on that screen return to home.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final receipt = ref.read(rideReceiptProvider);
+      await showRateRideSheet(context, receipt);
+      if (!mounted) return;
+      context.pushReplacement(
+        AppRoutes.rideReceiptPath(receipt.rideId),
+        extra: true,
+      );
     });
   }
 
@@ -71,13 +67,12 @@ class _RideCompleteScreenState extends ConsumerState<RideCompleteScreen> {
   Widget build(BuildContext context) {
     final receipt = ref.watch(rideReceiptProvider);
     final tipState = ref.watch(tipStateProvider);
-    final size = MediaQuery.sizeOf(context);
-    final w = size.width;
-    final h = size.height;
+    final h = MediaQuery.sizeOf(context).height;
 
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             _Header(receipt: receipt),
@@ -111,7 +106,6 @@ class _RideCompleteScreenState extends ConsumerState<RideCompleteScreen> {
                 ),
               ),
             ),
-            _BottomNav(w: w, h: h),
           ],
         ),
       ),
@@ -125,7 +119,7 @@ class _RideCompleteScreenState extends ConsumerState<RideCompleteScreen> {
         content: Text(
           'Tip of ${_fmtGhs(tip.effectivePesewas)} sent to ${receipt.driverFirstName}!',
         ),
-        backgroundColor: _success,
+        backgroundColor: MyShopColors.success,
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -147,50 +141,30 @@ class _Header extends StatelessWidget {
     final h = size.height;
 
     return Container(
-      color: _surfaceWhite,
+      color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.symmetric(
-        horizontal: w * 0.021, // ~8dp
-        vertical: h * 0.012,   // ~10dp
+        horizontal: w * 0.041, // ~16dp
+        vertical: h * 0.018,   // ~15dp
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          GestureDetector(
-            onTap: () => Navigator.of(context).maybePop(),
-            behavior: HitTestBehavior.opaque,
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: w * 0.021,
-                vertical: h * 0.012,
-              ),
-              child: Icon(
-                Icons.arrow_back,
-                color: _textPrimary,
-                size: w * 0.056, // ~22dp
-              ),
+          Text(
+            'Arrived Safe',
+            style: TextStyle(
+              fontSize: w * 0.051, // ~20dp
+              fontWeight: FontWeight.w700,
+              color: MyShopColors.textPrimary,
             ),
           ),
-          SizedBox(width: w * 0.010), // ~4dp
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Arrived Safe',
-                style: TextStyle(
-                  fontSize: w * 0.051, // ~20dp
-                  fontWeight: FontWeight.w700,
-                  color: _textPrimary,
-                ),
-              ),
-              Text(
-                receipt.completedAt,
-                style: TextStyle(
-                  fontSize: w * 0.031, // ~12dp
-                  fontWeight: FontWeight.w400,
-                  color: _textSecondary,
-                ),
-              ),
-            ],
+          Text(
+            receipt.completedAt,
+            style: TextStyle(
+              fontSize: w * 0.031, // ~12dp
+              fontWeight: FontWeight.w400,
+              color: MyShopColors.textSecondary,
+            ),
           ),
         ],
       ),
@@ -210,7 +184,7 @@ class _DriverCard extends StatelessWidget {
     final w = size.width;
 
     return Container(
-      color: _surfaceWhite,
+      color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.all(w * 0.041), // ~16dp
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -226,7 +200,7 @@ class _DriverCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.041, // ~16dp
                     fontWeight: FontWeight.w700,
-                    color: _textPrimary,
+                    color: MyShopColors.textPrimary,
                   ),
                 ),
                 SizedBox(height: w * 0.008), // ~3dp
@@ -235,7 +209,7 @@ class _DriverCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: w * 0.031, // ~12dp
                     fontWeight: FontWeight.w400,
-                    color: _textSecondary,
+                    color: MyShopColors.textSecondary,
                   ),
                 ),
                 if (receipt.isDriverVerified) ...[
@@ -264,8 +238,8 @@ class _DriverAvatar extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: _avatarBg,
-        border: Border.all(color: _gold, width: w * 0.005), // ~2dp
+        color: MyShopColors.avatarPlaceholder,
+        border: Border.all(color: MyShopColors.primaryGold, width: w * 0.005), // ~2dp
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.08),
@@ -277,7 +251,7 @@ class _DriverAvatar extends StatelessWidget {
       child: Icon(
         Icons.person_rounded,
         size: w * 0.077, // ~30dp
-        color: _darkSlate,
+        color: MyShopColors.darkSlate,
       ),
     );
   }
@@ -295,7 +269,7 @@ class _VerifiedBadge extends StatelessWidget {
         vertical: w * 0.010,   // ~4dp
       ),
       decoration: BoxDecoration(
-        color: _successLight,
+        color: MyShopColors.successLight,
         borderRadius: BorderRadius.circular(w * 0.051), // ~20dp
       ),
       child: Row(
@@ -304,7 +278,7 @@ class _VerifiedBadge extends StatelessWidget {
           Icon(
             Icons.check_circle_rounded,
             size: w * 0.031, // ~12dp
-            color: _success,
+            color: MyShopColors.success,
           ),
           SizedBox(width: w * 0.010),
           Text(
@@ -312,7 +286,7 @@ class _VerifiedBadge extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.028, // ~11dp
               fontWeight: FontWeight.w600,
-              color: _success,
+              color: MyShopColors.success,
             ),
           ),
         ],
@@ -331,14 +305,14 @@ class _RatingPill extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.star_rounded, size: w * 0.041, color: _gold), // ~16dp
+        Icon(Icons.star_rounded, size: w * 0.041, color: MyShopColors.primaryGold), // ~16dp
         SizedBox(width: w * 0.008),
         Text(
           rating.toStringAsFixed(1),
           style: TextStyle(
             fontSize: w * 0.036, // ~14dp
             fontWeight: FontWeight.w700,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
       ],
@@ -361,7 +335,7 @@ class _RouteCard extends StatelessWidget {
     final connectorLeft = (w * 0.051 / 2) - 0.75;
 
     return Container(
-      color: _surfaceWhite,
+      color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.symmetric(
         horizontal: w * 0.041, // ~16dp
         vertical: h * 0.017,   // ~14dp
@@ -371,7 +345,7 @@ class _RouteCard extends StatelessWidget {
         children: [
           _RouteStop(
             icon: Icons.radio_button_checked,
-            iconColor: _textSecondary,
+            iconColor: MyShopColors.textSecondary,
             typeLabel: 'PICKUP',
             address: receipt.pickupAddress,
             w: w,
@@ -381,12 +355,12 @@ class _RouteCard extends StatelessWidget {
             child: Container(
               width: 1.5,
               height: h * 0.019, // ~16dp
-              color: _divider,
+              color: MyShopColors.divider,
             ),
           ),
           _RouteStop(
             icon: Icons.location_on_rounded,
-            iconColor: _gold,
+            iconColor: MyShopColors.primaryGold,
             typeLabel: 'DESTINATION',
             address: receipt.dropoffAddress,
             w: w,
@@ -427,7 +401,7 @@ class _RouteStop extends StatelessWidget {
                 style: TextStyle(
                   fontSize: w * 0.026, // ~10dp
                   fontWeight: FontWeight.w700,
-                  color: _textSecondary,
+                  color: MyShopColors.textSecondary,
                   letterSpacing: 0.8,
                 ),
               ),
@@ -437,7 +411,7 @@ class _RouteStop extends StatelessWidget {
                 style: TextStyle(
                   fontSize: w * 0.033, // ~13dp
                   fontWeight: FontWeight.w500,
-                  color: _textPrimary,
+                  color: MyShopColors.textPrimary,
                 ),
               ),
             ],
@@ -462,7 +436,7 @@ class _FareBreakdownCard extends StatelessWidget {
     final pad = w * 0.041; // ~16dp
 
     return Container(
-      color: _surfaceWhite,
+      color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.all(pad),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -493,7 +467,7 @@ class _FareBreakdownCard extends StatelessWidget {
             w: w,
           ),
           SizedBox(height: h * 0.017),
-          const Divider(height: 1, thickness: 1, color: _divider),
+          const Divider(height: 1, thickness: 1, color: MyShopColors.divider),
           SizedBox(height: h * 0.017),
           _FareLineItem(
             label: 'Subtotal',
@@ -510,15 +484,15 @@ class _FareBreakdownCard extends StatelessWidget {
           _FareLineItem(
             label: 'Promotional Discount',
             amount: '- ${_fmtGhs(receipt.promoDiscountPesewas)}',
-            amountColor: _error,
+            amountColor: MyShopColors.error,
             w: w,
           ),
           SizedBox(height: h * 0.017),
-          const Divider(height: 2, thickness: 2, color: _divider),
+          const Divider(height: 2, thickness: 2, color: MyShopColors.divider),
           SizedBox(height: h * 0.017),
           _TotalPaidRow(total: _fmtGhs(receipt.totalPaidPesewas), w: w),
           SizedBox(height: h * 0.019), // ~16dp
-          const Divider(height: 1, thickness: 1, color: _divider),
+          const Divider(height: 1, thickness: 1, color: MyShopColors.divider),
           SizedBox(height: h * 0.017),
           _PaymentStatusRow(
             method: receipt.paymentMethod,
@@ -546,7 +520,7 @@ class _FareBreakdownHeader extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.036, // ~14dp
             fontWeight: FontWeight.w700,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
         Text(
@@ -554,7 +528,7 @@ class _FareBreakdownHeader extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.031, // ~12dp
             fontWeight: FontWeight.w600,
-            color: _gold,
+            color: MyShopColors.primaryGold,
           ),
         ),
       ],
@@ -572,7 +546,7 @@ class _FareLineItem extends StatelessWidget {
     required this.label,
     required this.amount,
     required this.w,
-    this.amountColor = _textPrimary,
+    this.amountColor = MyShopColors.textPrimary,
   });
 
   @override
@@ -584,7 +558,7 @@ class _FareLineItem extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.033, // ~13dp
             fontWeight: FontWeight.w400,
-            color: _textSecondary,
+            color: MyShopColors.textSecondary,
           ),
         ),
         const Spacer(),
@@ -615,7 +589,7 @@ class _TotalPaidRow extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.041, // ~16dp
             fontWeight: FontWeight.w700,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
         const Spacer(),
@@ -624,7 +598,7 @@ class _TotalPaidRow extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.051, // ~20dp
             fontWeight: FontWeight.w700,
-            color: _textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
       ],
@@ -654,7 +628,7 @@ class _PaymentStatusRow extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.033,
               fontWeight: FontWeight.w600,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
         ),
@@ -675,7 +649,7 @@ class _MtnCircle extends StatelessWidget {
       width: size,
       height: size,
       decoration: const BoxDecoration(
-        color: Color(0xFFFFCC00),
+        color: MyShopColors.mtnYellow,
         shape: BoxShape.circle,
       ),
       alignment: Alignment.center,
@@ -684,7 +658,7 @@ class _MtnCircle extends StatelessWidget {
         style: TextStyle(
           fontSize: w * 0.033,
           fontWeight: FontWeight.w900,
-          color: _textPrimary,
+          color: MyShopColors.textPrimary,
         ),
       ),
     );
@@ -705,7 +679,7 @@ class _PaymentBadge extends StatelessWidget {
         vertical: w * 0.010,   // ~4dp
       ),
       decoration: BoxDecoration(
-        color: isSuccess ? _successLight : const Color(0xFFFDE8E8),
+        color: isSuccess ? MyShopColors.successLight : MyShopColors.errorLight,
         borderRadius: BorderRadius.circular(w * 0.010),
       ),
       child: Text(
@@ -713,7 +687,7 @@ class _PaymentBadge extends StatelessWidget {
         style: TextStyle(
           fontSize: w * 0.028, // ~11dp
           fontWeight: FontWeight.w700,
-          color: isSuccess ? _success : _error,
+          color: isSuccess ? MyShopColors.success : MyShopColors.error,
           letterSpacing: 0.4,
         ),
       ),
@@ -749,7 +723,7 @@ class _TipSection extends StatelessWidget {
     final h = size.height;
 
     return Container(
-      color: _surfaceWhite,
+      color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.all(w * 0.041),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -759,7 +733,7 @@ class _TipSection extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.041,
               fontWeight: FontWeight.w700,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
           SizedBox(height: h * 0.017),
@@ -822,10 +796,10 @@ class _TipChip extends StatelessWidget {
           vertical: h * 0.012,   // ~10dp
         ),
         decoration: BoxDecoration(
-          color: isSelected ? _gold : _surfaceGrey,
+          color: isSelected ? MyShopColors.primaryGold : MyShopColors.surfaceGrey,
           borderRadius: BorderRadius.circular(w * 0.021),
           border: Border.all(
-            color: isSelected ? _gold : _divider,
+            color: isSelected ? MyShopColors.primaryGold : MyShopColors.divider,
             width: 1.5,
           ),
         ),
@@ -834,7 +808,7 @@ class _TipChip extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.033,
             fontWeight: FontWeight.w600,
-            color: isSelected ? Colors.white : _textPrimary,
+            color: isSelected ? Colors.white : MyShopColors.textPrimary,
           ),
         ),
       ),
@@ -860,7 +834,7 @@ class _CustomTipInput extends StatelessWidget {
     return Container(
       height: h * 0.057, // ~48dp
       decoration: BoxDecoration(
-        border: Border.all(color: _divider),
+        border: Border.all(color: MyShopColors.divider),
         borderRadius: BorderRadius.circular(w * 0.021),
       ),
       child: Row(
@@ -872,11 +846,11 @@ class _CustomTipInput extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.033,
                 fontWeight: FontWeight.w600,
-                color: _textSecondary,
+                color: MyShopColors.textSecondary,
               ),
             ),
           ),
-          Container(width: 1, color: _divider),
+          Container(width: 1, color: MyShopColors.divider),
           Expanded(
             child: TextField(
               controller: controller,
@@ -886,14 +860,14 @@ class _CustomTipInput extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.033,
                 fontWeight: FontWeight.w500,
-                color: _textPrimary,
+                color: MyShopColors.textPrimary,
               ),
               decoration: InputDecoration(
                 hintText: 'Other amount',
                 hintStyle: TextStyle(
                   fontSize: w * 0.033,
                   fontWeight: FontWeight.w400,
-                  color: _disabled,
+                  color: MyShopColors.disabled,
                 ),
                 border: InputBorder.none,
                 contentPadding:
@@ -921,7 +895,7 @@ class _TipDisclaimer extends StatelessWidget {
         Icon(
           Icons.info_outline_rounded,
           size: w * 0.036, // ~14dp
-          color: _gold,
+          color: MyShopColors.primaryGold,
         ),
         SizedBox(width: w * 0.015),
         Expanded(
@@ -930,7 +904,7 @@ class _TipDisclaimer extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.028, // ~11dp
               fontWeight: FontWeight.w400,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
             ),
           ),
         ),
@@ -958,8 +932,8 @@ class _ConfirmTipButton extends StatelessWidget {
       child: ElevatedButton(
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
-          backgroundColor: enabled ? _gold : _surfaceGrey,
-          foregroundColor: enabled ? Colors.white : _disabled,
+          backgroundColor: enabled ? MyShopColors.primaryGold : MyShopColors.surfaceGrey,
+          foregroundColor: enabled ? Colors.white : MyShopColors.disabled,
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(w * 0.021),
@@ -970,7 +944,7 @@ class _ConfirmTipButton extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.036, // ~14dp
             fontWeight: FontWeight.w600,
-            color: enabled ? Colors.white : _disabled,
+            color: enabled ? Colors.white : MyShopColors.disabled,
             letterSpacing: 0.5,
           ),
         ),
@@ -979,106 +953,3 @@ class _ConfirmTipButton extends StatelessWidget {
   }
 }
 
-// ── Bottom Navigation ─────────────────────────────────────────────────────────
-
-class _BottomNav extends StatelessWidget {
-  final double w;
-  final double h;
-  const _BottomNav({required this.w, required this.h});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: _surfaceWhite,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: w * 0.026,
-            offset: Offset(0, -(w * 0.005)),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: h * 0.071, // ~60dp
-          child: Row(
-            children: [
-              _NavItem(
-                icon: Icons.location_on_rounded,
-                label: 'Home',
-                isActive: true,
-                onTap: () =>
-                    Navigator.of(context).popUntil((r) => r.isFirst),
-                w: w,
-              ),
-              _NavItem(
-                icon: Icons.access_time_rounded,
-                label: 'Activity',
-                isActive: false,
-                onTap: () {},
-                w: w,
-              ),
-              _NavItem(
-                icon: Icons.account_balance_wallet_outlined,
-                label: 'Wallet',
-                isActive: false,
-                onTap: () {},
-                w: w,
-              ),
-              _NavItem(
-                icon: Icons.person_outline_rounded,
-                label: 'Account',
-                isActive: false,
-                onTap: () {},
-                w: w,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _NavItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isActive;
-  final VoidCallback onTap;
-  final double w;
-
-  const _NavItem({
-    required this.icon,
-    required this.label,
-    required this.isActive,
-    required this.onTap,
-    required this.w,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isActive ? _gold : _darkSlate;
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: w * 0.056), // ~22dp
-            SizedBox(height: w * 0.008),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: w * 0.026, // ~10dp
-                fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
-                color: color,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

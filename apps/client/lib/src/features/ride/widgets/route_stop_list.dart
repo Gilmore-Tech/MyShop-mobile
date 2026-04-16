@@ -1,15 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import '../providers/edit_trip_provider.dart';
-
-// Design tokens
-const _gold = Color(0xFFF5A623);
-const _goldLight = Color(0xFFFFF8EC);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _textHint = Color(0xFFBDBDBD);
-const _border = Color(0xFFE0E0E0);
-const _error = Color(0xFFEB5757);
-const _darkSlate = Color(0xFF46535D);
 
 /// Stop list rendered as standalone input-style cards.
 /// Each card mirrors the pickup/destination inputs elsewhere in the app —
@@ -132,7 +123,7 @@ class _StopCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(w * 0.026),
-            border: Border.all(color: _border),
+            border: Border.all(color: MyShopColors.divider),
           ),
           child: Row(
             children: [
@@ -148,7 +139,7 @@ class _StopCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: w * 0.026,
                         fontWeight: FontWeight.w800,
-                        color: _textSecondary,
+                        color: MyShopColors.textSecondary,
                         letterSpacing: 1.2,
                       ),
                     ),
@@ -158,7 +149,7 @@ class _StopCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: w * 0.036,
                         fontWeight: FontWeight.w600,
-                        color: _textPrimary,
+                        color: MyShopColors.textPrimary,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -172,7 +163,7 @@ class _StopCard extends StatelessWidget {
                   icon: Icon(
                     Icons.delete_outline_rounded,
                     size: w * 0.051,
-                    color: _error,
+                    color: MyShopColors.error,
                   ),
                   visualDensity: VisualDensity.compact,
                   padding: EdgeInsets.zero,
@@ -189,7 +180,7 @@ class _StopCard extends StatelessWidget {
                     child: Icon(
                       Icons.drag_indicator_rounded,
                       size: w * 0.056,
-                      color: _textHint,
+                      color: MyShopColors.textHint,
                     ),
                   ),
                 )
@@ -199,7 +190,7 @@ class _StopCard extends StatelessWidget {
                   child: Icon(
                     Icons.drag_indicator_rounded,
                     size: w * 0.056,
-                    color: _textHint,
+                    color: MyShopColors.textHint,
                   ),
                 )
               else
@@ -223,11 +214,11 @@ class _StopIndicator extends StatelessWidget {
     final w = MediaQuery.sizeOf(context).width;
     switch (type) {
       case StopType.pickup:
-        return const _Ring(color: _gold, fillColor: _gold);
+        return const _Ring(color: MyShopColors.primaryGold, fillColor: MyShopColors.primaryGold);
       case StopType.intermediate:
-        return const _Ring(color: _darkSlate, fillColor: Colors.white);
+        return const _Ring(color: MyShopColors.darkSlate, fillColor: Colors.white);
       case StopType.destination:
-        return Icon(Icons.location_on_rounded, color: _gold, size: w * 0.056);
+        return Icon(Icons.location_on_rounded, color: MyShopColors.primaryGold, size: w * 0.056);
     }
   }
 }
@@ -279,9 +270,9 @@ class _AddStopCard extends StatelessWidget {
         height: h * 0.059,
         padding: EdgeInsets.symmetric(horizontal: w * 0.036),
         decoration: BoxDecoration(
-          color: _goldLight,
+          color: MyShopColors.primaryGoldLight,
           borderRadius: BorderRadius.circular(w * 0.026),
-          border: Border.all(color: _gold.withValues(alpha: 0.4)),
+          border: Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.4)),
         ),
         child: Row(
           children: [
@@ -289,7 +280,7 @@ class _AddStopCard extends StatelessWidget {
               width: w * 0.056,
               height: w * 0.056,
               decoration: const BoxDecoration(
-                color: _gold,
+                color: MyShopColors.primaryGold,
                 shape: BoxShape.circle,
               ),
               child: Icon(Icons.add, size: w * 0.036, color: Colors.white),
@@ -300,7 +291,7 @@ class _AddStopCard extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.033,
                 fontWeight: FontWeight.w600,
-                color: _gold,
+                color: MyShopColors.primaryGold,
               ),
             ),
           ],

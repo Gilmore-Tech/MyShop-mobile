@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -9,15 +10,6 @@ import '../providers/ride_search_provider.dart';
 /// Sentinel passed via `GoRouterState.extra` to signal "create a new
 /// intermediate stop" instead of editing an existing one.
 const kNewStopSentinel = '__new_stop__';
-
-// ── Design tokens ──────────────────────────────────────────────────────────────
-const _bg            = Color(0xFFF6F7F8);
-const _surfaceWhite  = Color(0xFFFFFFFF);
-const _surfaceGrey   = Color(0xFFF3F5F6);
-const _textPrimary   = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
-const _darkSlate     = Color(0xFF46535D);
-const _divider       = Color(0xFFE8EAEC);
 
 // ── Mock data ──────────────────────────────────────────────────────────────────
 
@@ -40,13 +32,13 @@ const _savedPlaces = [
     name:   'Home',
     address: 'Suame, Kumasi',
     icon:   Icons.home_rounded,
-    iconBg: Color(0xFF2F80ED),
+    iconBg: MyShopColors.info,
   ),
   _Place(
     name:   'Work',
     address: 'Adum Commercial Area, Kumasi',
     icon:   Icons.work_rounded,
-    iconBg: Color(0xFF27AE60),
+    iconBg: MyShopColors.success,
   ),
 ];
 
@@ -55,25 +47,25 @@ const _recentPlaces = [
     name:    'Kumasi City Mall',
     address: 'Lake Road, Suame',
     icon:    Icons.history_rounded,
-    iconBg:  Color(0xFF555E68),
+    iconBg:  MyShopColors.textSecondary,
   ),
   _Place(
     name:    'Kejetia Market',
     address: 'Central Kumasi',
     icon:    Icons.history_rounded,
-    iconBg:  Color(0xFF555E68),
+    iconBg:  MyShopColors.textSecondary,
   ),
   _Place(
     name:    'Kotoko Stadium',
     address: 'Bantama, Kumasi',
     icon:    Icons.history_rounded,
-    iconBg:  Color(0xFF555E68),
+    iconBg:  MyShopColors.textSecondary,
   ),
   _Place(
     name:    'Komfo Anokye Teaching Hospital',
     address: 'Bantama Road, Kumasi',
     icon:    Icons.history_rounded,
-    iconBg:  Color(0xFF555E68),
+    iconBg:  MyShopColors.textSecondary,
   ),
 ];
 
@@ -170,7 +162,7 @@ class _DestinationSearchScreenState
     final top  = MediaQuery.paddingOf(context).top;
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: MyShopColors.offWhite,
       body: Column(
         children: [
           _SearchHeader(
@@ -191,7 +183,7 @@ class _DestinationSearchScreenState
                 // Map pin — set location manually
                 _ActionTile(
                   icon:    Icons.my_location_rounded,
-                  iconBg:  _darkSlate,
+                  iconBg:  MyShopColors.darkSlate,
                   title:   'Set location on map',
                   subtitle:'Drop a pin to choose any location',
                   onTap:   _openPinPicker,
@@ -243,7 +235,7 @@ class _SearchHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: _surfaceWhite,
+      color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.fromLTRB(0, top, w * 0.04, h * 0.016),
       child: Column(
         children: [
@@ -252,13 +244,13 @@ class _SearchHeader extends StatelessWidget {
             children: [
               IconButton(
                 onPressed: onBack,
-                icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                    color: _textPrimary),
+                icon: const Icon(Icons.arrow_back,
+                    color: MyShopColors.textPrimary),
               ),
               Text(
                 title,
                 style: TextStyle(
-                  color:      _textPrimary,
+                  color:      MyShopColors.textPrimary,
                   fontSize:   w * 0.048,
                   fontWeight: FontWeight.w700,
                 ),
@@ -272,14 +264,14 @@ class _SearchHeader extends StatelessWidget {
             child: Container(
               height: h * 0.058,
               decoration: BoxDecoration(
-                color:        _surfaceGrey,
+                color:        MyShopColors.surfaceGrey,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
                   SizedBox(width: w * 0.04),
                   const Icon(Icons.search_rounded,
-                      color: _textSecondary, size: 20),
+                      color: MyShopColors.textSecondary, size: 20),
                   SizedBox(width: w * 0.024),
                   Expanded(
                     child: TextField(
@@ -287,12 +279,12 @@ class _SearchHeader extends StatelessWidget {
                       focusNode:   focusNode,
                       onChanged:   onChanged,
                       style: TextStyle(
-                          color:    _textPrimary,
+                          color:    MyShopColors.textPrimary,
                           fontSize: w * 0.038),
                       decoration: InputDecoration(
                         hintText: hintText,
                         hintStyle: TextStyle(
-                          color:    _textSecondary.withAlpha(140),
+                          color:    MyShopColors.textSecondary.withAlpha(140),
                           fontSize: w * 0.036,
                         ),
                         border:         InputBorder.none,
@@ -307,7 +299,7 @@ class _SearchHeader extends StatelessWidget {
                         onChanged('');
                       },
                       icon: const Icon(Icons.close_rounded,
-                          color: _textSecondary, size: 18),
+                          color: MyShopColors.textSecondary, size: 18),
                     ),
                 ],
               ),
@@ -333,7 +325,7 @@ class _SectionLabel extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(
-          color:         _textSecondary,
+          color:         MyShopColors.textSecondary,
           fontSize:      w * 0.028,
           fontWeight:    FontWeight.w900,
           letterSpacing: 1.4,
@@ -384,13 +376,13 @@ class _ActionTile extends StatelessWidget {
                 children: [
                   Text(title,
                       style: TextStyle(
-                          color:      _textPrimary,
+                          color:      MyShopColors.textPrimary,
                           fontSize:   w * 0.038,
                           fontWeight: FontWeight.w600)),
                   SizedBox(height: 2),
                   Text(subtitle,
                       style: TextStyle(
-                          color:    _textSecondary,
+                          color:    MyShopColors.textSecondary,
                           fontSize: w * 0.032)),
                 ],
               ),
@@ -441,24 +433,24 @@ class _PlaceTile extends StatelessWidget {
                     children: [
                       Text(place.name,
                           style: TextStyle(
-                              color:      _textPrimary,
+                              color:      MyShopColors.textPrimary,
                               fontSize:   w * 0.038,
                               fontWeight: FontWeight.w600)),
                       const SizedBox(height: 2),
                       Text(place.address,
                           style: TextStyle(
-                              color:    _textSecondary,
+                              color:    MyShopColors.textSecondary,
                               fontSize: w * 0.032)),
                     ],
                   ),
                 ),
                 const Icon(Icons.north_west_rounded,
-                    color: _textSecondary, size: 16),
+                    color: MyShopColors.textSecondary, size: 16),
               ],
             ),
           ),
         ),
-        Divider(height: 1, color: _divider,
+        Divider(height: 1, color: MyShopColors.divider,
             indent: w * 0.05 + w * 0.10 + w * 0.036),
       ],
     );
@@ -478,12 +470,12 @@ class _EmptySearch extends StatelessWidget {
       child: Column(
         children: [
           Icon(Icons.search_off_rounded,
-              color: _textSecondary.withAlpha(80), size: w * 0.14),
+              color: MyShopColors.textSecondary.withAlpha(80), size: w * 0.14),
           SizedBox(height: h * 0.016),
           Text(
             'No results for "$query"',
             style: TextStyle(
-                color: _textSecondary, fontSize: w * 0.038),
+                color: MyShopColors.textSecondary, fontSize: w * 0.038),
           ),
         ],
       ),

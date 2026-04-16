@@ -1,9 +1,5 @@
 import 'package:flutter/material.dart';
-
-// Design tokens
-const _gold = Color(0xFFF5A623);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
+import 'package:shared_ui/shared_ui.dart';
 
 class PaymentMethodRow extends StatelessWidget {
   final VoidCallback? onChangeTap;
@@ -22,7 +18,7 @@ class PaymentMethodRow extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: _textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
         ),
@@ -33,7 +29,7 @@ class PaymentMethodRow extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: _gold,
+              color: MyShopColors.primaryGold,
             ),
           ),
         ),
@@ -49,7 +45,7 @@ class _MtnIcon extends StatelessWidget {
       width: 32,
       height: 32,
       decoration: const BoxDecoration(
-        color: Color(0xFFFFCC00), // MTN yellow
+        color: MyShopColors.mtnYellow, // MTN yellow
         shape: BoxShape.circle,
       ),
       child: const Center(
@@ -58,7 +54,7 @@ class _MtnIcon extends StatelessWidget {
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w900,
-            color: Color(0xFF161A1D),
+            color: MyShopColors.textPrimary,
           ),
         ),
       ),

@@ -1,11 +1,5 @@
 import 'package:flutter/material.dart';
-
-// Design tokens
-const _gold = Color(0xFFF5A623);
-const _textPrimary = Color(0xFF161A1D);
-const _textHint = Color(0xFFBDBDBD);
-const _textSecondary = Color(0xFF555E68);
-const _border = Color(0xFFE0E0E0);
+import 'package:shared_ui/shared_ui.dart';
 
 /// Two tappable read-only rows used on the Plan Your Trip screen.
 ///
@@ -63,7 +57,7 @@ class _FieldLabel extends StatelessWidget {
       style: TextStyle(
         fontSize: w * 0.026,
         fontWeight: FontWeight.w900,
-        color: _textSecondary,
+        color: MyShopColors.textSecondary,
         letterSpacing: 1.4,
       ),
     );
@@ -87,7 +81,7 @@ class _PickupField extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(w * 0.026),
-          border: Border.all(color: _border),
+          border: Border.all(color: MyShopColors.divider),
         ),
         padding: EdgeInsets.symmetric(horizontal: w * 0.036),
         child: Row(
@@ -100,14 +94,14 @@ class _PickupField extends StatelessWidget {
                 style: TextStyle(
                   fontSize: w * 0.036,
                   fontWeight: FontWeight.w500,
-                  color: _textPrimary,
+                  color: MyShopColors.textPrimary,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
             Icon(
               Icons.location_on_outlined,
-              color: _textSecondary,
+              color: MyShopColors.textSecondary,
               size: w * 0.051,
             ),
           ],
@@ -137,7 +131,7 @@ class _DestinationField extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(w * 0.026),
-          border: Border.all(color: _border),
+          border: Border.all(color: MyShopColors.divider),
         ),
         padding: EdgeInsets.symmetric(horizontal: w * 0.036),
         child: Row(
@@ -150,7 +144,7 @@ class _DestinationField extends StatelessWidget {
                 style: TextStyle(
                   fontSize: w * 0.036,
                   fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
-                  color: hasValue ? _textPrimary : _textHint,
+                  color: hasValue ? MyShopColors.textPrimary : MyShopColors.textHint,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -162,7 +156,7 @@ class _DestinationField extends StatelessWidget {
                 padding: EdgeInsets.only(left: w * 0.021),
                 child: Icon(
                   Icons.location_on_outlined,
-                  color: _textSecondary,
+                  color: MyShopColors.textSecondary,
                   size: w * 0.051,
                 ),
               ),
@@ -187,7 +181,7 @@ class _PickupIndicator extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: Colors.white,
-        border: Border.all(color: _gold, width: 2.5),
+        border: Border.all(color: MyShopColors.primaryGold, width: 2.5),
       ),
       child: Center(
         child: Container(
@@ -195,7 +189,7 @@ class _PickupIndicator extends StatelessWidget {
           height: w * 0.021,
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            color: _gold,
+            color: MyShopColors.primaryGold,
           ),
         ),
       ),
@@ -215,7 +209,7 @@ class _DestinationIndicator extends StatelessWidget {
       height: w * 0.046,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(w * 0.010),
-        border: Border.all(color: _border, width: 2),
+        border: Border.all(color: MyShopColors.divider, width: 2),
       ),
     );
   }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -7,12 +8,6 @@ import '../../../app/router.dart';
 import '../providers/ride_provider.dart';
 import '../widgets/driver_info_card.dart';
 import '../widgets/driver_radar.dart';
-
-// Design tokens
-const _gold = Color(0xFFF5A623);
-const _offWhite = Color(0xFFF6F7F8);
-const _textPrimary = Color(0xFF161A1D);
-const _textSecondary = Color(0xFF555E68);
 
 /// PRD 4.3 — Driver Matching Screen
 /// Radar animation while finding nearby drivers.
@@ -96,7 +91,7 @@ class _DriverMatchingScreenState extends ConsumerState<DriverMatchingScreen> {
     final driversFound = phase == BookingPhase.driverFound;
 
     return Scaffold(
-      backgroundColor: _offWhite,
+      backgroundColor: MyShopColors.offWhite,
       body: SafeArea(
         child: Column(
           children: [
@@ -167,14 +162,14 @@ class _SearchingBar extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.search_rounded, size: w * 0.044, color: _textSecondary),
+          Icon(Icons.search_rounded, size: w * 0.044, color: MyShopColors.textSecondary),
           SizedBox(width: w * 0.021),
           Text(
             'Finding nearby drivers...',
             style: TextStyle(
               fontSize:   w * 0.036,
               fontWeight: FontWeight.w500,
-              color:      _textSecondary,
+              color:      MyShopColors.textSecondary,
             ),
           ),
         ],
@@ -195,11 +190,11 @@ class _DriversAvailablePill extends StatelessWidget {
       key: const ValueKey('found'),
       padding: EdgeInsets.symmetric(horizontal: w * 0.051, vertical: h * 0.012),
       decoration: BoxDecoration(
-        color: _gold,
+        color: MyShopColors.primaryGold,
         borderRadius: BorderRadius.circular(h * 0.026),
         boxShadow: [
           BoxShadow(
-            color: _gold.withValues(alpha: 0.3),
+            color: MyShopColors.primaryGold.withValues(alpha: 0.3),
             blurRadius: 8,
             offset: const Offset(0, 3),
           ),
@@ -232,7 +227,7 @@ class _SearchStatusBar extends ConsumerWidget {
       child: Row(
         children: [
           const Icon(Icons.access_time_rounded,
-              size: 20, color: _textSecondary),
+              size: 20, color: MyShopColors.textSecondary),
           const SizedBox(width: 10),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -243,7 +238,7 @@ class _SearchStatusBar extends ConsumerWidget {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: _textPrimary,
+                  color: MyShopColors.textPrimary,
                 ),
               ),
               const Text(
@@ -251,7 +246,7 @@ class _SearchStatusBar extends ConsumerWidget {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w400,
-                  color: _textSecondary,
+                  color: MyShopColors.textSecondary,
                 ),
               ),
             ],
@@ -262,7 +257,7 @@ class _SearchStatusBar extends ConsumerWidget {
             style: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w700,
-              color: _gold,
+              color: MyShopColors.primaryGold,
               fontFeatures: [FontFeature.tabularFigures()],
             ),
           ),

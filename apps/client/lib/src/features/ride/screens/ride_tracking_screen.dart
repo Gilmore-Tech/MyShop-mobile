@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -7,9 +8,6 @@ import '../../../app/router.dart';
 import '../providers/ride_provider.dart';
 import '../widgets/ride_route_map.dart';
 import '../widgets/ride_tracking_sheet.dart';
-
-// Design tokens
-const _error = Color(0xFFEB5757);
 
 /// PRD 4.6 — Ride Tracking Screen
 ///
@@ -196,11 +194,11 @@ class _SosButton extends StatelessWidget {
         width: 52,
         height: 52,
         decoration: BoxDecoration(
-          color: _error,
+          color: MyShopColors.error,
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: _error.withValues(alpha: 0.45),
+              color: MyShopColors.error.withValues(alpha: 0.45),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -229,19 +227,19 @@ class _SosButton extends StatelessWidget {
           'Emergency',
           style: TextStyle(
             fontWeight: FontWeight.w700,
-            color: Color(0xFF161A1D),
+            color: MyShopColors.textPrimary,
           ),
         ),
         content: const Text(
           'Are you in danger? We will call Ghana Police Service (191) and share your location.',
-          style: TextStyle(color: Color(0xFF555E68)),
+          style: TextStyle(color: MyShopColors.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text(
               'Cancel',
-              style: TextStyle(color: Color(0xFF555E68)),
+              style: TextStyle(color: MyShopColors.textSecondary),
             ),
           ),
           ElevatedButton(
@@ -250,7 +248,7 @@ class _SosButton extends StatelessWidget {
               // TODO: url_launcher → tel:191 + send location to backend
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: _error,
+              backgroundColor: MyShopColors.error,
               foregroundColor: Colors.white,
               elevation: 0,
               shape: RoundedRectangleBorder(
