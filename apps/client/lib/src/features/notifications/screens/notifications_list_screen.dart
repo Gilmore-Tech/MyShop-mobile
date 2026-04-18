@@ -3,60 +3,7 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-// ── Model ──────────────────────────────────────────────────────────────────────
-
-enum _NotifType { ride, job, payment, promo, safety, system }
-
-class _Notif {
-  final String    id;
-  final _NotifType type;
-  final String    title;
-  final String    body;
-  final String    time;
-  final bool      isRead;
-
-  const _Notif({
-    required this.id,
-    required this.type,
-    required this.title,
-    required this.body,
-    required this.time,
-    this.isRead = false,
-  });
-
-  _Notif copyWithRead() => _Notif(
-        id:     id,
-        type:   type,
-        title:  title,
-        body:   body,
-        time:   time,
-        isRead: true,
-      );
-}
-
-// ── Provider ───────────────────────────────────────────────────────────────────
-// EDD: GET /v1/notifications?page=1&limit=30
-//      PATCH /v1/notifications/:id/read
-//      PATCH /v1/notifications/read-all
-
-class _NotifsNotifier extends StateNotifier<List<_Notif>> {
-  _NotifsNotifier() : super(_mockNotifs);
-
-  void markRead(String id) {
-    state = state
-        .map((n) => n.id == id ? n.copyWithRead() : n)
-        .toList();
-    // TODO: PATCH /v1/notifications/:id/read
-  }
-
-  void markAllRead() {
-    state = state.map((n) => n.copyWithRead()).toList();
-    // TODO: PATCH /v1/notifications/read-all
-  }
-}
-
-final _notifsProvider = StateNotifierProvider.autoDispose<
-    _NotifsNotifier, List<_Notif>>((_) => _NotifsNotifier());
+import '../providers/notifications_provider.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 
@@ -68,7 +15,7 @@ class NotificationsListScreen extends ConsumerWidget {
     final size    = MediaQuery.sizeOf(context);
     final w       = size.width;
     final h       = size.height;
-    final notifs  = ref.watch(_notifsProvider);
+    final notifs  = ref.watch(notifsProvider);
     final unread  = notifs.where((n) => !n.isRead).length;
 
     return Scaffold(
@@ -110,7 +57,7 @@ class NotificationsListScreen extends ConsumerWidget {
           if (unread > 0)
             TextButton(
               onPressed: () =>
-                  ref.read(_notifsProvider.notifier).markAllRead(),
+                  ref.read(notifsProvider.notifier).markAllRead(),
               child: Text('Mark all read',
                   style: TextStyle(
                       color:    MyShopColors.primaryGold,
@@ -123,7 +70,7 @@ class NotificationsListScreen extends ConsumerWidget {
           : _NotifList(
               notifs:   notifs,
               onTap:    (id) =>
-                  ref.read(_notifsProvider.notifier).markRead(id),
+                  ref.read(notifsProvider.notifier).markRead(id),
               w: w,
               h: h,
             ),
@@ -134,7 +81,7 @@ class NotificationsListScreen extends ConsumerWidget {
 // ── Notification list ──────────────────────────────────────────────────────────
 
 class _NotifList extends StatelessWidget {
-  final List<_Notif>          notifs;
+  final List<Notif>          notifs;
   final void Function(String) onTap;
   final double                w, h;
 
@@ -198,7 +145,7 @@ class _GroupLabel extends StatelessWidget {
 // ── Notification tile ──────────────────────────────────────────────────────────
 
 class _NotifTile extends StatelessWidget {
-  final _Notif               notif;
+  final Notif               notif;
   final void Function(String) onTap;
   final double               w, h;
 
@@ -281,14 +228,14 @@ class _NotifTile extends StatelessWidget {
     );
   }
 
-  static (IconData, Color, Color) _iconFor(_NotifType type) =>
+  static (IconData, Color, Color) _iconFor(NotifType type) =>
       switch (type) {
-        _NotifType.ride    => (Icons.directions_car_rounded, MyShopColors.info,    MyShopColors.infoLight),
-        _NotifType.job     => (Icons.work_rounded,           MyShopColors.primaryGold,    MyShopColors.primaryGoldLight),
-        _NotifType.payment => (Icons.payments_rounded,       MyShopColors.success, MyShopColors.successLight),
-        _NotifType.promo   => (Icons.local_offer_rounded,    MyShopColors.warning, MyShopColors.warningLight),
-        _NotifType.safety  => (Icons.security_rounded,       MyShopColors.error,  MyShopColors.errorLight),
-        _NotifType.system  => (Icons.notifications_rounded,  MyShopColors.darkSlate,
+        NotifType.ride    => (Icons.directions_car_rounded, MyShopColors.info,    MyShopColors.infoLight),
+        NotifType.job     => (Icons.work_rounded,           MyShopColors.primaryGold,    MyShopColors.primaryGoldLight),
+        NotifType.payment => (Icons.payments_rounded,       MyShopColors.success, MyShopColors.successLight),
+        NotifType.promo   => (Icons.local_offer_rounded,    MyShopColors.warning, MyShopColors.warningLight),
+        NotifType.safety  => (Icons.security_rounded,       MyShopColors.error,  MyShopColors.errorLight),
+        NotifType.system  => (Icons.notifications_rounded,  MyShopColors.darkSlate,
                                MyShopColors.surfaceGrey),
       };
 }
@@ -324,53 +271,3 @@ class _EmptyState extends StatelessWidget {
     );
   }
 }
-
-// ── Mock data ──────────────────────────────────────────────────────────────────
-
-const _mockNotifs = [
-  _Notif(
-    id:    'n1',
-    type:  _NotifType.ride,
-    title: 'Your driver is 3 mins away',
-    body:  'Kwame Asante is approaching Airport Residential Area.',
-    time:  'Just now',
-  ),
-  _Notif(
-    id:    'n2',
-    type:  _NotifType.job,
-    title: 'New bid on your job',
-    body:  'Kofi Mensah placed a bid of GHS 235.00 on "Emergency Electrical Repair".',
-    time:  '12 min ago',
-  ),
-  _Notif(
-    id:    'n3',
-    type:  _NotifType.payment,
-    title: 'Payment received',
-    body:  'GHS 42.90 deducted from MTN MoMo for ride RIDE-2041.',
-    time:  '1 hour ago',
-  ),
-  _Notif(
-    id:    'n4',
-    type:  _NotifType.promo,
-    title: 'Weekend offer 🎉',
-    body:  'Get 20% off all rides this Saturday and Sunday. Use code WEEKEND20.',
-    time:  'Yesterday',
-    isRead: true,
-  ),
-  _Notif(
-    id:    'n5',
-    type:  _NotifType.job,
-    title: 'Job completed',
-    body:  'Abena Osei has marked your cleaning job as complete. Please confirm.',
-    time:  'Oct 23',
-    isRead: true,
-  ),
-  _Notif(
-    id:    'n6',
-    type:  _NotifType.system,
-    title: 'Profile verification',
-    body:  'Your identity has been successfully verified. Full features are now unlocked.',
-    time:  'Oct 20',
-    isRead: true,
-  ),
-];
