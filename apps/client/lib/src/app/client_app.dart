@@ -5,16 +5,13 @@ import 'package:shared_ui/shared_ui.dart';
 import 'router.dart';
 
 /// Root widget for the MyShop Client App.
-/// Wraps the app with [ProviderScope] for Riverpod state management.
 /// PRD Reference: Section 4 (Client App)
 class ClientApp extends StatelessWidget {
   const ClientApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const ProviderScope(
-      child: _MyShopMaterialApp(),
-    );
+    return const _MyShopMaterialApp();
   }
 }
 

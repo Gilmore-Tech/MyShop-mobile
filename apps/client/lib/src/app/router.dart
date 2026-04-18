@@ -3,6 +3,9 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+// ── Auth state ────────────────────────────────────────────────────────────────
+import '../features/auth/providers/auth_controller.dart';
+
 // ── App shell ──────────────────────────────────────────────────────────────────
 import 'main_shell.dart';
 
@@ -14,6 +17,7 @@ import '../features/onboarding/screens/splash_screen.dart';
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
 import '../features/auth/screens/phone_input_screen.dart';
+import '../features/auth/screens/sign_up_screen.dart';
 import '../features/auth/screens/otp_verification_screen.dart';
 
 // ── Home ───────────────────────────────────────────────────────────────────────
@@ -37,6 +41,8 @@ import '../features/ride/providers/ride_provider.dart' show MatchedDriver;
 // ── Services ───────────────────────────────────────────────────────────────────
 import '../features/services/screens/categories_screen.dart';
 import '../features/services/screens/job_form_screen.dart';
+import '../features/services/screens/job_location_search_screen.dart';
+import '../features/services/screens/job_map_picker_screen.dart';
 import '../features/services/screens/job_detail_screen.dart';
 import '../features/services/screens/bid_detail_screen.dart';
 import '../features/services/screens/bid_review_screen.dart';
@@ -82,6 +88,7 @@ abstract final class AppRoutes {
   static const splash          = '/';
   // Auth
   static const authPhone       = '/auth/phone';
+  static const authSignUp      = '/auth/sign-up';
   static const authOtp         = '/auth/otp';
 
   // Main tabs
@@ -109,6 +116,8 @@ abstract final class AppRoutes {
 
   // Services sub-flow
   static const jobNew           = '/services/job/new';
+  static const jobLocation      = '/services/job/location';
+  static const jobLocationMap   = '/services/job/location/map';
   static const jobDetail        = '/services/job/:jobId';
   static const jobBids          = '/services/job/:jobId/bids/:bidId';
   static const jobBidReview     = '/services/job/:jobId/bid-review';
@@ -173,16 +182,65 @@ final _profileNavKey        = GlobalKey<NavigatorState>(debugLabel: 'profile');
 
 // ── Router Provider ────────────────────────────────────────────────────────────
 // NOT autoDispose — the router must live for the full app lifetime.
+//
+// We watch [clientAuthControllerProvider] so the router rebuilds when auth
+// state changes. GoRouter is cheap to recreate — it's just config. The
+// navigator keys are module-level so navigation state is preserved.
 
-final routerProvider = Provider<GoRouter>((ref) => _buildRouter());
+final routerProvider = Provider<GoRouter>((ref) {
+  final authState = ref.watch(clientAuthControllerProvider);
+  return _buildRouter(authState);
+});
 
-GoRouter _buildRouter() {
+GoRouter _buildRouter(ClientAuthState authState) {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
-    // TEMP: land directly on home for UI testing of the redesigned homepage.
-    // Revert to AppRoutes.splash when wiring auth/onboarding gate.
-    initialLocation: AppRoutes.home,
+    initialLocation: AppRoutes.splash,
     debugLogDiagnostics: false,
+    redirect: (context, state) {
+      final path = state.uri.path;
+      final isAuthRoute = path == AppRoutes.splash ||
+          path == AppRoutes.authPhone ||
+          path == AppRoutes.authSignUp ||
+          path == AppRoutes.authOtp;
+      final isDevRoute = path == AppRoutes.dev;
+
+      // Let dev menu through always
+      if (isDevRoute) return null;
+
+      // Still checking stored tokens — stay on splash
+      if (authState is AuthUnknown) {
+        return path == AppRoutes.splash ? null : AppRoutes.splash;
+      }
+
+      // Not authenticated — allow phone or sign-up screens
+      if (authState is AuthUnauthenticated) {
+        if (path == AppRoutes.authPhone || path == AppRoutes.authSignUp) {
+          return null;
+        }
+        return AppRoutes.authPhone;
+      }
+
+      // New user needs to register — allow sign-up or phone screens
+      if (authState is AuthNeedsRegistration) {
+        if (path == AppRoutes.authSignUp || path == AppRoutes.authPhone) {
+          return null;
+        }
+        return AppRoutes.authSignUp;
+      }
+
+      // OTP sent — force to OTP screen
+      if (authState is AuthOtpSent) {
+        return path == AppRoutes.authOtp ? null : AppRoutes.authOtp;
+      }
+
+      // Authenticated — redirect away from auth screens
+      if (authState is AuthAuthenticated) {
+        return isAuthRoute ? AppRoutes.home : null;
+      }
+
+      return null;
+    },
     routes: [
 
       // ── Dev menu ─────────────────────────────────────────────────────────────
@@ -201,6 +259,10 @@ GoRouter _buildRouter() {
       GoRoute(
         path: AppRoutes.authPhone,
         builder: (_, __) => const PhoneInputScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.authSignUp,
+        builder: (_, __) => const SignUpScreen(),
       ),
       GoRoute(
         path: AppRoutes.authOtp,
@@ -343,6 +405,16 @@ GoRouter _buildRouter() {
             initialCategoryName: extra?['categoryName'],
           );
         },
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: AppRoutes.jobLocation,
+        builder: (_, __) => const JobLocationSearchScreen(),
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: AppRoutes.jobLocationMap,
+        builder: (_, __) => const JobMapPickerScreen(),
       ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
