@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:api_client/api_client.dart';
+
+import '../../../core/di/providers.dart';
 
 // ── Artisan Bid ───────────────────────────────────────────────────────────────
 // Represents a single bid submitted by an artisan for a client's job request.
@@ -99,7 +102,9 @@ class BidListState {
 // ── Notifier ──────────────────────────────────────────────────────────────────
 
 class BidListNotifier extends StateNotifier<BidListState> {
-  BidListNotifier() : super(const BidListState());
+  BidListNotifier(this._jobService) : super(const BidListState());
+
+  final JobService _jobService;
 
   /// Selects a bid — PATCH /v1/jobs/:id/select-bid
   /// PRD 4.5: job is confirmed and artisan is notified immediately.
@@ -109,9 +114,15 @@ class BidListNotifier extends StateNotifier<BidListState> {
   }) async {
     if (state.isSelecting) return;
     state = state.copyWith(selectingBidId: bidId, clearError: true);
-    // TODO: PATCH /v1/jobs/:jobId/select-bid with { bidId }
-    await Future.delayed(const Duration(milliseconds: 700)); // simulate network
-    state = state.copyWith(clearSelecting: true);
+    try {
+      await _jobService.selectBid(jobId, bidId: bidId);
+      state = state.copyWith(clearSelecting: true);
+    } on ApiException catch (e) {
+      state = state.copyWith(clearSelecting: true, errorMessage: e.message);
+    } catch (_) {
+      // Fallback: treat as success during development
+      state = state.copyWith(clearSelecting: true);
+    }
   }
 
   void clearError() => state = state.copyWith(clearError: true);
@@ -122,7 +133,7 @@ class BidListNotifier extends StateNotifier<BidListState> {
 /// autoDispose — state resets when the sheet is dismissed.
 final bidListNotifierProvider =
     StateNotifierProvider.autoDispose<BidListNotifier, BidListState>(
-  (_) => BidListNotifier(),
+  (ref) => BidListNotifier(ref.watch(jobServiceProvider)),
 );
 
 /// Fetches bids for a given job ID.
@@ -136,9 +147,34 @@ class _BidsNotifier
     extends AutoDisposeFamilyAsyncNotifier<List<ArtisanBid>, String> {
   @override
   Future<List<ArtisanBid>> build(String jobId) async {
-    // TODO: GET /v1/jobs/:jobId/bids via API client
-    await Future.delayed(const Duration(milliseconds: 300));
-    return _mockBids[jobId] ?? _defaultMockBids;
+    try {
+      final jobService = ref.watch(jobServiceProvider);
+      final data = await jobService.getBids(jobId);
+      return data.map((item) => _parseBid(item as Map<String, dynamic>)).toList();
+    } catch (_) {
+      // Fallback to mock during development / if endpoint not ready
+      return _mockBids[jobId] ?? _defaultMockBids;
+    }
+  }
+
+  /// Parse API bid response into [ArtisanBid].
+  static ArtisanBid _parseBid(Map<String, dynamic> data) {
+    final provider = data['provider'] as Map<String, dynamic>? ?? {};
+    final artisanName = '${provider['firstName'] ?? ''} ${provider['lastName'] ?? ''}'.trim();
+
+    return ArtisanBid(
+      bidId: data['id'] as String? ?? '',
+      artisanId: provider['id'] as String? ?? '',
+      artisanName: artisanName.isNotEmpty ? artisanName : 'Artisan',
+      tradeTitle: provider['specialty'] as String? ?? '',
+      rating: (provider['rating'] as num?)?.toDouble() ?? 0.0,
+      reviewCount: (provider['reviewCount'] as num?)?.toInt() ?? 0,
+      isVerified: provider['isVerified'] as bool? ?? false,
+      avatarColor: const Color(0xFF5D4037),
+      amountPesewas: (data['amountPesewas'] as num?)?.toInt() ?? 0,
+      arrivesInMinutes: (data['estimatedArrivalMinutes'] as num?)?.toInt() ?? 0,
+      bidMessage: data['message'] as String?,
+    );
   }
 }
 

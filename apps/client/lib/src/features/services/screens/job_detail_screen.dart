@@ -27,9 +27,8 @@ class JobDetailScreen extends ConsumerWidget {
       backgroundColor: MyShopColors.offWhite,
       body: jobAsync.when(
         loading: () => _LoadingSkeleton(w: w, h: h),
-        error: (e, _) => _ErrorBody(
-          w: w,
-          h: h,
+        error: (e, _) => MyShopErrorBody(
+          message: 'Could not load job details',
           onRetry: () => ref.invalidate(jobDetailProvider(jobId)),
         ),
         data: (job) => _JobDetailBody(job: job, w: w, h: h),
@@ -62,8 +61,7 @@ class _JobDetailBody extends StatelessWidget {
                 _DescriptionSection(description: job.description, w: w, h: h),
                 SizedBox(height: h * 0.033),
                 _ReferencePhotosSection(
-                  photoCount: job.photoCount,
-                  photoColors: job.photoColors,
+                  photoUrls: job.photoUrls,
                   w: w,
                   h: h,
                 ),
@@ -126,38 +124,14 @@ class _AppBar extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Request Details',
-                  style: TextStyle(
-                    fontSize: w * 0.051, // ~20dp
-                    fontWeight: FontWeight.w700,
-                    color: MyShopColors.textPrimary,
-                    height: 1.2,
-                  ),
-                ),
-                SizedBox(height: h * 0.004),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.location_on,
-                      size: w * 0.033,
-                      color: MyShopColors.primaryGold,
-                    ),
-                    SizedBox(width: w * 0.010),
-                    Text(
-                      job.location,
-                      style: TextStyle(
-                        fontSize: w * 0.028,
-                        fontWeight: FontWeight.w400,
-                        color: MyShopColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+            child: Text(
+              'Request Details',
+              style: TextStyle(
+                fontSize: w * 0.051,
+                fontWeight: FontWeight.w700,
+                color: MyShopColors.textPrimary,
+                height: 1.2,
+              ),
             ),
           ),
           GestureDetector(
@@ -311,7 +285,7 @@ class _JobSummaryCard extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
-                  Icons.handyman_rounded,
+                  job.categoryIcon,
                   size: w * 0.056,
                   color: MyShopColors.textSecondary,
                 ),
@@ -339,6 +313,31 @@ class _JobSummaryCard extends StatelessWidget {
                         color: MyShopColors.textSecondary,
                       ),
                     ),
+                    if (job.location.isNotEmpty) ...[
+                      SizedBox(height: h * 0.006),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.location_on,
+                            size: w * 0.033,
+                            color: MyShopColors.primaryGold,
+                          ),
+                          SizedBox(width: w * 0.010),
+                          Expanded(
+                            child: Text(
+                              job.location,
+                              style: TextStyle(
+                                fontSize: w * 0.030,
+                                fontWeight: FontWeight.w400,
+                                color: MyShopColors.textSecondary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -504,20 +503,57 @@ class _DescriptionSection extends StatelessWidget {
 // ── Reference Photos Section ───────────────────────────────────────────────────
 
 class _ReferencePhotosSection extends StatelessWidget {
-  final int photoCount;
-  final List<Color> photoColors;
+  final List<String> photoUrls;
   final double w;
   final double h;
   const _ReferencePhotosSection({
-    required this.photoCount,
-    required this.photoColors,
+    required this.photoUrls,
     required this.w,
     required this.h,
   });
 
   @override
   Widget build(BuildContext context) {
-    final cardWidth = w * 0.475; // ~half screen so the next one peeks in
+    if (photoUrls.isEmpty) {
+      return Padding(
+        padding: EdgeInsets.symmetric(horizontal: w * 0.041),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SectionTitle(label: 'Reference Photos', w: w, h: h),
+            SizedBox(height: h * 0.014),
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(vertical: h * 0.028),
+              decoration: BoxDecoration(
+                color: MyShopColors.surfaceGrey,
+                borderRadius: BorderRadius.circular(w * 0.021),
+              ),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.photo_library_outlined,
+                    size: w * 0.072,
+                    color: MyShopColors.textHint,
+                  ),
+                  SizedBox(height: h * 0.007),
+                  Text(
+                    'No photos attached',
+                    style: TextStyle(
+                      fontSize: w * 0.033,
+                      fontWeight: FontWeight.w400,
+                      color: MyShopColors.textHint,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final cardWidth = w * 0.475;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -527,16 +563,15 @@ class _ReferencePhotosSection extends StatelessWidget {
             children: [
               _SectionTitle(label: 'Reference Photos', w: w, h: h),
               const Spacer(),
-              if (photoCount > 0)
-                Text(
-                  '$photoCount PHOTOS',
-                  style: TextStyle(
-                    fontSize:      w * 0.026,
-                    fontWeight:    FontWeight.w700,
-                    color:         MyShopColors.primaryGold,
-                    letterSpacing: 0.8,
-                  ),
+              Text(
+                '${photoUrls.length} PHOTOS',
+                style: TextStyle(
+                  fontSize: w * 0.026,
+                  fontWeight: FontWeight.w700,
+                  color: MyShopColors.primaryGold,
+                  letterSpacing: 0.8,
                 ),
+              ),
             ],
           ),
         ),
@@ -545,13 +580,13 @@ class _ReferencePhotosSection extends StatelessWidget {
           height: cardWidth * (11 / 16),
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding:         EdgeInsets.symmetric(horizontal: w * 0.041),
-            itemCount:       photoColors.length,
+            padding: EdgeInsets.symmetric(horizontal: w * 0.041),
+            itemCount: photoUrls.length,
             separatorBuilder: (_, __) => SizedBox(width: w * 0.026),
             itemBuilder: (_, i) => SizedBox(
               width: cardWidth,
               child: _PhotoCard(
-                color: photoColors[i],
+                url: photoUrls[i],
                 index: i + 1,
                 w: w,
                 h: h,
@@ -565,12 +600,12 @@ class _ReferencePhotosSection extends StatelessWidget {
 }
 
 class _PhotoCard extends StatelessWidget {
-  final Color  color;
-  final int    index;
+  final String url;
+  final int index;
   final double w;
   final double h;
   const _PhotoCard({
-    required this.color,
+    required this.url,
     required this.index,
     required this.w,
     required this.h,
@@ -585,7 +620,18 @@ class _PhotoCard extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Container(color: color),
+            Image.network(
+              url,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                color: MyShopColors.surfaceGrey,
+                child: Icon(
+                  Icons.broken_image_outlined,
+                  size: w * 0.072,
+                  color: MyShopColors.textHint,
+                ),
+              ),
+            ),
             // Gradient overlay
             Container(
               decoration: BoxDecoration(
@@ -606,7 +652,7 @@ class _PhotoCard extends StatelessWidget {
               right: 0,
               child: Center(
                 child: Text(
-                  'VIEW REFERENCE $index',
+                  'PHOTO $index',
                   style: TextStyle(
                     fontSize: w * 0.026,
                     fontWeight: FontWeight.w700,
@@ -979,63 +1025,12 @@ class _BottomActionBar extends StatelessWidget {
         color: MyShopColors.surfaceWhite,
         border: Border(top: BorderSide(color: MyShopColors.divider)),
       ),
-      child: Row(
-        children: [
-          // Chat button
-          _ChatButton(w: w, h: h),
-          SizedBox(width: w * 0.031),
-          // View bids CTA
-          Expanded(
-            child: _ViewBidsButton(
-              jobId:    jobId,
-              jobTitle: jobTitle,
-              bidCount: bidCount,
-              w: w,
-              h: h,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ChatButton extends StatelessWidget {
-  final double w;
-  final double h;
-  const _ChatButton({required this.w, required this.h});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {}, // TODO: navigate to chat screen
-      child: Container(
-        height: h * 0.062,
-        width: w * 0.231, // ~90dp
-        decoration: BoxDecoration(
-          color: MyShopColors.surfaceWhite,
-          borderRadius: BorderRadius.circular(w * 0.021),
-          border: Border.all(color: MyShopColors.divider, width: 1.5),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.chat_bubble_outline_rounded,
-              size: w * 0.046,
-              color: MyShopColors.textPrimary,
-            ),
-            SizedBox(width: w * 0.015),
-            Text(
-              'Chat',
-              style: TextStyle(
-                fontSize: w * 0.036,
-                fontWeight: FontWeight.w600,
-                color: MyShopColors.textPrimary,
-              ),
-            ),
-          ],
-        ),
+      child: _ViewBidsButton(
+        jobId:    jobId,
+        jobTitle: jobTitle,
+        bidCount: bidCount,
+        w: w,
+        h: h,
       ),
     );
   }
@@ -1255,76 +1250,6 @@ class _Shimmer extends StatelessWidget {
       decoration: BoxDecoration(
         color: MyShopColors.divider,
         borderRadius: BorderRadius.circular(radius ?? 4),
-      ),
-    );
-  }
-}
-
-// ── Error body ─────────────────────────────────────────────────────────────────
-
-class _ErrorBody extends StatelessWidget {
-  final double w;
-  final double h;
-  final VoidCallback onRetry;
-  const _ErrorBody({required this.w, required this.h, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: w * 0.082),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.error_outline_rounded,
-              size: w * 0.154,
-              color: MyShopColors.textHint,
-            ),
-            SizedBox(height: h * 0.019),
-            Text(
-              'Could not load request details',
-              style: TextStyle(
-                fontSize: w * 0.041,
-                fontWeight: FontWeight.w700,
-                color: MyShopColors.textPrimary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: h * 0.009),
-            Text(
-              'Check your connection and try again.',
-              style: TextStyle(
-                fontSize: w * 0.033,
-                fontWeight: FontWeight.w400,
-                color: MyShopColors.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: h * 0.028),
-            GestureDetector(
-              onTap: onRetry,
-              child: Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: w * 0.077,
-                  vertical: h * 0.017,
-                ),
-                decoration: BoxDecoration(
-                  color: MyShopColors.darkSlate,
-                  borderRadius: BorderRadius.circular(w * 0.021),
-                ),
-                child: Text(
-                  'Try Again',
-                  style: TextStyle(
-                    fontSize: w * 0.038,
-                    fontWeight: FontWeight.w600,
-                    color: MyShopColors.surfaceWhite,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

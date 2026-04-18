@@ -33,7 +33,6 @@ class JobFormScreen extends ConsumerStatefulWidget {
 class _JobFormScreenState extends ConsumerState<JobFormScreen> {
   final _titleController       = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _destinationController = TextEditingController();
   final _landmarkController    = TextEditingController();
 
   @override
@@ -54,7 +53,6 @@ class _JobFormScreenState extends ConsumerState<JobFormScreen> {
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
-    _destinationController.dispose();
     _landmarkController.dispose();
     super.dispose();
   }
@@ -111,13 +109,7 @@ class _JobFormScreenState extends ConsumerState<JobFormScreen> {
                     w: w, h: h,
                   ),
                   SizedBox(height: h * 0.022),
-                  _DestinationField(
-                    controller: _destinationController,
-                    w: w, h: h,
-                    onChanged: (v) => ref
-                        .read(jobFormProvider.notifier)
-                        .setDestinationAddress(v),
-                  ),
+                  _DestinationField(w: w, h: h),
                   SizedBox(height: h * 0.014),
                   _LandmarkField(
                     controller: _landmarkController,
@@ -1141,22 +1133,22 @@ class _PhotoSourceTile extends StatelessWidget {
   }
 }
 
-// ── DESTINATION address field ──────────────────────────────────────────────────
+// ── DESTINATION address field (tappable — opens location search) ──────────────
 
-class _DestinationField extends StatelessWidget {
-  final TextEditingController controller;
-  final void Function(String) onChanged;
+class _DestinationField extends ConsumerWidget {
   final double w;
   final double h;
   const _DestinationField({
-    required this.controller,
-    required this.onChanged,
     required this.w,
     required this.h,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final formState = ref.watch(jobFormProvider);
+    final hasLocation = formState.destinationAddress.isNotEmpty &&
+        formState.latitude != null;
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: Column(
@@ -1164,60 +1156,67 @@ class _DestinationField extends StatelessWidget {
         children: [
           _FieldLabel(text: 'DESTINATION', w: w, h: h),
           SizedBox(height: h * 0.010),
-          TextField(
-            controller: controller,
-            onChanged: onChanged,
-            style: TextStyle(
-              fontSize: w * 0.038,
-              fontWeight: FontWeight.w400,
-              color: MyShopColors.textPrimary,
-            ),
-            decoration: InputDecoration(
-              hintText: 'Kotoka International Airport (T3)',
-              hintStyle: TextStyle(
-                fontSize: w * 0.036,
-                fontWeight: FontWeight.w400,
-                color: MyShopColors.textHint,
-              ),
-              prefixIcon: Padding(
-                padding: EdgeInsets.only(
-                  left: w * 0.038,
-                  right: w * 0.026,
-                ),
-                child: Icon(
-                  Icons.location_on,
-                  size: w * 0.051,
-                  color: MyShopColors.primaryGold,
-                ),
-              ),
-              prefixIconConstraints: BoxConstraints(
-                minWidth: w * 0.051 + w * 0.064,
-                minHeight: 0,
-              ),
-              contentPadding: EdgeInsets.symmetric(
+          GestureDetector(
+            onTap: () => context.push('/services/job/location'),
+            child: Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(
+                horizontal: w * 0.038,
                 vertical: h * 0.017,
               ),
-              border: OutlineInputBorder(
+              decoration: BoxDecoration(
+                color: MyShopColors.surfaceWhite,
                 borderRadius: BorderRadius.circular(w * 0.021),
-                borderSide: const BorderSide(color: MyShopColors.divider),
+                border: Border.all(
+                  color: hasLocation
+                      ? MyShopColors.primaryGold
+                      : MyShopColors.divider,
+                  width: hasLocation ? 1.5 : 1,
+                ),
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(w * 0.021),
-                borderSide: const BorderSide(color: MyShopColors.divider),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(w * 0.021),
-                borderSide: const BorderSide(color: MyShopColors.primaryGold, width: 1.5),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.location_on,
+                    size: w * 0.051,
+                    color: hasLocation
+                        ? MyShopColors.primaryGold
+                        : MyShopColors.textHint,
+                  ),
+                  SizedBox(width: w * 0.026),
+                  Expanded(
+                    child: Text(
+                      hasLocation
+                          ? formState.destinationAddress
+                          : 'Search or pick a location',
+                      style: TextStyle(
+                        fontSize: w * 0.038,
+                        fontWeight:
+                            hasLocation ? FontWeight.w500 : FontWeight.w400,
+                        color: hasLocation
+                            ? MyShopColors.textPrimary
+                            : MyShopColors.textHint,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: w * 0.051,
+                    color: MyShopColors.textSecondary,
+                  ),
+                ],
               ),
             ),
           ),
           SizedBox(height: h * 0.007),
           Text(
-            'Auto selects your default location. Change location if it varies.',
+            'Tap to search or drop a pin on the map',
             style: TextStyle(
-              fontSize:   w * 0.028,
+              fontSize: w * 0.028,
               fontWeight: FontWeight.w400,
-              color:      MyShopColors.textHint,
+              color: MyShopColors.textHint,
             ),
           ),
         ],

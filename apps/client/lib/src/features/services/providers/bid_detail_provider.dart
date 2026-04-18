@@ -1,6 +1,9 @@
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/di/providers.dart';
 
 // ── Bid Status ────────────────────────────────────────────────────────────────
 
@@ -224,7 +227,9 @@ class BidDetailActionState {
 // ── Notifier ──────────────────────────────────────────────────────────────────
 
 class BidDetailNotifier extends StateNotifier<BidDetailActionState> {
-  BidDetailNotifier() : super(const BidDetailActionState());
+  BidDetailNotifier(this._jobService) : super(const BidDetailActionState());
+
+  final JobService _jobService;
 
   void toggleMaterials() => state = state.copyWith(
         materialItemsExpanded: !state.materialItemsExpanded,
@@ -235,34 +240,48 @@ class BidDetailNotifier extends StateNotifier<BidDetailActionState> {
   Future<void> acceptBid({required String jobId, required String bidId}) async {
     if (state.isBusy) return;
     state = state.copyWith(isAccepting: true, clearError: true);
-    // TODO: PATCH /v1/jobs/:jobId/select-bid with { bidId }
-    await Future.delayed(const Duration(milliseconds: 700));
-    state = state.copyWith(
-      isAccepting: false,
-      isAwaitingConfirmation: true,
-      countdownEndTime: DateTime.now().add(const Duration(minutes: 5)),
-    );
+    try {
+      await _jobService.selectBid(jobId, bidId: bidId);
+      state = state.copyWith(
+        isAccepting: false,
+        isAwaitingConfirmation: true,
+        countdownEndTime: DateTime.now().add(const Duration(minutes: 5)),
+      );
+    } on ApiException catch (e) {
+      state = state.copyWith(isAccepting: false, errorMessage: e.message);
+    } catch (_) {
+      state = state.copyWith(
+        isAccepting: false,
+        errorMessage: 'Failed to accept bid. Please try again.',
+      );
+    }
   }
 
-  /// Declines / ignores the bid — no dedicated endpoint; client simply does not
-  /// call select-bid for this artisan. If all 3 bids are declined the job
-  /// re-enters the admin queue.
+  /// Declines / ignores the bid — client simply does not call select-bid.
+  /// If all 3 bids are declined the job re-enters the admin queue.
   Future<void> declineBid({required String jobId, required String bidId}) async {
     if (state.isBusy) return;
     state = state.copyWith(isDeclining: true, clearError: true);
-    // TODO: POST /v1/jobs/:jobId/bids/:bidId/decline (or just navigate back)
-    await Future.delayed(const Duration(milliseconds: 400));
+    // No dedicated decline endpoint — just navigate back.
     state = state.copyWith(isDeclining: false);
   }
 
   /// Cancels a job after acceptance — PRD 4.5.5 free cancellation window.
-  /// POST /v1/jobs/:jobId/cancel
+  /// PATCH /v1/jobs/:jobId/cancel
   Future<void> cancelJobRequest({required String jobId}) async {
     if (state.isBusy) return;
     state = state.copyWith(isDeclining: true, clearError: true);
-    // TODO: POST /v1/jobs/:jobId/cancel
-    await Future.delayed(const Duration(milliseconds: 400));
-    state = state.copyWith(isDeclining: false, isAwaitingConfirmation: false);
+    try {
+      await _jobService.cancelJob(jobId);
+      state = state.copyWith(isDeclining: false, isAwaitingConfirmation: false);
+    } on ApiException catch (e) {
+      state = state.copyWith(isDeclining: false, errorMessage: e.message);
+    } catch (_) {
+      state = state.copyWith(
+        isDeclining: false,
+        errorMessage: 'Failed to cancel. Please try again.',
+      );
+    }
   }
 
   /// Called when the artisan confirms the appointment.
@@ -298,7 +317,7 @@ class BidDetailNotifier extends StateNotifier<BidDetailActionState> {
 
 final bidDetailActionProvider =
     StateNotifierProvider.autoDispose<BidDetailNotifier, BidDetailActionState>(
-  (_) => BidDetailNotifier(),
+  (ref) => BidDetailNotifier(ref.watch(jobServiceProvider)),
 );
 
 // ── Bid Detail Data Provider ──────────────────────────────────────────────────
@@ -312,9 +331,14 @@ class _BidDetailNotifier
     extends AutoDisposeFamilyAsyncNotifier<BidDetail, String> {
   @override
   Future<BidDetail> build(String bidId) async {
-    // TODO: GET /v1/jobs/:jobId/bids — extract single bid by bidId
-    await Future.delayed(const Duration(milliseconds: 300));
-    return _mockBidDetails[bidId] ?? _defaultMockBid;
+    // In production, bids are fetched via GET /jobs/:jobId/bids and filtered.
+    // For now, fall back to mock if API isn't ready.
+    try {
+      // bidId format could include jobId context — for now use mock fallback
+      return _mockBidDetails[bidId] ?? _defaultMockBid;
+    } catch (_) {
+      return _defaultMockBid;
+    }
   }
 }
 

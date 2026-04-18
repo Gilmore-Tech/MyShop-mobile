@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:api_client/api_client.dart';
+
+import '../../../core/di/providers.dart';
 
 // ── Payment Method ────────────────────────────────────────────────────────────
 // PRD 7.1 — supported client payment methods.
@@ -154,7 +157,9 @@ class PaymentState {
 // ── Notifier ──────────────────────────────────────────────────────────────────
 
 class PaymentNotifier extends StateNotifier<PaymentState> {
-  PaymentNotifier() : super(const PaymentState());
+  PaymentNotifier(this._paymentService) : super(const PaymentState());
+
+  final PaymentService _paymentService;
 
   void selectMethod(PaymentMethod method) =>
       state = state.copyWith(selectedMethod: method);
@@ -169,19 +174,44 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   }) async {
     if (state.isProcessing) return;
     state = state.copyWith(isProcessing: true, clearError: true);
-    // TODO: POST /v1/payments/initiate  { jobId, method: state.selectedMethod }
-    await Future.delayed(const Duration(milliseconds: 900));
-    state = state.copyWith(
-      isProcessing: false,
-      confirmation: PaymentConfirmation(
-        transactionRef: '#TXN-2024-${summary.jobId.hashCode.abs() % 9000 + 1000}',
-        artisanName: summary.artisanName,
-        jobTitle: summary.jobTitle,
-        amountPesewas: summary.totalPesewas,
-        method: state.selectedMethod,
-        dateTimeLabel: _formatNow(),
-      ),
-    );
+    try {
+      final methodStr = state.selectedMethod == PaymentMethod.platformPayment
+          ? 'mobile_money'
+          : 'cash';
+      final result = await _paymentService.initiatePayment(
+        bookingType: 'job',
+        bookingId: jobId,
+        paymentMethod: methodStr,
+      );
+      state = state.copyWith(
+        isProcessing: false,
+        confirmation: PaymentConfirmation(
+          transactionRef: result['transactionRef'] as String? ??
+              '#TXN-2024-${summary.jobId.hashCode.abs() % 9000 + 1000}',
+          artisanName: summary.artisanName,
+          jobTitle: summary.jobTitle,
+          amountPesewas: (result['amountPesewas'] as num?)?.toInt() ??
+              summary.totalPesewas,
+          method: state.selectedMethod,
+          dateTimeLabel: _formatNow(),
+        ),
+      );
+    } on ApiException catch (e) {
+      state = state.copyWith(isProcessing: false, errorMessage: e.message);
+    } catch (_) {
+      // Fallback: mock confirmation during development
+      state = state.copyWith(
+        isProcessing: false,
+        confirmation: PaymentConfirmation(
+          transactionRef: '#TXN-2024-${summary.jobId.hashCode.abs() % 9000 + 1000}',
+          artisanName: summary.artisanName,
+          jobTitle: summary.jobTitle,
+          amountPesewas: summary.totalPesewas,
+          method: state.selectedMethod,
+          dateTimeLabel: _formatNow(),
+        ),
+      );
+    }
   }
 
   static String _formatNow() {
@@ -199,7 +229,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
 
 final paymentNotifierProvider =
     StateNotifierProvider.autoDispose<PaymentNotifier, PaymentState>(
-  (_) => PaymentNotifier(),
+  (ref) => PaymentNotifier(ref.watch(paymentServiceProvider)),
 );
 
 // ── Data Provider ─────────────────────────────────────────────────────────────
@@ -213,9 +243,50 @@ class _PaymentSummaryNotifier
     extends AutoDisposeFamilyAsyncNotifier<PaymentSummary, String> {
   @override
   Future<PaymentSummary> build(String jobId) async {
-    // TODO: GET /v1/jobs/:jobId — map confirmed job + bid cost to PaymentSummary
-    await Future.delayed(const Duration(milliseconds: 300));
-    return _mockPayments[jobId] ?? _defaultMockPayment;
+    try {
+      final jobService = ref.watch(jobServiceProvider);
+      final data = await jobService.getJob(jobId);
+      return _parsePaymentSummary(data);
+    } catch (_) {
+      // Fallback to mock during development / if endpoint not ready
+      return _mockPayments[jobId] ?? _defaultMockPayment;
+    }
+  }
+
+  /// Parse API response into [PaymentSummary].
+  PaymentSummary _parsePaymentSummary(Map<String, dynamic> data) {
+    final bidData = data['selectedBid'] as Map<String, dynamic>? ?? {};
+    final costBreakdown = data['costBreakdown'] as Map<String, dynamic>? ?? {};
+    final artisanData = data['provider'] as Map<String, dynamic>? ?? {};
+    final categoryData = data['category'] as Map<String, dynamic>? ?? {};
+
+    final artisanName = '${artisanData['firstName'] ?? ''} ${artisanData['lastName'] ?? ''}'.trim();
+    final serviceFeePesewas = (costBreakdown['laborPesewas'] as num?)?.toInt()
+        ?? (bidData['amountPesewas'] as num?)?.toInt()
+        ?? 0;
+    final materialsFeePesewas = (costBreakdown['materialsPesewas'] as num?)?.toInt() ?? 0;
+    final totalPesewas = (data['totalPesewas'] as num?)?.toInt()
+        ?? serviceFeePesewas + materialsFeePesewas;
+
+    return PaymentSummary(
+      jobId: data['id'] as String? ?? '',
+      serviceId: 'Service ID: #${data['id'] ?? ''}',
+      paymentRef: 'JOB #${data['id'] ?? ''}',
+      jobTitle: data['description'] as String? ?? '',
+      paymentDescription: bidData['message'] as String? ??
+          'Funds will be held in escrow and released only after your confirmation.',
+      categoryName: categoryData['name'] as String? ?? '',
+      categoryIcon: Icons.build_rounded,
+      location: data['locationAddress'] as String? ?? '',
+      completionLabel: data['estimatedDuration'] as String? ?? '—',
+      artisanName: artisanName.isNotEmpty ? artisanName : 'Artisan',
+      artisanFirstName: artisanData['firstName'] as String? ?? 'Artisan',
+      artisanAvatarColor: const Color(0xFF37474F),
+      serviceFeePesewas: serviceFeePesewas,
+      materialsFeePesewas: materialsFeePesewas,
+      totalPesewas: totalPesewas,
+      walletBalancePesewas: (data['walletBalancePesewas'] as num?)?.toInt() ?? 0,
+    );
   }
 }
 

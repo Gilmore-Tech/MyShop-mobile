@@ -1,4 +1,7 @@
+import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/di/providers.dart';
 
 // ── Job Form State ─────────────────────────────────────────────────────────────
 // PRD 4.5 — Client fills out service request: category, title, description,
@@ -27,6 +30,12 @@ class JobFormState {
   /// Human-readable destination address (geocoded or typed).
   final String destinationAddress;
 
+  /// Latitude of the selected job location (from Places or map pin).
+  final double? latitude;
+
+  /// Longitude of the selected job location (from Places or map pin).
+  final double? longitude;
+
   /// Optional landmark / additional direction hint.
   final String landmarkNote;
 
@@ -49,6 +58,8 @@ class JobFormState {
     this.description = '',
     this.photoPaths = const [],
     this.destinationAddress = '',
+    this.latitude,
+    this.longitude,
     this.landmarkNote = '',
     this.isImmediate = true,
     this.scheduledFor,
@@ -67,6 +78,8 @@ class JobFormState {
       title.trim().isNotEmpty &&
       description.trim().isNotEmpty &&
       destinationAddress.trim().isNotEmpty &&
+      latitude != null &&
+      longitude != null &&
       !isSubmitting;
 
   JobFormState copyWith({
@@ -76,6 +89,8 @@ class JobFormState {
     String? description,
     List<String>? photoPaths,
     String? destinationAddress,
+    double? latitude,
+    double? longitude,
     String? landmarkNote,
     bool? isImmediate,
     DateTime? scheduledFor,
@@ -83,6 +98,7 @@ class JobFormState {
     String? errorMessage,
     bool clearError = false,
     bool clearSchedule = false,
+    bool clearLocation = false,
   }) {
     return JobFormState(
       selectedCategoryId: selectedCategoryId ?? this.selectedCategoryId,
@@ -91,6 +107,8 @@ class JobFormState {
       description: description ?? this.description,
       photoPaths: photoPaths ?? this.photoPaths,
       destinationAddress: destinationAddress ?? this.destinationAddress,
+      latitude: clearLocation ? null : (latitude ?? this.latitude),
+      longitude: clearLocation ? null : (longitude ?? this.longitude),
       landmarkNote: landmarkNote ?? this.landmarkNote,
       isImmediate: isImmediate ?? this.isImmediate,
       scheduledFor: clearSchedule ? null : (scheduledFor ?? this.scheduledFor),
@@ -103,7 +121,11 @@ class JobFormState {
 // ── Notifier ──────────────────────────────────────────────────────────────────
 
 class JobFormNotifier extends StateNotifier<JobFormState> {
-  JobFormNotifier() : super(const JobFormState());
+  JobFormNotifier(this._jobService, this._mediaService)
+      : super(const JobFormState());
+
+  final JobService _jobService;
+  final MediaService _mediaService;
 
   void selectCategory(String id, String name) =>
       state = state.copyWith(selectedCategoryId: id, selectedCategoryName: name, clearError: true);
@@ -133,6 +155,20 @@ class JobFormNotifier extends StateNotifier<JobFormState> {
   void setDestinationAddress(String value) =>
       state = state.copyWith(destinationAddress: value, clearError: true);
 
+  /// Set the full location from Places autocomplete or map pin picker.
+  void setLocation({
+    required String address,
+    required double latitude,
+    required double longitude,
+  }) {
+    state = state.copyWith(
+      destinationAddress: address,
+      latitude: latitude,
+      longitude: longitude,
+      clearError: true,
+    );
+  }
+
   void setLandmarkNote(String value) =>
       state = state.copyWith(landmarkNote: value);
 
@@ -148,16 +184,44 @@ class JobFormNotifier extends StateNotifier<JobFormState> {
 
   /// Submits the job request to POST /v1/jobs and returns the new job id on
   /// success (or null on failure / invalid state).
-  /// EDD: payload = { categoryId, title, description, photos[], lat, lng,
-  ///                  scheduledFor? }
+  /// EDD: payload = { categoryId, description, latitude, longitude,
+  ///                  addressText?, scheduledFor? }
   Future<String?> submit() async {
     if (!state.canSubmit) return null;
     state = state.copyWith(isSubmitting: true, clearError: true);
-    // TODO: replace with real POST /v1/jobs via API client
-    await Future.delayed(const Duration(milliseconds: 800)); // simulate network
-    state = state.copyWith(isSubmitting: false);
-    // Mock id — real impl returns the server-generated job id.
-    return 'JOB-${DateTime.now().millisecondsSinceEpoch}';
+    try {
+      // Upload photos first (if any)
+      List<String>? photoUrls;
+      if (state.photoPaths.isNotEmpty) {
+        photoUrls = await Future.wait(
+          state.photoPaths.map((path) => _mediaService.uploadJobPhoto(path)),
+        );
+      }
+
+      final result = await _jobService.createJob(
+        categoryId: state.selectedCategoryId!,
+        description: '${state.title}\n\n${state.description}',
+        latitude: state.latitude ?? 6.6885,
+        longitude: state.longitude ?? -1.6244,
+        addressText: state.destinationAddress,
+        scheduledFor: state.isImmediate ? null : state.scheduledFor?.toIso8601String(),
+        photoUrls: photoUrls,
+      );
+      state = state.copyWith(isSubmitting: false);
+      return result['jobId'] as String?;
+    } on ApiException catch (e) {
+      state = state.copyWith(
+        isSubmitting: false,
+        errorMessage: e.message,
+      );
+      return null;
+    } catch (_) {
+      state = state.copyWith(
+        isSubmitting: false,
+        errorMessage: 'Failed to submit request. Please try again.',
+      );
+      return null;
+    }
   }
 
   void reset() => state = const JobFormState();
@@ -168,5 +232,8 @@ class JobFormNotifier extends StateNotifier<JobFormState> {
 /// autoDispose — state resets automatically when the user leaves the form.
 final jobFormProvider =
     StateNotifierProvider.autoDispose<JobFormNotifier, JobFormState>(
-  (_) => JobFormNotifier(),
+  (ref) => JobFormNotifier(
+        ref.watch(jobServiceProvider),
+        ref.watch(mediaServiceProvider),
+      ),
 );

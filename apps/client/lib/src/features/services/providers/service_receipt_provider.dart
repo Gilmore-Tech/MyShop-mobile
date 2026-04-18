@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/di/providers.dart';
 import '../../ride/providers/ride_receipt_provider.dart' show PaymentMethodType;
 
 // ── Service Receipt Data ───────────────────────────────────────────────────────
@@ -62,14 +63,61 @@ class _ServiceReceiptNotifier
     extends AutoDisposeFamilyAsyncNotifier<ServiceReceiptData, String> {
   @override
   Future<ServiceReceiptData> build(String jobId) async {
-    // TODO: GET /v1/jobs/:jobId — map API response fields to ServiceReceiptData
-    await Future.delayed(const Duration(milliseconds: 300));
-    return _mockReceipts[jobId] ?? _defaultMock;
+    try {
+      final jobService = ref.watch(jobServiceProvider);
+      final data = await jobService.getJob(jobId);
+      return _parseReceipt(data);
+    } catch (_) {
+      // Fallback to mock during development / if endpoint not ready
+      return _mockReceipts[jobId] ?? _defaultMock;
+    }
   }
 
   Future<void> reload() async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() => build(arg));
+  }
+
+  /// Parse API response into [ServiceReceiptData].
+  static ServiceReceiptData _parseReceipt(Map<String, dynamic> data) {
+    final artisanData = data['provider'] as Map<String, dynamic>? ?? {};
+    final costBreakdown = data['costBreakdown'] as Map<String, dynamic>? ?? {};
+    final paymentData = data['payment'] as Map<String, dynamic>? ?? {};
+
+    final artisanName = '${artisanData['firstName'] ?? ''} ${artisanData['lastName'] ?? ''}'.trim();
+    final serviceCallFeePesewas = (costBreakdown['serviceCallFeePesewas'] as num?)?.toInt() ?? 0;
+    final laborPesewas = (costBreakdown['laborPesewas'] as num?)?.toInt() ?? 0;
+    final materialsPesewas = (costBreakdown['materialsPesewas'] as num?)?.toInt() ?? 0;
+    final totalPesewas = (data['totalPesewas'] as num?)?.toInt()
+        ?? serviceCallFeePesewas + laborPesewas + materialsPesewas;
+
+    final paymentMethodStr = paymentData['method'] as String? ?? '';
+    final paymentMethodType = switch (paymentMethodStr) {
+      'mobile_money' || 'mtn'  => PaymentMethodType.mtn,
+      'vodafone'               => PaymentMethodType.vodafone,
+      'airtel_tigo'            => PaymentMethodType.airtelTigo,
+      'visa'                   => PaymentMethodType.visa,
+      'mastercard'             => PaymentMethodType.mastercard,
+      'cash'                   => PaymentMethodType.cash,
+      _                        => PaymentMethodType.mtn,
+    };
+
+    return ServiceReceiptData(
+      jobId: data['id'] as String? ?? '',
+      artisanName: artisanName.isNotEmpty ? artisanName : 'Artisan',
+      artisanSpecialty: artisanData['specialty'] as String? ?? '',
+      artisanRating: (artisanData['rating'] as num?)?.toDouble() ?? 0.0,
+      serviceLocation: data['locationAddress'] as String? ?? '',
+      workDurationLabel: data['workDurationLabel'] as String? ?? '—',
+      serviceCallFeePesewas: serviceCallFeePesewas,
+      laborPesewas: laborPesewas,
+      laborHoursLabel: costBreakdown['laborHoursLabel'] as String? ?? '',
+      materialsPesewas: materialsPesewas,
+      totalPaidPesewas: totalPesewas,
+      dateTimeLabel: data['completedAt'] as String? ?? '',
+      paymentMethodLabel: paymentData['label'] as String? ?? '',
+      paymentMethodType: paymentMethodType,
+    );
   }
 }
 

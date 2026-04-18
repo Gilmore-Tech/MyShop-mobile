@@ -116,9 +116,8 @@ class ActiveJobScreen extends ConsumerWidget {
       backgroundColor: MyShopColors.offWhite,
       body: jobAsync.when(
         loading: () => _LoadingSkeleton(w: w, h: h),
-        error: (_, __) => _ErrorBody(
-          w: w,
-          h: h,
+        error: (_, __) => MyShopErrorBody(
+          message: 'Could not load job',
           onRetry: () => ref.invalidate(activeJobProvider(jobId)),
         ),
         data: (job) => _ActiveJobBody(job: job, w: w, h: h),
@@ -1537,65 +1536,3 @@ class _Shimmer extends StatelessWidget {
   }
 }
 
-// ── Error Body ────────────────────────────────────────────────────────────────
-
-class _ErrorBody extends StatelessWidget {
-  final double w;
-  final double h;
-  final VoidCallback onRetry;
-  const _ErrorBody(
-      {required this.w, required this.h, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: w * 0.082),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline_rounded,
-                size: w * 0.154, color: MyShopColors.textHint),
-            SizedBox(height: h * 0.019),
-            Text(
-              'Could not load job details',
-              style: TextStyle(
-                fontSize: w * 0.041,
-                fontWeight: FontWeight.w700,
-                color: MyShopColors.textPrimary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: h * 0.009),
-            Text(
-              'Check your connection and try again.',
-              style: TextStyle(
-                  fontSize: w * 0.033, color: MyShopColors.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: h * 0.028),
-            GestureDetector(
-              onTap: onRetry,
-              child: Container(
-                padding: EdgeInsets.symmetric(
-                    horizontal: w * 0.077, vertical: h * 0.017),
-                decoration: BoxDecoration(
-                  color: MyShopColors.darkSlate,
-                  borderRadius: BorderRadius.circular(w * 0.021),
-                ),
-                child: Text(
-                  'Try Again',
-                  style: TextStyle(
-                    fontSize: w * 0.038,
-                    fontWeight: FontWeight.w600,
-                    color: MyShopColors.surfaceWhite,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
