@@ -13,6 +13,8 @@ export 'src/widgets/myshop_stepper.dart';
 export 'src/widgets/myshop_chat_screen.dart';
 export 'src/widgets/myshop_phone_input_screen.dart';
 export 'src/widgets/myshop_otp_verification_screen.dart';
+export 'src/widgets/myshop_toast.dart';
+export 'src/widgets/myshop_error_body.dart';
 
 export 'src/utils/media_picker_helper.dart';
 export 'src/utils/validators.dart';
