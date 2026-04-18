@@ -2,17 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../../../core/di/providers.dart';
 import '../providers/edit_trip_provider.dart';
 import '../providers/ride_search_provider.dart';
 import 'destination_search_screen.dart' show kNewStopSentinel;
 
-/// Full-screen map pin picker. A crosshair at screen center lets the user
-/// drop a pin; "Confirm" writes the location back to ride-search state and
-/// pops the screen.
-///
-/// NOTE: the map itself is a placeholder — swap `_MapPlaceholder` with the
-/// Google Maps SDK widget once the key is wired.
+/// Full-screen Google Map pin picker. A crosshair at screen center lets the
+/// user drop a pin; "Confirm" reverse-geocodes the address and writes the
+/// location back to ride-search state, then pops.
 class MapPinPickerScreen extends ConsumerStatefulWidget {
   final RideSearchField field;
 
@@ -32,14 +31,55 @@ class MapPinPickerScreen extends ConsumerStatefulWidget {
 }
 
 class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
-  // Mock "reverse-geocoded" address. Real impl will call Google Geocoding API
-  // every time the camera stops moving (and flip this to non-final).
-  final String _address = 'Kumasi Central Market, Adum';
+  GoogleMapController? _mapController;
+
+  /// Default center: Kumasi, Ashanti Region.
+  static const _defaultCenter = LatLng(6.6885, -1.6244);
+
+  LatLng _currentCenter = _defaultCenter;
+  String _address = '';
+  bool _isGeocoding = false;
 
   bool get _isPickup => widget.field == RideSearchField.pickup;
   bool get _isStopEdit => widget.stopId != null;
 
+  @override
+  void initState() {
+    super.initState();
+    // If ride search already has a location for this field, start there.
+    final searchState = ref.read(rideSearchProvider);
+    final existing =
+        _isPickup ? searchState.pickup : searchState.destination;
+    if (existing?.lat != null && existing?.lng != null) {
+      _currentCenter = LatLng(existing!.lat!, existing.lng!);
+    }
+  }
+
+  void _onCameraMove(CameraPosition position) {
+    _currentCenter = position.target;
+  }
+
+  void _onCameraIdle() {
+    _reverseGeocode(_currentCenter);
+  }
+
+  Future<void> _reverseGeocode(LatLng position) async {
+    setState(() => _isGeocoding = true);
+    final places = ref.read(googlePlacesServiceProvider);
+    final result = await places.reverseGeocode(
+      position.latitude,
+      position.longitude,
+    );
+    if (!mounted) return;
+    setState(() {
+      _address = result ?? 'Unknown location';
+      _isGeocoding = false;
+    });
+  }
+
   void _confirm() {
+    if (_address.isEmpty || _isGeocoding) return;
+
     if (_isStopEdit) {
       final stops = ref.read(tripStopsProvider.notifier);
       if (widget.stopId == kNewStopSentinel) {
@@ -53,6 +93,8 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
             RideLocation(
               name: _address.split(',').first.trim(),
               address: _address,
+              lat: _currentCenter.latitude,
+              lng: _currentCenter.longitude,
             ),
           );
     }
@@ -61,58 +103,207 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final topPad = MediaQuery.paddingOf(context).top;
+    final bottomPad = MediaQuery.paddingOf(context).bottom;
+
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
       body: Stack(
         children: [
-          const Positioned.fill(child: _MapPlaceholder()),
-          const _CenterCrosshair(),
-          _TopBar(
-            title: _isPickup ? 'Choose pickup' : 'Choose destination',
-            onBack: () => context.pop(),
+          // ── Google Map ──────────────────────────────────────────────────────
+          Positioned.fill(
+            child: GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: _currentCenter,
+                zoom: 15,
+              ),
+              onMapCreated: (controller) => _mapController = controller,
+              onCameraMove: _onCameraMove,
+              onCameraIdle: _onCameraIdle,
+              myLocationEnabled: true,
+              myLocationButtonEnabled: false,
+              zoomControlsEnabled: false,
+              mapToolbarEnabled: false,
+            ),
           ),
-          _BottomSheet(
-            address: _address,
-            ctaLabel: _isPickup ? 'Confirm pickup' : 'Confirm destination',
-            onConfirm: _confirm,
+
+          // ── Center crosshair pin ───────────────────────────────────────────
+          const _CenterCrosshair(),
+
+          // ── Top bar ────────────────────────────────────────────────────────
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(12, topPad + 8, 12, 8),
+              child: Row(
+                children: [
+                  Material(
+                    color: Colors.white,
+                    shape: const CircleBorder(),
+                    elevation: 2,
+                    child: IconButton(
+                      onPressed: () => context.pop(),
+                      icon: const Icon(Icons.arrow_back_rounded,
+                          color: MyShopColors.textPrimary),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.08),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        _isPickup ? 'Choose pickup' : 'Choose destination',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: MyShopColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // ── My location FAB ────────────────────────────────────────────────
+          Positioned(
+            right: 16,
+            bottom: 200 + bottomPad,
+            child: Material(
+              color: Colors.white,
+              shape: const CircleBorder(),
+              elevation: 3,
+              child: IconButton(
+                onPressed: () {
+                  _mapController?.animateCamera(
+                    CameraUpdate.newLatLng(_defaultCenter),
+                  );
+                },
+                icon: const Icon(Icons.my_location_rounded,
+                    color: MyShopColors.textPrimary),
+              ),
+            ),
+          ),
+
+          // ── Bottom confirmation sheet ──────────────────────────────────────
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomPad),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius:
+                    BorderRadius.vertical(top: Radius.circular(18)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'SELECTED LOCATION',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      color: MyShopColors.textSecondary,
+                      letterSpacing: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Icon(Icons.place_rounded,
+                          color: MyShopColors.darkSlate, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _isGeocoding
+                            ? Row(
+                                children: [
+                                  SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 1.5,
+                                      color: MyShopColors.textSecondary,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    'Finding address...',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w400,
+                                      color: MyShopColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Text(
+                                _address.isEmpty
+                                    ? 'Move the map to select'
+                                    : _address,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: MyShopColors.textPrimary,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton(
+                      onPressed:
+                          _address.isNotEmpty && !_isGeocoding
+                              ? _confirm
+                              : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: MyShopColors.primaryGold,
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor: MyShopColors.surfaceGrey,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: Text(
+                        _isPickup ? 'Confirm pickup' : 'Confirm destination',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
     );
   }
-}
-
-// ── Placeholder "map" — swap for GoogleMap when SDK is wired ─────────────────
-
-class _MapPlaceholder extends StatelessWidget {
-  const _MapPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFFE5EAEE),
-      child: CustomPaint(painter: _GridPainter()),
-    );
-  }
-}
-
-class _GridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.6)
-      ..strokeWidth = 1;
-    const step = 40.0;
-    for (double x = 0; x < size.width; x += step) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (double y = 0; y < size.height; y += step) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 // ── Center crosshair pin ─────────────────────────────────────────────────────
@@ -124,167 +315,23 @@ class _CenterCrosshair extends StatelessWidget {
   Widget build(BuildContext context) {
     return IgnorePointer(
       child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.location_on, color: MyShopColors.primaryGold, size: 44),
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.black.withValues(alpha: 0.25),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Top bar ──────────────────────────────────────────────────────────────────
-
-class _TopBar extends StatelessWidget {
-  final String title;
-  final VoidCallback onBack;
-  const _TopBar({required this.title, required this.onBack});
-
-  @override
-  Widget build(BuildContext context) {
-    final top = MediaQuery.paddingOf(context).top;
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(12, top + 8, 12, 8),
-        child: Row(
-          children: [
-            Material(
-              color: Colors.white,
-              shape: const CircleBorder(),
-              elevation: 2,
-              child: IconButton(
-                onPressed: onBack,
-                icon: const Icon(Icons.arrow_back_rounded, color: MyShopColors.textPrimary),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 44),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.location_on,
+                  color: MyShopColors.primaryGold, size: 44),
+              Container(
+                width: 8,
+                height: 8,
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: MyShopColors.textPrimary,
-                  ),
+                  shape: BoxShape.circle,
+                  color: Colors.black.withValues(alpha: 0.25),
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Bottom confirmation sheet ────────────────────────────────────────────────
-
-class _BottomSheet extends StatelessWidget {
-  final String address;
-  final String ctaLabel;
-  final VoidCallback onConfirm;
-
-  const _BottomSheet({
-    required this.address,
-    required this.ctaLabel,
-    required this.onConfirm,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final bottom = MediaQuery.paddingOf(context).bottom;
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 0,
-      child: Container(
-        padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottom),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'SELECTED LOCATION',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w900,
-                color: MyShopColors.textSecondary,
-                letterSpacing: 1.4,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.place_rounded, color: MyShopColors.darkSlate, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    address,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: MyShopColors.textPrimary,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                onPressed: onConfirm,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: MyShopColors.primaryGold,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                child: Text(
-                  ctaLabel,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

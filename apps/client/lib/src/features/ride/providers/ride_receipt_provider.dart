@@ -1,4 +1,9 @@
+import 'dart:developer' as developer;
+
+import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/di/providers.dart';
 
 // ── Payment Method ─────────────────────────────────────────────────────────────
 // Defined here and re-exported so service_receipt_provider can share the type.
@@ -68,9 +73,63 @@ class _RideReceiptNotifier
     extends AutoDisposeFamilyAsyncNotifier<RideReceiptData, String> {
   @override
   Future<RideReceiptData> build(String rideId) async {
-    // TODO: GET /v1/rides/:rideId — map API response fields to RideReceiptData
-    await Future.delayed(const Duration(milliseconds: 300));
-    return _mockReceipts[rideId] ?? _defaultMock;
+    final rideService = ref.watch(rideServiceProvider);
+
+    try {
+      final ride = await rideService.getRide(rideId);
+      final driver =
+          ride['driver'] as Map<String, dynamic>? ?? <String, dynamic>{};
+
+      // Parse payment method type from API label
+      final paymentLabel =
+          ride['paymentMethod'] as String? ?? 'Cash';
+      final pmType = _parsePaymentMethodType(paymentLabel);
+
+      return RideReceiptData(
+        rideId: ride['id'] as String? ?? rideId,
+        driverName: driver['name'] as String? ?? 'Driver',
+        vehicleDisplay:
+            '${driver['vehicleShortName'] ?? driver['vehicle'] ?? ''}'
+            ' · ${driver['plateNumber'] ?? ''}',
+        driverRating: (driver['rating'] as num?)?.toDouble() ?? 0.0,
+        pickupAddress: ride['pickupAddress'] as String? ?? '',
+        dropoffAddress: ride['destinationAddress'] as String? ?? '',
+        baseFarePesewas: (ride['baseFare'] as num?)?.toInt() ?? 0,
+        distanceKm: (ride['distanceKm'] as num?)?.toDouble() ?? 0,
+        distanceFarePesewas:
+            (ride['distanceFare'] as num?)?.toInt() ?? 0,
+        bookingFeePesewas:
+            (ride['bookingFee'] as num?)?.toInt() ?? 0,
+        taxesPesewas: (ride['taxes'] as num?)?.toInt() ?? 0,
+        totalPaidPesewas:
+            (ride['totalFare'] as num?)?.toInt() ?? 0,
+        dateTimeLabel: ride['completedAt'] as String? ?? '',
+        paymentMethodLabel: paymentLabel,
+        paymentMethodType: pmType,
+      );
+    } on ApiException catch (e) {
+      developer.log(
+        'getRide receipt failed (${e.statusCode}): ${e.message}',
+        name: 'RideReceiptProvider',
+      );
+      // Fall back to mock data so the UI is never empty during development
+      return _mockReceipts[rideId] ?? _defaultMock;
+    } catch (e) {
+      developer.log('getRide receipt error: $e', name: 'RideReceiptProvider');
+      return _mockReceipts[rideId] ?? _defaultMock;
+    }
+  }
+
+  static PaymentMethodType _parsePaymentMethodType(String label) {
+    final lower = label.toLowerCase();
+    if (lower.contains('mtn')) return PaymentMethodType.mtn;
+    if (lower.contains('vodafone')) return PaymentMethodType.vodafone;
+    if (lower.contains('airtel') || lower.contains('tigo')) {
+      return PaymentMethodType.airtelTigo;
+    }
+    if (lower.contains('visa')) return PaymentMethodType.visa;
+    if (lower.contains('master')) return PaymentMethodType.mastercard;
+    return PaymentMethodType.cash;
   }
 
   Future<void> reload() async {

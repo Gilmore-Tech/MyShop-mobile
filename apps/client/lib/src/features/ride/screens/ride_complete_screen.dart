@@ -114,15 +114,7 @@ class _RideCompleteScreenState extends ConsumerState<RideCompleteScreen> {
 
   void _submitTip(BuildContext context, RideReceipt receipt, TipState tip) {
     // TODO: POST /v1/payments/:id/tip — wire up once API client is available
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Tip of ${_fmtGhs(tip.effectivePesewas)} sent to ${receipt.driverFirstName}!',
-        ),
-        backgroundColor: MyShopColors.success,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    MyShopToast.show(context, message: 'Tip of ${_fmtGhs(tip.effectivePesewas)} sent to ${receipt.driverFirstName}!');
     ref.read(tipStateProvider.notifier).reset();
     _customTipController.clear();
   }

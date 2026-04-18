@@ -1,4 +1,10 @@
+import 'dart:developer' as developer;
+
+import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/di/providers.dart';
+import 'ride_search_provider.dart';
 
 // ── Models ────────────────────────────────────────────────────────────────────
 
@@ -321,6 +327,10 @@ final rideReceiptProvider = Provider<RideReceipt>((_) => _mockRideReceipt);
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
+/// Set to true by the socket handler when a driver match arrives via WebSocket.
+/// The polling loop in [simulateDriverMatching] checks this to exit early.
+final rideMatchedViaSocketProvider = StateProvider<bool>((_) => false);
+
 /// Currently selected vehicle option id
 final selectedVehicleProvider = StateProvider<String>(
   (_) => vehicleOptions.first.id,
@@ -342,6 +352,9 @@ class BookingPhaseNotifier extends StateNotifier<BookingPhase> {
 
 /// Driver matched after search completes
 final matchedDriverProvider = StateProvider<MatchedDriver?>((_) => null);
+
+/// The ID of the active ride returned by POST /rides.
+final activeRideIdProvider = StateProvider<String?>((_) => null);
 
 /// Countdown timer (seconds remaining during search phase)
 final searchCountdownProvider =
@@ -403,13 +416,119 @@ class WaitingCountdownNotifier extends StateNotifier<int> {
   void reset([int seconds = 180]) => state = seconds;
 }
 
-/// Simulates the backend driver-matching flow.
-/// Call this after confirming the ride.
+/// Creates a ride via the backend and polls until a driver is matched.
+///
+/// Call this after the client confirms the ride on the fare-estimate screen.
+/// Falls back to mock data if the API call fails so the flow is never blocked
+/// during development.
 Future<void> simulateDriverMatching(Ref ref) async {
+  final rideService = ref.read(rideServiceProvider);
+  final search = ref.read(rideSearchProvider);
+
   ref.read(bookingPhaseProvider.notifier).startSearch();
   ref.read(searchCountdownProvider.notifier).reset();
+  ref.read(rideMatchedViaSocketProvider.notifier).state = false;
 
-  // Tick countdown every second for 8s then surface a driver
+  // ── 1. Create ride via POST /rides ──────────────────────────────────────
+  String? rideId;
+  try {
+    final pickup = search.pickup;
+    final destination = search.destination;
+
+    final result = await rideService.createRide(
+      pickupLat: pickup?.lat ?? 6.6884,
+      pickupLng: pickup?.lng ?? -1.6244,
+      destinationLat: destination?.lat ?? 6.7000,
+      destinationLng: destination?.lng ?? -1.6300,
+      pickupAddress: pickup?.address,
+      destinationAddress: destination?.address,
+    );
+
+    rideId = result['id'] as String?;
+    ref.read(activeRideIdProvider.notifier).state = rideId;
+    developer.log('Ride created: $rideId', name: 'RideProvider');
+  } on ApiException catch (e) {
+    developer.log(
+      'createRide failed (${e.statusCode}): ${e.message}',
+      name: 'RideProvider',
+    );
+    // Fall through — we'll use mock data below if rideId is null.
+  } catch (e) {
+    developer.log('createRide error: $e', name: 'RideProvider');
+  }
+
+  // ── 2. Poll GET /rides/:id until driver matched or timeout ─────────────
+  if (rideId != null) {
+    const maxPolls = 45;
+    const pollInterval = Duration(seconds: 2);
+
+    for (var i = 0; i < maxPolls; i++) {
+      await Future.delayed(pollInterval);
+
+      // Exit early if a WebSocket event already delivered the driver match.
+      if (ref.read(rideMatchedViaSocketProvider)) return;
+
+      ref.read(searchCountdownProvider.notifier).tick();
+      ref.read(searchCountdownProvider.notifier).tick(); // 2 ticks per 2s
+
+      try {
+        final ride = await rideService.getRide(rideId);
+        final status = ride['status'] as String? ?? '';
+        final driver =
+            ride['driver'] as Map<String, dynamic>? ?? <String, dynamic>{};
+
+        if (status == 'accepted' || status == 'driver_assigned') {
+          final matched = MatchedDriver(
+            name: driver['name'] as String? ?? 'Driver',
+            vehicle: driver['vehicle'] as String? ?? '',
+            plateNumber: driver['plateNumber'] as String? ?? '',
+            rating: (driver['rating'] as num?)?.toDouble() ?? 4.5,
+            minutesAway: (driver['eta'] as num?)?.toInt() ?? 3,
+            driversAvailable: 1,
+            tripCount: (driver['tripCount'] as num?)?.toInt() ?? 0,
+            isVerified: driver['isVerified'] as bool? ?? false,
+            isPoliceChecked: driver['isPoliceChecked'] as bool? ?? false,
+            maskedPhone: driver['maskedPhone'] as String? ?? '',
+            vehicleTier: driver['vehicleTier'] as String? ?? '',
+            baseFarePesewas:
+                (ride['baseFare'] as num?)?.toInt() ?? 0,
+            distanceFarePesewas:
+                (ride['distanceFare'] as num?)?.toInt() ?? 0,
+            distanceKm:
+                (ride['distanceKm'] as num?)?.toDouble() ?? 0,
+            bookingFeePesewas:
+                (ride['bookingFee'] as num?)?.toInt() ?? 0,
+            vehicleShortName: driver['vehicleShortName'] as String? ?? '',
+            confirmedFarePesewas:
+                (ride['totalFare'] as num?)?.toInt() ?? 0,
+            paymentMethod: ride['paymentMethod'] as String? ?? 'Cash',
+          );
+
+          ref.read(matchedDriverProvider.notifier).state = matched;
+          ref.read(bookingPhaseProvider.notifier).driverFound();
+          return;
+        }
+
+        if (status == 'cancelled' || status == 'no_drivers') {
+          developer.log('Ride $status — stopping poll', name: 'RideProvider');
+          ref.read(bookingPhaseProvider.notifier).reset();
+          return;
+        }
+      } on ApiException catch (e) {
+        developer.log(
+          'getRide poll failed (${e.statusCode}): ${e.message}',
+          name: 'RideProvider',
+        );
+      }
+    }
+
+    // Timeout — no driver matched after max polls
+    developer.log('Driver matching timed out', name: 'RideProvider');
+    ref.read(bookingPhaseProvider.notifier).reset();
+    return;
+  }
+
+  // ── 3. Fallback to mock when API unavailable ───────────────────────────
   for (var i = 0; i < 8; i++) {
     await Future.delayed(const Duration(seconds: 1));
     ref.read(searchCountdownProvider.notifier).tick();

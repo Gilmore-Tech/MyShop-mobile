@@ -38,8 +38,8 @@ class RideReceiptScreen extends ConsumerWidget {
       appBar: _appBar(context, w),
       body: receiptAsync.when(
         loading: () => _LoadingSkeleton(w: w, h: h),
-        error:   (_, __) => _ErrorBody(
-          w: w, h: h,
+        error:   (_, __) => MyShopErrorBody(
+          message: 'Could not load receipt',
           onRetry: () => ref.invalidate(rideReceiptByIdProvider(rideId)),
         ),
         data: (receipt) => _ReceiptBody(receipt: receipt, w: w, h: h),
@@ -762,9 +762,7 @@ class _ShareBar extends StatelessWidget {
           child: InkWell(
             onTap: () {
               // TODO: share_plus — Share.share(receiptText)
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Receipt sharing coming soon.')),
-              );
+              MyShopToast.show(context, message: 'Receipt sharing coming soon.');
             },
             child: Center(
               child: Row(
@@ -929,72 +927,3 @@ class _SkeletonCircle extends StatelessWidget {
   }
 }
 
-// ── Error Body ────────────────────────────────────────────────────────────────
-
-class _ErrorBody extends StatelessWidget {
-  final double       w;
-  final double       h;
-  final VoidCallback onRetry;
-  const _ErrorBody({required this.w, required this.h, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: w * 0.082),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.receipt_long_outlined,
-              size:  w * 0.154,   // ~60dp
-              color: MyShopColors.textHint,
-            ),
-            SizedBox(height: h * 0.019),
-            Text(
-              'Could not load receipt',
-              style: TextStyle(
-                fontSize:   w * 0.046,
-                fontWeight: FontWeight.w700,
-                color:      MyShopColors.textPrimary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: h * 0.009),
-            Text(
-              'Please check your connection and try again.',
-              style: TextStyle(
-                fontSize:   w * 0.033,
-                fontWeight: FontWeight.w400,
-                color:      MyShopColors.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: h * 0.028),
-            SizedBox(
-              width:  double.infinity,
-              height: h * 0.062,   // ~52dp
-              child: OutlinedButton(
-                onPressed: onRetry,
-                style: OutlinedButton.styleFrom(
-                  side:  const BorderSide(color: MyShopColors.primaryGold),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(w * 0.021),
-                  ),
-                ),
-                child: Text(
-                  'Try Again',
-                  style: TextStyle(
-                    fontSize:   w * 0.036,
-                    fontWeight: FontWeight.w600,
-                    color:      MyShopColors.primaryGold,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

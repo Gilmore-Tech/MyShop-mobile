@@ -1,4 +1,9 @@
+import 'dart:developer' as developer;
+
+import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/di/providers.dart';
 
 // ── Quick-feedback tags shown on the rating sheet ─────────────────────────────
 // PRD 4.3 — client rates driver post-ride; tags feed the provider analytics dashboard.
@@ -52,7 +57,9 @@ class RideRatingState {
 // ── Notifier ──────────────────────────────────────────────────────────────────
 
 class RideRatingNotifier extends StateNotifier<RideRatingState> {
-  RideRatingNotifier() : super(const RideRatingState());
+  RideRatingNotifier(this._ref) : super(const RideRatingState());
+
+  final Ref _ref;
 
   void setStars(int stars) => state = state.copyWith(selectedStars: stars);
 
@@ -73,8 +80,27 @@ class RideRatingNotifier extends StateNotifier<RideRatingState> {
   Future<void> submit(String rideId) async {
     if (!state.canSubmit) return;
     state = state.copyWith(isSubmitting: true);
-    // TODO: POST /v1/ratings — wire up once API client ready
-    await Future.delayed(const Duration(milliseconds: 600)); // simulate network
+
+    try {
+      final ratingService = _ref.read(ratingServiceProvider);
+      await ratingService.submitRating(
+        bookingType: 'ride',
+        bookingId: rideId,
+        stars: state.selectedStars,
+        comment: state.note.isNotEmpty ? state.note : null,
+      );
+      developer.log('Rating submitted for ride $rideId', name: 'RideRating');
+    } on ApiException catch (e) {
+      developer.log(
+        'submitRating failed (${e.statusCode}): ${e.message}',
+        name: 'RideRating',
+      );
+      // Swallow the error — rating can be retried or the blind window will
+      // close without a rating, which is acceptable per PRD § 9.4.
+    } catch (e) {
+      developer.log('submitRating error: $e', name: 'RideRating');
+    }
+
     state = state.copyWith(isSubmitting: false);
   }
 
@@ -86,5 +112,5 @@ class RideRatingNotifier extends StateNotifier<RideRatingState> {
 /// autoDispose so state resets automatically when the sheet is dismissed.
 final rideRatingProvider =
     StateNotifierProvider.autoDispose<RideRatingNotifier, RideRatingState>(
-  (_) => RideRatingNotifier(),
+  (ref) => RideRatingNotifier(ref),
 );

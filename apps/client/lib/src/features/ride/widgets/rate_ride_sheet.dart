@@ -119,13 +119,7 @@ class _RateRideSheetState extends ConsumerState<RateRideSheet> {
         .submit(widget.receipt.rideId);
     if (mounted) {
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Thanks for your feedback!'),
-          backgroundColor: MyShopColors.success,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      MyShopToast.show(context, message: 'Thanks for your feedback!');
     }
   }
 }

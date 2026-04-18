@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
+import '../../../core/di/providers.dart';
+import '../../../core/services/google_places_service.dart';
 import '../providers/edit_trip_provider.dart';
 import '../providers/ride_search_provider.dart';
 
@@ -11,15 +15,15 @@ import '../providers/ride_search_provider.dart';
 /// intermediate stop" instead of editing an existing one.
 const kNewStopSentinel = '__new_stop__';
 
-// ── Mock data ──────────────────────────────────────────────────────────────────
+// ── Saved places (static for now — will come from user profile API) ──────────
 
-class _Place {
+class _SavedPlace {
   final String name;
   final String address;
   final IconData icon;
   final Color iconBg;
 
-  const _Place({
+  const _SavedPlace({
     required this.name,
     required this.address,
     required this.icon,
@@ -28,44 +32,17 @@ class _Place {
 }
 
 const _savedPlaces = [
-  _Place(
-    name:   'Home',
+  _SavedPlace(
+    name: 'Home',
     address: 'Suame, Kumasi',
-    icon:   Icons.home_rounded,
+    icon: Icons.home_rounded,
     iconBg: MyShopColors.info,
   ),
-  _Place(
-    name:   'Work',
+  _SavedPlace(
+    name: 'Work',
     address: 'Adum Commercial Area, Kumasi',
-    icon:   Icons.work_rounded,
+    icon: Icons.work_rounded,
     iconBg: MyShopColors.success,
-  ),
-];
-
-const _recentPlaces = [
-  _Place(
-    name:    'Kumasi City Mall',
-    address: 'Lake Road, Suame',
-    icon:    Icons.history_rounded,
-    iconBg:  MyShopColors.textSecondary,
-  ),
-  _Place(
-    name:    'Kejetia Market',
-    address: 'Central Kumasi',
-    icon:    Icons.history_rounded,
-    iconBg:  MyShopColors.textSecondary,
-  ),
-  _Place(
-    name:    'Kotoko Stadium',
-    address: 'Bantama, Kumasi',
-    icon:    Icons.history_rounded,
-    iconBg:  MyShopColors.textSecondary,
-  ),
-  _Place(
-    name:    'Komfo Anokye Teaching Hospital',
-    address: 'Bantama Road, Kumasi',
-    icon:    Icons.history_rounded,
-    iconBg:  MyShopColors.textSecondary,
   ),
 ];
 
@@ -95,21 +72,16 @@ class DestinationSearchScreen extends ConsumerStatefulWidget {
 
 class _DestinationSearchScreenState
     extends ConsumerState<DestinationSearchScreen> {
-  final _controller  = TextEditingController();
-  final _focusNode   = FocusNode();
-  String _query = '';
+  final _controller = TextEditingController();
+  final _focusNode = FocusNode();
+
+  List<PlaceSuggestion> _suggestions = [];
+  bool _isLoading = false;
+  Timer? _debounce;
 
   bool get _isPickup => widget.field == RideSearchField.pickup;
   bool get _isStopEdit => widget.stopId != null;
-
-  // Simple client-side filter — replace with Google Places API call.
-  List<_Place> get _filteredRecents => _query.isEmpty
-      ? _recentPlaces
-      : _recentPlaces
-          .where((p) =>
-              p.name.toLowerCase().contains(_query.toLowerCase()) ||
-              p.address.toLowerCase().contains(_query.toLowerCase()))
-          .toList();
+  bool get _hasQuery => _controller.text.trim().isNotEmpty;
 
   @override
   void initState() {
@@ -121,15 +93,69 @@ class _DestinationSearchScreenState
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
   }
 
-  void _selectPlace(_Place place) {
-    final fullAddress = '${place.name}, ${place.address}';
+  void _onSearchChanged(String query) {
+    _debounce?.cancel();
+    if (query.trim().isEmpty) {
+      setState(() {
+        _suggestions = [];
+        _isLoading = false;
+      });
+      return;
+    }
+    setState(() => _isLoading = true);
+    _debounce = Timer(const Duration(milliseconds: 400), () async {
+      final places = ref.read(googlePlacesServiceProvider);
+      final results = await places.autocomplete(query);
+      if (!mounted) return;
+      setState(() {
+        _suggestions = results;
+        _isLoading = false;
+      });
+    });
+  }
+
+  Future<void> _selectSuggestion(PlaceSuggestion suggestion) async {
+    setState(() => _isLoading = true);
+    final places = ref.read(googlePlacesServiceProvider);
+    final detail = await places.getPlaceDetail(suggestion.placeId);
+    if (!mounted) return;
+
+    if (detail != null) {
+      _applyLocation(
+        name: suggestion.mainText,
+        address: detail.address,
+        lat: detail.latitude,
+        lng: detail.longitude,
+      );
+    } else {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _selectSavedPlace(_SavedPlace place) {
+    // Saved places don't have coordinates yet — use name+address.
+    // In production these will carry lat/lng from the user profile.
+    _applyLocation(
+      name: place.name,
+      address: place.address,
+    );
+  }
+
+  void _applyLocation({
+    required String name,
+    required String address,
+    double? lat,
+    double? lng,
+  }) {
     if (_isStopEdit) {
       final stops = ref.read(tripStopsProvider.notifier);
+      final fullAddress = '$name, $address';
       if (widget.stopId == kNewStopSentinel) {
         stops.addIntermediateStop(fullAddress);
       } else {
@@ -138,16 +164,14 @@ class _DestinationSearchScreenState
     } else {
       ref.read(rideSearchProvider.notifier).setLocation(
             widget.field,
-            RideLocation(name: place.name, address: place.address),
+            RideLocation(name: name, address: address, lat: lat, lng: lng),
           );
     }
     if (context.canPop()) context.pop();
   }
 
   void _openPinPicker() {
-    final fieldArg =
-        _isPickup ? 'pickup' : 'destination';
-    // Forward the stopId so the pin picker writes back to the same target.
+    final fieldArg = _isPickup ? 'pickup' : 'destination';
     context.push(
       AppRoutes.ridePinPickerPath(fieldArg),
       extra: widget.stopId,
@@ -157,51 +181,68 @@ class _DestinationSearchScreenState
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final w    = size.width;
-    final h    = size.height;
-    final top  = MediaQuery.paddingOf(context).top;
+    final w = size.width;
+    final h = size.height;
+    final top = MediaQuery.paddingOf(context).top;
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
       body: Column(
         children: [
           _SearchHeader(
-            controller:  _controller,
-            focusNode:   _focusNode,
-            top:         top,
-            w:           w,
-            h:           h,
-            title:       _isPickup ? 'Pickup location' : 'Where to?',
-            hintText:    _isPickup ? 'Search pickup' : 'Search destination',
-            onChanged:   (v) => setState(() { _query = v; }),
-            onBack:      () => context.pop(),
+            controller: _controller,
+            focusNode: _focusNode,
+            top: top,
+            w: w,
+            h: h,
+            title: _isPickup ? 'Pickup location' : 'Where to?',
+            hintText: _isPickup ? 'Search pickup' : 'Search destination',
+            onChanged: _onSearchChanged,
+            onBack: () => context.pop(),
           ),
           Expanded(
-            child: ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                // Map pin — set location manually
-                _ActionTile(
-                  icon:    Icons.my_location_rounded,
-                  iconBg:  MyShopColors.darkSlate,
-                  title:   'Set location on map',
-                  subtitle:'Drop a pin to choose any location',
-                  onTap:   _openPinPicker,
-                  w: w, h: h,
-                ),
-                if (_query.isEmpty) ...[
-                  _SectionLabel(label: 'SAVED PLACES', w: w),
-                  ..._savedPlaces.map((p) => _PlaceTile(
-                      place: p, onTap: () => _selectPlace(p), w: w, h: h)),
-                  _SectionLabel(label: 'RECENT', w: w),
-                ],
-                if (_filteredRecents.isEmpty)
-                  _EmptySearch(query: _query, w: w, h: h)
-                else
-                  ..._filteredRecents.map((p) => _PlaceTile(
-                      place: p, onTap: () => _selectPlace(p), w: w, h: h)),
-              ],
-            ),
+            child: _isLoading
+                ? _LoadingIndicator(w: w, h: h)
+                : ListView(
+                    padding: EdgeInsets.zero,
+                    children: [
+                      // Map pin — set location manually
+                      _ActionTile(
+                        icon: Icons.my_location_rounded,
+                        iconBg: MyShopColors.darkSlate,
+                        title: 'Set location on map',
+                        subtitle: 'Drop a pin to choose any location',
+                        onTap: _openPinPicker,
+                        w: w,
+                        h: h,
+                      ),
+
+                      // When searching — show autocomplete results
+                      if (_hasQuery) ...[
+                        if (_suggestions.isEmpty)
+                          _EmptySearch(
+                              query: _controller.text, w: w, h: h)
+                        else
+                          ..._suggestions.map((s) => _SuggestionTile(
+                                suggestion: s,
+                                onTap: () => _selectSuggestion(s),
+                                w: w,
+                                h: h,
+                              )),
+                      ],
+
+                      // When idle — show saved + recent
+                      if (!_hasQuery) ...[
+                        _SectionLabel(label: 'SAVED PLACES', w: w),
+                        ..._savedPlaces.map((p) => _SavedPlaceTile(
+                              place: p,
+                              onTap: () => _selectSavedPlace(p),
+                              w: w,
+                              h: h,
+                            )),
+                      ],
+                    ],
+                  ),
           ),
         ],
       ),
@@ -213,12 +254,12 @@ class _DestinationSearchScreenState
 
 class _SearchHeader extends StatelessWidget {
   final TextEditingController controller;
-  final FocusNode             focusNode;
-  final double                top, w, h;
-  final String                title;
-  final String                hintText;
-  final ValueChanged<String>  onChanged;
-  final VoidCallback          onBack;
+  final FocusNode focusNode;
+  final double top, w, h;
+  final String title;
+  final String hintText;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onBack;
 
   const _SearchHeader({
     required this.controller,
@@ -250,8 +291,8 @@ class _SearchHeader extends StatelessWidget {
               Text(
                 title,
                 style: TextStyle(
-                  color:      MyShopColors.textPrimary,
-                  fontSize:   w * 0.048,
+                  color: MyShopColors.textPrimary,
+                  fontSize: w * 0.048,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -264,7 +305,7 @@ class _SearchHeader extends StatelessWidget {
             child: Container(
               height: h * 0.058,
               decoration: BoxDecoration(
-                color:        MyShopColors.surfaceGrey,
+                color: MyShopColors.surfaceGrey,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -275,19 +316,19 @@ class _SearchHeader extends StatelessWidget {
                   SizedBox(width: w * 0.024),
                   Expanded(
                     child: TextField(
-                      controller:  controller,
-                      focusNode:   focusNode,
-                      onChanged:   onChanged,
+                      controller: controller,
+                      focusNode: focusNode,
+                      onChanged: onChanged,
                       style: TextStyle(
-                          color:    MyShopColors.textPrimary,
+                          color: MyShopColors.textPrimary,
                           fontSize: w * 0.038),
                       decoration: InputDecoration(
                         hintText: hintText,
                         hintStyle: TextStyle(
-                          color:    MyShopColors.textSecondary.withAlpha(140),
+                          color: MyShopColors.textSecondary.withAlpha(140),
                           fontSize: w * 0.036,
                         ),
-                        border:         InputBorder.none,
+                        border: InputBorder.none,
                         contentPadding: EdgeInsets.zero,
                       ),
                     ),
@@ -325,9 +366,9 @@ class _SectionLabel extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(
-          color:         MyShopColors.textSecondary,
-          fontSize:      w * 0.028,
-          fontWeight:    FontWeight.w900,
+          color: MyShopColors.textSecondary,
+          fontSize: w * 0.028,
+          fontWeight: FontWeight.w900,
           letterSpacing: 1.4,
         ),
       ),
@@ -337,11 +378,11 @@ class _SectionLabel extends StatelessWidget {
 
 class _ActionTile extends StatelessWidget {
   final IconData icon;
-  final Color    iconBg;
-  final String   title;
-  final String   subtitle;
+  final Color iconBg;
+  final String title;
+  final String subtitle;
   final VoidCallback onTap;
-  final double   w, h;
+  final double w, h;
 
   const _ActionTile({
     required this.icon,
@@ -363,10 +404,10 @@ class _ActionTile extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width:  w * 0.10,
+              width: w * 0.10,
               height: w * 0.10,
-              decoration: BoxDecoration(
-                  color: iconBg, shape: BoxShape.circle),
+              decoration:
+                  BoxDecoration(color: iconBg, shape: BoxShape.circle),
               child: Icon(icon, color: Colors.white, size: w * 0.050),
             ),
             SizedBox(width: w * 0.036),
@@ -376,13 +417,13 @@ class _ActionTile extends StatelessWidget {
                 children: [
                   Text(title,
                       style: TextStyle(
-                          color:      MyShopColors.textPrimary,
-                          fontSize:   w * 0.038,
+                          color: MyShopColors.textPrimary,
+                          fontSize: w * 0.038,
                           fontWeight: FontWeight.w600)),
-                  SizedBox(height: 2),
+                  const SizedBox(height: 2),
                   Text(subtitle,
                       style: TextStyle(
-                          color:    MyShopColors.textSecondary,
+                          color: MyShopColors.textSecondary,
                           fontSize: w * 0.032)),
                 ],
               ),
@@ -394,12 +435,93 @@ class _ActionTile extends StatelessWidget {
   }
 }
 
-class _PlaceTile extends StatelessWidget {
-  final _Place       place;
+/// Tile for a Google Places autocomplete suggestion.
+class _SuggestionTile extends StatelessWidget {
+  final PlaceSuggestion suggestion;
   final VoidCallback onTap;
-  final double       w, h;
+  final double w, h;
 
-  const _PlaceTile({
+  const _SuggestionTile({
+    required this.suggestion,
+    required this.onTap,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+                horizontal: w * 0.05, vertical: h * 0.016),
+            child: Row(
+              children: [
+                Container(
+                  width: w * 0.10,
+                  height: w * 0.10,
+                  decoration: BoxDecoration(
+                    color: MyShopColors.textSecondary.withAlpha(24),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.location_on_outlined,
+                      color: MyShopColors.textSecondary, size: w * 0.048),
+                ),
+                SizedBox(width: w * 0.036),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        suggestion.mainText,
+                        style: TextStyle(
+                          color: MyShopColors.textPrimary,
+                          fontSize: w * 0.038,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (suggestion.secondaryText.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          suggestion.secondaryText,
+                          style: TextStyle(
+                            color: MyShopColors.textSecondary,
+                            fontSize: w * 0.032,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const Icon(Icons.north_west_rounded,
+                    color: MyShopColors.textSecondary, size: 16),
+              ],
+            ),
+          ),
+        ),
+        Divider(
+          height: 1,
+          color: MyShopColors.divider,
+          indent: w * 0.05 + w * 0.10 + w * 0.036,
+        ),
+      ],
+    );
+  }
+}
+
+/// Tile for a saved place (Home, Work, etc.).
+class _SavedPlaceTile extends StatelessWidget {
+  final _SavedPlace place;
+  final VoidCallback onTap;
+  final double w, h;
+
+  const _SavedPlaceTile({
     required this.place,
     required this.onTap,
     required this.w,
@@ -418,11 +540,12 @@ class _PlaceTile extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  width:  w * 0.10,
+                  width: w * 0.10,
                   height: w * 0.10,
                   decoration: BoxDecoration(
-                      color: place.iconBg.withAlpha(24),
-                      shape: BoxShape.circle),
+                    color: place.iconBg.withAlpha(24),
+                    shape: BoxShape.circle,
+                  ),
                   child: Icon(place.icon,
                       color: place.iconBg, size: w * 0.048),
                 ),
@@ -433,13 +556,13 @@ class _PlaceTile extends StatelessWidget {
                     children: [
                       Text(place.name,
                           style: TextStyle(
-                              color:      MyShopColors.textPrimary,
-                              fontSize:   w * 0.038,
+                              color: MyShopColors.textPrimary,
+                              fontSize: w * 0.038,
                               fontWeight: FontWeight.w600)),
                       const SizedBox(height: 2),
                       Text(place.address,
                           style: TextStyle(
-                              color:    MyShopColors.textSecondary,
+                              color: MyShopColors.textSecondary,
                               fontSize: w * 0.032)),
                     ],
                   ),
@@ -450,12 +573,41 @@ class _PlaceTile extends StatelessWidget {
             ),
           ),
         ),
-        Divider(height: 1, color: MyShopColors.divider,
-            indent: w * 0.05 + w * 0.10 + w * 0.036),
+        Divider(
+          height: 1,
+          color: MyShopColors.divider,
+          indent: w * 0.05 + w * 0.10 + w * 0.036,
+        ),
       ],
     );
   }
 }
+
+// ── Loading indicator ─────────────────────────────────────────────────────────
+
+class _LoadingIndicator extends StatelessWidget {
+  final double w, h;
+  const _LoadingIndicator({required this.w, required this.h});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(top: h * 0.05),
+      child: Center(
+        child: SizedBox(
+          width: w * 0.056,
+          height: w * 0.056,
+          child: const CircularProgressIndicator(
+            strokeWidth: 2,
+            color: MyShopColors.primaryGold,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Empty search ──────────────────────────────────────────────────────────────
 
 class _EmptySearch extends StatelessWidget {
   final String query;
@@ -470,7 +622,8 @@ class _EmptySearch extends StatelessWidget {
       child: Column(
         children: [
           Icon(Icons.search_off_rounded,
-              color: MyShopColors.textSecondary.withAlpha(80), size: w * 0.14),
+              color: MyShopColors.textSecondary.withAlpha(80),
+              size: w * 0.14),
           SizedBox(height: h * 0.016),
           Text(
             'No results for "$query"',
