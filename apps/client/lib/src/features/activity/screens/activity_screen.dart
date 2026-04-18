@@ -509,7 +509,8 @@ class _StatusBadge extends StatelessWidget {
         JobStatus.cancelled =>
           (MyShopColors.errorLight, MyShopColors.error),
         JobStatus.inProgress ||
-        JobStatus.selectingArtisan ||
+        JobStatus.open ||
+        JobStatus.artisanMarkedComplete ||
         JobStatus.enRoute ||
         JobStatus.arrived ||
         JobStatus.confirmed =>

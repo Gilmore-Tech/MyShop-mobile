@@ -51,7 +51,15 @@ class _ActivityListScreenState
       appBar: _buildAppBar(context, w),
       body: state.isLoading
           ? _LoadingSkeleton(w: w, h: h)
-          : CustomScrollView(
+          : state.errorMessage != null
+              ? _ErrorState(
+                  message: state.errorMessage!,
+                  onRetry: () =>
+                      ref.read(activityHistoryProvider.notifier).reload(),
+                  w: w,
+                  h: h,
+                )
+              : CustomScrollView(
               slivers: [
                 SliverToBoxAdapter(
                   child: Column(
@@ -519,7 +527,7 @@ class _TransactionCard extends StatelessWidget {
         color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
-          onTap: () => _openReceipt(context, item),
+          onTap: () => _openDetail(context, item),
           borderRadius: BorderRadius.circular(12),
           child: Container(
             decoration: BoxDecoration(
@@ -533,16 +541,22 @@ class _TransactionCard extends StatelessWidget {
               children: [
                 // Type icon circle
                 Container(
-                  width: w * 0.100,
-                  height: w * 0.100,
-                  decoration: const BoxDecoration(
-                    color: MyShopColors.surfaceGrey,
+                  width: w * 0.105,
+                  height: w * 0.105,
+                  decoration: BoxDecoration(
+                    color: item.type == TransactionType.ride
+                        ? MyShopColors.primaryGold.withValues(alpha: 0.12)
+                        : MyShopColors.darkSlate.withValues(alpha: 0.10),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
-                    item.typeIcon,
-                    color: MyShopColors.darkSlate,
-                    size: w * 0.048,
+                    item.type == TransactionType.ride
+                        ? Icons.directions_car_filled_rounded
+                        : Icons.home_repair_service_rounded,
+                    color: item.type == TransactionType.ride
+                        ? MyShopColors.primaryGold
+                        : MyShopColors.darkSlate,
+                    size: w * 0.050,
                   ),
                 ),
                 SizedBox(width: w * 0.031),
@@ -560,11 +574,13 @@ class _TransactionCard extends StatelessWidget {
                               item.title,
                               style: TextStyle(
                                 fontFamily: 'Raleway',
-                                fontSize: w * 0.038,
+                                fontSize: w * 0.037,
                                 fontWeight: FontWeight.w700,
                                 color: MyShopColors.textPrimary,
                                 height: 1.25,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           GestureDetector(
@@ -589,9 +605,9 @@ class _TransactionCard extends StatelessWidget {
                         item.locationLabel,
                         style: TextStyle(
                           fontFamily: 'Raleway',
-                          fontSize: w * 0.031,
+                          fontSize: w * 0.030,
                           fontWeight: FontWeight.w400,
-                          color: MyShopColors.textSecondary,
+                          color: MyShopColors.textHint,
                           height: 1.4,
                         ),
                         maxLines: 1,
@@ -606,7 +622,7 @@ class _TransactionCard extends StatelessWidget {
                             item.timeLabel,
                             style: TextStyle(
                               fontFamily: 'Raleway',
-                              fontSize: w * 0.030,
+                              fontSize: w * 0.028,
                               fontWeight: FontWeight.w400,
                               color: MyShopColors.textHint,
                               height: 1.4,
@@ -636,10 +652,10 @@ class _TransactionCard extends StatelessWidget {
     );
   }
 
-  void _openReceipt(BuildContext context, TransactionItem item) {
+  void _openDetail(BuildContext context, TransactionItem item) {
     final path = switch (item.type) {
-      TransactionType.ride => AppRoutes.rideReceiptPath(item.id),
-      TransactionType.job  => AppRoutes.jobReceiptPath(item.id),
+      TransactionType.ride => AppRoutes.activityRidePath(item.id),
+      TransactionType.job  => AppRoutes.jobDetailPath(item.id),
     };
     context.push(path);
   }
@@ -736,8 +752,8 @@ class _ItemMenuSheet extends StatelessWidget {
             onTap: () {
               Navigator.of(context).pop();
               final path = switch (item.type) {
-                TransactionType.ride => AppRoutes.rideReceiptPath(item.id),
-                TransactionType.job  => AppRoutes.jobReceiptPath(item.id),
+                TransactionType.ride => AppRoutes.activityRidePath(item.id),
+                TransactionType.job  => AppRoutes.jobDetailPath(item.id),
               };
               context.push(path);
             },
@@ -943,6 +959,70 @@ class _EmptyState extends StatelessWidget {
                 height: 1.55,
               ),
               textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Error state ──────────────────────────────────────────────────────────
+
+class _ErrorState extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  final double w;
+  final double h;
+  const _ErrorState({
+    required this.message,
+    required this.onRetry,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: w * 0.088),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.cloud_off_rounded,
+                size: w * 0.154, color: MyShopColors.textHint),
+            SizedBox(height: h * 0.018),
+            Text(
+              message,
+              style: TextStyle(
+                fontFamily: 'Raleway',
+                fontSize: w * 0.038,
+                fontWeight: FontWeight.w500,
+                color: MyShopColors.textSecondary,
+                height: 1.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: h * 0.022),
+            GestureDetector(
+              onTap: onRetry,
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                    horizontal: w * 0.064, vertical: h * 0.014),
+                decoration: BoxDecoration(
+                  color: MyShopColors.darkSlate,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'Retry',
+                  style: TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: w * 0.036,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
             ),
           ],
         ),

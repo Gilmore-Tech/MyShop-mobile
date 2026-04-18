@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
+import '../providers/job_activity_detail_provider.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD § 4.9 — Historical artisan job detail; client can view receipt or dispute.
@@ -17,7 +18,9 @@ class JobDetailScreen extends ConsumerWidget {
     final size  = MediaQuery.sizeOf(context);
     final w     = size.width;
     final h     = size.height;
-    final jobId = GoRouterState.of(context).pathParameters['jobId'] ?? 'JOB-1092';
+    final jobId = GoRouterState.of(context).pathParameters['jobId'] ?? '';
+
+    final asyncDetail = ref.watch(jobActivityDetailProvider(jobId));
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
@@ -46,22 +49,58 @@ class JobDetailScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(w * 0.05),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _StatusCard(w: w, h: h),
-            SizedBox(height: h * 0.020),
-            _ArtisanCard(w: w, h: h),
-            SizedBox(height: h * 0.020),
-            _JobInfoCard(w: w, h: h),
-            SizedBox(height: h * 0.020),
-            _CostCard(w: w, h: h),
-            SizedBox(height: h * 0.024),
-            _ActionRow(jobId: jobId, w: w, h: h),
-          ],
+      body: asyncDetail.when(
+        loading: () => _LoadingSkeleton(w: w, h: h),
+        error: (e, _) => _ErrorView(
+          message: 'Could not load job details.',
+          onRetry: () => ref.invalidate(jobActivityDetailProvider(jobId)),
+          w: w,
+          h: h,
         ),
+        data: (data) => _JobDetailBody(
+          data: data,
+          jobId: jobId,
+          w: w,
+          h: h,
+        ),
+      ),
+    );
+  }
+}
+
+// ── Body ──────────────────────────────────────────────────────────────────────
+
+class _JobDetailBody extends StatelessWidget {
+  final JobActivityDetail data;
+  final String jobId;
+  final double w, h;
+
+  const _JobDetailBody({
+    required this.data,
+    required this.jobId,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(w * 0.05),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _StatusCard(data: data, w: w, h: h),
+          SizedBox(height: h * 0.020),
+          if (data.hasArtisan)
+            _ArtisanCard(data: data, w: w, h: h),
+          if (data.hasArtisan)
+            SizedBox(height: h * 0.020),
+          _JobInfoCard(data: data, w: w, h: h),
+          SizedBox(height: h * 0.020),
+          _CostCard(data: data, w: w, h: h),
+          SizedBox(height: h * 0.024),
+          _ActionRow(jobId: jobId, data: data, w: w, h: h),
+        ],
       ),
     );
   }
@@ -70,11 +109,14 @@ class JobDetailScreen extends ConsumerWidget {
 // ── Status card ────────────────────────────────────────────────────────────────
 
 class _StatusCard extends StatelessWidget {
+  final JobActivityDetail data;
   final double w, h;
-  const _StatusCard({required this.w, required this.h});
+  const _StatusCard({required this.data, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
+    final (badgeBg, badgeFg) = _statusColors(data.status);
+
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
@@ -91,24 +133,26 @@ class _StatusCard extends StatelessWidget {
         children: [
           Container(
             padding: EdgeInsets.all(w * 0.032),
-            decoration: const BoxDecoration(
-                color: MyShopColors.successLight, shape: BoxShape.circle),
-            child: const Icon(Icons.work_rounded,
-                color: MyShopColors.success, size: 24),
+            decoration: BoxDecoration(
+                color: badgeBg, shape: BoxShape.circle),
+            child: Icon(Icons.work_rounded,
+                color: badgeFg, size: 24),
           ),
           SizedBox(width: w * 0.036),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Office Cleaning Service',
+                Text(data.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color:      MyShopColors.textPrimary,
-                      fontSize:   w * 0.040,
+                      fontSize:   w * 0.038,
                       fontWeight: FontWeight.w700,
                     )),
-                const SizedBox(height: 4),
-                Text('Oct 23, 10:00 AM',
+                const SizedBox(height: 2),
+                Text(data.dateTimeLabel,
                     style: TextStyle(
                         color:    MyShopColors.textSecondary,
                         fontSize: w * 0.032)),
@@ -119,12 +163,12 @@ class _StatusCard extends StatelessWidget {
             padding: EdgeInsets.symmetric(
                 horizontal: w * 0.024, vertical: 5),
             decoration: BoxDecoration(
-              color:        MyShopColors.successLight,
+              color:        badgeBg,
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Text('Completed',
+            child: Text(data.statusLabel,
                 style: TextStyle(
-                  color:      MyShopColors.success,
+                  color:      badgeFg,
                   fontSize:   w * 0.028,
                   fontWeight: FontWeight.w600,
                 )),
@@ -133,13 +177,26 @@ class _StatusCard extends StatelessWidget {
       ),
     );
   }
+
+  (Color bg, Color fg) _statusColors(String status) {
+    return switch (status) {
+      'completed'              => (MyShopColors.successLight, MyShopColors.success),
+      'cancelled'              => (MyShopColors.errorLight, MyShopColors.error),
+      'in_progress' ||
+      'artisan_marked_complete' ||
+      'en_route' ||
+      'arrived'                => (MyShopColors.warningLight, MyShopColors.warning),
+      _                        => (MyShopColors.infoLight, MyShopColors.info),
+    };
+  }
 }
 
 // ── Artisan card ───────────────────────────────────────────────────────────────
 
 class _ArtisanCard extends StatelessWidget {
+  final JobActivityDetail data;
   final double w, h;
-  const _ArtisanCard({required this.w, required this.h});
+  const _ArtisanCard({required this.data, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
@@ -165,53 +222,61 @@ class _ArtisanCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Abena Osei',
+                Text(data.artisanName ?? '',
                     style: TextStyle(
                       color:      MyShopColors.textPrimary,
                       fontSize:   w * 0.040,
                       fontWeight: FontWeight.w700,
                     )),
-                const SizedBox(height: 3),
-                Text('Professional Cleaner',
-                    style: TextStyle(
-                        color:    MyShopColors.textSecondary,
-                        fontSize: w * 0.032)),
-                const SizedBox(height: 4),
-                Row(children: [
-                  const Icon(Icons.star_rounded, color: MyShopColors.primaryGold, size: 14),
-                  const SizedBox(width: 3),
-                  Text('4.7  •  142 jobs',
+                if (data.artisanSpecialty != null) ...[
+                  const SizedBox(height: 3),
+                  Text(data.artisanSpecialty!,
                       style: TextStyle(
-                        color:      MyShopColors.textPrimary,
-                        fontSize:   w * 0.030,
-                        fontWeight: FontWeight.w500,
+                          color:    MyShopColors.textSecondary,
+                          fontSize: w * 0.032)),
+                ],
+                if (data.artisanRating != null) ...[
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    const Icon(Icons.star_rounded,
+                        color: MyShopColors.primaryGold, size: 14),
+                    const SizedBox(width: 3),
+                    Text(
+                        '${data.artisanRating!.toStringAsFixed(1)}'
+                        '${data.artisanJobCount != null ? '  •  ${data.artisanJobCount} jobs' : ''}',
+                        style: TextStyle(
+                          color:      MyShopColors.textPrimary,
+                          fontSize:   w * 0.030,
+                          fontWeight: FontWeight.w500,
+                        )),
+                  ]),
+                ],
+              ],
+            ),
+          ),
+          if (data.artisanVerified)
+            Container(
+              padding: EdgeInsets.symmetric(
+                  horizontal: w * 0.020, vertical: 4),
+              decoration: BoxDecoration(
+                color:        MyShopColors.successLight,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.verified_rounded,
+                      color: MyShopColors.success, size: 13),
+                  const SizedBox(width: 3),
+                  Text('Verified',
+                      style: TextStyle(
+                        color:      MyShopColors.success,
+                        fontSize:   w * 0.026,
+                        fontWeight: FontWeight.w600,
                       )),
-                ]),
-              ],
+                ],
+              ),
             ),
-          ),
-          Container(
-            padding: EdgeInsets.symmetric(
-                horizontal: w * 0.020, vertical: 4),
-            decoration: BoxDecoration(
-              color:        MyShopColors.successLight,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.verified_rounded,
-                    color: MyShopColors.success, size: 13),
-                const SizedBox(width: 3),
-                Text('Verified',
-                    style: TextStyle(
-                      color:      MyShopColors.success,
-                      fontSize:   w * 0.026,
-                      fontWeight: FontWeight.w600,
-                    )),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -221,8 +286,9 @@ class _ArtisanCard extends StatelessWidget {
 // ── Job info card ──────────────────────────────────────────────────────────────
 
 class _JobInfoCard extends StatelessWidget {
+  final JobActivityDetail data;
   final double w, h;
-  const _JobInfoCard({required this.w, required this.h});
+  const _JobInfoCard({required this.data, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
@@ -242,23 +308,31 @@ class _JobInfoCard extends StatelessWidget {
                 fontSize:   w * 0.036,
                 fontWeight: FontWeight.w700,
               )),
-          SizedBox(height: h * 0.012),
+          SizedBox(height: h * 0.006),
+          if (data.location.isNotEmpty)
+            _InfoRow(
+                icon:  Icons.location_on_outlined,
+                label: 'Location',
+                value: data.location,
+                w:     w),
+          if (data.location.isNotEmpty) SizedBox(height: h * 0.006),
+          if (data.categoryName.isNotEmpty)
+            _InfoRow(
+                icon:  Icons.category_outlined,
+                label: 'Category',
+                value: data.categoryName,
+                w:     w),
+          if (data.categoryName.isNotEmpty) SizedBox(height: h * 0.006),
           _InfoRow(
-              icon:  Icons.location_on_outlined,
-              label: 'Location',
-              value: 'Labone Heights Estate, Accra',
+              icon:  Icons.people_alt_outlined,
+              label: 'Bids',
+              value: '${data.bidCount} bid${data.bidCount == 1 ? '' : 's'} received',
               w:     w),
-          SizedBox(height: h * 0.010),
-          _InfoRow(
-              icon:  Icons.access_time_rounded,
-              label: 'Duration',
-              value: '3 hours',
-              w:     w),
-          SizedBox(height: h * 0.010),
+          SizedBox(height: h * 0.006),
           _InfoRow(
               icon:  Icons.tag_rounded,
               label: 'Job Ref',
-              value: '#JOB-1092',
+              value: '#${data.jobId}',
               w:     w),
         ],
       ),
@@ -302,8 +376,9 @@ class _InfoRow extends StatelessWidget {
 // ── Cost card ──────────────────────────────────────────────────────────────────
 
 class _CostCard extends StatelessWidget {
+  final JobActivityDetail data;
   final double w, h;
-  const _CostCard({required this.w, required this.h});
+  const _CostCard({required this.data, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
@@ -316,8 +391,9 @@ class _CostCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          _CostLine(label: 'Labour',    value: 'GHS 120.00', w: w, h: h),
-          _CostLine(label: 'Materials', value: 'GHS 35.00',  w: w, h: h),
+          _CostLine(label: 'Agreed price', value: data.agreedPriceDisplay, w: w, h: h),
+          if (data.hasSupplement)
+            _CostLine(label: 'Supplement', value: data.supplementDisplay, w: w, h: h),
           Padding(
             padding: EdgeInsets.symmetric(vertical: h * 0.010),
             child: const Divider(height: 1, color: MyShopColors.divider),
@@ -331,7 +407,7 @@ class _CostCard extends StatelessWidget {
                     fontSize:   w * 0.038,
                     fontWeight: FontWeight.w700,
                   )),
-              Text('GHS 155.00',
+              Text(data.totalDisplay,
                   style: TextStyle(
                     color:      MyShopColors.textPrimary,
                     fontSize:   w * 0.044,
@@ -339,18 +415,29 @@ class _CostCard extends StatelessWidget {
                   )),
             ],
           ),
-          SizedBox(height: h * 0.010),
-          Row(
-            children: [
-              const Icon(Icons.lock_outline_rounded,
-                  color: MyShopColors.success, size: 14),
-              SizedBox(width: w * 0.016),
-              Text('Released from escrow',
-                  style: TextStyle(
-                      color:    MyShopColors.textSecondary,
-                      fontSize: w * 0.030)),
-            ],
-          ),
+          if (data.paymentStatus != null) ...[
+            SizedBox(height: h * 0.006),
+            Row(
+              children: [
+                Icon(
+                    data.isCompleted
+                        ? Icons.lock_outline_rounded
+                        : Icons.lock_open_rounded,
+                    color: data.isCompleted
+                        ? MyShopColors.success
+                        : MyShopColors.textSecondary,
+                    size: 14),
+                SizedBox(width: w * 0.016),
+                Text(
+                    data.isCompleted
+                        ? 'Released from escrow'
+                        : 'Held in escrow',
+                    style: TextStyle(
+                        color:    MyShopColors.textSecondary,
+                        fontSize: w * 0.030)),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -393,31 +480,37 @@ class _CostLine extends StatelessWidget {
 
 class _ActionRow extends StatelessWidget {
   final String jobId;
+  final JobActivityDetail data;
   final double w, h;
-  const _ActionRow(
-      {required this.jobId, required this.w, required this.h});
+  const _ActionRow({
+    required this.jobId,
+    required this.data,
+    required this.w,
+    required this.h,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: () =>
-                context.push(AppRoutes.jobDisputePath(jobId)),
-            icon: const Icon(Icons.flag_outlined, size: 18),
-            label: const Text('Dispute'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: MyShopColors.error,
-              side:  const BorderSide(color: MyShopColors.error),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-              padding:
-                  EdgeInsets.symmetric(vertical: h * 0.018),
+        if (data.isCompleted)
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () =>
+                  context.push(AppRoutes.jobDisputePath(jobId)),
+              icon: const Icon(Icons.flag_outlined, size: 18),
+              label: const Text('Dispute'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: MyShopColors.error,
+                side:  const BorderSide(color: MyShopColors.error),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+                padding:
+                    EdgeInsets.symmetric(vertical: h * 0.018),
+              ),
             ),
           ),
-        ),
-        SizedBox(width: w * 0.030),
+        if (data.isCompleted) SizedBox(width: w * 0.030),
         Expanded(
           child: ElevatedButton.icon(
             onPressed: () =>
@@ -436,6 +529,103 @@ class _ActionRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ── Loading skeleton ──────────────────────────────────────────────────────────
+
+class _LoadingSkeleton extends StatelessWidget {
+  final double w, h;
+  const _LoadingSkeleton({required this.w, required this.h});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(w * 0.05),
+      child: Column(
+        children: [
+          _ShimmerBox(w: double.infinity, h: h * 0.10),
+          SizedBox(height: h * 0.020),
+          _ShimmerBox(w: double.infinity, h: h * 0.12),
+          SizedBox(height: h * 0.020),
+          _ShimmerBox(w: double.infinity, h: h * 0.10),
+          SizedBox(height: h * 0.020),
+          _ShimmerBox(w: double.infinity, h: h * 0.14),
+        ],
+      ),
+    );
+  }
+}
+
+class _ShimmerBox extends StatelessWidget {
+  final double w, h;
+  const _ShimmerBox({required this.w, required this.h});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: w,
+      height: h,
+      decoration: BoxDecoration(
+        color: MyShopColors.divider,
+        borderRadius: BorderRadius.circular(12),
+      ),
+    );
+  }
+}
+
+// ── Error view ────────────────────────────────────────────────────────────────
+
+class _ErrorView extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  final double w, h;
+  const _ErrorView({
+    required this.message,
+    required this.onRetry,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: w * 0.088),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.cloud_off_rounded,
+                size: w * 0.15, color: MyShopColors.textHint),
+            SizedBox(height: h * 0.018),
+            Text(message,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: MyShopColors.textSecondary,
+                  fontSize: w * 0.038,
+                )),
+            SizedBox(height: h * 0.022),
+            GestureDetector(
+              onTap: onRetry,
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                    horizontal: w * 0.064, vertical: h * 0.014),
+                decoration: BoxDecoration(
+                  color: MyShopColors.darkSlate,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text('Retry',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: w * 0.036,
+                      fontWeight: FontWeight.w600,
+                    )),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

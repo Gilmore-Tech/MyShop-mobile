@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import 'package:shared_models/shared_models.dart';
+
+import '../../../core/di/providers.dart';
 
 // ── Activity Filter ───────────────────────────────────────────────────────────
 
@@ -58,8 +62,6 @@ extension TransactionStatusX on TransactionStatus {
 
 // ── Transaction Item ──────────────────────────────────────────────────────────
 // Unified lightweight model for both rides and artisan jobs.
-// Rides API:  GET /v1/rides  (page, limit, status filter)
-// Jobs  API:  GET /v1/jobs   (page, limit, status filter)
 
 class TransactionItem {
   final String            id;
@@ -74,6 +76,12 @@ class TransactionItem {
 
   final TransactionStatus status;
 
+  /// Original creation time — used for sorting and date grouping.
+  final DateTime          createdAt;
+
+  /// Amount in pesewas — used for monthly spend summary.
+  final int               amountPesewas;
+
   const TransactionItem({
     required this.id,
     required this.type,
@@ -81,6 +89,8 @@ class TransactionItem {
     required this.locationLabel,
     required this.timeLabel,
     required this.status,
+    required this.createdAt,
+    this.amountPesewas = 0,
   });
 
   IconData get typeIcon => switch (type) {
@@ -166,23 +176,87 @@ class ActivityHistoryState {
 
 class ActivityHistoryNotifier
     extends StateNotifier<ActivityHistoryState> {
-  ActivityHistoryNotifier() : super(const ActivityHistoryState()) {
+  final Ref _ref;
+
+  ActivityHistoryNotifier(this._ref) : super(const ActivityHistoryState()) {
     _load();
   }
 
   Future<void> _load() async {
-    // TODO: GET /v1/rides?page=1&limit=50  +  GET /v1/jobs?page=1&limit=50
-    //       Merge by createdAt descending, group by date bucket.
-    await Future.delayed(const Duration(milliseconds: 350));
-    state = state.copyWith(
-      isLoading: false,
-      summary: const ActivitySummary(
-        monthlySpendPesewas: 124050,  // GH¢ 1,240.50
-        tripCount:           24,
-        monthLabel:          'October',
-      ),
-      groups: _mockGroups,
-    );
+    try {
+      final rideService = _ref.read(rideServiceProvider);
+      final jobService = _ref.read(jobServiceProvider);
+
+      // Fetch rides and jobs in parallel.
+      final results = await Future.wait([
+        rideService.listRides(page: 1, limit: 50),
+        jobService.listJobs(page: 1, limit: 50),
+      ]);
+
+      final ridesJson = results[0];
+      final jobsJson = results[1];
+
+      debugPrint('[Activity] rides count: ${ridesJson.length}, '
+          'jobs count: ${jobsJson.length}');
+      if (ridesJson.isNotEmpty) {
+        debugPrint('[Activity] first ride: ${ridesJson.first}');
+      }
+      if (jobsJson.isNotEmpty) {
+        debugPrint('[Activity] first job: ${jobsJson.first}');
+      }
+
+      // Parse into unified TransactionItems.
+      final items = <TransactionItem>[];
+
+      for (final r in ridesJson) {
+        if (r is! Map<String, dynamic>) continue;
+        try {
+          final ride = Ride.fromJson(r);
+          items.add(_rideToTransaction(ride));
+        } catch (e) {
+          debugPrint('[Activity] ride parse error: $e for $r');
+        }
+      }
+
+      for (final j in jobsJson) {
+        if (j is! Map<String, dynamic>) continue;
+        try {
+          items.add(_jobJsonToTransaction(j));
+        } catch (e) {
+          debugPrint('[Activity] job parse error: $e for $j');
+        }
+      }
+
+      // Sort by createdAt descending (newest first).
+      items.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      // Group by date bucket.
+      final groups = _groupByDate(items);
+
+      // Build monthly summary from current month's items.
+      final now = DateTime.now();
+      final monthItems = items.where((i) =>
+          i.createdAt.year == now.year && i.createdAt.month == now.month);
+      final monthlySpend =
+          monthItems.fold<int>(0, (sum, i) => sum + i.amountPesewas);
+      final summary = ActivitySummary(
+        monthlySpendPesewas: monthlySpend,
+        tripCount: monthItems.length,
+        monthLabel: DateFormat.MMMM().format(now),
+      );
+
+      state = state.copyWith(
+        isLoading: false,
+        summary: summary,
+        groups: groups,
+        clearError: true,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Failed to load activity. Pull to retry.',
+      );
+    }
   }
 
   Future<void> reload() async {
@@ -197,11 +271,120 @@ class ActivityHistoryNotifier
       state = state.copyWith(searchQuery: q, clearError: true);
 
   void clearSearch() => state = state.copyWith(searchQuery: '');
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  TransactionItem _rideToTransaction(Ride ride) {
+    return TransactionItem(
+      id: ride.id,
+      type: TransactionType.ride,
+      title: '${ride.pickupAddress} → ${ride.dropoffAddress}',
+      locationLabel: '${ride.pickupAddress} → ${ride.dropoffAddress}',
+      timeLabel: _formatTime(ride.createdAt),
+      status: _rideStatusToTransaction(ride.status),
+      createdAt: ride.createdAt,
+      amountPesewas: ride.finalFarePesewas ?? ride.estimatedFarePesewas,
+    );
+  }
+
+  TransactionItem _jobJsonToTransaction(Map<String, dynamic> json) {
+    final createdAt = json['createdAt'] != null
+        ? DateTime.tryParse(json['createdAt'] as String) ?? DateTime.now()
+        : DateTime.now();
+    final statusStr = json['status'] as String? ?? 'open';
+    final description = json['description'] as String? ?? '';
+    final category = json['category'] as Map<String, dynamic>?;
+    final categoryName = category?['name'] as String? ?? 'Service';
+    final addressText = json['addressText'] as String? ?? '';
+
+    return TransactionItem(
+      id: json['id'] as String? ?? '',
+      type: TransactionType.job,
+      title: description.length > 60
+          ? '${description.substring(0, 60)}...'
+          : description,
+      locationLabel: addressText.isNotEmpty ? addressText : categoryName,
+      timeLabel: _formatTime(createdAt),
+      status: _jobStatusToTransaction(statusStr),
+      createdAt: createdAt,
+      amountPesewas: (json['agreedPrice'] as int?) ??
+          (json['budgetPesewas'] as int?) ??
+          0,
+    );
+  }
+
+  TransactionStatus _rideStatusToTransaction(RideStatus status) {
+    return switch (status) {
+      RideStatus.completed  => TransactionStatus.completed,
+      RideStatus.cancelled  => TransactionStatus.cancelled,
+      RideStatus.inProgress => TransactionStatus.inProgress,
+      _                     => TransactionStatus.pending,
+    };
+  }
+
+  TransactionStatus _jobStatusToTransaction(String status) {
+    return switch (status) {
+      'completed'               => TransactionStatus.completed,
+      'cancelled'               => TransactionStatus.cancelled,
+      'in_progress' ||
+      'arrived' ||
+      'en_route' ||
+      'artisan_marked_complete' => TransactionStatus.inProgress,
+      _                         => TransactionStatus.pending,
+    };
+  }
+
+  String _formatTime(DateTime dt) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final date = DateTime(dt.year, dt.month, dt.day);
+    final time = DateFormat.jm().format(dt);
+
+    if (date == today) return time;
+    return '${DateFormat.MMMd().format(dt)}, $time';
+  }
+
+  List<TransactionGroup> _groupByDate(List<TransactionItem> items) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final lastWeekStart = today.subtract(const Duration(days: 7));
+
+    final todayItems = <TransactionItem>[];
+    final yesterdayItems = <TransactionItem>[];
+    final lastWeekItems = <TransactionItem>[];
+    final olderItems = <TransactionItem>[];
+
+    for (final item in items) {
+      final date = DateTime(
+          item.createdAt.year, item.createdAt.month, item.createdAt.day);
+      if (date == today) {
+        todayItems.add(item);
+      } else if (date == yesterday) {
+        yesterdayItems.add(item);
+      } else if (date.isAfter(lastWeekStart)) {
+        lastWeekItems.add(item);
+      } else {
+        olderItems.add(item);
+      }
+    }
+
+    return [
+      if (todayItems.isNotEmpty)
+        TransactionGroup(label: 'TODAY', items: todayItems),
+      if (yesterdayItems.isNotEmpty)
+        TransactionGroup(label: 'YESTERDAY', items: yesterdayItems),
+      if (lastWeekItems.isNotEmpty)
+        TransactionGroup(label: 'LAST WEEK', items: lastWeekItems),
+      if (olderItems.isNotEmpty)
+        TransactionGroup(label: 'EARLIER', items: olderItems),
+    ];
+  }
 }
 
 final activityHistoryProvider = StateNotifierProvider.autoDispose<
     ActivityHistoryNotifier, ActivityHistoryState>(
-  (_) => ActivityHistoryNotifier(),
+  (ref) => ActivityHistoryNotifier(ref),
 );
 
 // ── Derived: filtered groups ──────────────────────────────────────────────────
@@ -239,63 +422,3 @@ final filteredActivityGroupsProvider =
       .where((g) => g.items.isNotEmpty)
       .toList();
 });
-
-// ── Mock data ─────────────────────────────────────────────────────────────────
-
-const _mockGroups = <TransactionGroup>[
-  TransactionGroup(
-    label: 'TODAY',
-    items: [
-      TransactionItem(
-        id:            'RIDE-2041',
-        type:          TransactionType.ride,
-        title:         'Work Shuttle (Corporate)',
-        locationLabel: 'Airport Residential Area → Ridge',
-        timeLabel:     '08:45 AM',
-        status:        TransactionStatus.completed,
-      ),
-    ],
-  ),
-  TransactionGroup(
-    label: 'YESTERDAY',
-    items: [
-      TransactionItem(
-        id:            'JOB-1092',
-        type:          TransactionType.job,
-        title:         'Office Cleaning Service',
-        locationLabel: 'Labone Heights Estate',
-        timeLabel:     'Oct 23, 10:00 AM',
-        status:        TransactionStatus.completed,
-      ),
-      TransactionItem(
-        id:            'RIDE-2040',
-        type:          TransactionType.ride,
-        title:         'Late Night Ride',
-        locationLabel: 'Bloombar → East Legon',
-        timeLabel:     'Oct 23, 11:45 PM',
-        status:        TransactionStatus.cancelled,
-      ),
-    ],
-  ),
-  TransactionGroup(
-    label: 'LAST WEEK',
-    items: [
-      TransactionItem(
-        id:            'RIDE-2039',
-        type:          TransactionType.ride,
-        title:         'Intercity Trip',
-        locationLabel: 'Accra → Kumasi Central',
-        timeLabel:     'Oct 18, 06:15 AM',
-        status:        TransactionStatus.completed,
-      ),
-      TransactionItem(
-        id:            'JOB-1088',
-        type:          TransactionType.job,
-        title:         'Package Delivery',
-        locationLabel: 'Tema Port → Spintex Road',
-        timeLabel:     'Oct 17, 02:30 PM',
-        status:        TransactionStatus.completed,
-      ),
-    ],
-  ),
-];
