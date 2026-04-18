@@ -19,6 +19,10 @@ abstract class AuthService {
   /// POST /auth/login/artisan
   Future<void> loginArtisan(String phone);
 
+  /// Login as an existing client. Sends OTP to the phone.
+  /// POST /auth/login/client
+  Future<void> loginClient(String phone);
+
   /// Check which roles are registered to a phone number.
   /// POST /auth/check-phone
   /// Returns a list of roles (e.g. ["driver"], ["artisan"], ["driver", "artisan"]).

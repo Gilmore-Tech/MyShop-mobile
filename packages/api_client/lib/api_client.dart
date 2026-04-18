@@ -19,6 +19,16 @@ export 'src/models/verification_dtos.dart';
 
 // Services
 export 'src/services/category_service.dart';
+export 'src/services/chat_service.dart';
+export 'src/services/job_service.dart';
+export 'src/services/media_service.dart';
+export 'src/services/notification_service.dart';
+export 'src/services/payment_service.dart';
+export 'src/services/rating_service.dart';
+export 'src/services/ride_service.dart';
+export 'src/services/safety_service.dart';
+export 'src/services/user_service.dart';
+export 'src/services/socket_service.dart';
 export 'src/services/verification_service.dart';
 
 // Auth

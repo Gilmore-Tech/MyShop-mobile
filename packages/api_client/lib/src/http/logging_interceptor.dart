@@ -33,10 +33,12 @@ class LoggingInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
+    final responseBody = err.response?.data;
     developer.log(
       '✗ ${err.response?.statusCode ?? 'NETWORK'} '
       '${err.requestOptions.method} ${err.requestOptions.path} — '
-      '${err.message}',
+      '${err.message}'
+      '${responseBody != null ? '\n  Response: $responseBody' : ''}',
       name: 'HTTP',
       level: 900, // Warning level
     );

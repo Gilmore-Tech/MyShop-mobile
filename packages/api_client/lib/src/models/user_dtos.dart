@@ -200,6 +200,8 @@ class ArtisanProfile {
     this.displayName,
     this.businessName,
     this.profilePhotoUrl,
+    this.serviceLatitude,
+    this.serviceLongitude,
     this.payoutMethod,
     this.payoutAccountNumber,
     this.serviceCategories,
@@ -216,6 +218,8 @@ class ArtisanProfile {
       kycStatus: _asString(json['kycStatus']) ?? 'pending',
       policeCheckStatus: _asString(json['policeCheckStatus']) ?? 'pending',
       onlineStatus: _asString(json['onlineStatus']) ?? 'offline',
+      serviceLatitude: _parseDoubleOrNull(json['serviceLatitude']),
+      serviceLongitude: _parseDoubleOrNull(json['serviceLongitude']),
       serviceRadiusKm: _parseDouble(json['serviceRadiusKm']),
       shopCapacity: _asString(json['shopCapacity']) ?? 'solo',
       maxConcurrentJobs: json['maxConcurrentJobs'] as int? ?? 1,
@@ -245,7 +249,12 @@ class ArtisanProfile {
   final String kycStatus;
   final String policeCheckStatus;
   final String onlineStatus;
+
+  /// The artisan's base location for receiving job requests.
+  final double? serviceLatitude;
+  final double? serviceLongitude;
   final double serviceRadiusKm;
+
   final String shopCapacity;
   final int maxConcurrentJobs;
   final String payoutPreference;
@@ -254,6 +263,10 @@ class ArtisanProfile {
   final int completedJobsCount;
   final int cancellationCount30d;
   final List<ServiceCategoryLink>? serviceCategories;
+
+  /// Whether the artisan has set a service area base location.
+  bool get hasServiceLocation =>
+      serviceLatitude != null && serviceLongitude != null;
 }
 
 /// Link between an artisan and a service category.
@@ -398,6 +411,8 @@ class UpdateArtisanProfileRequest {
     this.businessName,
     this.shopCapacity,
     this.maxConcurrentJobs,
+    this.serviceLatitude,
+    this.serviceLongitude,
     this.serviceRadiusKm,
     this.payoutPreference,
     this.payoutMethod,
@@ -408,6 +423,8 @@ class UpdateArtisanProfileRequest {
   final String? businessName;
   final String? shopCapacity;
   final int? maxConcurrentJobs;
+  final double? serviceLatitude;
+  final double? serviceLongitude;
   final double? serviceRadiusKm;
   final String? payoutPreference;
   final String? payoutMethod;
@@ -421,6 +438,8 @@ class UpdateArtisanProfileRequest {
     if (maxConcurrentJobs != null) {
       json['maxConcurrentJobs'] = maxConcurrentJobs;
     }
+    if (serviceLatitude != null) json['serviceLatitude'] = serviceLatitude;
+    if (serviceLongitude != null) json['serviceLongitude'] = serviceLongitude;
     if (serviceRadiusKm != null) json['serviceRadiusKm'] = serviceRadiusKm;
     if (payoutPreference != null) json['payoutPreference'] = payoutPreference;
     if (payoutMethod != null) json['payoutMethod'] = payoutMethod;
@@ -438,6 +457,15 @@ double _parseDouble(dynamic value) {
   if (value is int) return value.toDouble();
   if (value is String) return double.parse(value);
   return 0.0;
+}
+
+/// Like [_parseDouble] but returns null when the value is absent.
+double? _parseDoubleOrNull(dynamic value) {
+  if (value == null) return null;
+  if (value is double) return value;
+  if (value is int) return value.toDouble();
+  if (value is String) return double.tryParse(value);
+  return null;
 }
 
 /// Safely convert a value that may be a String or int to a String?.

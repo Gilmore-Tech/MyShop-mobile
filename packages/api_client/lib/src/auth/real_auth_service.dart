@@ -59,6 +59,18 @@ class RealAuthService implements AuthService {
   }
 
   @override
+  Future<void> loginClient(String phone) async {
+    try {
+      await _dio.post(
+        '/auth/login/client',
+        data: LoginRequest(phone: phone).toJson(),
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  @override
   Future<List<String>> checkPhone(String phone) async {
     try {
       final response = await _dio.post(

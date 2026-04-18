@@ -135,7 +135,13 @@ class DocumentInfo {
   final String id;
   final String providerType;
   final String documentType;
-  final String status; // uploaded, verified, rejected
+  /// Document status flow:
+  ///   `uploaded` → presigned URL given, file not yet in storage
+  ///   `pending_review` → file uploaded successfully, awaiting admin review
+  ///   `approved` → admin approved the document
+  ///   `rejected` → admin rejected the document
+  final String status;
+
   final String? fileUrl;
   final String? reviewedBy;
   final String? reviewedAt;
@@ -145,9 +151,13 @@ class DocumentInfo {
   final bool isCurrent;
   final String createdAt;
 
-  bool get isVerified => status == 'verified';
+  bool get isApproved => status == 'approved';
   bool get isRejected => status == 'rejected';
+  bool get isPendingReview => status == 'pending_review';
   bool get isUploaded => status == 'uploaded';
+
+  /// True if the document has been received and not rejected.
+  bool get isSubmitted => isPendingReview || isApproved;
 }
 
 /// GET /verification/status — full response.

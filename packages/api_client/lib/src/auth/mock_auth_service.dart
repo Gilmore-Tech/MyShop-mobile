@@ -52,6 +52,19 @@ class MockAuthService implements AuthService {
   }
 
   @override
+  Future<void> loginClient(String phone) async {
+    await _delay();
+    if (!_registeredPhones.contains(phone)) {
+      throw AuthException(
+        'No account found for this phone number. Please register first.',
+        code: 'ACCOUNT_NOT_FOUND',
+      );
+    }
+    _lastPhone = phone;
+    _lastType = 'client';
+  }
+
+  @override
   Future<List<String>> checkPhone(String phone) async {
     await _delay();
     if (!_registeredPhones.contains(phone)) {
