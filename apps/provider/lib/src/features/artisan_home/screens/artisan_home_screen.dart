@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/current_user_provider.dart';
+import '../../driver_home/providers/driver_status_provider.dart';
 import '../../profile/providers/verification_provider.dart';
 import '../../profile/widgets/incomplete_profile_sheet.dart';
 import '../providers/artisan_earnings_provider.dart';
@@ -28,29 +29,40 @@ class ArtisanHomeScreen extends ConsumerStatefulWidget {
 }
 
 class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
-  bool _isOnline = false;
-
   void _handleToggle() {
+    final status = ref.read(driverStatusProvider);
+
     // Going offline is always allowed.
-    if (_isOnline) {
-      setState(() => _isOnline = false);
+    if (status.isOnline) {
+      ref.read(driverStatusProvider.notifier).goOffline();
       return;
     }
 
     // Going online requires a complete profile.
     final completion = ref.read(profileCompletionProvider);
+
+    // Still loading verification data — let it finish, don't block.
+    if (completion.isLoading) {
+      ref.read(driverStatusProvider.notifier).goOnline();
+      return;
+    }
+
     if (!completion.isComplete) {
       showIncompleteProfileSheet(context, completion: completion);
       return;
     }
 
-    setState(() => _isOnline = true);
+    ref.read(driverStatusProvider.notifier).goOnline();
   }
 
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
     final earningsAsync = ref.watch(artisanEarningsProvider);
+
+    // Eagerly load verification status so profileCompletionProvider has data
+    // ready when the user taps "Go Online" (avoids false incomplete state).
+    ref.watch(verificationStatusProvider);
 
     // Derive service categories for the subtitle
     final categories = user?.artisanProfile?.serviceCategories
@@ -96,8 +108,8 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
 
             // 2. Online status banner
             ArtisanOnlineBanner(
-              isOnline: _isOnline,
-              onToggle: () => _handleToggle(),
+              isOnline: ref.watch(driverStatusProvider).isOnline,
+              onToggle: _handleToggle,
             ),
 
             const SizedBox(height: MyShopSpacing.lg),

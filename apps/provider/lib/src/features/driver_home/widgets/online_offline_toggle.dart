@@ -153,6 +153,13 @@ class OnlineOfflineToggle extends ConsumerWidget {
 
     // Going online requires a complete profile.
     final completion = ref.read(profileCompletionProvider);
+
+    // Still loading verification data — let it finish, don't block.
+    if (completion.isLoading) {
+      ref.read(driverStatusProvider.notifier).toggle();
+      return;
+    }
+
     if (!completion.isComplete) {
       showIncompleteProfileSheet(context, completion: completion);
       return;

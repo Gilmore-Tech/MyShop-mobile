@@ -287,16 +287,9 @@ class VehicleInformationScreen extends ConsumerWidget {
 
               if (!context.mounted) return;
               if (error != null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(error)),
-                );
+                MyShopToast.show(context, message: error, type: ToastType.error);
               } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                        'Uploaded: ${file.path.split('/').last}'),
-                  ),
-                );
+                MyShopToast.show(context, message: 'Uploaded: ${file.path.split('/').last}');
               }
             },
             icon: const Icon(Icons.add, size: 16),

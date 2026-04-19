@@ -34,8 +34,10 @@ class _EditBusinessInformationScreenState
   late final TextEditingController _email;
   late final TextEditingController _phone;
 
-  // Service area centre — Kumasi pilot city
-  static const _initialCentre = LatLng(6.6885, -1.6244);
+  // Kumasi pilot city — used when artisan hasn't set a location yet.
+  static const _defaultCentre = LatLng(6.6885, -1.6244);
+
+  late LatLng _centre;
   late double _radiusKm;
 
   static const _minRadiusKm = 1.0;
@@ -59,6 +61,9 @@ class _EditBusinessInformationScreenState
     _email = TextEditingController(text: user?.email ?? '');
     _phone = TextEditingController(text: user?.phone ?? '');
     _radiusKm = ap?.serviceRadiusKm ?? 5;
+    _centre = ap?.hasServiceLocation == true
+        ? LatLng(ap!.serviceLatitude!, ap.serviceLongitude!)
+        : _defaultCentre;
 
     for (final c in [_name, _registration, _address, _email, _phone]) {
       c.addListener(_markDirty);
@@ -89,19 +94,19 @@ class _EditBusinessInformationScreenState
 
   Future<void> _save() async {
     if (_name.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Business name is required.')),
-      );
+      MyShopToast.show(context, message: 'Business name is required.', type: ToastType.error);
       return;
     }
 
     setState(() => _isSaving = true);
 
-    // Save business name and service area via PUT /users/me/artisan.
+    // Save business name, service area location, and radius via PUT /users/me/artisan.
     final error =
         await ref.read(authControllerProvider.notifier).updateArtisanProfile(
               UpdateArtisanProfileRequest(
                 businessName: _name.text.trim(),
+                serviceLatitude: _centre.latitude,
+                serviceLongitude: _centre.longitude,
                 serviceRadiusKm: _radiusKm,
               ),
             );
@@ -113,13 +118,9 @@ class _EditBusinessInformationScreenState
     });
 
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error)),
-      );
+      MyShopToast.show(context, message: error, type: ToastType.error);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Business info updated')),
-      );
+      MyShopToast.show(context, message: 'Business info updated');
       if (context.canPop()) context.pop();
     }
   }
@@ -182,12 +183,18 @@ class _EditBusinessInformationScreenState
                   ),
                   const SizedBox(height: MyShopSpacing.md),
                   _ServiceAreaCard(
-                    centre: _initialCentre,
+                    centre: _centre,
                     radiusKm: _radiusKm,
                     minRadiusKm: _minRadiusKm,
                     maxRadiusKm: _maxRadiusKm,
                     onIncrease: () => _adjustRadius(_stepKm),
                     onDecrease: () => _adjustRadius(-_stepKm),
+                    onMapTap: (latLng) {
+                      setState(() {
+                        _centre = latLng;
+                        _dirty = true;
+                      });
+                    },
                   ),
                   const SizedBox(height: MyShopSpacing.lg),
                 ],
@@ -374,6 +381,7 @@ class _ServiceAreaCard extends StatefulWidget {
     required this.maxRadiusKm,
     required this.onIncrease,
     required this.onDecrease,
+    this.onMapTap,
   });
 
   final LatLng centre;
@@ -382,6 +390,9 @@ class _ServiceAreaCard extends StatefulWidget {
   final double maxRadiusKm;
   final VoidCallback onIncrease;
   final VoidCallback onDecrease;
+
+  /// Called when the user taps the map to reposition their service area centre.
+  final ValueChanged<LatLng>? onMapTap;
 
   @override
   State<_ServiceAreaCard> createState() => _ServiceAreaCardState();
@@ -393,7 +404,8 @@ class _ServiceAreaCardState extends State<_ServiceAreaCard> {
   @override
   void didUpdateWidget(covariant _ServiceAreaCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.radiusKm != oldWidget.radiusKm) {
+    if (widget.radiusKm != oldWidget.radiusKm ||
+        widget.centre != oldWidget.centre) {
       _fitBounds();
     }
   }
@@ -489,11 +501,11 @@ class _ServiceAreaCardState extends State<_ServiceAreaCard> {
                         _controller.complete(controller);
                       }
                     },
+                    onTap: widget.onMapTap,
                     myLocationButtonEnabled: false,
                     zoomControlsEnabled: false,
                     mapToolbarEnabled: false,
                     compassEnabled: false,
-                    liteModeEnabled: true,
                     markers: {
                       Marker(
                         markerId: const MarkerId('service-area-centre'),

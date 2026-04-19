@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/current_user_provider.dart';
@@ -145,7 +146,12 @@ class BusinessInformationScreen extends ConsumerWidget {
                     ],
                   ),
                   const SizedBox(height: MyShopSpacing.sm),
-                  _ServiceCoverageCard(radiusLabel: '$serviceRadius Radius'),
+                  _ServiceCoverageCard(
+                    radiusLabel: '$serviceRadius Radius',
+                    latitude: ap?.serviceLatitude,
+                    longitude: ap?.serviceLongitude,
+                    radiusKm: ap?.serviceRadiusKm ?? 5,
+                  ),
                   const SizedBox(height: MyShopSpacing.lg),
                 ],
               ),
@@ -526,9 +532,29 @@ class _CompletionCard extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _ServiceCoverageCard extends StatelessWidget {
-  const _ServiceCoverageCard({required this.radiusLabel});
+  const _ServiceCoverageCard({
+    required this.radiusLabel,
+    required this.radiusKm,
+    this.latitude,
+    this.longitude,
+  });
 
   final String radiusLabel;
+  final double? latitude;
+  final double? longitude;
+  final double radiusKm;
+
+  bool get _hasLocation => latitude != null && longitude != null;
+
+  double _zoomForRadius(double km) {
+    if (km <= 1) return 14;
+    if (km <= 3) return 13;
+    if (km <= 5) return 12.2;
+    if (km <= 10) return 11.4;
+    if (km <= 15) return 11;
+    if (km <= 20) return 10.6;
+    return 10.2;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -536,16 +562,61 @@ class _ServiceCoverageCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       child: Stack(
         children: [
-          Container(
-            height: 160,
-            color: const Color(0xFFE6EAEC),
-            alignment: Alignment.center,
-            child: const Icon(
-              Icons.location_on,
-              size: 56,
-              color: MyShopColors.error,
+          if (_hasLocation)
+            SizedBox(
+              height: 160,
+              child: GoogleMap(
+                initialCameraPosition: CameraPosition(
+                  target: LatLng(latitude!, longitude!),
+                  zoom: _zoomForRadius(radiusKm),
+                ),
+                myLocationButtonEnabled: false,
+                zoomControlsEnabled: false,
+                mapToolbarEnabled: false,
+                compassEnabled: false,
+                liteModeEnabled: true,
+                markers: {
+                  Marker(
+                    markerId: const MarkerId('service-centre'),
+                    position: LatLng(latitude!, longitude!),
+                  ),
+                },
+                circles: {
+                  Circle(
+                    circleId: const CircleId('service-area'),
+                    center: LatLng(latitude!, longitude!),
+                    radius: radiusKm * 1000,
+                    fillColor:
+                        MyShopColors.primaryGold.withValues(alpha: 0.18),
+                    strokeColor: MyShopColors.primaryGold,
+                    strokeWidth: 2,
+                  ),
+                },
+              ),
+            )
+          else
+            Container(
+              height: 160,
+              color: const Color(0xFFE6EAEC),
+              alignment: Alignment.center,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.location_off_outlined,
+                    size: 40,
+                    color: MyShopColors.textSecondary,
+                  ),
+                  const SizedBox(height: MyShopSpacing.sm),
+                  Text(
+                    'No service area set',
+                    style: MyShopTypography.body2.copyWith(
+                      color: MyShopColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
           Positioned(
             left: 0,
             right: 0,

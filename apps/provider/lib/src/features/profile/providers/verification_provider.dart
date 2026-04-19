@@ -210,10 +210,24 @@ final localProfilePhotoProvider =
 /// Computes the profile completion percentage from real user data.
 /// Tracks which specific items are missing so the UI can tell the user
 /// exactly what they need to complete before going online.
+///
+/// **Driver**: full name, photo, vehicle, Ghana Card, KYC, police check, licence.
+/// **Artisan**: full name, photo, categories, plus 3 required documents
+/// (Ghana Card, Business Registration, Trade Certificate) approved.
 final profileCompletionProvider = Provider<ProfileCompletion>((ref) {
   final user = ref.watch(currentUserProvider);
   if (user == null) {
     return const ProfileCompletion(completed: 0, total: 1, missing: ['Sign in']);
+  }
+
+  // Backend document statuses — needed for artisan doc approval checks.
+  final verificationAsync = ref.watch(verificationStatusProvider);
+  final isLoadingDocs = verificationAsync.isLoading;
+  final docs = verificationAsync.valueOrNull;
+
+  bool isDocApproved(DocumentType type) {
+    final doc = docs?.documentFor(type.value);
+    return doc != null && doc.isApproved;
   }
 
   final providerType = ref.watch(providerTypeProvider);
@@ -230,19 +244,25 @@ final profileCompletionProvider = Provider<ProfileCompletion>((ref) {
     ];
     return ProfileCompletion.fromChecks(items);
   } else {
-    final ap = user.artisanProfile;
     final items = <(bool, String)>[
       (user.fullName.isNotEmpty, 'Full name'),
-      (ap?.profilePhotoUrl != null, 'Profile photo'),
+      (user.artisanProfile?.profilePhotoUrl != null, 'Profile photo'),
       (
-        ap?.serviceCategories != null && ap!.serviceCategories!.isNotEmpty,
+        user.artisanProfile?.serviceCategories != null &&
+            user.artisanProfile!.serviceCategories!.isNotEmpty,
         'Service categories',
       ),
-      (ap?.ghanaCardVerified == true, 'Ghana Card verification'),
-      (ap?.kycStatus == 'verified', 'KYC verification'),
-      (ap?.policeCheckStatus == 'clear', 'Police background check'),
+      (isDocApproved(DocumentType.ghanaCard), 'Ghana Card (approved)'),
+      (
+        isDocApproved(DocumentType.businessRegistration),
+        'Business Registration (approved)',
+      ),
+      (
+        isDocApproved(DocumentType.tradeCertificate),
+        'Trade Certificate (approved)',
+      ),
     ];
-    return ProfileCompletion.fromChecks(items);
+    return ProfileCompletion.fromChecks(items, isLoading: isLoadingDocs);
   }
 });
 
@@ -251,9 +271,13 @@ class ProfileCompletion {
     required this.completed,
     required this.total,
     this.missing = const [],
+    this.isLoading = false,
   });
 
-  factory ProfileCompletion.fromChecks(List<(bool, String)> items) {
+  factory ProfileCompletion.fromChecks(
+    List<(bool, String)> items, {
+    bool isLoading = false,
+  }) {
     final missing = <String>[
       for (final (passed, label) in items)
         if (!passed) label,
@@ -262,6 +286,7 @@ class ProfileCompletion {
       completed: items.length - missing.length,
       total: items.length,
       missing: missing,
+      isLoading: isLoading,
     );
   }
 
@@ -270,6 +295,10 @@ class ProfileCompletion {
 
   /// Human-readable labels for items that are not yet complete.
   final List<String> missing;
+
+  /// True while verification data is still being fetched from the backend.
+  /// The go-online toggle should wait instead of showing the incomplete sheet.
+  final bool isLoading;
 
   double get progress => total == 0 ? 0 : completed / total;
   int get percentage => (progress * 100).round();

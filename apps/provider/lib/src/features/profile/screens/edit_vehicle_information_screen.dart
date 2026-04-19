@@ -90,9 +90,7 @@ class _EditVehicleInformationScreenState
   Future<void> _save() async {
     final validationError = _validate();
     if (validationError != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(validationError)),
-      );
+      MyShopToast.show(context, message: validationError, type: ToastType.error);
       return;
     }
 
@@ -116,13 +114,9 @@ class _EditVehicleInformationScreenState
     });
 
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error)),
-      );
+      MyShopToast.show(context, message: error, type: ToastType.error);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vehicle info updated')),
-      );
+      MyShopToast.show(context, message: 'Vehicle info updated');
       if (context.canPop()) context.pop();
     }
   }

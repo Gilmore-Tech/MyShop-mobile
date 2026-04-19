@@ -171,7 +171,7 @@ class DocumentsVerificationScreen extends ConsumerWidget {
             ? 'Expires: ${dp!.licenceExpiry}'
             : 'Tap to upload',
         fallbackStatus:
-            dp?.licenceNumber != null ? _DocStatus.valid : _DocStatus.missing,
+            dp?.licenceNumber != null ? _DocStatus.approved : _DocStatus.missing,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -187,7 +187,7 @@ class DocumentsVerificationScreen extends ConsumerWidget {
         uploadState: uploadState,
         type: DocumentType.vehicleRegistration,
         icon: Icons.shield_outlined,
-        title: 'Vehicle Insurance',
+        title: 'Vehicle Registration',
         fallbackMeta: 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
       ),
@@ -201,7 +201,7 @@ class DocumentsVerificationScreen extends ConsumerWidget {
             ? 'Verified'
             : 'Tap to upload front & back',
         fallbackStatus:
-            dp?.ghanaCardVerified == true ? _DocStatus.valid : _DocStatus.missing,
+            dp?.ghanaCardVerified == true ? _DocStatus.approved : _DocStatus.missing,
       ),
     ];
   }
@@ -222,7 +222,7 @@ class DocumentsVerificationScreen extends ConsumerWidget {
         fallbackMeta:
             ap?.ghanaCardVerified == true ? 'Verified' : 'Tap to upload',
         fallbackStatus:
-            ap?.ghanaCardVerified == true ? _DocStatus.valid : _DocStatus.missing,
+            ap?.ghanaCardVerified == true ? _DocStatus.approved : _DocStatus.missing,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -255,7 +255,7 @@ class DocumentsVerificationScreen extends ConsumerWidget {
         uploadState: uploadState,
         type: DocumentType.nationalId,
         icon: Icons.description_outlined,
-        title: 'Tax Clearance (TIN)',
+        title: 'National ID',
         fallbackMeta: 'Recommended for VAT-eligible jobs',
         fallbackStatus: _DocStatus.missing,
       ),
@@ -315,12 +315,14 @@ class DocumentsVerificationScreen extends ConsumerWidget {
         .firstOrNull;
 
     if (doc != null) {
-      if (doc.isVerified) {
+      if (doc.isApproved) {
         return _DocItem(
           icon: icon,
           title: title,
-          meta: doc.expiresAt != null ? 'Expires: ${doc.expiresAt}' : 'Verified',
-          status: _DocStatus.valid,
+          meta: doc.expiresAt != null
+              ? 'Expires: ${doc.expiresAt}'
+              : 'Approved',
+          status: _DocStatus.approved,
           documentType: type,
         );
       } else if (doc.isRejected) {
@@ -331,12 +333,20 @@ class DocumentsVerificationScreen extends ConsumerWidget {
           status: _DocStatus.rejected,
           documentType: type,
         );
-      } else {
-        // uploaded, pending review
+      } else if (doc.isPendingReview) {
         return _DocItem(
           icon: icon,
           title: title,
-          meta: 'Uploaded — pending review',
+          meta: 'Pending admin review',
+          status: _DocStatus.pendingReview,
+          documentType: type,
+        );
+      } else {
+        // uploaded — file not yet in storage
+        return _DocItem(
+          icon: icon,
+          title: title,
+          meta: 'Processing upload…',
           status: _DocStatus.uploaded,
           documentType: type,
         );
@@ -525,7 +535,14 @@ class _SectionLabel extends StatelessWidget {
 // Doc item + status
 // ─────────────────────────────────────────────────────────────────────────────
 
-enum _DocStatus { valid, uploaded, uploading, expiring, rejected, missing }
+/// Maps to the backend document status flow:
+///   uploaded → presigned URL given, file not yet in storage
+///   pendingReview → file in storage, awaiting admin review
+///   approved → admin approved
+///   rejected → admin rejected
+///   uploading → local upload in progress (client-only state)
+///   missing → no document uploaded yet (client-only state)
+enum _DocStatus { approved, pendingReview, uploaded, uploading, rejected, missing }
 
 class _DocItem {
   const _DocItem({
@@ -612,9 +629,7 @@ class _DocRow extends StatelessWidget {
         );
 
     if (error != null && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error)),
-      );
+      MyShopToast.show(context, message: error, type: ToastType.error);
     }
   }
 
@@ -705,29 +720,29 @@ class _StatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (Color bg, Color fg, String label, IconData icon) = switch (status) {
-      _DocStatus.valid => (
+      _DocStatus.approved => (
           MyShopColors.successLight,
           MyShopColors.success,
-          'Valid',
+          'Approved',
           Icons.check_circle_outline,
+        ),
+      _DocStatus.pendingReview => (
+          MyShopColors.warningLight,
+          MyShopColors.warning,
+          'In Review',
+          Icons.hourglass_top,
         ),
       _DocStatus.uploaded => (
           MyShopColors.surfaceGrey,
           MyShopColors.textSecondary,
-          'Pending',
-          Icons.hourglass_top,
+          'Processing',
+          Icons.cloud_done_outlined,
         ),
       _DocStatus.uploading => (
           MyShopColors.primaryGoldLight,
           MyShopColors.primaryGold,
           'Uploading',
           Icons.cloud_upload_outlined,
-        ),
-      _DocStatus.expiring => (
-          MyShopColors.warningLight,
-          MyShopColors.warning,
-          'Expiring',
-          Icons.warning_amber_outlined,
         ),
       _DocStatus.rejected => (
           MyShopColors.errorLight,

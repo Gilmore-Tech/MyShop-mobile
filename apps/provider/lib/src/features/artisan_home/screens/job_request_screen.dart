@@ -1,55 +1,51 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../widgets/bid_status_banner.dart';
 import 'bid_submission_screen.dart';
 
-/// Full job request details — opened from the emergency request modal's
-/// "View Details" action and from the live job feed cards.
+/// Full job request details — opened when an incoming job request is
+/// received via Socket.IO or from the live job feed cards.
 ///
 /// PRD Reference: PRD 5.3 — incoming job notification (category, description,
 /// photos, client location, 5-minute bid window).
 class JobRequestScreen extends StatelessWidget {
   const JobRequestScreen({
     super.key,
+    this.job,
     this.bidStatus = BidStatus.none,
     this.submittedBidAmount = 420,
     this.platformFeePercent = 10,
-    this.requestId = '#GH-204-ADUM',
-    this.clientName = 'Ama Serwaa',
-    this.clientLocation = 'Adum, Kumasi',
-    this.distanceKm = 1.2,
-    this.title = 'Emergency: Burst Main Pipe in Kitchen',
-    this.postedAgo = 'Posted 2 mins ago',
-    this.rating = 5.0,
-    this.reviewsCount = 12,
-    this.description =
-        '"The main pipe under our kitchen sink just burst. Water is everywhere. I\'ve turned off the main valve but need a permanent fix and possibly a replacement pipe section. We have tools but don\'t have the specific welding equipment if needed."',
-    this.photoCount = 3,
-    this.locationLabel = 'Adum, Main Market Area',
-    this.bidsTaken = 2,
-    this.bidsTotal = 3,
-    this.highestBid = 250,
   });
+
+  /// The live job from the backend. When null, the screen falls back to
+  /// placeholder data (legacy path — remove once the feed is wired).
+  final Job? job;
 
   final BidStatus bidStatus;
   final num submittedBidAmount;
   final num platformFeePercent;
-  final String requestId;
-  final String clientName;
-  final String clientLocation;
-  final double distanceKm;
-  final String title;
-  final String postedAgo;
-  final double rating;
-  final int reviewsCount;
-  final String description;
-  final int photoCount;
-  final String locationLabel;
-  final int bidsTaken;
-  final int bidsTotal;
-  final num highestBid;
+
+  String get requestId => job != null ? '#${job!.id.substring(0, 8)}' : '#GH-204-ADUM';
+  String get clientName => job?.clientName ?? 'Client';
+  String get clientLocation => job?.addressText ?? 'Nearby';
+  double get distanceKm => 0;
+  String get title => job?.categoryName != null
+      ? '${job!.categoryName} request'
+      : 'Emergency: Burst Main Pipe in Kitchen';
+  String get postedAgo => job?.createdAt != null ? 'Just posted' : 'Posted 2 mins ago';
+  double get rating => 0;
+  int get reviewsCount => 0;
+  String get description =>
+      job?.description ??
+      '"The main pipe under our kitchen sink just burst. Water is everywhere. I\'ve turned off the main valve but need a permanent fix and possibly a replacement pipe section."';
+  int get photoCount => job?.photos.length ?? 3;
+  String get locationLabel => job?.addressText ?? 'Adum, Main Market Area';
+  int get bidsTaken => 0;
+  int get bidsTotal => 3;
+  num get highestBid => 0;
 
   @override
   Widget build(BuildContext context) {

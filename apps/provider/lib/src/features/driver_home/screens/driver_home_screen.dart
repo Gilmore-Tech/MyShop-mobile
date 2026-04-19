@@ -7,10 +7,10 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../core/providers/socket_provider.dart';
 import '../data/road_snap_service.dart';
 import '../providers/driver_location_provider.dart';
 import '../providers/driver_status_provider.dart';
-import '../providers/ride_request_provider.dart';
 import '../screens/ride_request_screen.dart';
 import '../widgets/auto_accept_card.dart';
 import '../widgets/driver_car_marker.dart';

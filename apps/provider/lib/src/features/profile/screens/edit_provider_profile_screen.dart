@@ -83,13 +83,7 @@ class _EditProviderProfileScreenState
       setState(() {
         _isUploadingPhoto = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error),
-          duration: const Duration(seconds: 6),
-          backgroundColor: MyShopColors.error,
-        ),
-      );
+      MyShopToast.show(context, message: error, type: ToastType.error, duration: const Duration(seconds: 6));
     } else {
       // Save the Cloudinary URL so the photo persists across restarts
       final uploadState = ref.read(documentUploadProvider);
@@ -105,13 +99,9 @@ class _EditProviderProfileScreenState
       await ref.read(authControllerProvider.notifier).refreshProfile();
       if (!mounted) return;
       setState(() => _isUploadingPhoto = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(cloudinaryUrl != null
+      MyShopToast.show(context, message: cloudinaryUrl != null
               ? 'Profile photo updated'
-              : 'Photo uploaded (processing)'),
-        ),
-      );
+              : 'Photo uploaded (processing)');
     }
   }
 
@@ -120,9 +110,7 @@ class _EditProviderProfileScreenState
     final email = _emailController.text.trim();
 
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Name cannot be empty')),
-      );
+      MyShopToast.show(context, message: 'Name cannot be empty', type: ToastType.error);
       return;
     }
 
@@ -143,13 +131,9 @@ class _EditProviderProfileScreenState
     });
 
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error)),
-      );
+      MyShopToast.show(context, message: error, type: ToastType.error);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile updated')),
-      );
+      MyShopToast.show(context, message: 'Profile updated');
     }
   }
 

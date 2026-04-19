@@ -1,10 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 
-/// Incoming ride request — real requests will come via WebSocket (future).
-final incomingRideRequestProvider = StateProvider<Ride?>((ref) {
-  return null;
-});
+// The incoming ride/job request providers are in
+// core/providers/socket_provider.dart — driven by Socket.IO events.
 
 /// Provider for the active ride in progress.
 class ActiveRideNotifier extends StateNotifier<Ride?> {
