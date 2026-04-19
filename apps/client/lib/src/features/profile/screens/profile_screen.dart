@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../providers/profile_provider.dart';
+import '../../auth/providers/auth_controller.dart';
 import '../../../app/router.dart' show AppRoutes;
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -25,9 +26,8 @@ class ProfileScreen extends ConsumerWidget {
       backgroundColor: MyShopColors.offWhite,
       body: dataAsync.when(
         loading: () => _LoadingSkeleton(w: w, h: h),
-        error: (_, __) => _ErrorBody(
-          w: w,
-          h: h,
+        error: (_, __) => MyShopErrorBody(
+          message: 'Could not load profile',
           onRetry: () => ref.invalidate(accountScreenProvider),
         ),
         data: (data) => _ProfileBody(data: data, w: w, h: h),
@@ -629,15 +629,15 @@ class _NewBadge extends StatelessWidget {
 
 // ── Sign Out Row ──────────────────────────────────────────────────────────────
 
-class _SignOutRow extends StatelessWidget {
+class _SignOutRow extends ConsumerWidget {
   final double w;
   final double h;
   const _SignOutRow({required this.w, required this.h});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
-      onTap: () => _confirmSignOut(context),
+      onTap: () => _confirmSignOut(context, ref),
       behavior: HitTestBehavior.opaque,
       child: Padding(
         padding: EdgeInsets.symmetric(
@@ -685,7 +685,7 @@ class _SignOutRow extends StatelessWidget {
     );
   }
 
-  void _confirmSignOut(BuildContext context) {
+  void _confirmSignOut(BuildContext context, WidgetRef ref) {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -720,7 +720,7 @@ class _SignOutRow extends StatelessWidget {
           TextButton(
             onPressed: () {
               Navigator.of(ctx).pop();
-              // TODO: clear JWT tokens + navigate to login
+              ref.read(clientAuthControllerProvider.notifier).logout();
             },
             child: Text(
               'Sign Out',
@@ -908,65 +908,3 @@ class _Shimmer extends StatelessWidget {
   }
 }
 
-// ── Error Body ────────────────────────────────────────────────────────────────
-
-class _ErrorBody extends StatelessWidget {
-  final double       w;
-  final double       h;
-  final VoidCallback onRetry;
-  const _ErrorBody(
-      {required this.w, required this.h, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: w * 0.082),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.person_off_outlined,
-                size: w * 0.154, color: MyShopColors.textHint),
-            SizedBox(height: h * 0.019),
-            Text(
-              'Could not load account',
-              style: TextStyle(
-                fontSize:   w * 0.041,
-                fontWeight: FontWeight.w700,
-                color:      MyShopColors.textPrimary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: h * 0.009),
-            Text(
-              'Check your connection and try again.',
-              style: TextStyle(
-                  fontSize: w * 0.033, color: MyShopColors.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: h * 0.028),
-            GestureDetector(
-              onTap: onRetry,
-              child: Container(
-                padding: EdgeInsets.symmetric(
-                    horizontal: w * 0.077, vertical: h * 0.017),
-                decoration: BoxDecoration(
-                  color:        MyShopColors.darkSlate,
-                  borderRadius: BorderRadius.circular(w * 0.021),
-                ),
-                child: Text(
-                  'Try Again',
-                  style: TextStyle(
-                    fontSize:   w * 0.038,
-                    fontWeight: FontWeight.w600,
-                    color:      MyShopColors.surfaceWhite,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

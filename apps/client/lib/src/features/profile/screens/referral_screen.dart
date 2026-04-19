@@ -169,10 +169,7 @@ class _CodeCard extends StatelessWidget {
                   label: 'Copy Code',
                   onTap: () {
                     Clipboard.setData(const ClipboardData(text: code));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Code copied!')),
-                    );
+                    MyShopToast.show(context, message: 'Code copied!');
                   },
                   w: w, h: h,
                 ),

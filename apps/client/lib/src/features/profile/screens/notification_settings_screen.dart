@@ -748,21 +748,7 @@ class _SendTestButtonState extends ConsumerState<_SendTestButton> {
         .read(notificationSettingsProvider.notifier)
         .sendTestNotification();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Test notification sent!'),
-        backgroundColor: MyShopColors.darkSlate,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        margin: EdgeInsets.fromLTRB(
-          widget.w * 0.044,
-          0,
-          widget.w * 0.044,
-          widget.h * 0.032,
-        ),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    MyShopToast.show(context, message: 'Test notification sent!', duration: const Duration(seconds: 2));
     setState(() => _loading = false);
   }
 

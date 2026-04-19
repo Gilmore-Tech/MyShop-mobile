@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_ui/shared_ui.dart';
 import 'package:go_router/go_router.dart';
-
-import '../../../app/router.dart';
+import 'package:shared_ui/shared_ui.dart';
 
 // ── SplashScreen ──────────────────────────────────────────────────────────────
 // PRD § 4.1: On launch, check for a valid JWT in secure storage.
@@ -91,10 +89,11 @@ class _SplashScreenState extends State<SplashScreen>
 
   void _navigate() {
     if (!mounted) return;
-    // TODO: replace with real JWT check via flutter_secure_storage.
-    // If token found + not expired → context.go(AppRoutes.home)
-    // else                         → context.go(AppRoutes.authPhone)
-    context.go(AppRoutes.authPhone);
+    // The GoRouter redirect callback handles routing based on auth state.
+    // By the time the splash animation finishes (~2s), bootstrap() has
+    // resolved and the auth state is either Authenticated or Unauthenticated.
+    // GoRouter's refreshListenable fires the redirect automatically.
+    // No explicit navigation needed — just stay put and let the redirect work.
   }
 
   @override

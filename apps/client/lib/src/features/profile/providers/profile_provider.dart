@@ -1,26 +1,20 @@
+import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-// ── Account Profile ───────────────────────────────────────────────────────────
+import '../../auth/providers/auth_controller.dart';
+
+// ── Account Profile ───────────────────────────────────��───────────────────────
 // API: GET /v1/users/me  (EDD § User Endpoints)
-// Phone number is the primary identity anchor (EDD § Auth Module).
-// Email and phone are masked in-app — backend performs masking before serving.
-// KYC status reflects Smile Identity verification (EDD § Verification Module).
 
 class AccountProfile {
   final String userId;
   final String displayName;
-
-  /// Backend-masked email, e.g. "emm*****.b@gmail.com".
   final String maskedEmail;
-
-  /// Backend-masked phone, e.g. "+233 ••• ••• 459".
   final String maskedPhone;
-
-  /// True once Smile Identity KYC (Ghana Card) is approved.
   final bool isKycVerified;
-
-  /// Remote avatar URL — null means show initials placeholder.
   final String? avatarUrl;
+  final int loyaltyPointsBalance;
+  final String? referralCode;
 
   const AccountProfile({
     required this.userId,
@@ -29,9 +23,29 @@ class AccountProfile {
     required this.maskedPhone,
     required this.isKycVerified,
     this.avatarUrl,
+    this.loyaltyPointsBalance = 0,
+    this.referralCode,
   });
 
-  /// First two initials for the avatar placeholder.
+  /// Build from the authenticated user's profile.
+  factory AccountProfile.fromUserProfile(UserProfile profile) {
+    final client = profile.client;
+    final displayName = client?.displayName ?? profile.fullName;
+    final phone = profile.phone;
+    final email = profile.email ?? '';
+
+    return AccountProfile(
+      userId: profile.id,
+      displayName: displayName,
+      maskedEmail: _maskEmail(email),
+      maskedPhone: _maskPhone(phone),
+      isKycVerified: client?.ghanaCardVerified ?? false,
+      avatarUrl: client?.profilePhotoUrl,
+      loyaltyPointsBalance: client?.loyaltyPointsBalance ?? 0,
+      referralCode: client?.referralCode,
+    );
+  }
+
   String get initials {
     final parts = displayName.trim().split(' ');
     if (parts.length >= 2) {
@@ -39,15 +53,30 @@ class AccountProfile {
     }
     return displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
   }
+
+  static String _maskPhone(String phone) {
+    final cleaned = phone.replaceAll(RegExp(r'[^\d+]'), '');
+    if (cleaned.length < 6) return phone;
+    final prefix = cleaned.substring(0, 4);
+    final suffix = cleaned.substring(cleaned.length - 3);
+    return '$prefix ••• ••• $suffix';
+  }
+
+  static String _maskEmail(String email) {
+    if (email.isEmpty) return '';
+    final parts = email.split('@');
+    if (parts.length != 2) return email;
+    final name = parts[0];
+    final domain = parts[1];
+    if (name.length <= 3) return '${name[0]}***@$domain';
+    return '${name.substring(0, 3)}*****@$domain';
+  }
 }
 
 // ── Account Screen Data ───────────────────────────────────────────────────────
 
 class AccountScreenData {
   final AccountProfile profile;
-
-  /// Unread notification count — drives the "N New" badge on the
-  /// Notifications row and the bell dot in the app bar.
   final int unreadNotificationCount;
 
   const AccountScreenData({
@@ -62,26 +91,26 @@ class AccountScreenNotifier
     extends AutoDisposeAsyncNotifier<AccountScreenData> {
   @override
   Future<AccountScreenData> build() async {
-    // TODO: GET /v1/users/me  +  GET /v1/notifications?unread=true&count=1
-    await Future.delayed(const Duration(milliseconds: 300));
-    return _mockData;
+    final authState = ref.watch(clientAuthControllerProvider);
+
+    if (authState is AuthAuthenticated) {
+      final profile = AccountProfile.fromUserProfile(authState.profile);
+
+      // TODO: Fetch unread notification count from GET /notifications?unread=true
+      // For now derive from auth profile — the notification count will be
+      // wired when the notification provider is integrated.
+      return AccountScreenData(
+        profile: profile,
+        unreadNotificationCount: 0,
+      );
+    }
+
+    // Fallback — shouldn't normally happen if router guards are working
+    throw Exception('Not authenticated');
   }
 }
 
 final accountScreenProvider =
     AsyncNotifierProvider.autoDispose<AccountScreenNotifier, AccountScreenData>(
   AccountScreenNotifier.new,
-);
-
-// ── Mock data ─────────────────────────────────────────────────────────────────
-
-const _mockData = AccountScreenData(
-  profile: AccountProfile(
-    userId:        'USR-10021',
-    displayName:   'Emmanuel Boateng',
-    maskedEmail:   'emm*****.b@gmail.com',
-    maskedPhone:   '+233 ••• ••• 459',
-    isKycVerified: true,
-  ),
-  unreadNotificationCount: 3,
 );

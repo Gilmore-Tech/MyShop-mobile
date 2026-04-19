@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/di/providers.dart';
+import '../../auth/providers/auth_controller.dart';
+
 // ── Models ────────────────────────────────────────────────────────────────────
 
 class SpecialOffer {
@@ -33,47 +36,10 @@ class RecentPlace {
   });
 }
 
-// ── Mock data ─────────────────────────────────────────────────────────────────
-
-const _mockOffers = [
-  SpecialOffer(
-    id: '1',
-    tag: 'SPECIAL OFFER',
-    title: '20% Off Your First Ride',
-    subtitle: 'Use code: AKWAABA',
-    promoCode: 'AKWAABA',
-    backgroundColor: Color(0xFF8B1E1E), // deep brick red
-  ),
-  SpecialOffer(
-    id: '2',
-    tag: 'LIMITED TIME',
-    title: 'GHS 10 Off Artisan Services',
-    subtitle: 'Use code: CRAFT10',
-    promoCode: 'CRAFT10',
-    backgroundColor: Color(0xFF1F4E3D), // deep forest green
-  ),
-];
-
-const _mockRecentPlaces = [
-  RecentPlace(
-    id: '1',
-    name: 'Accra Mall',
-    address: 'Tetteh Quarshie Interchange, Accra',
-  ),
-  RecentPlace(
-    id: '2',
-    name: 'Home',
-    address: '12 Garden Street, Kumasi',
-  ),
-  RecentPlace(
-    id: '3',
-    name: 'University of Ghana',
-    address: 'Legon Road Boundary, Accra',
-  ),
-];
-
 // ── Providers ─────────────────────────────────────────────────────────────────
 
+/// Special offers — in production these come from a config/promo endpoint.
+/// For pilot, we keep a small static set that can be updated via platform config.
 final specialOffersProvider =
     AsyncNotifierProvider<SpecialOffersNotifier, List<SpecialOffer>>(
   SpecialOffersNotifier.new,
@@ -82,12 +48,30 @@ final specialOffersProvider =
 class SpecialOffersNotifier extends AsyncNotifier<List<SpecialOffer>> {
   @override
   Future<List<SpecialOffer>> build() async {
-    // TODO: Replace with real API call via api_client
-    await Future.delayed(const Duration(milliseconds: 400));
-    return _mockOffers;
+    // TODO: Replace with GET /config/promos when backend supports it.
+    // For pilot, static offers are fine per PRD §13.3 (no ads/listings).
+    return const [
+      SpecialOffer(
+        id: '1',
+        tag: 'SPECIAL OFFER',
+        title: '20% Off Your First Ride',
+        subtitle: 'Use code: AKWAABA',
+        promoCode: 'AKWAABA',
+        backgroundColor: Color(0xFF8B1E1E),
+      ),
+      SpecialOffer(
+        id: '2',
+        tag: 'LIMITED TIME',
+        title: 'GHS 10 Off Artisan Services',
+        subtitle: 'Use code: CRAFT10',
+        promoCode: 'CRAFT10',
+        backgroundColor: Color(0xFF1F4E3D),
+      ),
+    ];
   }
 }
 
+/// Recent/saved places — fetched from GET /users/me/saved-locations.
 final recentPlacesProvider =
     AsyncNotifierProvider<RecentPlacesNotifier, List<RecentPlace>>(
   RecentPlacesNotifier.new,
@@ -96,11 +80,35 @@ final recentPlacesProvider =
 class RecentPlacesNotifier extends AsyncNotifier<List<RecentPlace>> {
   @override
   Future<List<RecentPlace>> build() async {
-    // TODO: Replace with real API call / local cache
-    await Future.delayed(const Duration(milliseconds: 200));
-    return _mockRecentPlaces;
+    try {
+      final userService = ref.watch(userServiceProvider);
+      final locations = await userService.getSavedLocations();
+      return locations.map((loc) {
+        final map = loc as Map<String, dynamic>;
+        return RecentPlace(
+          id: map['id']?.toString() ?? '',
+          name: map['label'] as String? ?? 'Saved Place',
+          address: map['address'] as String? ?? '',
+        );
+      }).toList();
+    } catch (_) {
+      // Fallback: return empty list on error (offline-graceful per PRD).
+      return const [];
+    }
   }
 }
 
-/// Current location display string — in production, resolve via geolocator + reverse geocoding.
-final currentLocationProvider = Provider<String>((_) => 'Kumasi Central Market');
+/// Current location display string.
+/// In production, resolve via geolocator + reverse geocoding.
+/// For pilot, defaults to the Ashanti Region scope.
+final currentLocationProvider = Provider<String>((_) => 'Kumasi, Ashanti Region');
+
+/// User's display name from auth state — used in the greeting.
+final userDisplayNameProvider = Provider<String>((ref) {
+  final authState = ref.watch(clientAuthControllerProvider);
+  if (authState is AuthAuthenticated) {
+    final client = authState.profile.client;
+    return client?.displayName ?? authState.profile.fullName;
+  }
+  return 'there';
+});

@@ -27,9 +27,8 @@ class PrivacySecurityScreen extends ConsumerWidget {
       body: state.isLoading
           ? _LoadingSkeleton(w: w, h: h)
           : state.data == null
-              ? _ErrorBody(
-                  w: w,
-                  h: h,
+              ? MyShopErrorBody(
+                  message: 'Could not load settings',
                   onRetry: () =>
                       ref.read(privacySecurityProvider.notifier).reload(),
                 )
@@ -853,48 +852,3 @@ class _Shimmer extends StatelessWidget {
   }
 }
 
-// ── Error body ────────────────────────────────────────────────────────────────
-
-class _ErrorBody extends StatelessWidget {
-  final double w;
-  final double h;
-  final VoidCallback onRetry;
-  const _ErrorBody(
-      {required this.w, required this.h, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.error_outline_rounded,
-              color: MyShopColors.disabled, size: w * 0.130),
-          SizedBox(height: h * 0.016),
-          Text(
-            'Could not load security settings',
-            style: TextStyle(
-              fontFamily: 'Raleway',
-              fontSize: w * 0.038,
-              fontWeight: FontWeight.w600,
-              color: MyShopColors.textSecondary,
-            ),
-          ),
-          SizedBox(height: h * 0.022),
-          TextButton(
-            onPressed: onRetry,
-            child: Text(
-              'Try Again',
-              style: TextStyle(
-                fontFamily: 'Raleway',
-                fontSize: w * 0.038,
-                fontWeight: FontWeight.w600,
-                color: MyShopColors.primaryGold,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

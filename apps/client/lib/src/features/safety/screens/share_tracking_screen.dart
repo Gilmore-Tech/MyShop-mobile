@@ -76,10 +76,7 @@ class _ShareTrackingScreenState
                 onCopy: () {
                   Clipboard.setData(
                       const ClipboardData(text: _mockLink));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Link copied to clipboard')),
-                  );
+                  MyShopToast.show(context, message: 'Link copied to clipboard');
                 },
               ),
               SizedBox(height: h * 0.024),
