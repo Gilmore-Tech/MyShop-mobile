@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../core/providers/socket_provider.dart';
+import '../core/widgets/incoming_request_listener.dart';
 import '../features/auth/providers/auth_controller.dart';
 import '../features/auth/screens/otp_verification_screen.dart';
 import '../features/auth/screens/phone_input_screen.dart';
@@ -262,9 +264,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/job-request',
         builder: (context, state) {
-          final status = state.extra is BidStatus
-              ? state.extra! as BidStatus
-              : BidStatus.none;
+          final extra = state.extra;
+          if (extra is Job) {
+            return JobRequestScreen(job: extra);
+          }
+          final status = extra is BidStatus ? extra : BidStatus.none;
           return JobRequestScreen(bidStatus: status);
         },
       ),
@@ -376,12 +380,20 @@ class _DriverShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Activate the Socket.IO connection manager — connects/disconnects
+    // automatically when the provider toggles online/offline.
+    ref.watch(socketConnectionProvider);
+
+    // Pipe GPS updates into the socket so the backend can match this
+    // provider against incoming jobs/rides within their service radius.
+    ref.watch(locationSocketBridgeProvider);
+
     final currentIndex = _currentIndex(context);
     final isArtisan = ref.watch(providerTypeProvider).isArtisan;
     final badges = ref.watch(navBadgeProvider);
 
     return Scaffold(
-      body: child,
+      body: IncomingRequestListener(child: child),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           color: Color(0xF2FFFFFF),
