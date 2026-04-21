@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +9,10 @@ import '../../../app/router.dart';
 import '../providers/bid_list_provider.dart';
 
 // ── Public entry-point ────────────────────────────────────────────────────────
+
+/// How often the open sheet polls the bids endpoint. Keeps the list fresh
+/// even when the socket `job:bid_new` event is delayed or not delivered.
+const _bidsPollInterval = Duration(seconds: 5);
 
 /// Shows the bid list bottom sheet over [context].
 ///
@@ -22,24 +28,51 @@ void showBidListSheet(
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.45),
+    // Dismiss via the close button / barrier tap. Disabling the sheet's
+    // own drag lets the inner RefreshIndicator claim the vertical drag
+    // gesture so pull-to-refresh actually fires.
+    enableDrag: false,
     builder: (_) => BidListSheet(job: job),
   );
 }
 
 // ── Sheet root ────────────────────────────────────────────────────────────────
 
-class BidListSheet extends ConsumerWidget {
+class BidListSheet extends ConsumerStatefulWidget {
   final ActiveJobSummary job;
   const BidListSheet({super.key, required this.job});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final size = MediaQuery.sizeOf(context);
-    final w    = size.width;
-    final h    = size.height;
+  ConsumerState<BidListSheet> createState() => _BidListSheetState();
+}
 
-    final bidsAsync    = ref.watch(bidsForJobProvider(job.jobId));
-    final selectState  = ref.watch(bidListNotifierProvider);
+class _BidListSheetState extends ConsumerState<BidListSheet> {
+  Timer? _poll;
+
+  @override
+  void initState() {
+    super.initState();
+    _poll = Timer.periodic(_bidsPollInterval, (_) {
+      if (!mounted) return;
+      ref.invalidate(bidsForJobProvider(widget.job.jobId));
+    });
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
+
+    final job = widget.job;
+    final bidsAsync = ref.watch(bidsForJobProvider(job.jobId));
+    final selectState = ref.watch(bidListNotifierProvider);
 
     return Container(
       // Sheet fills ~85 % of screen height so cards are scrollable
@@ -235,7 +268,7 @@ class _ActiveRequestCard extends StatelessWidget {
 
 // ── Bid list ──────────────────────────────────────────────────────────────────
 
-class _BidList extends StatelessWidget {
+class _BidList extends ConsumerWidget {
   final List<ArtisanBid> bids;
   final ActiveJobSummary job;
   final BidListState selectState;
@@ -251,20 +284,30 @@ class _BidList extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return ListView.separated(
-      padding: EdgeInsets.symmetric(
-        horizontal: w * 0.041,
-        vertical: h * 0.005,
-      ),
-      itemCount: bids.length,
-      separatorBuilder: (_, __) => SizedBox(height: h * 0.012),
-      itemBuilder: (context, i) => _BidCard(
-        bid: bids[i],
-        job: job,
-        selectState: selectState,
-        w: w,
-        h: h,
+  Widget build(BuildContext context, WidgetRef ref) {
+    return RefreshIndicator(
+      color: MyShopColors.primaryGold,
+      onRefresh: () async {
+        ref.invalidate(bidsForJobProvider(job.jobId));
+        // Wait for the new build to complete so the spinner lingers until
+        // data is actually ready.
+        await ref.read(bidsForJobProvider(job.jobId).future);
+      },
+      child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.symmetric(
+          horizontal: w * 0.041,
+          vertical: h * 0.005,
+        ),
+        itemCount: bids.length,
+        separatorBuilder: (_, __) => SizedBox(height: h * 0.012),
+        itemBuilder: (context, i) => _BidCard(
+          bid: bids[i],
+          job: job,
+          selectState: selectState,
+          w: w,
+          h: h,
+        ),
       ),
     );
   }
@@ -309,6 +352,7 @@ class _BidCard extends ConsumerWidget {
               _ArtisanAvatar(
                 name: bid.artisanName,
                 color: bid.avatarColor,
+                photoUrl: bid.profilePhotoUrl,
                 isVerified: bid.isVerified,
                 w: w,
               ),
@@ -343,42 +387,64 @@ class _BidCard extends ConsumerWidget {
                       ],
                     ),
                     SizedBox(height: h * 0.004),
-                    // Rating row
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.star_rounded,
-                          size: w * 0.033,
-                          color: MyShopColors.primaryGold,
-                        ),
-                        SizedBox(width: w * 0.008),
-                        Text(
-                          bid.rating.toStringAsFixed(1),
-                          style: TextStyle(
-                            fontSize: w * 0.031,
-                            fontWeight: FontWeight.w600,
-                            color: MyShopColors.textPrimary,
+                    // Rating row — show "New" badge if no ratings yet.
+                    bid.hasRating
+                        ? Row(
+                            children: [
+                              Icon(
+                                Icons.star_rounded,
+                                size: w * 0.033,
+                                color: MyShopColors.primaryGold,
+                              ),
+                              SizedBox(width: w * 0.008),
+                              Text(
+                                bid.rating.toStringAsFixed(1),
+                                style: TextStyle(
+                                  fontSize: w * 0.031,
+                                  fontWeight: FontWeight.w600,
+                                  color: MyShopColors.textPrimary,
+                                ),
+                              ),
+                              Text(
+                                ' (${bid.reviewCount} review${bid.reviewCount == 1 ? '' : 's'})',
+                                style: TextStyle(
+                                  fontSize: w * 0.028,
+                                  fontWeight: FontWeight.w400,
+                                  color: MyShopColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          )
+                        : Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: w * 0.018,
+                              vertical: h * 0.003,
+                            ),
+                            decoration: BoxDecoration(
+                              color: MyShopColors.primaryGoldLight,
+                              borderRadius: BorderRadius.circular(w * 0.021),
+                            ),
+                            child: Text(
+                              'New artisan',
+                              style: TextStyle(
+                                fontSize: w * 0.026,
+                                fontWeight: FontWeight.w700,
+                                color: MyShopColors.primaryGold,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
                           ),
+                    if (bid.tradeTitle.isNotEmpty) ...[
+                      SizedBox(height: h * 0.003),
+                      Text(
+                        bid.tradeTitle,
+                        style: TextStyle(
+                          fontSize: w * 0.031,
+                          fontWeight: FontWeight.w500,
+                          color: MyShopColors.textSecondary,
                         ),
-                        Text(
-                          ' (${bid.reviewCount} reviews)',
-                          style: TextStyle(
-                            fontSize: w * 0.028,
-                            fontWeight: FontWeight.w400,
-                            color: MyShopColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: h * 0.003),
-                    Text(
-                      bid.tradeTitle,
-                      style: TextStyle(
-                        fontSize: w * 0.031,
-                        fontWeight: FontWeight.w500,
-                        color: MyShopColors.textSecondary,
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -398,7 +464,7 @@ class _BidCard extends ConsumerWidget {
 
           SizedBox(height: h * 0.012),
 
-          // ── Arrival time row ──
+          // ── Arrival + duration row ──
           Row(
             children: [
               Icon(
@@ -408,13 +474,30 @@ class _BidCard extends ConsumerWidget {
               ),
               SizedBox(width: w * 0.015),
               Text(
-                'Arrives in ${bid.arrivesInMinutes} min',
+                _etaLabel(bid.arrivesInMinutes),
                 style: TextStyle(
                   fontSize: w * 0.031,
                   fontWeight: FontWeight.w400,
                   color: MyShopColors.textSecondary,
                 ),
               ),
+              if (bid.durationMinutes > 0) ...[
+                SizedBox(width: w * 0.026),
+                Icon(
+                  Icons.schedule_rounded,
+                  size: w * 0.036,
+                  color: MyShopColors.textHint,
+                ),
+                SizedBox(width: w * 0.015),
+                Text(
+                  'Est. ${_durationLabel(bid.durationMinutes)}',
+                  style: TextStyle(
+                    fontSize: w * 0.031,
+                    fontWeight: FontWeight.w400,
+                    color: MyShopColors.textSecondary,
+                  ),
+                ),
+              ],
             ],
           ),
 
@@ -467,42 +550,83 @@ class _BidCard extends ConsumerWidget {
   }
 }
 
+// ── Formatters ────────────────────────────────────────────────────────────────
+
+String _etaLabel(int minutes) {
+  if (minutes <= 0) return 'ETA pending';
+  if (minutes < 60) return 'Arrives in $minutes min';
+  final hours = minutes ~/ 60;
+  final rem = minutes % 60;
+  return rem == 0
+      ? 'Arrives in ${hours}h'
+      : 'Arrives in ${hours}h ${rem}m';
+}
+
+String _durationLabel(int minutes) {
+  if (minutes < 60) return '$minutes min';
+  final hours = minutes ~/ 60;
+  final rem = minutes % 60;
+  return rem == 0 ? '${hours}h' : '${hours}h ${rem}m';
+}
+
 // ── Artisan Avatar ────────────────────────────────────────────────────────────
 
 class _ArtisanAvatar extends StatelessWidget {
   final String name;
   final Color color;
+  final String? photoUrl;
   final bool isVerified;
   final double w;
 
   const _ArtisanAvatar({
     required this.name,
     required this.color,
+    required this.photoUrl,
     required this.isVerified,
     required this.w,
   });
 
+  String get _initials {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    final chars = parts
+        .where((p) => p.isNotEmpty)
+        .take(2)
+        .map((p) => p[0])
+        .join();
+    return chars.isEmpty ? '?' : chars.toUpperCase();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final size   = w * 0.138; // ~54dp
-    final initials = name.trim().split(' ').take(2).map((s) => s[0]).join();
+    final size = w * 0.138; // ~54dp
+    final hasPhoto = photoUrl != null && photoUrl!.isNotEmpty;
 
-    return Container(
+    final fallback = Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-      ),
-      child: Center(
-        child: Text(
-          initials.toUpperCase(),
-          style: TextStyle(
-            fontSize: w * 0.046,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-          ),
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      alignment: Alignment.center,
+      child: Text(
+        _initials,
+        style: TextStyle(
+          fontSize: w * 0.046,
+          fontWeight: FontWeight.w700,
+          color: Colors.white,
         ),
+      ),
+    );
+
+    if (!hasPhoto) return fallback;
+
+    return ClipOval(
+      child: Image.network(
+        photoUrl!,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => fallback,
+        loadingBuilder: (_, child, progress) =>
+            progress == null ? child : fallback,
       ),
     );
   }

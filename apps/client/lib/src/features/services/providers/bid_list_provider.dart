@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:api_client/api_client.dart';
@@ -18,14 +20,18 @@ class ArtisanBid {
   final int reviewCount;
   final bool isVerified;
 
-  /// Placeholder colour for the avatar until real network images land.
-  final Color avatarColor;
+  /// Artisan's remote profile photo (Cloudinary/S3). When null the avatar
+  /// falls back to initials on a deterministic color.
+  final String? profilePhotoUrl;
 
   /// Bid amount in pesewas (100 pesewas = GHS 1).
   final int amountPesewas;
 
   /// Estimated arrival time in minutes (derived from artisan's current location).
   final int arrivesInMinutes;
+
+  /// Estimated duration of the work in minutes.
+  final int durationMinutes;
 
   /// Optional note from the artisan explaining what the bid covers.
   final String? bidMessage;
@@ -38,15 +44,37 @@ class ArtisanBid {
     required this.rating,
     required this.reviewCount,
     required this.isVerified,
-    required this.avatarColor,
     required this.amountPesewas,
     required this.arrivesInMinutes,
+    this.durationMinutes = 0,
+    this.profilePhotoUrl,
     this.bidMessage,
   });
+
+  bool get hasRating => reviewCount > 0 && rating > 0;
 
   /// Display amount e.g. "GHS 240"
   String get amountDisplay =>
       'GHS ${(amountPesewas / 100).toStringAsFixed(0)}';
+
+  /// Deterministic fallback avatar color derived from the artisan id, so
+  /// the same artisan always renders with the same shade across sessions.
+  Color get avatarColor {
+    const palette = <Color>[
+      Color(0xFF5D4037), // brown
+      Color(0xFF795548), // medium brown
+      Color(0xFF607D8B), // blue-grey
+      Color(0xFF455A64), // slate
+      Color(0xFF6D4C41), // warm brown
+      Color(0xFF3E2723), // dark brown
+      Color(0xFF33691E), // deep green
+      Color(0xFF4E342E), // cocoa
+    ];
+    final key = artisanId.isNotEmpty ? artisanId : bidId;
+    if (key.isEmpty) return palette.first;
+    final hash = key.codeUnits.fold<int>(0, (acc, c) => acc + c);
+    return palette[hash % palette.length];
+  }
 }
 
 // ── Active Job Summary ────────────────────────────────────────────────────────
@@ -147,84 +175,97 @@ class _BidsNotifier
     extends AutoDisposeFamilyAsyncNotifier<List<ArtisanBid>, String> {
   @override
   Future<List<ArtisanBid>> build(String jobId) async {
-    try {
-      final jobService = ref.watch(jobServiceProvider);
-      final data = await jobService.getBids(jobId);
-      return data.map((item) => _parseBid(item as Map<String, dynamic>)).toList();
-    } catch (_) {
-      // Fallback to mock during development / if endpoint not ready
-      return _mockBids[jobId] ?? _defaultMockBids;
+    final jobService = ref.watch(jobServiceProvider);
+    final data = await jobService.getBids(jobId);
+    developer.log(
+      'Received ${data.length} bid(s) for job $jobId',
+      name: 'BidsForJob',
+    );
+    final bids = <ArtisanBid>[];
+    for (final item in data) {
+      if (item is! Map<String, dynamic>) {
+        developer.log('Skipping non-map bid entry: ${item.runtimeType}',
+            name: 'BidsForJob', level: 900);
+        continue;
+      }
+      try {
+        bids.add(_parseBid(item));
+      } catch (e, st) {
+        // Log the offending payload so we can see which field has the wrong
+        // shape, then skip it instead of failing the whole list.
+        developer.log(
+          'Failed to parse bid — skipping. raw=$item',
+          name: 'BidsForJob',
+          level: 1000,
+          error: e,
+          stackTrace: st,
+        );
+      }
     }
+    return bids;
   }
 
   /// Parse API bid response into [ArtisanBid].
+  ///
+  /// Tolerates a few backend response shapes:
+  /// - artisan nested under `artisan` OR `provider` OR flat at top level
+  /// - name as `fullName`, `name`, or `firstName`+`lastName`
+  /// - notes field as `notes` (what submitBid POSTs) or legacy `message`
+  /// - eta as `etaMinutes` (what submitBid POSTs) or legacy
+  ///   `estimatedArrivalMinutes`
   static ArtisanBid _parseBid(Map<String, dynamic> data) {
-    final provider = data['provider'] as Map<String, dynamic>? ?? {};
-    final artisanName = '${provider['firstName'] ?? ''} ${provider['lastName'] ?? ''}'.trim();
+    // The artisan may sit under any of these keys depending on the endpoint.
+    final artisan = (data['artisan'] as Map<String, dynamic>?) ??
+        (data['provider'] as Map<String, dynamic>?) ??
+        const <String, dynamic>{};
+
+    String composeName() {
+      final full = (artisan['fullName'] ?? artisan['name']) as String?;
+      if (full != null && full.trim().isNotEmpty) return full.trim();
+      final first = artisan['firstName'] as String? ?? '';
+      final last = artisan['lastName'] as String? ?? '';
+      final joined = '$first $last'.trim();
+      return joined.isNotEmpty ? joined : 'Artisan';
+    }
+
+    String composeTradeTitle() {
+      final specialty = (artisan['specialty'] ?? artisan['tradeTitle'])
+          as String?;
+      if (specialty != null && specialty.trim().isNotEmpty) return specialty;
+      // Derive from service_categories[0].name when available.
+      final cats = artisan['serviceCategories'] as List<dynamic>?;
+      if (cats != null && cats.isNotEmpty) {
+        final first = cats.first;
+        if (first is Map<String, dynamic>) {
+          final name = first['name'] as String?;
+          if (name != null && name.isNotEmpty) return name;
+        }
+      }
+      return '';
+    }
 
     return ArtisanBid(
-      bidId: data['id'] as String? ?? '',
-      artisanId: provider['id'] as String? ?? '',
-      artisanName: artisanName.isNotEmpty ? artisanName : 'Artisan',
-      tradeTitle: provider['specialty'] as String? ?? '',
-      rating: (provider['rating'] as num?)?.toDouble() ?? 0.0,
-      reviewCount: (provider['reviewCount'] as num?)?.toInt() ?? 0,
-      isVerified: provider['isVerified'] as bool? ?? false,
-      avatarColor: const Color(0xFF5D4037),
+      bidId: data['id'] as String? ?? data['bidId'] as String? ?? '',
+      artisanId: artisan['id'] as String? ??
+          artisan['userId'] as String? ??
+          data['artisanId'] as String? ??
+          '',
+      artisanName: composeName(),
+      tradeTitle: composeTradeTitle(),
+      rating: (artisan['rating'] as num?)?.toDouble() ?? 0.0,
+      reviewCount: (artisan['reviewCount'] as num?)?.toInt() ?? 0,
+      isVerified: (artisan['isVerified'] ?? artisan['verified']) as bool? ??
+          false,
+      profilePhotoUrl: (artisan['profilePhotoUrl'] ??
+          artisan['photoUrl'] ??
+          artisan['avatarUrl']) as String?,
       amountPesewas: (data['amountPesewas'] as num?)?.toInt() ?? 0,
-      arrivesInMinutes: (data['estimatedArrivalMinutes'] as num?)?.toInt() ?? 0,
-      bidMessage: data['message'] as String?,
+      arrivesInMinutes: (data['etaMinutes'] as num?)?.toInt() ??
+          (data['estimatedArrivalMinutes'] as num?)?.toInt() ??
+          0,
+      durationMinutes: (data['durationMinutes'] as num?)?.toInt() ?? 0,
+      bidMessage: (data['notes'] ?? data['message']) as String?,
     );
   }
 }
 
-// ── Mock data ─────────────────────────────────────────────────────────────────
-// Max 3 bids per job (PRD/EDD § job_max_bids).
-
-const _defaultMockBids = [
-  ArtisanBid(
-    bidId: 'BID-001',
-    artisanId: 'ART-101',
-    artisanName: 'Samuel Kwaku',
-    tradeTitle: 'Master Electrician',
-    rating: 4.9,
-    reviewCount: 38,
-    isVerified: true,
-    avatarColor: Color(0xFF5D4037), // warm brown
-    amountPesewas: 24000, // GHS 240
-    arrivesInMinutes: 25,
-    bidMessage:
-        'Includes full inspection, rewiring and standard materials (wire, switches).',
-  ),
-  ArtisanBid(
-    bidId: 'BID-002',
-    artisanId: 'ART-102',
-    artisanName: 'Isaac Osei',
-    tradeTitle: 'Licensed Wireman',
-    rating: 4.7,
-    reviewCount: 12,
-    isVerified: true,
-    avatarColor: Color(0xFF795548), // medium brown
-    amountPesewas: 21000, // GHS 210
-    arrivesInMinutes: 45,
-  ),
-  ArtisanBid(
-    bidId: 'BID-003',
-    artisanId: 'ART-103',
-    artisanName: 'Kwame Mensah',
-    tradeTitle: 'Rapid Repair',
-    rating: 4.5,
-    reviewCount: 56,
-    isVerified: true,
-    avatarColor: Color(0xFF607D8B), // blue-grey
-    amountPesewas: 28000, // GHS 280
-    arrivesInMinutes: 15,
-  ),
-];
-
-/// Job-specific mock overrides (keyed by jobId).
-/// Both 'JOB-001' (dev menu) and 'JOB-3847' (job detail mock) resolve here.
-const Map<String, List<ArtisanBid>> _mockBids = {
-  'JOB-001':  _defaultMockBids,
-  'JOB-3847': _defaultMockBids,
-};

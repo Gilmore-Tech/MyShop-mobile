@@ -126,61 +126,6 @@ class JobDetail {
   });
 }
 
-// ── Mock data ─────────────────────────────────────────────────────────────────
-
-final _mockJobDetail = JobDetail(
-  id: 'JOB-3847',
-  title: 'Kitchen Cabinetry',
-  categoryName: 'Carpentry & Decor',
-  categoryIcon: Icons.carpenter,
-  location: 'Kumasi, Ashanti Region',
-  status: JobStatus.open,
-  isImmediate: true,
-  description:
-      'Need a professional carpenter to install modern, high-gloss kitchen '
-      'cabinets. The space is roughly 4×3 meters. I already have the materials '
-      'delivered, just need expert assembly and precision fitting. Focus on '
-      'soft-close hinges and seamless handles.',
-  photoUrls: const [],
-  bids: const BidSummary(
-    count: 12,
-    avatarColors: [
-      Color(0xFF5D4037), // Samuel Kwaku
-      Color(0xFF795548), // Isaac Osei
-      Color(0xFF607D8B), // Kwame Mensah
-    ],
-  ),
-  timeline: const [
-    TimelineStep(
-      title: 'Request Posted',
-      status: TimelineStepStatus.completed,
-      timeLabel: 'TODAY, 09:15 AM',
-      description:
-          'Your request for Kitchen Cabinetry was successfully posted to the marketplace.',
-    ),
-    TimelineStep(
-      title: 'Bids Received',
-      status: TimelineStepStatus.completed,
-      timeLabel: 'TODAY, 10:35 AM',
-      description:
-          '12 local artisans have sent their offers for your review.',
-    ),
-    TimelineStep(
-      title: 'Selecting Artisan',
-      status: TimelineStepStatus.active,
-      badgeLabel: 'IN PROGRESS',
-      description:
-          'Review bids and chat with artisans to finalize the selection.',
-    ),
-    TimelineStep(
-      title: 'Assigned to Artisan',
-      status: TimelineStepStatus.pending,
-      badgeLabel: 'PENDING',
-      description: 'An artisan will be assigned once you select a bid.',
-    ),
-  ],
-);
-
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 final jobDetailProvider =
@@ -192,34 +137,53 @@ class _JobDetailNotifier
     extends AutoDisposeFamilyAsyncNotifier<JobDetail, String> {
   @override
   Future<JobDetail> build(String jobId) async {
-    try {
-      final jobService = ref.watch(jobServiceProvider);
-      final data = await jobService.getJob(jobId);
-      return _parseJobDetail(data);
-    } catch (_) {
-      // Fallback to mock during development / if endpoint not ready
-      return _mockJobDetail;
-    }
+    final jobService = ref.watch(jobServiceProvider);
+    final data = await jobService.getJob(jobId);
+    return _parseJobDetail(data);
   }
 
   /// Parse API response into [JobDetail].
   JobDetail _parseJobDetail(Map<String, dynamic> data) {
     final status = _parseJobStatus(data['status'] as String? ?? 'pending');
-    final bidsData = data['bids'] as List<dynamic>? ?? [];
-    final categoryName =
-        (data['category'] as Map<String, dynamic>?)?['name'] as String? ?? '';
 
-    // The backend stores title + description merged as "title\n\ndescription".
-    // Split them apart for display.
+    // Bid count may arrive in several shapes from the backend.
+    int bidCount = 0;
+    if (data['bidsCount'] is num) {
+      bidCount = (data['bidsCount'] as num).toInt();
+    } else if (data['bidCount'] is num) {
+      bidCount = (data['bidCount'] as num).toInt();
+    } else if (data['bids'] is List) {
+      bidCount = (data['bids'] as List).length;
+    } else if (data['bids'] is Map && (data['bids'] as Map)['count'] is num) {
+      bidCount = ((data['bids'] as Map)['count'] as num).toInt();
+    }
+
+    // Category name: prefer the `category` object, fall back to a flat field.
+    final categoryName =
+        (data['category'] as Map<String, dynamic>?)?['name'] as String? ??
+            data['categoryName'] as String? ??
+            '';
+
+    // Title + description may be merged as "title\n\ndescription" (legacy),
+    // or sent as separate `title` / `description` fields.
+    final rawTitle = data['title'] as String?;
     final rawDescription = data['description'] as String? ?? '';
-    final splitIndex = rawDescription.indexOf('\n\n');
-    final title =
-        splitIndex > 0 ? rawDescription.substring(0, splitIndex) : rawDescription;
-    final description =
-        splitIndex > 0 ? rawDescription.substring(splitIndex + 2) : '';
+    final String title;
+    final String description;
+    if (rawTitle != null && rawTitle.isNotEmpty) {
+      title = rawTitle;
+      description = rawDescription;
+    } else {
+      final splitIndex = rawDescription.indexOf('\n\n');
+      title = splitIndex > 0
+          ? rawDescription.substring(0, splitIndex)
+          : rawDescription;
+      description =
+          splitIndex > 0 ? rawDescription.substring(splitIndex + 2) : '';
+    }
 
     return JobDetail(
-      id: data['id'] as String? ?? '',
+      id: data['id'] as String? ?? data['jobId'] as String? ?? '',
       title: title,
       categoryName: categoryName,
       categoryIcon: _categoryIcon(categoryName),
@@ -235,8 +199,12 @@ class _JobDetailNotifier
               .toList() ??
           const [],
       bids: BidSummary(
-        count: bidsData.length,
-        avatarColors: const [Color(0xFF5D4037), Color(0xFF795548), Color(0xFF607D8B)],
+        count: bidCount,
+        avatarColors: const [
+          Color(0xFF5D4037),
+          Color(0xFF795548),
+          Color(0xFF607D8B),
+        ],
       ),
       timeline: _buildTimeline(status),
     );

@@ -8,6 +8,8 @@ import '../../features/activity/providers/activity_provider.dart';
 import '../../features/notifications/providers/notifications_provider.dart';
 import '../../features/ride/providers/ride_provider.dart';
 import '../../features/services/providers/bid_detail_provider.dart';
+import '../../features/services/providers/bid_list_provider.dart';
+import '../../features/services/providers/job_detail_provider.dart';
 import '../di/providers.dart';
 import 'nav_badge_provider.dart';
 
@@ -110,6 +112,16 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket.on('job:status', (data) {
       developer.log('Received job:status event', name: 'WS');
       try {
+        // If the payload carries a jobId, refresh that job's detail + bids
+        // cache so any currently-open detail/summary screen updates live.
+        final jobId = data is Map<String, dynamic>
+            ? (data['jobId'] as String? ?? data['id'] as String?)
+            : null;
+        if (jobId != null) {
+          ref.invalidate(jobDetailProvider(jobId));
+          ref.invalidate(bidsForJobProvider(jobId));
+        }
+
         if (ref.exists(activityNotifierProvider)) {
           ref.read(activityNotifierProvider.notifier).reload();
         }
@@ -142,6 +154,16 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket.on('job:bid_new', (data) {
       developer.log('Received job:bid_new event', name: 'WS');
       try {
+        // Refresh the live job detail + bids list so the client sees the new
+        // bid (and updated count) without having to pull-to-refresh.
+        final jobId = data is Map<String, dynamic>
+            ? (data['jobId'] as String? ?? data['id'] as String?)
+            : null;
+        if (jobId != null) {
+          ref.invalidate(jobDetailProvider(jobId));
+          ref.invalidate(bidsForJobProvider(jobId));
+        }
+
         if (ref.exists(activityNotifierProvider)) {
           ref.read(activityNotifierProvider.notifier).reload();
         }

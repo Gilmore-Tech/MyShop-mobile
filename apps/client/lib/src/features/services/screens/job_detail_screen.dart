@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,17 +13,44 @@ import '../widgets/bid_list_sheet.dart';
 // reference photos, and triggers bid review.
 // API: GET /v1/jobs/:id  |  GET /v1/jobs/:id/bids
 
-class JobDetailScreen extends ConsumerWidget {
+/// How often this screen polls the backend for job + bid updates. Keeps
+/// the status badge, bid count, and timeline in sync even when the socket
+/// `job:bid_new` / `job:status` events are delayed.
+const _jobDetailPollInterval = Duration(seconds: 10);
+
+class JobDetailScreen extends ConsumerStatefulWidget {
   final String jobId;
   const JobDetailScreen({super.key, required this.jobId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final size = MediaQuery.sizeOf(context);
-    final w    = size.width;
-    final h    = size.height;
+  ConsumerState<JobDetailScreen> createState() => _JobDetailScreenState();
+}
 
-    final jobAsync = ref.watch(jobDetailProvider(jobId));
+class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
+  Timer? _poll;
+
+  @override
+  void initState() {
+    super.initState();
+    _poll = Timer.periodic(_jobDetailPollInterval, (_) {
+      if (!mounted) return;
+      ref.invalidate(jobDetailProvider(widget.jobId));
+    });
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
+
+    final jobAsync = ref.watch(jobDetailProvider(widget.jobId));
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
@@ -29,7 +58,7 @@ class JobDetailScreen extends ConsumerWidget {
         loading: () => _LoadingSkeleton(w: w, h: h),
         error: (e, _) => MyShopErrorBody(
           message: 'Could not load job details',
-          onRetry: () => ref.invalidate(jobDetailProvider(jobId)),
+          onRetry: () => ref.invalidate(jobDetailProvider(widget.jobId)),
         ),
         data: (job) => _JobDetailBody(job: job, w: w, h: h),
       ),
@@ -81,7 +110,6 @@ class _JobDetailBody extends StatelessWidget {
         _BottomActionBar(
           jobId:    job.id,
           jobTitle: job.title,
-          bidCount: job.bids.count,
           w: w,
           h: h,
         ),
@@ -249,14 +277,19 @@ class _MenuRow extends StatelessWidget {
 
 // ── Job Summary Card ───────────────────────────────────────────────────────────
 
-class _JobSummaryCard extends StatelessWidget {
+class _JobSummaryCard extends ConsumerWidget {
   final JobDetail job;
   final double w;
   final double h;
   const _JobSummaryCard({required this.job, required this.w, required this.h});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bidsAsync = ref.watch(bidsForJobProvider(job.id));
+    final bidCount = bidsAsync.maybeWhen(
+      data: (bids) => bids.length,
+      orElse: () => job.bids.count,
+    );
     return Container(
       margin: EdgeInsets.symmetric(horizontal: w * 0.041),
       padding: EdgeInsets.all(w * 0.046),
@@ -346,7 +379,7 @@ class _JobSummaryCard extends StatelessWidget {
               _StatusBadge(status: job.status, w: w),
             ],
           ),
-          if (job.bids.count > 0) ...[
+          if (bidCount > 0) ...[
             SizedBox(height: h * 0.019),
             const Divider(height: 1, color: MyShopColors.divider),
             SizedBox(height: h * 0.017),
@@ -368,7 +401,7 @@ class _JobSummaryCard extends StatelessWidget {
                     Row(
                       children: [
                         Text(
-                          '${job.bids.count} Artisans',
+                          '$bidCount Artisans',
                           style: TextStyle(
                             fontSize:   w * 0.038,
                             fontWeight: FontWeight.w700,
@@ -377,7 +410,7 @@ class _JobSummaryCard extends StatelessWidget {
                         ),
                         SizedBox(width: w * 0.021),
                         _AvatarStack(
-                          colors: job.bids.avatarColors,
+                          totalCount: bidCount,
                           w: w,
                         ),
                       ],
@@ -424,38 +457,67 @@ class _StatusBadge extends StatelessWidget {
 }
 
 class _AvatarStack extends StatelessWidget {
-  final List<Color> colors;
+  final int totalCount;
   final double w;
-  const _AvatarStack({required this.colors, required this.w});
+  const _AvatarStack({required this.totalCount, required this.w});
+
+  // Palette cycled through for avatar backgrounds.
+  static const _palette = [
+    Color(0xFF5D4037),
+    Color(0xFF795548),
+    Color(0xFF607D8B),
+  ];
 
   @override
   Widget build(BuildContext context) {
+    if (totalCount <= 0) return const SizedBox.shrink();
+
+    // Show up to 3 slots: 3 avatars if count <= 3, else 2 avatars + "+N".
+    final avatarSlots = totalCount <= 3 ? totalCount : 2;
+    final showOverflow = totalCount > 3;
+    final overflowCount = totalCount - avatarSlots;
+    final totalSlots = avatarSlots + (showOverflow ? 1 : 0);
+
     final size = w * 0.072; // ~28dp
     final overlap = size * 0.35;
-    final totalWidth = size + (colors.length - 1) * (size - overlap);
+    final totalWidth = size + (totalSlots - 1) * (size - overlap);
 
     return SizedBox(
       width: totalWidth,
       height: size,
       child: Stack(
-        children: List.generate(colors.length, (i) {
+        children: List.generate(totalSlots, (i) {
+          final isOverflow = showOverflow && i == totalSlots - 1;
           return Positioned(
             left: i * (size - overlap),
             child: Container(
               width: size,
               height: size,
               decoration: BoxDecoration(
-                color: colors[i],
+                color: isOverflow
+                    ? MyShopColors.primaryGold
+                    : _palette[i % _palette.length],
                 shape: BoxShape.circle,
                 border: const Border.fromBorderSide(
                   BorderSide(color: MyShopColors.surfaceWhite, width: 1.5),
                 ),
               ),
-              child: Icon(
-                Icons.person,
-                size: size * 0.55,
-                color: MyShopColors.surfaceWhite.withValues(alpha: 0.8),
-              ),
+              alignment: Alignment.center,
+              child: isOverflow
+                  ? Text(
+                      '+$overflowCount',
+                      style: TextStyle(
+                        fontSize: size * 0.38,
+                        fontWeight: FontWeight.w700,
+                        color: MyShopColors.surfaceWhite,
+                        height: 1.0,
+                      ),
+                    )
+                  : Icon(
+                      Icons.person,
+                      size: size * 0.55,
+                      color: MyShopColors.surfaceWhite.withValues(alpha: 0.8),
+                    ),
             ),
           );
         }),
@@ -1000,13 +1062,11 @@ class _TimelineBadge extends StatelessWidget {
 class _BottomActionBar extends StatelessWidget {
   final String jobId;
   final String jobTitle;
-  final int    bidCount;
   final double w;
   final double h;
   const _BottomActionBar({
     required this.jobId,
     required this.jobTitle,
-    required this.bidCount,
     required this.w,
     required this.h,
   });
@@ -1028,7 +1088,6 @@ class _BottomActionBar extends StatelessWidget {
       child: _ViewBidsButton(
         jobId:    jobId,
         jobTitle: jobTitle,
-        bidCount: bidCount,
         w: w,
         h: h,
       ),
@@ -1036,22 +1095,25 @@ class _BottomActionBar extends StatelessWidget {
   }
 }
 
-class _ViewBidsButton extends StatelessWidget {
+class _ViewBidsButton extends ConsumerWidget {
   final String jobId;
   final String jobTitle;
-  final int bidCount;
   final double w;
   final double h;
   const _ViewBidsButton({
     required this.jobId,
     required this.jobTitle,
-    required this.bidCount,
     required this.w,
     required this.h,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bidsAsync = ref.watch(bidsForJobProvider(jobId));
+    final bidCount = bidsAsync.maybeWhen(
+      data: (bids) => bids.length,
+      orElse: () => 0,
+    );
     return GestureDetector(
       onTap: () => showBidListSheet(
         context,

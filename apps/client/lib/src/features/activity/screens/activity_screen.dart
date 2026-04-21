@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +8,11 @@ import '../../services/providers/bid_list_provider.dart';
 import '../../services/providers/job_detail_provider.dart';
 import '../../services/widgets/bid_list_sheet.dart';
 import '../providers/activity_provider.dart';
+
+/// How often the activity list polls for updates while visible. Protects
+/// against missed socket events — if the socket is healthy the poll is a
+/// no-op for the user because the backend returns the same data.
+const _activityPollInterval = Duration(seconds: 15);
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD 4 — Activity tab: client views all their artisan job requests, filtered
@@ -21,9 +28,20 @@ class ActivityScreen extends ConsumerStatefulWidget {
 
 class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   final _searchController = TextEditingController();
+  Timer? _poll;
+
+  @override
+  void initState() {
+    super.initState();
+    _poll = Timer.periodic(_activityPollInterval, (_) {
+      if (!mounted) return;
+      ref.read(activityNotifierProvider.notifier).reload();
+    });
+  }
 
   @override
   void dispose() {
+    _poll?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -52,13 +70,20 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
                 ref.read(activityNotifierProvider.notifier).setSearch(q),
           ),
           Expanded(
-            child: jobs.isEmpty
-                ? _EmptyState(
-                    filter: activityState.activeFilter,
-                    w: w,
-                    h: h,
-                  )
-                : _JobList(jobs: jobs, w: w, h: h),
+            child: RefreshIndicator(
+              color: MyShopColors.primaryGold,
+              onRefresh: () =>
+                  ref.read(activityNotifierProvider.notifier).reload(),
+              child: jobs.isEmpty
+                  ? _EmptyScrollable(
+                      child: _EmptyState(
+                        filter: activityState.activeFilter,
+                        w: w,
+                        h: h,
+                      ),
+                    )
+                  : _JobList(jobs: jobs, w: w, h: h),
+            ),
           ),
           _BottomNav(w: w, h: h),
         ],
@@ -265,6 +290,26 @@ class _SearchRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Scrollable wrapper for empty state so pull-to-refresh still works ────────
+
+class _EmptyScrollable extends StatelessWidget {
+  const _EmptyScrollable({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (_, constraints) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: child,
+        ),
       ),
     );
   }
