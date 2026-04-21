@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -159,25 +161,34 @@ class AuthController extends StateNotifier<AuthState> {
   bool _requesting = false;
 
   /// Try to restore session from stored tokens.
-  /// Reads the persisted role so dual-role users get the correct view.
+  ///
+  /// Hydrates from the locally cached profile so the UI is unblocked even on
+  /// a cold start with no network. Then kicks off a background `/users/me`
+  /// refresh to pull the latest data — failures are intentionally swallowed
+  /// (only the 401 interceptor may force a logout).
   Future<void> bootstrap() async {
     try {
-      final user = await _repo
-          .bootstrap()
-          .timeout(const Duration(seconds: 5), onTimeout: () => null);
+      final user = await _repo.bootstrap();
       if (user != null) {
-        // Restore the role the user chose at their last login
         final savedRole = await _tokenStorage.readRole();
         final restoredRole = savedRole != null
             ? ProviderType.values.where((e) => e.name == savedRole).firstOrNull
             : null;
         onAuthenticated?.call(user, restoredRole);
         state = AuthAuthenticated(user);
+        unawaited(_refreshInBackground());
       } else {
         state = const AuthUnauthenticated();
       }
     } catch (_) {
       state = const AuthUnauthenticated();
+    }
+  }
+
+  Future<void> _refreshInBackground() async {
+    final fresh = await _repo.refreshProfileQuiet();
+    if (fresh != null && state is AuthAuthenticated) {
+      state = AuthAuthenticated(fresh);
     }
   }
 
