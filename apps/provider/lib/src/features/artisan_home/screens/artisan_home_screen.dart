@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../core/widgets/socket_debug_banner.dart';
 import '../../auth/providers/current_user_provider.dart';
 import '../../driver_home/providers/driver_status_provider.dart';
 import '../../profile/providers/verification_provider.dart';
@@ -88,6 +89,9 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
+            // Socket debug banner (debug builds only)
+            const SocketDebugBanner(),
+
             // 1. Header — real user data
             ArtisanHomeHeader(
               businessName: user?.businessName ??

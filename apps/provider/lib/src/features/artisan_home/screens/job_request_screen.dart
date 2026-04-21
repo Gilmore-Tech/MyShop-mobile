@@ -1,8 +1,19 @@
+import 'dart:io' show Platform;
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../artisan_jobs/providers/pending_incoming_jobs_provider.dart';
+import '../../artisan_jobs/providers/submitted_bids_provider.dart';
+import '../../auth/providers/current_user_provider.dart';
+import '../../driver_home/providers/driver_location_provider.dart';
 import '../widgets/bid_status_banner.dart';
 import 'bid_submission_screen.dart';
 
@@ -11,50 +22,47 @@ import 'bid_submission_screen.dart';
 ///
 /// PRD Reference: PRD 5.3 — incoming job notification (category, description,
 /// photos, client location, 5-minute bid window).
-class JobRequestScreen extends StatelessWidget {
+class JobRequestScreen extends ConsumerWidget {
   const JobRequestScreen({
     super.key,
-    this.job,
+    required this.job,
     this.bidStatus = BidStatus.none,
-    this.submittedBidAmount = 420,
+    this.submittedBidAmount = 0,
     this.platformFeePercent = 10,
   });
 
-  /// The live job from the backend. When null, the screen falls back to
-  /// placeholder data (legacy path — remove once the feed is wired).
-  final Job? job;
-
+  final Job job;
   final BidStatus bidStatus;
   final num submittedBidAmount;
   final num platformFeePercent;
 
-  String get requestId => job != null ? '#${job!.id.substring(0, 8)}' : '#GH-204-ADUM';
-  String get clientName => job?.clientName ?? 'Client';
-  String get clientLocation => job?.addressText ?? 'Nearby';
-  double get distanceKm => 0;
-  String get title => job?.categoryName != null
-      ? '${job!.categoryName} request'
-      : 'Emergency: Burst Main Pipe in Kitchen';
-  String get postedAgo => job?.createdAt != null ? 'Just posted' : 'Posted 2 mins ago';
-  double get rating => 0;
-  int get reviewsCount => 0;
-  String get description =>
-      job?.description ??
-      '"The main pipe under our kitchen sink just burst. Water is everywhere. I\'ve turned off the main valve but need a permanent fix and possibly a replacement pipe section."';
-  int get photoCount => job?.photos.length ?? 3;
-  String get locationLabel => job?.addressText ?? 'Adum, Main Market Area';
-  int get bidsTaken => 0;
-  int get bidsTotal => 3;
-  num get highestBid => 0;
+  String get _requestId =>
+      job.id.length >= 8 ? '#${job.id.substring(0, 8).toUpperCase()}' : '#${job.id}';
+  String get _clientName => job.clientName ?? 'Client';
+  String get _clientLocation => job.addressText ?? 'Location pending';
+  String get _title => job.categoryName != null && job.categoryName!.isNotEmpty
+      ? '${job.categoryName} request'
+      : 'Service Request';
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final positionAsync = ref.watch(driverLocationStreamProvider);
+    final distanceKm = positionAsync.maybeWhen(
+      data: (pos) => _distanceKm(
+        pos.latitude,
+        pos.longitude,
+        job.latitude,
+        job.longitude,
+      ),
+      orElse: () => null,
+    );
+
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
       body: SafeArea(
         child: Column(
           children: [
-            _Header(requestId: requestId),
+            _Header(requestId: _requestId),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.symmetric(
@@ -65,19 +73,26 @@ class JobRequestScreen extends StatelessWidget {
                   if (bidStatus != BidStatus.none) ...[
                     BidStatusBanner(
                       status: bidStatus,
+                      // Anchor the countdown to the actual bid expiry so it
+                      // keeps decreasing across screen opens / rebuilds.
+                      expiresAt: ref
+                          .watch(submittedBidsProvider)[job.id]
+                          ?.expiresAt,
+                      // Admin-assigned jobs have no bid window — swap the
+                      // countdown for a "Quote when ready" hint.
+                      showCountdown: job.status != JobStatus.adminAssigned,
                       onAcceptStartJob: () => context.push('/active-job'),
                       onMessage: () => context.push('/chat'),
                     ),
                     const SizedBox(height: MyShopSpacing.md),
                   ],
                   _ClientSummaryCard(
-                    clientName: clientName,
-                    clientLocation: clientLocation,
+                    clientName: _clientName,
+                    clientPhotoUrl: job.clientPhotoUrl,
+                    clientLocation: _clientLocation,
                     distanceKm: distanceKm,
-                    title: title,
-                    postedAgo: postedAgo,
-                    rating: rating,
-                    reviewsCount: reviewsCount,
+                    title: _title,
+                    postedAgo: _formatPostedAgo(job.createdAt),
                   ),
                   const SizedBox(height: MyShopSpacing.lg),
                   const _SectionHeader(
@@ -85,39 +100,64 @@ class JobRequestScreen extends StatelessWidget {
                     label: 'JOB DESCRIPTION',
                   ),
                   const SizedBox(height: MyShopSpacing.sm),
-                  _DescriptionCard(text: description),
-                  const SizedBox(height: MyShopSpacing.lg),
-                  const _SectionHeader(
-                    icon: Icons.build_outlined,
-                    label: 'PHOTOS',
+                  _DescriptionCard(
+                    text: job.description.isNotEmpty
+                        ? job.description
+                        : 'No description provided.',
                   ),
-                  const SizedBox(height: MyShopSpacing.sm),
-                  _PhotosRow(count: photoCount),
+                  if (job.photos.isNotEmpty) ...[
+                    const SizedBox(height: MyShopSpacing.lg),
+                    const _SectionHeader(
+                      icon: Icons.photo_library_outlined,
+                      label: 'PHOTOS',
+                    ),
+                    const SizedBox(height: MyShopSpacing.sm),
+                    _PhotosRow(photos: job.photos),
+                  ],
                   const SizedBox(height: MyShopSpacing.lg),
                   const _SectionHeader(
                     icon: Icons.near_me_outlined,
                     label: 'LOCATION',
                   ),
                   const SizedBox(height: MyShopSpacing.sm),
-                  _LocationCard(label: locationLabel),
+                  _LocationCard(
+                    label: _clientLocation,
+                    latitude: job.latitude,
+                    longitude: job.longitude,
+                  ),
                   const SizedBox(height: MyShopSpacing.md),
                   if (bidStatus == BidStatus.none) ...[
-                    _BidStatusCard(
-                      bidsTaken: bidsTaken,
-                      bidsTotal: bidsTotal,
-                      highestBid: highestBid,
-                    ),
+                    if (job.artisansNotified != null &&
+                        job.artisansNotified! > 0)
+                      _BidStatusCard(artisansNotified: job.artisansNotified!),
                     const SizedBox(height: MyShopSpacing.lg),
-                    _PlaceBidButton(
-                      onTap: () => BidSubmissionScreen.show(
-                        context,
-                        clientName: clientName,
-                        clientLocation: clientLocation,
-                        distanceKm: distanceKm,
+                    if (_isBiddable(
+                      job,
+                      artisanUserId: ref.watch(currentUserProvider)?.id,
+                    )) ...[
+                      _PlaceBidButton(
+                        onTap: () => BidSubmissionScreen.show(
+                          context,
+                          job: job,
+                          distanceKm: distanceKm ?? 0,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: MyShopSpacing.md),
-                    _DeclineButton(onTap: () => context.pop()),
+                      const SizedBox(height: MyShopSpacing.md),
+                      _DeclineButton(
+                        onTap: () {
+                          ref
+                              .read(pendingIncomingJobsProvider.notifier)
+                              .remove(job.id);
+                          context.pop();
+                        },
+                      ),
+                    ] else
+                      _NotBiddableNotice(
+                        status: job.status,
+                        assignedToMe: job.assignedArtisanId != null &&
+                            job.assignedArtisanId ==
+                                ref.watch(currentUserProvider)?.id,
+                      ),
                   ] else ...[
                     Text(
                       'Your Submitted Bid',
@@ -141,6 +181,167 @@ class JobRequestScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── helpers ─────────────────────────────────────────────────────────────────
+
+/// Whether a bid can be placed on a job in its current state for the given
+/// authenticated artisan.
+///
+/// Two bid-accepting states:
+///   - `open`             → standard public bid window (first 5 min after post)
+///   - `adminAssigned`    → admin manually routed the job to this specific
+///                          artisan after the public window closed with zero
+///                          bids. Only the assigned artisan may quote.
+///
+/// Everything else (`pendingAdmin`, `queued`, `confirmed+`, `cancelled`)
+/// rejects bids with `JOB_NOT_OPEN` (400) — we mirror that gate in the UI.
+bool _isBiddable(Job job, {String? artisanUserId}) {
+  if (job.status == JobStatus.open) return true;
+  if (job.status == JobStatus.adminAssigned) {
+    // Only the artisan the admin picked can quote on an admin-assigned job.
+    return artisanUserId != null &&
+        job.assignedArtisanId != null &&
+        job.assignedArtisanId == artisanUserId;
+  }
+  return false;
+}
+
+double _distanceKm(double lat1, double lng1, double lat2, double lng2) {
+  final meters = Geolocator.distanceBetween(lat1, lng1, lat2, lng2);
+  return meters / 1000;
+}
+
+/// Banner shown in place of the "Place Bid" button when the job isn't in
+/// a state that accepts bids (pending admin approval, already confirmed,
+/// cancelled, etc.).
+class _NotBiddableNotice extends StatelessWidget {
+  const _NotBiddableNotice({
+    required this.status,
+    this.assignedToMe = false,
+  });
+
+  final JobStatus status;
+
+  /// True when the job is admin-assigned and this artisan is the one
+  /// picked. (We only get here if `_isBiddable` returned false — which for
+  /// an admin-assigned job means the assignment belongs to someone else,
+  /// so this is almost always false.)
+  final bool assignedToMe;
+
+  (String, String, IconData, Color) get _content {
+    switch (status) {
+      case JobStatus.pendingAdmin:
+        return (
+          'Awaiting admin review',
+          "No artisans bid on this job in time. An admin is reviewing it "
+              'and will assign it shortly.',
+          Icons.hourglass_top,
+          MyShopColors.warning,
+        );
+      case JobStatus.adminAssigned:
+        return assignedToMe
+            ? (
+                'Ready to quote',
+                'You can submit your price on this job.',
+                Icons.check_circle_outline,
+                MyShopColors.success,
+              )
+            : (
+                'Assigned to another artisan',
+                'An admin has routed this job to a different artisan.',
+                Icons.lock_outline,
+                MyShopColors.textSecondary,
+              );
+      case JobStatus.queued:
+        return (
+          'Queued',
+          "This job is waiting for artisans to become available. Check back shortly.",
+          Icons.schedule,
+          MyShopColors.warning,
+        );
+      case JobStatus.confirmed:
+      case JobStatus.artisanEnRoute:
+      case JobStatus.arrived:
+      case JobStatus.inProgress:
+      case JobStatus.artisanMarkedComplete:
+      case JobStatus.completed:
+        return (
+          'Already assigned',
+          "The client has already chosen an artisan for this job.",
+          Icons.lock_outline,
+          MyShopColors.textSecondary,
+        );
+      case JobStatus.cancelled:
+        return (
+          'Cancelled',
+          "This job has been cancelled and is no longer accepting bids.",
+          Icons.cancel_outlined,
+          MyShopColors.error,
+        );
+      case JobStatus.open:
+        return (
+          'Ready',
+          'You can place a bid on this job.',
+          Icons.check_circle_outline,
+          MyShopColors.success,
+        );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final (title, body, icon, color) = _content;
+    return Container(
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: color),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: MyShopTypography.h3.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  body,
+                  style: MyShopTypography.body2.copyWith(
+                    color: MyShopColors.textSecondary,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _formatPostedAgo(String? createdAt) {
+  if (createdAt == null) return 'Just posted';
+  final parsed = DateTime.tryParse(createdAt);
+  if (parsed == null) return 'Just posted';
+  final diff = DateTime.now().toUtc().difference(parsed.toUtc());
+  if (diff.inSeconds < 30) return 'Just posted';
+  if (diff.inMinutes < 1) return '${diff.inSeconds}s ago';
+  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+  if (diff.inHours < 24) return '${diff.inHours}h ago';
+  return '${diff.inDays}d ago';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -209,24 +410,26 @@ class _Header extends StatelessWidget {
 class _ClientSummaryCard extends StatelessWidget {
   const _ClientSummaryCard({
     required this.clientName,
+    required this.clientPhotoUrl,
     required this.clientLocation,
     required this.distanceKm,
     required this.title,
     required this.postedAgo,
-    required this.rating,
-    required this.reviewsCount,
   });
 
   final String clientName;
+  final String? clientPhotoUrl;
   final String clientLocation;
-  final double distanceKm;
+  final double? distanceKm;
   final String title;
   final String postedAgo;
-  final double rating;
-  final int reviewsCount;
 
   @override
   Widget build(BuildContext context) {
+    final distanceText = distanceKm != null
+        ? '${distanceKm!.toStringAsFixed(1)} km away'
+        : '—';
+
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),
       decoration: BoxDecoration(
@@ -240,39 +443,16 @@ class _ClientSummaryCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: const BoxDecoration(
-                  color: MyShopColors.avatarPlaceholder,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.person,
-                  color: MyShopColors.textSecondary,
-                ),
-              ),
+              _ClientAvatar(photoUrl: clientPhotoUrl),
               const SizedBox(width: MyShopSpacing.sm),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            clientName,
-                            style: MyShopTypography.h3.copyWith(fontSize: 16),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Icon(
-                          Icons.verified,
-                          size: 16,
-                          color: MyShopColors.info,
-                        ),
-                      ],
+                    Text(
+                      clientName,
+                      style: MyShopTypography.h3.copyWith(fontSize: 16),
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     Row(
@@ -285,7 +465,7 @@ class _ClientSummaryCard extends StatelessWidget {
                         const SizedBox(width: 4),
                         Flexible(
                           child: Text(
-                            '$clientLocation  •  ${distanceKm.toStringAsFixed(1)} km away',
+                            '$clientLocation  •  $distanceText',
                             style: MyShopTypography.body2.copyWith(
                               color: MyShopColors.primaryGold,
                               fontWeight: FontWeight.w600,
@@ -340,28 +520,47 @@ class _ClientSummaryCard extends StatelessWidget {
               ),
               const SizedBox(width: 4),
               Text(postedAgo, style: MyShopTypography.body2),
-              const SizedBox(width: MyShopSpacing.md),
-              const Icon(
-                Icons.star,
-                size: 14,
-                color: MyShopColors.ratingStar,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                rating.toStringAsFixed(1),
-                style: MyShopTypography.body1.copyWith(
-                  color: MyShopColors.primaryGold,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                '($reviewsCount Reviews)',
-                style: MyShopTypography.body2,
-              ),
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ClientAvatar extends StatelessWidget {
+  const _ClientAvatar({required this.photoUrl});
+
+  final String? photoUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    if (photoUrl != null && photoUrl!.isNotEmpty) {
+      return ClipOval(
+        child: CachedNetworkImage(
+          imageUrl: photoUrl!,
+          width: 48,
+          height: 48,
+          fit: BoxFit.cover,
+          placeholder: (_, __) => _placeholder(),
+          errorWidget: (_, __, ___) => _placeholder(),
+        ),
+      );
+    }
+    return _placeholder();
+  }
+
+  Widget _placeholder() {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: const BoxDecoration(
+        color: MyShopColors.avatarPlaceholder,
+        shape: BoxShape.circle,
+      ),
+      child: const Icon(
+        Icons.person,
+        color: MyShopColors.textSecondary,
       ),
     );
   }
@@ -429,19 +628,20 @@ class _DescriptionCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Photos row
+// Photos row — real Cloudinary URLs
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _PhotosRow extends StatelessWidget {
-  const _PhotosRow({required this.count});
+  const _PhotosRow({required this.photos});
 
-  final int count;
+  final List<String> photos;
 
   @override
   Widget build(BuildContext context) {
-    // Show 2 thumbnails inline; everything beyond becomes a "+N More" tile.
-    final inlineCount = count >= 2 ? 2 : count;
-    final remaining = count - inlineCount;
+    // Show up to 3 inline; collapse the rest into a "+N More" tile.
+    const maxInline = 3;
+    final inlineCount = photos.length > maxInline ? maxInline : photos.length;
+    final remaining = photos.length - inlineCount;
 
     return SizedBox(
       height: 110,
@@ -449,58 +649,126 @@ class _PhotosRow extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         children: [
           for (int i = 0; i < inlineCount; i++) ...[
-            _PhotoThumb(seed: i),
+            _PhotoThumb(
+              url: photos[i],
+              onTap: () => _openGallery(context, photos, i),
+            ),
             const SizedBox(width: MyShopSpacing.md),
           ],
-          if (remaining > 0) _MorePhotosTile(remaining: remaining),
+          if (remaining > 0)
+            _MorePhotosTile(
+              remaining: remaining,
+              onTap: () => _openGallery(context, photos, inlineCount),
+            ),
         ],
+      ),
+    );
+  }
+
+  void _openGallery(BuildContext context, List<String> urls, int initialIndex) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _PhotoGallery(urls: urls, initialIndex: initialIndex),
       ),
     );
   }
 }
 
 class _PhotoThumb extends StatelessWidget {
-  const _PhotoThumb({required this.seed});
+  const _PhotoThumb({required this.url, required this.onTap});
 
-  final int seed;
+  final String url;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 110,
-      height: 110,
-      decoration: BoxDecoration(
-        color: MyShopColors.surfaceGrey,
+    return GestureDetector(
+      onTap: onTap,
+      child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: MyShopColors.divider),
-      ),
-      alignment: Alignment.center,
-      child: Icon(
-        seed.isEven ? Icons.water_drop_outlined : Icons.broken_image_outlined,
-        size: 36,
-        color: MyShopColors.textSecondary,
+        child: CachedNetworkImage(
+          imageUrl: url,
+          width: 110,
+          height: 110,
+          fit: BoxFit.cover,
+          placeholder: (_, __) => Container(
+            width: 110,
+            height: 110,
+            color: MyShopColors.surfaceGrey,
+          ),
+          errorWidget: (_, __, ___) => Container(
+            width: 110,
+            height: 110,
+            color: MyShopColors.surfaceGrey,
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.broken_image_outlined,
+              color: MyShopColors.textSecondary,
+            ),
+          ),
+        ),
       ),
     );
   }
 }
 
 class _MorePhotosTile extends StatelessWidget {
-  const _MorePhotosTile({required this.remaining});
+  const _MorePhotosTile({required this.remaining, required this.onTap});
 
   final int remaining;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return DottedBorderBox(
-      child: Container(
-        width: 90,
-        height: 110,
-        alignment: Alignment.center,
-        child: Text(
-          '+$remaining More',
-          style: MyShopTypography.body1.copyWith(
-            color: MyShopColors.textSecondary,
-            fontWeight: FontWeight.w700,
+    return GestureDetector(
+      onTap: onTap,
+      child: DottedBorderBox(
+        child: Container(
+          width: 90,
+          height: 110,
+          alignment: Alignment.center,
+          child: Text(
+            '+$remaining More',
+            style: MyShopTypography.body1.copyWith(
+              color: MyShopColors.textSecondary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PhotoGallery extends StatelessWidget {
+  const _PhotoGallery({required this.urls, required this.initialIndex});
+
+  final List<String> urls;
+  final int initialIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 0,
+      ),
+      body: PageView.builder(
+        controller: PageController(initialPage: initialIndex),
+        itemCount: urls.length,
+        itemBuilder: (_, i) => InteractiveViewer(
+          child: Center(
+            child: CachedNetworkImage(
+              imageUrl: urls[i],
+              fit: BoxFit.contain,
+              errorWidget: (_, __, ___) => const Icon(
+                Icons.broken_image_outlined,
+                color: Colors.white,
+                size: 64,
+              ),
+            ),
           ),
         ),
       ),
@@ -558,100 +826,180 @@ class _DashedBorderPainter extends CustomPainter {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Location card
+// Location card — real Google Map
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _LocationCard extends StatelessWidget {
-  const _LocationCard({required this.label});
+  const _LocationCard({
+    required this.label,
+    required this.latitude,
+    required this.longitude,
+  });
 
   final String label;
+  final double latitude;
+  final double longitude;
+
+  Future<void> _openDirections(BuildContext context) async {
+    // Use the device's "pick" behavior where possible:
+    //  - iOS: Apple Maps (always installed) with driving directions.
+    //  - Android: `geo:` with a directions query so Google Maps or whatever
+    //    the user has mapped to the geo intent picks it up.
+    //  - Fallback (web or unknown): Google Maps URL that works in Safari /
+    //    Chrome and also opens the GMaps app if installed.
+    final candidates = <Uri>[
+      if (Platform.isIOS)
+        Uri.parse('http://maps.apple.com/?daddr=$latitude,$longitude&dirflg=d')
+      else if (Platform.isAndroid)
+        Uri.parse('geo:$latitude,$longitude?q=$latitude,$longitude'),
+      Uri.parse(
+        'https://www.google.com/maps/dir/?api=1'
+        '&destination=$latitude,$longitude&travelmode=driving',
+      ),
+    ];
+
+    for (final uri in candidates) {
+      try {
+        final launched = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
+        if (launched) return;
+      } catch (_) {
+        // Try the next candidate.
+      }
+    }
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Could not open a maps app.'),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: MyShopColors.surfaceWhite,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: MyShopColors.divider),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          // Map placeholder area
-          Container(
-            height: 160,
-            color: const Color(0xFFE6EAEC),
-            alignment: Alignment.center,
-            child: const Icon(
-              Icons.location_on,
-              size: 64,
-              color: MyShopColors.error,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: MyShopSpacing.md,
-              vertical: MyShopSpacing.sm,
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.location_on,
-                  size: 16,
-                  color: MyShopColors.textPrimary,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: MyShopTypography.body1,
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: MyShopColors.surfaceWhite,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: MyShopColors.divider),
-                  ),
-                  child: Text(
-                    'Tap to Navigate',
-                    style: MyShopTypography.body2.copyWith(
-                      color: MyShopColors.textPrimary,
-                      fontWeight: FontWeight.w700,
+    final target = LatLng(latitude, longitude);
+
+    return InkWell(
+      onTap: () => _openDirections(context),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: MyShopColors.surfaceWhite,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: MyShopColors.divider),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            // Google Maps consumes taps, so we put an overlay on top that
+            // forwards them to the same navigate handler.
+            SizedBox(
+              height: 160,
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: GoogleMap(
+                      initialCameraPosition: CameraPosition(
+                        target: target,
+                        zoom: 15,
+                      ),
+                      liteModeEnabled: true,
+                      markers: {
+                        Marker(
+                          markerId: const MarkerId('job'),
+                          position: target,
+                        ),
+                      },
+                      myLocationButtonEnabled: false,
+                      zoomControlsEnabled: false,
+                      scrollGesturesEnabled: false,
+                      rotateGesturesEnabled: false,
+                      tiltGesturesEnabled: false,
+                      zoomGesturesEnabled: false,
                     ),
                   ),
-                ),
-              ],
+                  Positioned.fill(
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => _openDirections(context),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: MyShopSpacing.md,
+                vertical: MyShopSpacing.sm,
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.location_on,
+                    size: 16,
+                    color: MyShopColors.textPrimary,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: MyShopTypography.body1,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: MyShopColors.primaryGold,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.navigation,
+                          size: 14,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Navigate',
+                          style: MyShopTypography.body2.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Bid status card
+// Bid status card — uses real artisansNotified count
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _BidStatusCard extends StatelessWidget {
-  const _BidStatusCard({
-    required this.bidsTaken,
-    required this.bidsTotal,
-    required this.highestBid,
-  });
+  const _BidStatusCard({required this.artisansNotified});
 
-  final int bidsTaken;
-  final int bidsTotal;
-  final num highestBid;
+  final int artisansNotified;
 
   @override
   Widget build(BuildContext context) {
-    final progress = bidsTotal == 0 ? 0.0 : bidsTaken / bidsTotal;
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),
       decoration: BoxDecoration(
@@ -659,92 +1007,23 @@ class _BidStatusCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: MyShopColors.divider),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '$bidsTaken out of $bidsTotal spots taken',
-                  style: MyShopTypography.body1,
-                ),
-              ),
-              Text(
-                'FINAL SPOT!',
-                style: MyShopTypography.overline.copyWith(
-                  color: MyShopColors.error,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 12,
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ],
+          const Icon(
+            Icons.group_outlined,
+            size: 18,
+            color: MyShopColors.primaryGold,
           ),
-          const SizedBox(height: MyShopSpacing.sm),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 8,
-              backgroundColor: MyShopColors.surfaceGrey,
-              valueColor: const AlwaysStoppedAnimation(MyShopColors.error),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(
+            child: Text(
+              '$artisansNotified artisan${artisansNotified == 1 ? '' : 's'} '
+              'notified — be quick to bid',
+              style: MyShopTypography.body1,
             ),
-          ),
-          const SizedBox(height: MyShopSpacing.md),
-          Row(
-            children: [
-              SizedBox(
-                width: 56,
-                height: 28,
-                child: Stack(
-                  children: [
-                    _bidder(0),
-                    Positioned(
-                      left: 22,
-                      child: _bidder(1, isCount: true),
-                    ),
-                  ],
-                ),
-              ),
-              const Spacer(),
-              Text(
-                'Highest Bid: ',
-                style: MyShopTypography.body2,
-              ),
-              Text(
-                'GHS $highestBid',
-                style: MyShopTypography.body1.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
           ),
         ],
       ),
-    );
-  }
-
-  Widget _bidder(int seed, {bool isCount = false}) {
-    return Container(
-      width: 28,
-      height: 28,
-      decoration: BoxDecoration(
-        color: isCount ? MyShopColors.surfaceGrey : MyShopColors.avatarPlaceholder,
-        shape: BoxShape.circle,
-        border: Border.all(color: MyShopColors.surfaceWhite, width: 2),
-      ),
-      alignment: Alignment.center,
-      child: isCount
-          ? Text(
-              '+1',
-              style: MyShopTypography.caption.copyWith(
-                color: MyShopColors.textPrimary,
-                fontWeight: FontWeight.w800,
-                fontSize: 10,
-              ),
-            )
-          : const Icon(Icons.person, size: 16, color: MyShopColors.textSecondary),
     );
   }
 }

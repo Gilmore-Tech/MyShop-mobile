@@ -1,10 +1,18 @@
 import 'dart:io';
 
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../app/router.dart' show JobRequestRouteExtra;
+import '../../../core/di/providers.dart';
+import '../../artisan_jobs/providers/artisan_jobs_provider.dart';
+import '../../artisan_jobs/providers/pending_incoming_jobs_provider.dart';
+import '../../artisan_jobs/providers/submitted_bids_provider.dart';
 import '../widgets/bid_confirmation_modal.dart';
 import '../widgets/bid_status_banner.dart';
 
@@ -12,26 +20,26 @@ import '../widgets/bid_status_banner.dart';
 ///
 /// PRD Reference: PRD 5.3 — bid submission with category-minimum validation,
 /// optional message to client.
-class BidSubmissionScreen extends StatefulWidget {
+class BidSubmissionScreen extends ConsumerStatefulWidget {
   const BidSubmissionScreen({
     super.key,
-    this.clientName = 'Ama Serwaa',
-    this.clientLocation = 'Adum, Kumasi',
-    this.distanceKm = 1.2,
+    required this.job,
+    this.distanceKm = 0,
     this.marketAverage = 180,
   });
 
-  final String clientName;
-  final String clientLocation;
+  final Job job;
   final double distanceKm;
   final num marketAverage;
+
+  String get clientName => job.clientName ?? 'Client';
+  String get clientLocation => job.addressText ?? '';
 
   /// Pushes the sheet as a draggable, full-rounded modal bottom sheet.
   static Future<void> show(
     BuildContext context, {
-    String clientName = 'Ama Serwaa',
-    String clientLocation = 'Adum, Kumasi',
-    double distanceKm = 1.2,
+    required Job job,
+    double distanceKm = 0,
     num marketAverage = 180,
   }) {
     return showModalBottomSheet<void>(
@@ -41,8 +49,7 @@ class BidSubmissionScreen extends StatefulWidget {
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: 0.55),
       builder: (_) => BidSubmissionScreen(
-        clientName: clientName,
-        clientLocation: clientLocation,
+        job: job,
         distanceKm: distanceKm,
         marketAverage: marketAverage,
       ),
@@ -50,15 +57,18 @@ class BidSubmissionScreen extends StatefulWidget {
   }
 
   @override
-  State<BidSubmissionScreen> createState() => _BidSubmissionScreenState();
+  ConsumerState<BidSubmissionScreen> createState() =>
+      _BidSubmissionScreenState();
 }
 
-class _BidSubmissionScreenState extends State<BidSubmissionScreen> {
+class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
   late final TextEditingController _labour;
   late final TextEditingController _eta;
   late final TextEditingController _notes;
   late final TextEditingController _duration;
   final List<File> _attachments = [];
+  bool _submitting = false;
+  String? _error;
 
   @override
   void initState() {
@@ -78,22 +88,171 @@ class _BidSubmissionScreenState extends State<BidSubmissionScreen> {
     super.dispose();
   }
 
+  /// Extract `expiresAt` from the bid response so the countdown stays
+  /// anchored to the backend's clock rather than the device's.
+  DateTime? _expiresFromResponse(Map<String, dynamic>? response) {
+    if (response == null) return null;
+    final raw = response['expiresAt'] ?? response['bidExpiresAt'];
+    if (raw is String) return DateTime.tryParse(raw);
+    return null;
+  }
+
+  /// Turn the raw backend error into a human-friendly explanation.
+  /// Falls back to the server's own message when the code isn't recognised.
+  String _friendlyBidError(ApiException e) {
+    switch (e.errorCode) {
+      case 'JOB_NOT_OPEN':
+        return "This job isn't accepting bids yet (it may be awaiting admin "
+            'review or already assigned).';
+      case 'BID_WINDOW_EXPIRED':
+        return 'The bidding window for this job has closed.';
+      case 'MAX_BIDS_REACHED':
+        return "You've already placed the maximum number of bids (3) on "
+            'this job.';
+      case 'BID_BELOW_MINIMUM':
+        return 'Your bid is below the minimum for this category. '
+            'Increase the amount and try again.';
+      default:
+        return e.message;
+    }
+  }
+
+  /// Parse "HH:MM" → total minutes. Falls back to a single integer treated
+  /// as minutes. Returns 0 if unparseable.
+  int _parseDurationMinutes(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return 0;
+    if (trimmed.contains(':')) {
+      final parts = trimmed.split(':');
+      final hours = int.tryParse(parts[0]) ?? 0;
+      final minutes = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+      return hours * 60 + minutes;
+    }
+    return int.tryParse(trimmed) ?? 0;
+  }
+
   Future<void> _handleSubmit() async {
+    if (_submitting) return;
+
+    final ghs = num.tryParse(_labour.text.trim()) ?? 0;
+    final etaMinutes = int.tryParse(_eta.text.trim()) ?? 0;
+    final durationMinutes = _parseDurationMinutes(_duration.text);
+
+    if (ghs <= 0 || etaMinutes <= 0 || durationMinutes <= 0) {
+      setState(() => _error = 'Fill in labour, ETA, and duration first.');
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+
+    final amountPesewas = (ghs * 100).round();
+    final trimmedNotes =
+        _notes.text.trim().isEmpty ? null : _notes.text.trim();
+    Map<String, dynamic>? bidResponse;
+    try {
+      bidResponse = await ref.read(jobServiceProvider).submitBid(
+            widget.job.id,
+            amountPesewas: amountPesewas,
+            etaMinutes: etaMinutes,
+            durationMinutes: durationMinutes,
+            notes: trimmedNotes,
+          );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _error = _friendlyBidError(e);
+      });
+      return;
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _error = 'Failed to submit bid. Please try again.';
+      });
+      return;
+    }
+
+    if (!mounted) return;
+
+    // Persist the bid locally so the "Bids" tab can always show it with
+    // accurate details, and the banner can anchor its countdown to the
+    // real submission time even across app restarts.
+    final submittedAt = DateTime.now();
+    final expiresAt = _expiresFromResponse(bidResponse) ??
+        submittedAt.add(const Duration(minutes: 5));
+    await ref.read(submittedBidsProvider.notifier).add(
+          SubmittedBid(
+            job: widget.job,
+            amountPesewas: amountPesewas,
+            etaMinutes: etaMinutes,
+            durationMinutes: durationMinutes,
+            submittedAt: submittedAt,
+            expiresAt: expiresAt,
+            message: trimmedNotes,
+          ),
+        );
+
+    // Bid is now on the backend — drop the job from the in-session
+    // "New" list so the artisan doesn't see it as pending anymore.
+    ref.read(pendingIncomingJobsProvider.notifier).remove(widget.job.id);
+
+    // On an admin-assigned job the backend auto-confirms the bid and moves
+    // the job straight to `confirmed`. Pull fresh server state so the UI
+    // skips the "pending" banner and lands on the active-job flow.
+    final wasAdminAssigned = widget.job.status == JobStatus.adminAssigned ||
+        _wasAutoAccepted(bidResponse);
+    if (wasAdminAssigned) {
+      // Invalidate the jobs list so the Bids tab reflects the new state.
+      // Best-effort — if nothing's watching it yet, this is a no-op.
+      try {
+        ref.invalidate(artisanJobsProvider);
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
     final navigator = Navigator.of(context);
     final rootContext = navigator.context;
-    // Close the sheet first.
     navigator.pop();
-    // Show the confirmation modal on the underlying screen.
+
+    if (!rootContext.mounted) return;
     await BidConfirmationModal.show(
       rootContext,
       clientFirstName: widget.clientName.split(' ').first,
-      bidAmount: num.tryParse(_labour.text) ?? 0,
-      arrivalEta: 'Within ${_eta.text} mins',
+      bidAmount: ghs,
+      arrivalEta: 'Within $etaMinutes mins',
     );
-    // Replace request details with the pending state.
-    if (rootContext.mounted) {
-      rootContext.pushReplacement('/job-request', extra: BidStatus.accepted);
+    if (!rootContext.mounted) return;
+
+    if (wasAdminAssigned) {
+      // Auto-confirmed — land the artisan directly on the active-job flow,
+      // not the "pending, waiting for client" banner.
+      rootContext.go('/active-job');
+      return;
     }
+
+    rootContext.pushReplacement(
+      '/job-request',
+      extra: JobRequestRouteExtra(
+        job: widget.job,
+        bidStatus: BidStatus.pending,
+        submittedBidAmount: ghs,
+      ),
+    );
+  }
+
+  /// True when the submitBid response indicates the bid was auto-accepted
+  /// (i.e. admin-assigned flow where the artisan was pre-picked).
+  bool _wasAutoAccepted(Map<String, dynamic>? response) {
+    if (response == null) return false;
+    final bidStatus = response['status'] ?? response['bidStatus'];
+    if (bidStatus == 'accepted') return true;
+    final jobStatus = response['jobStatus'] ?? response['job']?['status'];
+    if (jobStatus == 'confirmed') return true;
+    return false;
   }
 
   @override
@@ -205,8 +364,30 @@ class _BidSubmissionScreenState extends State<BidSubmissionScreen> {
             ),
             const SizedBox(height: MyShopSpacing.xl),
 
+            if (_error != null) ...[
+              Container(
+                padding: const EdgeInsets.all(MyShopSpacing.sm),
+                decoration: BoxDecoration(
+                  color: MyShopColors.error.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: MyShopColors.error),
+                ),
+                child: Text(
+                  _error!,
+                  style: MyShopTypography.body2.copyWith(
+                    color: MyShopColors.error,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(height: MyShopSpacing.md),
+            ],
+
             // Submit
-            _SubmitButton(onTap: _handleSubmit),
+            _SubmitButton(
+              onTap: _handleSubmit,
+              isLoading: _submitting,
+            ),
             const SizedBox(height: MyShopSpacing.md),
 
             // Cancel
@@ -625,18 +806,21 @@ class _IconBubble extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _SubmitButton extends StatelessWidget {
-  const _SubmitButton({required this.onTap});
+  const _SubmitButton({required this.onTap, this.isLoading = false});
 
   final VoidCallback onTap;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: isLoading ? null : onTap,
       child: Container(
         height: 56,
         decoration: BoxDecoration(
-          color: MyShopColors.darkSlate,
+          color: isLoading
+              ? MyShopColors.darkSlate.withValues(alpha: 0.7)
+              : MyShopColors.darkSlate,
           borderRadius: BorderRadius.circular(28),
           boxShadow: const [
             BoxShadow(
@@ -647,15 +831,25 @@ class _SubmitButton extends StatelessWidget {
           ],
         ),
         alignment: Alignment.center,
-        child: Text(
-          'SUBMIT BID',
-          style: MyShopTypography.button.copyWith(
-            color: MyShopColors.textOnDarkSlate,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.8,
-            fontSize: 15,
-          ),
-        ),
+        child: isLoading
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  valueColor:
+                      AlwaysStoppedAnimation(MyShopColors.textOnDarkSlate),
+                ),
+              )
+            : Text(
+                'SUBMIT BID',
+                style: MyShopTypography.button.copyWith(
+                  color: MyShopColors.textOnDarkSlate,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                  fontSize: 15,
+                ),
+              ),
       ),
     );
   }

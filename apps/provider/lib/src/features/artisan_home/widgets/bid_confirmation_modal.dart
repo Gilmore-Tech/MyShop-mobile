@@ -90,7 +90,7 @@ class BidConfirmationModal extends StatelessWidget {
 
             // Title
             Text(
-              'Confirmation Sent!',
+              'Bid Submitted!',
               textAlign: TextAlign.center,
               style: MyShopTypography.h2.copyWith(
                 fontWeight: FontWeight.w800,
@@ -107,7 +107,7 @@ class BidConfirmationModal extends StatelessWidget {
                   fontWeight: FontWeight.w400,
                 ),
                 children: [
-                  const TextSpan(text: "We've notified "),
+                  const TextSpan(text: "We've sent your bid to "),
                   TextSpan(
                     text: clientFirstName,
                     style: const TextStyle(
@@ -115,7 +115,9 @@ class BidConfirmationModal extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const TextSpan(text: " that you've accepted the request."),
+                  const TextSpan(
+                    text: ". You'll be notified when they pick an artisan.",
+                  ),
                 ],
               ),
             ),

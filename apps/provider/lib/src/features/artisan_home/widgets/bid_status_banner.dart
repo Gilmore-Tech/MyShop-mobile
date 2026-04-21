@@ -26,7 +26,8 @@ class BidStatusBanner extends StatefulWidget {
   const BidStatusBanner({
     super.key,
     required this.status,
-    this.countdown = const Duration(minutes: 5),
+    this.expiresAt,
+    this.showCountdown = true,
     this.onEdit,
     this.onWithdraw,
     this.onMessage,
@@ -34,7 +35,19 @@ class BidStatusBanner extends StatefulWidget {
   });
 
   final BidStatus status;
-  final Duration countdown;
+
+  /// When the bidding window closes. The countdown shown for a pending bid
+  /// is `expiresAt - now`, so it decreases in real time and is consistent
+  /// across navigations and app restarts. Falls back to 5 minutes from
+  /// now if null (e.g. pre-backend-integration callers).
+  final DateTime? expiresAt;
+
+  /// Whether to render the countdown pill in the pending-state banner.
+  /// Admin-assigned jobs have no bid window — the artisan can quote at
+  /// their own pace — so we hide the timer and show a "Quote when ready"
+  /// hint instead.
+  final bool showCountdown;
+
   final VoidCallback? onEdit;
   final VoidCallback? onWithdraw;
   final VoidCallback? onMessage;
@@ -45,22 +58,32 @@ class BidStatusBanner extends StatefulWidget {
 }
 
 class _BidStatusBannerState extends State<BidStatusBanner> {
-  late Duration _remaining;
   Timer? _timer;
+  late DateTime _deadline;
 
   @override
   void initState() {
     super.initState();
-    _remaining = widget.countdown;
-    if (widget.status == BidStatus.pending) {
+    _deadline =
+        widget.expiresAt ?? DateTime.now().add(const Duration(minutes: 5));
+    if (widget.status == BidStatus.pending && widget.showCountdown) {
       _timer = Timer.periodic(const Duration(seconds: 1), (t) {
         if (!mounted) return;
         if (_remaining.inSeconds <= 0) {
           t.cancel();
           return;
         }
-        setState(() => _remaining -= const Duration(seconds: 1));
+        setState(() {});
       });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant BidStatusBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.expiresAt != oldWidget.expiresAt) {
+      _deadline = widget.expiresAt ??
+          DateTime.now().add(const Duration(minutes: 5));
     }
   }
 
@@ -70,9 +93,15 @@ class _BidStatusBannerState extends State<BidStatusBanner> {
     super.dispose();
   }
 
+  Duration get _remaining {
+    final diff = _deadline.difference(DateTime.now());
+    return diff.isNegative ? Duration.zero : diff;
+  }
+
   String get _countdownLabel {
-    final m = _remaining.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final s = _remaining.inSeconds.remainder(60).toString().padLeft(2, '0');
+    final r = _remaining;
+    final m = r.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = r.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$m:$s';
   }
 
@@ -114,45 +143,50 @@ class _BidStatusBannerState extends State<BidStatusBanner> {
               const SizedBox(width: MyShopSpacing.sm),
               Expanded(
                 child: Text(
-                  'Bid pending — waiting',
+                  widget.showCountdown
+                      ? 'Bid pending — waiting'
+                      : 'Quote when ready',
                   style: MyShopTypography.h3.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: MyShopColors.surfaceWhite,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.access_time,
-                      size: 14,
-                      color: MyShopColors.primaryGold,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      _countdownLabel,
-                      style: MyShopTypography.body1.copyWith(
+              if (widget.showCountdown)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: MyShopColors.surfaceWhite,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.access_time,
+                        size: 14,
                         color: MyShopColors.primaryGold,
-                        fontWeight: FontWeight.w800,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 4),
+                      Text(
+                        _countdownLabel,
+                        style: MyShopTypography.body1.copyWith(
+                          color: MyShopColors.primaryGold,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: MyShopSpacing.sm),
           Text(
-            'The client is currently reviewing all submitted bids. You will be notified instantly if your bid is selected or if further details are needed.',
+            widget.showCountdown
+                ? 'The client is currently reviewing all submitted bids. You will be notified instantly if your bid is selected or if further details are needed.'
+                : "An admin has assigned this job to you. Submit your price whenever you're ready — there's no bidding window on admin-routed jobs.",
             style: MyShopTypography.body2.copyWith(
               color: MyShopColors.textSecondary,
               height: 1.5,
