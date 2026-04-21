@@ -20,6 +20,7 @@ import '../features/chat/screens/chat_screen.dart';
 import '../features/chat/screens/messages_list_screen.dart';
 import '../features/artisan_home/screens/artisan_home_screen.dart';
 import '../features/artisan_home/screens/job_request_screen.dart';
+import '../features/artisan_jobs/screens/artisan_jobs_screen.dart';
 import '../features/artisan_home/widgets/bid_status_banner.dart';
 import '../features/driver_home/screens/active_ride_screen.dart';
 import '../features/driver_home/screens/driver_home_screen.dart';
@@ -262,14 +263,25 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ProviderChatScreen(),
       ),
       GoRoute(
+        path: '/messages',
+        builder: (context, state) => const MessagesListScreen(),
+      ),
+      GoRoute(
         path: '/job-request',
         builder: (context, state) {
           final extra = state.extra;
           if (extra is Job) {
             return JobRequestScreen(job: extra);
           }
-          final status = extra is BidStatus ? extra : BidStatus.none;
-          return JobRequestScreen(bidStatus: status);
+          if (extra is JobRequestRouteExtra) {
+            return JobRequestScreen(
+              job: extra.job,
+              bidStatus: extra.bidStatus,
+              submittedBidAmount: extra.submittedBidAmount,
+            );
+          }
+          // No valid payload — bounce back to home rather than render a blank.
+          return const _InvalidJobRequestScreen();
         },
       ),
 
@@ -325,8 +337,9 @@ class _ProviderHomeSwitcher extends ConsumerWidget {
   }
 }
 
-/// Renders the artisan messages list under the third tab slot, while drivers
-/// keep their trips history. Lets us share one shell route for both roles.
+/// Renders the artisan "My Jobs" list under the third tab slot, while
+/// drivers keep their trips history. Lets us share one shell route for
+/// both roles. (Artisans can still open chat via /messages.)
 class _ProviderTripsSwitcher extends ConsumerWidget {
   const _ProviderTripsSwitcher();
 
@@ -334,7 +347,7 @@ class _ProviderTripsSwitcher extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final type = ref.watch(providerTypeProvider);
     return type.isArtisan
-        ? const MessagesListScreen()
+        ? const ArtisanJobsScreen()
         : const TripsHistoryScreen();
   }
 }
@@ -409,7 +422,7 @@ class _DriverShell extends ConsumerWidget {
                   ? [
                       _NavTab(icon: Icons.work_outline, label: 'Jobs', isActive: currentIndex == 0, badgeCount: badges['/home'], onTap: () => _onTabTap(context, ref, '/home')),
                       _NavTab(icon: Icons.account_balance_wallet_outlined, label: 'Earnings', isActive: currentIndex == 1, badgeCount: badges['/earnings'], onTap: () => _onTabTap(context, ref, '/earnings')),
-                      _NavTab(icon: Icons.chat_bubble_outline, label: 'Messages', isActive: currentIndex == 2, badgeCount: badges['/trips'], onTap: () => _onTabTap(context, ref, '/trips')),
+                      _NavTab(icon: Icons.assignment_outlined, label: 'My Jobs', isActive: currentIndex == 2, badgeCount: badges['/trips'], onTap: () => _onTabTap(context, ref, '/trips')),
                       _NavTab(icon: Icons.account_circle_outlined, label: 'Account', isActive: currentIndex == 3, badgeCount: badges['/account'], onTap: () => _onTabTap(context, ref, '/account')),
                     ]
                   : [
@@ -471,6 +484,66 @@ class _NavTab extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Route payload for the `/job-request` screen when we need to carry a job
+/// alongside post-submission bid state (e.g. after the bid sheet closes).
+class JobRequestRouteExtra {
+  const JobRequestRouteExtra({
+    required this.job,
+    required this.bidStatus,
+    this.submittedBidAmount = 0,
+  });
+
+  final Job job;
+  final BidStatus bidStatus;
+  final num submittedBidAmount;
+}
+
+/// Fallback rendered when `/job-request` is navigated to without a valid
+/// payload. Offers a way back rather than showing a blank screen.
+class _InvalidJobRequestScreen extends StatelessWidget {
+  const _InvalidJobRequestScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Request Details'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/home'),
+        ),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 48),
+              const SizedBox(height: 12),
+              const Text(
+                'No request data.',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'This request is no longer available or was opened without '
+                'a valid link.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => context.go('/home'),
+                child: const Text('Go home'),
+              ),
+            ],
+          ),
         ),
       ),
     );
