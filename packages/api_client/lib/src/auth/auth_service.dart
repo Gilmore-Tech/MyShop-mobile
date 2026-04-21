@@ -44,6 +44,11 @@ abstract class AuthService {
   /// GET /users/me
   Future<UserProfile> getMe();
 
+  /// Same as [getMe] but returns the raw decoded JSON map alongside the
+  /// parsed profile. Used by the repository to cache the response so the
+  /// session can be restored offline.
+  Future<({UserProfile profile, Map<String, dynamic> raw})> getMeWithRaw();
+
   /// Update user profile fields.
   /// PUT /users/me
   Future<UserProfile> updateMe(UpdateProfileRequest request);

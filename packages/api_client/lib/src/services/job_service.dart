@@ -97,12 +97,82 @@ class JobService {
     }
   }
 
+  /// POST /jobs/:id/bids — Artisan: submit a bid on an open job.
+  /// Creates a bid record and notifies the client via socket `job:bid_new`.
+  ///
+  /// Per the API spec, only `amountPesewas` is required; `message` is
+  /// optional. `etaMinutes` / `durationMinutes` are captured client-side
+  /// for the artisan's own reference and included alongside the message
+  /// so the client sees them.
+  Future<Map<String, dynamic>> submitBid(
+    String jobId, {
+    required int amountPesewas,
+    required int etaMinutes,
+    required int durationMinutes,
+    String? notes,
+  }) async {
+    try {
+      // Compose a message that includes ETA + duration so they reach the
+      // client even though the backend only stores a free-text `message`.
+      final parts = <String>[
+        'ETA: $etaMinutes min',
+        'Duration: ${_formatDuration(durationMinutes)}',
+        if (notes != null && notes.trim().isNotEmpty) notes.trim(),
+      ];
+      final message = parts.join(' · ');
+
+      final payload = {
+        'amountPesewas': amountPesewas,
+        'message': message,
+      };
+      // ignore: avoid_print
+      print('[JobService] submitBid POST /jobs/$jobId/bids payload=$payload');
+      final response = await _dio.post(
+        '/jobs/$jobId/bids',
+        data: payload,
+      );
+      // ignore: avoid_print
+      print('[JobService] submitBid response=${response.statusCode} data=${response.data}');
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      // ignore: avoid_print
+      print('[JobService] submitBid FAILED status=${e.response?.statusCode} '
+          'data=${e.response?.data} message=${e.message}');
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  String _formatDuration(int totalMinutes) {
+    final hours = totalMinutes ~/ 60;
+    final minutes = totalMinutes % 60;
+    if (hours == 0) return '${minutes}m';
+    if (minutes == 0) return '${hours}h';
+    return '${hours}h ${minutes}m';
+  }
+
   /// GET /jobs/:id/bids — Get bids for a job.
+  /// Returns an empty list if the endpoint responds 404.
   Future<List<dynamic>> getBids(String jobId) async {
     try {
       final response = await _dio.get('/jobs/$jobId/bids');
-      return _unwrap(response) as List<dynamic>;
+      final body = response.data;
+      // Handle the common response shapes:
+      //   { success: true, data: [...] }
+      //   { success: true, data: { items: [...] } }
+      //   { success: true, data: { bids: [...] } }
+      //   [...]  (raw array)
+      if (body is List) return body;
+      if (body is Map<String, dynamic>) {
+        final data = body['data'];
+        if (data is List) return data;
+        if (data is Map<String, dynamic>) {
+          if (data['items'] is List) return data['items'] as List<dynamic>;
+          if (data['bids'] is List) return data['bids'] as List<dynamic>;
+        }
+      }
+      return const <dynamic>[];
     } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return const <dynamic>[];
       throw ApiException.fromDioException(e);
     }
   }

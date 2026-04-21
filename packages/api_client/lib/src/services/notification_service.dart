@@ -44,4 +44,26 @@ class NotificationService {
       throw ApiException.fromDioException(e);
     }
   }
+
+  /// POST /notifications/register-device — Store the FCM token for the
+  /// authenticated user so the backend can send push notifications for
+  /// incoming jobs/rides when the app is backgrounded or terminated.
+  ///
+  /// Call on login and whenever the FCM token refreshes.
+  Future<void> registerDevice({
+    required String fcmToken,
+    required String platform,
+  }) async {
+    try {
+      await _dio.post(
+        '/notifications/register-device',
+        data: {
+          'fcmToken': fcmToken,
+          'platform': platform,
+        },
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
 }

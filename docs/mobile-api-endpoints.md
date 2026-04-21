@@ -1399,12 +1399,112 @@ Token payload: `{ sub: userId, role: "client"|"driver"|"artisan", phone: "+233..
 
 ## ARTISAN JOB MANAGEMENT (Artisan)
 
+### Admin-Assignment Flow — **QUESTIONS FOR BACKEND**
+
+**Context:** When a job posts but receives no bids before the 5-minute window
+expires, an admin manually assigns an artisan. That artisan then submits a
+price (via what we currently treat as "bidding") to continue the flow.
+
+Before we can finish wiring the mobile UI, we need answers on:
+
+1. **Status for "awaiting admin assignment"** — what's the job's `status`
+   between "bid window expired with zero bids" and "admin has picked an
+   artisan"? We're currently seeing `pending_admin` in the wild — is that
+   the one? Or does `pending_admin` mean something else (e.g. a bid amount
+   needing admin approval when it exceeds GHS 5,000, per the original spec
+   for `POST /jobs/:id/bids`)?
+
+2. **Status after admin picks an artisan** — what's the job's `status` once
+   the admin has assigned but the artisan hasn't yet quoted? Is it still
+   `pending_admin`, a new `admin_assigned`, or does it jump to `open` with
+   `assignedArtisanId` set?
+
+3. **Event name** — when the admin assigns a job to a specific artisan,
+   which WebSocket event fires into the `artisan:{userId}` room? We'd
+   expect something like `job:admin_assigned` or reuse `job:new`. Please
+   confirm the event name and payload shape.
+
+4. **How does the artisan quote?** — same `POST /jobs/:id/bids` endpoint,
+   or a dedicated one? If same, the backend must allow bids on the
+   admin-assigned status. We currently gate the UI on `status == open`
+   only and reject everything else with a "Not biddable" banner.
+
+5. **Expiry** — does the admin-assigned artisan get a fresh N-minute window
+   to quote, or is it open-ended? Please return an `expiresAt` (or
+   `quoteDeadline`) on the job or the event payload so we can render a
+   countdown.
+
+6. **Decline path** — if the admin-assigned artisan declines the
+   assignment, what happens? Does the job go back to pending-admin, get
+   re-broadcast, or auto-cancel? Is there a dedicated endpoint
+   (`POST /jobs/:id/decline-assignment`) or do we reuse `PATCH /jobs/:id/cancel`?
+
+7. **Acceptance after the artisan quotes** — when the admin-assigned
+   artisan submits their price, is it auto-accepted (since the admin
+   already picked them) or does the client still need to confirm? This
+   determines whether the job status jumps straight to `confirmed` or
+   needs an intermediate state.
+
+8. **Timeline fields in `GET /jobs/:id`** — we'd like explicit timestamps
+   for every transition. Please include:
+   - `openedAt` (initial post)
+   - `bidWindowExpiredAt` (zero-bid fallback kicked in)
+   - `adminAssignedAt` + `adminAssignedArtisanId`
+   - `quotedAt` (admin-assigned artisan submitted their price)
+   - Existing: `confirmedAt`, `artisanEnRouteAt`, `arrivedAt`, `startedAt`,
+     `completedAt`
+
+   So the mobile can render a proper status timeline without guessing.
+
+9. **`myBid.status` values** — what's the full set? So far we've seen
+   `submitted`, `pending`, `pending_review`, `accepted`, `rejected`,
+   `expired`, `withdrawn`. For the admin-assigned path, is it the same
+   enum or is there a `quoted` / `admin_quoted` variant?
+
+Once these are confirmed, we'll finalise the mobile `JobStatus` enum and
+bid-gating logic to match.
+
+---
+
+### GET /jobs (artisan scope) — **PENDING BACKEND ENRICHMENT**
+
+When called by an artisan token, the backend should:
+
+1. **Scope the list** to jobs the artisan is actually associated with — jobs
+   they've bid on, been matched to, or been assigned. Do NOT return arbitrary
+   open jobs in the area; those surface via WebSocket `job:new` only.
+
+2. **Attach a `myBid` object** to each job the artisan has bid on:
+   ```json
+   {
+     "id": "...",
+     "status": "open",
+     // ... standard job fields ...
+     "myBid": {
+       "bidId": "uuid",
+       "amountPesewas": 17500,
+       "etaMinutes": 20,
+       "durationMinutes": 120,
+       "message": "...",
+       "status": "submitted",    // submitted | accepted | rejected | expired | withdrawn
+       "createdAt": "2024-01-15T10:30:00Z",
+       "expiresAt": "2024-01-15T10:35:00Z"
+     }
+   }
+   ```
+
+Without `myBid` attached, the mobile app falls back to a local (SharedPreferences)
+bid tracker to render the "Bids" tab accurately. Adding `myBid` is the source
+of truth and lets the app stay consistent across devices.
+
+---
+
 ### GET /jobs/:id
 > Get incoming job request details. **Auth: Bearer (job client or assigned artisan only).**
 
 **No request body.**
 
-**Response:** Full job entity — category, description, photos, client location, bids, supplements.
+**Response:** Full job entity — category, description, photos, client location, bids, supplements. When called by an artisan, include `myBid` as described above.
 
 **Error codes:** `NOT_YOUR_JOB` (403), `JOB_NOT_FOUND` (404)
 
@@ -1415,6 +1515,8 @@ Token payload: `{ sub: userId, role: "client"|"driver"|"artisan", phone: "+233..
 
 **Required fields:**
 - `amountPesewas` (int) — Min: 1. Must be >= category minimum bid (check via `GET /config/:key`).
+- `etaMinutes` (int) — **PENDING BACKEND** — Artisan's estimated arrival time in minutes. Range: 1–180.
+- `durationMinutes` (int) — **PENDING BACKEND** — Artisan's estimated job duration in minutes. Range: 15–1440.
 
 **Optional fields:**
 - `message` (string) — Message to the client explaining the bid.
@@ -1425,12 +1527,17 @@ Token payload: `{ sub: userId, role: "client"|"driver"|"artisan", phone: "+233..
   "bidId": "uuid",
   "status": "pending",
   "amountPesewas": 5000,
-  "expiresAt": "2024-01-15T10:35:00Z"
+  "etaMinutes": 20,
+  "durationMinutes": 120,
+  "expiresAt": "2024-01-15T10:35:00Z",
+  "createdAt": "2024-01-15T10:30:00Z"
 }
 ```
 > `status` is `"admin_review"` if bid exceeds GHS 5,000 (500000 pesewas).
 
 **Error codes:** `JOB_NOT_OPEN` (400), `BID_WINDOW_EXPIRED` (400), `MAX_BIDS_REACHED` (400), `BID_BELOW_MINIMUM` (400)
+
+> **Backend action needed:** Add `etaMinutes` and `durationMinutes` columns to the `bids` table and accept them in this payload. Include them in the response and in every `bid` object returned elsewhere. The mobile app is sending them today merged into `message` as a fallback.
 
 ---
 

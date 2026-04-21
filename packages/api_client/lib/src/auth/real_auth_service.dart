@@ -145,6 +145,18 @@ class RealAuthService implements AuthService {
   }
 
   @override
+  Future<({UserProfile profile, Map<String, dynamic> raw})>
+      getMeWithRaw() async {
+    try {
+      final response = await _dio.get('/users/me');
+      final data = _unwrap(response) as Map<String, dynamic>;
+      return (profile: UserProfile.fromJson(data), raw: data);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  @override
   Future<UserProfile> updateMe(UpdateProfileRequest request) async {
     try {
       final response = await _dio.put('/users/me', data: request.toJson());

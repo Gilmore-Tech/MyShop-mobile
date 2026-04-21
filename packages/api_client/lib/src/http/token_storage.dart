@@ -1,5 +1,10 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+/// How long a stored session is trusted before forcing the user to re-login,
+/// regardless of backend token expiry. Lets providers stay signed-in across
+/// app restarts so they keep receiving requests in the background.
+const Duration kSessionTtl = Duration(days: 7);
+
 /// Abstract interface for token persistence.
 /// Keeps the HTTP layer testable without Flutter dependencies.
 abstract class TokenStorage {
@@ -23,6 +28,16 @@ abstract class TokenStorage {
   /// once. Survives logout — only a full app data clear resets this.
   Future<bool> hasSeenOnboarding();
   Future<void> markOnboardingSeen();
+
+  /// When the current session was established (i.e. the last successful OTP
+  /// verification). Used to enforce [kSessionTtl] on bootstrap.
+  Future<DateTime?> readSessionStartedAt();
+  Future<void> writeSessionStartedAt(DateTime when);
+
+  /// Cached `/users/me` response JSON. Lets bootstrap restore the
+  /// authenticated UI when the device is offline at app start.
+  Future<String?> readCachedProfileJson();
+  Future<void> writeCachedProfileJson(String json);
 }
 
 /// Production implementation backed by Flutter Secure Storage
@@ -36,6 +51,8 @@ class SecureTokenStorage implements TokenStorage {
   static const _kPhone = 'auth_phone';
   static const _kOnboardingSeen = 'onboarding_seen';
   static const _kRole = 'auth_role';
+  static const _kSessionStartedAt = 'auth_session_started_at';
+  static const _kCachedProfile = 'auth_cached_profile';
 
   final FlutterSecureStorage _storage;
 
@@ -64,7 +81,28 @@ class SecureTokenStorage implements TokenStorage {
     await _storage.delete(key: _kRefreshToken);
     await _storage.delete(key: _kPhone);
     await _storage.delete(key: _kRole);
+    await _storage.delete(key: _kSessionStartedAt);
+    await _storage.delete(key: _kCachedProfile);
   }
+
+  @override
+  Future<DateTime?> readSessionStartedAt() async {
+    final value = await _storage.read(key: _kSessionStartedAt);
+    if (value == null) return null;
+    return DateTime.tryParse(value);
+  }
+
+  @override
+  Future<void> writeSessionStartedAt(DateTime when) =>
+      _storage.write(key: _kSessionStartedAt, value: when.toIso8601String());
+
+  @override
+  Future<String?> readCachedProfileJson() =>
+      _storage.read(key: _kCachedProfile);
+
+  @override
+  Future<void> writeCachedProfileJson(String json) =>
+      _storage.write(key: _kCachedProfile, value: json);
 
   @override
   Future<String?> readRole() => _storage.read(key: _kRole);

@@ -1,9 +1,14 @@
 /// A service job request created by a client for an artisan.
 ///
-/// Status flow:
-///   open → queued → confirmed → artisan_en_route → arrived →
+/// Standard status flow:
+///   open → confirmed → artisan_en_route → arrived →
 ///   in_progress → artisan_marked_complete → completed
-///   (can be cancelled at most stages)
+///
+/// Admin-assignment fallback (when no artisans bid in the window):
+///   open → (bid window expires) → pending_admin → admin_assigned →
+///   (artisan quotes) → confirmed → ... → completed
+///
+/// (can be cancelled at most stages)
 class Job {
   const Job({
     required this.id,
@@ -23,6 +28,9 @@ class Job {
     this.shareToken,
     this.artisansNotified,
     this.createdAt,
+    this.assignedArtisanId,
+    this.assignedByAdmin,
+    this.assignedAt,
   });
 
   factory Job.fromJson(Map<String, dynamic> json) {
@@ -44,6 +52,10 @@ class Job {
       shareToken: json['shareToken'] as String?,
       artisansNotified: json['artisansNotified'] as int?,
       createdAt: json['createdAt'] as String?,
+      assignedArtisanId:
+          (json['assignedArtisanId'] ?? json['artisanId']) as String?,
+      assignedByAdmin: json['assignedByAdmin'] as String?,
+      assignedAt: json['assignedAt'] as String?,
     );
   }
 
@@ -64,6 +76,19 @@ class Job {
   final String? shareToken;
   final int? artisansNotified;
   final String? createdAt;
+
+  /// The artisan this job is assigned to (after client pick OR admin assign).
+  final String? assignedArtisanId;
+
+  /// Populated when the job was assigned via admin after zero bids —
+  /// the admin user's id. Null for jobs that followed the normal bid flow.
+  final String? assignedByAdmin;
+
+  /// When the admin / client assigned the artisan.
+  final String? assignedAt;
+
+  /// Whether this job reached the admin-assignment fallback path.
+  bool get isAdminAssigned => assignedByAdmin != null;
 
   bool get isOpen => status == JobStatus.open;
   bool get isActive => status.isActive;
@@ -87,6 +112,9 @@ class Job {
     String? shareToken,
     int? artisansNotified,
     String? createdAt,
+    String? assignedArtisanId,
+    String? assignedByAdmin,
+    String? assignedAt,
   }) {
     return Job(
       id: id ?? this.id,
@@ -106,12 +134,23 @@ class Job {
       shareToken: shareToken ?? this.shareToken,
       artisansNotified: artisansNotified ?? this.artisansNotified,
       createdAt: createdAt ?? this.createdAt,
+      assignedArtisanId: assignedArtisanId ?? this.assignedArtisanId,
+      assignedByAdmin: assignedByAdmin ?? this.assignedByAdmin,
+      assignedAt: assignedAt ?? this.assignedAt,
     );
   }
 }
 
 /// Job status flow matching the backend enum.
 enum JobStatus {
+  /// Bid window expired with zero bids — the job is queued for admin
+  /// to manually assign an artisan. Not biddable from the mobile app.
+  pendingAdmin,
+
+  /// Admin has assigned an artisan. That artisan must now submit a price
+  /// to continue the flow. Biddable only for the assigned artisan.
+  adminAssigned,
+
   open,
   queued,
   confirmed,
@@ -125,6 +164,12 @@ enum JobStatus {
   /// Parse a snake_case string from the backend.
   static JobStatus fromString(String value) {
     switch (value) {
+      case 'pending_admin':
+      case 'admin_review':
+        return JobStatus.pendingAdmin;
+      case 'admin_assigned':
+      case 'awaiting_artisan_quote':
+        return JobStatus.adminAssigned;
       case 'open':
         return JobStatus.open;
       case 'queued':
@@ -151,6 +196,10 @@ enum JobStatus {
   /// Convert to the snake_case string the backend expects.
   String toJson() {
     switch (this) {
+      case JobStatus.pendingAdmin:
+        return 'pending_admin';
+      case JobStatus.adminAssigned:
+        return 'admin_assigned';
       case JobStatus.artisanEnRoute:
         return 'artisan_en_route';
       case JobStatus.inProgress:

@@ -157,6 +157,13 @@ class MockAuthService implements AuthService {
   }
 
   @override
+  Future<({UserProfile profile, Map<String, dynamic> raw})>
+      getMeWithRaw() async {
+    final profile = await getMe();
+    return (profile: profile, raw: <String, dynamic>{});
+  }
+
+  @override
   Future<UserProfile> updateMe(UpdateProfileRequest request) async {
     await _delay();
     final current = await getMe();
