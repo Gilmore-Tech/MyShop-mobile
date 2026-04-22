@@ -62,6 +62,9 @@ class IncomingRequestListener extends ConsumerWidget {
   }
 
   void _showJobModal(BuildContext context, Job job, WidgetRef ref) {
+    debugPrint('[IncomingRequestListener] _showJobModal start id=${job.id} '
+        'mounted=${context.mounted}');
+
     // Clear the incoming state so the listener doesn't re-trigger on rebuild.
     ref.read(incomingJobRequestProvider.notifier).state = null;
 
@@ -82,10 +85,18 @@ class IncomingRequestListener extends ConsumerWidget {
             1000
         : null;
 
+    if (!context.mounted) {
+      debugPrint('[IncomingRequestListener] context unmounted — skip modal');
+      return;
+    }
+
     IncomingJobModal.show(
       context,
       job: job,
       distanceKm: distanceKm,
-    );
+    ).then((_) {
+      debugPrint('[IncomingRequestListener] modal closed id=${job.id}');
+    });
+    debugPrint('[IncomingRequestListener] showModalBottomSheet invoked id=${job.id}');
   }
 }

@@ -5,7 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_models/shared_models.dart';
 
 import '../../features/artisan_jobs/providers/artisan_jobs_provider.dart';
-import '../../features/auth/providers/current_user_provider.dart';
+import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../features/driver_home/providers/driver_location_provider.dart';
 import '../../features/driver_home/providers/driver_status_provider.dart';
 import '../../features/profile/providers/provider_type_provider.dart';
@@ -59,10 +59,6 @@ final socketConnectionProvider = Provider<void>((ref) {
 ///
 /// Socket emit = real-time, low-latency feed for the matcher.
 /// REST call   = durable write to the DB (throttled to avoid spamming).
-///
-/// The backend matcher requires `current_location IS NOT NULL`
-/// AND `online_status = 'online'` — both are set server-side by the
-/// `/location/{role}/update` endpoint.
 ///
 /// Watched by the shell — activates whenever the provider is online.
 final locationSocketBridgeProvider = Provider<void>((ref) {
@@ -136,153 +132,105 @@ void _connectAndListen(Ref ref, SocketService socket) {
       final preview = data.toString();
       final trimmed =
           preview.length > 200 ? '${preview.substring(0, 200)}…' : preview;
-      ref.read(lastSocketEventProvider.notifier).state =
-          '$event: $trimmed';
+      ref.read(lastSocketEventProvider.notifier).state = '$event: $trimmed';
     });
 
-
-    // Listen for incoming ride requests (driver) — new + legacy event names.
-    // Minimal handler — kept simple on purpose. The payload extractor is
-    // defined below (shared with the job handlers).
+    // Listen for incoming ride requests (driver) — new + legacy event names
     void handleRide(dynamic data) {
-      debugPrint('[WS] handleRide invoked, data type=${data.runtimeType}');
-      Map<String, dynamic>? payload;
+      debugPrint('[WS] Received ride event: $data');
       if (data is Map<String, dynamic>) {
-        payload = data;
-      } else if (data is List && data.isNotEmpty && data.first is Map) {
-        payload = Map<String, dynamic>.from(data.first as Map);
-      } else if (data is Map) {
-        payload = Map<String, dynamic>.from(data);
-      }
-      if (payload == null) {
-        debugPrint('[WS] Could not extract ride payload — data=$data');
-        return;
-      }
-      try {
-        final ride = Ride.fromJson(payload);
-        debugPrint('[WS] Parsed ride id=${ride.id} — pushing to provider');
-        ref.read(incomingRideRequestProvider.notifier).state = ride;
-        ref.read(navBadgeProvider.notifier).increment('/home');
-      } catch (e) {
-        debugPrint('[WS] Failed to parse ride: $e');
-        debugPrint('[WS] Ride payload was: $payload');
+        try {
+          final ride = Ride.fromJson(data);
+          ref.read(incomingRideRequestProvider.notifier).state = null;
+          ref.read(incomingRideRequestProvider.notifier).state = ride;
+          ref.read(navBadgeProvider.notifier).increment('/home');
+        } catch (e) {
+          debugPrint('[WS] Failed to parse ride: $e');
+        }
+      } else {
+        debugPrint('[WS] Ride payload not a Map — got ${data.runtimeType}');
       }
     }
 
+    // off+on guards against duplicate handlers if _connectAndListen runs
+    // more than once against the same socket instance.
     socket
+      ..off('ride:new')
+      ..off('ride:request')
       ..on('ride:new', handleRide)
       ..on('ride:request', handleRide); // legacy
 
-    // Extract the event payload — Socket.IO may deliver it as a Map or a
-    // single-element List (gateway config dependent). Shared by both
-    // handlers below.
-    Map<String, dynamic>? extractPayload(dynamic data) {
-      if (data is Map<String, dynamic>) return data;
-      if (data is List && data.isNotEmpty && data.first is Map) {
-        return Map<String, dynamic>.from(data.first as Map);
-      }
-      if (data is Map) return Map<String, dynamic>.from(data);
-      return null;
-    }
-
-    // ── Standard job:new flow ──
-    // Minimal handler — parse + push. No dedupe, no filtering. This MUST
-    // stay simple so it can't be accidentally broken by admin-flow logic.
-    void handleJobNew(dynamic data) {
-      debugPrint('[WS] handleJobNew invoked, data type=${data.runtimeType}');
-      final payload = extractPayload(data);
-      if (payload == null) {
-        debugPrint('[WS] job:new payload extraction failed — data=$data');
-        return;
-      }
-      try {
-        final job = Job.fromJson(payload);
-        debugPrint('[WS] Parsed job:new id=${job.id} — pushing to provider');
-        ref.read(incomingJobRequestProvider.notifier).state = job;
-        ref.read(navBadgeProvider.notifier).increment('/home');
-      } catch (e) {
-        debugPrint('[WS] Failed to parse job:new: $e');
-        debugPrint('[WS] Payload was: $payload');
+    // Listen for incoming job requests (artisan) — new + legacy event names
+    void handleJob(dynamic data) {
+      debugPrint('[WS] Received job event: $data');
+      if (data is Map<String, dynamic>) {
+        try {
+          final job = Job.fromJson(data);
+          // Force a state transition even if an identical Job instance is
+          // somehow already in the provider (defensive — Job doesn't
+          // override ==, but the clear-then-set guarantees the listener
+          // fires for every inbound event).
+          ref.read(incomingJobRequestProvider.notifier).state = null;
+          ref.read(incomingJobRequestProvider.notifier).state = job;
+          ref.read(navBadgeProvider.notifier).increment('/home');
+          debugPrint('[WS] Job ${job.id} pushed to incomingJobRequestProvider');
+        } catch (e, st) {
+          debugPrint('[WS] Failed to parse job: $e\n$st');
+        }
+      } else {
+        debugPrint('[WS] Job payload not a Map — got ${data.runtimeType}');
       }
     }
 
     socket
-      ..on('job:new', handleJobNew)
-      ..on('job:request', handleJobNew); // legacy
+      ..off('job:new')
+      ..off('job:request')
+      ..on('job:new', handleJob)
+      ..on('job:request', handleJob); // legacy
 
-    // ── Admin-assigned flow (separate handler) ──
-    // Admin routes can fire duplicates (two rooms) and can land on
-    // artisans who weren't picked, so we dedupe + filter here. Entirely
-    // self-contained — nothing in this block can affect job:new.
-    String? lastAdminKey;
-    DateTime? lastAdminAt;
-    const adminDedupeWindow = Duration(seconds: 3);
-
-    void handleJobAdminAssigned(dynamic data) {
-      debugPrint('[WS] handleJobAdminAssigned invoked');
-      final payload = extractPayload(data);
-      if (payload == null) {
-        debugPrint('[WS] job:admin_assigned payload extraction failed');
-        return;
-      }
-      try {
-        final job = Job.fromJson(payload);
-
-        // Only show it if THIS artisan is the one the admin picked.
-        final me = ref.read(currentUserProvider);
-        if (job.assignedArtisanId != null &&
-            me != null &&
-            job.assignedArtisanId != me.id) {
-          debugPrint(
-            '[WS] admin_assigned not for me (assigned=${job.assignedArtisanId}, '
-            'me=${me.id}) — ignoring',
-          );
-          return;
-        }
-
-        // Dedupe the double delivery from dual-room emission.
-        final key = job.id;
-        final now = DateTime.now();
-        if (lastAdminKey == key &&
-            lastAdminAt != null &&
-            now.difference(lastAdminAt!) < adminDedupeWindow) {
-          debugPrint('[WS] admin_assigned duplicate — skipping');
-          return;
-        }
-        lastAdminKey = key;
-        lastAdminAt = now;
-
-        debugPrint('[WS] Parsed admin_assigned id=${job.id} — pushing');
-        ref.read(incomingJobRequestProvider.notifier).state = job;
-        ref.read(navBadgeProvider.notifier).increment('/home');
-      } catch (e) {
-        debugPrint('[WS] Failed to parse job:admin_assigned: $e');
-        debugPrint('[WS] Payload was: $payload');
-      }
-    }
-
-    socket.on('job:admin_assigned', handleJobAdminAssigned);
+    debugPrint('[WS] Job/ride listeners attached (id=${socket.isConnected})');
 
     // Listen for ride status updates
+    socket.off('ride:status');
     socket.on('ride:status', (data) {
       debugPrint('[WS] Received ride:status: $data');
     });
 
-    // Listen for job status updates — backend fires this when a job moves
-    // between states (e.g. admin_assigned → confirmed after the assigned
-    // artisan submits their quote).
+    // Listen for job status updates — emitted to the artisan's room when
+    // their bid is accepted/rejected, when the job is cancelled, or when
+    // it advances through the active-work phases. Refreshing the jobs
+    // list re-fetches `myBid.status`, which the JobRequest banner reads.
     void handleJobStatus(dynamic data) {
-      debugPrint('[WS] Received job:status event: $data');
-      // Tell the jobs list to refresh so the card re-renders with the new
-      // status / agreedPricePesewas. Best-effort — safe even if the list
-      // isn't currently being watched.
+      debugPrint('[WS] Received job:status: $data');
+      // autoDispose: safe to invalidate even when nothing is watching —
+      // a re-listener will trigger a fresh load from the constructor.
       try {
         ref.invalidate(artisanJobsProvider);
       } catch (_) {}
+      if (data is Map<String, dynamic>) {
+        final jobId =
+            data['jobId'] as String? ?? data['id'] as String?;
+        if (jobId != null) {
+          // Once a job moves past `open`, it can't be picked up from the
+          // in-session "New" list any more — drop it so stale entries
+          // don't linger after a decision has been made.
+          ref.read(pendingIncomingJobsProvider.notifier).remove(jobId);
+        }
+      }
     }
 
     socket
+      ..off('job:status')
+      ..off('job:bid_accepted')
+      ..off('job:bid_rejected')
+      ..off('bid:accepted')
+      ..off('bid:rejected')
       ..on('job:status', handleJobStatus)
-      ..on('job:status:changed', handleJobStatus);
+      // Pragmatic fallbacks: if the backend names the bid-outcome event
+      // something other than `job:status`, we still want the UI to react.
+      ..on('job:bid_accepted', handleJobStatus)
+      ..on('job:bid_rejected', handleJobStatus)
+      ..on('bid:accepted', handleJobStatus)
+      ..on('bid:rejected', handleJobStatus);
   });
 }

@@ -12,6 +12,14 @@ import 'src/features/auth/providers/auth_controller.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Cap the in-memory image cache. Flutter's default is 100 MB / 1000
+  // entries — a handful of full-resolution client-uploaded photos is
+  // enough to blow past that AND iOS's ~300 MB jetsam threshold. Paired
+  // with per-image `memCacheWidth`/`memCacheHeight` hints at the call
+  // sites, this keeps bitmap memory bounded even across long sessions.
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 40 * 1024 * 1024;
+  PaintingBinding.instance.imageCache.maximumSize = 100;
+
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
