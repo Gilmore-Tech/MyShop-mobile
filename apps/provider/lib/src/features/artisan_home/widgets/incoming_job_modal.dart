@@ -28,6 +28,10 @@ class IncomingJobModal extends StatelessWidget {
   }) {
     return showModalBottomSheet<void>(
       context: context,
+      // Render on the root navigator so the sheet stays on top even when the
+      // artisan has pushed a full-screen route (job request, account edit,
+      // earnings reports, etc.) above the shell.
+      useRootNavigator: true,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
@@ -247,6 +251,8 @@ class _Avatar extends StatelessWidget {
           width: 44,
           height: 44,
           fit: BoxFit.cover,
+          memCacheWidth: 132,
+          memCacheHeight: 132,
           placeholder: (_, __) => _placeholder(),
           errorWidget: (_, __, ___) => _placeholder(),
         ),

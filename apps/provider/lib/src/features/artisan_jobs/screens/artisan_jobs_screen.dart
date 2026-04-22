@@ -6,6 +6,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../../app/router.dart' show JobRequestRouteExtra;
 import '../../../core/providers/nav_badge_provider.dart';
+import '../../artisan_home/providers/active_job_provider.dart';
 import '../../artisan_home/widgets/bid_status_banner.dart';
 import '../providers/artisan_jobs_provider.dart';
 import '../providers/pending_incoming_jobs_provider.dart';
@@ -151,13 +152,22 @@ class _JobsTab extends ConsumerWidget {
   }
 }
 
-class _JobCard extends StatelessWidget {
+class _JobCard extends ConsumerWidget {
   const _JobCard({required this.entry});
 
   final ArtisanJobEntry entry;
 
+  /// Statuses owned by the /active-job screen — once the artisan has tapped
+  /// "Accept & Start Job", tapping the card again should open the map flow
+  /// directly rather than the request-details screen.
+  static bool _isActiveWork(JobStatus status) =>
+      status == JobStatus.artisanEnRoute ||
+      status == JobStatus.arrived ||
+      status == JobStatus.inProgress ||
+      status == JobStatus.artisanMarkedComplete;
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final job = entry.job;
     final title = job.categoryName != null && job.categoryName!.isNotEmpty
         ? '${job.categoryName} request'
@@ -166,6 +176,13 @@ class _JobCard extends StatelessWidget {
 
     return InkWell(
       onTap: () {
+        // An already-active job belongs on the map screen — seed the
+        // active-job slot and bypass /job-request entirely.
+        if (_isActiveWork(job.status)) {
+          ref.read(activeJobProvider.notifier).setJob(job);
+          context.pushReplacement('/active-job');
+          return;
+        }
         // Map the artisan's job relationship to a BidStatus so the detail
         // screen shows the right banner (pending / accepted / not selected).
         final status = _bidStatusFor(entry);

@@ -5,15 +5,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/constants/maps_config.dart';
+
+import '../../artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../artisan_jobs/providers/submitted_bids_provider.dart';
 import '../../auth/providers/current_user_provider.dart';
 import '../../driver_home/providers/driver_location_provider.dart';
+import '../providers/active_job_provider.dart';
 import '../widgets/bid_status_banner.dart';
 import 'bid_submission_screen.dart';
 
@@ -22,7 +25,7 @@ import 'bid_submission_screen.dart';
 ///
 /// PRD Reference: PRD 5.3 — incoming job notification (category, description,
 /// photos, client location, 5-minute bid window).
-class JobRequestScreen extends ConsumerWidget {
+class JobRequestScreen extends ConsumerStatefulWidget {
   const JobRequestScreen({
     super.key,
     required this.job,
@@ -36,23 +39,68 @@ class JobRequestScreen extends ConsumerWidget {
   final num submittedBidAmount;
   final num platformFeePercent;
 
-  String get _requestId =>
-      job.id.length >= 8 ? '#${job.id.substring(0, 8).toUpperCase()}' : '#${job.id}';
-  String get _clientName => job.clientName ?? 'Client';
-  String get _clientLocation => job.addressText ?? 'Location pending';
-  String get _title => job.categoryName != null && job.categoryName!.isNotEmpty
-      ? '${job.categoryName} request'
-      : 'Service Request';
+  @override
+  ConsumerState<JobRequestScreen> createState() => _JobRequestScreenState();
+}
+
+class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
+  /// One-shot — prevents the active-work redirect from being scheduled on
+  /// every rebuild (the `artisanJobsProvider` watch can fire many times
+  /// during a status-update cycle, and stacking post-frame callbacks used
+  /// to thrash navigation and retain widgets in memory).
+  bool _hasRedirectedToActiveJob = false;
+
+  String get _requestId => widget.job.id.length >= 8
+      ? '#${widget.job.id.substring(0, 8).toUpperCase()}'
+      : '#${widget.job.id}';
+  String get _title =>
+      widget.job.categoryName != null && widget.job.categoryName!.isNotEmpty
+          ? '${widget.job.categoryName} request'
+          : 'Service Request';
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final positionAsync = ref.watch(driverLocationStreamProvider);
+    // Watch the jobs list so the banner updates live as the backend pushes
+    // `job:status` events (e.g. "your bid was accepted"). Falls back to
+    // the constructor params when the job isn't in the list yet (fresh
+    // incoming request, or backend hasn't enriched the response).
+    final jobsState = ref.watch(artisanJobsProvider);
+    ArtisanJobEntry? liveEntry;
+    for (final e in jobsState.entries) {
+      if (e.job.id == widget.job.id) {
+        liveEntry = e;
+        break;
+      }
+    }
+    final effectiveJob = liveEntry?.job ?? widget.job;
+    final effectiveBidStatus = liveEntry != null
+        ? _bidStatusFor(liveEntry, fallback: widget.bidStatus)
+        : widget.bidStatus;
+    final effectiveBidAmount = liveEntry?.bidAmountPesewas != null
+        ? liveEntry!.bidAmountPesewas! / 100
+        : widget.submittedBidAmount;
+
+    // If the job has already advanced into active work (artisan accepted +
+    // is en route), the request-details screen no longer applies — bounce
+    // straight to the map view with this job seeded as the active one.
+    // Guarded by a one-shot flag so re-renders during the nav transition
+    // can't stack more callbacks.
+    if (!_hasRedirectedToActiveJob && _isActiveWork(effectiveJob.status)) {
+      _hasRedirectedToActiveJob = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref.read(activeJobProvider.notifier).setJob(effectiveJob);
+        context.pushReplacement('/active-job');
+      });
+    }
+
     final distanceKm = positionAsync.maybeWhen(
       data: (pos) => _distanceKm(
         pos.latitude,
         pos.longitude,
-        job.latitude,
-        job.longitude,
+        effectiveJob.latitude,
+        effectiveJob.longitude,
       ),
       orElse: () => null,
     );
@@ -70,29 +118,40 @@ class JobRequestScreen extends ConsumerWidget {
                   vertical: MyShopSpacing.md,
                 ),
                 children: [
-                  if (bidStatus != BidStatus.none) ...[
+                  if (effectiveBidStatus != BidStatus.none) ...[
                     BidStatusBanner(
-                      status: bidStatus,
+                      status: effectiveBidStatus,
                       // Anchor the countdown to the actual bid expiry so it
                       // keeps decreasing across screen opens / rebuilds.
                       expiresAt: ref
-                          .watch(submittedBidsProvider)[job.id]
+                          .watch(submittedBidsProvider)[effectiveJob.id]
                           ?.expiresAt,
                       // Admin-assigned jobs have no bid window — swap the
                       // countdown for a "Quote when ready" hint.
-                      showCountdown: job.status != JobStatus.adminAssigned,
-                      onAcceptStartJob: () => context.push('/active-job'),
+                      showCountdown:
+                          effectiveJob.status != JobStatus.adminAssigned,
+                      onAcceptStartJob: () {
+                        // Seed the active-job slot so the next screen can
+                        // drive the status machine from this job. Kicking
+                        // off the en_route transition happens inside the
+                        // active-job screen once the map is mounted.
+                        ref
+                            .read(activeJobProvider.notifier)
+                            .setJob(effectiveJob);
+                        context.pushReplacement('/active-job');
+                      },
                       onMessage: () => context.push('/chat'),
                     ),
                     const SizedBox(height: MyShopSpacing.md),
                   ],
                   _ClientSummaryCard(
-                    clientName: _clientName,
-                    clientPhotoUrl: job.clientPhotoUrl,
-                    clientLocation: _clientLocation,
+                    clientName: effectiveJob.clientName ?? 'Client',
+                    clientPhotoUrl: effectiveJob.clientPhotoUrl,
+                    clientLocation:
+                        effectiveJob.addressText ?? 'Location pending',
                     distanceKm: distanceKm,
                     title: _title,
-                    postedAgo: _formatPostedAgo(job.createdAt),
+                    postedAgo: _formatPostedAgo(effectiveJob.createdAt),
                   ),
                   const SizedBox(height: MyShopSpacing.lg),
                   const _SectionHeader(
@@ -101,18 +160,18 @@ class JobRequestScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: MyShopSpacing.sm),
                   _DescriptionCard(
-                    text: job.description.isNotEmpty
-                        ? job.description
+                    text: effectiveJob.description.isNotEmpty
+                        ? effectiveJob.description
                         : 'No description provided.',
                   ),
-                  if (job.photos.isNotEmpty) ...[
+                  if (effectiveJob.photos.isNotEmpty) ...[
                     const SizedBox(height: MyShopSpacing.lg),
                     const _SectionHeader(
                       icon: Icons.photo_library_outlined,
                       label: 'PHOTOS',
                     ),
                     const SizedBox(height: MyShopSpacing.sm),
-                    _PhotosRow(photos: job.photos),
+                    _PhotosRow(photos: effectiveJob.photos),
                   ],
                   const SizedBox(height: MyShopSpacing.lg),
                   const _SectionHeader(
@@ -121,24 +180,26 @@ class JobRequestScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: MyShopSpacing.sm),
                   _LocationCard(
-                    label: _clientLocation,
-                    latitude: job.latitude,
-                    longitude: job.longitude,
+                    label: effectiveJob.addressText ?? 'Location pending',
+                    latitude: effectiveJob.latitude,
+                    longitude: effectiveJob.longitude,
                   ),
                   const SizedBox(height: MyShopSpacing.md),
-                  if (bidStatus == BidStatus.none) ...[
-                    if (job.artisansNotified != null &&
-                        job.artisansNotified! > 0)
-                      _BidStatusCard(artisansNotified: job.artisansNotified!),
+                  if (effectiveBidStatus == BidStatus.none) ...[
+                    if (effectiveJob.artisansNotified != null &&
+                        effectiveJob.artisansNotified! > 0)
+                      _BidStatusCard(
+                        artisansNotified: effectiveJob.artisansNotified!,
+                      ),
                     const SizedBox(height: MyShopSpacing.lg),
                     if (_isBiddable(
-                      job,
+                      effectiveJob,
                       artisanUserId: ref.watch(currentUserProvider)?.id,
                     )) ...[
                       _PlaceBidButton(
                         onTap: () => BidSubmissionScreen.show(
                           context,
-                          job: job,
+                          job: effectiveJob,
                           distanceKm: distanceKm ?? 0,
                         ),
                       ),
@@ -147,15 +208,15 @@ class JobRequestScreen extends ConsumerWidget {
                         onTap: () {
                           ref
                               .read(pendingIncomingJobsProvider.notifier)
-                              .remove(job.id);
+                              .remove(effectiveJob.id);
                           context.pop();
                         },
                       ),
                     ] else
                       _NotBiddableNotice(
-                        status: job.status,
-                        assignedToMe: job.assignedArtisanId != null &&
-                            job.assignedArtisanId ==
+                        status: effectiveJob.status,
+                        assignedToMe: effectiveJob.assignedArtisanId != null &&
+                            effectiveJob.assignedArtisanId ==
                                 ref.watch(currentUserProvider)?.id,
                       ),
                   ] else ...[
@@ -168,8 +229,8 @@ class JobRequestScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: MyShopSpacing.sm),
                     _SubmittedBidCard(
-                      total: submittedBidAmount,
-                      feePercent: platformFeePercent,
+                      total: effectiveBidAmount,
+                      feePercent: widget.platformFeePercent,
                     ),
                   ],
                   const SizedBox(height: MyShopSpacing.lg),
@@ -184,6 +245,49 @@ class JobRequestScreen extends ConsumerWidget {
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
+
+/// Maps the artisan's live relationship with a job into a [BidStatus] the
+/// banner can render. Mirrors the same derivation the My Jobs list uses so
+/// the outcome the list shows ("ACCEPTED", "NOT SELECTED", etc.) and the
+/// banner on the detail screen can't drift apart.
+///
+/// [fallback] is returned when the entry is ambiguous (no bid, job still
+/// bidding) — callers pass the constructor's original `bidStatus` so we
+/// don't regress to [BidStatus.none] mid-flight.
+BidStatus _bidStatusFor(
+  ArtisanJobEntry entry, {
+  required BidStatus fallback,
+}) {
+  final status = entry.job.status;
+  // Once the job has advanced into active work, the banner (and its
+  // "Accept & Start Job" CTA) no longer apply — the artisan is already
+  // en route. Return `none` so the caller hides the banner; the build
+  // method pairs this with a redirect to `/active-job`.
+  if (_isActiveWork(status)) return BidStatus.none;
+  if (entry.bidAccepted) return BidStatus.accepted;
+  if (entry.bidRejected) return BidStatus.notSelected;
+  // A bid is only "pending" if the artisan actually placed one and it's
+  // still awaiting a decision. Without this guard, every new incoming
+  // job (status=open) surfaces as pending the moment it lands in the
+  // backend's /jobs list, which hides the PLACE BID CTA entirely.
+  if (entry.hasBid &&
+      (status == JobStatus.pendingAdmin ||
+          status == JobStatus.adminAssigned ||
+          status == JobStatus.open ||
+          status == JobStatus.queued)) {
+    return BidStatus.pending;
+  }
+  if (entry.hasBid) return BidStatus.notSelected;
+  return fallback;
+}
+
+/// True for the statuses the artisan moves through *after* tapping
+/// "Accept & Start Job". These are owned by the /active-job screen.
+bool _isActiveWork(JobStatus status) =>
+    status == JobStatus.artisanEnRoute ||
+    status == JobStatus.arrived ||
+    status == JobStatus.inProgress ||
+    status == JobStatus.artisanMarkedComplete;
 
 /// Whether a bid can be placed on a job in its current state for the given
 /// authenticated artisan.
@@ -542,6 +646,10 @@ class _ClientAvatar extends StatelessWidget {
           width: 48,
           height: 48,
           fit: BoxFit.cover,
+          // Decode at ~3x retina. Without this, a 12MP avatar upload
+          // decodes to ~50 MB in RAM even though we only draw 48×48.
+          memCacheWidth: 144,
+          memCacheHeight: 144,
           placeholder: (_, __) => _placeholder(),
           errorWidget: (_, __, ___) => _placeholder(),
         ),
@@ -691,6 +799,10 @@ class _PhotoThumb extends StatelessWidget {
           width: 110,
           height: 110,
           fit: BoxFit.cover,
+          // Decode at ~3x retina. A 12MP client upload otherwise takes
+          // ~50 MB per thumb — three of them blow past iOS's jetsam limit.
+          memCacheWidth: 330,
+          memCacheHeight: 330,
           placeholder: (_, __) => Container(
             width: 110,
             height: 110,
@@ -748,6 +860,11 @@ class _PhotoGallery extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Cap decode resolution to the device's pixel width so the user gets
+    // a sharp image without the app holding a 50 MB bitmap per page.
+    final size = MediaQuery.sizeOf(context);
+    final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final decodeWidth = (size.width * devicePixelRatio).round();
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -763,6 +880,7 @@ class _PhotoGallery extends StatelessWidget {
             child: CachedNetworkImage(
               imageUrl: urls[i],
               fit: BoxFit.contain,
+              memCacheWidth: decodeWidth,
               errorWidget: (_, __, ___) => const Icon(
                 Icons.broken_image_outlined,
                 color: Colors.white,
@@ -880,8 +998,6 @@ class _LocationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final target = LatLng(latitude, longitude);
-
     return InkWell(
       onTap: () => _openDirections(context),
       borderRadius: BorderRadius.circular(12),
@@ -894,42 +1010,18 @@ class _LocationCard extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: Column(
           children: [
-            // Google Maps consumes taps, so we put an overlay on top that
-            // forwards them to the same navigate handler.
+            // A full `GoogleMap` widget here is a ~50 MB native GL
+            // allocation per mount — on iOS `liteModeEnabled` is ignored
+            // so every request-details open ate that cost even though
+            // this preview is only 160 px tall. Swap for a Google Static
+            // Maps PNG — it's a ~30 KB image, cached and sized to the
+            // screen, and the tap handler already launches real maps.
             SizedBox(
               height: 160,
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: GoogleMap(
-                      initialCameraPosition: CameraPosition(
-                        target: target,
-                        zoom: 15,
-                      ),
-                      liteModeEnabled: true,
-                      markers: {
-                        Marker(
-                          markerId: const MarkerId('job'),
-                          position: target,
-                        ),
-                      },
-                      myLocationButtonEnabled: false,
-                      zoomControlsEnabled: false,
-                      scrollGesturesEnabled: false,
-                      rotateGesturesEnabled: false,
-                      tiltGesturesEnabled: false,
-                      zoomGesturesEnabled: false,
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () => _openDirections(context),
-                      ),
-                    ),
-                  ),
-                ],
+              child: _StaticMapPreview(
+                latitude: latitude,
+                longitude: longitude,
+                onTap: () => _openDirections(context),
               ),
             ),
             Padding(
@@ -983,6 +1075,73 @@ class _LocationCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Static-map preview — replaces the heavy `GoogleMap` preview on the
+// request-details screen. Uses Google's Static Maps endpoint to fetch a
+// PNG sized to the card; that's a ~30 KB bitmap vs. a full GL map
+// instance that costs ~50 MB of native memory per mount and was
+// blowing iOS's jetsam budget on open.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _StaticMapPreview extends StatelessWidget {
+  const _StaticMapPreview({
+    required this.latitude,
+    required this.longitude,
+    required this.onTap,
+  });
+
+  final double latitude;
+  final double longitude;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final widthPx = (MediaQuery.sizeOf(context).width.clamp(320, 640)).round();
+    // Static Maps caps scale at 2 — anything beyond renders aliased but
+    // doesn't buy more resolution, so clamp to stay within quota.
+    final scale = dpr >= 2 ? 2 : 1;
+    final url = Uri.https(
+      'maps.googleapis.com',
+      '/maps/api/staticmap',
+      {
+        'center': '$latitude,$longitude',
+        'zoom': '15',
+        'size': '${widthPx}x160',
+        'scale': '$scale',
+        'markers': 'color:orange|$latitude,$longitude',
+        'key': MapsConfig.apiKey,
+      },
+    ).toString();
+
+    return GestureDetector(
+      onTap: onTap,
+      child: CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.cover,
+        // Decode at the displayed width so the bitmap in RAM stays small.
+        memCacheWidth: (widthPx * scale).toInt(),
+        placeholder: (_, __) => Container(
+          color: MyShopColors.surfaceGrey,
+          alignment: Alignment.center,
+          child: const Icon(
+            Icons.map_outlined,
+            color: MyShopColors.textSecondary,
+          ),
+        ),
+        errorWidget: (_, __, ___) => Container(
+          color: MyShopColors.surfaceGrey,
+          alignment: Alignment.center,
+          child: const Icon(
+            Icons.map_outlined,
+            color: MyShopColors.textSecondary,
+          ),
         ),
       ),
     );
