@@ -1,9 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/router.dart';
+import '../providers/artisan_live_location_provider.dart';
 import '../providers/bid_detail_provider.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
@@ -12,8 +16,13 @@ import '../providers/bid_detail_provider.dart';
 // API: GET /v1/jobs/:id/bids  |  PATCH /v1/jobs/:id/select-bid
 
 class BidDetailScreen extends ConsumerWidget {
+  final String jobId;
   final String bidId;
-  const BidDetailScreen({super.key, required this.bidId});
+  const BidDetailScreen({
+    super.key,
+    required this.jobId,
+    required this.bidId,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -21,15 +30,20 @@ class BidDetailScreen extends ConsumerWidget {
     final w    = size.width;
     final h    = size.height;
 
-    final bidAsync = ref.watch(bidDetailProvider(bidId));
+    final key = (jobId: jobId, bidId: bidId);
+    final bidAsync = ref.watch(bidDetailProvider(key));
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
       body: bidAsync.when(
+        // Background refetches (socket / polling) must not flash the skeleton.
+        // Keep showing the last good data while the refetch is in flight.
+        skipLoadingOnReload: true,
+        skipLoadingOnRefresh: true,
         loading: () => _LoadingSkeleton(w: w, h: h),
         error: (_, __) => MyShopErrorBody(
           message: 'Could not load bid details',
-          onRetry: () => ref.invalidate(bidDetailProvider(bidId)),
+          onRetry: () => ref.invalidate(bidDetailProvider(key)),
         ),
         data: (bid) => _BidDetailBody(bid: bid, w: w, h: h),
       ),
@@ -48,9 +62,18 @@ class _BidDetailBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final actionState = ref.watch(bidDetailActionProvider);
-    final awaiting   = actionState.isAwaitingConfirmation;
-    final confirmed  = actionState.isBidConfirmed;
-    final expired    = actionState.isBidExpired;
+    // The backend bid status is the source of truth. The local action state
+    // only drives transient UI (loading spinners, countdown) before the next
+    // poll reconciles the real status.
+    final confirmed = bid.status == BidStatus.accepted ||
+        actionState.isBidConfirmed;
+    final expired = bid.status == BidStatus.expired ||
+        actionState.isBidExpired;
+    final declined = bid.status == BidStatus.declined;
+    final awaiting = !confirmed &&
+        !expired &&
+        !declined &&
+        actionState.isAwaitingConfirmation;
 
     return Column(
       children: [
@@ -92,7 +115,7 @@ class _BidDetailBody extends ConsumerWidget {
                 _BidBreakdownCard(bid: bid, w: w, h: h),
                 SizedBox(height: h * 0.014),
                 _LocationSection(
-                  artisan: bid.artisan,
+                  bid: bid,
                   showRoute: awaiting || confirmed,
                   w: w,
                   h: h,
@@ -106,19 +129,29 @@ class _BidDetailBody extends ConsumerWidget {
                     h: h,
                   ),
                 if (bid.artisanNote != null) SizedBox(height: h * 0.014),
-                _RelatedPortfolioSection(
-                  colors: bid.portfolioColors,
-                  w: w,
-                  h: h,
-                ),
-                SizedBox(height: h * 0.014),
+                if (bid.portfolioColors.isNotEmpty) ...[
+                  _RelatedPortfolioSection(
+                    colors: bid.portfolioColors,
+                    w: w,
+                    h: h,
+                  ),
+                  SizedBox(height: h * 0.014),
+                ],
                 _TrustBadgesRow(w: w, h: h),
                 SizedBox(height: h * 0.028),
               ],
             ),
           ),
         ),
-        _BottomActionBar(bid: bid, w: w, h: h),
+        _BottomActionBar(
+          bid: bid,
+          confirmed: confirmed,
+          expired: expired,
+          declined: declined,
+          awaiting: awaiting,
+          w: w,
+          h: h,
+        ),
       ],
     );
   }
@@ -185,25 +218,7 @@ class _ArtisanProfileCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Avatar
-          Container(
-            width: w * 0.154,  // ~60dp
-            height: w * 0.154,
-            decoration: BoxDecoration(
-              color: artisan.avatarColor,
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                artisan.name.trim().split(' ').take(2).map((s) => s[0]).join(),
-                style: TextStyle(
-                  fontSize: w * 0.054,
-                  fontWeight: FontWeight.w700,
-                  color: MyShopColors.surfaceWhite,
-                ),
-              ),
-            ),
-          ),
+          _Avatar(artisan: artisan, w: w),
           SizedBox(width: w * 0.038),
           Expanded(
             child: Column(
@@ -232,14 +247,15 @@ class _ArtisanProfileCard extends StatelessWidget {
                 ),
                 SizedBox(height: h * 0.005),
                 // Trade + experience
-                Text(
-                  '${artisan.tradeTitle} · ${artisan.yearsExperience}+ Years',
-                  style: TextStyle(
-                    fontSize: w * 0.033,
-                    fontWeight: FontWeight.w400,
-                    color: MyShopColors.textSecondary,
+                if (artisan.tradeTitle.isNotEmpty || artisan.yearsExperience > 0)
+                  Text(
+                    _tradeLine(artisan),
+                    style: TextStyle(
+                      fontSize: w * 0.033,
+                      fontWeight: FontWeight.w400,
+                      color: MyShopColors.textSecondary,
+                    ),
                   ),
-                ),
                 SizedBox(height: h * 0.007),
                 // Rating
                 Row(
@@ -265,25 +281,94 @@ class _ArtisanProfileCard extends StatelessWidget {
                   ],
                 ),
                 SizedBox(height: h * 0.006),
-                // Base + ETA
-                Row(
-                  children: [
-                    Icon(Icons.location_on_outlined,
-                        size: w * 0.033, color: MyShopColors.textHint),
-                    SizedBox(width: w * 0.008),
-                    Text(
-                      'Base: ${artisan.baseName} · ETA ${artisan.etaMinutes} min',
-                      style: TextStyle(
-                        fontSize: w * 0.031,
-                        color: MyShopColors.textSecondary,
+                // Base + ETA (only when we have data to show)
+                if (artisan.baseName.isNotEmpty || artisan.etaMinutes > 0)
+                  Row(
+                    children: [
+                      Icon(Icons.location_on_outlined,
+                          size: w * 0.033, color: MyShopColors.textHint),
+                      SizedBox(width: w * 0.008),
+                      Text(
+                        _baseEtaLabel(artisan),
+                        style: TextStyle(
+                          fontSize: w * 0.031,
+                          color: MyShopColors.textSecondary,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+String _tradeLine(BidArtisanProfile a) {
+  final parts = <String>[
+    if (a.tradeTitle.isNotEmpty) a.tradeTitle,
+    if (a.yearsExperience > 0) '${a.yearsExperience}+ Years',
+  ];
+  return parts.join(' · ');
+}
+
+String _baseEtaLabel(BidArtisanProfile a) {
+  final parts = <String>[
+    if (a.baseName.isNotEmpty) 'Base: ${a.baseName}',
+    if (a.etaMinutes > 0) 'ETA ${a.etaMinutes} min',
+  ];
+  return parts.join(' · ');
+}
+
+class _Avatar extends StatelessWidget {
+  final BidArtisanProfile artisan;
+  final double w;
+  const _Avatar({required this.artisan, required this.w});
+
+  String get _initials {
+    final parts = artisan.name.trim().split(RegExp(r'\s+'))
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return '?';
+    final chars = parts.take(2).map((p) => p[0]).join();
+    return chars.toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = w * 0.154; // ~60dp
+    final photo = artisan.profilePhotoUrl;
+    final fallback = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: artisan.avatarColor,
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        _initials,
+        style: TextStyle(
+          fontSize: w * 0.054,
+          fontWeight: FontWeight.w700,
+          color: MyShopColors.surfaceWhite,
+        ),
+      ),
+    );
+
+    if (photo == null || photo.isEmpty) return fallback;
+
+    return ClipOval(
+      child: Image.network(
+        photo,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => fallback,
+        loadingBuilder: (_, child, progress) =>
+            progress == null ? child : fallback,
       ),
     );
   }
@@ -502,6 +587,8 @@ class _BidBreakdownCard extends ConsumerWidget {
     final actionState = ref.watch(bidDetailActionProvider);
     final expanded    = actionState.materialItemsExpanded;
     final br          = bid.breakdown;
+    final hasMaterials = br.materialItems.isNotEmpty || br.materialsFeePesewas > 0;
+    final hasVat       = br.vatRate > 0;
 
     return _Card(
       w: w,
@@ -525,10 +612,10 @@ class _BidBreakdownCard extends ConsumerWidget {
             w: w,
             h: h,
           ),
-          SizedBox(height: h * 0.014),
+          if (hasMaterials) SizedBox(height: h * 0.014),
 
-          // Estimated Materials (expandable)
-          GestureDetector(
+          // Estimated Materials (expandable) — shown when the bid has materials
+          if (hasMaterials) GestureDetector(
             onTap: () =>
                 ref.read(bidDetailActionProvider.notifier).toggleMaterials(),
             behavior: HitTestBehavior.opaque,
@@ -609,16 +696,16 @@ class _BidBreakdownCard extends ConsumerWidget {
               ],
             ),
           ),
-          SizedBox(height: h * 0.014),
-
-          // Transaction VAT
-          _BreakdownRow(
-            label: 'Transaction VAT (${br.vatPercent})',
-            amount: br.vatDisplay,
-            w: w,
-            h: h,
-            labelColor: MyShopColors.textSecondary,
-          ),
+          if (hasVat) ...[
+            SizedBox(height: h * 0.014),
+            _BreakdownRow(
+              label: 'Transaction VAT (${br.vatPercent})',
+              amount: br.vatDisplay,
+              w: w,
+              h: h,
+              labelColor: MyShopColors.textSecondary,
+            ),
+          ],
           SizedBox(height: h * 0.014),
 
           const Divider(height: 1, color: MyShopColors.divider),
@@ -632,43 +719,45 @@ class _BidBreakdownCard extends ConsumerWidget {
             h: h,
             isBold: true,
           ),
-          SizedBox(height: h * 0.014),
 
-          // Disclaimer
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.symmetric(
-              horizontal: w * 0.031,
-              vertical: h * 0.012,
-            ),
-            decoration: BoxDecoration(
-              color: MyShopColors.warningLight,
-              borderRadius: BorderRadius.circular(w * 0.021),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  size: w * 0.036,
-                  color: MyShopColors.warning,
-                ),
-                SizedBox(width: w * 0.015),
-                Expanded(
-                  child: Text(
-                    'Materials are estimated based on your description. '
-                    'Final cost may vary upon physical inspection.',
-                    style: TextStyle(
-                      fontSize: w * 0.028,
-                      fontWeight: FontWeight.w400,
-                      color: MyShopColors.warning,
-                      height: 1.5,
+          // Materials disclaimer only makes sense when materials are estimated
+          if (hasMaterials) ...[
+            SizedBox(height: h * 0.014),
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(
+                horizontal: w * 0.031,
+                vertical: h * 0.012,
+              ),
+              decoration: BoxDecoration(
+                color: MyShopColors.warningLight,
+                borderRadius: BorderRadius.circular(w * 0.021),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: w * 0.036,
+                    color: MyShopColors.warning,
+                  ),
+                  SizedBox(width: w * 0.015),
+                  Expanded(
+                    child: Text(
+                      'Materials are estimated based on your description. '
+                      'Final cost may vary upon physical inspection.',
+                      style: TextStyle(
+                        fontSize: w * 0.028,
+                        fontWeight: FontWeight.w400,
+                        color: MyShopColors.warning,
+                        height: 1.5,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -724,16 +813,25 @@ class _BreakdownRow extends StatelessWidget {
 // ── Location Section ──────────────────────────────────────────────────────────
 
 class _LocationSection extends StatelessWidget {
-  final BidArtisanProfile artisan;
+  final BidDetail bid;
   final bool showRoute;
   final double w;
   final double h;
   const _LocationSection({
-    required this.artisan,
+    required this.bid,
     required this.w,
     required this.h,
     this.showRoute = false,
   });
+
+  BidArtisanProfile get artisan => bid.artisan;
+
+  bool get _canOpenFullMap => bid.hasJobLocation || artisan.hasLocation;
+
+  void _openFullMap(BuildContext context) {
+    if (!_canOpenFullMap) return;
+    context.push(AppRoutes.jobBidMapPath(bid.jobId, bid.bidId));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -753,19 +851,20 @@ class _LocationSection extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              GestureDetector(
-                onTap: () {}, // TODO: open Mapbox full-screen
-                behavior: HitTestBehavior.opaque,
-                child: Row(
-                  children: [
-                    Text(
-                      'View Map',
-                      style: TextStyle(
-                        fontSize: w * 0.033,
-                        fontWeight: FontWeight.w600,
-                        color: MyShopColors.primaryGold,
+              if (_canOpenFullMap)
+                GestureDetector(
+                  onTap: () => _openFullMap(context),
+                  behavior: HitTestBehavior.opaque,
+                  child: Row(
+                    children: [
+                      Text(
+                        'View Map',
+                        style: TextStyle(
+                          fontSize: w * 0.033,
+                          fontWeight: FontWeight.w600,
+                          color: MyShopColors.primaryGold,
+                        ),
                       ),
-                    ),
                     SizedBox(width: w * 0.008),
                     Icon(Icons.open_in_new_rounded,
                         size: w * 0.036, color: MyShopColors.primaryGold),
@@ -786,43 +885,12 @@ class _LocationSection extends StatelessWidget {
                   color: const Color(0xFFD0E8C8), // map-like green
                   child: CustomPaint(painter: _MapPlaceholderPainter(showRoute: showRoute)),
                 ),
-                // Distance chip
+                // Distance chip — rebuilds only when the live-location
+                // provider emits. Parent (_LocationSection) does not subscribe.
                 Positioned(
                   top: h * 0.012,
                   left: w * 0.031,
-                  child: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: w * 0.026,
-                      vertical: h * 0.007,
-                    ),
-                    decoration: BoxDecoration(
-                      color: MyShopColors.surfaceWhite,
-                      borderRadius: BorderRadius.circular(w * 0.041),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.08),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.near_me_rounded,
-                            size: w * 0.033, color: MyShopColors.primaryGold),
-                        SizedBox(width: w * 0.010),
-                        Text(
-                          '${artisan.distanceKm.toStringAsFixed(1)} km away',
-                          style: TextStyle(
-                            fontSize: w * 0.031,
-                            fontWeight: FontWeight.w600,
-                            color: MyShopColors.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  child: _LiveDistanceChip(bid: bid, w: w, h: h),
                 ),
                 // Centre pin
                 Positioned.fill(
@@ -911,6 +979,93 @@ class _MapPlaceholderPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _MapPlaceholderPainter old) =>
       old.showRoute != showRoute;
+}
+
+// ── Live Distance Chip ────────────────────────────────────────────────────────
+// Scoped Consumer so polling the live-location provider only rebuilds this
+// chip — the rest of the bid detail page stays still.
+
+class _LiveDistanceChip extends ConsumerWidget {
+  final BidDetail bid;
+  final double w;
+  final double h;
+  const _LiveDistanceChip({
+    required this.bid,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final live = ref.watch(artisanLiveLocationProvider(
+      artisanLiveKey(jobId: bid.jobId, artisanId: bid.artisan.artisanId),
+    ));
+
+    // Prefer the live position; fall back to the snapshot we mapped on load.
+    double distanceKm = bid.artisan.distanceKm;
+    if (live != null && bid.hasJobLocation) {
+      distanceKm = Geolocator.distanceBetween(
+            bid.jobLatitude!,
+            bid.jobLongitude!,
+            live.latitude,
+            live.longitude,
+          ) /
+          1000.0;
+    }
+
+    if (distanceKm <= 0) return const SizedBox.shrink();
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: w * 0.026,
+        vertical: h * 0.007,
+      ),
+      decoration: BoxDecoration(
+        color: MyShopColors.surfaceWhite,
+        borderRadius: BorderRadius.circular(w * 0.041),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.near_me_rounded,
+              size: w * 0.033, color: MyShopColors.primaryGold),
+          SizedBox(width: w * 0.010),
+          Text(
+            '${distanceKm.toStringAsFixed(1)} km away',
+            style: TextStyle(
+              fontSize: w * 0.031,
+              fontWeight: FontWeight.w600,
+              color: MyShopColors.textPrimary,
+            ),
+          ),
+          if (live != null && live.etaMinutes > 0) ...[
+            SizedBox(width: w * 0.015),
+            Container(
+              width: 1,
+              height: h * 0.014,
+              color: MyShopColors.divider,
+            ),
+            SizedBox(width: w * 0.015),
+            Text(
+              '${live.etaMinutes} min',
+              style: TextStyle(
+                fontSize: w * 0.031,
+                fontWeight: FontWeight.w600,
+                color: MyShopColors.textSecondary,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 // ── Artisan's Note Card ────────────────────────────────────────────────────────
@@ -1094,14 +1249,51 @@ class _TrustBadgesRow extends StatelessWidget {
 
 class _BottomActionBar extends ConsumerWidget {
   final BidDetail bid;
+  final bool confirmed;
+  final bool expired;
+  final bool declined;
+  final bool awaiting;
   final double w;
   final double h;
-  const _BottomActionBar({required this.bid, required this.w, required this.h});
+  const _BottomActionBar({
+    required this.bid,
+    required this.confirmed,
+    required this.expired,
+    required this.declined,
+    required this.awaiting,
+    required this.w,
+    required this.h,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final actionState = ref.watch(bidDetailActionProvider);
     final bottomPad   = MediaQuery.paddingOf(context).bottom;
+
+    final Widget content;
+    if (confirmed) {
+      content = _ConfirmedActionContent(bid: bid, w: w, h: h);
+    } else if (expired) {
+      content = _ExpiredActionContent(bid: bid, w: w, h: h);
+    } else if (declined) {
+      content = _DeclinedActionContent(w: w, h: h);
+    } else if (awaiting) {
+      content = _AwaitingActionContent(
+        bid: bid,
+        actionState: actionState,
+        w: w,
+        h: h,
+        ref: ref,
+      );
+    } else {
+      content = _PendingActionContent(
+        bid: bid,
+        actionState: actionState,
+        w: w,
+        h: h,
+        ref: ref,
+      );
+    }
 
     return Container(
       decoration: const BoxDecoration(
@@ -1114,25 +1306,34 @@ class _BottomActionBar extends ConsumerWidget {
         top: h * 0.014,
         bottom: bottomPad + h * 0.010,
       ),
-      child: actionState.isBidConfirmed
-          ? _ConfirmedActionContent(bid: bid, w: w, h: h)
-          : actionState.isBidExpired
-              ? _ExpiredActionContent(bid: bid, w: w, h: h)
-              : actionState.isAwaitingConfirmation
-                  ? _AwaitingActionContent(
-                      bid: bid,
-                      actionState: actionState,
-                      w: w,
-                      h: h,
-                      ref: ref,
-                    )
-                  : _PendingActionContent(
-                      bid: bid,
-                      actionState: actionState,
-                      w: w,
-                      h: h,
-                      ref: ref,
-                    ),
+      child: content,
+    );
+  }
+}
+
+// ── Declined state content — shown when the bid was not the chosen one. ───────
+
+class _DeclinedActionContent extends StatelessWidget {
+  final double w;
+  final double h;
+  const _DeclinedActionContent({required this.w, required this.h});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.block_rounded, size: w * 0.041, color: MyShopColors.disabled),
+        SizedBox(width: w * 0.015),
+        Text(
+          'This bid was not selected',
+          style: TextStyle(
+            fontSize: w * 0.036,
+            fontWeight: FontWeight.w600,
+            color: MyShopColors.textSecondary,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1763,7 +1964,9 @@ class _ConfirmedActionContent extends StatelessWidget {
               child: SizedBox(
                 height: h * 0.062,
                 child: ElevatedButton(
-                  onPressed: () {}, // TODO: navigate to ride_tracking_screen
+                  onPressed: () => context.push(
+                    AppRoutes.jobBidMapPath(bid.jobId, bid.bidId),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: MyShopColors.darkSlate,
                     foregroundColor: MyShopColors.surfaceWhite,

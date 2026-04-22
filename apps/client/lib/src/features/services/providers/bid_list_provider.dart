@@ -36,6 +36,17 @@ class ArtisanBid {
   /// Optional note from the artisan explaining what the bid covers.
   final String? bidMessage;
 
+  /// Raw backend bid status — one of: pending, accepted, rejected, expired.
+  /// Drives whether the client can still accept or must view the bid as
+  /// already decided.
+  final String rawStatus;
+
+  /// Snapshot of the artisan's location at bid-submission time (WGS84).
+  /// Both are null when the backend doesn't know where the artisan was.
+  /// Backend guarantee: either both present or both null — never one.
+  final double? latitude;
+  final double? longitude;
+
   const ArtisanBid({
     required this.bidId,
     required this.artisanId,
@@ -49,7 +60,13 @@ class ArtisanBid {
     this.durationMinutes = 0,
     this.profilePhotoUrl,
     this.bidMessage,
+    this.rawStatus = 'pending',
+    this.latitude,
+    this.longitude,
   });
+
+  /// True when we have a usable coordinate pair to plot / measure against.
+  bool get hasLocation => latitude != null && longitude != null;
 
   bool get hasRating => reviewCount > 0 && rating > 0;
 
@@ -265,6 +282,9 @@ class _BidsNotifier
           0,
       durationMinutes: (data['durationMinutes'] as num?)?.toInt() ?? 0,
       bidMessage: (data['notes'] ?? data['message']) as String?,
+      rawStatus: (data['status'] as String?) ?? 'pending',
+      latitude: (artisan['latitude'] as num?)?.toDouble(),
+      longitude: (artisan['longitude'] as num?)?.toDouble(),
     );
   }
 }

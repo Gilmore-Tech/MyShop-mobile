@@ -96,6 +96,12 @@ class JobDetail {
   final String categoryName;
   final IconData categoryIcon;
   final String location;
+
+  /// Job-site coordinates (WGS84). Zero when the backend didn't send them —
+  /// callers should check [hasCoordinates] before using.
+  final double latitude;
+  final double longitude;
+
   final JobStatus status;
   final bool isImmediate;
 
@@ -110,12 +116,18 @@ class JobDetail {
   final BidSummary bids;
   final List<TimelineStep> timeline;
 
+  /// Artisan ID assigned after the client selects a bid. Null while the job
+  /// is still open / queued. Used to resolve the accepted bid for display.
+  final String? selectedArtisanId;
+
   const JobDetail({
     required this.id,
     required this.title,
     required this.categoryName,
     required this.categoryIcon,
     required this.location,
+    required this.latitude,
+    required this.longitude,
     required this.status,
     required this.isImmediate,
     this.scheduledFor,
@@ -123,7 +135,16 @@ class JobDetail {
     required this.photoUrls,
     required this.bids,
     required this.timeline,
+    this.selectedArtisanId,
   });
+
+  bool get hasCoordinates => latitude != 0 && longitude != 0;
+
+  /// True once the client has selected a bid and the backend has confirmed the
+  /// assignment. After this point the job detail screen swaps "View Bids" for
+  /// "View Selected Bid".
+  bool get hasSelectedArtisan =>
+      selectedArtisanId != null && selectedArtisanId!.isNotEmpty;
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────────
@@ -188,6 +209,8 @@ class _JobDetailNotifier
       categoryName: categoryName,
       categoryIcon: _categoryIcon(categoryName),
       location: data['addressText'] as String? ?? '',
+      latitude: (data['latitude'] as num?)?.toDouble() ?? 0,
+      longitude: (data['longitude'] as num?)?.toDouble() ?? 0,
       status: status,
       isImmediate: data['scheduledFor'] == null,
       scheduledFor: data['scheduledFor'] != null
@@ -207,6 +230,7 @@ class _JobDetailNotifier
         ],
       ),
       timeline: _buildTimeline(status),
+      selectedArtisanId: data['artisanId'] as String?,
     );
   }
 
@@ -226,16 +250,16 @@ class _JobDetailNotifier
 
   static JobStatus _parseJobStatus(String status) {
     return switch (status) {
-      'queued'                 => JobStatus.queued,
-      'open'                   => JobStatus.open,
-      'confirmed'              => JobStatus.confirmed,
-      'en_route'               => JobStatus.enRoute,
-      'arrived'                => JobStatus.arrived,
-      'in_progress'            => JobStatus.inProgress,
-      'artisan_marked_complete' => JobStatus.artisanMarkedComplete,
-      'completed'              => JobStatus.completed,
-      'cancelled'              => JobStatus.cancelled,
-      _                        => JobStatus.open,
+      'queued'                       => JobStatus.queued,
+      'open'                         => JobStatus.open,
+      'confirmed'                    => JobStatus.confirmed,
+      'artisan_en_route' || 'en_route' => JobStatus.enRoute,
+      'arrived'                      => JobStatus.arrived,
+      'in_progress'                  => JobStatus.inProgress,
+      'artisan_marked_complete'      => JobStatus.artisanMarkedComplete,
+      'completed'                    => JobStatus.completed,
+      'cancelled'                    => JobStatus.cancelled,
+      _                              => JobStatus.open,
     };
   }
 

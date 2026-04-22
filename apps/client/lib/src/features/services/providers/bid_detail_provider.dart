@@ -1,13 +1,16 @@
 import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
+import 'bid_list_provider.dart';
+import 'job_detail_provider.dart';
 
 // ── Bid Status ────────────────────────────────────────────────────────────────
 
-enum BidStatus { pendingReview, awaitingConfirmation, accepted, declined }
+enum BidStatus { pendingReview, awaitingConfirmation, accepted, declined, expired }
 
 extension BidStatusX on BidStatus {
   String get label => switch (this) {
@@ -15,6 +18,7 @@ extension BidStatusX on BidStatus {
         BidStatus.awaitingConfirmation => 'Awaiting Confirmation',
         BidStatus.accepted             => 'Accepted',
         BidStatus.declined             => 'Declined',
+        BidStatus.expired              => 'Expired',
       };
 
   Color get color => switch (this) {
@@ -22,8 +26,18 @@ extension BidStatusX on BidStatus {
         BidStatus.awaitingConfirmation => MyShopColors.primaryGold,
         BidStatus.accepted             => MyShopColors.success,
         BidStatus.declined             => MyShopColors.error,
+        BidStatus.expired              => MyShopColors.error,
       };
 }
+
+/// Map the backend bid status string (pending | accepted | rejected | expired)
+/// to the client [BidStatus] enum.
+BidStatus bidStatusFromRaw(String raw) => switch (raw) {
+      'accepted' => BidStatus.accepted,
+      'rejected' => BidStatus.declined,
+      'expired'  => BidStatus.expired,
+      _          => BidStatus.pendingReview,
+    };
 
 // ── Material Line Item ────────────────────────────────────────────────────────
 
@@ -85,8 +99,11 @@ class BidArtisanProfile {
   final bool isKycVerified;
   final bool isVetted;
 
-  /// Placeholder colour for avatar until real network images are wired.
+  /// Placeholder colour for avatar when no remote photo is available.
   final Color avatarColor;
+
+  /// Optional remote profile photo. Falls back to initials on [avatarColor].
+  final String? profilePhotoUrl;
 
   /// Neighbourhood name used as the artisan's base location.
   final String baseName;
@@ -94,8 +111,14 @@ class BidArtisanProfile {
   /// Estimated travel time to the job site in minutes.
   final int etaMinutes;
 
-  /// Distance from artisan to job site in kilometres.
+  /// Distance from artisan to job site in kilometres. Zero when coordinates
+  /// aren't known for either end.
   final double distanceKm;
+
+  /// Snapshot of the artisan's location at bid-submission time (WGS84).
+  /// Null when the backend didn't record it.
+  final double? latitude;
+  final double? longitude;
 
   const BidArtisanProfile({
     required this.artisanId,
@@ -111,7 +134,12 @@ class BidArtisanProfile {
     required this.baseName,
     required this.etaMinutes,
     required this.distanceKm,
+    this.profilePhotoUrl,
+    this.latitude,
+    this.longitude,
   });
+
+  bool get hasLocation => latitude != null && longitude != null;
 }
 
 // ── Bid Detail ────────────────────────────────────────────────────────────────
@@ -140,6 +168,10 @@ class BidDetail {
   /// Placeholder colours for portfolio photo cards.
   final List<Color> portfolioColors;
 
+  /// Job-site coordinates (WGS84). Null when unknown — used for the map view.
+  final double? jobLatitude;
+  final double? jobLongitude;
+
   const BidDetail({
     required this.bidId,
     required this.jobId,
@@ -151,7 +183,11 @@ class BidDetail {
     this.artisanNote,
     this.noteTimestamp,
     required this.portfolioColors,
+    this.jobLatitude,
+    this.jobLongitude,
   });
+
+  bool get hasJobLocation => jobLatitude != null && jobLongitude != null;
 }
 
 // ── Bid Detail Action State ───────────────────────────────────────────────────
@@ -322,69 +358,106 @@ final bidDetailActionProvider =
 
 // ── Bid Detail Data Provider ──────────────────────────────────────────────────
 
-final bidDetailProvider =
-    AsyncNotifierProvider.autoDispose.family<_BidDetailNotifier, BidDetail, String>(
+/// Family key — a bid is always scoped to a job.
+typedef BidDetailKey = ({String jobId, String bidId});
+
+/// Resolves the selected artisan bid by reusing the cached bid list fetched
+/// in [bidsForJobProvider]. No extra network call when navigated from the
+/// bid sheet; a fresh fetch happens if the list provider has been disposed.
+final bidDetailProvider = AsyncNotifierProvider.autoDispose
+    .family<_BidDetailNotifier, BidDetail, BidDetailKey>(
   _BidDetailNotifier.new,
 );
 
 class _BidDetailNotifier
-    extends AutoDisposeFamilyAsyncNotifier<BidDetail, String> {
+    extends AutoDisposeFamilyAsyncNotifier<BidDetail, BidDetailKey> {
   @override
-  Future<BidDetail> build(String bidId) async {
-    // In production, bids are fetched via GET /jobs/:jobId/bids and filtered.
-    // For now, fall back to mock if API isn't ready.
-    try {
-      // bidId format could include jobId context — for now use mock fallback
-      return _mockBidDetails[bidId] ?? _defaultMockBid;
-    } catch (_) {
-      return _defaultMockBid;
-    }
+  Future<BidDetail> build(BidDetailKey arg) async {
+    // `bidsForJobProvider` IS subscribed to — a bid's status can flip
+    // (accepted/rejected/expired) and we want that reflected here.
+    //
+    // `jobDetailProvider` is read ONCE (no subscription) because we only
+    // consume the job's immutable coordinates. If we subscribed, every
+    // invalidation from job_detail_screen's 10 s poll would cascade and
+    // rebuild the bid detail + full-screen tracking map, flickering the UI
+    // and resetting the map's camera/animation state.
+    final bids = await ref.watch(bidsForJobProvider(arg.jobId).future);
+    final job = await ref.read(jobDetailProvider(arg.jobId).future);
+    final bid = bids.firstWhere(
+      (b) => b.bidId == arg.bidId,
+      orElse: () => throw StateError('Bid ${arg.bidId} not found for job ${arg.jobId}'),
+    );
+    return _toBidDetail(bid, job: job);
   }
 }
 
-// ── Mock data ─────────────────────────────────────────────────────────────────
+// ── Mapping: ArtisanBid → BidDetail ───────────────────────────────────────────
 
-const _defaultMockBid = BidDetail(
-  bidId: 'BID-001',
-  jobId: 'JOB-1001',
-  status: BidStatus.pendingReview,
-  artisan: BidArtisanProfile(
-    artisanId: 'ART-101',
-    name: 'Kofi Mensah',
-    firstName: 'Kofi',
-    tradeTitle: 'Master Electrician',
-    yearsExperience: 8,
-    rating: 4.9,
-    reviewCount: 124,
-    isKycVerified: true,
-    isVetted: true,
-    avatarColor: Color(0xFF5D4037),
-    baseName: 'Bantama',
-    etaMinutes: 18,
-    distanceKm: 1.2,
-  ),
-  breakdown: BidBreakdown(
-    serviceFeePesewas: 32000,   // GHS 320.00
-    materialsFeePesewas: 14500, // GHS 145.00
-    materialItems: [
-      MaterialLineItem(name: 'Circuit Breaker (2x)'),
-      MaterialLineItem(name: 'Copper Wiring (10m)'),
-      MaterialLineItem(name: 'Junction Box'),
-    ],
-    vatRate: 0.04, // 4% transaction VAT → GHS 20.00 on GHS 465 = ~GHS 18.60 ≈ 20
-  ),
-  durationLabel: '2–3 Hours',
-  availabilityLabel: 'Today, 2PM',
-  artisanNote:
-      '"Hi! I\'ve seen the photos of your electrical panel. This looks like '
-      'a standard upgrade. I can bring all necessary parts and have it done '
-      'before 5 PM today. I\'ve done 5 similar jobs in Bantama this week."',
-  noteTimestamp: 'Today, 10:42 AM',
-  portfolioColors: [
-    Color(0xFF455A64),
-    Color(0xFF37474F),
-    Color(0xFF546E7A),
-  ],
-);
+BidDetail _toBidDetail(ArtisanBid bid, {required JobDetail job}) {
+  final parts = bid.artisanName.trim().split(RegExp(r'\s+'));
+  final firstName = parts.isNotEmpty && parts.first.isNotEmpty
+      ? parts.first
+      : bid.artisanName;
 
-const Map<String, BidDetail> _mockBidDetails = {};
+  // Real distance only when both endpoints are known.
+  final double distanceKm = (bid.hasLocation && job.hasCoordinates)
+      ? Geolocator.distanceBetween(
+            job.latitude,
+            job.longitude,
+            bid.latitude!,
+            bid.longitude!,
+          ) /
+          1000.0
+      : 0.0;
+
+  return BidDetail(
+    bidId: bid.bidId,
+    jobId: job.id,
+    status: bidStatusFromRaw(bid.rawStatus),
+    artisan: BidArtisanProfile(
+      artisanId: bid.artisanId,
+      name: bid.artisanName,
+      firstName: firstName,
+      tradeTitle: bid.tradeTitle,
+      yearsExperience: 0,
+      rating: bid.rating,
+      reviewCount: bid.reviewCount,
+      isKycVerified: bid.isVerified,
+      isVetted: bid.isVerified,
+      avatarColor: bid.avatarColor,
+      profilePhotoUrl: bid.profilePhotoUrl,
+      baseName: '',
+      etaMinutes: bid.arrivesInMinutes,
+      distanceKm: distanceKm,
+      latitude: bid.latitude,
+      longitude: bid.longitude,
+    ),
+    // Backend bid is a single total (labour + estimated materials).
+    // Until the API splits it out, surface the whole amount as the service fee
+    // and zero-out materials + VAT so the breakdown UI collapses gracefully.
+    breakdown: BidBreakdown(
+      serviceFeePesewas: bid.amountPesewas,
+      materialsFeePesewas: 0,
+      materialItems: const [],
+      vatRate: 0.0,
+    ),
+    durationLabel: bid.durationMinutes > 0
+        ? _formatDuration(bid.durationMinutes)
+        : 'Not specified',
+    availabilityLabel: bid.arrivesInMinutes > 0
+        ? 'Arrives in ${bid.arrivesInMinutes} min'
+        : 'Available now',
+    artisanNote: bid.bidMessage,
+    noteTimestamp: null,
+    portfolioColors: const [],
+    jobLatitude: job.hasCoordinates ? job.latitude : null,
+    jobLongitude: job.hasCoordinates ? job.longitude : null,
+  );
+}
+
+String _formatDuration(int minutes) {
+  if (minutes < 60) return '$minutes min';
+  final h = minutes ~/ 60;
+  final m = minutes % 60;
+  return m == 0 ? '${h}h' : '${h}h ${m}m';
+}

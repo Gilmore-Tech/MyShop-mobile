@@ -304,9 +304,11 @@ class _ActiveJobNotifier
 
   static ActiveJobPhase _parsePhase(String status) {
     return switch (status) {
+      'artisan_en_route' ||
       'en_route'            => ActiveJobPhase.enRoute,
       'arrived'             => ActiveJobPhase.arrived,
       'in_progress'         => ActiveJobPhase.inProgress,
+      'artisan_marked_complete' ||
       'awaiting_approval' ||
       'completed'           => ActiveJobPhase.awaitingApproval,
       _                     => ActiveJobPhase.enRoute,

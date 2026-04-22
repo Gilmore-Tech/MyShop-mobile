@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../app/router.dart';
+import '../../../core/di/providers.dart';
 import '../providers/bid_list_provider.dart';
 import '../providers/job_detail_provider.dart';
 import '../widgets/bid_list_sheet.dart';
@@ -110,6 +113,8 @@ class _JobDetailBody extends StatelessWidget {
         _BottomActionBar(
           jobId:    job.id,
           jobTitle: job.title,
+          selectedArtisanId: job.selectedArtisanId,
+          status: job.status,
           w: w,
           h: h,
         ),
@@ -1062,11 +1067,15 @@ class _TimelineBadge extends StatelessWidget {
 class _BottomActionBar extends StatelessWidget {
   final String jobId;
   final String jobTitle;
+  final String? selectedArtisanId;
+  final JobStatus status;
   final double w;
   final double h;
   const _BottomActionBar({
     required this.jobId,
     required this.jobTitle,
+    required this.selectedArtisanId,
+    required this.status,
     required this.w,
     required this.h,
   });
@@ -1074,6 +1083,30 @@ class _BottomActionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bottomPad = MediaQuery.paddingOf(context).bottom;
+    final hasSelectedArtisan =
+        selectedArtisanId != null && selectedArtisanId!.isNotEmpty;
+
+    final Widget content;
+    if (status == JobStatus.artisanMarkedComplete) {
+      content = _ConfirmCompletionButton(jobId: jobId, w: w, h: h);
+    } else if (status == JobStatus.completed) {
+      content = _JobCompletedTile(w: w, h: h);
+    } else if (hasSelectedArtisan) {
+      content = _ViewSelectedBidButton(
+        jobId: jobId,
+        selectedArtisanId: selectedArtisanId!,
+        w: w,
+        h: h,
+      );
+    } else {
+      content = _ViewBidsButton(
+        jobId: jobId,
+        jobTitle: jobTitle,
+        w: w,
+        h: h,
+      );
+    }
+
     return Container(
       padding: EdgeInsets.only(
         left: w * 0.041,
@@ -1085,11 +1118,341 @@ class _BottomActionBar extends StatelessWidget {
         color: MyShopColors.surfaceWhite,
         border: Border(top: BorderSide(color: MyShopColors.divider)),
       ),
-      child: _ViewBidsButton(
-        jobId:    jobId,
-        jobTitle: jobTitle,
-        w: w,
-        h: h,
+      child: content,
+    );
+  }
+}
+
+/// CTA shown when the artisan has marked the job complete and is awaiting
+/// the client's final confirmation. Tapping it opens a confirmation dialog;
+/// on accept we PATCH /jobs/:id/confirm and the timeline advances to Completed.
+class _ConfirmCompletionButton extends ConsumerStatefulWidget {
+  final String jobId;
+  final double w;
+  final double h;
+  const _ConfirmCompletionButton({
+    required this.jobId,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  ConsumerState<_ConfirmCompletionButton> createState() =>
+      _ConfirmCompletionButtonState();
+}
+
+class _ConfirmCompletionButtonState
+    extends ConsumerState<_ConfirmCompletionButton> {
+  bool _submitting = false;
+
+  Future<void> _handleTap() async {
+    if (_submitting) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: !_submitting,
+      builder: (_) => const _ConfirmCompletionDialog(),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _submitting = true);
+    try {
+      final jobService = ref.read(jobServiceProvider);
+      await jobService.confirmJobCompletion(widget.jobId);
+      if (!mounted) return;
+      // Bust the detail cache so the timeline re-renders as Completed.
+      ref.invalidate(jobDetailProvider(widget.jobId));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not confirm completion. Please try again.'),
+          backgroundColor: MyShopColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w = widget.w;
+    final h = widget.h;
+    return SizedBox(
+      width: double.infinity,
+      height: h * 0.062,
+      child: ElevatedButton(
+        onPressed: _submitting ? null : _handleTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: MyShopColors.success,
+          foregroundColor: MyShopColors.surfaceWhite,
+          disabledBackgroundColor: MyShopColors.surfaceGrey,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(w * 0.021),
+          ),
+        ),
+        child: _submitting
+            ? SizedBox(
+                width: w * 0.051,
+                height: w * 0.051,
+                child: const CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: MyShopColors.surfaceWhite,
+                ),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.check_circle_outline_rounded,
+                    size: w * 0.051,
+                    color: MyShopColors.surfaceWhite,
+                  ),
+                  SizedBox(width: w * 0.021),
+                  Text(
+                    'Confirm Job Completion',
+                    style: TextStyle(
+                      fontSize: w * 0.040,
+                      fontWeight: FontWeight.w700,
+                      color: MyShopColors.surfaceWhite,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+/// Satisfaction-check dialog shown before the client confirms completion.
+class _ConfirmCompletionDialog extends StatelessWidget {
+  const _ConfirmCompletionDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    return AlertDialog(
+      backgroundColor: MyShopColors.surfaceWhite,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(w * 0.041),
+      ),
+      titlePadding: EdgeInsets.fromLTRB(
+        w * 0.051,
+        w * 0.051,
+        w * 0.051,
+        w * 0.021,
+      ),
+      contentPadding: EdgeInsets.symmetric(
+        horizontal: w * 0.051,
+        vertical: w * 0.015,
+      ),
+      actionsPadding: EdgeInsets.fromLTRB(
+        w * 0.031,
+        0,
+        w * 0.031,
+        w * 0.031,
+      ),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: w * 0.123,
+            height: w * 0.123,
+            decoration: BoxDecoration(
+              color: MyShopColors.successLight,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.verified_user_outlined,
+              size: w * 0.062,
+              color: MyShopColors.success,
+            ),
+          ),
+          SizedBox(height: w * 0.031),
+          Text(
+            'Confirm Job Completion',
+            style: TextStyle(
+              fontSize: w * 0.046,
+              fontWeight: FontWeight.w700,
+              color: MyShopColors.textPrimary,
+            ),
+          ),
+        ],
+      ),
+      content: Text(
+        'Have you checked the work and are you satisfied with what the '
+        'artisan delivered? Once you confirm, the job will be marked '
+        'completed and payment released.',
+        style: TextStyle(
+          fontSize: w * 0.036,
+          fontWeight: FontWeight.w400,
+          color: MyShopColors.textSecondary,
+          height: 1.5,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text(
+            'Not Yet',
+            style: TextStyle(
+              fontSize: w * 0.036,
+              fontWeight: FontWeight.w600,
+              color: MyShopColors.textSecondary,
+            ),
+          ),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: MyShopColors.success,
+            foregroundColor: MyShopColors.surfaceWhite,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(w * 0.021),
+            ),
+            padding: EdgeInsets.symmetric(
+              horizontal: w * 0.046,
+              vertical: w * 0.026,
+            ),
+          ),
+          child: Text(
+            'Yes, Confirm',
+            style: TextStyle(
+              fontSize: w * 0.036,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Read-only tile shown when the job is already completed.
+class _JobCompletedTile extends StatelessWidget {
+  final double w;
+  final double h;
+  const _JobCompletedTile({required this.w, required this.h});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      height: h * 0.062,
+      decoration: BoxDecoration(
+        color: MyShopColors.successLight,
+        borderRadius: BorderRadius.circular(w * 0.021),
+        border: Border.all(
+          color: MyShopColors.success.withValues(alpha: 0.35),
+        ),
+      ),
+      alignment: Alignment.center,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.check_circle_rounded,
+            size: w * 0.051,
+            color: MyShopColors.success,
+          ),
+          SizedBox(width: w * 0.021),
+          Text(
+            'Job Completed',
+            style: TextStyle(
+              fontSize: w * 0.040,
+              fontWeight: FontWeight.w700,
+              color: MyShopColors.success,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Replacement CTA shown once the client has selected a bid. Finds the
+/// accepted bid by matching [selectedArtisanId] against the bid list and
+/// navigates to that bid's detail screen.
+class _ViewSelectedBidButton extends ConsumerWidget {
+  final String jobId;
+  final String selectedArtisanId;
+  final double w;
+  final double h;
+  const _ViewSelectedBidButton({
+    required this.jobId,
+    required this.selectedArtisanId,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bidsAsync = ref.watch(bidsForJobProvider(jobId));
+
+    return GestureDetector(
+      onTap: () {
+        final bids = bidsAsync.asData?.value ?? const [];
+        final selected = bids.firstWhere(
+          (b) => b.artisanId == selectedArtisanId,
+          orElse: () => bids.isNotEmpty
+              ? bids.first
+              : throw StateError('No bids available'),
+        );
+        context.push(AppRoutes.jobBidsPath(jobId, selected.bidId));
+      },
+      child: Container(
+        height: h * 0.062,
+        padding: EdgeInsets.symmetric(horizontal: w * 0.041),
+        decoration: BoxDecoration(
+          color: MyShopColors.darkSlate,
+          borderRadius: BorderRadius.circular(w * 0.021),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.verified_rounded,
+              size: w * 0.051,
+              color: MyShopColors.primaryGold,
+            ),
+            SizedBox(width: w * 0.026),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'SELECTED ARTISAN',
+                    style: TextStyle(
+                      fontSize: w * 0.026,
+                      fontWeight: FontWeight.w700,
+                      color: MyShopColors.surfaceWhite.withValues(alpha: 0.7),
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  SizedBox(height: h * 0.002),
+                  Text(
+                    'View Selected Bid',
+                    style: TextStyle(
+                      fontSize: w * 0.038,
+                      fontWeight: FontWeight.w700,
+                      color: MyShopColors.surfaceWhite,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: w * 0.056,
+              color: MyShopColors.surfaceWhite,
+            ),
+          ],
+        ),
       ),
     );
   }

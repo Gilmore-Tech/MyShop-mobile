@@ -39,7 +39,9 @@ class _BidReviewScreenState extends ConsumerState<BidReviewScreen> {
     final w     = size.width;
     final h     = size.height;
     final bot   = MediaQuery.paddingOf(context).bottom;
-    final state = ref.watch(bidDetailProvider(widget.bidId));
+    final state = ref.watch(bidDetailProvider(
+      (jobId: widget.jobId, bidId: widget.bidId),
+    ));
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,

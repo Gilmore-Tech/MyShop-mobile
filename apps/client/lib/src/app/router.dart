@@ -45,6 +45,7 @@ import '../features/services/screens/job_location_search_screen.dart';
 import '../features/services/screens/job_map_picker_screen.dart';
 import '../features/services/screens/job_detail_screen.dart';
 import '../features/services/screens/bid_detail_screen.dart';
+import '../features/services/screens/bid_location_map_screen.dart';
 import '../features/services/screens/bid_review_screen.dart';
 import '../features/services/screens/supplement_review_screen.dart';
 import '../features/services/screens/active_job_screen.dart';
@@ -120,6 +121,7 @@ abstract final class AppRoutes {
   static const jobLocationMap   = '/services/job/location/map';
   static const jobDetail        = '/services/job/:jobId';
   static const jobBids          = '/services/job/:jobId/bids/:bidId';
+  static const jobBidMap        = '/services/job/:jobId/bids/:bidId/map';
   static const jobBidReview     = '/services/job/:jobId/bid-review';
   static const jobSupplement    = '/services/job/:jobId/supplement';
   static const jobActive        = '/services/job/:jobId/active';
@@ -132,6 +134,7 @@ abstract final class AppRoutes {
 
   static String jobDetailPath(String jobId)     => '/services/job/$jobId';
   static String jobBidsPath(String j, String b) => '/services/job/$j/bids/$b';
+  static String jobBidMapPath(String j, String b) => '/services/job/$j/bids/$b/map';
   static String jobBidReviewPath(String jobId)  => '/services/job/$jobId/bid-review';
   static String jobSupplementPath(String jobId) => '/services/job/$jobId/supplement';
   static String jobActivePath(String jobId)     => '/services/job/$jobId/active';
@@ -420,8 +423,18 @@ GoRouter _buildRouter(ClientAuthState authState) {
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.jobBids,
         builder: (_, state) {
+          final jobId = state.pathParameters['jobId']!;
           final bidId = state.pathParameters['bidId']!;
-          return BidDetailScreen(bidId: bidId);
+          return BidDetailScreen(jobId: jobId, bidId: bidId);
+        },
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: AppRoutes.jobBidMap,
+        builder: (_, state) {
+          final jobId = state.pathParameters['jobId']!;
+          final bidId = state.pathParameters['bidId']!;
+          return BidLocationMapScreen(jobId: jobId, bidId: bidId);
         },
       ),
       GoRoute(
