@@ -7,7 +7,21 @@
       "Bash(git commit:*)",
       "Bash(curl -s -X POST https://myshop-api-2hy2.onrender.com/v1/auth/login/driver -H 'Content-Type: application/json' -d '{\"phone\": \"+233241234567\"}')",
       "Bash(curl -s -X GET https://myshop-api-2hy2.onrender.com/v1/users/me -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmMzM0MWRiMy0wZDlhLTQ3ZDctOWM0OS01ZmJjZDAyNWI3N2IiLCJyb2xlIjoiZHJpdmVyIiwicGhvbmUiOiIrMjMzMjQxMjM0NTY3IiwiaWF0IjoxNzc1OTk1NjkyLCJleHAiOjE3NzU5OTY1OTJ9.3PeKEu9zR-UjUHcQmACpzq7uqer58exjnv9GccpCjFM')",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git fetch:*)",
+      "Bash(/opt/homebrew/bin/rg -N --no-heading \"^const _\\\\w+\\\\s*=\\\\s*Color\\\\\\(0x\")",
+      "Bash(awk -F: '{print $2}')",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(wc -l /Users/ayiks/Desktop/ayiks/gilmore/myshop-mobile/apps/client/lib/src/**/*.dart)",
+      "Read(//Users/ayiks/Desktop/ayiks/gilmore/**)",
+      "Bash(flutter build:*)",
+      "Bash(/usr/libexec/java_home)",
+      "Read(//Applications/Android Studio.app/Contents/jbr/Contents/Home/**)",
+      "Bash(xcodebuild -project Runner.xcodeproj -scheme Runner -destination \"platform=iOS Simulator,name=iPhone 17\" -showdestinations)",
+      "Bash(flutter --version)"
+    ],
+    "additionalDirectories": [
+      "/Users/ayiks/Desktop/ayiks/gilmore/myshop-mobile/apps/provider/lib/src/core/services"
     ]
   }
 }
