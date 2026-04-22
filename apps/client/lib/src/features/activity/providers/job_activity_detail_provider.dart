@@ -69,6 +69,7 @@ class JobActivityDetail {
         'cancelled'              => 'Cancelled',
         'in_progress'            => 'In Progress',
         'artisan_marked_complete' => 'Awaiting Confirmation',
+        'artisan_en_route' ||
         'en_route'               => 'En Route',
         'arrived'                => 'Arrived',
         'confirmed'              => 'Confirmed',

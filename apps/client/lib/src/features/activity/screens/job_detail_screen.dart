@@ -184,6 +184,7 @@ class _StatusCard extends StatelessWidget {
       'cancelled'              => (MyShopColors.errorLight, MyShopColors.error),
       'in_progress' ||
       'artisan_marked_complete' ||
+      'artisan_en_route' ||
       'en_route' ||
       'arrived'                => (MyShopColors.warningLight, MyShopColors.warning),
       _                        => (MyShopColors.infoLight, MyShopColors.info),

@@ -198,7 +198,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       'queued'                  => JobStatus.queued,
       'open'                    => JobStatus.open,
       'confirmed'               => JobStatus.confirmed,
-      'en_route'                => JobStatus.enRoute,
+      'artisan_en_route' || 'en_route' => JobStatus.enRoute,
       'arrived'                 => JobStatus.arrived,
       'in_progress'             => JobStatus.inProgress,
       'artisan_marked_complete' => JobStatus.artisanMarkedComplete,

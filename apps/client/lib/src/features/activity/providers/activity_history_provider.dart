@@ -328,6 +328,7 @@ class ActivityHistoryNotifier
       'cancelled'               => TransactionStatus.cancelled,
       'in_progress' ||
       'arrived' ||
+      'artisan_en_route' ||
       'en_route' ||
       'artisan_marked_complete' => TransactionStatus.inProgress,
       _                         => TransactionStatus.pending,
