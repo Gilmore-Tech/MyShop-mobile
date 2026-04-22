@@ -34,6 +34,35 @@ class Job {
   });
 
   factory Job.fromJson(Map<String, dynamic> json) {
+    // The backend sometimes flattens client fields at the top level and
+    // sometimes nests them under `client: {...}` (matching the convention
+    // used for artisan/provider payloads elsewhere). Support both so the
+    // artisan-side UI renders real names/phones regardless of which
+    // endpoint served the record.
+    final clientMap = json['client'] as Map<String, dynamic>?;
+
+    String? resolvedClientName = json['clientName'] as String?;
+    if ((resolvedClientName == null || resolvedClientName.isEmpty) &&
+        clientMap != null) {
+      final full = (clientMap['fullName'] ?? clientMap['name']) as String?;
+      if (full != null && full.trim().isNotEmpty) {
+        resolvedClientName = full.trim();
+      } else {
+        final first = clientMap['firstName'] as String? ?? '';
+        final last = clientMap['lastName'] as String? ?? '';
+        final joined = '$first $last'.trim();
+        if (joined.isNotEmpty) resolvedClientName = joined;
+      }
+    }
+
+    final resolvedClientPhone = json['clientPhone'] as String? ??
+        clientMap?['phone'] as String? ??
+        clientMap?['maskedPhone'] as String?;
+
+    final resolvedClientPhotoUrl = json['clientPhotoUrl'] as String? ??
+        clientMap?['profilePhotoUrl'] as String? ??
+        clientMap?['photoUrl'] as String?;
+
     return Job(
       id: json['jobId'] as String? ?? json['id'] as String,
       status: JobStatus.fromString(json['status'] as String),
@@ -45,9 +74,9 @@ class Job {
       addressText: json['addressText'] as String?,
       photos: (json['photos'] as List<dynamic>?)?.cast<String>() ?? const [],
       scheduledFor: json['scheduledFor'] as String?,
-      clientName: json['clientName'] as String?,
-      clientPhone: json['clientPhone'] as String?,
-      clientPhotoUrl: json['clientPhotoUrl'] as String?,
+      clientName: resolvedClientName,
+      clientPhone: resolvedClientPhone,
+      clientPhotoUrl: resolvedClientPhotoUrl,
       agreedPricePesewas: json['agreedPricePesewas'] as int?,
       shareToken: json['shareToken'] as String?,
       artisansNotified: json['artisansNotified'] as int?,

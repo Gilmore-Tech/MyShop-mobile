@@ -100,10 +100,11 @@ class JobService {
   /// POST /jobs/:id/bids — Artisan: submit a bid on an open job.
   /// Creates a bid record and notifies the client via socket `job:bid_new`.
   ///
-  /// Per the API spec, only `amountPesewas` is required; `message` is
-  /// optional. `etaMinutes` / `durationMinutes` are captured client-side
-  /// for the artisan's own reference and included alongside the message
-  /// so the client sees them.
+  /// Backend expects four fields:
+  ///   - `amountPesewas`  (required, int >= 1)
+  ///   - `etaMinutes`     (required, int 1–180)
+  ///   - `durationMinutes` (required, int 15–1440)
+  ///   - `message`        (optional, free-text)
   Future<Map<String, dynamic>> submitBid(
     String jobId, {
     required int amountPesewas,
@@ -112,18 +113,11 @@ class JobService {
     String? notes,
   }) async {
     try {
-      // Compose a message that includes ETA + duration so they reach the
-      // client even though the backend only stores a free-text `message`.
-      final parts = <String>[
-        'ETA: $etaMinutes min',
-        'Duration: ${_formatDuration(durationMinutes)}',
-        if (notes != null && notes.trim().isNotEmpty) notes.trim(),
-      ];
-      final message = parts.join(' · ');
-
-      final payload = {
+      final payload = <String, dynamic>{
         'amountPesewas': amountPesewas,
-        'message': message,
+        'etaMinutes': etaMinutes,
+        'durationMinutes': durationMinutes,
+        if (notes != null && notes.trim().isNotEmpty) 'message': notes.trim(),
       };
       // ignore: avoid_print
       print('[JobService] submitBid POST /jobs/$jobId/bids payload=$payload');
@@ -140,14 +134,6 @@ class JobService {
           'data=${e.response?.data} message=${e.message}');
       throw ApiException.fromDioException(e);
     }
-  }
-
-  String _formatDuration(int totalMinutes) {
-    final hours = totalMinutes ~/ 60;
-    final minutes = totalMinutes % 60;
-    if (hours == 0) return '${minutes}m';
-    if (minutes == 0) return '${hours}h';
-    return '${hours}h ${minutes}m';
   }
 
   /// GET /jobs/:id/bids — Get bids for a job.
@@ -168,6 +154,58 @@ class JobService {
         if (data is Map<String, dynamic>) {
           if (data['items'] is List) return data['items'] as List<dynamic>;
           if (data['bids'] is List) return data['bids'] as List<dynamic>;
+        }
+      }
+      return const <dynamic>[];
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return const <dynamic>[];
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// PATCH /jobs/:id/status — Artisan: advance the job through the active-
+  /// work lifecycle. Valid next-statuses (and their required predecessors):
+  ///
+  ///   confirmed                → artisan_en_route
+  ///   artisan_en_route         → arrived
+  ///   arrived                  → in_progress
+  ///   in_progress              → artisan_marked_complete
+  ///
+  /// Backend rejects invalid transitions with `INVALID_STATUS_TRANSITION`
+  /// (400) and non-assigned artisans with `NOT_ASSIGNED_ARTISAN` (403).
+  Future<Map<String, dynamic>> updateJobStatus(
+    String jobId, {
+    required String status,
+  }) async {
+    try {
+      final response = await _dio.patch(
+        '/jobs/$jobId/status',
+        data: {'status': status},
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// GET /jobs/:id/bids/locations — Live artisan positions for a job's bids.
+  /// Bandwidth-optimised: only the moving fields. Poll every 5–10 s while
+  /// the bid review screen is open. Artisans with unknown current location
+  /// are omitted from the array — callers fall back to the snapshot.
+  /// Returns an empty list on 404 so missing backend support degrades silently.
+  Future<List<dynamic>> getBidLocations(String jobId) async {
+    try {
+      final response = await _dio.get('/jobs/$jobId/bids/locations');
+      final body = response.data;
+      if (body is List) return body;
+      if (body is Map<String, dynamic>) {
+        final data = body['data'];
+        if (data is List) return data;
+        if (data is Map<String, dynamic>) {
+          if (data['items'] is List) return data['items'] as List<dynamic>;
+          if (data['locations'] is List) {
+            return data['locations'] as List<dynamic>;
+          }
         }
       }
       return const <dynamic>[];
