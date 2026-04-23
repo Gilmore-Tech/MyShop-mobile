@@ -63,6 +63,18 @@
 	<string>MyShop needs your location to track rides and keep your position updated for passengers.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>MyShop needs background location access to track active rides.</string>
+	<!-- Push notifications + background location: FCM pushes must wake the
+	     app to render a heads-up banner for incoming jobs/rides, and the
+	     driver needs location updates while the screen is off. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+		<string>location</string>
+		<string>fetch</string>
+	</array>
+	<!-- Let our onMessage handler own foreground presentation. -->
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<true/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

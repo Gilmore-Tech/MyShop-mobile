@@ -1,5 +1,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- ── Internet ─────────────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- ── Push notifications ───────────────────────────────────────── -->
+    <!-- Android 13+ requires runtime permission for notifications. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Keep the device awake long enough to render a heads-up banner. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <!-- Required for the urgent `job_alerts` channel's full-screen-intent. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+
+    <!-- ── Camera + location ────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
@@ -37,6 +50,14 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="AIzaSyAdeUq7xKMQsvxWYwv8rTeE3YK_egOLx34" />
+
+        <!-- Default FCM channel — pushes without an explicit channel id get
+             routed to the urgent `job_alerts` channel so incoming requests
+             never land in a muted bucket. Matches the channel id created
+             by LocalNotificationService. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="job_alerts" />
 
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

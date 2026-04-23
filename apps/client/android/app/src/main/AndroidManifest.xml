@@ -1,4 +1,22 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- ── Internet ─────────────────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- ── Push notifications ───────────────────────────────────────── -->
+    <!-- Android 13+ requires runtime permission for notifications. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Keep the device awake long enough to render a heads-up banner. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- Vibrate is needed for the urgent channel. -->
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <!-- Required for fullScreenIntent on the urgent channel (calls/alarms). -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+
+    <!-- ── Location (map + place picker) ────────────────────────────── -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+
     <application
         android:label="myshop_client"
         android:name="${applicationName}"
@@ -20,7 +38,7 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
-      
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -29,6 +47,15 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
+
+        <!-- Default FCM channel. Must match the id created via
+             `flutter_local_notifications` (see LocalNotificationService)
+             so data-only pushes and client-side local notifications
+             share the same sound/importance. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="myshop_timeline" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

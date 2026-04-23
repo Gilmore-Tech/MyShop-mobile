@@ -28,26 +28,81 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
 
 Future<void> _renderFromRemote(RemoteMessage message) async {
   final data = message.data;
-  final type = data['type'] as String?;
+  final rawType = data[NotificationPayload.keyType] as String?;
+  if (rawType == null || rawType.isEmpty) return;
+
+  // Backend emits `job.bid_accepted`; mobile uses `job_bid_accepted`.
+  final type = NotificationPayload.normaliseType(rawType);
+
   final title = message.notification?.title ?? data['title'] as String? ?? '';
   final body = message.notification?.body ?? data['body'] as String? ?? '';
 
-  if (type == NotificationPayload.typeJobRequest) {
-    final jobId = data[NotificationPayload.keyJobId] as String?;
-    if (jobId == null) return;
-    await LocalNotificationService.instance.showJobRequest(
-      jobId: jobId,
-      title: title.isEmpty ? 'New job request' : title,
-      body: body.isEmpty ? 'A client has requested your services.' : body,
-    );
-  } else if (type == NotificationPayload.typeRideRequest) {
-    final rideId = data[NotificationPayload.keyRideId] as String?;
-    if (rideId == null) return;
-    await LocalNotificationService.instance.showRideRequest(
-      rideId: rideId,
-      title: title.isEmpty ? 'New ride request' : title,
-      body: body.isEmpty ? 'A passenger needs a ride.' : body,
-    );
+  // Forward every data-key besides title/body/type so the tap handler can
+  // read jobId / rideId / bidId / chatId / notificationId without losing
+  // context.
+  final extras = <String, String>{};
+  for (final entry in data.entries) {
+    if (entry.key == NotificationPayload.keyType) continue;
+    if (entry.key == 'title' || entry.key == 'body') continue;
+    final v = entry.value;
+    if (v is String && v.isNotEmpty) extras[entry.key] = v;
+  }
+
+  await LocalNotificationService.instance.showTimelineUpdate(
+    type: type,
+    title: title.isEmpty ? _fallbackTitle(type) : title,
+    body: body.isEmpty ? _fallbackBody(type) : body,
+    extras: extras,
+  );
+}
+
+String _fallbackTitle(String type) {
+  switch (type) {
+    case NotificationPayload.typeJobRequest:
+      return 'New job request';
+    case NotificationPayload.typeRideRequest:
+      return 'New ride request';
+    case NotificationPayload.typeBidAccepted:
+      return 'Your bid was accepted';
+    case NotificationPayload.typeBidRejected:
+      return 'Bid rejected';
+    case NotificationPayload.typeJobCancelled:
+      return 'Job cancelled';
+    case NotificationPayload.typeJobConfirmedComplete:
+      return 'Job confirmed';
+    case NotificationPayload.typeSupplementApproved:
+      return 'Supplement approved';
+    case NotificationPayload.typeSupplementRejected:
+      return 'Supplement rejected';
+    case NotificationPayload.typeRideCancelled:
+      return 'Ride cancelled';
+    case NotificationPayload.typeRideSettled:
+      return 'Ride settled';
+    case NotificationPayload.typeNewMessage:
+      return 'New message';
+    case NotificationPayload.typePaymentReceived:
+      return 'Payout received';
+    default:
+      return 'MyShop';
+  }
+}
+
+String _fallbackBody(String type) {
+  switch (type) {
+    case NotificationPayload.typeJobRequest:
+      return 'A client has requested your services.';
+    case NotificationPayload.typeRideRequest:
+      return 'A passenger needs a ride.';
+    case NotificationPayload.typeBidAccepted:
+      return 'Tap to start the job.';
+    case NotificationPayload.typeJobConfirmedComplete:
+      return 'Your payout has been released.';
+    case NotificationPayload.typeJobCancelled:
+      return 'The client cancelled this job.';
+    case NotificationPayload.typeRideCancelled:
+      return 'The client cancelled this ride.';
+    default:
+      return 'Open MyShop to see the latest update.';
   }
 }
 
@@ -60,7 +115,8 @@ Future<void> _renderFromRemote(RemoteMessage message) async {
 ///
 /// [onTapMessage] is invoked when the user taps a system-tray notification
 /// (either ours via [LocalNotificationService] or one FCM created). The
-/// payload carries `{ type, jobId | rideId }` so the router can deep-link.
+/// payload carries `{ type, jobId | rideId | bidId | chatId }` so the
+/// router can deep-link.
 class FcmService {
   FcmService(this._ref);
 
@@ -92,6 +148,7 @@ class FcmService {
     // Ensure tapping a local notification also routes via the same
     // handler the router will set.
     LocalNotificationService.instance.onTap = (payload) {
+      _markNotificationRead(payload);
       onTapMessage?.call(payload);
     };
 
@@ -107,6 +164,7 @@ class FcmService {
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
       debugPrint('[FCM] opened from background: ${message.data}');
       final payload = Map<String, dynamic>.from(message.data);
+      _markNotificationRead(payload);
       onTapMessage?.call(payload);
     });
 
@@ -114,12 +172,29 @@ class FcmService {
     final initialMessage = await _fcm.getInitialMessage();
     if (initialMessage != null) {
       debugPrint('[FCM] initial message: ${initialMessage.data}');
+      final payload = Map<String, dynamic>.from(initialMessage.data);
+      _markNotificationRead(payload);
       // Defer until the router is ready to avoid navigating before the
       // first frame.
       Future<void>.delayed(const Duration(milliseconds: 500), () {
-        onTapMessage?.call(Map<String, dynamic>.from(initialMessage.data));
+        onTapMessage?.call(payload);
       });
     }
+  }
+
+  /// Fires a best-effort `PATCH /notifications/:id/read` when the push
+  /// carries a `notificationId`. Clears the in-app bell in the background
+  /// so a tap also settles the inbox. Swallows errors — the user has
+  /// already acted, we just didn't get to record it.
+  void _markNotificationRead(Map<String, dynamic> payload) {
+    final id = payload[NotificationPayload.keyNotificationId] as String?;
+    if (id == null || id.isEmpty) return;
+    _ref
+        .read(apiNotificationServiceProvider)
+        .markAsRead(id)
+        .catchError((Object e) {
+      debugPrint('[FCM] markAsRead($id) failed: $e');
+    });
   }
 
   /// Fetch the FCM token and POST it to the backend so we can receive
@@ -193,13 +268,19 @@ final fcmAuthBridgeProvider = Provider<void>((ref) {
 
 /// Wires FCM notification taps into GoRouter navigation.
 ///
-/// When the user taps a push (background, terminated, or our own local
-/// notification), this handler:
-///   1. Extracts the payload `{ type, jobId | rideId }`
-///   2. Fetches the full [Job] via `GET /jobs/:id`
-///   3. Navigates to `/job-request` with the job
-///
-/// If the fetch fails (network/404), bounces to `/home`.
+/// Routing table:
+///   job_request (+ jobId)       → fetch job → /job-request
+///   ride_request                → /home  (socket-driven modal surfaces)
+///   bid_accepted (+ jobId)      → /active-job  (artisan can start)
+///   bid_rejected                → /home
+///   supplement_approved         → /active-job
+///   supplement_rejected         → /active-job
+///   job_cancelled / ride_cancelled → /home
+///   job_confirmed_complete      → /home  (payout hit)
+///   ride_settled                → /earnings
+///   payment_received            → /earnings
+///   new_message (+ jobId/rideId)→ /messages
+///   everything else             → /home
 ///
 /// Must be read once at app start AFTER the router has been created so
 /// `goRouterProvider` is ready to receive navigation calls.
@@ -207,28 +288,56 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
   final fcm = ref.read(fcmServiceProvider);
 
   fcm.onTapMessage = (payload) async {
-    final type = payload[NotificationPayload.keyType];
+    final type = payload[NotificationPayload.keyType] as String?;
     final router = ref.read(goRouterProvider);
 
-    if (type == NotificationPayload.typeJobRequest) {
-      final jobId = payload[NotificationPayload.keyJobId] as String?;
-      if (jobId == null) {
+    switch (type) {
+      case NotificationPayload.typeJobRequest:
+        final jobId = payload[NotificationPayload.keyJobId] as String?;
+        if (jobId == null) {
+          router.go('/home');
+          return;
+        }
+        try {
+          final data = await ref.read(jobServiceProvider).getJob(jobId);
+          final job = Job.fromJson(data);
+          router.push('/job-request', extra: job);
+        } catch (e) {
+          debugPrint('[FCM] tap fetch failed for job $jobId: $e');
+          router.go('/home');
+        }
+        break;
+
+      case NotificationPayload.typeRideRequest:
+        // Rides: open the shell to home — the active-ride screen is
+        // driven by separate state and the driver will see it immediately
+        // via the socket listener once the app is foreground.
         router.go('/home');
-        return;
-      }
-      try {
-        final data = await ref.read(jobServiceProvider).getJob(jobId);
-        final job = Job.fromJson(data);
-        router.push('/job-request', extra: job);
-      } catch (e) {
-        debugPrint('[FCM] tap fetch failed for job $jobId: $e');
+        break;
+
+      case NotificationPayload.typeBidAccepted:
+      case NotificationPayload.typeSupplementApproved:
+      case NotificationPayload.typeSupplementRejected:
+        // Artisan has an active job waiting — go to the active-job screen
+        // so they can advance the timeline.
+        router.go('/active-job');
+        break;
+
+      case NotificationPayload.typeRideSettled:
+      case NotificationPayload.typePaymentReceived:
+        router.go('/earnings');
+        break;
+
+      case NotificationPayload.typeNewMessage:
+        router.go('/messages');
+        break;
+
+      case NotificationPayload.typeBidRejected:
+      case NotificationPayload.typeJobCancelled:
+      case NotificationPayload.typeRideCancelled:
+      case NotificationPayload.typeJobConfirmedComplete:
+      default:
         router.go('/home');
-      }
-    } else if (type == NotificationPayload.typeRideRequest) {
-      // Rides: open the shell to home for now — the active-ride screen is
-      // driven by separate state and the driver will see it immediately
-      // via the socket listener once the app is foreground.
-      router.go('/home');
     }
   };
 });

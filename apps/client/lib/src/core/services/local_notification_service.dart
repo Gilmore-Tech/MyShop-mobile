@@ -9,7 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// backend must send the SAME [keyType] string in `data` so the tap handler
 /// can deep-link into the correct screen.
 ///
-/// Keep in sync with [client app: local_notification_service.dart] and the
+/// Keep in sync with [provider app: local_notification_service.dart] and the
 /// backend notification emitter.
 class NotificationPayload {
   static const keyType = 'type';
@@ -20,74 +20,84 @@ class NotificationPayload {
   static const keyNotificationId = 'notificationId';
 
   /// The backend sends types prefixed by domain with a dot separator
-  /// (e.g. `ride.driver_assigned`, `job.bid_accepted`, `chat.message`).
+  /// (e.g. `ride.driver_assigned`, `job.bid_submitted`, `chat.message`).
   /// Normalise them to the underscore form used by the [type*] constants
   /// so the switch doesn't care which separator the emitter picked.
   static String normaliseType(String raw) => raw.replaceAll('.', '_');
 
-  // ── Incoming requests (provider-targeted) ────────────────────────────────
-  /// New artisan job request that the provider qualifies for.
-  static const typeJobRequest = 'job_request';
+  // ── Ride timeline (client-targeted) ──────────────────────────────────────
+  /// A driver has been matched and assigned to the rider's booking.
+  static const typeRideDriverAssigned = 'ride_driver_assigned';
 
-  /// New ride request that the driver qualifies for.
-  static const typeRideRequest = 'ride_request';
+  /// Assigned driver is now en route to the pickup.
+  static const typeRideDriverEnRoute = 'ride_driver_en_route';
 
-  // ── Job progression (provider-targeted) ──────────────────────────────────
-  /// Client accepted the artisan's bid — urgent, artisan can now start.
-  static const typeBidAccepted = 'bid_accepted';
+  /// Driver has arrived at the pickup — urgent, tap to view.
+  static const typeRideDriverArrived = 'ride_driver_arrived';
 
-  /// Client rejected the artisan's bid.
-  static const typeBidRejected = 'bid_rejected';
+  /// Ride has started (client is in the vehicle).
+  static const typeRideInProgress = 'ride_in_progress';
 
-  /// Client cancelled an accepted job after work had started.
-  static const typeJobCancelled = 'job_cancelled';
+  /// Ride completed — fare charged, receipt ready.
+  static const typeRideCompleted = 'ride_completed';
 
-  /// Client confirmed the artisan's "marked complete" — payment released.
-  static const typeJobConfirmedComplete = 'job_confirmed_complete';
-
-  /// Client approved the artisan's supplement request.
-  static const typeSupplementApproved = 'supplement_approved';
-
-  /// Client rejected the artisan's supplement request.
-  static const typeSupplementRejected = 'supplement_rejected';
-
-  // ── Ride progression (provider-targeted) ─────────────────────────────────
-  /// Client cancelled the ride after matching.
+  /// Ride was cancelled by the driver or the system.
   static const typeRideCancelled = 'ride_cancelled';
 
-  /// Client confirmed the ride complete — fare settled.
-  static const typeRideSettled = 'ride_settled';
+  // ── Job / artisan timeline (client-targeted) ─────────────────────────────
+  /// A new bid was submitted on the rider's open job.
+  static const typeJobBidSubmitted = 'job_bid_submitted';
+
+  /// Artisan is en route to the job location.
+  static const typeJobArtisanEnRoute = 'job_artisan_en_route';
+
+  /// Artisan arrived at the site — urgent.
+  static const typeJobArtisanArrived = 'job_artisan_arrived';
+
+  /// Artisan started the job.
+  static const typeJobInProgress = 'job_in_progress';
+
+  /// Artisan marked the job complete — waiting on client confirmation (urgent).
+  static const typeJobMarkedComplete = 'job_marked_complete';
+
+  /// Job fully completed — settled.
+  static const typeJobCompleted = 'job_completed';
+
+  /// Job cancelled.
+  static const typeJobCancelled = 'job_cancelled';
+
+  /// Artisan submitted a supplement (additional cost) request.
+  static const typeJobSupplementRequested = 'job_supplement_requested';
 
   // ── Cross-cutting ────────────────────────────────────────────────────────
-  /// New chat message from the client.
+  /// New chat message from the counter-party.
   static const typeNewMessage = 'new_message';
 
-  /// Payout / payment received from MyShop.
-  static const typePaymentReceived = 'payment_received';
+  /// Payment confirmation / receipt available.
+  static const typePaymentConfirmed = 'payment_confirmed';
 
   /// Generic / info — routes to notification inbox.
   static const typeGeneric = 'generic';
 
-  /// Types that must fire a full-screen-intent, heads-up, call-style banner.
-  /// Incoming requests MUST be in this set so the provider sees them on the
-  /// lock-screen even when the phone is in a pocket.
+  /// Types that deserve a heads-up, full-screen-intent style banner.
   static const Set<String> urgentTypes = {
-    typeJobRequest,
-    typeRideRequest,
-    typeBidAccepted,
+    typeRideDriverAssigned,
+    typeRideDriverArrived,
+    typeJobArtisanArrived,
+    typeJobMarkedComplete,
     typeNewMessage,
   };
 }
 
-/// Wraps `flutter_local_notifications` for the provider app. Responsibilities:
-///   • Register two notification channels on init.
+/// Thin wrapper around `flutter_local_notifications`. Responsibilities:
+///   • Register notification channels once on init.
 ///   • Render FCM pushes that arrive while the app is backgrounded or
 ///     terminated (FCM's default banner has no payload tap routing).
 ///   • Forward taps to whatever the router has registered via [onTap].
 ///
-/// All payloads share the shape `{type, jobId | rideId | bidId | chatId}`
-/// so a single tap handler can deep-link regardless of the notification
-/// type.
+/// All timeline pushes use the same data-payload shape
+/// `{type, jobId | rideId | bidId | chatId}` so a single tap handler can
+/// deep-link regardless of which notification type fired.
 class LocalNotificationService {
   LocalNotificationService._();
 
@@ -96,31 +106,30 @@ class LocalNotificationService {
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
-  /// Max importance — full-screen-intent call-style banner. Used for
-  /// incoming requests and the moments we can't let the provider miss
-  /// (bid accepted, new chat message during a live job). Channel id is
-  /// kept as `job_alerts` for backward-compat with the existing Android
-  /// install base.
+  /// Max importance — heads-up banner with sound. Used for urgent timeline
+  /// steps the user must act on immediately (driver arrived, bid accepted,
+  /// artisan marked complete, new chat message).
   static const AndroidNotificationChannel _urgentChannel =
       AndroidNotificationChannel(
-    'job_alerts',
-    'Job & Ride Requests',
+    'myshop_urgent',
+    'Urgent updates',
     description:
-        'Incoming job and ride requests and other time-sensitive alerts. '
-        'Muting this channel will cause you to miss work.',
+        'Time-sensitive updates — driver arrival, bid match, completion '
+        'confirmations. Muting this may cause you to miss an active trip.',
     importance: Importance.max,
     playSound: true,
     enableVibration: true,
   );
 
-  /// High importance but non-intrusive — incremental updates like a
-  /// cancelled ride or a received payout. Tappable, no full-screen-intent.
+  /// High importance but non-intrusive — used for incremental status
+  /// transitions (new bid submitted, driver en route, ride started, etc.).
   static const AndroidNotificationChannel _timelineChannel =
       AndroidNotificationChannel(
     'myshop_timeline',
-    'Job & ride updates',
+    'Trip & job updates',
     description:
-        'Progress updates on your active jobs, rides, payouts and bids.',
+        'Progress updates on your active rides, jobs and bids. '
+        'Leave enabled to stay informed without interruption.',
     importance: Importance.high,
     playSound: true,
     enableVibration: false,
@@ -128,6 +137,7 @@ class LocalNotificationService {
 
   bool _initialised = false;
 
+  /// Router-owned tap handler. Forwards the decoded payload map.
   void Function(Map<String, dynamic> payload)? _onTap;
   set onTap(void Function(Map<String, dynamic> payload)? handler) =>
       _onTap = handler;
@@ -164,43 +174,12 @@ class LocalNotificationService {
     await androidPlugin?.requestNotificationsPermission();
   }
 
-  /// Show a persistent banner for an incoming job. Used by FCM background
-  /// handler when the app is minimised — tapping takes the user back into
-  /// the full job-request screen via [onTap].
-  Future<void> showJobRequest({
-    required String jobId,
-    required String title,
-    required String body,
-  }) {
-    return showTimelineUpdate(
-      type: NotificationPayload.typeJobRequest,
-      title: title,
-      body: body,
-      extras: {NotificationPayload.keyJobId: jobId},
-    );
-  }
-
-  /// Same as [showJobRequest] but for incoming ride events.
-  Future<void> showRideRequest({
-    required String rideId,
-    required String title,
-    required String body,
-  }) {
-    return showTimelineUpdate(
-      type: NotificationPayload.typeRideRequest,
-      title: title,
-      body: body,
-      extras: {NotificationPayload.keyRideId: rideId},
-    );
-  }
-
   /// Single entry-point for rendering any timeline push. Picks the right
-  /// channel + styling based on [type]. Urgent types get a full-screen
-  /// intent call-style banner; others get a standard high-priority banner.
+  /// channel, styling and payload shape based on [type].
   ///
   /// [type] MUST be one of [NotificationPayload]'s `type*` constants.
-  /// [extras] is merged into the payload — pass ids like
-  /// `{jobId: '...'}` or `{rideId: '...'}` so the tap handler can route.
+  /// [extras] is merged into the payload — use it to pass ids like
+  /// `{jobId: '...'}` or `{rideId: '...'}` so the tap handler can deep-link.
   Future<void> showTimelineUpdate({
     required String type,
     required String title,
@@ -245,12 +224,8 @@ class LocalNotificationService {
     );
   }
 
-  /// Play the system alert sound and fire heavy haptic — used while the
-  /// app is in the foreground and the modal is already visible (no banner
-  /// needed since the UI is already grabbing attention).
-  ///
-  /// Fires the haptic twice and the sound once; effective on iOS + Android
-  /// without needing a custom asset.
+  /// Fire system alert sound + haptic. Used when a modal already owns the
+  /// foreground — no banner needed, but we still nudge the user.
   Future<void> playForegroundAlert() async {
     await HapticFeedback.heavyImpact();
     await SystemSound.play(SystemSoundType.alert);
@@ -259,18 +234,21 @@ class LocalNotificationService {
   }
 
   /// Stable non-negative notification id. Dedupes per `{type, primary-id}`
-  /// so a status progression REPLACES the previous banner rather than
-  /// stacking four notifications for the same job.
+  /// so a status progression replaces the previous banner rather than
+  /// stacking four notifications for the same ride.
   int _dedupeId(String type, Map<String, String> extras) {
-    final primary = extras[NotificationPayload.keyJobId] ??
-        extras[NotificationPayload.keyRideId] ??
-        extras[NotificationPayload.keyBidId] ??
+    final primary = extras[NotificationPayload.keyRideId] ??
+        extras[NotificationPayload.keyJobId] ??
         extras[NotificationPayload.keyChatId] ??
+        extras[NotificationPayload.keyBidId] ??
         type;
     return ('$type:$primary').hashCode & 0x7fffffff;
   }
 }
 
-final notificationServiceProvider = Provider<LocalNotificationService>((_) {
+/// Exposed so widgets can `ref.read(...).playForegroundAlert()` or access
+/// the singleton directly.
+final localNotificationServiceProvider =
+    Provider<LocalNotificationService>((_) {
   return LocalNotificationService.instance;
 });
