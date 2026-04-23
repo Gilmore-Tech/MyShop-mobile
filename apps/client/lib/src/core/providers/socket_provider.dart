@@ -4,6 +4,7 @@ import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/auth/providers/auth_controller.dart';
+import '../../features/activity/providers/activity_history_provider.dart';
 import '../../features/activity/providers/activity_provider.dart';
 import '../../features/notifications/providers/notifications_provider.dart';
 import '../../features/ride/providers/ride_provider.dart';
@@ -97,10 +98,16 @@ void _connectAndListen(Ref ref, SocketService socket) {
             if (ref.exists(activityNotifierProvider)) {
               ref.read(activityNotifierProvider.notifier).reload();
             }
+            if (ref.exists(activityHistoryProvider)) {
+              ref.read(activityHistoryProvider.notifier).silentReload();
+            }
             ref.read(navBadgeProvider.notifier).increment('/activity');
 
           case 'cancelled' || 'no_drivers':
             ref.read(bookingPhaseProvider.notifier).reset();
+            if (ref.exists(activityHistoryProvider)) {
+              ref.read(activityHistoryProvider.notifier).silentReload();
+            }
         }
       } catch (e) {
         developer.log('Failed to handle ride:status: $e',
@@ -124,6 +131,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
 
         if (ref.exists(activityNotifierProvider)) {
           ref.read(activityNotifierProvider.notifier).reload();
+        }
+        if (ref.exists(activityHistoryProvider)) {
+          ref.read(activityHistoryProvider.notifier).silentReload();
         }
         ref.read(navBadgeProvider.notifier).increment('/activity');
       } catch (e) {

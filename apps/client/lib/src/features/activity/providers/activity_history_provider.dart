@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +7,10 @@ import 'package:intl/intl.dart';
 import 'package:shared_models/shared_models.dart';
 
 import '../../../core/di/providers.dart';
+
+/// Background poll cadence. Acts as a safety net for missed socket events —
+/// when the socket is healthy this fetches the same data and the UI no-ops.
+const _kActivityPollInterval = Duration(seconds: 15);
 
 // ── Activity Filter ───────────────────────────────────────────────────────────
 
@@ -177,12 +183,28 @@ class ActivityHistoryState {
 class ActivityHistoryNotifier
     extends StateNotifier<ActivityHistoryState> {
   final Ref _ref;
+  Timer? _pollTimer;
+  bool _inFlight = false;
 
   ActivityHistoryNotifier(this._ref) : super(const ActivityHistoryState()) {
     _load();
+    _pollTimer = Timer.periodic(
+      _kActivityPollInterval,
+      (_) => silentReload(),
+    );
   }
 
-  Future<void> _load() async {
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    // Coalesce concurrent fetches — socket events and the poll timer can
+    // both fire during an in-flight request. Drop duplicates silently.
+    if (_inFlight) return;
+    _inFlight = true;
     try {
       final rideService = _ref.read(rideServiceProvider);
       final jobService = _ref.read(jobServiceProvider);
@@ -195,15 +217,6 @@ class ActivityHistoryNotifier
 
       final ridesJson = results[0];
       final jobsJson = results[1];
-
-      debugPrint('[Activity] rides count: ${ridesJson.length}, '
-          'jobs count: ${jobsJson.length}');
-      if (ridesJson.isNotEmpty) {
-        debugPrint('[Activity] first ride: ${ridesJson.first}');
-      }
-      if (jobsJson.isNotEmpty) {
-        debugPrint('[Activity] first job: ${jobsJson.first}');
-      }
 
       // Parse into unified TransactionItems.
       final items = <TransactionItem>[];
@@ -245,6 +258,7 @@ class ActivityHistoryNotifier
         monthLabel: DateFormat.MMMM().format(now),
       );
 
+      if (!mounted) return;
       state = state.copyWith(
         isLoading: false,
         summary: summary,
@@ -252,10 +266,15 @@ class ActivityHistoryNotifier
         clearError: true,
       );
     } catch (e) {
+      // Swallow transient failures on silent refreshes so the UI keeps
+      // showing the last known data instead of flipping to an error state.
+      if (silent || !mounted) return;
       state = state.copyWith(
         isLoading: false,
         errorMessage: 'Failed to load activity. Pull to retry.',
       );
+    } finally {
+      _inFlight = false;
     }
   }
 
@@ -263,6 +282,11 @@ class ActivityHistoryNotifier
     state = state.copyWith(isLoading: true, clearError: true);
     await _load();
   }
+
+  /// Refresh in the background without toggling [isLoading].
+  /// Triggered by socket events and the poll timer so the list stays fresh
+  /// without the user seeing a skeleton flash.
+  Future<void> silentReload() => _load(silent: true);
 
   void setFilter(ActivityFilter f) =>
       state = state.copyWith(filter: f, clearError: true);
