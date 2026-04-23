@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +6,15 @@ import 'package:shared_models/shared_models.dart';
 
 import '../../../core/di/providers.dart';
 import 'submitted_bids_provider.dart';
+
+/// Hard cap on the jobs fetch — without this, a stalled backend leaves the
+/// spinner up indefinitely because `listJobs` has no built-in deadline.
+const _kFetchTimeout = Duration(seconds: 15);
+
+/// Background refresh cadence. Safety net for missed socket events —
+/// keeps the bid banner, status pill, and list in sync even when
+/// `job:status` / `bid:accepted` never lands.
+const _kPollInterval = Duration(seconds: 8);
 
 /// A condensed job view for the artisan's "My Jobs" list.
 ///
@@ -111,37 +121,89 @@ class ArtisanJobsState {
 class ArtisanJobsNotifier extends StateNotifier<ArtisanJobsState> {
   ArtisanJobsNotifier(this._ref) : super(const ArtisanJobsState()) {
     load();
+    _pollTimer = Timer.periodic(
+      _kPollInterval,
+      (_) => silentReload(),
+    );
   }
 
   final Ref _ref;
+  Timer? _pollTimer;
+  bool _inFlight = false;
 
-  Future<void> load() async {
-    state = state.copyWith(isLoading: true, clearError: true);
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> load() => _fetch(silent: false);
+
+  /// Refresh in the background without flipping [isLoading]. Used by the
+  /// poll timer and socket handlers so the list stays live without the UI
+  /// ever flashing the spinner.
+  Future<void> silentReload() => _fetch(silent: true);
+
+  Future<void> _fetch({required bool silent}) async {
+    // Coalesce: socket events + poll timer can overlap during an in-flight
+    // fetch — drop duplicates instead of queuing redundant requests.
+    if (_inFlight) return;
+    _inFlight = true;
+
+    if (!silent) {
+      state = state.copyWith(isLoading: true, clearError: true);
+    }
+
     try {
-      final raw =
-          await _ref.read(jobServiceProvider).listJobs(page: 1, limit: 100);
+      final raw = await _ref
+          .read(jobServiceProvider)
+          .listJobs(page: 1, limit: 100)
+          .timeout(_kFetchTimeout);
       developer.log(
-        'Fetched ${raw.length} jobs for artisan',
+        'Fetched ${raw.length} jobs for artisan${silent ? ' (silent)' : ''}',
         name: 'ArtisanJobs',
       );
       final entries = <ArtisanJobEntry>[];
       for (final item in raw) {
         if (item is! Map<String, dynamic>) continue;
-        entries.add(_parse(item));
+        try {
+          entries.add(_parse(item));
+        } catch (e) {
+          developer.log('Skipping unparseable job entry: $e',
+              name: 'ArtisanJobs', level: 800);
+        }
       }
       final withBid = entries.where((e) => e.hasBid).length;
       developer.log(
         'Parsed ${entries.length} entries ($withBid with a bid attached)',
         name: 'ArtisanJobs',
       );
-      state = state.copyWith(isLoading: false, entries: entries);
-    } catch (e) {
-      developer.log('Failed to load artisan jobs: $e',
+      if (!mounted) return;
+      state = state.copyWith(
+        isLoading: false,
+        entries: entries,
+        clearError: true,
+      );
+    } on TimeoutException {
+      developer.log('Artisan jobs fetch timed out',
           name: 'ArtisanJobs', level: 900);
+      if (silent || !mounted) return;
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Taking too long to load. Check your connection and retry.',
+      );
+    } catch (e, st) {
+      developer.log('Failed to load artisan jobs: $e\n$st',
+          name: 'ArtisanJobs', level: 900);
+      // Silent refreshes must never clobber the last-good list with an
+      // error — the user just sees the data they already had.
+      if (silent || !mounted) return;
       state = state.copyWith(
         isLoading: false,
         errorMessage: 'Failed to load jobs. Pull to retry.',
       );
+    } finally {
+      _inFlight = false;
     }
   }
 

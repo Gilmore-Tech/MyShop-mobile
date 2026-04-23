@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_models/shared_models.dart';
 
+import '../../features/artisan_home/providers/job_poller_provider.dart';
 import '../../features/artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../features/driver_home/providers/driver_location_provider.dart';
@@ -166,6 +167,16 @@ void _connectAndListen(Ref ref, SocketService socket) {
       if (data is Map<String, dynamic>) {
         try {
           final job = Job.fromJson(data);
+          // Dedupe against the poller — if the REST fallback already
+          // surfaced this job, skip the duplicate modal.
+          final surfaced = ref.read(surfacedJobIdsProvider);
+          if (surfaced.contains(job.id)) {
+            debugPrint('[WS] Job ${job.id} already surfaced — skipping');
+            return;
+          }
+          ref.read(surfacedJobIdsProvider.notifier).update(
+                (s) => {...s, job.id},
+              );
           // Force a state transition even if an identical Job instance is
           // somehow already in the provider (defensive — Job doesn't
           // override ==, but the clear-then-set guarantees the listener
@@ -202,10 +213,14 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // list re-fetches `myBid.status`, which the JobRequest banner reads.
     void handleJobStatus(dynamic data) {
       debugPrint('[WS] Received job:status: $data');
-      // autoDispose: safe to invalidate even when nothing is watching —
-      // a re-listener will trigger a fresh load from the constructor.
+      // Prefer silentReload over invalidate: invalidate tears down the
+      // notifier and the constructor-triggered load() flips isLoading back
+      // to true, which flashes the spinner on the My Jobs screen. A silent
+      // reload swaps the data in place so the banner and list update live.
       try {
-        ref.invalidate(artisanJobsProvider);
+        if (ref.exists(artisanJobsProvider)) {
+          ref.read(artisanJobsProvider.notifier).silentReload();
+        }
       } catch (_) {}
       if (data is Map<String, dynamic>) {
         final jobId =

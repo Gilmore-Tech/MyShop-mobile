@@ -133,58 +133,75 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
       }
     });
 
-    return Scaffold(
-      backgroundColor: MyShopColors.surfaceWhite,
-      body: Stack(
-        children: [
-          // ── Full-screen map. Owns its own controller, GPS subscription,
-          //    and Directions cache, so a fresh fix doesn't rebuild this
-          //    Stack — only the map widget reconciles its markers.
-          Positioned.fill(
-            child: RepaintBoundary(
-              child: _NavigationMap(
-                destination: destination,
-                handle: _mapHandle,
-                metrics: _liveMetrics,
+    // Callers reach /active-job via go() or pushReplacement() — by design,
+    // because the /job-request "Accept & Start Job" screen must not sit in
+    // the back stack once the artisan has committed. That leaves the route
+    // stack empty (or pointing at a consumed pre-accept route), so both
+    // context.pop() and the OS back gesture fall through. Force back to
+    // /trips (My Jobs) so the artisan always lands on their job list —
+    // where the active job is still visible — and never back on the
+    // "Accept & Start Job" screen.
+    void goBackToJobs() => context.go('/trips');
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        goBackToJobs();
+      },
+      child: Scaffold(
+        backgroundColor: MyShopColors.surfaceWhite,
+        body: Stack(
+          children: [
+            // ── Full-screen map. Owns its own controller, GPS subscription,
+            //    and Directions cache, so a fresh fix doesn't rebuild this
+            //    Stack — only the map widget reconciles its markers.
+            Positioned.fill(
+              child: RepaintBoundary(
+                child: _NavigationMap(
+                  destination: destination,
+                  handle: _mapHandle,
+                  metrics: _liveMetrics,
+                ),
               ),
             ),
-          ),
 
-          // ── Top header. Rebuilds on every metrics tick (cheap text only).
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: ValueListenableBuilder<_LiveMetrics>(
-              valueListenable: _liveMetrics,
-              builder: (context, metrics, _) {
-                return _NavHeader(
-                  clientName: job.clientName ?? 'Client',
-                  address: job.addressText ?? 'Destination',
-                  liveDistanceMeters: metrics.distanceMeters,
-                  liveEtaMinutes: metrics.etaMinutes,
-                  onBack: () => context.pop(),
-                  onRecenter: () => _mapHandle.recenter?.call(),
-                  onOpenInMaps: () => _launchExternalNavigation(destination),
-                );
-              },
+            // ── Top header. Rebuilds on every metrics tick (cheap text only).
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: ValueListenableBuilder<_LiveMetrics>(
+                valueListenable: _liveMetrics,
+                builder: (context, metrics, _) {
+                  return _NavHeader(
+                    clientName: job.clientName ?? 'Client',
+                    address: job.addressText ?? 'Destination',
+                    liveDistanceMeters: metrics.distanceMeters,
+                    liveEtaMinutes: metrics.etaMinutes,
+                    onBack: goBackToJobs,
+                    onRecenter: () => _mapHandle.recenter?.call(),
+                    onOpenInMaps: () => _launchExternalNavigation(destination),
+                  );
+                },
+              ),
             ),
-          ),
 
-          // ── Bottom action panel with timeline.
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: _BottomPanel(
-              job: job,
-              isUpdating: state.isUpdating,
-              onAdvance: () => ref.read(activeJobProvider.notifier).advance(),
-              onMessage: () => context.push('/chat'),
-              onCall: () {},
+            // ── Bottom action panel with timeline.
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: _BottomPanel(
+                job: job,
+                isUpdating: state.isUpdating,
+                onAdvance: () => ref.read(activeJobProvider.notifier).advance(),
+                onMessage: () => context.push('/chat'),
+                onCall: () {},
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -113,7 +113,9 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
         isUpdating: false,
       );
       try {
-        _ref.invalidate(artisanJobsProvider);
+        if (_ref.exists(artisanJobsProvider)) {
+          _ref.read(artisanJobsProvider.notifier).silentReload();
+        }
       } catch (_) {}
       return true;
     } on ApiException catch (e) {

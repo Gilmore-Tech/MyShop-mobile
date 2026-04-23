@@ -200,18 +200,23 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     // "New" list so the artisan doesn't see it as pending anymore.
     ref.read(pendingIncomingJobsProvider.notifier).remove(widget.job.id);
 
+    // Pull fresh server state so `artisanJobsProvider.entries` picks up
+    // the new bid (and `myBid.status`) — the job-request screen and the
+    // "Bids" tab both key off that. Silent so the user never sees a
+    // spinner flash between "submitting" and the confirmation modal.
+    try {
+      if (ref.exists(artisanJobsProvider)) {
+        // Not awaited: the confirmation modal + nav can proceed in parallel
+        // with the refresh. When it lands, the next screen rebuilds live.
+        ref.read(artisanJobsProvider.notifier).silentReload();
+      }
+    } catch (_) {}
+
     // On an admin-assigned job the backend auto-confirms the bid and moves
-    // the job straight to `confirmed`. Pull fresh server state so the UI
-    // skips the "pending" banner and lands on the active-job flow.
+    // the job straight to `confirmed` — we use that to skip the "pending"
+    // banner below and land on the active-job flow.
     final wasAdminAssigned = widget.job.status == JobStatus.adminAssigned ||
         _wasAutoAccepted(bidResponse);
-    if (wasAdminAssigned) {
-      // Invalidate the jobs list so the Bids tab reflects the new state.
-      // Best-effort — if nothing's watching it yet, this is a no-op.
-      try {
-        ref.invalidate(artisanJobsProvider);
-      } catch (_) {}
-    }
 
     if (!mounted) return;
     final navigator = Navigator.of(context);

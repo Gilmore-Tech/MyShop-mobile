@@ -6,6 +6,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../core/providers/socket_provider.dart';
 import '../core/widgets/incoming_request_listener.dart';
+import '../features/artisan_home/providers/job_poller_provider.dart';
 import '../features/auth/providers/auth_controller.dart';
 import '../features/auth/screens/otp_verification_screen.dart';
 import '../features/auth/screens/phone_input_screen.dart';
@@ -400,6 +401,10 @@ class _DriverShell extends ConsumerWidget {
     // Pipe GPS updates into the socket so the backend can match this
     // provider against incoming jobs/rides within their service radius.
     ref.watch(locationSocketBridgeProvider);
+
+    // REST-polling fallback for incoming jobs — covers zombie sockets
+    // and missed `job:new` emits. Deduped against the socket path.
+    ref.watch(jobPollerProvider);
 
     final currentIndex = _currentIndex(context);
     final isArtisan = ref.watch(providerTypeProvider).isArtisan;
