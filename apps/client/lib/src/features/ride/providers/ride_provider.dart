@@ -19,6 +19,11 @@ class VehicleOption {
   final String estimatedTime;
   final bool isMotorcycle;
 
+  // Set from live API estimate; zero when using fallback mock.
+  final double distanceKm;
+  final int durationMins;
+  final bool surgeActive;
+
   const VehicleOption({
     required this.id,
     required this.name,
@@ -27,6 +32,9 @@ class VehicleOption {
     required this.farePesewas,
     required this.estimatedTime,
     required this.isMotorcycle,
+    this.distanceKm = 0,
+    this.durationMins = 0,
+    this.surgeActive = false,
   });
 
   String get fareDisplay {
@@ -421,7 +429,7 @@ class WaitingCountdownNotifier extends StateNotifier<int> {
 /// Call this after the client confirms the ride on the fare-estimate screen.
 /// Falls back to mock data if the API call fails so the flow is never blocked
 /// during development.
-Future<void> simulateDriverMatching(Ref ref) async {
+Future<void> simulateDriverMatching(WidgetRef ref) async {
   final rideService = ref.read(rideServiceProvider);
   final search = ref.read(rideSearchProvider);
 

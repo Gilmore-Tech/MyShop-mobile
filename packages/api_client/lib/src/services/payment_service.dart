@@ -33,7 +33,7 @@ class PaymentService {
         'bookingId': bookingId,
         'paymentMethod': paymentMethod,
         if (promoCode != null) 'promoCode': promoCode,
-      });
+      },);
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -50,6 +50,58 @@ class PaymentService {
     }
   }
 
+  // ── Payment Methods ───────────────────────────────────────────────────────────
+
+  /// GET /payment-methods — List the user's saved payment methods.
+  Future<List<dynamic>> getPaymentMethods() async {
+    try {
+      final response = await _dio.get('/payment-methods');
+      final data = _unwrap(response);
+      if (data is List) return data;
+      if (data is Map<String, dynamic> && data['methods'] is List) {
+        return data['methods'] as List<dynamic>;
+      }
+      return [];
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return [];
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// POST /payment-methods/momo — Save a mobile money account.
+  Future<Map<String, dynamic>> addMomoMethod({
+    required String provider,
+    required String phone,
+  }) async {
+    try {
+      final response = await _dio.post('/payment-methods/momo', data: {
+        'provider': provider,
+        'phone': phone,
+      },);
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// PATCH /payment-methods/:id/default — Set a payment method as default.
+  Future<void> setDefaultMethod(String id) async {
+    try {
+      await _dio.patch('/payment-methods/$id/default');
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// DELETE /payment-methods/:id — Remove a payment method.
+  Future<void> deletePaymentMethod(String id) async {
+    try {
+      await _dio.delete('/payment-methods/$id');
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   /// POST /payments/:id/tip — Add tip post-completion (zero commission).
   Future<Map<String, dynamic>> addTip(
     String paymentId, {
@@ -58,7 +110,7 @@ class PaymentService {
     try {
       final response = await _dio.post('/payments/$paymentId/tip', data: {
         'amountPesewas': amountPesewas,
-      });
+      },);
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);

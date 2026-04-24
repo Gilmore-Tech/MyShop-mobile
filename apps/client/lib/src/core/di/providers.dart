@@ -81,6 +81,11 @@ final userServiceProvider = Provider<UserService>((ref) {
   return UserService(ref.watch(dioProvider));
 });
 
+/// Verification service for document + profile photo uploads.
+final verificationServiceProvider = Provider<VerificationService>((ref) {
+  return VerificationService(ref.watch(dioProvider));
+});
+
 /// Google Places service for location autocomplete & reverse geocoding.
 final googlePlacesServiceProvider = Provider<GooglePlacesService>((ref) {
   return GooglePlacesService();

@@ -1,7 +1,11 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme_provider.dart';
+import '../../../core/di/providers.dart';
+import '../../auth/providers/auth_controller.dart';
 
 // ── Distance Unit ─────────────────────────────────────────────────────────────
 
@@ -26,8 +30,6 @@ extension AppThemeModeX on AppThemeMode {
 }
 
 // ── Language Option ───────────────────────────────────────────────────────────
-// PRD § 11 Localisation: English + Twi at launch. Further languages post-pilot.
-// EDD § 13 L10n: language_code stored on user profile, synced via PUT /v1/users/me.
 
 class LanguageOption {
   final String code;
@@ -46,9 +48,15 @@ const kSupportedLanguages = <LanguageOption>[
   LanguageOption(code: 'tw',    label: 'Twi (Asante)',  isSystemDefault: false),
 ];
 
+// Maps the app-local language code to the backend languagePref value.
+String _toBackendLang(String appCode) =>
+    appCode == 'en_US' ? 'en' : appCode;
+
+// Maps the backend languagePref value to the app-local language code.
+String _fromBackendLang(String backendCode) =>
+    backendCode == 'en' ? 'en_US' : backendCode;
+
 // ── State ─────────────────────────────────────────────────────────────────────
-// API: PUT /v1/users/me  { distanceUnit, languageCode, theme,
-//                          replayOnboarding, featureUpdates }
 
 class AppPreferencesState {
   final DistanceUnit   distanceUnit;
@@ -56,20 +64,18 @@ class AppPreferencesState {
   final AppThemeMode   themeMode;
   final bool           replayOnboarding;
   final bool           featureUpdates;
-
-  // ── Async ──
-  final bool    isSaving;
-  final bool    isSaved;
-  final String? errorMessage;
+  final bool           isSaving;
+  final bool           isSaved;
+  final String?        errorMessage;
 
   const AppPreferencesState({
-    this.distanceUnit    = DistanceUnit.km,
-    this.languageCode    = 'en_US',
-    this.themeMode       = AppThemeMode.light,
+    this.distanceUnit     = DistanceUnit.km,
+    this.languageCode     = 'en_US',
+    this.themeMode        = AppThemeMode.light,
     this.replayOnboarding = false,
-    this.featureUpdates  = true,
-    this.isSaving        = false,
-    this.isSaved         = false,
+    this.featureUpdates   = true,
+    this.isSaving         = false,
+    this.isSaved          = false,
     this.errorMessage,
   });
 
@@ -91,13 +97,13 @@ class AppPreferencesState {
     bool           clearError = false,
   }) =>
       AppPreferencesState(
-        distanceUnit:    distanceUnit    ?? this.distanceUnit,
-        languageCode:    languageCode    ?? this.languageCode,
-        themeMode:       themeMode       ?? this.themeMode,
+        distanceUnit:     distanceUnit     ?? this.distanceUnit,
+        languageCode:     languageCode     ?? this.languageCode,
+        themeMode:        themeMode        ?? this.themeMode,
         replayOnboarding: replayOnboarding ?? this.replayOnboarding,
-        featureUpdates:  featureUpdates  ?? this.featureUpdates,
-        isSaving:        isSaving        ?? this.isSaving,
-        isSaved:         isSaved         ?? this.isSaved,
+        featureUpdates:   featureUpdates   ?? this.featureUpdates,
+        isSaving:         isSaving         ?? this.isSaving,
+        isSaved:          isSaved          ?? this.isSaved,
         errorMessage:
             clearError ? null : (errorMessage ?? this.errorMessage),
       );
@@ -112,20 +118,23 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferencesState> {
 
   final Ref _ref;
 
-  Future<void> _load() async {
-    // Sync initial theme from the persisted ThemeNotifier (SharedPreferences).
+  void _load() {
+    // Sync theme from persisted ThemeNotifier (SharedPreferences).
     final currentTheme = _ref.read(themeNotifierProvider);
     final initialThemeMode =
         currentTheme == ThemeMode.dark ? AppThemeMode.dark : AppThemeMode.light;
 
-    // TODO: GET /v1/users/me — populate distanceUnit, languageCode, theme, etc.
-    await Future.delayed(const Duration(milliseconds: 200));
+    // Seed language from the authenticated user profile (already in memory).
+    final authState = _ref.read(clientAuthControllerProvider);
+    String initialLanguageCode = 'en_US';
+    if (authState is AuthAuthenticated) {
+      initialLanguageCode =
+          _fromBackendLang(authState.profile.languagePref);
+    }
+
     state = state.copyWith(
-      distanceUnit:     DistanceUnit.km,
-      languageCode:     'en_US',
-      themeMode:        initialThemeMode,
-      replayOnboarding: false,
-      featureUpdates:   true,
+      themeMode:    initialThemeMode,
+      languageCode: initialLanguageCode,
     );
   }
 
@@ -148,18 +157,24 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferencesState> {
   void toggleFeatureUpdates(bool v) =>
       state = state.copyWith(featureUpdates: v, isSaved: false, clearError: true);
 
-  /// Persists all preferences.
-  /// PUT /v1/users/me { distanceUnit, languageCode, theme, replayOnboarding,
-  ///                    featureUpdates }
+  /// Persists language preference to the backend; other prefs are local-only.
   Future<void> savePreferences() async {
     if (state.isSaving) return;
     state = state.copyWith(isSaving: true, clearError: true);
-    // TODO: PUT /v1/users/me with preferences payload
-    await Future.delayed(const Duration(milliseconds: 700));
-    state = state.copyWith(isSaving: false, isSaved: true);
-    // Reset "Saved" indicator after 2 seconds
-    await Future.delayed(const Duration(seconds: 2));
-    if (mounted) state = state.copyWith(isSaved: false);
+    try {
+      await _ref.read(userServiceProvider).updateProfile(
+            languagePref: _toBackendLang(state.languageCode),
+          );
+      state = state.copyWith(isSaving: false, isSaved: true);
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) state = state.copyWith(isSaved: false);
+    } catch (e) {
+      developer.log('updateProfile (preferences) error: $e', name: 'AppPreferences');
+      state = state.copyWith(
+        isSaving:     false,
+        errorMessage: 'Could not save preferences. Please try again.',
+      );
+    }
   }
 }
 

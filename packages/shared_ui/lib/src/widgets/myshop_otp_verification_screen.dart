@@ -103,7 +103,7 @@ class _MyShopOtpVerificationScreenState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 16),
-              Text('Enter verification code', style: MyShopTypography.h1),
+              const Text('Enter verification code', style: MyShopTypography.h1),
               const SizedBox(height: 8),
               Text(
                 'We sent a 6-digit code to ${widget.phone}.',

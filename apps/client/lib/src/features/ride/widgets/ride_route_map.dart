@@ -1,13 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart'
+    show
+        CameraOptions,
+        CompassSettings,
+        CoordinateBounds,
+        MapWidget,
+        MapboxMap,
+        MbxEdgeInsets,
+        PointAnnotationManager,
+        PointAnnotationOptions,
+        Point,
+        Position,
+        ScaleBarSettings;
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../core/constants/mapbox_config.dart';
 import '../providers/ride_provider.dart' show RideTrackingPhase;
+import '../providers/ride_search_provider.dart';
 
-const _mapBg = Color(0xFFEDEDE6);      // Warm off-white map background
-const _mapGrid = Color(0xFFE2E2DB);    // Subtle grid lines
-const _routeColor = Color(0xFF1C1C1E); // Dark route line
-
-class RideRouteMap extends StatelessWidget {
+class RideRouteMap extends ConsumerStatefulWidget {
   final String destination;
   final int etaMinutes;
   final RideTrackingPhase phase;
@@ -20,11 +32,127 @@ class RideRouteMap extends StatelessWidget {
   });
 
   @override
+  ConsumerState<RideRouteMap> createState() => _RideRouteMapState();
+}
+
+class _RideRouteMapState extends ConsumerState<RideRouteMap> {
+  MapboxMap? _mapboxMap;
+  PointAnnotationManager? _annotationManager;
+
+  // Captured once — pickup/destination don't change during an active ride.
+  late final RideSearchState _searchState;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchState = ref.read(rideSearchProvider);
+  }
+
+  @override
+  void dispose() {
+    _mapboxMap = null;
+    super.dispose();
+  }
+
+  Future<void> _onMapCreated(MapboxMap mapboxMap) async {
+    _mapboxMap = mapboxMap;
+
+    // Disable built-in compass and scale bar for a cleaner look.
+    await mapboxMap.compass.updateSettings(CompassSettings(enabled: false));
+    await mapboxMap.scaleBar.updateSettings(ScaleBarSettings(enabled: false));
+
+    await _addMarkers();
+    await _fitBounds();
+  }
+
+  Future<void> _addMarkers() async {
+    final mapboxMap = _mapboxMap;
+    if (mapboxMap == null) return;
+
+    _annotationManager ??=
+        await mapboxMap.annotations.createPointAnnotationManager();
+
+    await _annotationManager!.deleteAll();
+
+    final pickup = _searchState.pickup;
+    final dest   = _searchState.destination;
+
+    if (pickup?.lat != null && pickup?.lng != null) {
+      await _annotationManager!.create(
+        PointAnnotationOptions(
+          geometry: Point(
+            coordinates: Position(pickup!.lng!, pickup.lat!),
+          ),
+          textField: '📍',
+          textSize: 24,
+        ),
+      );
+    }
+
+    if (dest?.lat != null && dest?.lng != null) {
+      await _annotationManager!.create(
+        PointAnnotationOptions(
+          geometry: Point(
+            coordinates: Position(dest!.lng!, dest.lat!),
+          ),
+          textField: '🏁',
+          textSize: 24,
+        ),
+      );
+    }
+  }
+
+  Future<void> _fitBounds() async {
+    final mapboxMap = _mapboxMap;
+    if (mapboxMap == null) return;
+
+    final pickup = _searchState.pickup;
+    final dest   = _searchState.destination;
+
+    if (pickup?.lat == null || dest?.lat == null) return;
+
+    final minLat = pickup!.lat! < dest!.lat! ? pickup.lat! : dest.lat!;
+    final maxLat = pickup.lat! > dest.lat! ? pickup.lat! : dest.lat!;
+    final minLng = pickup.lng! < dest.lng! ? pickup.lng! : dest.lng!;
+    final maxLng = pickup.lng! > dest.lng! ? pickup.lng! : dest.lng!;
+
+    final camera = await mapboxMap.cameraForCoordinateBounds(
+      CoordinateBounds(
+        southwest: Point(coordinates: Position(minLng, minLat)),
+        northeast: Point(coordinates: Position(maxLng, maxLat)),
+        infiniteBounds: false,
+      ),
+      MbxEdgeInsets(top: 120, left: 60, bottom: 320, right: 60),
+      null,
+      null,
+      null,
+      null,
+    );
+    await mapboxMap.setCamera(camera);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final pickup = _searchState.pickup;
+    final initialCenter = pickup?.lat != null && pickup?.lng != null
+        ? Position(pickup!.lng!, pickup.lat!)
+        : Position(MapboxConfig.defaultLng, MapboxConfig.defaultLat);
+
     final statusBarHeight = MediaQuery.paddingOf(context).top;
+
     return Stack(
       children: [
-        Positioned.fill(child: _MapCanvas()),
+        Positioned.fill(
+          child: MapWidget(
+            key: const ValueKey('rideRouteMap'),
+            styleUri: MapboxConfig.styleUrl,
+            cameraOptions: CameraOptions(
+              center: Point(coordinates: initialCenter),
+              zoom: 14.0,
+            ),
+            onMapCreated: _onMapCreated,
+          ),
+        ),
         Positioned(
           top: statusBarHeight + 10,
           left: 0,
@@ -35,187 +163,25 @@ class RideRouteMap extends StatelessWidget {
           top: statusBarHeight + 62,
           left: 16,
           right: 16,
-          child: _DestinationOverlay(destination: destination),
+          child: _DestinationOverlay(destination: widget.destination),
         ),
       ],
     );
   }
 
   Widget _topPill() {
-    switch (phase) {
+    switch (widget.phase) {
       case RideTrackingPhase.enRoute:
-        return _EtaPill(etaMinutes: etaMinutes);
+        return _EtaPill(etaMinutes: widget.etaMinutes);
       case RideTrackingPhase.arrived:
         return const _ArrivedPill();
       case RideTrackingPhase.inProgress:
-        return _InProgressPill(minutes: etaMinutes);
+        return _InProgressPill(minutes: widget.etaMinutes);
     }
   }
 }
 
-// ── Map canvas with custom-painted route ──────────────────────────────────────
-
-class _MapCanvas extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _RoutePainter(),
-      child: Container(color: _mapBg),
-    );
-  }
-}
-
-class _RoutePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    _drawMapGrid(canvas, size);
-    _drawRoute(canvas, size);
-    _drawDestinationDot(canvas, size);
-    _drawDriverMarker(canvas, size);
-  }
-
-  void _drawMapGrid(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = _mapGrid
-      ..strokeWidth = 1;
-
-    // Horizontal grid lines (simulating map roads)
-    for (var i = 1; i < 6; i++) {
-      final y = size.height * i / 6;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-    // Vertical grid lines
-    for (var i = 1; i < 4; i++) {
-      final x = size.width * i / 4;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-  }
-
-  void _drawRoute(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = _routeColor
-      ..strokeWidth = 3.5
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    final startX = size.width * 0.38;
-    final startY = size.height * 0.22;
-    final endX = size.width * 0.42;
-    final endY = size.height * 0.78;
-
-    final path = Path()
-      ..moveTo(startX, startY)
-      ..cubicTo(
-        startX - 18, startY + (endY - startY) * 0.35,
-        endX + 22, startY + (endY - startY) * 0.62,
-        endX, endY,
-      );
-
-    canvas.drawPath(path, paint);
-  }
-
-  void _drawDestinationDot(Canvas canvas, Size size) {
-    final cx = size.width * 0.38;
-    final cy = size.height * 0.22;
-
-    // White halo
-    canvas.drawCircle(
-      Offset(cx, cy),
-      9,
-      Paint()..color = Colors.white,
-    );
-    // Gold fill
-    canvas.drawCircle(
-      Offset(cx, cy),
-      6,
-      Paint()..color = MyShopColors.primaryGold,
-    );
-  }
-
-  void _drawDriverMarker(Canvas canvas, Size size) {
-    final cx = size.width * 0.42;
-    final cy = size.height * 0.78;
-
-    // Shadow
-    canvas.drawCircle(
-      Offset(cx, cy + 2),
-      14,
-      Paint()..color = Colors.black.withValues(alpha: 0.12),
-    );
-    // White circle background
-    canvas.drawCircle(
-      Offset(cx, cy),
-      13,
-      Paint()..color = Colors.white,
-    );
-    // Dark border ring
-    canvas.drawCircle(
-      Offset(cx, cy),
-      13,
-      Paint()
-        ..color = _routeColor
-        ..strokeWidth = 2
-        ..style = PaintingStyle.stroke,
-    );
-    // Car icon drawn via TextPainter (emoji-like)
-    final textPainter = TextPainter(
-      text: const TextSpan(
-        text: '🚗',
-        style: TextStyle(fontSize: 14),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    textPainter.paint(
-      canvas,
-      Offset(cx - textPainter.width / 2, cy - textPainter.height / 2),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _EtaPill extends StatelessWidget {
-  final int etaMinutes;
-  const _EtaPill({required this.etaMinutes});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.timer_outlined, size: 14, color: MyShopColors.textPrimary),
-          const SizedBox(width: 6),
-          Text(
-            'ARRIVING IN $etaMinutes MINS',
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: MyShopColors.textPrimary,
-              letterSpacing: 0.6,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Card shell ───────────────────────────────────────────────────────────────
+// ── Destination (HEADING TO) card ─────────────────────────────────────────────
 
 BoxDecoration _cardDecoration() => BoxDecoration(
       color: Colors.white,
@@ -228,8 +194,6 @@ BoxDecoration _cardDecoration() => BoxDecoration(
         ),
       ],
     );
-
-// ── Destination (HEADING TO) card ─────────────────────────────────────────────
 
 class _DestinationOverlay extends StatelessWidget {
   final String destination;
@@ -282,7 +246,46 @@ class _DestinationOverlay extends StatelessWidget {
   }
 }
 
-// ── Arrived pill + waiting card ──────────────────────────────────────────────
+// ── Status pills ──────────────────────────────────────────────────────────────
+
+class _EtaPill extends StatelessWidget {
+  final int etaMinutes;
+  const _EtaPill({required this.etaMinutes});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.timer_outlined, size: 14, color: MyShopColors.textPrimary),
+          const SizedBox(width: 6),
+          Text(
+            'ARRIVING IN $etaMinutes MINS',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: MyShopColors.textPrimary,
+              letterSpacing: 0.6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _ArrivedPill extends StatelessWidget {
   const _ArrivedPill();
@@ -302,9 +305,9 @@ class _ArrivedPill extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
+      child: const Row(
         mainAxisSize: MainAxisSize.min,
-        children: const [
+        children: [
           Icon(Icons.check_circle_rounded, size: 14, color: Colors.white),
           SizedBox(width: 6),
           Text(
@@ -372,7 +375,6 @@ class _RouteRail extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Top — solid gold dot (origin marker)
           Container(
             width: 12,
             height: 12,
@@ -381,14 +383,12 @@ class _RouteRail extends StatelessWidget {
               color: MyShopColors.primaryGold,
             ),
           ),
-          // Middle — dashed connector
           const Expanded(
             child: Padding(
               padding: EdgeInsets.symmetric(vertical: 3),
               child: CustomPaint(painter: _DashedLinePainter()),
             ),
           ),
-          // Bottom — hollow gold ring (destination marker)
           Container(
             width: 12,
             height: 12,
@@ -415,9 +415,9 @@ class _DashedLinePainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     const dash = 2.0;
-    const gap = 3.0;
-    final cx = size.width / 2;
-    double y = 0;
+    const gap  = 3.0;
+    final cx   = size.width / 2;
+    double y   = 0;
     while (y < size.height) {
       canvas.drawLine(Offset(cx, y), Offset(cx, y + dash), paint);
       y += dash + gap;

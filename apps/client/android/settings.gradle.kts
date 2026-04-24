@@ -24,7 +24,6 @@ plugins {
     id("com.google.gms.google-services") version("4.3.15") apply false
     // END: FlutterFire Configuration
     id("org.jetbrains.kotlin.android") version "2.3.10" apply false
-    id("org.gradle.toolchains.foojay-resolver-convention") version "0.10.0"
 }
 
 include(":app")

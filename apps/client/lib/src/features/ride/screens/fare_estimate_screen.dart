@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
+import '../providers/fare_estimate_provider.dart';
 import '../providers/ride_provider.dart';
 import '../providers/ride_search_provider.dart';
 import '../widgets/payment_method_row.dart';
@@ -25,7 +26,9 @@ class FareEstimateScreen extends ConsumerWidget {
     final search = ref.watch(rideSearchProvider);
     final hasPickup = search.pickup != null;
     final hasDestination = search.destination != null;
-    final ready = hasPickup && hasDestination;
+    final hasCoords = search.pickup?.lat != null && search.destination?.lat != null;
+    final estimate = ref.watch(fareEstimateProvider);
+    final estimateReady = estimate.valueOrNull?.isNotEmpty == true;
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
@@ -52,24 +55,25 @@ class FareEstimateScreen extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  _RecentDestinationsSection(
-                    onSelect: (d) => ref
-                        .read(rideSearchProvider.notifier)
-                        .setLocation(
-                          RideSearchField.destination,
-                          RideLocation(name: d.label, address: d.address),
-                        ),
-                  ),
-                  if (ready) ...[
+                  if (!hasPickup || !hasDestination)
+                    _RecentDestinationsSection(
+                      onSelect: (d) => ref
+                          .read(rideSearchProvider.notifier)
+                          .setLocation(
+                            RideSearchField.destination,
+                            RideLocation(name: d.label, address: d.address),
+                          ),
+                    ),
+                  if (hasCoords) ...[
                     const SizedBox(height: 16),
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16),
                       child: SurgePricingBanner(),
                     ),
                     const SizedBox(height: 20),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: _VehicleSelectionSection(),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: _VehicleSelectionSection(estimate: estimate),
                     ),
                     const SizedBox(height: 16),
                     const Padding(
@@ -87,7 +91,13 @@ class FareEstimateScreen extends ConsumerWidget {
               ),
             ),
           ),
-          if (ready) _BottomActions(onConfirm: () => _onConfirmRide(context)),
+          if (estimateReady)
+            _BottomActions(
+              onConfirm: () {
+                simulateDriverMatching(ref);
+                context.go(AppRoutes.rideMatching);
+              },
+            ),
         ],
       ),
     );
@@ -113,9 +123,6 @@ class FareEstimateScreen extends ConsumerWidget {
     );
   }
 
-  void _onConfirmRide(BuildContext context) {
-    context.go(AppRoutes.rideMatching);
-  }
 }
 
 // ── Sections ──────────────────────────────────────────────────────────────────
@@ -163,18 +170,21 @@ class _RecentDestinationsSection extends StatelessWidget {
 }
 
 class _VehicleSelectionSection extends ConsumerWidget {
-  const _VehicleSelectionSection();
+  final AsyncValue<List<VehicleOption>> estimate;
+
+  const _VehicleSelectionSection({required this.estimate});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedId = ref.watch(selectedVehicleProvider);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
+        const Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: const [
+          children: [
             Text(
               'Select Vehicle',
               style: TextStyle(
@@ -183,29 +193,99 @@ class _VehicleSelectionSection extends ConsumerWidget {
                 color: MyShopColors.textPrimary,
               ),
             ),
-            Text(
-              'View All',
+          ],
+        ),
+        const SizedBox(height: 12),
+        estimate.when(
+          loading: () => const _VehicleLoadingSkeleton(),
+          error: (_, __) => _VehicleEstimateError(
+            onRetry: () => ref.invalidate(fareEstimateProvider),
+          ),
+          data: (options) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: options.map((v) {
+              // Auto-select the first option when selected id isn't in the list.
+              if (!options.any((o) => o.id == selectedId)) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  ref.read(selectedVehicleProvider.notifier).state =
+                      options.first.id;
+                });
+              }
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: VehicleOptionCard(
+                  option: v,
+                  isSelected: selectedId == v.id,
+                  onTap: () =>
+                      ref.read(selectedVehicleProvider.notifier).state = v.id,
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _VehicleLoadingSkeleton extends StatelessWidget {
+  const _VehicleLoadingSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(
+        2,
+        (_) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Container(
+            height: 72,
+            decoration: BoxDecoration(
+              color: MyShopColors.surfaceGrey,
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VehicleEstimateError extends StatelessWidget {
+  final VoidCallback onRetry;
+  const _VehicleEstimateError({required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Could not load fare estimate',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: MyShopColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextButton(
+            onPressed: onRetry,
+            child: const Text(
+              'Retry',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: MyShopColors.primaryGold,
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        ...vehicleOptions.map(
-          (v) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: VehicleOptionCard(
-              option: v,
-              isSelected: selectedId == v.id,
-              onTap: () =>
-                  ref.read(selectedVehicleProvider.notifier).state = v.id,
-            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

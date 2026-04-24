@@ -4,44 +4,7 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-// ── Model ──────────────────────────────────────────────────────────────────────
-
-class _Contact {
-  final String id;
-  final String name;
-  final String phone;
-  final String relation;
-
-  const _Contact({
-    required this.id,
-    required this.name,
-    required this.phone,
-    required this.relation,
-  });
-}
-
-// ── Provider ───────────────────────────────────────────────────────────────────
-// EDD: GET /v1/users/me/emergency-contacts
-//      PUT /v1/users/me/emergency-contacts  { contacts: [...] }
-
-class _ContactsNotifier extends StateNotifier<List<_Contact>> {
-  _ContactsNotifier() : super(const [
-    _Contact(
-        id: '1', name: 'Akosua Mensah',
-        phone: '+233 24 555 0101', relation: 'Wife'),
-    _Contact(
-        id: '2', name: 'Kweku Boateng',
-        phone: '+233 27 333 0202', relation: 'Brother'),
-  ]);
-
-  void add(_Contact c) => state = [...state, c];
-
-  void remove(String id) =>
-      state = state.where((c) => c.id != id).toList();
-}
-
-final _contactsProvider = StateNotifierProvider.autoDispose<
-    _ContactsNotifier, List<_Contact>>((_) => _ContactsNotifier());
+import '../providers/emergency_contacts_provider.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 
@@ -50,68 +13,88 @@ class EmergencyContactsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final size     = MediaQuery.sizeOf(context);
-    final w        = size.width;
-    final h        = size.height;
-    final contacts = ref.watch(_contactsProvider);
+    final size  = MediaQuery.sizeOf(context);
+    final w     = size.width;
+    final h     = size.height;
+    final state = ref.watch(emergencyContactsProvider);
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
       appBar: AppBar(
         backgroundColor: MyShopColors.surfaceWhite,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back,
-              color: MyShopColors.textPrimary),
+          icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
           onPressed: () => context.pop(),
         ),
-        title: Text('Emergency Contacts',
-            style: TextStyle(
-                color:      MyShopColors.textPrimary,
-                fontSize:   w * 0.044,
-                fontWeight: FontWeight.w700)),
+        title: Text(
+          'Emergency Contacts',
+          style: TextStyle(
+            color:      MyShopColors.textPrimary,
+            fontSize:   w * 0.044,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
         centerTitle: false,
       ),
-      body: CustomScrollView(
-        slivers: [
-          SliverPadding(
-            padding: EdgeInsets.all(w * 0.05),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                _InfoBanner(w: w),
-                SizedBox(height: h * 0.024),
-                if (contacts.isEmpty)
-                  _EmptyState(w: w, h: h)
-                else
-                  _ContactsList(
-                      contacts: contacts,
-                      onRemove: (id) =>
-                          ref.read(_contactsProvider.notifier).remove(id),
-                      w: w, h: h),
-                SizedBox(height: h * 0.024),
-                if (contacts.length < 3)
-                  SizedBox(
-                    width:  double.infinity,
-                    height: h * 0.062,
-                    child: OutlinedButton.icon(
-                      onPressed: () =>
-                          _showAddSheet(context, ref, w),
-                      icon:  const Icon(Icons.person_add_alt_1_rounded),
-                      label: const Text('Add Emergency Contact'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: MyShopColors.primaryGold,
-                        side:  const BorderSide(color: MyShopColors.primaryGold),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
+      body: Builder(builder: (context) {
+        if (state.isLoading) {
+          return const Center(
+            child: CircularProgressIndicator(color: MyShopColors.primaryGold),
+          );
+        }
+        return CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: EdgeInsets.all(w * 0.05),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  _InfoBanner(w: w),
+                  if (state.errorMessage != null) ...[
+                    SizedBox(height: h * 0.012),
+                    _ErrorBanner(message: state.errorMessage!, w: w),
+                  ],
+                  SizedBox(height: h * 0.024),
+                  if (state.contacts.isEmpty)
+                    _EmptyState(w: w, h: h)
+                  else
+                    _ContactsList(
+                      contacts:  state.contacts,
+                      deletingId: state.deletingId,
+                      onRemove:  (id) =>
+                          ref.read(emergencyContactsProvider.notifier).deleteContact(id),
+                      w: w,
+                      h: h,
+                    ),
+                  SizedBox(height: h * 0.024),
+                  if (state.contacts.length < 3)
+                    SizedBox(
+                      width:  double.infinity,
+                      height: h * 0.062,
+                      child: OutlinedButton.icon(
+                        onPressed: state.isSaving
+                            ? null
+                            : () => _showAddSheet(context, ref, w),
+                        icon:  const Icon(Icons.person_add_alt_1_rounded),
+                        label: const Text('Add Emergency Contact'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: MyShopColors.primaryGold,
+                          side:  const BorderSide(color: MyShopColors.primaryGold),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
                       ),
                     ),
+                  SizedBox(height: h * 0.016),
+                  _LimitNote(count: state.contacts.length, w: w),
+                  SizedBox(
+                    height: MediaQuery.paddingOf(context).bottom + h * 0.02,
                   ),
-                SizedBox(height: h * 0.016),
-                _LimitNote(count: contacts.length, w: w),
-              ]),
+                ]),
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        );
+      }),
     );
   }
 
@@ -122,7 +105,12 @@ class EmergencyContactsScreen extends ConsumerWidget {
       backgroundColor: Colors.transparent,
       builder: (_) => _AddContactSheet(
         w: w,
-        onSave: (c) => ref.read(_contactsProvider.notifier).add(c),
+        onSave: (name, phone, relation) async {
+          final ok = await ref
+              .read(emergencyContactsProvider.notifier)
+              .addContact(name: name, phone: phone, relationship: relation);
+          if (ok && ctx.mounted) Navigator.of(ctx).pop();
+        },
       ),
     );
   }
@@ -153,9 +141,10 @@ class _InfoBanner extends StatelessWidget {
               'Emergency contacts are notified when you trigger an SOS alert. '
               'They receive your real-time location link.',
               style: TextStyle(
-                  color:  MyShopColors.error,
-                  fontSize: w * 0.033,
-                  height: 1.5),
+                color:    MyShopColors.error,
+                fontSize: w * 0.033,
+                height:   1.5,
+              ),
             ),
           ),
         ],
@@ -164,15 +153,44 @@ class _InfoBanner extends StatelessWidget {
   }
 }
 
+// ── Error banner ───────────────────────────────────────────────────────────────
+
+class _ErrorBanner extends StatelessWidget {
+  final String message;
+  final double w;
+  const _ErrorBanner({required this.message, required this.w});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: w * 0.04, vertical: w * 0.03),
+      decoration: BoxDecoration(
+        color:        MyShopColors.warning.withAlpha(20),
+        borderRadius: BorderRadius.circular(10),
+        border:       Border.all(color: MyShopColors.warning.withAlpha(80)),
+      ),
+      child: Text(
+        message,
+        style: TextStyle(
+          color:    MyShopColors.warning,
+          fontSize: w * 0.032,
+        ),
+      ),
+    );
+  }
+}
+
 // ── Contacts list ──────────────────────────────────────────────────────────────
 
 class _ContactsList extends StatelessWidget {
-  final List<_Contact> contacts;
-  final void Function(String) onRemove;
+  final List<EmergencyContact>  contacts;
+  final String?                 deletingId;
+  final void Function(String)   onRemove;
   final double w, h;
 
   const _ContactsList({
     required this.contacts,
+    required this.deletingId,
     required this.onRemove,
     required this.w,
     required this.h,
@@ -188,7 +206,8 @@ class _ContactsList extends StatelessWidget {
       ),
       child: Column(
         children: contacts.map((c) {
-          final isLast = c == contacts.last;
+          final isLast      = c == contacts.last;
+          final isDeleting  = deletingId == c.id;
           return Column(
             children: [
               Padding(
@@ -203,45 +222,94 @@ class _ContactsList extends StatelessWidget {
                         color: MyShopColors.errorLight,
                         shape: BoxShape.circle,
                       ),
-                      child: Icon(Icons.emergency_rounded,
-                          color: MyShopColors.error, size: w * 0.056),
+                      child: c.isPrimary
+                          ? Icon(Icons.star_rounded,
+                              color: MyShopColors.error, size: w * 0.052)
+                          : Icon(Icons.emergency_rounded,
+                              color: MyShopColors.error, size: w * 0.052),
                     ),
                     SizedBox(width: w * 0.030),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(c.name,
-                              style: TextStyle(
-                                color:      MyShopColors.textPrimary,
-                                fontSize:   w * 0.038,
-                                fontWeight: FontWeight.w700,
-                              )),
+                          Row(
+                            children: [
+                              Text(
+                                c.name,
+                                style: TextStyle(
+                                  color:      MyShopColors.textPrimary,
+                                  fontSize:   w * 0.038,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              if (c.isPrimary) ...[
+                                SizedBox(width: w * 0.015),
+                                Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: w * 0.015,
+                                    vertical:   2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color:        MyShopColors.error.withAlpha(20),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    'PRIMARY',
+                                    style: TextStyle(
+                                      color:         MyShopColors.error,
+                                      fontSize:      w * 0.022,
+                                      fontWeight:    FontWeight.w800,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                           const SizedBox(height: 2),
-                          Text(c.phone,
-                              style: TextStyle(
-                                  color:    MyShopColors.textSecondary,
-                                  fontSize: w * 0.032)),
+                          Text(
+                            c.phone,
+                            style: TextStyle(
+                              color:    MyShopColors.textSecondary,
+                              fontSize: w * 0.032,
+                            ),
+                          ),
                           const SizedBox(height: 2),
-                          Text(c.relation,
-                              style: TextStyle(
-                                  color:    MyShopColors.textSecondary,
-                                  fontSize: w * 0.028)),
+                          Text(
+                            c.relationship,
+                            style: TextStyle(
+                              color:    MyShopColors.textSecondary,
+                              fontSize: w * 0.028,
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                    IconButton(
-                      icon: Icon(Icons.delete_outline_rounded,
-                          color: MyShopColors.error, size: w * 0.052),
-                      onPressed: () => onRemove(c.id),
-                    ),
+                    isDeleting
+                        ? SizedBox(
+                            width:  w * 0.052,
+                            height: w * 0.052,
+                            child: const CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color:       MyShopColors.error,
+                            ),
+                          )
+                        : IconButton(
+                            icon: Icon(Icons.delete_outline_rounded,
+                                color: MyShopColors.error, size: w * 0.052),
+                            onPressed: () => onRemove(c.id),
+                          ),
                   ],
                 ),
               ),
               if (!isLast)
                 const Divider(
-                    height: 1, indent: 16, endIndent: 16,
-                    color: MyShopColors.divider),
+                  height: 1,
+                  indent: 16,
+                  endIndent: 16,
+                  color: MyShopColors.divider,
+                ),
             ],
           );
         }).toList(),
@@ -265,11 +333,13 @@ class _EmptyState extends StatelessWidget {
           children: [
             Icon(Icons.people_outline_rounded,
                 color: MyShopColors.textSecondary.withAlpha(80),
-                size: w * 0.16),
+                size:  w * 0.16),
             SizedBox(height: h * 0.016),
-            Text('No contacts added yet',
-                style: TextStyle(
-                    color: MyShopColors.textSecondary, fontSize: w * 0.036)),
+            Text(
+              'No contacts added yet',
+              style: TextStyle(
+                  color: MyShopColors.textSecondary, fontSize: w * 0.036),
+            ),
           ],
         ),
       ),
@@ -288,9 +358,7 @@ class _LimitNote extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       'You can add up to 3 emergency contacts. ($count / 3 added)',
-      style: TextStyle(
-          color:    MyShopColors.textSecondary,
-          fontSize: w * 0.030),
+      style: TextStyle(color: MyShopColors.textSecondary, fontSize: w * 0.030),
     );
   }
 }
@@ -298,8 +366,8 @@ class _LimitNote extends StatelessWidget {
 // ── Add contact bottom sheet ───────────────────────────────────────────────────
 
 class _AddContactSheet extends StatefulWidget {
-  final double          w;
-  final void Function(_Contact) onSave;
+  final double w;
+  final Future<void> Function(String name, String phone, String relation) onSave;
 
   const _AddContactSheet({required this.w, required this.onSave});
 
@@ -311,6 +379,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
   final _nameCtrl     = TextEditingController();
   final _phoneCtrl    = TextEditingController();
   final _relationCtrl = TextEditingController();
+  bool  _saving       = false;
 
   @override
   void dispose() {
@@ -324,17 +393,15 @@ class _AddContactSheetState extends State<_AddContactSheet> {
       _nameCtrl.text.trim().isNotEmpty &&
       _phoneCtrl.text.replaceAll(RegExp(r'\D'), '').length >= 9;
 
-  void _save() {
-    if (!_valid) return;
-    widget.onSave(_Contact(
-      id:       DateTime.now().millisecondsSinceEpoch.toString(),
-      name:     _nameCtrl.text.trim(),
-      phone:    _phoneCtrl.text.trim(),
-      relation: _relationCtrl.text.trim().isEmpty
-          ? 'Contact'
-          : _relationCtrl.text.trim(),
-    ));
-    Navigator.pop(context);
+  Future<void> _save() async {
+    if (!_valid || _saving) return;
+    setState(() => _saving = true);
+    await widget.onSave(
+      _nameCtrl.text.trim(),
+      _phoneCtrl.text.trim(),
+      _relationCtrl.text.trim().isEmpty ? 'Contact' : _relationCtrl.text.trim(),
+    );
+    if (mounted) setState(() => _saving = false);
   }
 
   @override
@@ -357,7 +424,8 @@ class _AddContactSheetState extends State<_AddContactSheet> {
         children: [
           Center(
             child: Container(
-              width: w * 0.10, height: 4,
+              width: w * 0.10,
+              height: 4,
               decoration: BoxDecoration(
                 color:        MyShopColors.surfaceGrey,
                 borderRadius: BorderRadius.circular(2),
@@ -365,58 +433,67 @@ class _AddContactSheetState extends State<_AddContactSheet> {
             ),
           ),
           SizedBox(height: h * 0.020),
-          Text('Add Emergency Contact',
-              style: TextStyle(
-                color:      MyShopColors.textPrimary,
-                fontSize:   w * 0.044,
-                fontWeight: FontWeight.w700,
-              )),
+          Text(
+            'Add Emergency Contact',
+            style: TextStyle(
+              color:      MyShopColors.textPrimary,
+              fontSize:   w * 0.044,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
           SizedBox(height: h * 0.020),
           _SheetField(
-              controller: _nameCtrl,
-              hint:       'Full name',
-              icon:       Icons.person_outline_rounded,
-              onChanged:  (_) => setState(() {}),
-              w: w, h: h),
+            controller: _nameCtrl,
+            hint:       'Full name',
+            icon:       Icons.person_outline_rounded,
+            onChanged:  (_) => setState(() {}),
+            w: w, h: h,
+          ),
           SizedBox(height: h * 0.014),
           _SheetField(
-              controller: _phoneCtrl,
-              hint:       'Phone number',
-              icon:       Icons.phone_outlined,
-              keyboard:   TextInputType.phone,
-              formatters: [FilteringTextInputFormatter.allow(
-                  RegExp(r'[\d\s\+]'))],
-              onChanged:  (_) => setState(() {}),
-              w: w, h: h),
+            controller: _phoneCtrl,
+            hint:       'Phone number (+233...)',
+            icon:       Icons.phone_outlined,
+            keyboard:   TextInputType.phone,
+            formatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d\s\+]'))],
+            onChanged:  (_) => setState(() {}),
+            w: w, h: h,
+          ),
           SizedBox(height: h * 0.014),
           _SheetField(
-              controller: _relationCtrl,
-              hint:       'Relationship (optional)',
-              icon:       Icons.people_outline_rounded,
-              onChanged:  (_) => setState(() {}),
-              w: w, h: h),
+            controller: _relationCtrl,
+            hint:       'Relationship (optional)',
+            icon:       Icons.people_outline_rounded,
+            onChanged:  (_) => setState(() {}),
+            w: w, h: h,
+          ),
           SizedBox(height: h * 0.024),
-          AnimatedOpacity(
-            opacity:  _valid ? 1.0 : 0.45,
-            duration: const Duration(milliseconds: 200),
-            child: SizedBox(
-              width:  double.infinity,
-              height: h * 0.062,
-              child: ElevatedButton(
-                onPressed: _valid ? _save : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor:         MyShopColors.primaryGold,
-                  foregroundColor:         Colors.white,
-                  disabledBackgroundColor: MyShopColors.primaryGold.withAlpha(80),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  elevation: 0,
-                ),
-                child: Text('Save Contact',
-                    style: TextStyle(
-                        fontSize:   w * 0.040,
-                        fontWeight: FontWeight.w700)),
+          SizedBox(
+            width:  double.infinity,
+            height: h * 0.062,
+            child: ElevatedButton(
+              onPressed: (_valid && !_saving) ? _save : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor:         MyShopColors.primaryGold,
+                foregroundColor:         Colors.white,
+                disabledBackgroundColor: MyShopColors.primaryGold.withAlpha(80),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
               ),
+              child: _saving
+                  ? const SizedBox(
+                      width: 20, height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : Text(
+                      'Save Contact',
+                      style: TextStyle(
+                        fontSize:   w * 0.040,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
             ),
           ),
         ],
@@ -426,13 +503,13 @@ class _AddContactSheetState extends State<_AddContactSheet> {
 }
 
 class _SheetField extends StatelessWidget {
-  final TextEditingController      controller;
-  final String                     hint;
-  final IconData                   icon;
-  final TextInputType              keyboard;
-  final List<TextInputFormatter>?  formatters;
-  final ValueChanged<String>       onChanged;
-  final double                     w, h;
+  final TextEditingController     controller;
+  final String                    hint;
+  final IconData                  icon;
+  final TextInputType             keyboard;
+  final List<TextInputFormatter>? formatters;
+  final ValueChanged<String>      onChanged;
+  final double                    w, h;
 
   const _SheetField({
     required this.controller,

@@ -33,7 +33,7 @@ class MediaService {
         'purpose': purpose,
         'mimeType': mimeType,
         'fileSize': fileSize,
-      });
+      },);
       final data = _unwrap(response) as Map<String, dynamic>;
       return UploadUrlResult(
         uploadUrl: data['uploadUrl'] as String,
@@ -102,7 +102,7 @@ class MediaService {
       final response = await _dio.post('/media/confirm', data: {
         'storageKey': storageKey,
         'remoteUrl': remoteUrl,
-      });
+      },);
       final data = _unwrap(response) as Map<String, dynamic>;
       return data['url'] as String? ?? remoteUrl;
     } on DioException catch (e) {
@@ -145,10 +145,6 @@ class MediaService {
 
 /// Result from POST /media/upload-url.
 class UploadUrlResult {
-  final String uploadUrl;
-  final String uploadMethod;
-  final String? uploadFieldName;
-  final String storageKey;
 
   const UploadUrlResult({
     required this.uploadUrl,
@@ -156,4 +152,8 @@ class UploadUrlResult {
     this.uploadFieldName,
     required this.storageKey,
   });
+  final String uploadUrl;
+  final String uploadMethod;
+  final String? uploadFieldName;
+  final String storageKey;
 }

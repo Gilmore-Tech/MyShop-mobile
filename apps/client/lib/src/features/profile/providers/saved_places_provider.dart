@@ -1,9 +1,11 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/di/providers.dart';
+
 // ── Place Type ────────────────────────────────────────────────────────────────
-// EDD § User Module: saved_locations (1:N per client, PostGIS POINT).
-// last_used_at is tracked at the DB level and drives ordering.
 
 enum PlaceType { home, work, custom }
 
@@ -16,7 +18,6 @@ extension PlaceTypeX on PlaceType {
 }
 
 // ── Thumbnail Style ───────────────────────────────────────────────────────────
-// Drives the CustomPainter used for each place card's map preview.
 
 enum ThumbnailStyle { residential, urban, commercial }
 
@@ -35,8 +36,6 @@ const kQuickCategories = <QuickCategory>[
 ];
 
 // ── Saved Place ───────────────────────────────────────────────────────────────
-// API shape: GET /v1/users/me/saved-locations
-// Deletion: PUT /v1/users/me  { savedLocations: [...without deleted] }
 
 class SavedPlace {
   final String         id;
@@ -60,20 +59,19 @@ class SavedPlace {
 
 class SavedPlacesState {
   final List<SavedPlace> places;
-  final String           searchQuery;
+  final bool             isLoading;
   final bool             isDeletingId;
   final String?          deletingId;
   final String?          errorMessage;
 
   const SavedPlacesState({
     this.places       = const [],
-    this.searchQuery  = '',
+    this.isLoading    = false,
     this.isDeletingId = false,
     this.deletingId,
     this.errorMessage,
   });
 
-  /// Live count label shown in the "3 PLACES" badge.
   String get countLabel {
     final n = places.length;
     return '$n ${n == 1 ? 'PLACE' : 'PLACES'}';
@@ -81,82 +79,107 @@ class SavedPlacesState {
 
   SavedPlacesState copyWith({
     List<SavedPlace>? places,
-    String?           searchQuery,
+    bool?             isLoading,
     bool?             isDeletingId,
     String?           deletingId,
     String?           errorMessage,
     bool              clearError = false,
+    bool              clearDeleting = false,
   }) =>
       SavedPlacesState(
         places:       places       ?? this.places,
-        searchQuery:  searchQuery  ?? this.searchQuery,
-        isDeletingId: isDeletingId ?? this.isDeletingId,
-        deletingId:   deletingId   ?? this.deletingId,
-        errorMessage:
-            clearError ? null : (errorMessage ?? this.errorMessage),
+        isLoading:    isLoading    ?? this.isLoading,
+        isDeletingId: clearDeleting ? false : (isDeletingId ?? this.isDeletingId),
+        deletingId:   clearDeleting ? null  : (deletingId   ?? this.deletingId),
+        errorMessage: clearError   ? null  : (errorMessage  ?? this.errorMessage),
       );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+PlaceType _parsePlaceType(String? raw) => switch (raw) {
+      'home' => PlaceType.home,
+      'work' => PlaceType.work,
+      _      => PlaceType.custom,
+    };
+
+ThumbnailStyle _thumbnailFor(PlaceType type) => switch (type) {
+      PlaceType.home   => ThumbnailStyle.residential,
+      PlaceType.work   => ThumbnailStyle.urban,
+      PlaceType.custom => ThumbnailStyle.commercial,
+    };
+
+String _relativeTime(String? iso) {
+  if (iso == null) return 'Recently';
+  final dt = DateTime.tryParse(iso);
+  if (dt == null) return 'Recently';
+  final diff = DateTime.now().difference(dt);
+  if (diff.inMinutes < 1)  return 'Just now';
+  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+  if (diff.inHours < 24)   return '${diff.inHours}h ago';
+  if (diff.inDays == 1)    return 'Yesterday';
+  return '${diff.inDays} days ago';
+}
+
+SavedPlace _fromJson(Map<String, dynamic> json) {
+  final type = _parsePlaceType(json['locationType'] as String?);
+  return SavedPlace(
+    id:               json['id'] as String,
+    name:             (json['label'] as String? ?? '').toUpperCase(),
+    type:             type,
+    address:          json['addressText'] as String? ?? '',
+    lastVisitedLabel: _relativeTime(json['lastUsedAt'] as String?),
+    thumbnailStyle:   _thumbnailFor(type),
+  );
 }
 
 // ── Notifier ──────────────────────────────────────────────────────────────────
 
 class SavedPlacesNotifier extends StateNotifier<SavedPlacesState> {
-  SavedPlacesNotifier() : super(const SavedPlacesState()) {
+  SavedPlacesNotifier(this._ref) : super(const SavedPlacesState()) {
     _load();
   }
 
+  final Ref _ref;
+
   Future<void> _load() async {
-    // TODO: GET /v1/users/me/saved-locations
-    await Future.delayed(const Duration(milliseconds: 300));
-    state = state.copyWith(places: _mockPlaces);
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final raw = await _ref.read(userServiceProvider).getSavedLocations();
+      final places = raw
+          .cast<Map<String, dynamic>>()
+          .map(_fromJson)
+          .toList();
+      state = state.copyWith(places: places, isLoading: false);
+    } catch (e) {
+      developer.log('getSavedLocations error: $e', name: 'SavedPlaces');
+      state = state.copyWith(isLoading: false, errorMessage: 'Could not load saved places');
+    }
   }
 
   Future<void> reload() => _load();
 
-  /// Remove a saved location.
-  /// PUT /v1/users/me  { savedLocations: [...remaining] }
+  /// DELETE /users/me/saved-locations/:id
   Future<void> deletePlace(String id) async {
     if (state.isDeletingId) return;
     state = state.copyWith(isDeletingId: true, deletingId: id, clearError: true);
-    // TODO: PUT /v1/users/me with updated saved locations list
-    await Future.delayed(const Duration(milliseconds: 500));
-    state = state.copyWith(
-      places:       state.places.where((p) => p.id != id).toList(),
-      isDeletingId: false,
-      deletingId:   null,
-    );
+    try {
+      await _ref.read(userServiceProvider).deleteSavedLocation(id);
+      state = state.copyWith(
+        places: state.places.where((p) => p.id != id).toList(),
+        clearDeleting: true,
+      );
+    } catch (e) {
+      developer.log('deleteSavedLocation error: $e', name: 'SavedPlaces');
+      state = state.copyWith(
+        clearDeleting: true,
+        errorMessage: 'Could not remove place. Please try again.',
+      );
+    }
   }
 }
 
 final savedPlacesProvider =
     StateNotifierProvider.autoDispose<SavedPlacesNotifier, SavedPlacesState>(
-  (_) => SavedPlacesNotifier(),
+  (ref) => SavedPlacesNotifier(ref),
 );
-
-// ── Mock data ─────────────────────────────────────────────────────────────────
-
-const _mockPlaces = <SavedPlace>[
-  SavedPlace(
-    id:               'LOC-1',
-    name:             'HOME',
-    type:             PlaceType.home,
-    address:          'No. 45 Independence Avenue, Ridge, Accra, Ghana',
-    lastVisitedLabel: '2 hours ago',
-    thumbnailStyle:   ThumbnailStyle.residential,
-  ),
-  SavedPlace(
-    id:               'LOC-2',
-    name:             'WORK (STANDARD CHARTERED)',
-    type:             PlaceType.work,
-    address:          '87 Independence Ave, North Ridge, Accra, Ghana',
-    lastVisitedLabel: 'Yesterday',
-    thumbnailStyle:   ThumbnailStyle.urban,
-  ),
-  SavedPlace(
-    id:               'LOC-3',
-    name:             'GOLD COAST GYM',
-    type:             PlaceType.custom,
-    address:          'Off George Walker Bush Hwy, Accra, Ghana',
-    lastVisitedLabel: '3 days ago',
-    thumbnailStyle:   ThumbnailStyle.commercial,
-  ),
-];

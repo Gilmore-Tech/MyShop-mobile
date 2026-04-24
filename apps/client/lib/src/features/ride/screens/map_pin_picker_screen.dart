@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -39,6 +40,7 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
   LatLng _currentCenter = _defaultCenter;
   String _address = '';
   bool _isGeocoding = false;
+  bool _centerOnUserOnMapReady = false;
 
   bool get _isPickup => widget.field == RideSearchField.pickup;
   bool get _isStopEdit => widget.stopId != null;
@@ -46,13 +48,38 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
   @override
   void initState() {
     super.initState();
-    // If ride search already has a location for this field, start there.
     final searchState = ref.read(rideSearchProvider);
-    final existing =
-        _isPickup ? searchState.pickup : searchState.destination;
+    final existing = _isPickup ? searchState.pickup : searchState.destination;
     if (existing?.lat != null && existing?.lng != null) {
       _currentCenter = LatLng(existing!.lat!, existing.lng!);
+    } else {
+      // No prior location — will move to GPS once the map controller is ready.
+      _centerOnUserOnMapReady = true;
     }
+  }
+
+  Future<void> _goToMyLocation() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return;
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      return;
+    }
+
+    final position = await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+      ),
+    );
+    if (!mounted) return;
+
+    final target = LatLng(position.latitude, position.longitude);
+    _mapController?.animateCamera(CameraUpdate.newLatLngZoom(target, 16));
   }
 
   void _onCameraMove(CameraPosition position) {
@@ -117,7 +144,10 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
                 target: _currentCenter,
                 zoom: 15,
               ),
-              onMapCreated: (controller) => _mapController = controller,
+              onMapCreated: (controller) {
+                _mapController = controller;
+                if (_centerOnUserOnMapReady) _goToMyLocation();
+              },
               onCameraMove: _onCameraMove,
               onCameraIdle: _onCameraIdle,
               myLocationEnabled: true,
@@ -189,11 +219,7 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
               shape: const CircleBorder(),
               elevation: 3,
               child: IconButton(
-                onPressed: () {
-                  _mapController?.animateCamera(
-                    CameraUpdate.newLatLng(_defaultCenter),
-                  );
-                },
+                onPressed: _goToMyLocation,
                 icon: const Icon(Icons.my_location_rounded,
                     color: MyShopColors.textPrimary),
               ),

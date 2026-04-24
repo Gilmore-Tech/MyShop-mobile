@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,7 +10,9 @@ import '../widgets/driver_radar.dart';
 
 /// PRD 4.3 — Driver Matching Screen
 /// Radar animation while finding nearby drivers.
-/// Transitions to driver-found state once a match is accepted.
+/// Purely reactive: simulateDriverMatching() is started by FareEstimateScreen
+/// before navigating here. This screen watches [bookingPhaseProvider] and
+/// [matchedDriverProvider] and navigates to tracking once a driver is found.
 class DriverMatchingScreen extends ConsumerStatefulWidget {
   const DriverMatchingScreen({super.key});
 
@@ -21,71 +22,22 @@ class DriverMatchingScreen extends ConsumerStatefulWidget {
 }
 
 class _DriverMatchingScreenState extends ConsumerState<DriverMatchingScreen> {
-  Timer? _countdownTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    // Defer provider mutations until after the first frame — modifying providers
-    // synchronously inside initState triggers a "modified during build" error.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _startMatching();
-    });
-  }
-
-  @override
-  void dispose() {
-    _countdownTimer?.cancel();
-    super.dispose();
-  }
-
-  void _startMatching() {
-    ref.read(bookingPhaseProvider.notifier).startSearch();
-    ref.read(searchCountdownProvider.notifier).reset();
-
-    // Tick the countdown every second
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      ref.read(searchCountdownProvider.notifier).tick();
-    });
-
-    // Simulate driver found after 8 seconds
-    Future.delayed(const Duration(seconds: 8), () {
-      if (!mounted) return;
-      _countdownTimer?.cancel();
-      const driver = MatchedDriver(
-        name: 'Kofi Mensah',
-        vehicle: 'Midnight Black Toyota Camry Hybrid',
-        plateNumber: 'GR-4557-23',
-        rating: 4.92,
-        minutesAway: 3,
-        driversAvailable: 3,
-        tripCount: 1450,
-        isVerified: true,
-        isPoliceChecked: true,
-        maskedPhone: '+233 ••• ••• 42',
-        vehicleTier: 'Premier Comfort',
-        baseFarePesewas: 1200,
-        distanceFarePesewas: 1550,
-        distanceKm: 5.2,
-        bookingFeePesewas: 250,
-      );
-      ref.read(matchedDriverProvider.notifier).state = driver;
-      ref.read(bookingPhaseProvider.notifier).driverFound();
-      // Brief pause so the rider sees "Accepted", then jump straight into the
-      // live tracking screen — driver has already accepted, no confirm needed.
-      Future.delayed(const Duration(milliseconds: 1200), () {
-        if (!mounted) return;
-        context.go(AppRoutes.rideTracking, extra: driver);
-      });
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
+    // Navigate to ride tracking 1.2 s after a driver is matched —
+    // the brief pause lets the rider see the "Accepted" state before
+    // the map opens.
+    ref.listen<BookingPhase>(bookingPhaseProvider, (prev, next) {
+      if (next == BookingPhase.driverFound) {
+        final driver = ref.read(matchedDriverProvider);
+        if (driver == null || !mounted) return;
+        Future.delayed(const Duration(milliseconds: 1200), () {
+          if (!mounted) return;
+          context.go(AppRoutes.rideTracking, extra: driver);
+        });
+      }
+    });
+
     final phase = ref.watch(bookingPhaseProvider);
     final driver = ref.watch(matchedDriverProvider);
     final driversFound = phase == BookingPhase.driverFound;
@@ -108,7 +60,7 @@ class _DriverMatchingScreenState extends ConsumerState<DriverMatchingScreen> {
                 ),
               ),
             ),
-            if (!driversFound) _SearchStatusBar(),
+            if (!driversFound) const _SearchStatusBar(),
             if (driversFound && driver != null) DriverInfoCard(driver: driver),
           ],
         ),
@@ -215,6 +167,8 @@ class _DriversAvailablePill extends StatelessWidget {
 // ── Search status bar ─────────────────────────────────────────────────────────
 
 class _SearchStatusBar extends ConsumerWidget {
+  const _SearchStatusBar();
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final seconds = ref.watch(searchCountdownProvider);

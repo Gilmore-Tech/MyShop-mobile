@@ -34,7 +34,7 @@ class SafetyService {
         'bookingId': bookingId,
         'lat': lat,
         'lng': lng,
-      });
+      },);
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
