@@ -187,6 +187,13 @@ enum JobStatus {
   arrived,
   inProgress,
   artisanMarkedComplete,
+
+  /// Client has kicked off the escrow charge but Paystack hasn't settled it
+  /// yet (or the charge is mid-retry). Job sits here until `charge.success`
+  /// flips it to [completed], or `charge.failed` reverts it to
+  /// [artisanMarkedComplete] so the client can retry.
+  pendingPayment,
+
   completed,
   cancelled;
 
@@ -213,6 +220,8 @@ enum JobStatus {
         return JobStatus.inProgress;
       case 'artisan_marked_complete':
         return JobStatus.artisanMarkedComplete;
+      case 'pending_payment':
+        return JobStatus.pendingPayment;
       case 'completed':
         return JobStatus.completed;
       case 'cancelled':
@@ -235,6 +244,8 @@ enum JobStatus {
         return 'in_progress';
       case JobStatus.artisanMarkedComplete:
         return 'artisan_marked_complete';
+      case JobStatus.pendingPayment:
+        return 'pending_payment';
       default:
         return name;
     }

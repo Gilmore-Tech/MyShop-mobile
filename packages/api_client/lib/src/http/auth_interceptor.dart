@@ -1,15 +1,30 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/auth_dtos.dart';
 import 'token_storage.dart';
 
 /// Interceptor that:
 /// 1. Injects the Bearer token on every authenticated request.
-/// 2. Automatically refreshes the access token on 401 responses.
-/// 3. Emits a logout signal when the refresh token is also expired.
+/// 2. Handles 401 responses by refreshing the token and retrying — with
+///    a dedup that prevents redundant refreshes when multiple concurrent
+///    requests 401 against the same stale token.
+/// 3. Emits a logout signal when the refresh token itself is dead.
 ///
-/// Uses [QueuedInterceptor] so that concurrent 401s don't trigger
-/// multiple refresh calls — the first 401 refreshes, the rest wait.
+/// Uses [QueuedInterceptor] so that concurrent 401s serialize through
+/// [onError]. The dedup check inside still matters: when backend rotates
+/// refresh tokens (rollout in progress — see backend B4), a second call
+/// to `/auth/refresh` with an already-consumed refresh token would force
+/// logout even though the first refresh succeeded.
+///
+/// Note: we deliberately do NOT pre-refresh expired tokens inside
+/// [onRequest]. Posting to `/auth/refresh` from within an interceptor
+/// handler deadlocks `QueuedInterceptor` (the refresh request's own
+/// handlers get queued behind the outer handler awaiting them). The
+/// socket layer does proactive pre-refresh from outside the interceptor
+/// chain; the REST path relies on the 401 → refresh round-trip.
 class AuthInterceptor extends QueuedInterceptor {
   AuthInterceptor({
     required TokenStorage tokenStorage,
@@ -22,6 +37,10 @@ class AuthInterceptor extends QueuedInterceptor {
   final TokenStorage _tokenStorage;
   final Dio _dio;
   final void Function()? _onForceLogout;
+
+  /// Single-flight guard so a burst of requests racing with an expired
+  /// token don't each post `/auth/refresh`.
+  Future<String?>? _inFlightRefresh;
 
   /// Paths that do not require an Authorization header.
   static const _publicPaths = {
@@ -45,11 +64,14 @@ class AuthInterceptor extends QueuedInterceptor {
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
-    if (!_isPublic(options.path)) {
-      final token = await _tokenStorage.readAccessToken();
-      if (token != null) {
-        options.headers['Authorization'] = 'Bearer $token';
-      }
+    if (_isPublic(options.path)) {
+      handler.next(options);
+      return;
+    }
+
+    final token = await _tokenStorage.readAccessToken();
+    if (token != null) {
+      options.headers['Authorization'] = 'Bearer $token';
     }
     handler.next(options);
   }
@@ -57,55 +79,132 @@ class AuthInterceptor extends QueuedInterceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
     final response = err.response;
+    final path = err.requestOptions.path;
 
-    // Only attempt refresh on 401 for authenticated endpoints
-    if (response?.statusCode != 401 || _isPublic(err.requestOptions.path)) {
+    if (response?.statusCode != 401 || _isPublic(path)) {
       handler.next(err);
       return;
     }
 
-    // Try to refresh the access token
+    debugPrint('[Auth] 401 on $path — attempting refresh');
+
+    // Dedup: if another concurrent 401 already refreshed the token, the
+    // stored access token will differ from the one we sent. Just retry
+    // with the fresh stored token — no need to refresh again.
+    final attachedAuth =
+        err.requestOptions.headers['Authorization']?.toString();
+    final attachedToken = attachedAuth != null && attachedAuth.startsWith('Bearer ')
+        ? attachedAuth.substring(7)
+        : null;
+    final currentStored = await _tokenStorage.readAccessToken();
+
+    if (currentStored != null &&
+        attachedToken != null &&
+        currentStored != attachedToken) {
+      debugPrint('[Auth] another request already refreshed — retrying $path');
+      await _retryWithToken(err.requestOptions, currentStored, handler);
+      return;
+    }
+
+    // Actually attempt the refresh.
+    final refreshed = await _refreshOnce();
+    if (refreshed == null) {
+      debugPrint('[Auth] refresh failed — propagating 401 for $path');
+      handler.next(err);
+      return;
+    }
+    debugPrint('[Auth] refresh succeeded — retrying $path');
+    await _retryWithToken(err.requestOptions, refreshed, handler);
+  }
+
+  Future<void> _retryWithToken(
+    RequestOptions original,
+    String token,
+    ErrorInterceptorHandler handler,
+  ) async {
+    original.headers['Authorization'] = 'Bearer $token';
     try {
-      final refreshToken = await _tokenStorage.readRefreshToken();
-      if (refreshToken == null) {
-        _onForceLogout?.call();
-        handler.next(err);
-        return;
-      }
-
-      final refreshResponse = await _dio.post(
-        '/auth/refresh',
-        data: RefreshRequest(refreshToken: refreshToken).toJson(),
-      );
-
-      final data = refreshResponse.data as Map<String, dynamic>;
-      final newAccessToken = data['data']?['accessToken'] as String? ??
-          data['accessToken'] as String;
-
-      await _tokenStorage.writeAccessToken(newAccessToken);
-
-      // Retry the original request with the new token
-      final retryOptions = err.requestOptions;
-      retryOptions.headers['Authorization'] = 'Bearer $newAccessToken';
-
-      final retryResponse = await _dio.fetch(retryOptions);
+      final retryResponse = await _dio.fetch(original);
       handler.resolve(retryResponse);
-    } on DioException catch (refreshError) {
-      // Refresh failed — token expired or session inactive
-      final code = refreshError.response?.data;
-      if (code is Map<String, dynamic>) {
-        final errorCode = (code['error'] as Map<String, dynamic>?)?['code'];
-        if (errorCode == 'TOKEN_EXPIRED' ||
-            errorCode == 'INVALID_TOKEN' ||
-            errorCode == 'SESSION_INACTIVE' ||
-            errorCode == 'USER_NOT_FOUND') {
-          await _tokenStorage.clearTokens();
-          _onForceLogout?.call();
-        }
-      }
-      handler.next(err);
-    } catch (_) {
-      handler.next(err);
+    } on DioException catch (retryErr) {
+      handler.next(retryErr);
     }
   }
+
+  /// POST `/auth/refresh` with single-flight dedup.
+  /// On success returns the new access token and writes it to storage.
+  /// On hard auth failure clears tokens and fires [_onForceLogout].
+  Future<String?> _refreshOnce() {
+    return _inFlightRefresh ??= () async {
+      try {
+        final refreshToken = await _tokenStorage.readRefreshToken();
+        if (refreshToken == null) {
+          debugPrint('[Auth] no refresh token in storage — forcing logout');
+          _onForceLogout?.call();
+          return null;
+        }
+
+        debugPrint('[Auth] POST /auth/refresh →');
+        final response = await _dio.post(
+          '/auth/refresh',
+          data: RefreshRequest(refreshToken: refreshToken).toJson(),
+        );
+        debugPrint('[Auth] POST /auth/refresh ← ${response.statusCode}');
+
+        final body = response.data;
+        if (body is! Map<String, dynamic>) {
+          debugPrint('[Auth] refresh body not a map: $body');
+          return null;
+        }
+        final payload =
+            (body['data'] is Map<String, dynamic> ? body['data'] : body)
+                as Map<String, dynamic>;
+
+        final newAccessToken = payload['accessToken'] as String?;
+        if (newAccessToken == null) {
+          debugPrint('[Auth] refresh response missing accessToken: $payload');
+          return null;
+        }
+        await _tokenStorage.writeAccessToken(newAccessToken);
+
+        // Rotation support: backend is adding rotation (B4). When it
+        // ships, the response will also carry a new refreshToken — we
+        // persist it so the next refresh uses the rotated token. Until
+        // then this key is absent and we keep the old refresh token.
+        final newRefreshToken = payload['refreshToken'] as String?;
+        if (newRefreshToken != null && newRefreshToken != refreshToken) {
+          await _tokenStorage.writeTokens(
+            accessToken: newAccessToken,
+            refreshToken: newRefreshToken,
+          );
+        }
+
+        return newAccessToken;
+      } on DioException catch (e) {
+        debugPrint(
+          '[Auth] refresh DioException: status=${e.response?.statusCode} '
+          'body=${e.response?.data}',
+        );
+        final body = e.response?.data;
+        if (body is Map<String, dynamic>) {
+          final errorCode = (body['error'] as Map<String, dynamic>?)?['code'];
+          if (errorCode == 'TOKEN_EXPIRED' ||
+              errorCode == 'INVALID_TOKEN' ||
+              errorCode == 'SESSION_INACTIVE' ||
+              errorCode == 'USER_NOT_FOUND') {
+            debugPrint('[Auth] hard auth failure ($errorCode) — clearing tokens');
+            await _tokenStorage.clearTokens();
+            _onForceLogout?.call();
+          }
+        }
+        return null;
+      } catch (e, st) {
+        debugPrint('[Auth] refresh crashed: $e\n$st');
+        return null;
+      } finally {
+        _inFlightRefresh = null;
+      }
+    }();
+  }
+
 }

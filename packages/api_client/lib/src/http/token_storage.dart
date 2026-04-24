@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// How long a stored session is trusted before forcing the user to re-login,
@@ -57,26 +58,43 @@ class SecureTokenStorage implements TokenStorage {
   final FlutterSecureStorage _storage;
 
   @override
-  Future<String?> readAccessToken() => _storage.read(key: _kAccessToken);
+  Future<String?> readAccessToken() async {
+    final value = await _storage.read(key: _kAccessToken);
+    debugPrint('[TokenStorage] read access_token → ${value == null ? 'null' : 'present(${value.length})'}');
+    return value;
+  }
 
   @override
-  Future<String?> readRefreshToken() => _storage.read(key: _kRefreshToken);
+  Future<String?> readRefreshToken() async {
+    final value = await _storage.read(key: _kRefreshToken);
+    debugPrint('[TokenStorage] read refresh_token → ${value == null ? 'null' : 'present(${value.length})'}');
+    return value;
+  }
 
   @override
   Future<void> writeTokens({
     required String accessToken,
     required String refreshToken,
   }) async {
+    debugPrint('[TokenStorage] writeTokens (access=${accessToken.length} refresh=${refreshToken.length})');
     await _storage.write(key: _kAccessToken, value: accessToken);
     await _storage.write(key: _kRefreshToken, value: refreshToken);
+    // Read back to verify the write actually landed. On iOS simulator
+    // keychain can silently swallow writes in some configurations; this
+    // turns that into a loud log line instead of a mysterious logout.
+    final readback = await _storage.read(key: _kAccessToken);
+    debugPrint('[TokenStorage] writeTokens readback → ${readback == null ? 'NULL (write failed!)' : 'ok'}');
   }
 
   @override
-  Future<void> writeAccessToken(String accessToken) =>
-      _storage.write(key: _kAccessToken, value: accessToken);
+  Future<void> writeAccessToken(String accessToken) async {
+    debugPrint('[TokenStorage] writeAccessToken (len=${accessToken.length})');
+    await _storage.write(key: _kAccessToken, value: accessToken);
+  }
 
   @override
   Future<void> clearTokens() async {
+    debugPrint('[TokenStorage] clearTokens — called from:\n${StackTrace.current}');
     await _storage.delete(key: _kAccessToken);
     await _storage.delete(key: _kRefreshToken);
     await _storage.delete(key: _kPhone);
