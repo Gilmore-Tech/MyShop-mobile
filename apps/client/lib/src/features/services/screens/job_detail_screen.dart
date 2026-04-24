@@ -6,10 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
-import '../../../core/di/providers.dart';
 import '../providers/bid_list_provider.dart';
 import '../providers/job_detail_provider.dart';
 import '../widgets/bid_list_sheet.dart';
+import '../widgets/payment_method_sheet.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD 4.5 — Client views full job request detail, timeline progression,
@@ -1147,29 +1147,28 @@ class _ConfirmCompletionButtonState
 
   Future<void> _handleTap() async {
     if (_submitting) return;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: !_submitting,
-      builder: (_) => const _ConfirmCompletionDialog(),
-    );
-    if (confirmed != true || !mounted) return;
-
     setState(() => _submitting = true);
     try {
-      final jobService = ref.read(jobServiceProvider);
-      await jobService.confirmJobCompletion(widget.jobId);
-      if (!mounted) return;
-      // Bust the detail cache so the timeline re-renders as Completed.
-      ref.invalidate(jobDetailProvider(widget.jobId));
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not confirm completion. Please try again.'),
-          backgroundColor: MyShopColors.error,
-        ),
+      // Step 1: satisfaction check. The dialog's CTA now says "Yes, Proceed
+      // to Payment" — confirming the work kicks off the Paystack flow
+      // rather than marking the job complete directly. PATCH /confirm only
+      // fires after the charge settles (webhook) or the artisan confirms
+      // cash receipt, whichever happens first.
+      final confirmed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => const _ConfirmCompletionDialog(),
       );
+      if (confirmed != true || !mounted) return;
+
+      // Step 2: pick how to pay.
+      final method = await showPaymentMethodSheet(context);
+      if (method == null || !mounted) return;
+
+      // Step 3: hand off to the payment screen, which owns the rest of the
+      // flow (initiate → Paystack checkout or cash prompt → PATCH /confirm
+      // on settlement).
+      context.push(AppRoutes.jobPaymentPath(widget.jobId), extra: method);
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -1206,13 +1205,13 @@ class _ConfirmCompletionButtonState
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                    Icons.check_circle_outline_rounded,
+                    Icons.payments_rounded,
                     size: w * 0.051,
                     color: MyShopColors.surfaceWhite,
                   ),
                   SizedBox(width: w * 0.021),
                   Text(
-                    'Confirm Job Completion',
+                    'Proceed to Payment',
                     style: TextStyle(
                       fontSize: w * 0.040,
                       fontWeight: FontWeight.w700,
@@ -1285,8 +1284,8 @@ class _ConfirmCompletionDialog extends StatelessWidget {
       ),
       content: Text(
         'Have you checked the work and are you satisfied with what the '
-        'artisan delivered? Once you confirm, the job will be marked '
-        'completed and payment released.',
+        "artisan delivered? Tap \"Proceed to Payment\" to pay — the job "
+        "is marked complete once payment settles.",
         style: TextStyle(
           fontSize: w * 0.036,
           fontWeight: FontWeight.w400,
@@ -1321,7 +1320,7 @@ class _ConfirmCompletionDialog extends StatelessWidget {
             ),
           ),
           child: Text(
-            'Yes, Confirm',
+            'Yes, Proceed to Payment',
             style: TextStyle(
               fontSize: w * 0.036,
               fontWeight: FontWeight.w700,

@@ -20,6 +20,14 @@ enum ActiveJobPhase {
   arrived,
   inProgress,
   awaitingApproval,
+
+  /// Client tapped "Confirm & Pay", Paystack charge is queued, waiting on
+  /// the webhook. UI should show "Processing payment…" — CTA disabled.
+  pendingPayment,
+
+  /// Webhook landed, job is officially complete. UI shows a success state
+  /// and the post-job receipt / rating flow.
+  completed,
 }
 
 extension ActiveJobPhaseX on ActiveJobPhase {
@@ -27,7 +35,9 @@ extension ActiveJobPhaseX on ActiveJobPhase {
         ActiveJobPhase.enRoute          => 'En Route',
         ActiveJobPhase.arrived          => 'In Progress',
         ActiveJobPhase.inProgress       => 'In Progress',
-        ActiveJobPhase.awaitingApproval => 'Completed',
+        ActiveJobPhase.awaitingApproval => 'Awaiting Confirmation',
+        ActiveJobPhase.pendingPayment   => 'Processing Payment',
+        ActiveJobPhase.completed        => 'Completed',
       };
 
   Color get statusColor => switch (this) {
@@ -35,6 +45,8 @@ extension ActiveJobPhaseX on ActiveJobPhase {
         ActiveJobPhase.arrived          => MyShopColors.primaryGold,
         ActiveJobPhase.inProgress       => MyShopColors.primaryGold,
         ActiveJobPhase.awaitingApproval => MyShopColors.textSecondary,
+        ActiveJobPhase.pendingPayment   => MyShopColors.warning,
+        ActiveJobPhase.completed        => MyShopColors.success,
       };
 
   /// Left stat cell label.
@@ -210,9 +222,12 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobActionState> {
     }
   }
 
-  /// Client confirms job completion — releases escrow payment to artisan.
-  /// PATCH /v1/jobs/:jobId/confirm  (EDD § Marketplace)
-  /// PRD 4.8.2: client has a 4-hr window; artisan can escalate after that.
+  /// Legacy direct-confirm path. Kept for the dev menu only — the real
+  /// confirm flow now routes through the payment screen, which initiates
+  /// the Paystack escrow charge and then PATCHes /confirm once the webhook
+  /// settles (idempotent).
+  ///
+  /// See [PaymentNotifier.confirmCompletion] for the production path.
   Future<void> markComplete({required String jobId}) async {
     if (state.isBusy) return;
     state = state.copyWith(isMarkingComplete: true, clearError: true);
@@ -225,7 +240,6 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobActionState> {
         errorMessage: e.message,
       );
     } catch (_) {
-      // Fallback: treat as success during development
       state = state.copyWith(isMarkingComplete: false);
     }
   }
@@ -309,8 +323,9 @@ class _ActiveJobNotifier
       'arrived'             => ActiveJobPhase.arrived,
       'in_progress'         => ActiveJobPhase.inProgress,
       'artisan_marked_complete' ||
-      'awaiting_approval' ||
-      'completed'           => ActiveJobPhase.awaitingApproval,
+      'awaiting_approval'   => ActiveJobPhase.awaitingApproval,
+      'pending_payment'     => ActiveJobPhase.pendingPayment,
+      'completed'           => ActiveJobPhase.completed,
       _                     => ActiveJobPhase.enRoute,
     };
   }

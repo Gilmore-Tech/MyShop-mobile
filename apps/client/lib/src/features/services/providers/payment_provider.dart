@@ -1,8 +1,82 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:api_client/api_client.dart';
 
 import '../../../core/di/providers.dart';
+
+/// Recursively scans a decoded payments-initiate response for a Paystack
+/// checkout URL. The exact response shape varies depending on whether the
+/// backend returns the raw Paystack payload, wraps it in its own envelope,
+/// or just surfaces the fields under different names — so rather than
+/// hardcoding a path we walk the tree.
+String? _findCheckoutUrl(Object? node) {
+  if (node is String) {
+    if (node.startsWith('http') &&
+        (node.contains('paystack') || node.contains('checkout'))) {
+      return node;
+    }
+    return null;
+  }
+  if (node is Map) {
+    // Prefer well-known key names first — a plain key lookup beats a scan
+    // when the field is exactly where we expect it.
+    for (final key in const [
+      'authorizationUrl',
+      'authorization_url',
+      'checkoutUrl',
+      'checkout_url',
+      'redirectUrl',
+      'redirect_url',
+      'paymentUrl',
+      'payment_url',
+    ]) {
+      final v = node[key];
+      if (v is String && v.startsWith('http')) return v;
+    }
+    for (final v in node.values) {
+      final hit = _findCheckoutUrl(v);
+      if (hit != null) return hit;
+    }
+  }
+  if (node is List) {
+    for (final v in node) {
+      final hit = _findCheckoutUrl(v);
+      if (hit != null) return hit;
+    }
+  }
+  return null;
+}
+
+/// Pulls the Paystack reference / payment id out of the response, again
+/// tolerating shape drift. Used to display a short ref in the success card.
+String? _findPaymentRef(Object? node) {
+  if (node is Map) {
+    for (final key in const [
+      'paymentId',
+      'payment_id',
+      'transactionRef',
+      'transaction_ref',
+      'reference',
+      'id',
+    ]) {
+      final v = node[key];
+      if (v is String && v.isNotEmpty) return v;
+    }
+    for (final v in node.values) {
+      final hit = _findPaymentRef(v);
+      if (hit != null) return hit;
+    }
+  }
+  if (node is List) {
+    for (final v in node) {
+      final hit = _findPaymentRef(v);
+      if (hit != null) return hit;
+    }
+  }
+  return null;
+}
 
 // ── Payment Method ────────────────────────────────────────────────────────────
 // PRD 7.1 — supported client payment methods.
@@ -123,95 +197,229 @@ class PaymentConfirmation {
 
 // ── Payment State ─────────────────────────────────────────────────────────────
 
+/// Where the charge is in its lifecycle.
+///
+///   idle         → nothing in flight, awaiting user action
+///   processing   → local call to /payments/initiate is in flight
+///   awaitingSettlement → Paystack charge queued, job is `pending_payment`.
+///                        The webhook will flip the job to `completed` (or
+///                        back to `artisan_marked_complete` on failure).
+///   settled      → job status has landed as `completed`; PATCH /confirm ran
+///                  (idempotent) and the success dialog is showing.
+///   failed       → charge failed. Job reverted to `artisan_marked_complete`
+///                  so the client can retry the payment.
+enum PaymentPhase { idle, processing, awaitingSettlement, settled, failed }
+
 class PaymentState {
   final PaymentMethod selectedMethod;
-  final bool isProcessing;
+  final PaymentPhase phase;
   final String? errorMessage;
 
-  /// Non-null once payment is successfully escrowed.
+  /// Non-null once the charge has settled AND PATCH /confirm has succeeded.
   /// The screen listens for this to trigger the confirmation dialog.
   final PaymentConfirmation? confirmation;
 
+  /// Paystack checkout URL returned by /payments/initiate when the charge
+  /// needs a browser redirect (card / first-time MoMo). Null when the charge
+  /// can settle without a redirect (MoMo push, saved card).
+  final String? authorizationUrl;
+
+  /// Paystack reference for this charge — used to poll status if the socket
+  /// event doesn't land within the timeout.
+  final String? paymentId;
+
   const PaymentState({
     this.selectedMethod = PaymentMethod.platformPayment,
-    this.isProcessing = false,
+    this.phase = PaymentPhase.idle,
     this.errorMessage,
     this.confirmation,
+    this.authorizationUrl,
+    this.paymentId,
   });
+
+  bool get isProcessing => phase == PaymentPhase.processing;
+  bool get isAwaitingSettlement => phase == PaymentPhase.awaitingSettlement;
 
   PaymentState copyWith({
     PaymentMethod? selectedMethod,
-    bool? isProcessing,
+    PaymentPhase? phase,
     String? errorMessage,
     bool clearError = false,
     PaymentConfirmation? confirmation,
+    String? authorizationUrl,
+    bool clearAuthorizationUrl = false,
+    String? paymentId,
   }) =>
       PaymentState(
         selectedMethod: selectedMethod ?? this.selectedMethod,
-        isProcessing: isProcessing ?? this.isProcessing,
+        phase: phase ?? this.phase,
         errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
         confirmation: confirmation ?? this.confirmation,
+        authorizationUrl: clearAuthorizationUrl
+            ? null
+            : (authorizationUrl ?? this.authorizationUrl),
+        paymentId: paymentId ?? this.paymentId,
       );
 }
 
 // ── Notifier ──────────────────────────────────────────────────────────────────
 
 class PaymentNotifier extends StateNotifier<PaymentState> {
-  PaymentNotifier(this._paymentService) : super(const PaymentState());
+  PaymentNotifier(this._paymentService, this._jobService)
+      : super(const PaymentState());
 
   final PaymentService _paymentService;
+  final JobService _jobService;
 
   void selectMethod(PaymentMethod method) =>
       state = state.copyWith(selectedMethod: method);
 
-  /// Initiates the escrow payment via Flutterwave.
-  /// POST /v1/payments/initiate  (EDD § Payment Endpoints)
-  /// PRD 7.2: funds held in micro-escrow, released on dual confirmation.
-  /// Commission (20%) is deducted from the provider payout — not added here.
+  /// Initiates the Paystack escrow charge.
+  ///   POST /v1/payments/initiate  (bookingType: 'artisan_job')
+  ///
+  /// Backend flips the job to `pending_payment`, queues the charge, and
+  /// returns Paystack's `authorization_url` (hosted checkout). The caller
+  /// launches that URL externally; the user completes the payment on
+  /// Paystack, and the `charge.success` webhook fires `job:status:changed`
+  /// with `completed` — which drives [confirmCompletion] on the settling
+  /// side of the screen.
   Future<void> confirmPayment({
     required String jobId,
     required PaymentSummary summary,
   }) async {
     if (state.isProcessing) return;
-    state = state.copyWith(isProcessing: true, clearError: true);
+    state = state.copyWith(phase: PaymentPhase.processing, clearError: true);
     try {
       final methodStr = state.selectedMethod == PaymentMethod.platformPayment
           ? 'mobile_money'
           : 'cash';
       final result = await _paymentService.initiatePayment(
-        bookingType: 'job',
+        bookingType: 'artisan_job',
         bookingId: jobId,
         paymentMethod: methodStr,
       );
+      // Log the raw response so it's visible in the dev console. Paystack
+      // responses differ across channels (MoMo / card / saved auth) and
+      // across backend wrappers — keep this around until the flow is
+      // battle-tested on prod data.
+      developer.log(
+        'initiatePayment response: $result',
+        name: 'Payment',
+      );
+      final authUrl = _findCheckoutUrl(result);
+      final paymentId = _findPaymentRef(result);
+
+      // If the backend queued the charge but gave us no URL, we can't
+      // open anything — flag it so the UI prompts the user correctly
+      // (e.g. "Check your phone to approve" for a MoMo push flow) rather
+      // than spinning forever.
+      if (authUrl == null) {
+        developer.log(
+          'initiatePayment returned no checkout URL — '
+          'awaiting webhook settlement instead.',
+          name: 'Payment',
+          level: 800,
+        );
+      }
+
       state = state.copyWith(
-        isProcessing: false,
-        confirmation: PaymentConfirmation(
-          transactionRef: result['transactionRef'] as String? ??
-              '#TXN-2024-${summary.jobId.hashCode.abs() % 9000 + 1000}',
-          artisanName: summary.artisanName,
-          jobTitle: summary.jobTitle,
-          amountPesewas: (result['amountPesewas'] as num?)?.toInt() ??
-              summary.totalPesewas,
-          method: state.selectedMethod,
-          dateTimeLabel: _formatNow(),
-        ),
+        phase: PaymentPhase.awaitingSettlement,
+        authorizationUrl: authUrl,
+        paymentId: paymentId,
       );
     } on ApiException catch (e) {
-      state = state.copyWith(isProcessing: false, errorMessage: e.message);
-    } catch (_) {
-      // Fallback: mock confirmation during development
+      developer.log(
+        'initiatePayment failed: ${e.errorCode} — ${e.message}',
+        name: 'Payment',
+        level: 1000,
+      );
       state = state.copyWith(
-        isProcessing: false,
-        confirmation: PaymentConfirmation(
-          transactionRef: '#TXN-2024-${summary.jobId.hashCode.abs() % 9000 + 1000}',
-          artisanName: summary.artisanName,
-          jobTitle: summary.jobTitle,
-          amountPesewas: summary.totalPesewas,
-          method: state.selectedMethod,
-          dateTimeLabel: _formatNow(),
-        ),
+        phase: PaymentPhase.idle,
+        errorMessage: _friendlyInitiateError(e),
+      );
+    } catch (e, st) {
+      developer.log(
+        'initiatePayment crashed: $e\n$st',
+        name: 'Payment',
+        level: 1200,
+      );
+      state = state.copyWith(
+        phase: PaymentPhase.idle,
+        errorMessage: 'Could not start payment. Please try again.',
       );
     }
+  }
+
+  String _friendlyInitiateError(ApiException e) {
+    switch (e.errorCode) {
+      case 'JOB_NOT_AWAITING_PAYMENT':
+        return "This job isn't ready for payment yet. Ask the artisan to "
+            'mark the work complete and try again.';
+      case 'PAYMENT_ALREADY_SETTLED':
+        return 'This job has already been paid for.';
+      default:
+        return e.message;
+    }
+  }
+
+  /// Called by the payment screen once the job has landed as `completed`
+  /// (socket event or poll). Runs PATCH /jobs/:id/confirm — idempotent,
+  /// safe even if the webhook already finalised the job.
+  Future<void> confirmCompletion({
+    required String jobId,
+    required PaymentSummary summary,
+  }) async {
+    if (state.phase == PaymentPhase.settled) return;
+    try {
+      await _jobService.confirmJobCompletion(jobId);
+    } on ApiException catch (e) {
+      // PAYMENT_NOT_SETTLED means the socket event was a false start — keep
+      // waiting. Any other code is a real error worth surfacing.
+      if (e.errorCode == 'PAYMENT_NOT_SETTLED') return;
+      state = state.copyWith(errorMessage: e.message);
+      return;
+    } catch (_) {
+      // Treat unexpected errors as non-fatal — the socket will drive us
+      // back through here on the next status tick.
+      return;
+    }
+    state = state.copyWith(
+      phase: PaymentPhase.settled,
+      confirmation: PaymentConfirmation(
+        transactionRef: state.paymentId ??
+            '#TXN-${summary.jobId.hashCode.abs() % 9000 + 1000}',
+        artisanName: summary.artisanName,
+        jobTitle: summary.jobTitle,
+        amountPesewas: summary.totalPesewas,
+        method: state.selectedMethod,
+        dateTimeLabel: _formatNow(),
+      ),
+    );
+  }
+
+  /// Called when the socket reports the job bounced back to
+  /// `artisan_marked_complete` — Paystack charge failed. The user can tap
+  /// "Retry payment" which resets state and re-enters the flow.
+  void markPaymentFailed(String message) {
+    state = state.copyWith(
+      phase: PaymentPhase.failed,
+      errorMessage: message,
+      clearAuthorizationUrl: true,
+    );
+  }
+
+  /// Clears the auth URL once the screen has launched it, so the listener
+  /// fires again if the user retries and a new URL comes back.
+  void consumeAuthorizationUrl() {
+    state = state.copyWith(clearAuthorizationUrl: true);
+  }
+
+  void resetForRetry() {
+    state = state.copyWith(
+      phase: PaymentPhase.idle,
+      clearError: true,
+      clearAuthorizationUrl: true,
+    );
   }
 
   static String _formatNow() {
@@ -229,7 +437,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
 
 final paymentNotifierProvider =
     StateNotifierProvider.autoDispose<PaymentNotifier, PaymentState>(
-  (ref) => PaymentNotifier(ref.watch(paymentServiceProvider)),
+  (ref) => PaymentNotifier(
+    ref.watch(paymentServiceProvider),
+    ref.watch(jobServiceProvider),
+  ),
 );
 
 // ── Data Provider ─────────────────────────────────────────────────────────────

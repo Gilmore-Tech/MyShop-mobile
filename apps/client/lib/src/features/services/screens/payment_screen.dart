@@ -1,26 +1,104 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../providers/active_job_provider.dart';
 import '../providers/payment_provider.dart';
 import 'payment_confirmed_dialog.dart';
+
+/// Opens the Paystack checkout URL, trying external browser first and
+/// falling back to an in-app webview. Clears the URL from state on
+/// success so the fallback button disappears; leaves it in place (and
+/// shows a snackbar) on failure so the user can try again.
+Future<void> _launchCheckout(
+  BuildContext context,
+  WidgetRef ref,
+  String url,
+) async {
+  final uri = Uri.tryParse(url);
+  if (uri == null) {
+    developer.log('Checkout URL is unparseable: $url', name: 'Payment');
+    return;
+  }
+
+  bool launched = false;
+  try {
+    launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } catch (e) {
+    developer.log('externalApplication launch threw: $e', name: 'Payment');
+  }
+  if (!launched) {
+    try {
+      launched = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+    } catch (e) {
+      developer.log('inAppBrowserView launch threw: $e', name: 'Payment');
+    }
+  }
+
+  if (launched) {
+    ref.read(paymentNotifierProvider.notifier).consumeAuthorizationUrl();
+  } else if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          "Couldn't open the checkout page. Tap \"Open Checkout\" below to try again.",
+        ),
+      ),
+    );
+  }
+}
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 // PRD 7.2 — client reviews job cost, selects payment method, and confirms.
 // Funds are held in micro-escrow via Flutterwave until dual confirmation.
 // API: POST /v1/payments/initiate
 
-class PaymentScreen extends ConsumerWidget {
+class PaymentScreen extends ConsumerStatefulWidget {
   final String jobId;
-  const PaymentScreen({super.key, required this.jobId});
+
+  /// Optional method preselected by an upstream chooser (e.g. the
+  /// "How would you like to pay?" bottom sheet on the active-job screen).
+  /// When set, the payment notifier is seeded with this method on first
+  /// build so the user lands on the payment screen with the right option
+  /// already highlighted and just needs to tap "Confirm & Pay".
+  final PaymentMethod? initialMethod;
+
+  const PaymentScreen({
+    super.key,
+    required this.jobId,
+    this.initialMethod,
+  });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final size = MediaQuery.sizeOf(context);
-    final w    = size.width;
-    final h    = size.height;
+  ConsumerState<PaymentScreen> createState() => _PaymentScreenState();
+}
 
-    final summaryAsync = ref.watch(paymentSummaryProvider(jobId));
+class _PaymentScreenState extends ConsumerState<PaymentScreen> {
+  @override
+  void initState() {
+    super.initState();
+    final preset = widget.initialMethod;
+    if (preset != null) {
+      // Seed the notifier's selectedMethod so the method card on the screen
+      // reflects what the user picked in the upstream chooser. Deferred to
+      // a post-frame callback so we don't mutate a provider during build.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref.read(paymentNotifierProvider.notifier).selectMethod(preset);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
+
+    final summaryAsync = ref.watch(paymentSummaryProvider(widget.jobId));
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
@@ -28,7 +106,7 @@ class PaymentScreen extends ConsumerWidget {
         loading: () => _LoadingSkeleton(w: w, h: h),
         error: (_, __) => MyShopErrorBody(
           message: 'Could not load payment summary',
-          onRetry: () => ref.invalidate(paymentSummaryProvider(jobId)),
+          onRetry: () => ref.invalidate(paymentSummaryProvider(widget.jobId)),
         ),
         data: (summary) => _PaymentBody(summary: summary, w: w, h: h),
       ),
@@ -47,12 +125,58 @@ class _PaymentBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // ── 1. Payment state transitions ─────────────────────────────────────
     ref.listen<PaymentState>(paymentNotifierProvider, (previous, next) {
-      if (next.confirmation != null &&
-          previous?.confirmation == null) {
+      // Paystack returned a checkout URL → launch it externally. Only
+      // clear the URL from state after a successful launch — if it fails
+      // (blocked intent, no browser, emulator quirk) we keep the URL so
+      // the bottom-bar "Open Checkout" fallback button stays available.
+      if (next.authorizationUrl != null &&
+          next.authorizationUrl != previous?.authorizationUrl) {
+        _launchCheckout(context, ref, next.authorizationUrl!);
+      }
+
+      // Settlement landed → show the success dialog.
+      if (next.confirmation != null && previous?.confirmation == null) {
         showPaymentConfirmedDialog(context, next.confirmation!);
       }
+
+      // Surface errors (initiate failed, or non-PAYMENT_NOT_SETTLED errors
+      // bubbled out of confirmCompletion) as a snackbar.
+      if (next.errorMessage != null &&
+          next.errorMessage != previous?.errorMessage) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(next.errorMessage!)),
+        );
+      }
     });
+
+    // ── 2. Drive confirmation off the live job status ────────────────────
+    // The backend emits `job:status:changed` when Paystack settles; the
+    // socket handler invalidates activeJobProvider, which refetches with
+    // the new status. When that lands as `completed` we PATCH /confirm
+    // (idempotent) to close the loop. If it reverts to awaitingApproval
+    // the charge failed — flag it so the retry CTA appears.
+    ref.listen<AsyncValue<ActiveJobData>>(
+      activeJobProvider(summary.jobId),
+      (previous, next) {
+        next.whenData((job) {
+          final paymentState = ref.read(paymentNotifierProvider);
+          if (job.phase == ActiveJobPhase.completed &&
+              paymentState.phase != PaymentPhase.settled) {
+            ref.read(paymentNotifierProvider.notifier).confirmCompletion(
+                  jobId: summary.jobId,
+                  summary: summary,
+                );
+          } else if (job.phase == ActiveJobPhase.awaitingApproval &&
+              paymentState.phase == PaymentPhase.awaitingSettlement) {
+            ref
+                .read(paymentNotifierProvider.notifier)
+                .markPaymentFailed('Payment failed — please try again.');
+          }
+        });
+      },
+    );
 
     return Column(
       children: [
@@ -812,51 +936,45 @@ class _BottomBar extends ConsumerWidget {
           SizedBox(height: h * 0.014),
 
           // ── CTA button ──
+          // The label + behaviour both pivot on [PaymentPhase]:
+          //   idle / failed        → "Confirm & Pay" (retry when failed)
+          //   processing           → spinner (initiate in flight)
+          //   awaitingSettlement   → "Open Checkout" when we have a URL,
+          //                          "Waiting for payment…" otherwise
+          //   settled              → success label; button is inert
           SizedBox(
             width: double.infinity,
             height: h * 0.066,
             child: ElevatedButton(
-              onPressed: state.isProcessing
-                  ? null
-                  : () => ref
-                      .read(paymentNotifierProvider.notifier)
-                      .confirmPayment(
-                        jobId: summary.jobId,
-                        summary: summary,
+              onPressed: switch (state.phase) {
+                PaymentPhase.idle || PaymentPhase.failed => () => ref
+                    .read(paymentNotifierProvider.notifier)
+                    .confirmPayment(
+                      jobId: summary.jobId,
+                      summary: summary,
+                    ),
+                // Re-launch the checkout if the user dismissed Paystack
+                // without finishing, or if the auto-launch was blocked.
+                PaymentPhase.awaitingSettlement
+                    when state.authorizationUrl != null =>
+                  () => _launchCheckout(
+                        context,
+                        ref,
+                        state.authorizationUrl!,
                       ),
+                _ => null,
+              },
               style: ElevatedButton.styleFrom(
-                backgroundColor: MyShopColors.darkSlate,
+                backgroundColor: state.phase == PaymentPhase.failed
+                    ? MyShopColors.error
+                    : MyShopColors.darkSlate,
                 disabledBackgroundColor: MyShopColors.surfaceGrey,
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(w * 0.031),
                 ),
               ),
-              child: state.isProcessing
-                  ? SizedBox(
-                      width: w * 0.051,
-                      height: w * 0.051,
-                      child: const CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: MyShopColors.surfaceWhite,
-                      ),
-                    )
-                  : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Confirm & Pay Securely',
-                          style: TextStyle(
-                            fontSize: w * 0.041,
-                            fontWeight: FontWeight.w600,
-                            color: MyShopColors.surfaceWhite,
-                          ),
-                        ),
-                        SizedBox(width: w * 0.018),
-                        Icon(Icons.arrow_forward_rounded,
-                            size: w * 0.046, color: MyShopColors.surfaceWhite),
-                      ],
-                    ),
+              child: _buildCtaChild(state, w),
             ),
           ),
           SizedBox(height: h * 0.010),
@@ -875,6 +993,121 @@ class _BottomBar extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildCtaChild(PaymentState state, double w) {
+    // Initiate in flight — spinner only.
+    if (state.phase == PaymentPhase.processing) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: w * 0.046,
+            height: w * 0.046,
+            child: const CircularProgressIndicator(
+              strokeWidth: 2,
+              color: MyShopColors.surfaceWhite,
+            ),
+          ),
+          SizedBox(width: w * 0.026),
+          Text(
+            'Starting payment…',
+            style: TextStyle(
+              fontSize: w * 0.038,
+              fontWeight: FontWeight.w600,
+              color: MyShopColors.surfaceWhite,
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Charge is queued. Two sub-states:
+    //   - URL still in state → user dismissed Paystack without finishing,
+    //     or the auto-launch was blocked. Offer to re-open checkout.
+    //   - URL cleared → either it was never returned (MoMo push flow) or
+    //     it's been opened once. Show a passive waiting label.
+    if (state.phase == PaymentPhase.awaitingSettlement) {
+      if (state.authorizationUrl != null) {
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.open_in_new_rounded,
+                size: w * 0.046, color: MyShopColors.surfaceWhite),
+            SizedBox(width: w * 0.018),
+            Text(
+              'Open Checkout',
+              style: TextStyle(
+                fontSize: w * 0.041,
+                fontWeight: FontWeight.w700,
+                color: MyShopColors.surfaceWhite,
+              ),
+            ),
+          ],
+        );
+      }
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: w * 0.046,
+            height: w * 0.046,
+            child: const CircularProgressIndicator(
+              strokeWidth: 2,
+              color: MyShopColors.surfaceWhite,
+            ),
+          ),
+          SizedBox(width: w * 0.026),
+          Text(
+            'Waiting for payment…',
+            style: TextStyle(
+              fontSize: w * 0.038,
+              fontWeight: FontWeight.w600,
+              color: MyShopColors.surfaceWhite,
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (state.phase == PaymentPhase.settled) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.check_circle_rounded,
+              size: w * 0.046, color: MyShopColors.surfaceWhite),
+          SizedBox(width: w * 0.018),
+          Text(
+            'Payment Complete',
+            style: TextStyle(
+              fontSize: w * 0.041,
+              fontWeight: FontWeight.w700,
+              color: MyShopColors.surfaceWhite,
+            ),
+          ),
+        ],
+      );
+    }
+
+    final label = state.phase == PaymentPhase.failed
+        ? 'Retry Payment'
+        : 'Confirm & Pay Securely';
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: w * 0.041,
+            fontWeight: FontWeight.w600,
+            color: MyShopColors.surfaceWhite,
+          ),
+        ),
+        SizedBox(width: w * 0.018),
+        Icon(Icons.arrow_forward_rounded,
+            size: w * 0.046, color: MyShopColors.surfaceWhite),
+      ],
     );
   }
 }

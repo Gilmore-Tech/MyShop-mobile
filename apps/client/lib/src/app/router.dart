@@ -54,6 +54,7 @@ import '../features/services/screens/job_summary_screen.dart';
 import '../features/services/screens/job_complete_screen.dart';
 import '../features/services/screens/job_dispute_screen.dart';
 import '../features/services/screens/service_receipt_screen.dart';
+import '../features/services/providers/payment_provider.dart' show PaymentMethod;
 import '../features/services/screens/payment_screen.dart';
 
 // ── Activity ───────────────────────────────────────────────────────────────────
@@ -495,7 +496,13 @@ GoRouter _buildRouter(ClientAuthState authState) {
         path: AppRoutes.jobPayment,
         builder: (_, state) {
           final jobId = state.pathParameters['jobId']!;
-          return PaymentScreen(jobId: jobId);
+          // The active-job screen passes the method picked in the
+          // "How would you like to pay?" sheet through `extra`.
+          final preset = state.extra;
+          return PaymentScreen(
+            jobId: jobId,
+            initialMethod: preset is PaymentMethod ? preset : null,
+          );
         },
       ),
       GoRoute(

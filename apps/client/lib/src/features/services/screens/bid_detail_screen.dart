@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/router.dart';
 import '../providers/artisan_live_location_provider.dart';
 import '../providers/bid_detail_provider.dart';
+import '../providers/job_detail_provider.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD 4.5 — Client reviews full bid details: artisan profile, bid breakdown,
@@ -74,6 +75,19 @@ class _BidDetailBody extends ConsumerWidget {
         !expired &&
         !declined &&
         actionState.isAwaitingConfirmation;
+
+    // Watch the parent job so the bottom bar reacts when the artisan
+    // accepts and moves through confirmed → en_route → arrived → …
+    // The socket handler invalidates jobDetailProvider on job:status:changed,
+    // so this rebuilds live without any polling here.
+    final jobAsync = ref.watch(jobDetailProvider(bid.jobId));
+    final jobStatus = jobAsync.valueOrNull?.status;
+    // Once the job has left the bidding phase, the Accept button stops
+    // making sense for non-winning bids — the client has already chosen,
+    // or the job is done / cancelled. The `confirmed` path below still
+    // takes over for the winning bid, which is what clients expect.
+    final jobLocked =
+        jobStatus != null && _isJobLocked(jobStatus) && !confirmed;
 
     return Column(
       children: [
@@ -149,11 +163,34 @@ class _BidDetailBody extends ConsumerWidget {
           expired: expired,
           declined: declined,
           awaiting: awaiting,
+          jobLocked: jobLocked,
+          jobStatus: jobStatus,
           w: w,
           h: h,
         ),
       ],
     );
+  }
+}
+
+/// Returns true once the job has moved past the bidding phase — i.e. the
+/// client has already selected a winning bid, the artisan is working on it,
+/// or the job is finished/cancelled. Used by the bid detail screen to hide
+/// the "Accept Bid" CTA on non-winning bids so the client can't double-book
+/// an already-assigned job.
+bool _isJobLocked(JobStatus status) {
+  switch (status) {
+    case JobStatus.confirmed:
+    case JobStatus.enRoute:
+    case JobStatus.arrived:
+    case JobStatus.inProgress:
+    case JobStatus.artisanMarkedComplete:
+    case JobStatus.completed:
+    case JobStatus.cancelled:
+      return true;
+    case JobStatus.open:
+    case JobStatus.queued:
+      return false;
   }
 }
 
@@ -1253,6 +1290,8 @@ class _BottomActionBar extends ConsumerWidget {
   final bool expired;
   final bool declined;
   final bool awaiting;
+  final bool jobLocked;
+  final JobStatus? jobStatus;
   final double w;
   final double h;
   const _BottomActionBar({
@@ -1261,6 +1300,8 @@ class _BottomActionBar extends ConsumerWidget {
     required this.expired,
     required this.declined,
     required this.awaiting,
+    required this.jobLocked,
+    required this.jobStatus,
     required this.w,
     required this.h,
   });
@@ -1270,6 +1311,10 @@ class _BottomActionBar extends ConsumerWidget {
     final actionState = ref.watch(bidDetailActionProvider);
     final bottomPad   = MediaQuery.paddingOf(context).bottom;
 
+    // Ordering matters: `confirmed` wins over `jobLocked` so the winning
+    // bid keeps its "Message / Track" actions even after the job moves to
+    // en_route. `expired` / `declined` come next, then the job-locked
+    // fallback for every other non-winning bid on an in-progress job.
     final Widget content;
     if (confirmed) {
       content = _ConfirmedActionContent(bid: bid, w: w, h: h);
@@ -1277,6 +1322,8 @@ class _BottomActionBar extends ConsumerWidget {
       content = _ExpiredActionContent(bid: bid, w: w, h: h);
     } else if (declined) {
       content = _DeclinedActionContent(w: w, h: h);
+    } else if (jobLocked) {
+      content = _JobLockedActionContent(status: jobStatus, w: w, h: h);
     } else if (awaiting) {
       content = _AwaitingActionContent(
         bid: bid,
@@ -1307,6 +1354,79 @@ class _BottomActionBar extends ConsumerWidget {
         bottom: bottomPad + h * 0.010,
       ),
       child: content,
+    );
+  }
+}
+
+// ── Job-locked state content ──────────────────────────────────────────────────
+// Rendered when the job has moved past the bidding phase (artisan is en
+// route, working, completed, or the job was cancelled) and this specific
+// bid isn't the winning one. Replaces the "Accept Bid" CTA with a
+// contextual read-only row so the client can't double-book.
+
+class _JobLockedActionContent extends StatelessWidget {
+  final JobStatus? status;
+  final double w;
+  final double h;
+  const _JobLockedActionContent({
+    required this.status,
+    required this.w,
+    required this.h,
+  });
+
+  (IconData, Color, String) get _content {
+    switch (status) {
+      case JobStatus.cancelled:
+        return (
+          Icons.cancel_outlined,
+          MyShopColors.error,
+          'This job was cancelled',
+        );
+      case JobStatus.completed:
+        return (
+          Icons.check_circle_outline,
+          MyShopColors.success,
+          'This job has been completed',
+        );
+      case JobStatus.enRoute:
+      case JobStatus.arrived:
+      case JobStatus.inProgress:
+      case JobStatus.artisanMarkedComplete:
+        return (
+          Icons.directions_run_rounded,
+          MyShopColors.primaryGold,
+          'Work is already in progress with another artisan',
+        );
+      case JobStatus.confirmed:
+      default:
+        return (
+          Icons.handshake_outlined,
+          MyShopColors.textSecondary,
+          "You've already chosen an artisan for this job",
+        );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, color, message) = _content;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(icon, size: w * 0.044, color: color),
+        SizedBox(width: w * 0.018),
+        Flexible(
+          child: Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: w * 0.036,
+              fontWeight: FontWeight.w600,
+              color: MyShopColors.textSecondary,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../app/router.dart';
 import '../providers/active_job_provider.dart';
+import '../widgets/payment_method_sheet.dart';
 
 // ── Timeline step model ───────────────────────────────────────────────────────
 
@@ -1384,7 +1387,7 @@ class _BottomBar extends ConsumerWidget {
               onPressed: actionState.isBusy
                   ? null
                   : _isCtaEnabled(phase)
-                      ? () => _onCtaTap(ref, job)
+                      ? () => _onCtaTap(context, ref, job)
                       : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: _ctaBgColor(phase, actionState),
@@ -1408,14 +1411,20 @@ class _BottomBar extends ConsumerWidget {
         ActiveJobPhase.inProgress       =>
             'Confirm only when the technician has finished all listed tasks.',
         ActiveJobPhase.awaitingApproval =>
-            'Confirm only when the technician has finished all listed tasks.',
+            'Review the work, then confirm to pay and release escrow.',
+        ActiveJobPhase.pendingPayment   =>
+            "We're processing your payment — this usually takes a few seconds.",
+        ActiveJobPhase.completed        =>
+            'Job complete. Payment released to the artisan.',
       };
 
   bool _isCtaEnabled(ActiveJobPhase phase) => switch (phase) {
-        ActiveJobPhase.enRoute    => false,
-        ActiveJobPhase.arrived    => true,
-        ActiveJobPhase.inProgress => false,
+        ActiveJobPhase.enRoute          => false,
+        ActiveJobPhase.arrived          => true,
+        ActiveJobPhase.inProgress       => false,
         ActiveJobPhase.awaitingApproval => true,
+        ActiveJobPhase.pendingPayment   => false,
+        ActiveJobPhase.completed        => false,
       };
 
   Color _ctaBgColor(ActiveJobPhase phase, ActiveJobActionState state) {
@@ -1423,12 +1432,24 @@ class _BottomBar extends ConsumerWidget {
     return _isCtaEnabled(phase) ? MyShopColors.darkSlate : MyShopColors.surfaceGrey;
   }
 
-  void _onCtaTap(WidgetRef ref, ActiveJobData job) {
+  Future<void> _onCtaTap(
+    BuildContext context,
+    WidgetRef ref,
+    ActiveJobData job,
+  ) async {
     final notifier = ref.read(activeJobActionProvider.notifier);
     if (job.phase == ActiveJobPhase.arrived) {
       notifier.confirmArrival(jobId: job.jobId);
-    } else if (job.phase == ActiveJobPhase.awaitingApproval) {
-      notifier.markComplete(jobId: job.jobId);
+      return;
+    }
+    if (job.phase == ActiveJobPhase.awaitingApproval) {
+      // Ask the user how they want to settle — in-app Paystack charge vs.
+      // cash handed to the artisan. The payment screen handles the rest
+      // of the flow for both paths (initiate → wait on webhook or on the
+      // artisan's cash-confirmation → PATCH /confirm idempotently).
+      final method = await showPaymentMethodSheet(context);
+      if (method == null || !context.mounted) return;
+      context.push(AppRoutes.jobPaymentPath(job.jobId), extra: method);
     }
   }
 
@@ -1449,10 +1470,13 @@ class _BottomBar extends ConsumerWidget {
       );
     }
 
-    final label = (phase == ActiveJobPhase.enRoute ||
-            phase == ActiveJobPhase.arrived)
-        ? 'Confirm Arrival'
-        : 'Mark Complete';
+    final label = switch (phase) {
+      ActiveJobPhase.enRoute || ActiveJobPhase.arrived => 'Confirm Arrival',
+      ActiveJobPhase.awaitingApproval => 'Confirm, proceed to payment',
+      ActiveJobPhase.pendingPayment   => 'Processing payment…',
+      ActiveJobPhase.completed        => 'Job Complete',
+      ActiveJobPhase.inProgress       => 'Mark Complete',
+    };
 
     return Text(
       label,

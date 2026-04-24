@@ -8,6 +8,7 @@ import '../../features/activity/providers/activity_history_provider.dart';
 import '../../features/activity/providers/activity_provider.dart';
 import '../../features/notifications/providers/notifications_provider.dart';
 import '../../features/ride/providers/ride_provider.dart';
+import '../../features/services/providers/active_job_provider.dart';
 import '../../features/services/providers/bid_detail_provider.dart';
 import '../../features/services/providers/bid_list_provider.dart';
 import '../../features/services/providers/job_detail_provider.dart';
@@ -18,9 +19,14 @@ import 'nav_badge_provider.dart';
 final socketServiceProvider = Provider<SocketService>((ref) {
   final config = ref.watch(apiConfigProvider);
   final tokenStorage = ref.watch(appTokenStorageProvider);
+  final dio = ref.watch(dioProvider);
   final service = SocketService(
     config: config,
     tokenStorage: tokenStorage,
+    dio: dio,
+    onForceLogout: () {
+      ref.read(clientAuthControllerProvider.notifier).logout();
+    },
   );
   ref.onDispose(service.dispose);
   return service;
@@ -116,17 +122,22 @@ void _connectAndListen(Ref ref, SocketService socket) {
     });
 
     // ── Job status updates ───────────────────────────────────────────────
-    socket.on('job:status', (data) {
+    // The backend emits `job:status:changed` (new name per the Paystack
+    // contract); older code emitted `job:status`. Listen to both so the
+    // UI reacts whichever one the server uses.
+    void handleJobStatus(dynamic data) {
       developer.log('Received job:status event', name: 'WS');
       try {
         // If the payload carries a jobId, refresh that job's detail + bids
-        // cache so any currently-open detail/summary screen updates live.
+        // + active-job cache so any currently-open detail/summary/payment
+        // screen updates live (including pending_payment → completed).
         final jobId = data is Map<String, dynamic>
             ? (data['jobId'] as String? ?? data['id'] as String?)
             : null;
         if (jobId != null) {
           ref.invalidate(jobDetailProvider(jobId));
           ref.invalidate(bidsForJobProvider(jobId));
+          ref.invalidate(activeJobProvider(jobId));
         }
 
         if (ref.exists(activityNotifierProvider)) {
@@ -140,7 +151,13 @@ void _connectAndListen(Ref ref, SocketService socket) {
         developer.log('Failed to handle job:status: $e',
             name: 'WS', level: 900);
       }
-    });
+    }
+
+    socket
+      ..off('job:status')
+      ..off('job:status:changed')
+      ..on('job:status', handleJobStatus)
+      ..on('job:status:changed', handleJobStatus);
 
     // ── Artisan confirmed a bid ──────────────────────────────────────────
     socket.on('job:artisan_confirmed', (data) {
