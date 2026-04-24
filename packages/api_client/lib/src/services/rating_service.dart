@@ -34,7 +34,7 @@ class RatingService {
         'bookingId': bookingId,
         'stars': stars,
         if (comment != null) 'comment': comment,
-      });
+      },);
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);

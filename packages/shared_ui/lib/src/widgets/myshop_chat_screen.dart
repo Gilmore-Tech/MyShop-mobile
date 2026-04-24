@@ -219,13 +219,13 @@ class _Header extends StatelessWidget {
           if (onPhoneCall != null)
             IconButton(
               icon: const Icon(Icons.phone_outlined,
-                  color: MyShopColors.primaryGold),
+                  color: MyShopColors.primaryGold,),
               onPressed: onPhoneCall,
             ),
           if (onMoreMenu != null)
             IconButton(
               icon: const Icon(Icons.more_vert,
-                  color: MyShopColors.textSecondary),
+                  color: MyShopColors.textSecondary,),
               onPressed: onMoreMenu,
             ),
         ],

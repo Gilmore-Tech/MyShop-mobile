@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 
 import 'src/app/client_app.dart';
+import 'src/core/constants/mapbox_config.dart';
 import 'src/core/di/providers.dart';
 import 'src/core/providers/socket_provider.dart';
 import 'src/features/auth/providers/auth_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  MapboxOptions.setAccessToken(MapboxConfig.accessToken);
 
   // TODO: await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 

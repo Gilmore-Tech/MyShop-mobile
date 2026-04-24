@@ -170,12 +170,27 @@ class _DestinationSearchScreenState
     if (context.canPop()) context.pop();
   }
 
-  void _openPinPicker() {
+  Future<void> _openPinPicker() async {
     final fieldArg = _isPickup ? 'pickup' : 'destination';
-    context.push(
+    final search = ref.read(rideSearchProvider);
+    final prevLat = _isPickup ? search.pickup?.lat : search.destination?.lat;
+
+    await context.push<void>(
       AppRoutes.ridePinPickerPath(fieldArg),
       extra: widget.stopId,
     );
+
+    // For stop edits the trip provider handles state — no need to pop.
+    if (!mounted || _isStopEdit) return;
+
+    final newSearch = ref.read(rideSearchProvider);
+    final newLat = _isPickup ? newSearch.pickup?.lat : newSearch.destination?.lat;
+
+    // Map picker confirmed a new location — close the search screen too so the
+    // user lands back on the fare estimate screen with the field already filled.
+    if (newLat != null && newLat != prevLat && context.canPop()) {
+      context.pop();
+    }
   }
 
   @override

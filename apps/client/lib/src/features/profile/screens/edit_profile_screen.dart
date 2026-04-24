@@ -1,15 +1,18 @@
+import 'dart:io';
+
+import 'package:api_client/api_client.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/edit_profile_provider.dart';
+import '../providers/photo_upload_provider.dart';
+import '../../auth/providers/auth_controller.dart';
 
 // ── Screen ────────────────────────────────────────────────────────────────────
-// PRD 4.11 — Edit full name, email, phone, Ghana Card.
-// Changing email or phone triggers OTP verification before the change is
-// persisted (EDD § Auth Module).
-// Ghana Card is AES-256 encrypted at application layer — never logged.
-// API: PUT /v1/users/me
+// PRD 4.11 — Edit full name and email. Phone requires OTP flow. KYC is separate.
+// API: PUT /users/me  { fullName?, email? }
 
 class EditProfileScreen extends ConsumerStatefulWidget {
   const EditProfileScreen({super.key});
@@ -21,54 +24,76 @@ class EditProfileScreen extends ConsumerStatefulWidget {
 class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   late final TextEditingController _nameCtrl;
   late final TextEditingController _emailCtrl;
-  late final TextEditingController _phoneCtrl;
-  late final TextEditingController _ghanaCtrl;
 
   late final FocusNode _nameFocus;
   late final FocusNode _emailFocus;
-  late final FocusNode _phoneFocus;
-  late final FocusNode _ghanaFocus;
+
+  bool _isUploadingPhoto = false;
 
   @override
   void initState() {
     super.initState();
     _nameCtrl  = TextEditingController();
     _emailCtrl = TextEditingController();
-    _phoneCtrl = TextEditingController();
-    _ghanaCtrl = TextEditingController();
 
     _nameFocus  = FocusNode();
     _emailFocus = FocusNode();
-    _phoneFocus = FocusNode();
-    _ghanaFocus = FocusNode();
 
-    // Rebuild on focus change so borders animate correctly.
-    for (final fn in [_nameFocus, _emailFocus, _phoneFocus, _ghanaFocus]) {
+    for (final fn in [_nameFocus, _emailFocus]) {
       fn.addListener(() => setState(() {}));
     }
 
-    // Sync controllers once the provider has loaded initial values.
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncControllers());
   }
 
   void _syncControllers() {
     final s = ref.read(editProfileProvider);
-    if (_nameCtrl.text  != s.fullName)     _nameCtrl.text  = s.fullName;
-    if (_emailCtrl.text != s.email)        _emailCtrl.text = s.email;
-    if (_phoneCtrl.text != s.phoneNumber)  _phoneCtrl.text = s.phoneNumber;
-    if (_ghanaCtrl.text != s.ghanaCard)    _ghanaCtrl.text = s.ghanaCard;
+    if (_nameCtrl.text  != s.fullName) _nameCtrl.text  = s.fullName;
+    if (_emailCtrl.text != s.email)    _emailCtrl.text = s.email;
+  }
+
+  Future<void> _pickAndUploadPhoto() async {
+    final file = await MediaPickerHelper.pickImage(context);
+    if (file == null || !mounted) return;
+
+    ref.read(localProfilePhotoProvider.notifier).setLocalFile(file);
+    setState(() => _isUploadingPhoto = true);
+
+    final error = await ref.read(documentUploadProvider.notifier).upload(
+      providerType: 'client',
+      documentType: DocumentType.profilePhoto,
+      file: file,
+    );
+
+    if (!mounted) return;
+
+    if (error != null) {
+      ref.read(localProfilePhotoProvider.notifier).clear();
+      setState(() => _isUploadingPhoto = false);
+      MyShopToast.show(context, message: error, type: ToastType.error,
+          duration: const Duration(seconds: 6));
+    } else {
+      final uploadState  = ref.read(documentUploadProvider);
+      final cloudinaryUrl = uploadState.remoteUrls[DocumentType.profilePhoto.value];
+      if (cloudinaryUrl != null) {
+        await ref.read(localProfilePhotoProvider.notifier).setCloudinaryUrl(cloudinaryUrl);
+      }
+      await ref.read(clientAuthControllerProvider.notifier).refreshProfile();
+      if (!mounted) return;
+      setState(() => _isUploadingPhoto = false);
+      MyShopToast.show(
+        context,
+        message: cloudinaryUrl != null ? 'Profile photo updated' : 'Photo uploaded (processing)',
+      );
+    }
   }
 
   @override
   void dispose() {
     _nameCtrl.dispose();
     _emailCtrl.dispose();
-    _phoneCtrl.dispose();
-    _ghanaCtrl.dispose();
     _nameFocus.dispose();
     _emailFocus.dispose();
-    _phoneFocus.dispose();
-    _ghanaFocus.dispose();
     super.dispose();
   }
 
@@ -78,15 +103,22 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     final w    = size.width;
     final h    = size.height;
 
-    // Sync controllers whenever provider state changes (e.g. after initial load).
+    // Sync controllers when provider state changes (e.g. initial load).
     ref.listen<EditProfileState>(editProfileProvider, (prev, next) {
-      if (prev?.fullName    != next.fullName    && _nameCtrl.text  != next.fullName)    _nameCtrl.text  = next.fullName;
-      if (prev?.email       != next.email       && _emailCtrl.text != next.email)       _emailCtrl.text = next.email;
-      if (prev?.phoneNumber != next.phoneNumber && _phoneCtrl.text != next.phoneNumber) _phoneCtrl.text = next.phoneNumber;
-      if (prev?.ghanaCard   != next.ghanaCard   && _ghanaCtrl.text != next.ghanaCard)   _ghanaCtrl.text = next.ghanaCard;
+      if (prev?.fullName != next.fullName && _nameCtrl.text != next.fullName) {
+        _nameCtrl.text = next.fullName;
+      }
+      if (prev?.email != next.email && _emailCtrl.text != next.email) {
+        _emailCtrl.text = next.email;
+      }
+      // Show toast on successful save.
+      if (prev?.isSaved == false && next.isSaved == true) {
+        MyShopToast.show(context, message: 'Profile saved!');
+      }
     });
 
-    final state = ref.watch(editProfileProvider);
+    final state      = ref.watch(editProfileProvider);
+    final photoState = ref.watch(localProfilePhotoProvider);
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
@@ -97,30 +129,36 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             child: SingleChildScrollView(
               child: Column(
                 children: [
-                  // ── Photo section ──
-                  _PhotoSection(w: w, h: h),
+                  _PhotoSection(
+                    avatarUrl:        state.avatarUrl,
+                    localFile:        photoState.localFile,
+                    cloudinaryUrl:    photoState.cloudinaryUrl,
+                    isUploading:      _isUploadingPhoto,
+                    onPhotoTap:       _pickAndUploadPhoto,
+                    w: w, h: h,
+                  ),
                   SizedBox(height: h * 0.028),
 
-                  // ── Form ──
                   _FormCard(
-                    w: w,
-                    h: h,
-                    state: state,
-                    nameCtrl:  _nameCtrl,
-                    emailCtrl: _emailCtrl,
-                    phoneCtrl: _phoneCtrl,
-                    ghanaCtrl: _ghanaCtrl,
+                    w:          w,
+                    h:          h,
+                    state:      state,
+                    nameCtrl:   _nameCtrl,
+                    emailCtrl:  _emailCtrl,
                     nameFocus:  _nameFocus,
                     emailFocus: _emailFocus,
-                    phoneFocus: _phoneFocus,
-                    ghanaFocus: _ghanaFocus,
                   ),
 
-                  // ── Warning box ──
-                  if (state.showVerificationWarning) ...[
+                  if (state.emailChanged) ...[
                     SizedBox(height: h * 0.014),
                     _WarningBox(w: w, h: h),
                   ],
+
+                  if (state.errorMessage != null) ...[
+                    SizedBox(height: h * 0.014),
+                    _ErrorBanner(message: state.errorMessage!, w: w, h: h),
+                  ],
+
                   SizedBox(height: h * 0.022),
                 ],
               ),
@@ -136,8 +174,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 // ── App Bar ───────────────────────────────────────────────────────────────────
 
 class _AppBar extends StatelessWidget {
-  final double w;
-  final double h;
+  final double w, h;
   const _AppBar({required this.w, required this.h});
 
   @override
@@ -179,74 +216,111 @@ class _AppBar extends StatelessWidget {
 // ── Photo Section ─────────────────────────────────────────────────────────────
 
 class _PhotoSection extends StatelessWidget {
-  final double w;
-  final double h;
-  const _PhotoSection({required this.w, required this.h});
+  final String?      avatarUrl;
+  final File?        localFile;
+  final String?      cloudinaryUrl;
+  final bool         isUploading;
+  final VoidCallback onPhotoTap;
+  final double       w, h;
+
+  const _PhotoSection({
+    required this.avatarUrl,
+    required this.localFile,
+    required this.cloudinaryUrl,
+    required this.isUploading,
+    required this.onPhotoTap,
+    required this.w,
+    required this.h,
+  });
 
   @override
   Widget build(BuildContext context) {
+    // Priority: local file (instant preview) → persisted Cloudinary URL → backend URL
+    final displayUrl = cloudinaryUrl ?? avatarUrl;
+
     return Container(
-      color: MyShopColors.surfaceWhite,
-      width: double.infinity,
+      color:   MyShopColors.surfaceWhite,
+      width:   double.infinity,
       padding: EdgeInsets.symmetric(vertical: h * 0.028),
       child: Column(
         children: [
-          // Avatar + camera badge
           Stack(
             alignment: Alignment.bottomRight,
             children: [
-              // Avatar circle with goldLight tint background
+              // Avatar
               Container(
                 width:  w * 0.256,
                 height: w * 0.256,
-                decoration: BoxDecoration(
-                  color:  MyShopColors.primaryGoldLight,
-                  shape:  BoxShape.circle,
+                decoration: const BoxDecoration(
+                  color: MyShopColors.primaryGoldLight,
+                  shape: BoxShape.circle,
                 ),
                 child: ClipOval(
-                  child: Icon(
-                    Icons.person_rounded,
-                    size:  w * 0.154,
-                    color: const Color(0xFF78909C),
-                  ),
+                  child: isUploading
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: MyShopColors.primaryGold,
+                          ),
+                        )
+                      : localFile != null
+                          ? Image.file(localFile!, fit: BoxFit.cover)
+                          : displayUrl != null && displayUrl.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl:    displayUrl,
+                                  fit:         BoxFit.cover,
+                                  placeholder: (_, __) => const Center(
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: MyShopColors.primaryGold,
+                                    ),
+                                  ),
+                                  errorWidget: (_, __, ___) => Icon(
+                                    Icons.person_rounded,
+                                    size:  w * 0.154,
+                                    color: const Color(0xFF78909C),
+                                  ),
+                                )
+                              : Icon(
+                                  Icons.person_rounded,
+                                  size:  w * 0.154,
+                                  color: const Color(0xFF78909C),
+                                ),
                 ),
               ),
               // Camera badge
               GestureDetector(
-                onTap: () {
-                  // TODO: image_picker — pick/capture new profile photo
-                },
+                onTap: isUploading ? null : onPhotoTap,
                 child: Container(
                   width:  w * 0.082,
                   height: w * 0.082,
                   decoration: BoxDecoration(
-                    color:  MyShopColors.darkSlate,
+                    color:  isUploading
+                        ? MyShopColors.darkSlate.withValues(alpha: 0.5)
+                        : MyShopColors.darkSlate,
                     shape:  BoxShape.circle,
-                    border: Border.all(color: MyShopColors.surfaceWhite, width: 2.5),
+                    border: Border.all(
+                        color: MyShopColors.surfaceWhite, width: 2.5),
                   ),
-                  child: Icon(
-                    Icons.photo_camera_rounded,
-                    size:  w * 0.041,
-                    color: MyShopColors.surfaceWhite,
-                  ),
+                  child: Icon(Icons.photo_camera_rounded,
+                      size:  w * 0.041,
+                      color: MyShopColors.surfaceWhite),
                 ),
               ),
             ],
           ),
           SizedBox(height: h * 0.011),
-
-          // Change photo text link
           GestureDetector(
-            onTap: () {
-              // TODO: image_picker
-            },
-            behavior: HitTestBehavior.opaque,
+            onTap:     isUploading ? null : onPhotoTap,
+            behavior:  HitTestBehavior.opaque,
             child: Text(
-              'Change Profile Photo',
+              isUploading ? 'Uploading...' : 'Change Profile Photo',
               style: TextStyle(
                 fontSize:   w * 0.033,
                 fontWeight: FontWeight.w500,
-                color:      MyShopColors.textSecondary,
+                color: isUploading
+                    ? MyShopColors.textHint
+                    : MyShopColors.textSecondary,
               ),
             ),
           ),
@@ -259,17 +333,10 @@ class _PhotoSection extends StatelessWidget {
 // ── Form Card ─────────────────────────────────────────────────────────────────
 
 class _FormCard extends ConsumerWidget {
-  final double                 w;
-  final double                 h;
-  final EditProfileState       state;
-  final TextEditingController  nameCtrl;
-  final TextEditingController  emailCtrl;
-  final TextEditingController  phoneCtrl;
-  final TextEditingController  ghanaCtrl;
-  final FocusNode              nameFocus;
-  final FocusNode              emailFocus;
-  final FocusNode              phoneFocus;
-  final FocusNode              ghanaFocus;
+  final double                w, h;
+  final EditProfileState      state;
+  final TextEditingController nameCtrl, emailCtrl;
+  final FocusNode             nameFocus, emailFocus;
 
   const _FormCard({
     required this.w,
@@ -277,12 +344,8 @@ class _FormCard extends ConsumerWidget {
     required this.state,
     required this.nameCtrl,
     required this.emailCtrl,
-    required this.phoneCtrl,
-    required this.ghanaCtrl,
     required this.nameFocus,
     required this.emailFocus,
-    required this.phoneFocus,
-    required this.ghanaFocus,
   });
 
   @override
@@ -298,7 +361,7 @@ class _FormCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Full Name ──
+          // ── Full Name ──────────────────────────────────────────────────────
           _FieldLabel(label: 'FULL NAME', w: w),
           SizedBox(height: h * 0.008),
           _ProfileInput(
@@ -307,12 +370,11 @@ class _FormCard extends ConsumerWidget {
             isActive:   nameFocus.hasFocus,
             hintText:   'Enter your full name',
             onChanged:  notifier.updateFullName,
-            w: w,
-            h: h,
+            w: w, h: h,
           ),
           SizedBox(height: h * 0.019),
 
-          // ── Email ──
+          // ── Email ──────────────────────────────────────────────────────────
           Row(
             children: [
               _FieldLabel(label: 'EMAIL', w: w),
@@ -337,46 +399,143 @@ class _FormCard extends ConsumerWidget {
           ),
           SizedBox(height: h * 0.008),
           _ProfileInput(
-            controller:  emailCtrl,
-            focusNode:   emailFocus,
-            isActive:    emailFocus.hasFocus || state.emailChanged,
-            hintText:    'Enter your email',
+            controller:   emailCtrl,
+            focusNode:    emailFocus,
+            isActive:     emailFocus.hasFocus || state.emailChanged,
+            hintText:     'Enter your email',
             keyboardType: TextInputType.emailAddress,
-            onChanged:   notifier.updateEmail,
-            w: w,
-            h: h,
+            onChanged:    notifier.updateEmail,
+            w: w, h: h,
           ),
           SizedBox(height: h * 0.019),
 
-          // ── Phone Number ──
+          // ── Phone Number (read-only) ───────────────────────────────────────
           _FieldLabel(label: 'PHONE NUMBER', w: w),
           SizedBox(height: h * 0.008),
-          _ProfileInput(
-            controller:  phoneCtrl,
-            focusNode:   phoneFocus,
-            isActive:    phoneFocus.hasFocus,
-            hintText:    '0XX XXX XXXX',
-            keyboardType: TextInputType.phone,
-            onChanged:   notifier.updatePhoneNumber,
-            w: w,
-            h: h,
+          _ReadOnlyField(
+            value:  state.phoneNumber,
+            hint:   'Phone number',
+            badge:  _StatusBadge.verified,
+            note:   'Contact support to change your phone number',
+            w: w, h: h,
           ),
           SizedBox(height: h * 0.019),
 
-          // ── Ghana Card ──
+          // ── Ghana Card KYC status (read-only) ─────────────────────────────
           _FieldLabel(label: 'GHANA CARD', w: w),
           SizedBox(height: h * 0.008),
-          _ProfileInput(
-            controller: ghanaCtrl,
-            focusNode:  ghanaFocus,
-            isActive:   ghanaFocus.hasFocus,
-            hintText:   'GHA-XXXXXXXXX-X',
-            onChanged:  notifier.updateGhanaCard,
-            w: w,
-            h: h,
+          _ReadOnlyField(
+            value: state.ghanaCardVerified ? 'Identity verified' : 'Not yet verified',
+            hint:  'Ghana Card status',
+            badge: state.ghanaCardVerified
+                ? _StatusBadge.verified
+                : _StatusBadge.pending,
+            note:  state.ghanaCardVerified
+                ? null
+                : 'Complete KYC verification to verify your identity',
+            w: w, h: h,
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Read-Only Field ───────────────────────────────────────────────────────────
+
+enum _StatusBadge { verified, pending }
+
+class _ReadOnlyField extends StatelessWidget {
+  final String       value;
+  final String       hint;
+  final _StatusBadge badge;
+  final String?      note;
+  final double       w, h;
+
+  const _ReadOnlyField({
+    required this.value,
+    required this.hint,
+    required this.badge,
+    required this.w,
+    required this.h,
+    this.note,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isVerified = badge == _StatusBadge.verified;
+    final badgeColor = isVerified ? MyShopColors.success : MyShopColors.warning;
+    final badgeBg    = isVerified ? MyShopColors.successLight : MyShopColors.warningLight;
+    final badgeLabel = isVerified ? 'Verified' : 'Pending';
+    final badgeIcon  = isVerified
+        ? Icons.verified_rounded
+        : Icons.access_time_rounded;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color:        MyShopColors.surfaceGrey,
+            borderRadius: BorderRadius.circular(w * 0.021),
+            border:       Border.all(color: MyShopColors.divider),
+          ),
+          padding: EdgeInsets.symmetric(
+            horizontal: w * 0.041,
+            vertical:   h * 0.017,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  value.isNotEmpty ? value : hint,
+                  style: TextStyle(
+                    fontSize:   w * 0.036,
+                    fontWeight: FontWeight.w400,
+                    color: value.isNotEmpty
+                        ? MyShopColors.textPrimary
+                        : MyShopColors.textHint,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color:        badgeBg,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(badgeIcon, size: 12, color: badgeColor),
+                    const SizedBox(width: 4),
+                    Text(badgeLabel,
+                        style: TextStyle(
+                          fontSize:   w * 0.026,
+                          fontWeight: FontWeight.w700,
+                          color:      badgeColor,
+                        )),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (note != null) ...[
+          SizedBox(height: h * 0.005),
+          Padding(
+            padding: EdgeInsets.only(left: w * 0.012),
+            child: Text(
+              note!,
+              style: TextStyle(
+                fontSize: w * 0.028,
+                color:    MyShopColors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -405,14 +564,13 @@ class _FieldLabel extends StatelessWidget {
 // ── Profile Input ─────────────────────────────────────────────────────────────
 
 class _ProfileInput extends StatelessWidget {
-  final TextEditingController  controller;
-  final FocusNode              focusNode;
-  final bool                   isActive;
-  final String                 hintText;
-  final TextInputType          keyboardType;
-  final ValueChanged<String>   onChanged;
-  final double                 w;
-  final double                 h;
+  final TextEditingController controller;
+  final FocusNode             focusNode;
+  final bool                  isActive;
+  final String                hintText;
+  final TextInputType         keyboardType;
+  final ValueChanged<String>  onChanged;
+  final double                w, h;
 
   const _ProfileInput({
     required this.controller,
@@ -438,10 +596,10 @@ class _ProfileInput extends StatelessWidget {
         ),
       ),
       child: TextField(
-        controller:    controller,
-        focusNode:     focusNode,
-        keyboardType:  keyboardType,
-        onChanged:     onChanged,
+        controller:   controller,
+        focusNode:    focusNode,
+        keyboardType: keyboardType,
+        onChanged:    onChanged,
         style: TextStyle(
           fontSize:   w * 0.036,
           fontWeight: FontWeight.w400,
@@ -449,20 +607,17 @@ class _ProfileInput extends StatelessWidget {
         ),
         decoration: InputDecoration(
           hintText:  hintText,
-          hintStyle: TextStyle(
-            fontSize: w * 0.036,
-            color:    MyShopColors.textHint,
-          ),
+          hintStyle: TextStyle(fontSize: w * 0.036, color: MyShopColors.textHint),
           contentPadding: EdgeInsets.symmetric(
             horizontal: w * 0.041,
             vertical:   h * 0.017,
           ),
-          border:               InputBorder.none,
-          enabledBorder:        InputBorder.none,
-          focusedBorder:        InputBorder.none,
-          disabledBorder:       InputBorder.none,
-          errorBorder:          InputBorder.none,
-          focusedErrorBorder:   InputBorder.none,
+          border:             InputBorder.none,
+          enabledBorder:      InputBorder.none,
+          focusedBorder:      InputBorder.none,
+          disabledBorder:     InputBorder.none,
+          errorBorder:        InputBorder.none,
+          focusedErrorBorder: InputBorder.none,
         ),
       ),
     );
@@ -470,12 +625,9 @@ class _ProfileInput extends StatelessWidget {
 }
 
 // ── Warning Box ───────────────────────────────────────────────────────────────
-// Shown when email or phone has been changed.
-// OTP required before the update is persisted (EDD § Auth Module).
 
 class _WarningBox extends StatelessWidget {
-  final double w;
-  final double h;
+  final double w, h;
   const _WarningBox({required this.w, required this.h});
 
   @override
@@ -495,18 +647,12 @@ class _WarningBox extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Shield icon
             Padding(
               padding: EdgeInsets.only(top: h * 0.002),
-              child: Icon(
-                Icons.verified_user_outlined,
-                size:  w * 0.051,
-                color: MyShopColors.primaryGold,
-              ),
+              child: Icon(Icons.verified_user_outlined,
+                  size: w * 0.051, color: MyShopColors.primaryGold),
             ),
             SizedBox(width: w * 0.026),
-
-            // Warning text
             Expanded(
               child: RichText(
                 text: TextSpan(
@@ -517,12 +663,12 @@ class _WarningBox extends StatelessWidget {
                   ),
                   children: const [
                     TextSpan(
-                      text: 'Warning: ',
+                      text:  'Warning: ',
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
                     TextSpan(
-                      text: 'Changing your email or phone requires '
-                            'a one-time verification code for account security.',
+                      text: 'Changing your email requires a one-time '
+                            'verification code for account security.',
                       style: TextStyle(fontStyle: FontStyle.italic),
                     ),
                   ],
@@ -536,14 +682,61 @@ class _WarningBox extends StatelessWidget {
   }
 }
 
+// ── Error Banner ──────────────────────────────────────────────────────────────
+
+class _ErrorBanner extends StatelessWidget {
+  final String message;
+  final double w, h;
+  const _ErrorBanner(
+      {required this.message, required this.w, required this.h});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041),
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: w * 0.038,
+          vertical:   h * 0.015,
+        ),
+        decoration: BoxDecoration(
+          color:        MyShopColors.errorLight,
+          borderRadius: BorderRadius.circular(w * 0.026),
+          border:       Border.all(
+              color: MyShopColors.error.withAlpha(80), width: 1.5),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: EdgeInsets.only(top: h * 0.002),
+              child: Icon(Icons.error_outline_rounded,
+                  size: w * 0.046, color: MyShopColors.error),
+            ),
+            SizedBox(width: w * 0.026),
+            Expanded(
+              child: Text(
+                message,
+                style: TextStyle(
+                  fontSize: w * 0.031,
+                  height:   1.45,
+                  color:    MyShopColors.error,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ── Bottom Bar ────────────────────────────────────────────────────────────────
 
 class _BottomBar extends ConsumerWidget {
-  final double           w;
-  final double           h;
+  final double           w, h;
   final EditProfileState state;
-  const _BottomBar(
-      {required this.w, required this.h, required this.state});
+  const _BottomBar({required this.w, required this.h, required this.state});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -562,7 +755,7 @@ class _BottomBar extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          // ── Cancel ──
+          // Cancel
           Expanded(
             child: GestureDetector(
               onTap: () => Navigator.of(context).maybePop(),
@@ -572,7 +765,7 @@ class _BottomBar extends ConsumerWidget {
                 decoration: BoxDecoration(
                   color:        MyShopColors.surfaceWhite,
                   borderRadius: BorderRadius.circular(w * 0.031),
-                  border:       Border.all(color: MyShopColors.divider, width: 1.5),
+                  border: Border.all(color: MyShopColors.divider, width: 1.5),
                 ),
                 child: Center(
                   child: Text(
@@ -589,7 +782,7 @@ class _BottomBar extends ConsumerWidget {
           ),
           SizedBox(width: w * 0.031),
 
-          // ── Save Changes ──
+          // Save Changes
           Expanded(
             child: SizedBox(
               height: h * 0.066,

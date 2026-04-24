@@ -41,7 +41,7 @@ class ChatService {
       final response =
           await _dio.post('/chat/$type/$bookingId/messages', data: {
         'content': content,
-      });
+      },);
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);

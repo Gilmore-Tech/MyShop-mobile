@@ -1,7 +1,10 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/di/providers.dart';
+
 // ── Promo Frequency ───────────────────────────────────────────────────────────
-// PRD § 10 Notification Strategy: promotional frequency is user-configurable.
 
 enum PromoFrequency { daily, weekly, minimal }
 
@@ -11,37 +14,40 @@ extension PromoFrequencyX on PromoFrequency {
         PromoFrequency.weekly  => 'Weekly',
         PromoFrequency.minimal => 'Minimal',
       };
+
+  String get apiValue => switch (this) {
+        PromoFrequency.daily   => 'daily',
+        PromoFrequency.weekly  => 'weekly',
+        PromoFrequency.minimal => 'minimal',
+      };
 }
 
+PromoFrequency _parseFrequency(String? raw) => switch (raw) {
+      'weekly'  => PromoFrequency.weekly,
+      'minimal' => PromoFrequency.minimal,
+      _         => PromoFrequency.daily,
+    };
+
 // ── State ─────────────────────────────────────────────────────────────────────
-// API: GET  /v1/users/me/notification-preferences
-//      PATCH /v1/users/me/notification-preferences
 
 class NotificationSettingsState {
-  // ── Delivery channels ──
   final bool pushEnabled;
   final bool smsEnabled;
   final bool emailEnabled;
-
-  // ── Content & frequency ──
-  // criticalSafetyEnabled maps to PRD § 10 "Emergency Broadcasting" channel.
-  // The backend sends emergency alerts regardless; this toggle controls
-  // whether the OS can silence them (i.e. critical-alert entitlement on iOS,
-  // high-priority FCM on Android).
   final bool criticalSafetyEnabled;
   final PromoFrequency promoFrequency;
-
-  // ── Async ──
+  final bool isLoading;
   final bool isSaving;
   final String? errorMessage;
 
   const NotificationSettingsState({
-    this.pushEnabled         = true,
-    this.smsEnabled          = false,
-    this.emailEnabled        = true,
+    this.pushEnabled           = true,
+    this.smsEnabled            = false,
+    this.emailEnabled          = true,
     this.criticalSafetyEnabled = true,
-    this.promoFrequency      = PromoFrequency.daily,
-    this.isSaving            = false,
+    this.promoFrequency        = PromoFrequency.daily,
+    this.isLoading             = false,
+    this.isSaving              = false,
     this.errorMessage,
   });
 
@@ -51,17 +57,19 @@ class NotificationSettingsState {
     bool?            emailEnabled,
     bool?            criticalSafetyEnabled,
     PromoFrequency?  promoFrequency,
+    bool?            isLoading,
     bool?            isSaving,
     String?          errorMessage,
     bool             clearError = false,
   }) =>
       NotificationSettingsState(
-        pushEnabled:           pushEnabled          ?? this.pushEnabled,
-        smsEnabled:            smsEnabled           ?? this.smsEnabled,
-        emailEnabled:          emailEnabled         ?? this.emailEnabled,
+        pushEnabled:           pushEnabled           ?? this.pushEnabled,
+        smsEnabled:            smsEnabled            ?? this.smsEnabled,
+        emailEnabled:          emailEnabled          ?? this.emailEnabled,
         criticalSafetyEnabled: criticalSafetyEnabled ?? this.criticalSafetyEnabled,
-        promoFrequency:        promoFrequency       ?? this.promoFrequency,
-        isSaving:              isSaving             ?? this.isSaving,
+        promoFrequency:        promoFrequency        ?? this.promoFrequency,
+        isLoading:             isLoading             ?? this.isLoading,
+        isSaving:              isSaving              ?? this.isSaving,
         errorMessage:
             clearError ? null : (errorMessage ?? this.errorMessage),
       );
@@ -71,21 +79,32 @@ class NotificationSettingsState {
 
 class NotificationSettingsNotifier
     extends StateNotifier<NotificationSettingsState> {
-  NotificationSettingsNotifier() : super(const NotificationSettingsState()) {
+  NotificationSettingsNotifier(this._ref)
+      : super(const NotificationSettingsState()) {
     _load();
   }
 
+  final Ref _ref;
+
   Future<void> _load() async {
-    // TODO: GET /v1/users/me/notification-preferences
-    await Future.delayed(const Duration(milliseconds: 200));
-    // Mock matches design screenshot defaults.
-    state = state.copyWith(
-      pushEnabled:           true,
-      smsEnabled:            false,
-      emailEnabled:          true,
-      criticalSafetyEnabled: true,
-      promoFrequency:        PromoFrequency.daily,
-    );
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final prefs =
+          await _ref.read(userServiceProvider).getNotificationPreferences();
+      state = state.copyWith(
+        isLoading:             false,
+        pushEnabled:           prefs['pushEnabled']           as bool? ?? true,
+        smsEnabled:            prefs['smsEnabled']            as bool? ?? false,
+        emailEnabled:          prefs['emailEnabled']          as bool? ?? true,
+        criticalSafetyEnabled: prefs['criticalSafetyEnabled'] as bool? ?? true,
+        promoFrequency: _parseFrequency(prefs['promoFrequency'] as String?),
+      );
+    } catch (e) {
+      developer.log(
+          'getNotificationPreferences error: $e', name: 'NotificationSettings');
+      // Keep defaults on failure — non-fatal since toggles still work.
+      state = state.copyWith(isLoading: false);
+    }
   }
 
   void togglePush(bool v) =>
@@ -103,24 +122,38 @@ class NotificationSettingsNotifier
   void setPromoFrequency(PromoFrequency f) =>
       _save(state.copyWith(promoFrequency: f, clearError: true));
 
-  /// Optimistic save — applies UI change immediately, persists in background.
-  /// PATCH /v1/users/me/notification-preferences
+  /// Optimistic save — UI updates immediately, API call happens in background.
   Future<void> _save(NotificationSettingsState next) async {
     if (state.isSaving) return;
+    final previous = state;
     state = next.copyWith(isSaving: true);
-    // TODO: PATCH /v1/users/me/notification-preferences
-    await Future.delayed(const Duration(milliseconds: 400));
-    state = state.copyWith(isSaving: false);
+    try {
+      await _ref.read(userServiceProvider).updateNotificationPreferences(
+            pushEnabled:           next.pushEnabled,
+            smsEnabled:            next.smsEnabled,
+            emailEnabled:          next.emailEnabled,
+            criticalSafetyEnabled: next.criticalSafetyEnabled,
+            promoFrequency:        next.promoFrequency.apiValue,
+          );
+      state = state.copyWith(isSaving: false);
+    } catch (e) {
+      developer.log(
+          'updateNotificationPreferences error: $e', name: 'NotificationSettings');
+      // Roll back to previous state on failure.
+      state = previous.copyWith(
+        isSaving:     false,
+        errorMessage: 'Could not save settings. Please try again.',
+      );
+    }
   }
 
-  /// POST /v1/notifications/test — triggers a sample notification.
   Future<void> sendTestNotification() async {
-    // TODO: POST /v1/notifications/test
-    await Future.delayed(const Duration(milliseconds: 600));
+    // Stub — POST /notifications/test not yet implemented on backend.
+    await Future.delayed(const Duration(milliseconds: 300));
   }
 }
 
 final notificationSettingsProvider = StateNotifierProvider.autoDispose<
     NotificationSettingsNotifier, NotificationSettingsState>(
-  (_) => NotificationSettingsNotifier(),
+  (ref) => NotificationSettingsNotifier(ref),
 );

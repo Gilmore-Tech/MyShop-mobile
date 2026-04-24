@@ -4,26 +4,28 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../providers/referral_provider.dart';
+
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD § 4.9 — Referral programme: share code, earn loyalty points per referral.
-// EDD: GET /v1/users/me/referral  → { code, totalReferrals, pendingPesewas, earnedPesewas }
+// EDD: GET /users/me/referral  → { code, totalReferrals, pendingPesewas, earnedPesewas }
 
 class ReferralScreen extends ConsumerWidget {
   const ReferralScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final size = MediaQuery.sizeOf(context);
-    final w    = size.width;
-    final h    = size.height;
+    final size  = MediaQuery.sizeOf(context);
+    final w     = size.width;
+    final h     = size.height;
+    final async = ref.watch(referralProvider);
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
       appBar: AppBar(
         backgroundColor: MyShopColors.surfaceWhite,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back,
-              color: MyShopColors.textPrimary),
+          icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
           onPressed: () => context.pop(),
         ),
         title: Text('Refer & Earn',
@@ -33,25 +35,47 @@ class ReferralScreen extends ConsumerWidget {
                 fontWeight: FontWeight.w700)),
         centerTitle: false,
       ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(w * 0.05),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _HeroBanner(w: w, h: h),
-            SizedBox(height: h * 0.024),
-            _CodeCard(w: w, h: h),
-            SizedBox(height: h * 0.024),
-            _StatsRow(w: w, h: h),
-            SizedBox(height: h * 0.028),
-            _SectionTitle(text: 'How it works', w: w),
-            SizedBox(height: h * 0.016),
-            _HowItWorks(w: w, h: h),
-            SizedBox(height: h * 0.028),
-            _SectionTitle(text: 'Recent referrals', w: w),
-            SizedBox(height: h * 0.016),
-            _ReferralList(w: w, h: h),
-          ],
+      body: async.when(
+        loading: () => const Center(
+          child: CircularProgressIndicator(color: MyShopColors.primaryGold)),
+        error: (_, __) => Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline_rounded,
+                  color: MyShopColors.error, size: 48),
+              const SizedBox(height: 12),
+              const Text('Could not load referral data'),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => ref.invalidate(referralProvider),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+        data: (data) => SingleChildScrollView(
+          padding: EdgeInsets.all(w * 0.05),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _HeroBanner(w: w, h: h),
+              SizedBox(height: h * 0.024),
+              _CodeCard(code: data.code, w: w, h: h),
+              SizedBox(height: h * 0.024),
+              _StatsRow(data: data, w: w, h: h),
+              SizedBox(height: h * 0.028),
+              _SectionTitle(text: 'How it works', w: w),
+              SizedBox(height: h * 0.016),
+              _HowItWorks(w: w, h: h),
+              if (data.recentReferrals.isNotEmpty) ...[
+                SizedBox(height: h * 0.028),
+                _SectionTitle(text: 'Recent referrals', w: w),
+                SizedBox(height: h * 0.016),
+                _ReferralList(entries: data.recentReferrals, w: w, h: h),
+              ],
+            ],
+          ),
         ),
       ),
     );
@@ -115,12 +139,13 @@ class _HeroBanner extends StatelessWidget {
 // ── Referral code card ─────────────────────────────────────────────────────────
 
 class _CodeCard extends StatelessWidget {
+  final String code;
   final double w, h;
-  const _CodeCard({required this.w, required this.h});
+  const _CodeCard({required this.code, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
-    const code = 'AMA-XK7F2';
+    final displayCode = code.isNotEmpty ? code : '—';
 
     return Container(
       padding: EdgeInsets.all(w * 0.04),
@@ -147,12 +172,11 @@ class _CodeCard extends StatelessWidget {
             decoration: BoxDecoration(
               color:        MyShopColors.primaryGoldLight,
               borderRadius: BorderRadius.circular(10),
-              border:       Border.all(
+              border: Border.all(
                   color: MyShopColors.primaryGold.withAlpha(80),
-                  width: 1.5,
-                  style: BorderStyle.solid),
+                  width: 1.5),
             ),
-            child: Text(code,
+            child: Text(displayCode,
                 style: TextStyle(
                   color:         MyShopColors.textPrimary,
                   fontSize:      w * 0.056,
@@ -167,22 +191,22 @@ class _CodeCard extends StatelessWidget {
                 child: _ActionBtn(
                   icon:  Icons.copy_rounded,
                   label: 'Copy Code',
-                  onTap: () {
-                    Clipboard.setData(const ClipboardData(text: code));
-                    MyShopToast.show(context, message: 'Code copied!');
-                  },
+                  onTap: code.isEmpty
+                      ? null
+                      : () {
+                          Clipboard.setData(ClipboardData(text: code));
+                          MyShopToast.show(context, message: 'Code copied!');
+                        },
                   w: w, h: h,
                 ),
               ),
               SizedBox(width: w * 0.030),
               Expanded(
                 child: _ActionBtn(
-                  icon:   Icons.share_rounded,
-                  label:  'Share',
+                  icon:      Icons.share_rounded,
+                  label:     'Share',
                   isPrimary: true,
-                  onTap: () {
-                    // TODO: share via platform share sheet
-                  },
+                  onTap:     code.isEmpty ? null : () {},
                   w: w, h: h,
                 ),
               ),
@@ -195,11 +219,11 @@ class _CodeCard extends StatelessWidget {
 }
 
 class _ActionBtn extends StatelessWidget {
-  final IconData icon;
-  final String   label;
-  final bool     isPrimary;
-  final VoidCallback onTap;
-  final double   w, h;
+  final IconData     icon;
+  final String       label;
+  final bool         isPrimary;
+  final VoidCallback? onTap;
+  final double       w, h;
 
   const _ActionBtn({
     required this.icon,
@@ -245,8 +269,9 @@ class _ActionBtn extends StatelessWidget {
 // ── Stats row ──────────────────────────────────────────────────────────────────
 
 class _StatsRow extends StatelessWidget {
+  final ReferralData data;
   final double w, h;
-  const _StatsRow({required this.w, required this.h});
+  const _StatsRow({required this.data, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
@@ -255,17 +280,17 @@ class _StatsRow extends StatelessWidget {
         Expanded(
           child: _StatCard(
               label: 'Total Referrals',
-              value: '7',
+              value: '${data.totalReferrals}',
               icon:  Icons.people_alt_rounded,
-              w:     w, h: h),
+              w: w, h: h),
         ),
         SizedBox(width: w * 0.030),
         Expanded(
           child: _StatCard(
               label: 'Rewards Earned',
-              value: 'GHS 70',
+              value: 'GHS ${data.earnedGhs.toStringAsFixed(2)}',
               icon:  Icons.local_offer_rounded,
-              w:     w, h: h),
+              w: w, h: h),
         ),
       ],
     );
@@ -350,8 +375,9 @@ class _HowItWorks extends StatelessWidget {
         border:       Border.all(color: MyShopColors.divider),
       ),
       child: Column(
-        children: _steps.map((s) {
-          final isLast = s == _steps.last;
+        children: _steps.asMap().entries.map((kv) {
+          final s      = kv.value;
+          final isLast = kv.key == _steps.length - 1;
           return Column(
             children: [
               Row(
@@ -363,7 +389,8 @@ class _HowItWorks extends StatelessWidget {
                       color:        MyShopColors.primaryGoldLight,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(s.icon, color: MyShopColors.primaryGold, size: w * 0.048),
+                    child: Icon(s.icon,
+                        color: MyShopColors.primaryGold, size: w * 0.048),
                   ),
                   SizedBox(width: w * 0.030),
                   Expanded(
@@ -400,7 +427,7 @@ class _HowItWorks extends StatelessWidget {
   }
 }
 
-// ── Referral history ───────────────────────────────────────────────────────────
+// ── Shared helpers ─────────────────────────────────────────────────────────────
 
 class _SectionTitle extends StatelessWidget {
   final String text;
@@ -418,15 +445,13 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
-class _ReferralList extends StatelessWidget {
-  final double w, h;
-  const _ReferralList({required this.w, required this.h});
+// ── Referral history ───────────────────────────────────────────────────────────
 
-  static const _items = [
-    (name: 'Kwesi A.', date: 'Oct 21', status: 'earned'),
-    (name: 'Efua M.', date: 'Oct 15', status: 'pending'),
-    (name: 'Nana K.', date: 'Oct 3',  status: 'earned'),
-  ];
+class _ReferralList extends StatelessWidget {
+  final List<ReferralEntry> entries;
+  final double w, h;
+  const _ReferralList(
+      {required this.entries, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
@@ -437,7 +462,9 @@ class _ReferralList extends StatelessWidget {
         border:       Border.all(color: MyShopColors.divider),
       ),
       child: Column(
-        children: _items.map((item) {
+        children: entries.asMap().entries.map((kv) {
+          final item   = kv.value;
+          final isLast = kv.key == entries.length - 1;
           final earned = item.status == 'earned';
           return Column(
             children: [
@@ -450,8 +477,8 @@ class _ReferralList extends StatelessWidget {
                       width:  w * 0.10,
                       height: w * 0.10,
                       decoration: const BoxDecoration(
-                        color:  MyShopColors.surfaceGrey,
-                        shape:  BoxShape.circle,
+                        color: MyShopColors.surfaceGrey,
+                        shape: BoxShape.circle,
                       ),
                       child: Icon(Icons.person_rounded,
                           color: MyShopColors.textSecondary, size: w * 0.050),
@@ -468,7 +495,7 @@ class _ReferralList extends StatelessWidget {
                                 fontWeight: FontWeight.w600,
                               )),
                           const SizedBox(height: 2),
-                          Text(item.date,
+                          Text(item.dateLabel,
                               style: TextStyle(
                                   color:    MyShopColors.textSecondary,
                                   fontSize: w * 0.030)),
@@ -479,11 +506,15 @@ class _ReferralList extends StatelessWidget {
                       padding: EdgeInsets.symmetric(
                           horizontal: w * 0.024, vertical: 5),
                       decoration: BoxDecoration(
-                        color:        earned ? MyShopColors.successLight : MyShopColors.warningLight,
+                        color: earned
+                            ? MyShopColors.successLight
+                            : MyShopColors.warningLight,
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        earned ? '+GHS 10' : 'Pending',
+                        earned
+                            ? '+GHS ${(item.bonusPesewas / 100).toStringAsFixed(2)}'
+                            : 'Pending',
                         style: TextStyle(
                           color:      earned ? MyShopColors.success : MyShopColors.warning,
                           fontSize:   w * 0.028,
@@ -494,7 +525,7 @@ class _ReferralList extends StatelessWidget {
                   ],
                 ),
               ),
-              if (item != _items.last)
+              if (!isLast)
                 const Divider(height: 1, indent: 16, endIndent: 16,
                     color: MyShopColors.divider),
             ],

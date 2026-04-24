@@ -34,7 +34,7 @@ class JobService {
         'limit': limit,
         if (status != null) 'status': status,
         if (search != null && search.isNotEmpty) 'q': search,
-      });
+      },);
       // ignore: avoid_print
       print('[JobService] raw response.data: ${response.data}');
       final body = response.data;
@@ -80,7 +80,7 @@ class JobService {
         if (addressText != null) 'addressText': addressText,
         if (scheduledFor != null) 'scheduledFor': scheduledFor,
         if (photoUrls != null) 'photos': photoUrls,
-      });
+      },);
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -223,7 +223,7 @@ class JobService {
     try {
       final response = await _dio.patch('/jobs/$jobId/select-bid', data: {
         'bidId': bidId,
-      });
+      },);
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -239,7 +239,7 @@ class JobService {
       final response =
           await _dio.patch('/jobs/$jobId/supplement/respond', data: {
         'approved': approved,
-      });
+      },);
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -266,7 +266,7 @@ class JobService {
       final response = await _dio.post('/jobs/$jobId/dispute', data: {
         'reason': reason,
         if (description != null) 'description': description,
-      });
+      },);
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -275,11 +275,11 @@ class JobService {
 
   /// PATCH /jobs/:id/cancel — Cancel job (30-min free, 20% fee after).
   Future<Map<String, dynamic>> cancelJob(String jobId,
-      {String? reason}) async {
+      {String? reason,}) async {
     try {
       final response = await _dio.patch('/jobs/$jobId/cancel', data: {
         if (reason != null) 'reason': reason,
-      });
+      },);
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);

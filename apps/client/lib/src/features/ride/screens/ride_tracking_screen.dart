@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
 import '../providers/ride_provider.dart';
+import '../providers/ride_search_provider.dart';
 import '../widgets/ride_route_map.dart';
 import '../widgets/ride_tracking_sheet.dart';
 
@@ -16,12 +17,10 @@ import '../widgets/ride_tracking_sheet.dart';
 /// cancel request action, pulling it down maximises the map.
 class RideTrackingScreen extends ConsumerStatefulWidget {
   final MatchedDriver driver;
-  final String destination;
 
   const RideTrackingScreen({
     super.key,
     required this.driver,
-    this.destination = 'Kumasi City Mall, Lake Road',
   });
 
   @override
@@ -140,6 +139,8 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
         phase == RideTrackingPhase.arrived ? ref.watch(waitingCountdownProvider) : null;
     final mapEta =
         phase == RideTrackingPhase.inProgress ? tripEta : pickupEta;
+    final search = ref.watch(rideSearchProvider);
+    final destinationLabel = search.destination?.name ?? 'Your destination';
     final screenHeight = MediaQuery.sizeOf(context).height;
     final sosBottom = screenHeight * _sheetSize + 14;
 
@@ -149,7 +150,7 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
         children: [
           Positioned.fill(
             child: RideRouteMap(
-              destination: widget.destination,
+              destination: destinationLabel,
               etaMinutes: mapEta,
               phase: phase,
             ),
