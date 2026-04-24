@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
-import 'driver_status_provider.dart';
+import '../../../core/providers/provider_status_provider.dart';
 
 /// Streams the driver's current [Position] only while they are online (or busy
 /// on an active ride). When the driver toggles offline, the provider auto-
@@ -11,7 +11,7 @@ import 'driver_status_provider.dart';
 /// marker on each emission.
 final driverLocationStreamProvider =
     StreamProvider.autoDispose<Position>((ref) async* {
-  final status = ref.watch(driverStatusProvider);
+  final status = ref.watch(providerStatusProvider);
   if (status.isOffline) return;
 
   // Make sure we have permission before subscribing.

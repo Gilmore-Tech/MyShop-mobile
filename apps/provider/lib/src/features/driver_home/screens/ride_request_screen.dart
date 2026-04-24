@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-import '../providers/driver_status_provider.dart';
+import '../../../core/providers/provider_status_provider.dart';
 import '../providers/ride_request_provider.dart';
 import 'active_ride_screen.dart';
 
@@ -49,7 +49,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
   void _accept() {
     _timer?.cancel();
     ref.read(activeRideProvider.notifier).acceptRide(widget.ride);
-    ref.read(driverStatusProvider.notifier).setBusy();
+    ref.read(providerStatusProvider.notifier).setBusy();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(
         builder: (_) => const ActiveRideScreen(),

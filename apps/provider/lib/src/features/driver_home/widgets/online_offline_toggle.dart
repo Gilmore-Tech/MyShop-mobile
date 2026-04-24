@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../core/providers/availability_controller.dart';
+import '../../../core/providers/provider_status_provider.dart';
 import '../../profile/providers/verification_provider.dart';
 import '../../profile/widgets/incomplete_profile_sheet.dart';
-import '../providers/driver_status_provider.dart';
 
 /// Segmented Online/Offline toggle at the top of the bottom sheet.
 ///
@@ -18,7 +19,7 @@ class OnlineOfflineToggle extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final status = ref.watch(driverStatusProvider);
+    final status = ref.watch(providerStatusProvider);
     final isOnline = status.isOnline || status.isBusy;
     final isLocked = status.isBusy;
 
@@ -144,19 +145,32 @@ class OnlineOfflineToggle extends ConsumerWidget {
     );
   }
 
-  void _handleToggle(BuildContext context, WidgetRef ref, bool isOnline) {
-    // Going offline is always allowed.
+  Future<void> _handleToggle(
+    BuildContext context,
+    WidgetRef ref,
+    bool isOnline,
+  ) async {
+    final availability = ref.read(availabilityControllerProvider);
+
+    // Going offline: flip local state + fire backend offline POST so the
+    // matcher stops dispatching. Fire-and-forget — the user shouldn't wait
+    // on the network for an offline transition.
     if (isOnline) {
-      ref.read(driverStatusProvider.notifier).toggle();
+      availability.goOffline();
       return;
     }
 
-    // Going online requires a complete profile.
+    // Going online requires verification data to be loaded AND complete.
+    // Blocking on isLoading prevents a race where the user goes online
+    // while verification is still fetching — they'd bypass the incomplete
+    // profile sheet.
     final completion = ref.read(profileCompletionProvider);
-
-    // Still loading verification data — let it finish, don't block.
     if (completion.isLoading) {
-      ref.read(driverStatusProvider.notifier).toggle();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Checking your profile — please try again.'),
+        ),
+      );
       return;
     }
 
@@ -165,6 +179,11 @@ class OnlineOfflineToggle extends ConsumerWidget {
       return;
     }
 
-    ref.read(driverStatusProvider.notifier).toggle();
+    final error = await availability.goOnline();
+    if (error != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
+    }
   }
 }

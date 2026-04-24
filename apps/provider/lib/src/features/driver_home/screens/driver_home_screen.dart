@@ -10,7 +10,7 @@ import 'package:shared_ui/shared_ui.dart';
 import '../../../core/providers/socket_provider.dart';
 import '../data/road_snap_service.dart';
 import '../providers/driver_location_provider.dart';
-import '../providers/driver_status_provider.dart';
+import '../../../core/providers/provider_status_provider.dart';
 import '../screens/ride_request_screen.dart';
 import '../widgets/auto_accept_card.dart';
 import '../widgets/driver_car_marker.dart';
@@ -230,7 +230,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
   Widget build(BuildContext context) {
     // React to the driver going online/offline: stream location updates when
     // online and clear the car marker when they toggle off.
-    ref.listen<DriverStatus>(driverStatusProvider, (prev, next) {
+    ref.listen<DriverStatus>(providerStatusProvider, (prev, next) {
       if (next.isOffline) _clearDriverMarker();
     });
 
@@ -239,7 +239,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
       next.whenData(_onDriverPositionUpdate);
     });
 
-    final status = ref.watch(driverStatusProvider);
+    final status = ref.watch(providerStatusProvider);
     final isOnline = status.isOnline || status.isBusy;
 
     return Scaffold(
