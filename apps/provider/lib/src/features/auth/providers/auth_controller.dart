@@ -367,26 +367,58 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
-  /// Resend OTP — re-calls register (sign-up) or login (sign-in).
+  /// Resend OTP. The account already exists after the first register call
+  /// (backend rejects duplicate phone+role with CLIENT_ACCOUNT_EXISTS), so
+  /// both sign-up and sign-in resends go through the role-specific login
+  /// endpoint which re-sends an OTP for an existing account.
   Future<void> resendOtp() async {
     final current = state;
     if (current is! AuthOtpSent) return;
-
-    if (current.isNewUser) {
-      // For sign-up resend, we re-call register.
-      // Register is idempotent for OTP sending.
-      await _repo.register(RegisterRequest(
+    if (_requesting) return;
+    if (current.role == null) {
+      state = AuthOtpSent(
         phone: current.phone,
-        fullName: '', // Backend already has the data from initial register
-        type: current.role == ProviderType.artisan ? 'artisan' : 'driver',
-        privacyPolicyAccepted: true,
-      ));
-    } else {
+        isNewUser: current.isNewUser,
+        role: current.role,
+        error: 'Unable to resend code. Please restart sign-in.',
+      );
+      return;
+    }
+    _requesting = true;
+    try {
       if (current.role == ProviderType.driver) {
         await _repo.loginDriver(current.phone);
       } else {
         await _repo.loginArtisan(current.phone);
       }
+      state = AuthOtpSent(
+        phone: current.phone,
+        isNewUser: current.isNewUser,
+        role: current.role,
+      );
+    } on ApiException catch (e) {
+      state = AuthOtpSent(
+        phone: current.phone,
+        isNewUser: current.isNewUser,
+        role: current.role,
+        error: AuthErrorMapper.message(e),
+      );
+    } on AuthException catch (e) {
+      state = AuthOtpSent(
+        phone: current.phone,
+        isNewUser: current.isNewUser,
+        role: current.role,
+        error: e.message,
+      );
+    } catch (_) {
+      state = AuthOtpSent(
+        phone: current.phone,
+        isNewUser: current.isNewUser,
+        role: current.role,
+        error: 'Could not resend code. Please try again.',
+      );
+    } finally {
+      _requesting = false;
     }
   }
 
@@ -485,5 +517,19 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> logout() async {
     await _repo.clear();
     state = const AuthUnauthenticated();
+  }
+
+  /// Re-validate the session against [kSessionTtl]. Called on app resume
+  /// so a session that crossed the TTL while the app was backgrounded
+  /// gets invalidated immediately rather than on the next 401.
+  ///
+  /// Noop if the user isn't authenticated.
+  Future<void> recheckSessionOnResume() async {
+    if (state is! AuthAuthenticated) return;
+    final startedAt = await _tokenStorage.readSessionStartedAt();
+    if (startedAt == null) return;
+    if (DateTime.now().difference(startedAt) > kSessionTtl) {
+      await logout();
+    }
   }
 }

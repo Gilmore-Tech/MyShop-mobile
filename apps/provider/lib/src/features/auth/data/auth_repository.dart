@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:api_client/api_client.dart';
+import 'package:flutter/foundation.dart';
 
 /// Wraps [AuthService] with token persistence via [TokenStorage].
 class AuthRepository {
@@ -87,33 +88,41 @@ class AuthRepository {
   ///      still kicks the user out if the backend rejects the token.
   Future<AuthUser?> bootstrap() async {
     final token = await _tokenStorage.readAccessToken();
-    if (token == null) return null;
+    if (token == null) {
+      debugPrint('[Bootstrap] no access token — unauthenticated');
+      return null;
+    }
+    debugPrint('[Bootstrap] access token present (len=${token.length})');
 
     final startedAt = await _tokenStorage.readSessionStartedAt();
     if (startedAt != null &&
         DateTime.now().difference(startedAt) > kSessionTtl) {
+      debugPrint('[Bootstrap] session TTL expired (started $startedAt) — clearing');
       await _tokenStorage.clearTokens();
       return null;
     }
+    debugPrint('[Bootstrap] session started $startedAt — within TTL');
 
     final cachedJson = await _tokenStorage.readCachedProfileJson();
     if (cachedJson != null) {
       try {
         final map = jsonDecode(cachedJson) as Map<String, dynamic>;
         final profile = UserProfile.fromJson(map);
+        debugPrint('[Bootstrap] restored from cached profile');
         return AuthUser.fromProfile(profile, activeRole: await _activeRole());
-      } catch (_) {
-        // Cache corrupt — fall through to network fetch.
+      } catch (e) {
+        debugPrint('[Bootstrap] cached profile corrupt: $e — falling back to network');
       }
+    } else {
+      debugPrint('[Bootstrap] no cached profile — fetching /users/me');
     }
 
-    // No usable cache (e.g. app upgraded from a build before caching landed).
-    // Fall back to a network fetch; if that fails treat as still-authenticated
-    // by returning a minimal stub so the user isn't bounced to login. The
-    // 401 interceptor will clear the session if the token is actually dead.
     try {
-      return await fetchProfile();
-    } catch (_) {
+      final profile = await fetchProfile();
+      debugPrint('[Bootstrap] fetched profile from network');
+      return profile;
+    } catch (e) {
+      debugPrint('[Bootstrap] fetchProfile failed: $e');
       return null;
     }
   }
