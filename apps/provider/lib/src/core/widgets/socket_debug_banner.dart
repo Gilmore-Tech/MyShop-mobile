@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/auth/providers/current_user_provider.dart';
-import '../../features/driver_home/providers/driver_status_provider.dart';
+import '../providers/provider_status_provider.dart';
 import '../providers/socket_provider.dart';
 
 /// Compact overlay that surfaces the real-time state of the socket
@@ -24,7 +24,7 @@ class SocketDebugBanner extends ConsumerWidget {
     if (!kDebugMode) return const SizedBox.shrink();
 
     final connected = ref.watch(socketConnectedProvider);
-    final status = ref.watch(driverStatusProvider);
+    final status = ref.watch(providerStatusProvider);
     final lastEvent = ref.watch(lastSocketEventProvider);
     final verification = ref.watch(currentUserProvider)?.verificationStatus
         ?? 'unknown';

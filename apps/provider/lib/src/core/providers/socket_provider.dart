@@ -4,11 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_models/shared_models.dart';
 
+import '../../features/artisan_home/providers/active_job_provider.dart';
 import '../../features/artisan_home/providers/job_poller_provider.dart';
 import '../../features/artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dart';
+import '../../features/auth/providers/auth_controller.dart';
 import '../../features/driver_home/providers/driver_location_provider.dart';
-import '../../features/driver_home/providers/driver_status_provider.dart';
+import 'availability_controller.dart';
+import 'provider_status_provider.dart';
 import '../../features/profile/providers/provider_type_provider.dart';
 import 'nav_badge_provider.dart';
 import '../di/providers.dart';
@@ -17,9 +20,14 @@ import '../di/providers.dart';
 final socketServiceProvider = Provider<SocketService>((ref) {
   final config = ref.watch(apiConfigProvider);
   final tokenStorage = ref.watch(appTokenStorageProvider);
+  final dio = ref.watch(dioProvider);
   final service = SocketService(
     config: config,
     tokenStorage: tokenStorage,
+    dio: dio,
+    onForceLogout: () {
+      ref.read(authControllerProvider.notifier).logout();
+    },
   );
   ref.onDispose(service.dispose);
   return service;
@@ -45,7 +53,7 @@ final lastSocketEventProvider = StateProvider<String?>((ref) => null);
 /// when they go offline. Listens for incoming ride/job events and pushes
 /// them into the appropriate state providers.
 final socketConnectionProvider = Provider<void>((ref) {
-  final status = ref.watch(driverStatusProvider);
+  final status = ref.watch(providerStatusProvider);
   final socket = ref.read(socketServiceProvider);
 
   if (status.isOnline) {
@@ -63,7 +71,7 @@ final socketConnectionProvider = Provider<void>((ref) {
 ///
 /// Watched by the shell — activates whenever the provider is online.
 final locationSocketBridgeProvider = Provider<void>((ref) {
-  final status = ref.watch(driverStatusProvider);
+  final status = ref.watch(providerStatusProvider);
   if (!status.isOnline) return;
 
   final connected = ref.watch(socketConnectedProvider);
@@ -102,6 +110,10 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   // to the backend whenever a new fix arrives.
   ref.listen<AsyncValue<Position>>(driverLocationStreamProvider, (_, next) {
     next.whenData((position) {
+      // Cache the latest fix so the offline-toggle POST has coordinates
+      // even after the location stream has been torn down.
+      ref.read(lastKnownPositionProvider.notifier).state = position;
+
       // 1. Socket emit — fires on every GPS fix.
       socket.emit('location:update', {
         'latitude': position.latitude,
@@ -231,16 +243,38 @@ void _connectAndListen(Ref ref, SocketService socket) {
           // don't linger after a decision has been made.
           ref.read(pendingIncomingJobsProvider.notifier).remove(jobId);
         }
+
+        // If the event is for the currently-active job, push the new
+        // status into activeJobProvider so the CompletionOverlay flips
+        // through artisan_marked_complete → pending_payment → completed
+        // without the artisan having to tap anything.
+        final statusStr = data['status'] as String?;
+        if (jobId != null && statusStr != null) {
+          try {
+            final active = ref.read(activeJobProvider);
+            if (active.job?.id == jobId) {
+              final nextStatus = JobStatus.fromString(statusStr);
+              ref
+                  .read(activeJobProvider.notifier)
+                  .applyRemoteStatus(nextStatus);
+            }
+          } catch (_) {}
+        }
       }
     }
 
     socket
       ..off('job:status')
+      ..off('job:status:changed')
       ..off('job:bid_accepted')
       ..off('job:bid_rejected')
       ..off('bid:accepted')
       ..off('bid:rejected')
       ..on('job:status', handleJobStatus)
+      // Paystack flow uses the `:changed` suffix; older code emits plain
+      // `job:status`. Listen for both so every status transition — including
+      // pending_payment → completed — drives the artisan UI.
+      ..on('job:status:changed', handleJobStatus)
       // Pragmatic fallbacks: if the backend names the bid-outcome event
       // something other than `job:status`, we still want the UI to react.
       ..on('job:bid_accepted', handleJobStatus)

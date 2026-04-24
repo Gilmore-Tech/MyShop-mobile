@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'firebase_options.dart';
 import 'src/app/provider_app.dart';
 import 'src/core/di/providers.dart';
+import 'src/core/providers/location_guard.dart';
+import 'src/core/providers/logout_cleanup_bridge.dart';
 import 'src/core/services/fcm_service.dart';
 import 'src/core/services/local_notification_service.dart';
 import 'src/features/auth/providers/auth_controller.dart';
@@ -55,6 +57,14 @@ Future<void> main() async {
   // backend once the user signs in. Safe to fire pre-runApp — it's just
   // a Riverpod watch, not an async op.
   container.read(fcmAuthBridgeProvider);
+
+  // Activate the logout-cleanup bridge so the socket, surfaced-jobs
+  // set, and online status are torn down whenever the user logs out.
+  container.read(logoutCleanupBridgeProvider);
+
+  // Activate the location guard so we force the provider offline if
+  // Location Services is disabled or permission is revoked while online.
+  container.read(locationGuardProvider);
 
   runApp(
     UncontrolledProviderScope(
