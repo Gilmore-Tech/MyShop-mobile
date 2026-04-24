@@ -264,6 +264,17 @@ BidStatus _bidStatusFor(
   // en route. Return `none` so the caller hides the banner; the build
   // method pairs this with a redirect to `/active-job`.
   if (_isActiveWork(status)) return BidStatus.none;
+
+  // Terminal / awaiting-settlement states take precedence over the bid
+  // result because the job's global status is what actually governs what
+  // the artisan can still do. Without this gate, a completed job where
+  // the artisan won the bid would fall through to `bidAccepted` and the
+  // request screen would offer "Accept & Start Job" on a job that's
+  // already paid out.
+  if (status == JobStatus.completed) return BidStatus.completed;
+  if (status == JobStatus.pendingPayment) return BidStatus.awaitingPayment;
+  if (status == JobStatus.cancelled) return BidStatus.cancelled;
+
   if (entry.bidAccepted) return BidStatus.accepted;
   if (entry.bidRejected) return BidStatus.notSelected;
   // A bid is only "pending" if the artisan actually placed one and it's
@@ -369,6 +380,7 @@ class _NotBiddableNotice extends StatelessWidget {
       case JobStatus.arrived:
       case JobStatus.inProgress:
       case JobStatus.artisanMarkedComplete:
+      case JobStatus.pendingPayment:
       case JobStatus.completed:
         return (
           'Already assigned',

@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../core/providers/availability_controller.dart';
+import '../../../core/providers/provider_status_provider.dart';
 import '../../../core/widgets/socket_debug_banner.dart';
 import '../../auth/providers/current_user_provider.dart';
-import '../../driver_home/providers/driver_status_provider.dart';
 import '../../profile/providers/verification_provider.dart';
 import '../../profile/widgets/incomplete_profile_sheet.dart';
 import '../providers/artisan_earnings_provider.dart';
@@ -30,21 +31,36 @@ class ArtisanHomeScreen extends ConsumerStatefulWidget {
 }
 
 class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
-  void _handleToggle() {
-    final status = ref.read(driverStatusProvider);
+  Future<void> _handleToggle() async {
+    final status = ref.read(providerStatusProvider);
+    final availability = ref.read(availabilityControllerProvider);
 
-    // Going offline is always allowed.
-    if (status.isOnline) {
-      ref.read(driverStatusProvider.notifier).goOffline();
+    // Busy (active job) — toggle locked server-side and client-side.
+    // Matches PRD 5.3: artisan can't go offline during an active job.
+    if (status.isBusy) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("You can't go offline during an active job."),
+        ),
+      );
       return;
     }
 
-    // Going online requires a complete profile.
-    final completion = ref.read(profileCompletionProvider);
+    // Going offline: flip local state + fire backend offline POST so the
+    // matcher stops dispatching.
+    if (status.isOnline) {
+      availability.goOffline();
+      return;
+    }
 
-    // Still loading verification data — let it finish, don't block.
+    // Going online requires verification data to be loaded AND complete.
+    final completion = ref.read(profileCompletionProvider);
     if (completion.isLoading) {
-      ref.read(driverStatusProvider.notifier).goOnline();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Checking your profile — please try again.'),
+        ),
+      );
       return;
     }
 
@@ -53,7 +69,12 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
       return;
     }
 
-    ref.read(driverStatusProvider.notifier).goOnline();
+    final error = await availability.goOnline();
+    if (error != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
+    }
   }
 
   @override
@@ -112,7 +133,7 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
 
             // 2. Online status banner
             ArtisanOnlineBanner(
-              isOnline: ref.watch(driverStatusProvider).isOnline,
+              isOnline: ref.watch(providerStatusProvider).isOnline,
               onToggle: _handleToggle,
             ),
 

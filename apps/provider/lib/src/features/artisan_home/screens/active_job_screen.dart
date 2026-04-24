@@ -187,18 +187,41 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
               ),
             ),
 
-            // ── Bottom action panel with timeline.
+            // ── Bottom action panel / completion overlay ─────────────────
+            // Once the artisan marks complete, the active-work controls
+            // stop being useful — swap to a modal-style overlay driven by
+            // the backend's status so the UI stays in lockstep with
+            // Paystack's webhook (artisan_marked_complete → pending_payment
+            // → completed). The overlay auto-dismisses to a success card
+            // the moment the job settles, and "Go to Earnings" closes the
+            // flow and clears the active-job slot.
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
-              child: _BottomPanel(
-                job: job,
-                isUpdating: state.isUpdating,
-                onAdvance: () => ref.read(activeJobProvider.notifier).advance(),
-                onMessage: () => context.push('/chat'),
-                onCall: () {},
-              ),
+              child: _isCompletionPhase(job.status)
+                  ? _CompletionOverlay(
+                      status: job.status,
+                      clientFirstName: (job.clientName ?? 'Client')
+                          .split(' ')
+                          .first,
+                      isUpdating: state.isUpdating,
+                      onGoToEarnings: () {
+                        ref.read(activeJobProvider.notifier).clear();
+                        context.go('/earnings');
+                      },
+                      onConfirmCashReceipt: () => ref
+                          .read(activeJobProvider.notifier)
+                          .confirmCashReceipt(),
+                    )
+                  : _BottomPanel(
+                      job: job,
+                      isUpdating: state.isUpdating,
+                      onAdvance: () =>
+                          ref.read(activeJobProvider.notifier).advance(),
+                      onMessage: () => context.push('/chat'),
+                      onCall: () {},
+                    ),
             ),
           ],
         ),
@@ -1127,6 +1150,9 @@ class _PrimaryActionButton extends StatelessWidget {
       case JobStatus.inProgress:
         return ('Mark complete', Icons.check_circle_outline);
       case JobStatus.artisanMarkedComplete:
+        return ('Awaiting client', Icons.hourglass_top);
+      case JobStatus.pendingPayment:
+        return ('Awaiting payment', Icons.payments_outlined);
       case JobStatus.completed:
       case JobStatus.cancelled:
       case JobStatus.pendingAdmin:
@@ -1139,6 +1165,7 @@ class _PrimaryActionButton extends StatelessWidget {
 
   bool get _isTerminal =>
       status == JobStatus.artisanMarkedComplete ||
+      status == JobStatus.pendingPayment ||
       status == JobStatus.completed ||
       status == JobStatus.cancelled;
 
@@ -1226,6 +1253,291 @@ class _SecondaryButton extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Completion overlay
+//
+// Mounted once the artisan has marked the job complete. Its content is
+// driven entirely by the backend status so the socket
+// `job:status:changed` event (which silently reloads the jobs list and
+// reconciles `activeJobProvider.job.status`) walks us through:
+//
+//   artisan_marked_complete → "Waiting for client"
+//   pending_payment         → "Client is paying…"
+//   completed               → success card + "Go to Earnings" CTA
+//
+// Intentionally NOT a Navigator-pushed modal — keeping it in the widget
+// tree means the status change flips the card in place, so there's no
+// race with dismissing a modal bottom sheet mid-socket-event.
+// ─────────────────────────────────────────────────────────────────────────
+
+bool _isCompletionPhase(JobStatus status) =>
+    status == JobStatus.artisanMarkedComplete ||
+    status == JobStatus.pendingPayment ||
+    status == JobStatus.completed;
+
+class _CompletionOverlay extends StatelessWidget {
+  const _CompletionOverlay({
+    required this.status,
+    required this.clientFirstName,
+    required this.isUpdating,
+    required this.onGoToEarnings,
+    required this.onConfirmCashReceipt,
+  });
+
+  final JobStatus status;
+  final String clientFirstName;
+
+  /// True while the PATCH /confirm for cash receipt is in flight — dims
+  /// the Yes/No row and swaps the "Yes" label for a spinner.
+  final bool isUpdating;
+  final VoidCallback onGoToEarnings;
+  final VoidCallback onConfirmCashReceipt;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPad = MediaQuery.paddingOf(context).bottom;
+    final isCompleted = status == JobStatus.completed;
+    final isPendingPayment = status == JobStatus.pendingPayment;
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: MyShopColors.surfaceWhite,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x22000000),
+              blurRadius: 16,
+              offset: Offset(0, -4),
+            ),
+          ],
+        ),
+        padding: EdgeInsets.fromLTRB(
+          MyShopSpacing.lg,
+          MyShopSpacing.lg,
+          MyShopSpacing.lg,
+          bottomPad + MyShopSpacing.lg,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Drag handle
+            Container(
+              width: 48,
+              height: 5,
+              decoration: BoxDecoration(
+                color: MyShopColors.divider,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+            const SizedBox(height: MyShopSpacing.lg),
+
+            _CompletionIcon(status: status),
+            const SizedBox(height: MyShopSpacing.md),
+
+            Text(
+              _titleFor(status),
+              textAlign: TextAlign.center,
+              style: MyShopTypography.h2.copyWith(
+                fontWeight: FontWeight.w800,
+                fontSize: 20,
+              ),
+            ),
+            const SizedBox(height: MyShopSpacing.sm),
+            Text(
+              _subtitleFor(status, clientFirstName),
+              textAlign: TextAlign.center,
+              style: MyShopTypography.body1.copyWith(
+                color: MyShopColors.textSecondary,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: MyShopSpacing.lg),
+
+            if (isCompleted)
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: onGoToEarnings,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: MyShopColors.darkSlate,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.account_balance_wallet_outlined,
+                        color: MyShopColors.textOnDarkSlate,
+                        size: 20,
+                      ),
+                      const SizedBox(width: MyShopSpacing.sm),
+                      Text(
+                        'Go to Earnings',
+                        style: MyShopTypography.button.copyWith(
+                          color: MyShopColors.textOnDarkSlate,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else if (isPendingPayment)
+              // Cash flow: the client has initiated payment, which on the
+              // backend flips the job to pending_payment for cash settlements
+              // too. The artisan decides whether they've physically received
+              // the cash. Tapping "Yes" runs PATCH /confirm; "Not yet" leaves
+              // the job in pending_payment so it shows on both apps until
+              // the artisan comes back and confirms.
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: isUpdating ? null : onGoToEarnings,
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: MyShopColors.divider),
+                        minimumSize: const Size.fromHeight(52),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        'Not yet',
+                        style: MyShopTypography.button.copyWith(
+                          color: MyShopColors.textPrimary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: MyShopSpacing.sm),
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton(
+                      onPressed: isUpdating ? null : onConfirmCashReceipt,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: MyShopColors.success,
+                        disabledBackgroundColor:
+                            MyShopColors.success.withValues(alpha: 0.6),
+                        elevation: 0,
+                        minimumSize: const Size.fromHeight(52),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: isUpdating
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                valueColor: AlwaysStoppedAnimation(
+                                  MyShopColors.surfaceWhite,
+                                ),
+                              ),
+                            )
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.check_circle_outline,
+                                  color: MyShopColors.surfaceWhite,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: MyShopSpacing.sm),
+                                Text(
+                                  "Yes, I received payment",
+                                  style: MyShopTypography.button.copyWith(
+                                    color: MyShopColors.surfaceWhite,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
+                ],
+              )
+            else
+              // artisan_marked_complete: just waiting for the client to
+              // start paying. Inline progress bar signals the UI is live.
+              const LinearProgressIndicator(
+                minHeight: 3,
+                color: MyShopColors.primaryGold,
+                backgroundColor: MyShopColors.surfaceGrey,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _titleFor(JobStatus status) {
+    switch (status) {
+      case JobStatus.pendingPayment:
+        return 'Did you receive payment?';
+      case JobStatus.completed:
+        return 'Job complete!';
+      case JobStatus.artisanMarkedComplete:
+      default:
+        return 'Waiting for client confirmation';
+    }
+  }
+
+  static String _subtitleFor(JobStatus status, String clientFirstName) {
+    switch (status) {
+      case JobStatus.pendingPayment:
+        return "$clientFirstName picked a payment method. If they paid "
+            'in-app the job will settle automatically — if they paid in '
+            "cash, confirm receipt below. Tap \"Not yet\" to leave it "
+            'pending.';
+      case JobStatus.completed:
+        return 'Payment has been released to your wallet. Check your '
+            'earnings to see the breakdown.';
+      case JobStatus.artisanMarkedComplete:
+      default:
+        return "You've marked the job done. $clientFirstName needs to "
+            'review and pay before your earnings release.';
+    }
+  }
+}
+
+class _CompletionIcon extends StatelessWidget {
+  const _CompletionIcon({required this.status});
+
+  final JobStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, color) = switch (status) {
+      JobStatus.completed => (Icons.check_circle_rounded, MyShopColors.success),
+      JobStatus.pendingPayment => (
+          Icons.payments_outlined,
+          MyShopColors.primaryGold,
+        ),
+      _ => (Icons.hourglass_top_rounded, MyShopColors.primaryGold),
+    };
+    return Container(
+      width: 72,
+      height: 72,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(icon, size: 36, color: color),
     );
   }
 }

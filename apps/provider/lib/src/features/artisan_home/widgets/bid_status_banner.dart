@@ -16,6 +16,18 @@ enum BidStatus {
 
   /// Client picked another artisan.
   notSelected,
+
+  /// Job finished and the client's payment settled. Banner shows a
+  /// "Completed" success card — no CTA, earnings live under /earnings.
+  completed,
+
+  /// Client kicked off the Paystack escrow charge, webhook hasn't settled
+  /// yet. Banner is informational: "Client is paying — earnings release
+  /// automatically once the charge clears."
+  awaitingPayment,
+
+  /// Job was cancelled (by client or platform). Banner explains the state.
+  cancelled,
 }
 
 /// Top-of-screen banner that adapts to the [BidStatus]:
@@ -114,6 +126,12 @@ class _BidStatusBannerState extends State<BidStatusBanner> {
         return _buildAccepted();
       case BidStatus.notSelected:
         return _buildNotSelected();
+      case BidStatus.completed:
+        return _buildCompleted();
+      case BidStatus.awaitingPayment:
+        return _buildAwaitingPayment();
+      case BidStatus.cancelled:
+        return _buildCancelled();
       case BidStatus.none:
         return const SizedBox.shrink();
     }
@@ -328,6 +346,49 @@ class _BidStatusBannerState extends State<BidStatusBanner> {
     );
   }
 
+  // ── Completed ──
+  Widget _buildCompleted() {
+    return _OutcomeBanner(
+      accentColor: MyShopColors.success,
+      surfaceColor: MyShopColors.successLight,
+      icon: Icons.check_circle_rounded,
+      pillLabel: 'Completed',
+      title: 'Job complete',
+      body: 'The client has confirmed the work and your earnings have been '
+          'released. You can review the payout under Earnings.',
+    );
+  }
+
+  // ── Awaiting payment ──
+  // Client tapped confirm but Paystack hasn't settled yet (pending_payment).
+  // Informational only — the status flips to completed automatically when
+  // the webhook fires; no CTA needed.
+  Widget _buildAwaitingPayment() {
+    return _OutcomeBanner(
+      accentColor: MyShopColors.primaryGold,
+      surfaceColor: MyShopColors.warningLight,
+      icon: Icons.payments_outlined,
+      pillLabel: 'Awaiting Payment',
+      title: 'Client is paying',
+      body: "The escrow charge is settling. Your earnings will release "
+          'automatically the moment the payment clears.',
+    );
+  }
+
+  // ── Cancelled ──
+  Widget _buildCancelled() {
+    return _OutcomeBanner(
+      accentColor: MyShopColors.error,
+      surfaceColor: MyShopColors.surfaceWhite,
+      border: true,
+      icon: Icons.cancel_outlined,
+      pillLabel: 'Cancelled',
+      title: 'Job cancelled',
+      body: 'This job was cancelled. If you were already assigned, any '
+          'cancellation fee the client owed has been credited to your wallet.',
+    );
+  }
+
   // ── Not selected ──
   Widget _buildNotSelected() {
     return Container(
@@ -396,6 +457,95 @@ class _BidStatusBannerState extends State<BidStatusBanner> {
           Text(
             "Don't worry! Your profile is still visible for other tasks. You can send a revised bid if the client re-opens the request or message them for feedback.",
             style: MyShopTypography.body2.copyWith(height: 1.5),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shared layout for terminal-ish banners (completed / awaiting payment /
+/// cancelled). Takes a pill label, icon, title, and body paragraph — no
+/// action buttons, because the artisan has nothing left to do in these
+/// states beyond monitoring.
+class _OutcomeBanner extends StatelessWidget {
+  const _OutcomeBanner({
+    required this.accentColor,
+    required this.surfaceColor,
+    required this.icon,
+    required this.pillLabel,
+    required this.title,
+    required this.body,
+    this.border = false,
+  });
+
+  final Color accentColor;
+  final Color surfaceColor;
+  final IconData icon;
+  final String pillLabel;
+  final String title;
+  final String body;
+  final bool border;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(12),
+        border: border ? Border.all(color: MyShopColors.divider) : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 18, color: accentColor),
+              ),
+              const SizedBox(width: MyShopSpacing.sm),
+              Expanded(
+                child: Text(
+                  title,
+                  style: MyShopTypography.h3.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: MyShopColors.surfaceWhite,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: accentColor.withValues(alpha: 0.4)),
+                ),
+                child: Text(
+                  pillLabel,
+                  style: MyShopTypography.body2.copyWith(
+                    color: accentColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: MyShopSpacing.sm),
+          Text(
+            body,
+            style: MyShopTypography.body2.copyWith(
+              color: MyShopColors.textSecondary,
+              height: 1.5,
+            ),
           ),
         ],
       ),

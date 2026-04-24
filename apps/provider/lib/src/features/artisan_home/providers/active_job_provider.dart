@@ -6,7 +6,7 @@ import 'package:shared_models/shared_models.dart';
 
 import '../../../core/di/providers.dart';
 import '../../artisan_jobs/providers/artisan_jobs_provider.dart';
-import '../../driver_home/providers/driver_status_provider.dart';
+import '../../../core/providers/provider_status_provider.dart';
 
 /// Snapshot of the artisan's currently-active job — populated when the
 /// artisan taps "Accept & Start Job" on an accepted bid, cleared when the
@@ -67,15 +67,103 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
   void setJob(Job job) {
     state = state.copyWith(job: job, clearError: true);
     try {
-      _ref.read(driverStatusProvider.notifier).setBusy();
+      _ref.read(providerStatusProvider.notifier).setBusy();
     } catch (_) {
       // Status provider may not be mounted during tests — safe to ignore.
     }
   }
 
   /// Clear the slot (job completed or cancelled, user left the flow, etc.).
+  /// Also flips the artisan back to `online` so the socket reconnects and
+  /// new jobs start flowing again — the `busy` state is owned by this
+  /// provider, so clearing the slot owns the cleanup.
   void clear() {
     state = const ActiveJobState();
+    try {
+      _ref.read(providerStatusProvider.notifier).resumeAfterJob();
+    } catch (_) {
+      // Provider may not be mounted (tests) — safe to ignore.
+    }
+  }
+
+  /// Apply a status update pushed from the socket handler. Keeps the
+  /// active-job slot in sync with `job:status:changed` events so the
+  /// CompletionOverlay flips through artisan_marked_complete →
+  /// pending_payment → completed without any action from the artisan.
+  ///
+  /// When the new status is [JobStatus.completed] the artisan is
+  /// automatically returned to `online` — their wait is over, the socket
+  /// should wake up again so they can take the next job.
+  void applyRemoteStatus(JobStatus next) {
+    final job = state.job;
+    if (job == null) return;
+    if (job.status == next) return;
+    state = state.copyWith(job: job.copyWith(status: next));
+    if (next == JobStatus.completed) {
+      try {
+        _ref.read(providerStatusProvider.notifier).resumeAfterJob();
+      } catch (_) {}
+    }
+  }
+
+  /// Confirm receipt of a cash payment. Runs the same PATCH /jobs/:id/confirm
+  /// the client would — backend is idempotent and flips the job to
+  /// `completed` regardless of who calls it first. The socket event that
+  /// follows drives the overlay's success state via [applyRemoteStatus].
+  Future<bool> confirmCashReceipt() async {
+    final job = state.job;
+    if (job == null) return false;
+    if (state.isUpdating) return false;
+    state = state.copyWith(isUpdating: true, clearError: true);
+    try {
+      await _ref.read(jobServiceProvider).confirmJobCompletion(job.id);
+      // Optimistically flip to completed so the overlay swaps to the
+      // success card immediately — the socket event will reconcile.
+      state = state.copyWith(
+        job: job.copyWith(status: JobStatus.completed),
+        isUpdating: false,
+      );
+      try {
+        _ref.read(providerStatusProvider.notifier).resumeAfterJob();
+        if (_ref.exists(artisanJobsProvider)) {
+          _ref.read(artisanJobsProvider.notifier).silentReload();
+        }
+      } catch (_) {}
+      return true;
+    } on ApiException catch (e) {
+      developer.log(
+        'confirmCashReceipt failed: ${e.errorCode} — ${e.message}',
+        name: 'ActiveJob',
+        level: 900,
+      );
+      state = state.copyWith(
+        isUpdating: false,
+        errorMessage: _friendlyCashError(e),
+      );
+      return false;
+    } catch (e) {
+      developer.log(
+        'confirmCashReceipt crashed: $e',
+        name: 'ActiveJob',
+        level: 1000,
+      );
+      state = state.copyWith(
+        isUpdating: false,
+        errorMessage: "Couldn't confirm the payment. Please try again.",
+      );
+      return false;
+    }
+  }
+
+  String _friendlyCashError(ApiException e) {
+    switch (e.errorCode) {
+      case 'PAYMENT_NOT_SETTLED':
+        return "The client hasn't completed the payment yet.";
+      case 'NOT_ASSIGNED_ARTISAN':
+        return "Only this job's assigned artisan can confirm receipt.";
+      default:
+        return e.message;
+    }
   }
 
   /// Advance through the next valid state. Returns `true` if the backend
@@ -173,6 +261,7 @@ JobStatus? _nextStatusFor(JobStatus current) {
     case JobStatus.open:
     case JobStatus.queued:
     case JobStatus.artisanMarkedComplete:
+    case JobStatus.pendingPayment:
     case JobStatus.completed:
     case JobStatus.cancelled:
       return null;

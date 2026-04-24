@@ -8,7 +8,7 @@ import '../../../core/di/providers.dart';
 import '../../../core/providers/nav_badge_provider.dart';
 import '../../../core/providers/socket_provider.dart';
 import '../../artisan_jobs/providers/pending_incoming_jobs_provider.dart';
-import '../../driver_home/providers/driver_status_provider.dart';
+import '../../../core/providers/provider_status_provider.dart';
 import '../../profile/providers/provider_type_provider.dart';
 
 /// Set of job IDs already surfaced to the artisan (via socket OR poller).
@@ -35,7 +35,7 @@ final surfacedJobIdsProvider = StateProvider<Set<String>>((_) => <String>{});
 /// open jobs so the artisan isn't flooded with modals for jobs posted
 /// before they came online.
 final jobPollerProvider = Provider<void>((ref) {
-  final status = ref.watch(driverStatusProvider);
+  final status = ref.watch(providerStatusProvider);
   final isArtisan = ref.watch(providerTypeProvider).isArtisan;
   if (!status.isOnline || !isArtisan) return;
 
@@ -113,7 +113,7 @@ final jobPollerProvider = Provider<void>((ref) {
   // Kick off the seed immediately, then start the interval timer.
   poll(isSeed: true);
   final timer = Timer.periodic(
-    const Duration(seconds: 3),
+    const Duration(seconds: 10),
     (_) => poll(isSeed: false),
   );
   ref.onDispose(() {

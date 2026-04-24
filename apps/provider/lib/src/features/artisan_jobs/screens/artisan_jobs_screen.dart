@@ -332,6 +332,8 @@ class _JobCard extends ConsumerWidget {
           return ('IN PROGRESS', MyShopColors.primaryGold);
         case JobStatus.artisanMarkedComplete:
           return ('PENDING REVIEW', MyShopColors.warning);
+        case JobStatus.pendingPayment:
+          return ('AWAITING PAYMENT', MyShopColors.warning);
         case JobStatus.completed:
           return ('COMPLETED', MyShopColors.success);
         case JobStatus.cancelled:
@@ -359,6 +361,7 @@ class _JobCard extends ConsumerWidget {
       case JobStatus.arrived:
       case JobStatus.inProgress:
       case JobStatus.artisanMarkedComplete:
+      case JobStatus.pendingPayment:
       case JobStatus.completed:
         return ('NOT SELECTED', MyShopColors.textSecondary);
       case JobStatus.cancelled:
