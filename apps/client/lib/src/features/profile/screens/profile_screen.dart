@@ -128,41 +128,6 @@ class _ProfileBody extends StatelessWidget {
                       w: w,
                       h: h,
                     ),
-                    _RowDivider(w: w),
-                    _MenuRow(
-                      icon: Icons.language_rounded,
-                      title: 'Language',
-                      subtitle: 'English, Twi, and more',
-                      onTap: () => context.push(AppRoutes.profileLanguage),
-                      w: w,
-                      h: h,
-                    ),
-                    _RowDivider(w: w),
-                    _MenuRow(
-                      icon: Icons.history_rounded,
-                      title: 'Activity & History',
-                      subtitle: 'Past tasks, reviews, and logs',
-                      onTap: () => context.go(AppRoutes.activity),
-                      w: w,
-                      h: h,
-                    ),
-                  ],
-                ),
-                SizedBox(height: h * 0.022),
-
-                // ── Wallet ──
-                _SectionLabel(label: 'WALLET', w: w, h: h),
-                _SectionCard(
-                  w: w,
-                  children: [
-                    _MenuRow(
-                      icon: Icons.credit_card_rounded,
-                      title: 'Payment Methods',
-                      subtitle: 'MoMo, cards, and wallet balance',
-                      onTap: () => context.push(AppRoutes.profilePayments),
-                      w: w,
-                      h: h,
-                    ),
                   ],
                 ),
                 SizedBox(height: h * 0.022),

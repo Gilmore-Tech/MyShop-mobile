@@ -247,17 +247,9 @@ class UserService {
     }
   }
 
-  // ── Loyalty & Referral ────────────────────────────────────────────────────────
-
-  /// GET /users/me/loyalty — Points balance, tier, ledger.
-  Future<Map<String, dynamic>> getLoyalty() async {
-    try {
-      final response = await _dio.get('/users/me/loyalty');
-      return _unwrap(response) as Map<String, dynamic>;
-    } on DioException catch (e) {
-      throw ApiException.fromDioException(e);
-    }
-  }
+  // ── Referral ──────────────────────────────────────────────────────────────────
+  // Loyalty endpoints live on [LoyaltyService] (`/v1/loyalty/*`). The
+  // points balance itself is read off the user profile via [getMe].
 
   /// GET /users/me/referral — Referral code, stats, recent referrals.
   Future<Map<String, dynamic>> getReferral() async {

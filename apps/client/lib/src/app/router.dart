@@ -13,6 +13,7 @@ import 'main_shell.dart';
 import '../dev/dev_menu_screen.dart';
 
 // ── Onboarding ─────────────────────────────────────────────────────────────────
+import '../features/onboarding/screens/onboarding_screen.dart';
 import '../features/onboarding/screens/splash_screen.dart';
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
@@ -74,7 +75,6 @@ import '../features/profile/screens/support_legal_screen.dart';
 import '../features/profile/screens/referral_screen.dart';
 import '../features/profile/screens/payment_methods_screen.dart';
 import '../features/profile/screens/emergency_contacts_screen.dart';
-import '../features/profile/screens/language_settings_screen.dart';
 import '../features/profile/screens/loyalty_points_screen.dart';
 
 // ── Chat / Safety / Notifications ─────────────────────────────────────────────
@@ -88,6 +88,7 @@ import '../features/notifications/screens/notifications_list_screen.dart';
 abstract final class AppRoutes {
   // Onboarding
   static const splash          = '/';
+  static const onboarding      = '/onboarding';
   // Auth
   static const authPhone       = '/auth/phone';
   static const authSignUp      = '/auth/sign-up';
@@ -159,7 +160,6 @@ abstract final class AppRoutes {
   static const profileSavedPlaces  = '/profile/saved-places';
   static const profilePrivacy      = '/profile/privacy';
   static const profilePreferences  = '/profile/preferences';
-  static const profileLanguage     = '/profile/language';
   static const profileSupport      = '/profile/support';
   static const profileReferral     = '/profile/referral';
   static const profilePayments     = '/profile/payments';
@@ -192,11 +192,21 @@ final _profileNavKey        = GlobalKey<NavigatorState>(debugLabel: 'profile');
 // navigator keys are module-level so navigation state is preserved.
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(clientAuthControllerProvider);
-  return _buildRouter(authState);
+  final authState     = ref.watch(clientAuthControllerProvider);
+  final hasSeen       = ref.watch(hasSeenOnboardingProvider);
+  final pendingReplay = ref.watch(pendingReplayOnboardingProvider);
+  return _buildRouter(
+    authState:     authState,
+    hasSeen:       hasSeen,
+    pendingReplay: pendingReplay,
+  );
 });
 
-GoRouter _buildRouter(ClientAuthState authState) {
+GoRouter _buildRouter({
+  required ClientAuthState authState,
+  required bool            hasSeen,
+  required bool            pendingReplay,
+}) {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: AppRoutes.splash,
@@ -238,9 +248,22 @@ GoRouter _buildRouter(ClientAuthState authState) {
         return path == AppRoutes.authOtp ? null : AppRoutes.authOtp;
       }
 
-      // Authenticated — redirect away from auth screens
+      // Authenticated — gate on onboarding before letting them through.
+      //   • First-time users (!hasSeen) must finish onboarding.
+      //   • Users who flipped the "Replay Onboarding" pref see it once
+      //     more on next launch (pendingReplay==true). The screen clears
+      //     the flag on completion so subsequent launches go straight
+      //     to home.
       if (authState is AuthAuthenticated) {
-        return isAuthRoute ? AppRoutes.home : null;
+        final needsOnboarding = !hasSeen || pendingReplay;
+        if (needsOnboarding) {
+          return path == AppRoutes.onboarding ? null : AppRoutes.onboarding;
+        }
+        // Past onboarding — redirect away from any auth/onboarding routes.
+        if (isAuthRoute || path == AppRoutes.onboarding) {
+          return AppRoutes.home;
+        }
+        return null;
       }
 
       return null;
@@ -257,6 +280,10 @@ GoRouter _buildRouter(ClientAuthState authState) {
       GoRoute(
         path: AppRoutes.splash,
         builder: (_, __) => const SplashScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.onboarding,
+        builder: (_, __) => const OnboardingScreen(),
       ),
 
       // ── Auth ──────────────────────────────────────────────────────────────────
@@ -551,11 +578,6 @@ GoRouter _buildRouter(ClientAuthState authState) {
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.profilePreferences,
         builder: (_, __) => const AppPreferencesScreen(),
-      ),
-      GoRoute(
-        parentNavigatorKey: _rootNavigatorKey,
-        path: AppRoutes.profileLanguage,
-        builder: (_, __) => const LanguageSettingsScreen(),
       ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,

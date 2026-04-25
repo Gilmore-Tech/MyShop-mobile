@@ -134,7 +134,6 @@ class DevMenuScreen extends StatelessWidget {
             _Tile('Saved Locations',      () => context.push(AppRoutes.profileSavedPlaces)),
             _Tile('Privacy & Security',   () => context.push(AppRoutes.profilePrivacy)),
             _Tile('App Preferences',      () => context.push(AppRoutes.profilePreferences)),
-            _Tile('Language Settings',    () => context.push(AppRoutes.profileLanguage)),
             _Tile('Support & Legal',      () => context.push(AppRoutes.profileSupport)),
             _Tile('Referral',             () => context.push(AppRoutes.profileReferral)),
             _Tile('Payment Methods',      () => context.push(AppRoutes.profilePayments)),

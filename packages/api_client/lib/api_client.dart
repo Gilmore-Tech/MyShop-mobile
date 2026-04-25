@@ -22,6 +22,7 @@ export 'src/services/category_service.dart';
 export 'src/services/chat_service.dart';
 export 'src/services/job_service.dart';
 export 'src/services/location_service.dart';
+export 'src/services/loyalty_service.dart';
 export 'src/services/media_service.dart';
 export 'src/services/notification_service.dart';
 export 'src/services/payment_service.dart';
