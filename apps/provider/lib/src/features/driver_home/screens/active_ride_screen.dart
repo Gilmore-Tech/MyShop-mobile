@@ -1,11 +1,16 @@
 import 'dart:async';
+import 'dart:math' as math;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../core/services/directions_service.dart';
+import '../providers/driver_location_provider.dart';
 import '../providers/ride_request_provider.dart';
 
 /// Active ride screen — drives the four states from accepting a request all
@@ -30,9 +35,19 @@ class ActiveRideScreen extends ConsumerStatefulWidget {
 }
 
 class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
-  final Completer<GoogleMapController> _mapController = Completer();
   final DraggableScrollableController _sheetController =
       DraggableScrollableController();
+
+  /// Live distance/ETA pushed up from [_NavigationMap] on each GPS fix.
+  /// The header reads it via [ValueListenableBuilder] so the text ticks
+  /// down without forcing the GoogleMap to rebuild.
+  final ValueNotifier<_LiveMetrics> _liveMetrics =
+      ValueNotifier<_LiveMetrics>(const _LiveMetrics());
+
+  /// Lets the recenter button ask the map to refit without holding the
+  /// GoogleMapController itself — keeps native resources scoped to the map
+  /// widget.
+  final _MapHandle _mapHandle = _MapHandle();
 
   /// Time before the bottom panel auto-presents itself, simulating the
   /// driver getting close to the pickup pin.
@@ -54,12 +69,19 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
         );
       }
     });
+    // Note: `accepted → driver_en_route` is fired directly from
+    // `ActiveRideNotifier.acceptRide` so it lands the moment the socket
+    // ack returns, regardless of when this screen mounts. The backend's
+    // stage-timeout service auto-cancels rides stuck in `accepted` after
+    // ~2 minutes, so we can't risk the transition being delayed by widget
+    // lifecycle quirks.
   }
 
   @override
   void dispose() {
     _proximityTimer?.cancel();
     _sheetController.dispose();
+    _liveMetrics.dispose();
     super.dispose();
   }
 
@@ -88,6 +110,110 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
     }
   }
 
+  /// Bottom sheet with the "off the happy path" actions — currently just
+  /// "Cancel ride", which is the only reliable way out when the backend's
+  /// status PATCH is failing (e.g. Prisma errors during `complete`) and
+  /// the driver would otherwise be stuck on this screen forever.
+  Future<void> _showOverflowMenu(Ride ride) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: MyShopColors.surfaceWhite,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 44,
+              height: 5,
+              decoration: BoxDecoration(
+                color: MyShopColors.divider,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+            const SizedBox(height: MyShopSpacing.md),
+            ListTile(
+              leading: const Icon(Icons.cancel_outlined,
+                  color: MyShopColors.error),
+              title: const Text('Cancel ride',
+                  style: TextStyle(
+                    fontFamily: 'Raleway',
+                    fontWeight: FontWeight.w700,
+                    color: MyShopColors.error,
+                  )),
+              subtitle: const Text(
+                  "Notify the rider and free yourself for the next trip."),
+              onTap: () => Navigator.of(sheetCtx).pop('cancel'),
+            ),
+            const SizedBox(height: MyShopSpacing.sm),
+          ],
+        ),
+      ),
+    );
+    if (action != 'cancel' || !mounted) return;
+    await _confirmAndCancel(ride);
+  }
+
+  Future<void> _confirmAndCancel(Ride ride) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Cancel this ride?'),
+        content: const Text(
+          'The rider will be notified. Frequent cancellations affect your '
+          'driver rating.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: const Text('Keep ride'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: MyShopColors.error),
+            onPressed: () => Navigator.of(dialogCtx).pop(true),
+            child: const Text('Cancel ride'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await ref.read(activeRideProvider.notifier).cancelRide();
+    if (!mounted) return;
+    // Active ride state is now cleared; pop back to whatever was below us.
+    Navigator.of(context).pop('cancelled');
+  }
+
+  /// Where the driver is currently navigating to. Pickup until they have
+  /// the passenger in the car; drop-off after the trip starts.
+  LatLng _routingTarget(Ride ride) {
+    return switch (ride.status) {
+      RideStatus.inProgress => LatLng(ride.dropoffLat, ride.dropoffLng),
+      _ => LatLng(ride.pickupLat, ride.pickupLng),
+    };
+  }
+
+  String _targetLabel(RideStatus status) {
+    return switch (status) {
+      RideStatus.accepted ||
+      RideStatus.driverEnRoute =>
+        'TO PICKUP',
+      RideStatus.arrived => 'AT PICKUP',
+      RideStatus.inProgress => 'TO DESTINATION',
+      _ => 'TO DESTINATION',
+    };
+  }
+
+  String _targetAddress(Ride ride) {
+    return switch (ride.status) {
+      RideStatus.inProgress => ride.dropoffAddress,
+      _ => ride.pickupAddress,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(activeRideProvider);
@@ -98,49 +224,60 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
       );
     }
     final isUpdating = state.isUpdating;
+    final target = _routingTarget(ride);
+    final targetLabel = _targetLabel(ride.status);
+    final targetAddress = _targetAddress(ride);
 
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
       body: Stack(
         children: [
-          // ── Full-screen map background ──
+          // ── Full-screen navigation map. Owns its own controller, GPS
+          //    subscription, and Directions cache; rebuilding the parent
+          //    Stack does not churn the platform-view bridge.
           Positioned.fill(
-            child: GoogleMap(
-              initialCameraPosition: CameraPosition(
-                target: LatLng(ride.pickupLat, ride.pickupLng),
-                zoom: 15,
-              ),
-              onMapCreated: (c) {
-                if (!_mapController.isCompleted) _mapController.complete(c);
-              },
-              myLocationEnabled: true,
-              myLocationButtonEnabled: false,
-              zoomControlsEnabled: false,
-              mapToolbarEnabled: false,
-              compassEnabled: false,
-              padding: EdgeInsets.only(
-                top: MediaQuery.of(context).padding.top + 100,
+            child: RepaintBoundary(
+              child: _NavigationMap(
+                target: target,
+                handle: _mapHandle,
+                metrics: _liveMetrics,
               ),
             ),
           ),
 
-          // ── Navigation header (always visible) ──
-          const Positioned(
+          // ── Navigation header — rebuilds on every metrics tick (cheap
+          //    text only), independent of the GoogleMap.
+          Positioned(
             top: 0,
             left: 0,
             right: 0,
-            child: _NavigationHeader(),
+            child: ValueListenableBuilder<_LiveMetrics>(
+              valueListenable: _liveMetrics,
+              builder: (context, metrics, _) {
+                return _NavigationHeader(
+                  phaseLabel: targetLabel,
+                  address: targetAddress,
+                  liveDistanceMeters: metrics.distanceMeters,
+                  liveEtaMinutes: metrics.etaMinutes,
+                );
+              },
+            ),
           ),
 
-          // ── Map controls: recenter + SOS ──
+          // ── Map controls: recenter + overflow + SOS ──
           Positioned(
             right: MyShopSpacing.md,
             top: MediaQuery.of(context).padding.top + 130,
             child: Column(
               children: [
                 _MapControlButton(
-                  icon: Icons.refresh,
-                  onTap: () {},
+                  icon: Icons.my_location,
+                  onTap: () => _mapHandle.recenter?.call(),
+                ),
+                const SizedBox(height: MyShopSpacing.sm),
+                _MapControlButton(
+                  icon: Icons.more_vert,
+                  onTap: () => _showOverflowMenu(ride),
                 ),
                 const SizedBox(height: MyShopSpacing.sm),
                 _SosButton(onTap: () {}),
@@ -178,11 +315,41 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
 // ─── Navigation header ──────────────────────────────────────────────────────
 
 class _NavigationHeader extends StatelessWidget {
-  const _NavigationHeader();
+  const _NavigationHeader({
+    required this.phaseLabel,
+    required this.address,
+    required this.liveDistanceMeters,
+    required this.liveEtaMinutes,
+  });
+
+  /// e.g. "TO PICKUP" / "TO DESTINATION" — drives the small label above the
+  /// distance reading.
+  final String phaseLabel;
+
+  /// The address the driver is currently navigating to. Pickup until the
+  /// trip starts, drop-off afterwards.
+  final String address;
+
+  /// Straight-line distance from current GPS to [address], in meters.
+  /// Recomputed on every GPS fix so the label ticks down live.
+  final double? liveDistanceMeters;
+
+  /// Estimated minutes remaining, derived from the Directions route's
+  /// average road speed applied to [liveDistanceMeters]. Null until we have
+  /// both a GPS fix and a successful Directions response.
+  final int? liveEtaMinutes;
 
   @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
+    final distanceLabel = liveDistanceMeters != null
+        ? (liveDistanceMeters! < 1000
+            ? '${liveDistanceMeters!.round()} m'
+            : '${(liveDistanceMeters! / 1000).toStringAsFixed(1)} km')
+        : '— km';
+    final etaLabel = (liveEtaMinutes != null && liveEtaMinutes! > 0)
+        ? '${liveEtaMinutes!} min'
+        : (liveEtaMinutes == 0 ? 'Arriving' : '—');
     return Padding(
       padding: EdgeInsets.only(
         top: topPadding + 12,
@@ -216,21 +383,22 @@ class _NavigationHeader extends StatelessWidget {
                   size: 22, color: MyShopColors.darkSlate),
             ),
             const SizedBox(width: 12),
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('450m',
-                      style: TextStyle(
+                  Text(distanceLabel,
+                      style: const TextStyle(
                           fontFamily: 'Raleway',
                           fontSize: 22,
                           fontWeight: FontWeight.w900,
                           color: MyShopColors.textPrimary)),
-                  Text('Turn right onto Independence Ave',
-                      style: TextStyle(
+                  Text(address,
+                      style: const TextStyle(
                           fontFamily: 'Raleway',
                           fontSize: 12,
                           color: MyShopColors.textSecondary),
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis),
                 ],
               ),
@@ -244,16 +412,16 @@ class _NavigationHeader extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text('ETA',
-                    style: TextStyle(
+                Text(phaseLabel,
+                    style: const TextStyle(
                         fontFamily: 'Raleway',
                         fontSize: 10,
                         fontWeight: FontWeight.w900,
                         color: MyShopColors.primaryGold,
                         letterSpacing: 0.5)),
                 const SizedBox(height: 2),
-                const Text('12 min',
-                    style: TextStyle(
+                Text(etaLabel,
+                    style: const TextStyle(
                         fontFamily: 'Raleway',
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
@@ -264,6 +432,336 @@ class _NavigationHeader extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+// ─── Live metrics + map handle ──────────────────────────────────────────────
+
+class _LiveMetrics {
+  const _LiveMetrics({this.distanceMeters, this.etaMinutes});
+
+  /// Straight-line distance from current GPS to the routing target, in
+  /// meters. Null until we get the first fix.
+  final double? distanceMeters;
+
+  /// Estimated minutes remaining, derived from the Directions route's
+  /// average road speed applied to [distanceMeters].
+  final int? etaMinutes;
+}
+
+/// Recenter shim — handed to [_NavigationMap] so it can register a callback
+/// the parent can fire without holding the native controller itself.
+class _MapHandle {
+  VoidCallback? recenter;
+}
+
+// ─── Navigation map ─────────────────────────────────────────────────────────
+//
+// Owns the GoogleMap, its controller, the Directions route cache, and the
+// GPS subscription. Crucially this widget is the only thing that watches
+// `driverLocationStreamProvider`, so a new fix triggers a setState INSIDE
+// this widget only — the parent Stack doesn't rebuild and the platform-view
+// bridge isn't churned every second.
+//
+// Mirrors the artisan-side _NavigationMap in active_job_screen.dart.
+
+class _NavigationMap extends ConsumerStatefulWidget {
+  const _NavigationMap({
+    required this.target,
+    required this.handle,
+    required this.metrics,
+  });
+
+  final LatLng target;
+  final _MapHandle handle;
+  final ValueNotifier<_LiveMetrics> metrics;
+
+  @override
+  ConsumerState<_NavigationMap> createState() => _NavigationMapState();
+}
+
+class _NavigationMapState extends ConsumerState<_NavigationMap> {
+  GoogleMapController? _mapController;
+  DirectionsRoute? _route;
+  bool _routeLoading = false;
+  bool _hasFittedCamera = false;
+
+  /// Origin (driver GPS) used when the last route was fetched — lets us skip
+  /// a refetch if the GPS fix has barely moved.
+  LatLng? _lastRouteOrigin;
+  DateTime? _lastRouteFetchAt;
+
+  /// Most recent GPS fix. Stored in a field rather than via ref.watch so the
+  /// GoogleMap only rebuilds when this widget calls setState.
+  LatLng? _driver;
+
+  Set<Marker> _markers = const <Marker>{};
+  Set<Polyline> _polylines = const <Polyline>{};
+
+  static const _routeRefreshMeters = 80.0;
+  static const _routeRefreshThrottle = Duration(seconds: 30);
+
+  @override
+  void initState() {
+    super.initState();
+    widget.handle.recenter = _handleRecenter;
+    _markers = _buildMarkers();
+  }
+
+  @override
+  void didUpdateWidget(covariant _NavigationMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Phase changed (e.g. pickup → dropoff after trip starts). Drop the
+    // cached route + refit the camera so we navigate to the new target.
+    if (oldWidget.target.latitude != widget.target.latitude ||
+        oldWidget.target.longitude != widget.target.longitude) {
+      _route = null;
+      _lastRouteOrigin = null;
+      _lastRouteFetchAt = null;
+      _hasFittedCamera = false;
+      _markers = _buildMarkers();
+      _polylines = const <Polyline>{};
+      final driver = _driver;
+      if (driver != null) {
+        _refreshRouteIfNeeded(driver, force: true);
+      }
+      _publishMetrics();
+    }
+  }
+
+  @override
+  void dispose() {
+    if (widget.handle.recenter == _handleRecenter) {
+      widget.handle.recenter = null;
+    }
+    _mapController?.dispose();
+    super.dispose();
+  }
+
+  void _handleRecenter() {
+    final driver = _driver;
+    if (driver == null) return;
+    _hasFittedCamera = false;
+    _fitCamera(origin: driver, route: _route);
+    _refreshRouteIfNeeded(driver, force: true);
+  }
+
+  Future<void> _refreshRouteIfNeeded(
+    LatLng origin, {
+    bool force = false,
+  }) async {
+    if (_routeLoading) return;
+
+    if (!force) {
+      final last = _lastRouteOrigin;
+      if (last != null && _route != null) {
+        final drift = Geolocator.distanceBetween(
+          last.latitude,
+          last.longitude,
+          origin.latitude,
+          origin.longitude,
+        );
+        if (drift < _routeRefreshMeters) return;
+      }
+      final lastAt = _lastRouteFetchAt;
+      if (lastAt != null &&
+          DateTime.now().difference(lastAt) < _routeRefreshThrottle) {
+        return;
+      }
+    }
+
+    _routeLoading = true;
+    _lastRouteFetchAt = DateTime.now();
+    try {
+      final route = await ref.read(directionsServiceProvider).fetchRoute(
+            origin: origin,
+            destination: widget.target,
+          );
+      if (!mounted) return;
+      setState(() {
+        _route = route;
+        _lastRouteOrigin = origin;
+        _polylines = _buildPolylines();
+      });
+      _fitCamera(origin: origin, route: route);
+      _publishMetrics();
+    } finally {
+      _routeLoading = false;
+    }
+  }
+
+  void _onPositionFix(Position pos) {
+    if (!mounted) return;
+    final next = LatLng(pos.latitude, pos.longitude);
+    final prev = _driver;
+
+    if (prev != null &&
+        prev.latitude == next.latitude &&
+        prev.longitude == next.longitude) {
+      return;
+    }
+
+    setState(() {
+      _driver = next;
+      _markers = _buildMarkers();
+    });
+    _publishMetrics();
+    _refreshRouteIfNeeded(next);
+  }
+
+  void _publishMetrics() {
+    final driver = _driver;
+    if (driver == null) {
+      widget.metrics.value = const _LiveMetrics();
+      return;
+    }
+    final distance = _haversineMeters(driver, widget.target);
+    widget.metrics.value = _LiveMetrics(
+      distanceMeters: distance,
+      etaMinutes: _liveEtaMinutes(distance, _route),
+    );
+  }
+
+  Set<Marker> _buildMarkers() {
+    final driver = _driver;
+    return <Marker>{
+      Marker(
+        markerId: const MarkerId('target'),
+        position: widget.target,
+        icon:
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+      ),
+      if (driver != null)
+        Marker(
+          markerId: const MarkerId('driver'),
+          position: driver,
+          icon:
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+        ),
+    };
+  }
+
+  Set<Polyline> _buildPolylines() {
+    final route = _route;
+    if (route == null || route.polyline.length < 2) {
+      return const <Polyline>{};
+    }
+    return <Polyline>{
+      Polyline(
+        polylineId: const PolylineId('route'),
+        points: route.polyline,
+        color: MyShopColors.primaryGold,
+        width: 5,
+        patterns: route.isFallback
+            ? [PatternItem.dash(20), PatternItem.gap(12)]
+            : const [],
+        jointType: JointType.round,
+        startCap: Cap.roundCap,
+        endCap: Cap.roundCap,
+      ),
+    };
+  }
+
+  void _fitCamera({required LatLng origin, required DirectionsRoute? route}) {
+    final controller = _mapController;
+    if (controller == null) return;
+    if (_hasFittedCamera && route == null) return;
+
+    // Guard against absurd bounds (bad GPS, bad ride coords) — same reason
+    // as the artisan screen: a continent-wide bound triggers iOS jetsam.
+    final straightLineMeters = _haversineMeters(origin, widget.target);
+    if (straightLineMeters > 100000) {
+      controller.animateCamera(CameraUpdate.newLatLngZoom(origin, 14));
+      _hasFittedCamera = true;
+      return;
+    }
+
+    final points = (route != null && route.polyline.isNotEmpty)
+        ? route.polyline
+        : <LatLng>[origin, widget.target];
+    double south = points.first.latitude;
+    double north = points.first.latitude;
+    double west = points.first.longitude;
+    double east = points.first.longitude;
+    for (final p in points) {
+      if (p.latitude < south) south = p.latitude;
+      if (p.latitude > north) north = p.latitude;
+      if (p.longitude < west) west = p.longitude;
+      if (p.longitude > east) east = p.longitude;
+    }
+    controller.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(south, west),
+          northeast: LatLng(north, east),
+        ),
+        80,
+      ),
+    );
+    _hasFittedCamera = true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen<AsyncValue<Position>>(driverLocationStreamProvider,
+        (prev, next) {
+      next.whenData(_onPositionFix);
+    });
+
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(
+        target: _driver ?? widget.target,
+        zoom: 14,
+      ),
+      onMapCreated: (controller) {
+        _mapController = controller;
+        final driver = _driver;
+        if (driver != null) {
+          _fitCamera(origin: driver, route: _route);
+        }
+      },
+      myLocationEnabled: false,
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: false,
+      mapToolbarEnabled: false,
+      compassEnabled: false,
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top + 100,
+        bottom: 220,
+      ),
+      markers: _markers,
+      polylines: _polylines,
+    );
+  }
+
+  static double _haversineMeters(LatLng a, LatLng b) {
+    const earthRadius = 6371000.0;
+    final dLat = (b.latitude - a.latitude) * math.pi / 180.0;
+    final dLng = (b.longitude - a.longitude) * math.pi / 180.0;
+    final lat1 = a.latitude * math.pi / 180.0;
+    final lat2 = b.latitude * math.pi / 180.0;
+    final s1 = math.sin(dLat / 2);
+    final s2 = math.sin(dLng / 2);
+    final h = s1 * s1 + s2 * s2 * math.cos(lat1) * math.cos(lat2);
+    return 2 * earthRadius * math.asin(math.sqrt(h.clamp(0.0, 1.0)));
+  }
+
+  /// Estimated minutes derived from the Directions response's average road
+  /// speed. Falls back to ~30 km/h until we have a real route.
+  static int? _liveEtaMinutes(
+    double? meters,
+    DirectionsRoute? route,
+  ) {
+    if (meters == null) return null;
+    double? mps;
+    if (route != null &&
+        !route.isFallback &&
+        route.durationSeconds > 0 &&
+        route.distanceMeters > 0) {
+      mps = route.distanceMeters / route.durationSeconds;
+    }
+    mps ??= 8.333;
+    return (meters / mps / 60).round();
   }
 }
 
@@ -393,12 +891,7 @@ class _PassengerPanel extends StatelessWidget {
                 children: [
                   Stack(
                     children: [
-                      const CircleAvatar(
-                        radius: 28,
-                        backgroundColor: Color(0xFFFCEAE1),
-                        child: Icon(Icons.person,
-                            size: 28, color: MyShopColors.textSecondary),
-                      ),
+                      _ClientAvatar(photoUrl: ride.clientPhotoUrl, size: 56),
                       Positioned(
                         bottom: 0,
                         right: 0,
@@ -841,6 +1334,50 @@ class _DottedVerticalLine extends StatelessWidget {
           height: 2,
           color: MyShopColors.divider,
         ),
+      ),
+    );
+  }
+}
+
+/// Round avatar that loads `photoUrl` over the network when available and
+/// falls back to a generic person icon while loading or on error.
+class _ClientAvatar extends StatelessWidget {
+  const _ClientAvatar({required this.photoUrl, required this.size});
+
+  final String? photoUrl;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = photoUrl;
+    if (url == null || url.isEmpty) return _placeholder();
+    final cacheDim = (size * 3).round();
+    return ClipOval(
+      child: CachedNetworkImage(
+        imageUrl: url,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        memCacheWidth: cacheDim,
+        memCacheHeight: cacheDim,
+        placeholder: (_, __) => _placeholder(),
+        errorWidget: (_, __, ___) => _placeholder(),
+      ),
+    );
+  }
+
+  Widget _placeholder() {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        color: Color(0xFFFCEAE1),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(
+        Icons.person,
+        size: size * 0.5,
+        color: MyShopColors.textSecondary,
       ),
     );
   }

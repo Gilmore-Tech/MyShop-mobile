@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:api_client/api_client.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -37,6 +39,12 @@ final socketServiceProvider = Provider<SocketService>((ref) {
 /// Incoming ride request for drivers — populated by Socket.IO events.
 final incomingRideRequestProvider = StateProvider<Ride?>((ref) => null);
 
+/// IDs of ride requests we've already surfaced this session — prevents the
+/// request screen from re-stacking when the backend re-broadcasts the same
+/// ride to the driver before they accept/decline. Cleared on logout so a
+/// returning driver isn't permanently blind to old ride IDs.
+final surfacedRideIdsProvider = StateProvider<Set<String>>((_) => <String>{});
+
 /// Incoming job request for artisans — populated by Socket.IO events.
 final incomingJobRequestProvider = StateProvider<Job?>((ref) => null);
 
@@ -73,17 +81,22 @@ final socketConnectionProvider = Provider<void>((ref) {
 /// Watched by the shell — activates whenever the provider is online.
 final locationSocketBridgeProvider = Provider<void>((ref) {
   final status = ref.watch(providerStatusProvider);
-  if (!status.isOnline) return;
+  if (!status.isOnline) {
+    debugPrint('[LOC] bridge: status=$status — idle');
+    return;
+  }
 
   final connected = ref.watch(socketConnectedProvider);
-  if (!connected) return;
+  if (!connected) {
+    debugPrint('[LOC] bridge: online but socket not connected — waiting');
+    return;
+  }
 
   final socket = ref.read(socketServiceProvider);
   final locationService = ref.read(locationServiceProvider);
   final isArtisan = ref.read(providerTypeProvider).isArtisan;
-
-  DateTime? lastRestSentAt;
-  const restThrottle = Duration(seconds: 15);
+  debugPrint('[LOC] bridge: active (role=${isArtisan ? 'artisan' : 'driver'})'
+      ' — listening for fixes');
 
   Future<void> postLocation(Position position) async {
     try {
@@ -107,30 +120,63 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
     }
   }
 
-  // Listen to the existing position stream and emit `location:update`
-  // to the backend whenever a new fix arrives.
-  ref.listen<AsyncValue<Position>>(driverLocationStreamProvider, (_, next) {
-    next.whenData((position) {
-      // Cache the latest fix so the offline-toggle POST has coordinates
-      // even after the location stream has been torn down.
-      ref.read(lastKnownPositionProvider.notifier).state = position;
-
-      // 1. Socket emit — fires on every GPS fix.
-      socket.emit('location:update', {
-        'latitude': position.latitude,
-        'longitude': position.longitude,
-        'status': 'online',
-      });
-
-      // 2. REST call — throttled; first fix always fires, then every 15s.
-      final now = DateTime.now();
-      final shouldPost = lastRestSentAt == null ||
-          now.difference(lastRestSentAt!) >= restThrottle;
-      if (shouldPost) {
-        lastRestSentAt = now;
-        postLocation(position);
-      }
+  // Heartbeat: backend's Redis driver entry has a 5-second TTL (EDD §5.3),
+  // so we re-POST the last-known fix every 4s even when the phone is
+  // stationary. Without this, a parked driver gets force-offlined within
+  // ~5s of going online and stops receiving ride broadcasts.
+  // Backend is rate-limited to 1 update per 3s; 4s sits comfortably above.
+  //
+  // The position-stream listener below is intentionally socket-only: doing
+  // a REST POST on every fix (or even on the first fix per re-evaluation)
+  // races the heartbeat and trips the 3s rate limit, which expires the
+  // Redis entry and makes the driver invisible to the matcher.
+  final heartbeat = Timer.periodic(const Duration(seconds: 4), (_) {
+    final pos = ref.read(lastKnownPositionProvider);
+    if (pos == null) return;
+    socket.emit('location:update', {
+      'latitude': pos.latitude,
+      'longitude': pos.longitude,
+      'status': 'online',
     });
+    postLocation(pos);
+  });
+  ref.onDispose(heartbeat.cancel);
+
+  // Kick the heartbeat once immediately if we already have a cached fix —
+  // otherwise the backend would wait up to 4s before seeing the driver,
+  // and the rider's matcher could miss them on a freshly-online driver.
+  // This is the only "first POST" we do; the position-stream listener
+  // below intentionally does NOT post REST (heartbeat owns that channel).
+  final cached = ref.read(lastKnownPositionProvider);
+  if (cached != null) {
+    socket.emit('location:update', {
+      'latitude': cached.latitude,
+      'longitude': cached.longitude,
+      'status': 'online',
+    });
+    postLocation(cached);
+  }
+
+  // Listen to the existing position stream so the cached fix advances as
+  // the phone moves. Socket-only — the heartbeat is the single REST writer.
+  ref.listen<AsyncValue<Position>>(driverLocationStreamProvider, (_, next) {
+    next.when(
+      data: (position) {
+        ref.read(lastKnownPositionProvider.notifier).state = position;
+
+        // Socket emit on every fix is cheap and gives the matcher fresh
+        // coords between heartbeat ticks while the driver is moving.
+        socket.emit('location:update', {
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+          'status': 'online',
+        });
+      },
+      loading: () =>
+          debugPrint('[LOC] bridge: stream loading — no fix yet'),
+      error: (e, _) =>
+          debugPrint('[LOC] bridge: stream error — $e'),
+    );
   }, fireImmediately: true);
 });
 
@@ -155,6 +201,31 @@ void _connectAndListen(Ref ref, SocketService socket) {
       if (data is Map<String, dynamic>) {
         try {
           final ride = Ride.fromJson(data);
+
+          // Drop re-broadcasts for a ride we've already accepted. The backend
+          // re-fires `ride:request` / `ride:new` to all notified drivers until
+          // one acks; once we've accepted, those re-fires would otherwise pop
+          // the request screen back over the active-ride screen.
+          final active = ref.read(activeRideProvider).ride;
+          if (active != null && active.id == ride.id) {
+            debugPrint('[WS] Skipping re-broadcast for active ride ${ride.id}');
+            return;
+          }
+
+          // Dedupe pre-acceptance re-fires (the legacy `ride:request` fires
+          // alongside the new `ride:new`, and the matcher re-emits to the same
+          // driver every few seconds until they ack). Once we've surfaced the
+          // request screen for this ride id, subsequent emits should not push
+          // a new screen on top.
+          final surfaced = ref.read(surfacedRideIdsProvider);
+          if (surfaced.contains(ride.id)) {
+            debugPrint('[WS] Ride ${ride.id} already surfaced — skipping');
+            return;
+          }
+          ref.read(surfacedRideIdsProvider.notifier).update(
+                (s) => {...s, ride.id},
+              );
+
           ref.read(incomingRideRequestProvider.notifier).state = null;
           ref.read(incomingRideRequestProvider.notifier).state = ride;
           ref.read(navBadgeProvider.notifier).increment('/home');

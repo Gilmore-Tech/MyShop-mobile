@@ -7,6 +7,7 @@ import 'package:shared_models/shared_models.dart';
 import '../../features/artisan_home/widgets/incoming_job_modal.dart';
 import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../features/driver_home/providers/driver_location_provider.dart';
+import '../../features/driver_home/providers/ride_request_provider.dart';
 import '../providers/nav_badge_provider.dart';
 import '../providers/socket_provider.dart';
 import '../services/local_notification_service.dart';
@@ -39,6 +40,26 @@ class IncomingRequestListener extends ConsumerWidget {
         LocalNotificationService.instance.playForegroundAlert();
         _goToRideRequest(context, next, ref);
       }
+    });
+
+    // Surface a recovered active ride after a crash / force-quit. The
+    // recovery bridge populates [activeRideProvider] from a persisted ride
+    // id; this listener routes to the active-ride screen if we're not
+    // already there. Skipped for the normal accept flow because that path
+    // does its own `pushReplacement` from the request screen — by the time
+    // this listener fires, we'd already be on /active-ride.
+    ref.listen<ActiveRideState>(activeRideProvider, (prev, next) {
+      final hadRide = prev?.ride != null;
+      final hasRide = next.ride != null;
+      if (hadRide || !hasRide) return;
+      final currentLocation = GoRouterState.of(context).matchedLocation;
+      if (currentLocation == '/active-ride' ||
+          currentLocation == '/ride-request') {
+        return;
+      }
+      debugPrint('[IncomingRequestListener] recovered active ride '
+          '${next.ride!.id} — routing to /active-ride');
+      context.go('/active-ride');
     });
 
     // Listen for new job requests (artisan)

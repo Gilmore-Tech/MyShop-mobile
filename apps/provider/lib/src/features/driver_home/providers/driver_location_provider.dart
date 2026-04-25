@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -12,11 +13,18 @@ import '../../../core/providers/provider_status_provider.dart';
 final driverLocationStreamProvider =
     StreamProvider.autoDispose<Position>((ref) async* {
   final status = ref.watch(providerStatusProvider);
-  if (status.isOffline) return;
+  if (status.isOffline) {
+    debugPrint('[LOC] stream provider: offline — not subscribing');
+    return;
+  }
+  debugPrint('[LOC] stream provider: online — checking permission');
 
   // Make sure we have permission before subscribing.
   final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-  if (!serviceEnabled) return;
+  if (!serviceEnabled) {
+    debugPrint('[LOC] stream provider: services disabled — bailing');
+    return;
+  }
 
   var permission = await Geolocator.checkPermission();
   if (permission == LocationPermission.denied) {
@@ -24,16 +32,39 @@ final driverLocationStreamProvider =
   }
   if (permission == LocationPermission.denied ||
       permission == LocationPermission.deniedForever) {
+    debugPrint('[LOC] stream provider: permission $permission — bailing');
     return;
+  }
+
+  // Try the OS-cached fix first so the bridge fires immediately rather than
+  // waiting on a fresh GPS lock (which on iOS can fail with kCLErrorDomain 0
+  // until the sensor settles).
+  try {
+    final last = await Geolocator.getLastKnownPosition();
+    if (last != null) {
+      debugPrint('[LOC] stream provider: yielding last-known '
+          '(${last.latitude}, ${last.longitude})');
+      yield last;
+    }
+  } catch (e) {
+    debugPrint('[LOC] stream provider: getLastKnownPosition failed: $e');
   }
 
   // Emit the current fix immediately so the marker appears without waiting
   // for the first stream tick.
   try {
-    final initial = await Geolocator.getCurrentPosition();
+    final initial = await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        timeLimit: Duration(seconds: 8),
+      ),
+    );
+    debugPrint('[LOC] stream provider: yielding fresh '
+        '(${initial.latitude}, ${initial.longitude})');
     yield initial;
-  } catch (_) {
-    // ignore — the stream below will deliver the first real fix
+  } catch (e) {
+    debugPrint('[LOC] stream provider: getCurrentPosition failed: $e — '
+        'continuing to position stream');
   }
 
   yield* Geolocator.getPositionStream(

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
@@ -299,7 +300,7 @@ class _ClientCard extends StatelessWidget {
       decoration: BoxDecoration(color: MyShopColors.surfaceWhite, borderRadius: BorderRadius.circular(16), border: Border.all(color: MyShopColors.divider)),
       child: Row(
         children: [
-          const CircleAvatar(radius: 24, backgroundColor: MyShopColors.avatarPlaceholder, child: Icon(Icons.person, color: MyShopColors.textSecondary)),
+          _ClientAvatar(photoUrl: ride.clientPhotoUrl, size: 48),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -369,6 +370,47 @@ class _EarningsCard extends StatelessWidget {
           child: Text(ride.paymentMethod, style: MyShopTypography.body2.copyWith(fontWeight: FontWeight.w600, color: MyShopColors.textPrimary)),
         ),
       ]),
+    );
+  }
+}
+
+/// Round avatar that loads `photoUrl` over the network when available and
+/// falls back to a generic person icon while loading or on error.
+class _ClientAvatar extends StatelessWidget {
+  const _ClientAvatar({required this.photoUrl, required this.size});
+
+  final String? photoUrl;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = photoUrl;
+    if (url == null || url.isEmpty) return _placeholder();
+    // Decode at ~3x retina so a high-res upload doesn't balloon RAM usage.
+    final cacheDim = (size * 3).round();
+    return ClipOval(
+      child: CachedNetworkImage(
+        imageUrl: url,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        memCacheWidth: cacheDim,
+        memCacheHeight: cacheDim,
+        placeholder: (_, __) => _placeholder(),
+        errorWidget: (_, __, ___) => _placeholder(),
+      ),
+    );
+  }
+
+  Widget _placeholder() {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        color: MyShopColors.avatarPlaceholder,
+        shape: BoxShape.circle,
+      ),
+      child: const Icon(Icons.person, color: MyShopColors.textSecondary),
     );
   }
 }

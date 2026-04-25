@@ -11,8 +11,8 @@ import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/services/directions_service.dart';
 import '../../driver_home/providers/driver_location_provider.dart';
-import '../data/directions_service.dart';
 import '../providers/active_job_provider.dart';
 
 /// Active job — map-first navigation view the artisan sees after accepting

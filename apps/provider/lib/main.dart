@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'firebase_options.dart';
 import 'src/app/provider_app.dart';
 import 'src/core/di/providers.dart';
+import 'src/core/providers/active_ride_recovery_bridge.dart';
 import 'src/core/providers/availability_controller.dart';
 import 'src/core/providers/location_guard.dart';
 import 'src/core/providers/logout_cleanup_bridge.dart';
@@ -63,6 +64,11 @@ Future<void> main() async {
   // Activate the logout-cleanup bridge so the socket, surfaced-jobs
   // set, and online status are torn down whenever the user logs out.
   container.read(logoutCleanupBridgeProvider);
+
+  // Recover any ride the driver was on when the app last died — without
+  // this, a crash mid-ride leaves the backend flagging them `busy` and
+  // the matcher excludes them on subsequent ride requests.
+  container.read(activeRideRecoveryBridgeProvider);
 
   // Activate the location guard so we force the provider offline if
   // Location Services is disabled or permission is revoked while online.

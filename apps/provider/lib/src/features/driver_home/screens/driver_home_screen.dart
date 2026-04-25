@@ -97,16 +97,53 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
 
   Future<void> _goToCurrentLocation() async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return;
+    if (!serviceEnabled) {
+      debugPrint('[LOC] services disabled — staying on Kumasi fallback');
+      return;
+    }
 
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return;
     }
-    if (permission == LocationPermission.deniedForever) return;
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      debugPrint('[LOC] permission $permission — staying on Kumasi fallback');
+      return;
+    }
 
-    final position = await Geolocator.getCurrentPosition();
+    // Fast path: use the OS-cached last fix so the map centres in <100ms even
+    // when getCurrentPosition() is slow or temporarily failing (common on
+    // iOS when the GPS sensor hasn't settled yet, see kCLErrorDomain 0).
+    Position? position;
+    try {
+      position = await Geolocator.getLastKnownPosition();
+      if (position != null) {
+        debugPrint('[LOC] using last-known fix '
+            '(${position.latitude}, ${position.longitude})');
+      }
+    } catch (e) {
+      debugPrint('[LOC] getLastKnownPosition failed: $e');
+    }
+
+    try {
+      final fresh = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 8),
+        ),
+      );
+      position = fresh;
+      debugPrint('[LOC] got fresh fix '
+          '(${fresh.latitude}, ${fresh.longitude})');
+    } catch (e) {
+      // Common on iOS when sensor isn't settled — fall back to lastKnown
+      // (already loaded above) so the map at least leaves Kumasi.
+      debugPrint('[LOC] getCurrentPosition failed: $e');
+    }
+
+    if (position == null) return;
+
     // Cache the fix so other screens (edit business info, etc.) can centre
     // their maps on the driver without re-prompting for permission.
     ref.read(lastKnownPositionProvider.notifier).state = position;

@@ -35,9 +35,10 @@ final logoutCleanupBridgeProvider = Provider<void>((ref) {
     // in socketServiceProvider.
     ref.invalidate(socketServiceProvider);
 
-    // Forget which jobs were already surfaced to the previous user so
-    // the next user sees fresh open jobs.
+    // Forget which jobs/rides were already surfaced to the previous user so
+    // the next user sees fresh open jobs/rides.
     ref.invalidate(surfacedJobIdsProvider);
+    ref.invalidate(surfacedRideIdsProvider);
 
     // Reset online status — the next user starts offline on the home
     // screen regardless of what the previous user had set.
