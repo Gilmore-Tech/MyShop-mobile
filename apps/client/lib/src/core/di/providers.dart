@@ -2,6 +2,7 @@ import 'package:api_client/api_client.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../providers/current_location_provider.dart';
 import '../services/google_places_service.dart';
 
 /// API configuration (base URL).
@@ -87,6 +88,12 @@ final verificationServiceProvider = Provider<VerificationService>((ref) {
 });
 
 /// Google Places service for location autocomplete & reverse geocoding.
+/// Bias is re-derived from the latest cached device fix so suggestions
+/// stay relevant once the user moves out of the pilot city.
 final googlePlacesServiceProvider = Provider<GooglePlacesService>((ref) {
-  return GooglePlacesService();
+  final position = ref.watch(currentDevicePositionProvider);
+  return GooglePlacesService(
+    biasLatitude: position?.latitude,
+    biasLongitude: position?.longitude,
+  );
 });

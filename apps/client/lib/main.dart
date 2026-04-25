@@ -7,6 +7,7 @@ import 'package:myshop_client/firebase_options.dart';
 import 'src/app/client_app.dart';
 import 'src/core/constants/mapbox_config.dart';
 import 'src/core/di/providers.dart';
+import 'src/core/providers/current_location_provider.dart';
 import 'src/core/providers/socket_provider.dart';
 import 'src/core/services/fcm_service.dart';
 import 'src/core/services/local_notification_service.dart';
@@ -93,6 +94,18 @@ Future<void> main() async {
       await container.read(fcmServiceProvider).init();
     } catch (e) {
       debugPrint('[main] FCM init failed: $e');
+    }
+  });
+
+  // Warm up the device GPS fix so map screens and the "current location"
+  // greeting open with the user's actual position instead of the pilot-city
+  // default. Fire-and-forget — failures (denied permission, services off)
+  // just leave the cache empty and callers fall back gracefully.
+  Future<void>(() async {
+    try {
+      await container.read(currentLocationServiceProvider).ensure();
+    } catch (e) {
+      debugPrint('[main] current-location warm-up failed: $e');
     }
   });
 }

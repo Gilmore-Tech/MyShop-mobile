@@ -34,16 +34,32 @@ class PlaceDetail {
 
 /// Lightweight wrapper around Google Places API (legacy) for autocomplete
 /// and place detail lookups. Uses the client app's Maps API key.
+///
+/// [biasLatitude]/[biasLongitude] are passed by the DI provider so suggestions
+/// are biased toward the user's current device location when known. They fall
+/// back to the pilot-city defaults so search still works before the first
+/// GPS fix arrives.
 class GooglePlacesService {
-  GooglePlacesService({Dio? dio}) : _dio = dio ?? Dio();
+  GooglePlacesService({
+    Dio? dio,
+    double? biasLatitude,
+    double? biasLongitude,
+  })  : _dio = dio ?? Dio(),
+        _biasLat = biasLatitude ?? _kumasiLat,
+        _biasLng = biasLongitude ?? _kumasiLng;
 
   final Dio _dio;
+  final double _biasLat;
+  final double _biasLng;
 
   static const _baseUrl = 'https://maps.googleapis.com/maps/api/place';
 
-  /// Kumasi, Ghana — bias results towards the Ashanti Region.
-  static const _locationBias = '6.6885,-1.6244';
+  /// Pilot-city centre — used only when no device fix is available yet.
+  static const _kumasiLat = 6.6885;
+  static const _kumasiLng = -1.6244;
   static const _biasRadius = 50000; // 50 km
+
+  String get _locationBias => '$_biasLat,$_biasLng';
 
   /// Fetch autocomplete suggestions for [query].
   Future<List<PlaceSuggestion>> autocomplete(String query) async {
