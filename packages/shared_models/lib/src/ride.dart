@@ -38,10 +38,7 @@ class Ride {
       id: json['id'] as String,
       clientId: json['clientId'] as String,
       driverId: json['driverId'] as String?,
-      status: RideStatus.values.firstWhere(
-        (e) => e.name == json['status'],
-        orElse: () => RideStatus.requested,
-      ),
+      status: RideStatus.fromString(json['status'] as String),
       pickupAddress: json['pickupAddress'] as String,
       dropoffAddress: json['dropoffAddress'] as String,
       pickupLat: (json['pickupLat'] as num).toDouble(),
@@ -195,6 +192,40 @@ enum RideStatus {
 
   bool get isActive =>
       this == accepted || this == driverEnRoute || this == arrived || this == inProgress;
+
+  /// Parse a snake_case status string from the backend.
+  static RideStatus fromString(String value) {
+    switch (value) {
+      case 'requested':
+        return RideStatus.requested;
+      case 'accepted':
+        return RideStatus.accepted;
+      case 'driver_en_route':
+        return RideStatus.driverEnRoute;
+      case 'arrived':
+        return RideStatus.arrived;
+      case 'in_progress':
+        return RideStatus.inProgress;
+      case 'completed':
+        return RideStatus.completed;
+      case 'cancelled':
+        return RideStatus.cancelled;
+      default:
+        return RideStatus.requested;
+    }
+  }
+
+  /// Convert to the snake_case string the backend expects.
+  String toJson() {
+    switch (this) {
+      case RideStatus.driverEnRoute:
+        return 'driver_en_route';
+      case RideStatus.inProgress:
+        return 'in_progress';
+      default:
+        return name;
+    }
+  }
 }
 
 /// Trip summary with fare breakdown (displayed after ride completion).

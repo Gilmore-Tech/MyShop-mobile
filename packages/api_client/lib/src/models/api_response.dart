@@ -42,10 +42,27 @@ class ApiError {
   });
 
   factory ApiError.fromJson(Map<String, dynamic> json) {
+    // Capture sibling keys the backend tucks alongside code/message
+    // (e.g. 409 PAYMENT_ALREADY_INITIATED carries paymentId, ageSeconds,
+    // retryAfterSeconds at the top level of the error envelope rather
+    // than nested under `details`). Merge them into a single details
+    // bag so call sites have one place to look. Nested details wins
+    // on key collisions for backward compat.
+    final extras = <String, dynamic>{};
+    for (final entry in json.entries) {
+      final k = entry.key;
+      if (k == 'code' || k == 'message' || k == 'details') continue;
+      extras[k] = entry.value;
+    }
+    final nested = json['details'] as Map<String, dynamic>?;
+    Map<String, dynamic>? merged;
+    if (extras.isNotEmpty || nested != null) {
+      merged = <String, dynamic>{...extras, if (nested != null) ...nested};
+    }
     return ApiError(
       code: json['code'] as String,
       message: json['message'] as String,
-      details: json['details'] as Map<String, dynamic>?,
+      details: merged,
     );
   }
 

@@ -20,11 +20,22 @@ class PaymentService {
     );
   }
 
-  /// POST /payments/initiate — Initiate MoMo/card payment via Flutterwave.
+  /// POST /payments/initiate — Initiate a Paystack charge.
+  ///
+  /// Matches apps/api/src/modules/payment/dto/initiate-payment.dto.ts on
+  /// the backend. Accepted [paymentMethod] values:
+  ///   momo_mtn | momo_telecel | momo_airteltigo | visa | mastercard
+  ///
+  /// [momoPhone] is required for MoMo methods (accepts `+233XXXXXXXXX` or
+  /// `0XXXXXXXXX`). [cardToken] is required for card charges on saved
+  /// cards; omit it on first-time card payments and Paystack returns a
+  /// hosted checkout URL in the response.
   Future<Map<String, dynamic>> initiatePayment({
     required String bookingType,
     required String bookingId,
     required String paymentMethod,
+    String? momoPhone,
+    String? cardToken,
     String? promoCode,
   }) async {
     try {
@@ -32,7 +43,30 @@ class PaymentService {
         'bookingType': bookingType,
         'bookingId': bookingId,
         'paymentMethod': paymentMethod,
+        if (momoPhone != null) 'momoPhone': momoPhone,
+        if (cardToken != null) 'cardToken': cardToken,
         if (promoCode != null) 'promoCode': promoCode,
+      },);
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// POST /payments/submit-otp — Forward an OTP for a Paystack MoMo charge
+  /// that returned `data.status === 'send_otp'` from /payments/initiate.
+  ///
+  /// The backend should proxy this to Paystack's `/charge/submit_otp`
+  /// endpoint with `{ otp, reference }` and surface the resulting
+  /// `data.status` (typically `pay_offline` or `success` after the OTP).
+  Future<Map<String, dynamic>> submitOtp({
+    required String reference,
+    required String otp,
+  }) async {
+    try {
+      final response = await _dio.post('/payments/submit-otp', data: {
+        'reference': reference,
+        'otp': otp,
       },);
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
@@ -44,6 +78,24 @@ class PaymentService {
   Future<Map<String, dynamic>> getPaymentStatus(String paymentId) async {
     try {
       final response = await _dio.get('/payments/$paymentId/status');
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// POST /payments/:paymentId/abandon — Cancel an in-flight Paystack
+  /// charge. Use the local payment UUID (from the /initiate response),
+  /// NOT the Paystack reference. Idempotent: a 200 comes back even if
+  /// the payment is already failed. Errors:
+  ///   400 PAYMENT_NOT_ABANDONABLE — payment is escrowed/completed
+  ///   403 NOT_YOUR_PAYMENT
+  ///   404 PAYMENT_NOT_FOUND
+  /// On success the booking is unlocked and the next /payments/initiate
+  /// for the same job goes through immediately.
+  Future<Map<String, dynamic>> abandonPayment(String paymentId) async {
+    try {
+      final response = await _dio.post('/payments/$paymentId/abandon');
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);

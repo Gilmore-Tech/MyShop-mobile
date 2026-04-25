@@ -43,6 +43,11 @@ class RideService {
   }
 
   /// POST /rides — Create ride booking.
+  ///
+  /// Wire format uses `dropoff*` (not `destination*`) per the backend
+  /// schema. `paymentMethod` is required by the backend; valid values are
+  /// `cash`, `card`, `momo_mtn`, `momo_telecel`, `momo_airteltigo`.
+  /// Defaults to `cash` when the caller doesn't specify one.
   Future<Map<String, dynamic>> createRide({
     required double pickupLat,
     required double pickupLng,
@@ -58,13 +63,12 @@ class RideService {
       final response = await _dio.post('/rides', data: {
         'pickupLat': pickupLat,
         'pickupLng': pickupLng,
-        'destinationLat': destinationLat,
-        'destinationLng': destinationLng,
+        'dropoffLat': destinationLat,
+        'dropoffLng': destinationLng,
         if (pickupAddress != null) 'pickupAddress': pickupAddress,
-        if (destinationAddress != null)
-          'destinationAddress': destinationAddress,
+        if (destinationAddress != null) 'dropoffAddress': destinationAddress,
         if (stops != null) 'stops': stops,
-        if (paymentMethod != null) 'paymentMethod': paymentMethod,
+        'paymentMethod': paymentMethod ?? 'cash',
         if (promoCode != null) 'promoCode': promoCode,
       },);
       return _unwrap(response) as Map<String, dynamic>;
@@ -116,6 +120,32 @@ class RideService {
   Future<Map<String, dynamic>> getRide(String rideId) async {
     try {
       final response = await _dio.get('/rides/$rideId');
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// PATCH /rides/:id/status — Driver: advance the ride lifecycle.
+  ///
+  /// Valid transitions (and their required predecessors):
+  ///   requested        → accepted          (driver accepts)
+  ///   accepted         → driver_en_route   (driver heads to pickup)
+  ///   driver_en_route  → arrived           (driver at pickup pin)
+  ///   arrived          → in_progress       (passenger boarded; trip starts)
+  ///   in_progress      → completed         (trip finished)
+  ///
+  /// Backend rejects invalid transitions with `INVALID_STATUS_TRANSITION`
+  /// (400) and non-assigned drivers with `NOT_ASSIGNED_DRIVER` (403).
+  Future<Map<String, dynamic>> updateRideStatus(
+    String rideId, {
+    required String status,
+  }) async {
+    try {
+      final response = await _dio.patch(
+        '/rides/$rideId/status',
+        data: {'status': status},
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
