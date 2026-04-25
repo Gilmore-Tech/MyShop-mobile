@@ -43,7 +43,7 @@ Future<void> main() async {
   }
 
   // Local notifications — cheap, safe to await. Wrapped in case the
-  // platform channel isn't available (e.g. simulator quirks).
+  // platform channel isn't available (e.g. simulator quirks).r
   try {
     await LocalNotificationService.instance.init();
   } catch (e) {

@@ -3,6 +3,7 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/privacy_security_provider.dart';
+import '../widgets/submit_ghana_card_sheet.dart';
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 // PRD § 9 Safety & Security, § 9.5 Ghana DPA Compliance, § 9.6 Client KYC.
@@ -20,6 +21,19 @@ class PrivacySecurityScreen extends ConsumerWidget {
     final bottom = MediaQuery.paddingOf(context).bottom;
 
     final state = ref.watch(privacySecurityProvider);
+
+    // Surface a snackbar when a delete attempt fails. Success is handled
+    // implicitly by the auth-state redirect inside the router.
+    ref.listen<PrivacySecurityState>(privacySecurityProvider, (prev, next) {
+      if (next.errorMessage != null &&
+          next.errorMessage != prev?.errorMessage) {
+        MyShopToast.show(
+          context,
+          message: next.errorMessage!,
+          type: ToastType.error,
+        );
+      }
+    });
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
@@ -48,7 +62,10 @@ class PrivacySecurityScreen extends ConsumerWidget {
                           status: state.data!.kycStatus, w: w, h: h),
                       SizedBox(height: h * 0.012),
                       _KycDescription(
-                          status: state.data!.kycStatus, w: w, h: h),
+                        status:             state.data!.kycStatus,
+                        kycRejectionReason: state.data!.kycRejectionReason,
+                        w: w, h: h,
+                      ),
 
                       SizedBox(height: h * 0.028),
 
@@ -267,23 +284,31 @@ class _KycStatusCard extends StatelessWidget {
 
 class _KycDescription extends StatelessWidget {
   final KycStatus status;
+  final String?  kycRejectionReason;
   final double w;
   final double h;
-  const _KycDescription(
-      {required this.status, required this.w, required this.h});
+  const _KycDescription({
+    required this.status,
+    required this.w,
+    required this.h,
+    this.kycRejectionReason,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final reason = kycRejectionReason?.trim();
     final text = switch (status) {
       KycStatus.verified =>
         'Your identity documents have been verified against national '
             'databases. Verified users enjoy higher transaction limits.',
       KycStatus.pending =>
         'Your documents are under review. Verification typically '
-            'completes within a few minutes.',
-      KycStatus.rejected =>
-        'Verification was unsuccessful. Please resubmit your documents '
-            'to continue using all platform features.',
+            'completes within 24 hours.',
+      KycStatus.rejected => reason != null && reason.isNotEmpty
+          ? 'Verification was unsuccessful: $reason. Please resubmit '
+              'your documents to continue using all platform features.'
+          : 'Verification was unsuccessful. Please resubmit your '
+              'documents to continue using all platform features.',
       KycStatus.unverified =>
         'Verify your identity to unlock higher transaction limits and '
             'the ID Verified badge visible to artisans.',
@@ -331,31 +356,67 @@ class _AccountSecurityCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          _SecurityRow(
-            icon: Icons.smartphone_outlined,
-            title: 'Primary Phone',
-            subtitle: data.maskedPhone,
-            onTap: () {/* TODO: navigate to change-phone OTP flow */},
-            w: w,
-            h: h,
+          Builder(
+            builder: (ctx) => _SecurityRow(
+              icon: Icons.smartphone_outlined,
+              title: 'Primary Phone',
+              subtitle: data.maskedPhone,
+              onTap: () => MyShopToast.show(
+                ctx,
+                message: 'Phone changes require an OTP — coming soon. '
+                    'For now, contact support to update your number.',
+                duration: const Duration(seconds: 5),
+              ),
+              w: w,
+              h: h,
+            ),
           ),
           _RowDivider(w: w),
-          _SecurityRow(
-            icon: Icons.badge_outlined,
-            title: 'National ID',
-            subtitle: data.maskedNationalId,
-            onTap: () {/* TODO: navigate to KYC submission */},
-            w: w,
-            h: h,
+          Builder(
+            builder: (ctx) {
+              // Tap target depends on the current KYC status:
+              //   verified → toast confirming nothing to do
+              //   pending  → toast confirming review is in progress
+              //   else     → open the Ghana Card submit sheet
+              final onTap = switch (data.kycStatus) {
+                KycStatus.verified => () => MyShopToast.show(
+                      ctx,
+                      message: 'Your Ghana Card is verified.',
+                    ),
+                KycStatus.pending => () => MyShopToast.show(
+                      ctx,
+                      message:
+                          'Your Ghana Card is under review. We\'ll let '
+                          "you know once it's approved.",
+                      duration: const Duration(seconds: 5),
+                    ),
+                KycStatus.unverified ||
+                KycStatus.rejected =>
+                  () => showSubmitGhanaCardSheet(ctx),
+              };
+              return _SecurityRow(
+                icon: Icons.badge_outlined,
+                title: 'National ID',
+                subtitle: data.maskedNationalId,
+                onTap: onTap,
+                w: w,
+                h: h,
+              );
+            },
           ),
           _RowDivider(w: w),
-          _SecurityRow(
-            icon: Icons.fingerprint_rounded,
-            title: 'Biometric Login',
-            subtitle: data.biometricLabel,
-            onTap: () {/* TODO: navigate to biometric settings */},
-            w: w,
-            h: h,
+          Builder(
+            builder: (ctx) => _SecurityRow(
+              icon: Icons.fingerprint_rounded,
+              title: 'Biometric Login',
+              subtitle: data.biometricLabel,
+              onTap: () => MyShopToast.show(
+                ctx,
+                message: 'Biometric unlock will arrive in a future update.',
+              ),
+              w: w,
+              h: h,
+            ),
           ),
         ],
       ),
@@ -741,7 +802,9 @@ class _DangerZoneSection extends ConsumerWidget {
       await ref
           .read(privacySecurityProvider.notifier)
           .deleteAccount();
-      // TODO: on success, clear tokens and navigate to login
+      // The provider clears tokens + flips auth state to unauthenticated,
+      // which the GoRouter redirect picks up and routes to /auth/phone.
+      // Errors are surfaced as a snackbar on the screen below.
     }
   }
 }

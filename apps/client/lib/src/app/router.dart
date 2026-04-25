@@ -59,6 +59,7 @@ import '../features/services/screens/payment_screen.dart';
 
 // ── Activity ───────────────────────────────────────────────────────────────────
 import '../features/activity/screens/activity_list_screen.dart';
+import '../features/activity/screens/detailed_report_screen.dart';
 import '../features/activity/screens/ride_detail_screen.dart';
 import '../features/activity/screens/job_detail_screen.dart'
     as activity_job_detail;
@@ -67,7 +68,6 @@ import '../features/activity/screens/job_detail_screen.dart'
 import '../features/profile/screens/profile_screen.dart';
 import '../features/profile/screens/edit_profile_screen.dart';
 import '../features/profile/screens/saved_locations_screen.dart';
-import '../features/profile/screens/notification_settings_screen.dart';
 import '../features/profile/screens/privacy_security_screen.dart';
 import '../features/profile/screens/app_preferences_screen.dart';
 import '../features/profile/screens/support_legal_screen.dart';
@@ -149,6 +149,7 @@ abstract final class AppRoutes {
   // Activity history
   static const activityRide    = '/activity/ride/:rideId';
   static const activityJob     = '/activity/job/:jobId';
+  static const activityReport  = '/activity/report';
 
   static String activityRidePath(String rideId) => '/activity/ride/$rideId';
   static String activityJobPath(String jobId)   => '/activity/job/$jobId';
@@ -156,7 +157,6 @@ abstract final class AppRoutes {
   // Profile sub-screens
   static const profileEdit         = '/profile/edit';
   static const profileSavedPlaces  = '/profile/saved-places';
-  static const profileNotifications = '/profile/notifications';
   static const profilePrivacy      = '/profile/privacy';
   static const profilePreferences  = '/profile/preferences';
   static const profileLanguage     = '/profile/language';
@@ -525,6 +525,11 @@ GoRouter _buildRouter(ClientAuthState authState) {
         path: AppRoutes.activityJob,
         builder: (_, __) => const activity_job_detail.JobDetailScreen(),
       ),
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: AppRoutes.activityReport,
+        builder: (_, __) => const DetailedReportScreen(),
+      ),
 
       // ── Profile sub-screens (full-screen, above shell) ─────────────────────────
       GoRoute(
@@ -536,11 +541,6 @@ GoRouter _buildRouter(ClientAuthState authState) {
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.profileSavedPlaces,
         builder: (_, __) => const SavedLocationsScreen(),
-      ),
-      GoRoute(
-        parentNavigatorKey: _rootNavigatorKey,
-        path: AppRoutes.profileNotifications,
-        builder: (_, __) => const NotificationSettingsScreen(),
       ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,

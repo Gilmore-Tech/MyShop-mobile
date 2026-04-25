@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/services/google_places_service.dart';
 
 // ── Place Type ────────────────────────────────────────────────────────────────
 
@@ -158,6 +159,73 @@ class SavedPlacesNotifier extends StateNotifier<SavedPlacesState> {
   }
 
   Future<void> reload() => _load();
+
+  /// Resolves a Google Places suggestion to coordinates and POSTs it as a new
+  /// saved location. Returns `null` on success, a user-facing error message
+  /// on failure. The new place is prepended to the list optimistically once
+  /// the POST returns so the screen reflects it immediately.
+  ///
+  /// [label] is the user-entered name ("Home", "Gym", "Mom's House" …).
+  /// [locationType] is the backend enum: 'home' | 'work' | 'favourite' —
+  /// derived by the sheet from the chosen label, never user-typed directly.
+  Future<String?> addPlace({
+    required String          label,
+    required String          locationType,
+    required PlaceSuggestion suggestion,
+  }) async {
+    try {
+      final detail = await _ref
+          .read(googlePlacesServiceProvider)
+          .getPlaceDetail(suggestion.placeId);
+      if (detail == null) {
+        return "Couldn't fetch the location's details. Try a different place.";
+      }
+      final json = await _ref.read(userServiceProvider).createSavedLocation(
+            label:        label,
+            locationType: locationType,
+            latitude:     detail.latitude,
+            longitude:    detail.longitude,
+            addressText:  detail.address,
+          );
+      // Prepend so the new place is visible at the top of the list.
+      state = state.copyWith(
+        places: [_fromJson(json), ...state.places],
+        clearError: true,
+      );
+      return null;
+    } catch (e) {
+      developer.log('createSavedLocation error: $e', name: 'SavedPlaces');
+      return 'Could not save place. Please try again.';
+    }
+  }
+
+  /// PUT /users/me/saved-locations/:id with a new label only.
+  /// Coordinates and address stay as-is — re-picking the location is a
+  /// "delete and re-add" flow on the screen.
+  Future<String?> renamePlace({
+    required String id,
+    required String label,
+  }) async {
+    try {
+      final json = await _ref
+          .read(userServiceProvider)
+          .updateSavedLocation(id, label: label);
+      // Replace the renamed place in-place so other fields (address, last
+      // visited) are preserved without a full reload.
+      final updated = _fromJson(json);
+      state = state.copyWith(
+        places: [
+          for (final p in state.places)
+            if (p.id == id) updated else p,
+        ],
+        clearError: true,
+      );
+      return null;
+    } catch (e) {
+      developer.log('updateSavedLocation error: $e', name: 'SavedPlaces');
+      return 'Could not rename place. Please try again.';
+    }
+  }
 
   /// DELETE /users/me/saved-locations/:id
   Future<void> deletePlace(String id) async {

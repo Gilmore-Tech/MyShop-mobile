@@ -48,7 +48,11 @@ class _RideCompleteScreenState extends ConsumerState<RideCompleteScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       final receipt = ref.read(rideReceiptProvider);
-      await showRateRideSheet(context, receipt);
+      await showRateRideSheet(
+        context,
+        rideId: receipt.rideId,
+        driverFirstName: receipt.driverFirstName,
+      );
       if (!mounted) return;
       context.pushReplacement(
         AppRoutes.rideReceiptPath(receipt.rideId),

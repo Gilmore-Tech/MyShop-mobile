@@ -2,6 +2,7 @@ import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../auth/providers/auth_controller.dart';
+import '../../notifications/providers/notifications_provider.dart';
 
 // ── Account Profile ───────────────────────────────────��───────────────────────
 // API: GET /v1/users/me  (EDD § User Endpoints)
@@ -96,12 +97,16 @@ class AccountScreenNotifier
     if (authState is AuthAuthenticated) {
       final profile = AccountProfile.fromUserProfile(authState.profile);
 
-      // TODO: Fetch unread notification count from GET /notifications?unread=true
-      // For now derive from auth profile — the notification count will be
-      // wired when the notification provider is integrated.
+      // Watch the live notifications list and derive the unread count —
+      // this provider rebuilds automatically when a push arrives or the
+      // user marks one read on the notifications screen, so the badge
+      // stays in sync without a separate /notifications/unread call.
+      final notifs = ref.watch(notifsProvider);
+      final unread = notifs.where((n) => !n.isRead).length;
+
       return AccountScreenData(
         profile: profile,
-        unreadNotificationCount: 0,
+        unreadNotificationCount: unread,
       );
     }
 

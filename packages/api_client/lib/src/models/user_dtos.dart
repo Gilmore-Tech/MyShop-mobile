@@ -75,6 +75,8 @@ class ClientProfile {
     required this.id,
     required this.loyaltyPointsBalance,
     required this.ghanaCardVerified,
+    required this.kycStatus,
+    this.kycRejectionReason,
     this.displayName,
     this.profilePhotoUrl,
     this.referralCode,
@@ -90,6 +92,11 @@ class ClientProfile {
       referralCode: _asString(json['referralCode']),
       preferredPaymentMethod: _asString(json['preferredPaymentMethod']),
       ghanaCardVerified: json['ghanaCardVerified'] as bool? ?? false,
+      // Backend column defaults to 'not_started' on registration; the
+      // verification endpoint flips it through 'pending_review' →
+      // 'verified' or 'rejected'.
+      kycStatus: _asString(json['kycStatus']) ?? 'not_started',
+      kycRejectionReason: _asString(json['kycRejectionReason']),
     );
   }
 
@@ -105,6 +112,17 @@ class ClientProfile {
   final String? referralCode;
   final String? preferredPaymentMethod;
   final bool ghanaCardVerified;
+
+  /// Backend KYC pipeline state for the Ghana Card review:
+  ///   'not_started'    → no submission yet
+  ///   'pending_review' → submitted, waiting on admin
+  ///   'verified'       → admin approved (also implies ghanaCardVerified=true)
+  ///   'rejected'       → admin rejected; see [kycRejectionReason]
+  final String kycStatus;
+
+  /// Populated only when [kycStatus] == 'rejected'. Free-text reason from
+  /// the admin dashboard ("blurry photo", "expired card", etc.).
+  final String? kycRejectionReason;
 }
 
 /// Driver sub-profile from GET /users/me.

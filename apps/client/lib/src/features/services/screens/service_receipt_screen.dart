@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ride/providers/ride_receipt_provider.dart' show PaymentMethodType;
 import '../providers/service_receipt_provider.dart';
+import '../widgets/rate_job_sheet.dart';
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 // PRD § 4.6 — opened from activity list "View Details" on a job transaction.
@@ -85,6 +86,15 @@ class _ReceiptBody extends StatelessWidget {
             name:     receipt.artisanName,
             subtitle: receipt.artisanSpecialty,
             rating:   receipt.artisanRating,
+            w: w,
+            h: h,
+          ),
+          const Divider(height: 1, thickness: 1, color: MyShopColors.divider),
+          _RateProviderCTA(
+            providerFirstName:
+                receipt.artisanName.split(RegExp(r'\s+')).first,
+            providerKind: 'artisan',
+            onTap: () => showRateJobSheet(context, receipt),
             w: w,
             h: h,
           ),
@@ -888,6 +898,91 @@ class _SkeletonCircle extends StatelessWidget {
       decoration: const BoxDecoration(
         color: MyShopColors.divider,
         shape: BoxShape.circle,
+      ),
+    );
+  }
+}
+
+// ── Rate Provider CTA ─────────────────────────────────────────────────────────
+//
+// Inline section between the provider card and service details. Lets the
+// client open the artisan rating sheet from the receipt — useful when they
+// skipped rating on the post-completion screen, or are revisiting a
+// historical receipt from the activity list.
+
+class _RateProviderCTA extends StatelessWidget {
+  final String       providerFirstName;
+  final String       providerKind; // 'driver' | 'artisan'
+  final VoidCallback onTap;
+  final double       w, h;
+
+  const _RateProviderCTA({
+    required this.providerFirstName,
+    required this.providerKind,
+    required this.onTap,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: w * 0.041,
+          vertical:   h * 0.022,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width:  w * 0.108,
+              height: w * 0.108,
+              decoration: BoxDecoration(
+                color: MyShopColors.primaryGoldLight,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: MyShopColors.primaryGold.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Icon(
+                Icons.star_rounded,
+                size:  w * 0.056,
+                color: MyShopColors.primaryGold,
+              ),
+            ),
+            SizedBox(width: w * 0.031),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Rate $providerFirstName',
+                    style: TextStyle(
+                      fontSize:   w * 0.041,
+                      fontWeight: FontWeight.w700,
+                      color:      MyShopColors.textPrimary,
+                    ),
+                  ),
+                  SizedBox(height: h * 0.003),
+                  Text(
+                    'Share your feedback for this $providerKind',
+                    style: TextStyle(
+                      fontSize:   w * 0.031,
+                      fontWeight: FontWeight.w400,
+                      color:      MyShopColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              size:  w * 0.056,
+              color: MyShopColors.textSecondary,
+            ),
+          ],
+        ),
       ),
     );
   }

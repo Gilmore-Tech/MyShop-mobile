@@ -30,26 +30,41 @@ class RideRatingState {
   /// True while the POST /v1/ratings request is in-flight.
   final bool isSubmitting;
 
+  /// True once the API has confirmed the rating saved.
+  final bool isSubmitted;
+
+  /// Surface for the sheet to render an inline error when submission fails.
+  /// Cleared automatically when the user re-touches the form.
+  final String? errorMessage;
+
   const RideRatingState({
     this.selectedStars = 0,
     this.selectedTags = const {},
     this.note = '',
     this.isSubmitting = false,
+    this.isSubmitted = false,
+    this.errorMessage,
   });
 
-  bool get canSubmit => selectedStars > 0 && !isSubmitting;
+  bool get canSubmit => selectedStars > 0 && !isSubmitting && !isSubmitted;
 
   RideRatingState copyWith({
     int? selectedStars,
     Set<String>? selectedTags,
     String? note,
     bool? isSubmitting,
+    bool? isSubmitted,
+    String? errorMessage,
+    bool clearError = false,
   }) {
     return RideRatingState(
       selectedStars: selectedStars ?? this.selectedStars,
       selectedTags: selectedTags ?? this.selectedTags,
       note: note ?? this.note,
       isSubmitting: isSubmitting ?? this.isSubmitting,
+      isSubmitted: isSubmitted ?? this.isSubmitted,
+      errorMessage:
+          clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
 }
@@ -61,7 +76,8 @@ class RideRatingNotifier extends StateNotifier<RideRatingState> {
 
   final Ref _ref;
 
-  void setStars(int stars) => state = state.copyWith(selectedStars: stars);
+  void setStars(int stars) =>
+      state = state.copyWith(selectedStars: stars, clearError: true);
 
   void toggleTag(String tag) {
     final updated = Set<String>.from(state.selectedTags);
@@ -70,16 +86,20 @@ class RideRatingNotifier extends StateNotifier<RideRatingState> {
     } else {
       updated.add(tag);
     }
-    state = state.copyWith(selectedTags: updated);
+    state = state.copyWith(selectedTags: updated, clearError: true);
   }
 
-  void setNote(String note) => state = state.copyWith(note: note);
+  void setNote(String note) =>
+      state = state.copyWith(note: note, clearError: true);
 
   /// Submits the rating to POST /v1/ratings (EDD § Other REST Endpoints).
   /// Blind 24-hour window: reveal cron runs every 15 minutes (EDD § Rating Module).
-  Future<void> submit(String rideId) async {
-    if (!state.canSubmit) return;
-    state = state.copyWith(isSubmitting: true);
+  ///
+  /// Returns `true` on success so callers can decide whether to dismiss the
+  /// sheet vs. keep it open for the user to fix the error.
+  Future<bool> submit(String rideId) async {
+    if (!state.canSubmit) return false;
+    state = state.copyWith(isSubmitting: true, clearError: true);
 
     try {
       final ratingService = _ref.read(ratingServiceProvider);
@@ -90,18 +110,28 @@ class RideRatingNotifier extends StateNotifier<RideRatingState> {
         comment: state.note.isNotEmpty ? state.note : null,
       );
       developer.log('Rating submitted for ride $rideId', name: 'RideRating');
+      state = state.copyWith(isSubmitting: false, isSubmitted: true);
+      return true;
     } on ApiException catch (e) {
       developer.log(
         'submitRating failed (${e.statusCode}): ${e.message}',
         name: 'RideRating',
       );
-      // Swallow the error — rating can be retried or the blind window will
-      // close without a rating, which is acceptable per PRD § 9.4.
+      state = state.copyWith(
+        isSubmitting: false,
+        errorMessage: e.message.isNotEmpty
+            ? e.message
+            : "Couldn't submit your rating. Please try again.",
+      );
+      return false;
     } catch (e) {
       developer.log('submitRating error: $e', name: 'RideRating');
+      state = state.copyWith(
+        isSubmitting: false,
+        errorMessage: "Couldn't submit your rating. Please try again.",
+      );
+      return false;
     }
-
-    state = state.copyWith(isSubmitting: false);
   }
 
   void reset() => state = const RideRatingState();

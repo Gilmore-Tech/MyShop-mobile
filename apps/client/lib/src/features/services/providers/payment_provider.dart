@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,46 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:api_client/api_client.dart';
 
 import '../../../core/di/providers.dart';
+
+// ── Settlement polling ────────────────────────────────────────────────────────
+// Webhooks + sockets are the primary driver, but they're unreliable in real
+// conditions (battery saver paused the socket, the OS killed the WS, the
+// backend never re-broadcasts). The screen sits on a spinner forever when
+// that happens. The poll is a belt-and-braces fallback that hits
+// /payments/:id/status until we see a terminal state or hit the cap.
+const _kSettlementPollInterval = Duration(seconds: 5);
+const _kSettlementPollMax      = Duration(minutes: 5);
+
+/// Reads a payment-status response and classifies it into one of three
+/// outcomes — keeps the polling loop tolerant to the variants different
+/// Paystack-compatible backends use ('succeeded', 'success', 'paid',
+/// 'escrowed', 'completed', etc.).
+enum _PollOutcome { keepPolling, succeeded, failed }
+
+_PollOutcome _classifyStatus(Map<String, dynamic> result) {
+  String? findStatus(Object? node) {
+    if (node is Map) {
+      for (final key in const ['status', 'paymentStatus', 'payment_status']) {
+        final v = node[key];
+        if (v is String && v.isNotEmpty) return v;
+      }
+      for (final v in node.values) {
+        final hit = findStatus(v);
+        if (hit != null) return hit;
+      }
+    }
+    return null;
+  }
+
+  final raw = findStatus(result)?.toLowerCase();
+  if (raw == null) return _PollOutcome.keepPolling;
+
+  const success = {'succeeded', 'success', 'paid', 'escrowed', 'completed'};
+  const failure = {'failed', 'abandoned', 'cancelled', 'expired'};
+  if (success.contains(raw)) return _PollOutcome.succeeded;
+  if (failure.contains(raw)) return _PollOutcome.failed;
+  return _PollOutcome.keepPolling;
+}
 
 /// Recursively scans a decoded payments-initiate response for a Paystack
 /// checkout URL. The exact response shape varies depending on whether the
@@ -453,8 +494,131 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   final PaymentService _paymentService;
   final JobService _jobService;
 
+  /// Periodic poll on /payments/:id/status while we're in awaitingSettlement.
+  /// Belt-and-braces for missed socket events. Always cleared on terminal
+  /// state, retry, or dispose so it never outlives the screen.
+  Timer? _pollTimer;
+
+  /// Wallclock when polling started — used to enforce [_kSettlementPollMax]
+  /// without keeping a tick counter. Reset every time polling restarts.
+  DateTime? _pollStartedAt;
+
   void selectMethod(PaymentMethod method) =>
       state = state.copyWith(selectedMethod: method);
+
+  // ── Settlement polling ────────────────────────────────────────────────────
+
+  /// Starts the status-poll loop for [paymentId]. Idempotent — if a poll is
+  /// already running it will be cancelled and replaced (e.g. caller passed
+  /// in a fresh paymentId after a retry). Caller must guarantee
+  /// [paymentId] is non-null; we no-op gracefully if it isn't, since
+  /// without it we can't hit /payments/:id/status.
+  void _startSettlementPolling({
+    required String? paymentId,
+    required String jobId,
+    required PaymentSummary summary,
+  }) {
+    _pollTimer?.cancel();
+    if (paymentId == null) {
+      developer.log(
+        'Skipping settlement poll — no paymentId in state.',
+        name: 'Payment',
+        level: 800,
+      );
+      return;
+    }
+    _pollStartedAt = DateTime.now();
+    _pollTimer = Timer.periodic(_kSettlementPollInterval, (_) {
+      _pollSettlementOnce(
+        paymentId: paymentId,
+        jobId: jobId,
+        summary: summary,
+      );
+    });
+  }
+
+  void _stopSettlementPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _pollStartedAt = null;
+  }
+
+  Future<void> _pollSettlementOnce({
+    required String paymentId,
+    required String jobId,
+    required PaymentSummary summary,
+  }) async {
+    // If the user navigated to a different phase between ticks, drop out.
+    if (state.phase != PaymentPhase.awaitingSettlement) {
+      _stopSettlementPolling();
+      return;
+    }
+
+    // Cap the wait so a never-settling charge doesn't poll forever.
+    final startedAt = _pollStartedAt;
+    if (startedAt != null &&
+        DateTime.now().difference(startedAt) >= _kSettlementPollMax) {
+      _stopSettlementPolling();
+      developer.log(
+        'Settlement poll timed out after ${_kSettlementPollMax.inMinutes}m '
+        '— surfacing fallback message.',
+        name: 'Payment',
+        level: 900,
+      );
+      if (!mounted) return;
+      state = state.copyWith(
+        errorMessage:
+            "We're still waiting on confirmation from the payment "
+            'provider. Check the Activity tab in a few minutes — your '
+            'receipt will show up there once it settles.',
+      );
+      return;
+    }
+
+    try {
+      final result = await _paymentService.getPaymentStatus(paymentId);
+      if (!mounted || state.phase != PaymentPhase.awaitingSettlement) return;
+
+      final outcome = _classifyStatus(result);
+      switch (outcome) {
+        case _PollOutcome.succeeded:
+          _stopSettlementPolling();
+          await confirmCompletion(jobId: jobId, summary: summary);
+        case _PollOutcome.failed:
+          _stopSettlementPolling();
+          if (!mounted) return;
+          state = state.copyWith(
+            phase: PaymentPhase.failed,
+            errorMessage: 'The payment was declined. Please try again.',
+            clearAuthorizationUrl: true,
+          );
+        case _PollOutcome.keepPolling:
+          // Still pending — let the next tick try again.
+          break;
+      }
+    } on ApiException catch (e) {
+      // Transient — keep polling. A genuinely dead payment will eventually
+      // hit the timeout cap above. Don't surface to the user here, the
+      // intermediate "Approve on your phone" copy is still accurate.
+      developer.log(
+        'getPaymentStatus poll failed: ${e.errorCode} — ${e.message}',
+        name: 'Payment',
+        level: 700,
+      );
+    } catch (e) {
+      developer.log(
+        'getPaymentStatus poll crashed: $e',
+        name: 'Payment',
+        level: 700,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _stopSettlementPolling();
+    super.dispose();
+  }
 
   /// Kicks off the settlement flow for the selected payment method.
   ///
@@ -617,6 +781,11 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paystackReference: paystackReference,
         displayText: displayText,
       );
+      _startSettlementPolling(
+        paymentId: paymentId,
+        jobId: jobId,
+        summary: summary,
+      );
     } on ApiException catch (e) {
       developer.log(
         'initiatePayment failed: ${e.errorCode} — ${e.message}',
@@ -761,6 +930,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       // back through here on the next status tick.
       return;
     }
+    _stopSettlementPolling();
     state = state.copyWith(
       phase: PaymentPhase.settled,
       confirmation: PaymentConfirmation(
@@ -825,6 +995,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
           return;
         case 'failed':
         case 'abandoned':
+          _stopSettlementPolling();
           state = state.copyWith(
             phase: PaymentPhase.failed,
             errorMessage:
@@ -838,6 +1009,11 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
             phase: PaymentPhase.awaitingSettlement,
             authorizationUrl: _findCheckoutUrl(result),
             displayText: displayText,
+          );
+          _startSettlementPolling(
+            paymentId: state.paymentId,
+            jobId: jobId,
+            summary: summary,
           );
           return;
       }
@@ -893,6 +1069,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   /// fresh /initiate. Best-effort — the local state resets either way
   /// so the sheet always closes.
   Future<void> cancelOtp() async {
+    _stopSettlementPolling();
     final pid = state.paymentId;
     if (pid != null) {
       try {
@@ -917,6 +1094,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   /// `artisan_marked_complete` — Paystack charge failed. The user can tap
   /// "Retry payment" which resets state and re-enters the flow.
   void markPaymentFailed(String message) {
+    _stopSettlementPolling();
     state = state.copyWith(
       phase: PaymentPhase.failed,
       errorMessage: message,
@@ -931,10 +1109,45 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   }
 
   void resetForRetry() {
+    _stopSettlementPolling();
     state = state.copyWith(
       phase: PaymentPhase.idle,
       clearError: true,
       clearAuthorizationUrl: true,
+    );
+  }
+
+  /// Manual "I've completed the payment" tap from the awaiting-settlement
+  /// screen. Bypasses the backend confirmation step and flips straight to
+  /// `settled` with a [PaymentConfirmation] so the success dialog fires —
+  /// the user has just told us, in person, that the USSD prompt was
+  /// approved on their phone. We trust them.
+  ///
+  /// Use case: the Paystack webhook chain (or socket) didn't surface the
+  /// settlement to us — common in dev when no public tunnel is set up,
+  /// and occasionally in prod when the webhook is delayed. The polling
+  /// fallback would eventually catch it, but waiting up to 5 minutes
+  /// staring at a spinner is a bad UX. This is the user's escape hatch.
+  ///
+  /// Caveat: this does not run PATCH /jobs/:id/confirm. If the webhook
+  /// is genuinely never going to land, the backend job stays in
+  /// `pending_payment` until something else nudges it. The receipt the
+  /// user sees is real (their money moved on Paystack's side); the
+  /// cleanup of the booking record is the part we can't guarantee here.
+  void markPaymentSettledLocally({required PaymentSummary summary}) {
+    if (state.phase == PaymentPhase.settled) return;
+    _stopSettlementPolling();
+    state = state.copyWith(
+      phase: PaymentPhase.settled,
+      confirmation: PaymentConfirmation(
+        transactionRef: state.paymentId ??
+            '#TXN-${summary.jobId.hashCode.abs() % 9000 + 1000}',
+        artisanName:    summary.artisanName,
+        jobTitle:       summary.jobTitle,
+        amountPesewas:  summary.totalPesewas,
+        method:         state.selectedMethod,
+        dateTimeLabel:  _formatNow(),
+      ),
     );
   }
 

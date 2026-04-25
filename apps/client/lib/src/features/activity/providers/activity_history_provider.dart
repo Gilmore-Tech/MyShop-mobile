@@ -331,10 +331,32 @@ class ActivityHistoryNotifier
       timeLabel: _formatTime(createdAt),
       status: _jobStatusToTransaction(statusStr),
       createdAt: createdAt,
-      amountPesewas: (json['agreedPrice'] as int?) ??
-          (json['budgetPesewas'] as int?) ??
+      // Tolerant of backend field-name drift — same set the payment summary
+      // parser uses, plus the older `agreedPrice` / `budgetPesewas` shapes.
+      // Reads as num so doubles-typed JSON values don't silently null out.
+      amountPesewas: _firstNum(json, const [
+            'agreedPricePesewas',
+            'agreed_price_pesewas',
+            'totalPesewas',
+            'total_pesewas',
+            'amountPesewas',
+            'amount_pesewas',
+            'agreedPrice',
+            'budgetPesewas',
+          ])?.toInt() ??
           0,
     );
+  }
+
+  /// First numeric (any [num]) value under [keys] in [node], or null.
+  /// Reads `num` rather than `int` so JSON values that round-trip as
+  /// `double` (e.g. `15000.0`) aren't dropped by a strict `as int?` cast.
+  static num? _firstNum(Map<String, dynamic> node, List<String> keys) {
+    for (final k in keys) {
+      final v = node[k];
+      if (v is num) return v;
+    }
+    return null;
   }
 
   TransactionStatus _rideStatusToTransaction(RideStatus status) {

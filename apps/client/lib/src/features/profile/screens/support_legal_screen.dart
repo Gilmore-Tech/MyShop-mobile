@@ -1,13 +1,50 @@
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../providers/support_legal_provider.dart';
 
 // ── Screen ────────────────────────────────────────────────────────────────────
-// Contact Support  → in-app chat / WhatsApp support link
-// Report an Issue  → TODO: POST /v1/support/issues
-// Legal documents  → in-app WebView or external browser
+// Contact Support  → opens email to support@myshop.com.gh (in-app chat
+//                    is planned for a future update).
+// Report an Issue  → email with a pre-filled subject. POST /v1/support/issues
+//                    is planned for a future update.
+// Legal documents  → in-app WebView or external browser (TBD).
+
+const _kSupportEmail = 'support@myshop.com.gh';
+
+/// Opens the user's mail client with [subject] pre-filled.
+/// Falls back to a snackbar with the support address if no mail handler.
+Future<void> _openSupportEmail(BuildContext context, {String? subject}) async {
+  final uri = Uri(
+    scheme: 'mailto',
+    path:   _kSupportEmail,
+    query:  subject != null ? 'subject=${Uri.encodeComponent(subject)}' : null,
+  );
+  bool launched = false;
+  try {
+    launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } catch (_) {
+    launched = false;
+  }
+  if (!launched && context.mounted) {
+    MyShopToast.show(
+      context,
+      message: 'Email us at $_kSupportEmail',
+      duration: const Duration(seconds: 5),
+    );
+  }
+}
+
+void _comingSoonToast(BuildContext context, String label) {
+  MyShopToast.show(
+    context,
+    message: '$label is on the way — for now, tap "Contact Support" '
+        "and we'll help directly.",
+    duration: const Duration(seconds: 5),
+  );
+}
 
 class SupportLegalScreen extends ConsumerStatefulWidget {
   const SupportLegalScreen({super.key});
@@ -68,7 +105,7 @@ class _SupportLegalScreenState extends ConsumerState<SupportLegalScreen> {
             _SectionLabelWithAction(
               label: 'BROWSE TOPICS',
               actionLabel: 'View All',
-              onAction: () {/* TODO: navigate to full topics list */},
+              onAction: () => _comingSoonToast(context, 'Full topic catalog'),
               w: w,
               h: h,
             ),
@@ -214,7 +251,7 @@ class _CommonlySearched extends StatelessWidget {
               spacing: w * 0.010,
               children: [
                 GestureDetector(
-                  onTap: () {/* TODO: navigate to help article */},
+                  onTap: () => _comingSoonToast(context, 'In-app help articles'),
                   child: Text(
                     entry.value,
                     style: TextStyle(
@@ -343,8 +380,8 @@ class _ContactSupportCard extends StatelessWidget {
         icon: Icons.headset_mic_outlined,
         iconColor: MyShopColors.primaryGold,
         title: 'Contact Support',
-        subtitle: 'Typical response time: < 10 mins',
-        onTap: () {/* TODO: open in-app support chat */},
+        subtitle: 'Email response time: < 10 mins during business hours',
+        onTap: () => _openSupportEmail(context),
         w: w,
         h: h,
       ),
@@ -369,7 +406,10 @@ class _ReportIssueCard extends StatelessWidget {
         iconColor: Colors.white,
         title: 'Report an Issue',
         subtitle: "Let us know if something isn't working",
-        onTap: () {/* TODO: navigate to report issue form */},
+        onTap: () => _openSupportEmail(
+          context,
+          subject: 'Report an Issue — MyShop Client App',
+        ),
         w: w,
         h: h,
       ),
@@ -559,7 +599,7 @@ class _TopicCard extends StatelessWidget {
         color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
-          onTap: () {/* TODO: navigate to topic article list */},
+          onTap: () => _comingSoonToast(context, 'Topic articles'),
           borderRadius: BorderRadius.circular(12),
           child: Container(
             decoration: BoxDecoration(
@@ -672,7 +712,7 @@ class _LegalRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () {/* TODO: navigate to legal document */},
+      onTap: () => _comingSoonToast(context, 'Legal documents'),
       borderRadius: BorderRadius.vertical(
         top:    isFirst ? const Radius.circular(12) : Radius.zero,
         bottom: isLast  ? const Radius.circular(12) : Radius.zero,

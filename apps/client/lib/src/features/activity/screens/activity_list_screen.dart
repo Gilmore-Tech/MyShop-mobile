@@ -393,17 +393,20 @@ class _SummaryCard extends StatelessWidget {
                     ),
                   ),
                   SizedBox(height: h * 0.008),
-                  GestureDetector(
-                    onTap: () {/* TODO: navigate to detailed report */},
-                    child: Text(
-                      '+ VIEW DETAILED REPORT',
-                      style: TextStyle(
-                        fontFamily: 'Raleway',
-                        fontSize: w * 0.028,
-                        fontWeight: FontWeight.w700,
-                        color: MyShopColors.primaryGold,
-                        letterSpacing: 0.4,
-                        height: 1.4,
+                  Builder(
+                    builder: (context) => GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => context.push(AppRoutes.activityReport),
+                      child: Text(
+                        '+ VIEW DETAILED REPORT',
+                        style: TextStyle(
+                          fontFamily: 'Raleway',
+                          fontSize: w * 0.028,
+                          fontWeight: FontWeight.w700,
+                          color: MyShopColors.primaryGold,
+                          letterSpacing: 0.4,
+                          height: 1.4,
+                        ),
                       ),
                     ),
                   ),
@@ -875,20 +878,22 @@ class _MissingTripSection extends StatelessWidget {
               ),
             ),
             SizedBox(height: h * 0.016),
-            GestureDetector(
-              onTap: () {/* TODO: navigate to support */},
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                    horizontal: w * 0.020, vertical: h * 0.006),
-                child: Text(
-                  'Contact Support',
-                  style: TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: w * 0.036,
-                    fontWeight: FontWeight.w700,
-                    color: MyShopColors.textPrimary,
-                    height: 1.3,
+            Builder(
+              builder: (context) => GestureDetector(
+                onTap: () => context.push(AppRoutes.profileSupport),
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                      horizontal: w * 0.020, vertical: h * 0.006),
+                  child: Text(
+                    'Contact Support',
+                    style: TextStyle(
+                      fontFamily: 'Raleway',
+                      fontSize: w * 0.036,
+                      fontWeight: FontWeight.w700,
+                      color: MyShopColors.textPrimary,
+                      height: 1.3,
+                    ),
                   ),
                 ),
               ),

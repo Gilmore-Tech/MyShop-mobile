@@ -3,19 +3,29 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-// ── Provider ───────────────────────────────────────────────────────────────────
+import '../providers/app_preferences_provider.dart';
+
+// ── Display enum ──────────────────────────────────────────────────────────────
+// Ties UI rendering (flag, description) to the language codes the rest of
+// the app already uses (`en_US`, `tw` — see [kSupportedLanguages] in
+// app_preferences_provider.dart). Selection state and persistence live in
+// `appPreferencesProvider`, which calls PUT /users/me with the backend
+// languagePref ('en' / 'tw').
 
 enum AppLanguage { english, twi }
 
 extension AppLanguageX on AppLanguage {
+  String get code => switch (this) {
+        AppLanguage.english => 'en_US',
+        AppLanguage.twi     => 'tw',
+      };
+
+  static AppLanguage fromCode(String code) =>
+      code == 'tw' ? AppLanguage.twi : AppLanguage.english;
+
   String get nativeName => switch (this) {
         AppLanguage.english => 'English',
         AppLanguage.twi     => 'Twi (Akan)',
-      };
-
-  String get localName => switch (this) {
-        AppLanguage.english => 'English',
-        AppLanguage.twi     => 'Twi',
       };
 
   String get flag => switch (this) {
@@ -31,22 +41,37 @@ extension AppLanguageX on AppLanguage {
       };
 }
 
-final _languageProvider =
-    StateProvider.autoDispose<AppLanguage>((_) => AppLanguage.english);
-
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // CLAUDE.md § 5 — Bilingual support: English + Twi at launch.
-// Switching applies to all UI strings and push notification content.
+// Selection persists via `appPreferencesProvider.savePreferences()` which
+// PUTs `languagePref` to /users/me.
 
 class LanguageSettingsScreen extends ConsumerWidget {
   const LanguageSettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final size     = MediaQuery.sizeOf(context);
-    final w        = size.width;
-    final h        = size.height;
-    final selected = ref.watch(_languageProvider);
+    final size  = MediaQuery.sizeOf(context);
+    final w     = size.width;
+    final h     = size.height;
+    final prefs = ref.watch(appPreferencesProvider);
+    final selected = AppLanguageX.fromCode(prefs.languageCode);
+
+    // Surface backend errors as a snackbar — saves are fire-and-forget on
+    // tap, so the user otherwise wouldn't know if the PUT failed.
+    ref.listen<AppPreferencesState>(appPreferencesProvider, (prev, next) {
+      if (next.errorMessage != null &&
+          next.errorMessage != prev?.errorMessage) {
+        MyShopToast.show(
+          context,
+          message: next.errorMessage!,
+          type: ToastType.error,
+        );
+      }
+      if (next.isSaved && prev?.isSaved == false) {
+        MyShopToast.show(context, message: 'Language updated');
+      }
+    });
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
@@ -87,10 +112,17 @@ class LanguageSettingsScreen extends ConsumerWidget {
                   child: _LanguageTile(
                     language:   lang,
                     isSelected: selected == lang,
-                    onTap: () {
-                      ref.read(_languageProvider.notifier).state = lang;
-                      // TODO: persist to SharedPreferences + update Localizations
-                    },
+                    onTap: prefs.isSaving || selected == lang
+                        ? null
+                        : () {
+                            // Optimistic UI: switch the selection immediately,
+                            // then kick off the PUT in the background. The
+                            // ref.listen above surfaces success/error toasts.
+                            final notifier =
+                                ref.read(appPreferencesProvider.notifier);
+                            notifier.setLanguage(lang.code);
+                            notifier.savePreferences();
+                          },
                     w: w, h: h,
                   ),
                 )),
@@ -106,10 +138,10 @@ class LanguageSettingsScreen extends ConsumerWidget {
 // ── Language tile ──────────────────────────────────────────────────────────────
 
 class _LanguageTile extends StatelessWidget {
-  final AppLanguage  language;
-  final bool         isSelected;
-  final VoidCallback onTap;
-  final double       w, h;
+  final AppLanguage   language;
+  final bool          isSelected;
+  final VoidCallback? onTap;
+  final double        w, h;
 
   const _LanguageTile({
     required this.language,
