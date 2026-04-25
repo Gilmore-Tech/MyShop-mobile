@@ -24,25 +24,59 @@ class DriverMatchingScreen extends ConsumerStatefulWidget {
 }
 
 class _DriverMatchingScreenState extends ConsumerState<DriverMatchingScreen> {
+  /// Guards against scheduling the navigation more than once when both the
+  /// initState post-frame check and a later [ref.listen] transition both
+  /// see `accepted` — `context.go` while the screen is mid-disposal causes
+  /// a router assertion.
+  bool _navigatedToTracking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Catch the race where the driver acks acceptance during the navigation
+    // transition from FareEstimate → Matching. By the time this screen runs
+    // its first build, `bookingPhaseProvider` may already be `accepted` —
+    // and `ref.listen` only fires on *subsequent* changes, so without this
+    // sync check the rider would be stranded on the matching radar with no
+    // further state transitions to react to.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (ref.read(bookingPhaseProvider) == BookingPhase.accepted) {
+        _goToTracking();
+      }
+    });
+  }
+
+  void _goToTracking() {
+    if (_navigatedToTracking || !mounted) return;
+    final driver = ref.read(matchedDriverProvider);
+    if (driver == null) return;
+    _navigatedToTracking = true;
+    context.go(AppRoutes.rideTracking, extra: driver);
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Navigate to ride tracking 1.2 s after a driver is matched —
-    // the brief pause lets the rider see the "Accepted" state before
-    // the map opens.
+    // Navigate to ride tracking the moment the driver acks acceptance. We
+    // used to add a 1.2s "let the rider see the Accepted state" pause, but
+    // the radar keeps animating at 60fps during that window AND the
+    // tracking screen's Mapbox init runs on top — on slower Android
+    // devices that combo would push past the 5s ANR threshold and the OS
+    // would show "myshop_client isn't responding". Navigating immediately
+    // gives Mapbox the headroom it needs.
     ref.listen<BookingPhase>(bookingPhaseProvider, (prev, next) {
-      if (next == BookingPhase.driverFound) {
-        final driver = ref.read(matchedDriverProvider);
-        if (driver == null || !mounted) return;
-        Future.delayed(const Duration(milliseconds: 1200), () {
-          if (!mounted) return;
-          context.go(AppRoutes.rideTracking, extra: driver);
-        });
-      }
+      if (next == BookingPhase.accepted) _goToTracking();
     });
 
     final phase = ref.watch(bookingPhaseProvider);
     final driver = ref.watch(matchedDriverProvider);
-    final driversFound = phase == BookingPhase.driverFound;
+    final notifiedCount = ref.watch(driversNotifiedProvider);
+    // Only render the "matched" radar (with car decorations + matched-pill)
+    // once we have a confirmed accept. `driverFound` is a notified-but-not-
+    // confirmed state and gets its own copy in [_TopBar] / [_SearchStatusBar]
+    // so we don't lie to the rider with "0 Drivers available".
+    final accepted = phase == BookingPhase.accepted;
+    final driversFound = accepted;
     final failed = phase == BookingPhase.failed;
 
     return Scaffold(
@@ -53,8 +87,9 @@ class _DriverMatchingScreenState extends ConsumerState<DriverMatchingScreen> {
             : Column(
                 children: [
                   _TopBar(
-                    driversFound: driversFound,
-                    driversAvailable: driver?.driversAvailable ?? 0,
+                    phase: phase,
+                    notifiedCount: notifiedCount,
+                    matchedCount: driver?.driversAvailable ?? 0,
                   ),
                   Expanded(
                     child: Padding(
@@ -167,20 +202,30 @@ class _FailureView extends ConsumerWidget {
 // ── Top bar ───────────────────────────────────────────────────────────────────
 
 class _TopBar extends StatelessWidget {
-  final bool driversFound;
-  final int driversAvailable;
+  final BookingPhase phase;
+  final int notifiedCount;
+  final int matchedCount;
 
-  const _TopBar({required this.driversFound, required this.driversAvailable});
+  const _TopBar({
+    required this.phase,
+    required this.notifiedCount,
+    required this.matchedCount,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final Widget child = switch (phase) {
+      BookingPhase.accepted =>
+        _DriversAvailablePill(count: matchedCount, key: const ValueKey('found')),
+      BookingPhase.driverFound =>
+        _NotifyingPill(count: notifiedCount, key: const ValueKey('notifying')),
+      _ => _SearchingBar(),
+    };
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 300),
-        child: driversFound
-            ? _DriversAvailablePill(count: driversAvailable)
-            : _SearchingBar(),
+        child: child,
       ),
     );
   }
@@ -227,14 +272,14 @@ class _SearchingBar extends StatelessWidget {
 
 class _DriversAvailablePill extends StatelessWidget {
   final int count;
-  const _DriversAvailablePill({required this.count});
+  const _DriversAvailablePill({required this.count, super.key});
 
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
     final h = MediaQuery.sizeOf(context).height;
+    final label = count == 1 ? 'Driver matched' : '$count Drivers matched';
     return Container(
-      key: const ValueKey('found'),
       padding: EdgeInsets.symmetric(horizontal: w * 0.051, vertical: h * 0.012),
       decoration: BoxDecoration(
         color: MyShopColors.primaryGold,
@@ -248,12 +293,65 @@ class _DriversAvailablePill extends StatelessWidget {
         ],
       ),
       child: Text(
-        '$count Drivers available',
+        label,
         style: TextStyle(
           fontSize: w * 0.033,
           fontWeight: FontWeight.w700,
           color: Colors.white,
         ),
+      ),
+    );
+  }
+}
+
+/// Pill shown while the matcher has notified drivers and we're waiting for
+/// one to tap Accept. Distinct from [_DriversAvailablePill] (post-accept)
+/// so the rider doesn't see "0 Drivers available" before a driver acks.
+class _NotifyingPill extends StatelessWidget {
+  final int count;
+  const _NotifyingPill({required this.count, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
+    final label = count == 1
+        ? 'Notifying 1 driver...'
+        : 'Notifying $count drivers...';
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: w * 0.051, vertical: h * 0.012),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(h * 0.026),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: w * 0.038,
+            height: w * 0.038,
+            child: const CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation(MyShopColors.primaryGold),
+            ),
+          ),
+          SizedBox(width: w * 0.025),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: w * 0.033,
+              fontWeight: FontWeight.w700,
+              color: MyShopColors.textPrimary,
+            ),
+          ),
+        ],
       ),
     );
   }

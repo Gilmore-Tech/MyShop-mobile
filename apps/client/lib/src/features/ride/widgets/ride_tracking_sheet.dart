@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:go_router/go_router.dart';
@@ -329,7 +330,7 @@ class _DriverRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const _DriverAvatar(),
+            _DriverAvatar(photoUrl: driver.photoUrl),
             SizedBox(width: w * 0.031),
             Expanded(child: _DriverMeta(driver: driver)),
             _VehicleInfo(
@@ -350,20 +351,37 @@ class _DriverRow extends StatelessWidget {
 }
 
 class _DriverAvatar extends StatelessWidget {
-  const _DriverAvatar();
+  const _DriverAvatar({required this.photoUrl});
+  final String photoUrl;
 
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
+    final size = w * 0.123;
+    final placeholder = Icon(
+      Icons.person_rounded,
+      size: w * 0.067,
+      color: MyShopColors.darkSlate,
+    );
     return Container(
-      width:  w * 0.123,
-      height: w * 0.123,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: MyShopColors.avatarPlaceholder,
         border: Border.all(color: MyShopColors.primaryGold, width: 1.5),
       ),
-      child: Icon(Icons.person_rounded, size: w * 0.067, color: MyShopColors.darkSlate),
+      clipBehavior: Clip.antiAlias,
+      child: photoUrl.isEmpty
+          ? placeholder
+          : CachedNetworkImage(
+              imageUrl: photoUrl,
+              fit: BoxFit.cover,
+              memCacheWidth: (size * 3).round(),
+              memCacheHeight: (size * 3).round(),
+              placeholder: (_, __) => placeholder,
+              errorWidget: (_, __, ___) => placeholder,
+            ),
     );
   }
 }

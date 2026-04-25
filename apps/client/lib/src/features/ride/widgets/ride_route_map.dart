@@ -8,6 +8,7 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart'
         MapWidget,
         MapboxMap,
         MbxEdgeInsets,
+        PointAnnotation,
         PointAnnotationManager,
         PointAnnotationOptions,
         Point,
@@ -16,7 +17,8 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart'
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../../core/constants/mapbox_config.dart';
-import '../providers/ride_provider.dart' show RideTrackingPhase;
+import '../providers/ride_provider.dart'
+    show LiveDriverPosition, RideTrackingPhase, liveDriverPositionProvider;
 import '../providers/ride_search_provider.dart';
 
 class RideRouteMap extends ConsumerStatefulWidget {
@@ -39,6 +41,11 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   MapboxMap? _mapboxMap;
   PointAnnotationManager? _annotationManager;
 
+  /// Separate annotation for the driver — kept around so we can update its
+  /// geometry on each fix instead of tearing down and re-creating every
+  /// pickup/destination marker as well.
+  PointAnnotation? _driverAnnotation;
+
   // Captured once — pickup/destination don't change during an active ride.
   late final RideSearchState _searchState;
 
@@ -54,6 +61,38 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     super.dispose();
   }
 
+  /// Create or move the driver marker. No-op while the map isn't ready or
+  /// the rider hasn't received the first fix yet — the next call (from
+  /// either a socket update or the REST poller) takes care of it.
+  Future<void> _syncDriverMarker(LiveDriverPosition? pos) async {
+    final manager = _annotationManager;
+    if (manager == null) return;
+    if (pos == null) {
+      final existing = _driverAnnotation;
+      if (existing != null) {
+        await manager.delete(existing);
+        _driverAnnotation = null;
+      }
+      return;
+    }
+    final point = Point(
+      coordinates: Position(pos.longitude, pos.latitude),
+    );
+    final existing = _driverAnnotation;
+    if (existing == null) {
+      _driverAnnotation = await manager.create(
+        PointAnnotationOptions(
+          geometry: point,
+          textField: '🚗',
+          textSize: 26,
+        ),
+      );
+    } else {
+      existing.geometry = point;
+      await manager.update(existing);
+    }
+  }
+
   Future<void> _onMapCreated(MapboxMap mapboxMap) async {
     _mapboxMap = mapboxMap;
 
@@ -63,6 +102,8 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
 
     await _addMarkers();
     await _fitBounds();
+    // Pick up any driver fix that arrived before the map was ready.
+    await _syncDriverMarker(ref.read(liveDriverPositionProvider));
   }
 
   Future<void> _addMarkers() async {
@@ -133,6 +174,14 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
 
   @override
   Widget build(BuildContext context) {
+    // Re-sync the driver pin every time the live position changes — socket
+    // updates from `core/providers/socket_provider.dart` and the REST
+    // poller in `liveDriverPositionProvider`'s autoDispose stream both
+    // route through here.
+    ref.listen<LiveDriverPosition?>(liveDriverPositionProvider, (_, next) {
+      _syncDriverMarker(next);
+    });
+
     final pickup = _searchState.pickup;
     final initialCenter = pickup?.lat != null && pickup?.lng != null
         ? Position(pickup!.lng!, pickup.lat!)
@@ -176,6 +225,10 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
       case RideTrackingPhase.arrived:
         return const _ArrivedPill();
       case RideTrackingPhase.inProgress:
+        return _InProgressPill(minutes: widget.etaMinutes);
+      case RideTrackingPhase.completed:
+        // Tracking screen navigates away on `completed`; render the trip
+        // pill in the brief frame before that happens so we don't flash.
         return _InProgressPill(minutes: widget.etaMinutes);
     }
   }

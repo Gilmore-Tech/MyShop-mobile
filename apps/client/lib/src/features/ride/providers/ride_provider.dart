@@ -5,11 +5,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
 import '../../../core/providers/current_location_provider.dart';
+import '../../../core/providers/socket_provider.dart';
 import 'ride_search_provider.dart';
 
 // ── Models ────────────────────────────────────────────────────────────────────
 
-enum BookingPhase { idle, searching, driverFound, failed }
+/// Lifecycle of a ride request from the rider's POV.
+///
+/// - [idle]: no request in flight.
+/// - [searching]: POST /rides is in flight; we don't yet know whether any
+///   driver was notified.
+/// - [driverFound]: backend reported `driversNotified > 0` (or a poll
+///   surfaced `requested` with at least one assigned driver) — a driver has
+///   the request open and the rider is waiting for them to tap Accept.
+/// - [accepted]: a driver acked acceptance (`ride:accepted` socket event or
+///   poll status `accepted` / `driver_assigned`) — UI navigates to the
+///   tracking screen.
+/// - [failed]: request errored, all drivers declined, or the search window
+///   timed out — UI shows the failure card.
+enum BookingPhase { idle, searching, driverFound, accepted, failed }
 
 class VehicleOption {
   final String id;
@@ -82,6 +96,8 @@ class MatchedDriver {
   final int confirmedFarePesewas;
   /// Payment method label shown on tracking screen
   final String paymentMethod;
+  /// Driver's profile photo URL — empty when the backend payload omits it.
+  final String photoUrl;
 
   const MatchedDriver({
     required this.name,
@@ -102,6 +118,7 @@ class MatchedDriver {
     this.vehicleShortName = '',
     this.confirmedFarePesewas = 0,
     this.paymentMethod = 'MTN Mobile Money',
+    this.photoUrl = '',
   });
 
   int get totalFarePesewas =>
@@ -319,6 +336,13 @@ final rideReceiptProvider = Provider<RideReceipt>((_) => _mockRideReceipt);
 /// The polling loop in [simulateDriverMatching] checks this to exit early.
 final rideMatchedViaSocketProvider = StateProvider<bool>((_) => false);
 
+/// Count of drivers the matcher pushed the ride request to, surfaced in the
+/// POST /rides response. Used by the matching screen to show a meaningful
+/// number while we're in [BookingPhase.driverFound] (waiting for accept) —
+/// the [matchedDriverProvider] is still null at that point, so we can't
+/// derive the count from there.
+final driversNotifiedProvider = StateProvider<int>((_) => 0);
+
 /// Currently selected vehicle option id
 final selectedVehicleProvider = StateProvider<String>(
   (_) => vehicleOptions.first.id,
@@ -339,6 +363,7 @@ class BookingPhaseNotifier extends StateNotifier<BookingPhase> {
 
   void startSearch() => state = BookingPhase.searching;
   void driverFound() => state = BookingPhase.driverFound;
+  void accepted() => state = BookingPhase.accepted;
   void fail() => state = BookingPhase.failed;
   void reset() => state = BookingPhase.idle;
 }
@@ -377,11 +402,83 @@ class EtaNotifier extends StateNotifier<int> {
   }
 }
 
-/// Phase of the live ride once a driver has accepted.
+/// Live driver coordinates while a ride is active. Updated by the
+/// `ride:driver_location` / `driver:location` socket listeners in
+/// `core/providers/socket_provider.dart`, with a REST poll fallback driven
+/// by [activeRideDriverPollerProvider] in case the gateway doesn't relay
+/// the driver's `location:update` emits to the rider's room.
+///
+/// Null while the rider is en-route to matching, or whenever the backend
+/// hasn't yet pushed a fix for this ride.
+class LiveDriverPosition {
+  const LiveDriverPosition({
+    required this.latitude,
+    required this.longitude,
+    this.heading,
+    this.updatedAt,
+  });
+
+  final double latitude;
+  final double longitude;
+  final double? heading;
+  final DateTime? updatedAt;
+}
+
+final liveDriverPositionProvider = StateProvider<LiveDriverPosition?>((_) => null);
+
+/// Polls `GET /rides/:id` every 8 s while a rider is watching an active
+/// ride and pushes the driver's coordinates into [liveDriverPositionProvider].
+///
+/// This is a fallback for the socket location events — if the gateway
+/// doesn't relay the driver's `location:update` emits to the rider's room
+/// (or if the event names differ from the ones we listen for), the marker
+/// still ticks every poll interval.
+///
+/// Listen-only from the tracking screen so the poller stops when the
+/// rider leaves the screen. The provider auto-disposes; if the rider
+/// returns, a fresh poll cycle starts.
+final activeRideDriverPollerProvider = StreamProvider.autoDispose<void>((ref) async* {
+  final rideId = ref.watch(activeRideIdProvider);
+  if (rideId == null || rideId.isEmpty) return;
+  final rideService = ref.watch(rideServiceProvider);
+
+  Future<void> tick() async {
+    try {
+      final json = await rideService.getRide(rideId);
+      final driver = json['driver'] as Map<String, dynamic>? ??
+          const <String, dynamic>{};
+      final lat = (driver['latitude'] ?? driver['lat']) as num?;
+      final lng = (driver['longitude'] ?? driver['lng']) as num?;
+      if (lat == null || lng == null) return;
+      ref.read(liveDriverPositionProvider.notifier).state = LiveDriverPosition(
+        latitude: lat.toDouble(),
+        longitude: lng.toDouble(),
+        updatedAt: DateTime.now(),
+      );
+    } catch (e) {
+      developer.log('driver poller tick failed: $e',
+          name: 'LiveDriverPoller', level: 800);
+    }
+  }
+
+  yield null;
+  await tick();
+  while (true) {
+    await Future<void>.delayed(const Duration(seconds: 8));
+    await tick();
+    yield null;
+  }
+});
+
+/// Phase of the live ride once a driver has accepted. Driven entirely by
+/// `ride:status` socket events broadcast from the backend — the rider's UI
+/// is a passive reflection of what the driver has reported, no client-side
+/// simulation timers.
 ///   enRoute     — driver is heading to the pickup (ETA pill visible)
 ///   arrived     — driver has reached the pickup; waiting countdown running
 ///   inProgress  — trip has started; ETA counts down toward destination
-enum RideTrackingPhase { enRoute, arrived, inProgress }
+///   completed   — trip finished; tracking screen routes to /ride-complete
+enum RideTrackingPhase { enRoute, arrived, inProgress, completed }
 
 final rideTrackingPhaseProvider = StateProvider<RideTrackingPhase>(
   (_) => RideTrackingPhase.enRoute,
@@ -430,6 +527,8 @@ Future<void> requestRideAndMatchDriver(ProviderContainer ref) async {
   ref.read(searchCountdownProvider.notifier).reset();
   ref.read(rideMatchedViaSocketProvider.notifier).state = false;
   ref.read(bookingFailureMessageProvider.notifier).state = null;
+  ref.read(driversNotifiedProvider.notifier).state = 0;
+  ref.read(liveDriverPositionProvider.notifier).state = null;
 
   void failWith(String message) {
     ref.read(bookingFailureMessageProvider.notifier).state = message;
@@ -455,9 +554,47 @@ Future<void> requestRideAndMatchDriver(ProviderContainer ref) async {
       destinationAddress: destination?.address,
     );
 
-    rideId = result['id'] as String?;
+    developer.log('createRide raw result: $result', name: 'RideProvider');
+
+    // Backend has shipped the ride id under a few different shapes during
+    // development — accept any of them so a wire-format change doesn't
+    // strand the client at "no ride id". Order matches likelihood.
+    rideId = _extractRideId(result);
     ref.read(activeRideIdProvider.notifier).state = rideId;
     developer.log('Ride created: $rideId', name: 'RideProvider');
+
+    // POST /rides returns `driversNotified` — the count of drivers the
+    // matcher pushed the request to. As soon as that's > 0 we know a
+    // driver has the request open on their screen, so we flip the rider
+    // out of the "searching" radar into the "driver found" state. The
+    // final `accepted` transition (and the navigation to the tracking
+    // screen) only happens once a driver actually taps Accept.
+    final notified = (result['driversNotified'] as num?)?.toInt() ?? 0;
+    ref.read(driversNotifiedProvider.notifier).state = notified;
+    if (notified > 0) {
+      ref.read(bookingPhaseProvider.notifier).driverFound();
+    }
+
+    // Try to join the ride's tracking room immediately. If the socket is
+    // still mid-handshake at this point the emit silently no-ops — the
+    // socket-provider's connectionStream listener will (re-)join once the
+    // handshake completes.
+    if (rideId != null) {
+      try {
+        final socket = ref.read(socketServiceProvider);
+        if (socket.isConnected) {
+          socket.emit('client:track:ride', {'rideId': rideId});
+          developer.log('Joined ride room: $rideId', name: 'RideProvider');
+        } else {
+          developer.log(
+              'Socket not yet connected — track:ride deferred to onConnect',
+              name: 'RideProvider');
+        }
+      } catch (e) {
+        developer.log('client:track:ride emit failed: $e',
+            name: 'RideProvider');
+      }
+    }
   } on ApiException catch (e) {
     developer.log(
       'createRide failed (${e.statusCode}): ${e.message}',
@@ -481,8 +618,11 @@ Future<void> requestRideAndMatchDriver(ProviderContainer ref) async {
   }
 
   // ── 2. Poll GET /rides/:id until driver matched or timeout ─────────────
-  const maxPolls = 45;
-  const pollInterval = Duration(seconds: 2);
+  // Polls are a fallback — the primary path is the `ride:accepted` socket
+  // event. Interval is sized to stay under the backend rate limit on this
+  // endpoint (we tripped 429 at ~30 requests/min during testing).
+  const maxPolls = 24;
+  const pollInterval = Duration(seconds: 5);
 
   for (var i = 0; i < maxPolls; i++) {
     await Future.delayed(pollInterval);
@@ -490,18 +630,31 @@ Future<void> requestRideAndMatchDriver(ProviderContainer ref) async {
     // Exit early if a WebSocket event already delivered the driver match.
     if (ref.read(rideMatchedViaSocketProvider)) return;
 
-    ref.read(searchCountdownProvider.notifier).tick();
-    ref.read(searchCountdownProvider.notifier).tick(); // 2 ticks per 2s
+    // Countdown ticks once per second; 5 ticks per 5s poll interval.
+    final countdown = ref.read(searchCountdownProvider.notifier);
+    for (var t = 0; t < 5; t++) {
+      countdown.tick();
+    }
 
     try {
       final ride = await rideService.getRide(rideId);
       final status = ride['status'] as String? ?? '';
       final driver =
           ride['driver'] as Map<String, dynamic>? ?? <String, dynamic>{};
+      developer.log('Poll #${i + 1} status=$status driverPresent=${driver.isNotEmpty}',
+          name: 'RideProvider');
 
       if (status == 'accepted' || status == 'driver_assigned') {
+        final firstName = driver['firstName'] as String?;
+        final lastName = driver['lastName'] as String?;
+        final assembledName = (firstName != null || lastName != null)
+            ? [firstName, lastName].whereType<String>().join(' ').trim()
+            : null;
         final matched = MatchedDriver(
-          name: driver['name'] as String? ?? 'Driver',
+          name: (driver['name'] as String?) ??
+              assembledName ??
+              (driver['fullName'] as String?) ??
+              'Driver',
           vehicle: driver['vehicle'] as String? ?? '',
           plateNumber: driver['plateNumber'] as String? ?? '',
           rating: (driver['rating'] as num?)?.toDouble() ?? 4.5,
@@ -519,10 +672,28 @@ Future<void> requestRideAndMatchDriver(ProviderContainer ref) async {
           vehicleShortName: driver['vehicleShortName'] as String? ?? '',
           confirmedFarePesewas: (ride['totalFare'] as num?)?.toInt() ?? 0,
           paymentMethod: ride['paymentMethod'] as String? ?? 'Cash',
+          photoUrl: (driver['photoUrl'] as String?) ??
+              (driver['profilePhotoUrl'] as String?) ??
+              (driver['avatarUrl'] as String?) ??
+              '',
         );
 
+        // Seed live position too if the polled ride includes the driver's
+        // last fix — gives the tracking screen a marker to show before any
+        // socket update lands.
+        final dLat = (driver['latitude'] ?? driver['lat']) as num?;
+        final dLng = (driver['longitude'] ?? driver['lng']) as num?;
+        if (dLat != null && dLng != null) {
+          ref.read(liveDriverPositionProvider.notifier).state =
+              LiveDriverPosition(
+            latitude: dLat.toDouble(),
+            longitude: dLng.toDouble(),
+            updatedAt: DateTime.now(),
+          );
+        }
+
         ref.read(matchedDriverProvider.notifier).state = matched;
-        ref.read(bookingPhaseProvider.notifier).driverFound();
+        ref.read(bookingPhaseProvider.notifier).accepted();
         return;
       }
 
@@ -573,5 +744,27 @@ Future<void> cancelInFlightRideRequest(ProviderContainer ref) async {
   ref.read(activeRideIdProvider.notifier).state = null;
   ref.read(matchedDriverProvider.notifier).state = null;
   ref.read(bookingFailureMessageProvider.notifier).state = null;
+  ref.read(driversNotifiedProvider.notifier).state = 0;
+  ref.read(liveDriverPositionProvider.notifier).state = null;
   ref.read(bookingPhaseProvider.notifier).reset();
+}
+
+/// Tries the wire shapes the backend has used for ride-create responses:
+///   { id }            ← canonical
+///   { rideId }        ← older naming
+///   { ride: { id } }  ← when the controller wraps the entity
+String? _extractRideId(Map<String, dynamic> result) {
+  final direct = result['id'];
+  if (direct is String && direct.isNotEmpty) return direct;
+
+  final rideIdKey = result['rideId'];
+  if (rideIdKey is String && rideIdKey.isNotEmpty) return rideIdKey;
+
+  final nested = result['ride'];
+  if (nested is Map<String, dynamic>) {
+    final nestedId = nested['id'];
+    if (nestedId is String && nestedId.isNotEmpty) return nestedId;
+  }
+
+  return null;
 }

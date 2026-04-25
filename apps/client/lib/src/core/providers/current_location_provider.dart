@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -19,6 +20,11 @@ class CurrentLocationService {
   /// permission (if needed), reads the GPS, caches it, and returns the
   /// new fix. Returns `null` when the user denies permission or location
   /// services are off — the caller decides the fallback.
+  ///
+  /// Strategy: yield the OS-cached fix first (fast, <100ms) so map screens
+  /// open at the right place, then refresh with a fresh GPS read on a short
+  /// timeout. Without the timeout, iOS can hang 30s–2min waiting for the
+  /// sensor to settle (kCLErrorDomain 0).
   Future<Position?> ensure({bool forceRefresh = false}) async {
     if (!forceRefresh) {
       final cached = _ref.read(currentDevicePositionProvider);
@@ -37,16 +43,32 @@ class CurrentLocationService {
       return null;
     }
 
+    // Fast path: seed the cache from the OS last-known position so callers
+    // get an immediate answer while the fresh fix is still resolving.
+    Position? bestSoFar;
+    try {
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null) {
+        bestSoFar = last;
+        _ref.read(currentDevicePositionProvider.notifier).state = last;
+      }
+    } catch (e) {
+      debugPrint('[LOC] getLastKnownPosition failed: $e');
+    }
+
     try {
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 8),
         ),
       );
       _ref.read(currentDevicePositionProvider.notifier).state = position;
       return position;
-    } catch (_) {
-      return null;
+    } catch (e) {
+      debugPrint('[LOC] getCurrentPosition failed: $e — '
+          'using ${bestSoFar == null ? 'no fallback' : 'last-known'}');
+      return bestSoFar;
     }
   }
 }

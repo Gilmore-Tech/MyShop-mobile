@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import '../providers/ride_provider.dart';
@@ -42,7 +43,7 @@ class _DriverCardContent extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _DriverAvatar(),
+          _DriverAvatar(photoUrl: driver.photoUrl),
           const SizedBox(width: 14),
           Expanded(child: _DriverDetails(driver: driver)),
           _AcceptedBadge(),
@@ -53,21 +54,43 @@ class _DriverCardContent extends StatelessWidget {
 }
 
 class _DriverAvatar extends StatelessWidget {
+  const _DriverAvatar({required this.photoUrl});
+  final String photoUrl;
+
   @override
   Widget build(BuildContext context) {
+    const size = 56.0;
     return Container(
-      width: 56,
-      height: 56,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: MyShopColors.avatarPlaceholder,
         border: Border.all(color: MyShopColors.primaryGold, width: 2),
       ),
-      child: const Icon(
-        Icons.person_rounded,
-        size: 30,
-        color: MyShopColors.darkSlate,
-      ),
+      clipBehavior: Clip.antiAlias,
+      child: photoUrl.isEmpty
+          ? const Icon(
+              Icons.person_rounded,
+              size: 30,
+              color: MyShopColors.darkSlate,
+            )
+          : CachedNetworkImage(
+              imageUrl: photoUrl,
+              fit: BoxFit.cover,
+              memCacheWidth: (size * 3).round(),
+              memCacheHeight: (size * 3).round(),
+              placeholder: (_, __) => const Icon(
+                Icons.person_rounded,
+                size: 30,
+                color: MyShopColors.darkSlate,
+              ),
+              errorWidget: (_, __, ___) => const Icon(
+                Icons.person_rounded,
+                size: 30,
+                color: MyShopColors.darkSlate,
+              ),
+            ),
     );
   }
 }

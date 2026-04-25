@@ -49,43 +49,126 @@ final socketConnectionProvider = Provider<void>((ref) {
 });
 
 void _connectAndListen(Ref ref, SocketService socket) {
+  // Whenever the socket finishes connecting (initial or after a reconnect),
+  // (re-)join the active ride's tracking room so the rider receives
+  // `ride:accepted` / `ride:status` events. Without this, an emit issued
+  // before the handshake completes is dropped silently and the rider is
+  // stuck on the matching screen until the REST poll picks it up — which
+  // also trips the backend rate limit on long searches.
+  socket.connectionStream.listen((connected) {
+    if (!connected) return;
+    final rideId = ref.read(activeRideIdProvider);
+    if (rideId == null || rideId.isEmpty) return;
+    developer.log('Socket connected — joining ride room $rideId', name: 'WS');
+    socket.emit('client:track:ride', {'rideId': rideId});
+  });
+
   socket.connect().then((_) {
+    // Build the matched-driver model from a payload that may come from
+    // either `ride:status` (driver/fare fields at top level) or
+    // `ride:accepted` (the backend's dedicated match event).
+    void applyDriverMatch(Map<String, dynamic> data) {
+      final driver =
+          data['driver'] as Map<String, dynamic>? ?? <String, dynamic>{};
+      // Driver name may arrive as a single `name` field or split into
+      // first/last; fall back gracefully so the rider doesn't see "Driver".
+      final firstName = driver['firstName'] as String?;
+      final lastName = driver['lastName'] as String?;
+      final assembledName = (firstName != null || lastName != null)
+          ? [firstName, lastName].whereType<String>().join(' ').trim()
+          : null;
+      final matched = MatchedDriver(
+        name: (driver['name'] as String?) ??
+            assembledName ??
+            (driver['fullName'] as String?) ??
+            'Driver',
+        vehicle: driver['vehicle'] as String? ?? '',
+        plateNumber: driver['plateNumber'] as String? ?? '',
+        rating: (driver['rating'] as num?)?.toDouble() ?? 4.5,
+        minutesAway: (driver['eta'] as num?)?.toInt() ?? 3,
+        driversAvailable: 1,
+        tripCount: (driver['tripCount'] as num?)?.toInt() ?? 0,
+        isVerified: driver['isVerified'] as bool? ?? false,
+        isPoliceChecked: driver['isPoliceChecked'] as bool? ?? false,
+        maskedPhone: driver['maskedPhone'] as String? ?? '',
+        vehicleTier: driver['vehicleTier'] as String? ?? '',
+        baseFarePesewas: (data['baseFare'] as num?)?.toInt() ?? 0,
+        distanceFarePesewas: (data['distanceFare'] as num?)?.toInt() ?? 0,
+        distanceKm: (data['distanceKm'] as num?)?.toDouble() ?? 0,
+        bookingFeePesewas: (data['bookingFee'] as num?)?.toInt() ?? 0,
+        vehicleShortName: driver['vehicleShortName'] as String? ?? '',
+        confirmedFarePesewas: (data['totalFare'] as num?)?.toInt() ?? 0,
+        paymentMethod: data['paymentMethod'] as String? ?? 'Cash',
+        photoUrl: (driver['photoUrl'] as String?) ??
+            (driver['profilePhotoUrl'] as String?) ??
+            (driver['avatarUrl'] as String?) ??
+            '',
+      );
+      ref.read(matchedDriverProvider.notifier).state = matched;
+      ref.read(bookingPhaseProvider.notifier).accepted();
+      ref.read(rideMatchedViaSocketProvider.notifier).state = true;
+    }
+
+    // The backend emits `ride:accepted` to the rider's tracking room as
+    // soon as a driver wins the assignment race. Without this listener
+    // the rider only learns about the match via the 2-second REST poll —
+    // and if the poll's status field doesn't transition the rider stays
+    // stuck on the matching screen indefinitely.
+    socket.on('ride:accepted', (data) {
+      developer.log('Received ride:accepted event: $data', name: 'WS');
+      if (data is! Map<String, dynamic>) return;
+      try {
+        applyDriverMatch(data);
+      } catch (e) {
+        developer.log('Failed to handle ride:accepted: $e',
+            name: 'WS', level: 900);
+      }
+    });
+
+    // ── Live driver location ─────────────────────────────────────────────
+    // Backend relays the driver's `location:update` emits to the rider's
+    // ride room while a ride is active. We don't have a single canonical
+    // event name documented yet, so listen for the obvious variants and
+    // gate on `rideId` matching the active ride. Anything that doesn't
+    // match the active ride is ignored — keeps a chatty admin feed from
+    // jumping the marker around if it ever leaks into this socket.
+    void handleDriverLocation(dynamic data) {
+      if (data is! Map<String, dynamic>) return;
+      final activeRideId = ref.read(activeRideIdProvider);
+      if (activeRideId == null) return;
+      final eventRideId =
+          data['rideId'] as String? ?? data['id'] as String?;
+      if (eventRideId != null && eventRideId != activeRideId) return;
+      final lat = (data['latitude'] ?? data['lat']) as num?;
+      final lng = (data['longitude'] ?? data['lng']) as num?;
+      if (lat == null || lng == null) return;
+      final heading = (data['heading'] ?? data['bearing']) as num?;
+      ref.read(liveDriverPositionProvider.notifier).state = LiveDriverPosition(
+        latitude: lat.toDouble(),
+        longitude: lng.toDouble(),
+        heading: heading?.toDouble(),
+        updatedAt: DateTime.now(),
+      );
+    }
+
+    socket
+      ..off('ride:driver_location')
+      ..off('driver:location')
+      ..off('ride:location')
+      ..on('ride:driver_location', handleDriverLocation)
+      ..on('driver:location', handleDriverLocation)
+      ..on('ride:location', handleDriverLocation);
+
     // ── Ride status updates ──────────────────────────────────────────────
     socket.on('ride:status', (data) {
-      developer.log('Received ride:status event', name: 'WS');
+      developer.log('Received ride:status event: $data', name: 'WS');
       if (data is! Map<String, dynamic>) return;
       try {
         final status = data['status'] as String? ?? '';
-        final driver =
-            data['driver'] as Map<String, dynamic>? ?? <String, dynamic>{};
 
         switch (status) {
           case 'accepted' || 'driver_assigned':
-            final matched = MatchedDriver(
-              name: driver['name'] as String? ?? 'Driver',
-              vehicle: driver['vehicle'] as String? ?? '',
-              plateNumber: driver['plateNumber'] as String? ?? '',
-              rating: (driver['rating'] as num?)?.toDouble() ?? 4.5,
-              minutesAway: (driver['eta'] as num?)?.toInt() ?? 3,
-              driversAvailable: 1,
-              tripCount: (driver['tripCount'] as num?)?.toInt() ?? 0,
-              isVerified: driver['isVerified'] as bool? ?? false,
-              isPoliceChecked: driver['isPoliceChecked'] as bool? ?? false,
-              maskedPhone: driver['maskedPhone'] as String? ?? '',
-              vehicleTier: driver['vehicleTier'] as String? ?? '',
-              baseFarePesewas: (data['baseFare'] as num?)?.toInt() ?? 0,
-              distanceFarePesewas:
-                  (data['distanceFare'] as num?)?.toInt() ?? 0,
-              distanceKm: (data['distanceKm'] as num?)?.toDouble() ?? 0,
-              bookingFeePesewas: (data['bookingFee'] as num?)?.toInt() ?? 0,
-              vehicleShortName: driver['vehicleShortName'] as String? ?? '',
-              confirmedFarePesewas:
-                  (data['totalFare'] as num?)?.toInt() ?? 0,
-              paymentMethod: data['paymentMethod'] as String? ?? 'Cash',
-            );
-            ref.read(matchedDriverProvider.notifier).state = matched;
-            ref.read(bookingPhaseProvider.notifier).driverFound();
-            ref.read(rideMatchedViaSocketProvider.notifier).state = true;
+            applyDriverMatch(data);
 
           case 'en_route':
             ref.read(rideTrackingPhaseProvider.notifier).state =
@@ -100,6 +183,12 @@ void _connectAndListen(Ref ref, SocketService socket) {
                 RideTrackingPhase.inProgress;
 
           case 'completed':
+            // Flip the tracking screen to its `completed` phase so it can
+            // navigate to /ride-complete — the previous flow relied on
+            // client-side timers to do this, which only worked when the
+            // simulated trip ETA hit zero.
+            ref.read(rideTrackingPhaseProvider.notifier).state =
+                RideTrackingPhase.completed;
             // Ride completed — activity list should refresh
             if (ref.exists(activityNotifierProvider)) {
               ref.read(activityNotifierProvider.notifier).reload();
