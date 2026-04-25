@@ -1,10 +1,12 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'firebase_options.dart';
 import 'src/app/provider_app.dart';
 import 'src/core/di/providers.dart';
+import 'src/core/providers/availability_controller.dart';
 import 'src/core/providers/location_guard.dart';
 import 'src/core/providers/logout_cleanup_bridge.dart';
 import 'src/core/services/fcm_service.dart';
@@ -81,6 +83,30 @@ Future<void> main() async {
       await container.read(fcmServiceProvider).init();
     } catch (e) {
       debugPrint('[main] FCM init failed: $e');
+    }
+  });
+
+  // Warm up the device GPS fix so the driver/artisan home maps and the
+  // edit-business-info screen can centre on the user's actual position
+  // rather than the pilot-city default. Fire-and-forget — failures
+  // (denied permission, services off) just leave the cache empty and
+  // callers fall back gracefully.
+  Future<void>(() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+      final position = await Geolocator.getCurrentPosition();
+      container.read(lastKnownPositionProvider.notifier).state = position;
+    } catch (e) {
+      debugPrint('[main] location warm-up failed: $e');
     }
   });
 }

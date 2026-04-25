@@ -1301,7 +1301,15 @@ class _CompletionOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final bottomPad = MediaQuery.paddingOf(context).bottom;
     final isCompleted = status == JobStatus.completed;
-    final isPendingPayment = status == JobStatus.pendingPayment;
+    // Show the "Did you receive payment?" Yes/No CTAs for both
+    // artisan_marked_complete AND pending_payment. The reason: the client
+    // can pick Cash on their side, which doesn't hit /payments/initiate,
+    // so the job never transitions to pending_payment. The artisan still
+    // needs a way to confirm receipt — we show the CTAs as soon as the
+    // artisan has marked complete and leave the backend flip to the
+    // idempotent PATCH /confirm when they tap Yes.
+    final isAwaitingReceipt = status == JobStatus.artisanMarkedComplete ||
+        status == JobStatus.pendingPayment;
 
     return Material(
       color: Colors.transparent,
@@ -1393,13 +1401,15 @@ class _CompletionOverlay extends StatelessWidget {
                   ),
                 ),
               )
-            else if (isPendingPayment)
-              // Cash flow: the client has initiated payment, which on the
-              // backend flips the job to pending_payment for cash settlements
-              // too. The artisan decides whether they've physically received
-              // the cash. Tapping "Yes" runs PATCH /confirm; "Not yet" leaves
-              // the job in pending_payment so it shows on both apps until
-              // the artisan comes back and confirms.
+            else if (isAwaitingReceipt)
+              // Shown for both artisan_marked_complete and pending_payment.
+              // The artisan decides whether they've received payment —
+              // MoMo / card settles via the Paystack webhook automatically,
+              // but cash is off-platform so the artisan is the source of
+              // truth. Tapping "Yes" runs PATCH /confirm (idempotent, so
+              // calling after a webhook already completed the job is a
+              // no-op); "Not yet" leaves the job as-is so it keeps showing
+              // on both apps until the artisan comes back and confirms.
               Row(
                 children: [
                   Expanded(
@@ -1487,11 +1497,11 @@ class _CompletionOverlay extends StatelessWidget {
 
   static String _titleFor(JobStatus status) {
     switch (status) {
+      case JobStatus.artisanMarkedComplete:
       case JobStatus.pendingPayment:
         return 'Did you receive payment?';
       case JobStatus.completed:
         return 'Job complete!';
-      case JobStatus.artisanMarkedComplete:
       default:
         return 'Waiting for client confirmation';
     }
@@ -1499,15 +1509,14 @@ class _CompletionOverlay extends StatelessWidget {
 
   static String _subtitleFor(JobStatus status, String clientFirstName) {
     switch (status) {
+      case JobStatus.artisanMarkedComplete:
       case JobStatus.pendingPayment:
-        return "$clientFirstName picked a payment method. If they paid "
-            'in-app the job will settle automatically — if they paid in '
-            "cash, confirm receipt below. Tap \"Not yet\" to leave it "
-            'pending.';
+        return "$clientFirstName is settling up. If they paid in-app the "
+            'job will settle automatically — if they paid in cash, confirm '
+            "receipt below. Tap \"Not yet\" to leave the job pending.";
       case JobStatus.completed:
         return 'Payment has been released to your wallet. Check your '
             'earnings to see the breakdown.';
-      case JobStatus.artisanMarkedComplete:
       default:
         return "You've marked the job done. $clientFirstName needs to "
             'review and pay before your earnings release.';

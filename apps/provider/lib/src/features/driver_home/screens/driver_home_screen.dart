@@ -7,6 +7,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../core/providers/availability_controller.dart';
 import '../../../core/providers/socket_provider.dart';
 import '../data/road_snap_service.dart';
 import '../providers/driver_location_provider.dart';
@@ -106,6 +107,9 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
     if (permission == LocationPermission.deniedForever) return;
 
     final position = await Geolocator.getCurrentPosition();
+    // Cache the fix so other screens (edit business info, etc.) can centre
+    // their maps on the driver without re-prompting for permission.
+    ref.read(lastKnownPositionProvider.notifier).state = position;
     final controller = await _mapController.future;
     if (!mounted) return;
     await controller.animateCamera(
@@ -242,14 +246,21 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
     final status = ref.watch(providerStatusProvider);
     final isOnline = status.isOnline || status.isBusy;
 
+    // Prefer the last-known device fix so re-opens centre on the driver
+    // immediately instead of flashing Kumasi before the GPS animate kicks in.
+    final cached = ref.watch(lastKnownPositionProvider);
+    final initialTarget = cached == null
+        ? _kumasiCenter
+        : LatLng(cached.latitude, cached.longitude);
+
     return Scaffold(
       body: Stack(
         children: [
           // ── 1. Full-screen Google Map ──
           Positioned.fill(
             child: GoogleMap(
-              initialCameraPosition: const CameraPosition(
-                target: _kumasiCenter,
+              initialCameraPosition: CameraPosition(
+                target: initialTarget,
                 zoom: 15,
               ),
               onMapCreated: (controller) {

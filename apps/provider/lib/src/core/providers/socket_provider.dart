@@ -10,6 +10,7 @@ import '../../features/artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../features/auth/providers/auth_controller.dart';
 import '../../features/driver_home/providers/driver_location_provider.dart';
+import '../../features/driver_home/providers/ride_request_provider.dart';
 import 'availability_controller.dart';
 import 'provider_status_provider.dart';
 import '../../features/profile/providers/provider_type_provider.dart';
@@ -213,11 +214,27 @@ void _connectAndListen(Ref ref, SocketService socket) {
 
     debugPrint('[WS] Job/ride listeners attached (id=${socket.isConnected})');
 
-    // Listen for ride status updates
-    socket.off('ride:status');
-    socket.on('ride:status', (data) {
+    // Listen for ride status updates — pushed when the client cancels, when
+    // the matcher reassigns a ride that's been ignored, or when the backend
+    // echoes a status the driver just set. Mirrors the artisan job:status
+    // handler so the active-ride sheet stays in sync without polling.
+    void handleRideStatus(dynamic data) {
       debugPrint('[WS] Received ride:status: $data');
-    });
+      if (data is! Map<String, dynamic>) return;
+      final rideId = data['rideId'] as String? ?? data['id'] as String?;
+      final statusStr = data['status'] as String?;
+      if (rideId == null || statusStr == null) return;
+      try {
+        final active = ref.read(activeRideProvider).ride;
+        if (active?.id != rideId) return;
+        final next = RideStatus.fromString(statusStr);
+        ref.read(activeRideProvider.notifier).applyRemoteStatus(next);
+      } catch (_) {}
+    }
+
+    socket
+      ..off('ride:status')
+      ..on('ride:status', handleRideStatus);
 
     // Listen for job status updates — emitted to the artisan's room when
     // their bid is accepted/rejected, when the job is cancelled, or when

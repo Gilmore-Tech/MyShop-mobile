@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../core/providers/availability_controller.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../../auth/providers/current_user_provider.dart';
 
@@ -61,9 +62,17 @@ class _EditBusinessInformationScreenState
     _email = TextEditingController(text: user?.email ?? '');
     _phone = TextEditingController(text: user?.phone ?? '');
     _radiusKm = ap?.serviceRadiusKm ?? 5;
-    _centre = ap?.hasServiceLocation == true
-        ? LatLng(ap!.serviceLatitude!, ap.serviceLongitude!)
-        : _defaultCentre;
+    if (ap?.hasServiceLocation == true) {
+      _centre = LatLng(ap!.serviceLatitude!, ap.serviceLongitude!);
+    } else {
+      // No saved service area yet — drop the centre on the artisan's
+      // current position when we have it cached, so they can fine-tune
+      // around themselves instead of dragging from the pilot city.
+      final cached = ref.read(lastKnownPositionProvider);
+      _centre = cached == null
+          ? _defaultCentre
+          : LatLng(cached.latitude, cached.longitude);
+    }
 
     for (final c in [_name, _registration, _address, _email, _phone]) {
       c.addListener(_markDirty);

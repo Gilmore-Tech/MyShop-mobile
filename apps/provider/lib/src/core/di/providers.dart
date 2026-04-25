@@ -48,6 +48,13 @@ final jobServiceProvider = Provider<JobService>((ref) {
   return JobService(ref.watch(dioProvider));
 });
 
+/// Ride service — ride-hailing endpoints for accepting and advancing rides
+/// through the driver lifecycle (accepted → driver_en_route → arrived →
+/// in_progress → completed) plus driver-initiated cancellation.
+final rideServiceProvider = Provider<RideService>((ref) {
+  return RideService(ref.watch(dioProvider));
+});
+
 /// Backend notification service — exposes `/notifications` endpoints
 /// (list, mark-as-read, register FCM device token).
 final apiNotificationServiceProvider = Provider<NotificationService>((ref) {

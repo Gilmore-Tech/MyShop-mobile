@@ -63,30 +63,41 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
     super.dispose();
   }
 
-  void _handlePrimaryAction(Ride ride) {
+  Future<void> _handlePrimaryAction(Ride ride) async {
     final notifier = ref.read(activeRideProvider.notifier);
-    switch (ride.status) {
-      case RideStatus.accepted:
-      case RideStatus.driverEnRoute:
-        notifier.markArrived();
-      case RideStatus.arrived:
-        notifier.startTrip();
-      case RideStatus.inProgress:
-        notifier.completeTrip();
-        Navigator.of(context).pop('completed');
-      default:
-        break;
+    final wasInProgress = ride.status == RideStatus.inProgress;
+    final ok = switch (ride.status) {
+      RideStatus.accepted ||
+      RideStatus.driverEnRoute =>
+        await notifier.markArrived(),
+      RideStatus.arrived => await notifier.startTrip(),
+      RideStatus.inProgress => await notifier.completeTrip(),
+      _ => false,
+    };
+    if (!mounted) return;
+    if (!ok) {
+      final message = ref.read(activeRideProvider).errorMessage ??
+          "Couldn't update the ride";
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+      return;
+    }
+    if (wasInProgress) {
+      Navigator.of(context).pop('completed');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final ride = ref.watch(activeRideProvider);
+    final state = ref.watch(activeRideProvider);
+    final ride = state.ride;
     if (ride == null) {
       return const Scaffold(
         body: Center(child: Text('No active ride')),
       );
     }
+    final isUpdating = state.isUpdating;
 
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
@@ -153,6 +164,7 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
               return _PassengerPanel(
                 ride: ride,
                 scrollController: scrollController,
+                isUpdating: isUpdating,
                 onPrimaryAction: () => _handlePrimaryAction(ride),
               );
             },
@@ -333,11 +345,13 @@ class _PassengerPanel extends StatelessWidget {
   const _PassengerPanel({
     required this.ride,
     required this.scrollController,
+    required this.isUpdating,
     required this.onPrimaryAction,
   });
 
   final Ride ride;
   final ScrollController scrollController;
+  final bool isUpdating;
   final VoidCallback onPrimaryAction;
 
   @override
@@ -531,10 +545,13 @@ class _PassengerPanel extends StatelessWidget {
 
               // Primary action button
               ElevatedButton(
-                onPressed: onPrimaryAction,
+                onPressed: isUpdating ? null : onPrimaryAction,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: MyShopColors.darkSlate,
                   foregroundColor: MyShopColors.textOnPrimary,
+                  disabledBackgroundColor:
+                      MyShopColors.darkSlate.withValues(alpha: 0.6),
+                  disabledForegroundColor: MyShopColors.textOnPrimary,
                   minimumSize: const Size(double.infinity, 60),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(40)),
@@ -546,14 +563,24 @@ class _PassengerPanel extends StatelessWidget {
                   elevation: 4,
                   shadowColor: MyShopColors.darkSlate.withValues(alpha: 0.4),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(_primaryActionLabel(ride.status)),
-                    const SizedBox(width: 6),
-                    const Icon(Icons.chevron_right, size: 22),
-                  ],
-                ),
+                child: isUpdating
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          valueColor: AlwaysStoppedAnimation(
+                              MyShopColors.textOnPrimary),
+                        ),
+                      )
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(_primaryActionLabel(ride.status)),
+                          const SizedBox(width: 6),
+                          const Icon(Icons.chevron_right, size: 22),
+                        ],
+                      ),
               ),
               const SizedBox(height: MyShopSpacing.sm),
 

@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-import '../../../core/providers/provider_status_provider.dart';
 import '../providers/ride_request_provider.dart';
 import 'active_ride_screen.dart';
 
@@ -26,6 +25,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
   static const _acceptanceWindowSecs = 22;
   late int _secondsRemaining;
   Timer? _timer;
+  bool _isAccepting = false;
 
   @override
   void initState() {
@@ -46,14 +46,29 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     super.dispose();
   }
 
-  void _accept() {
+  Future<void> _accept() async {
+    if (_isAccepting) return;
     _timer?.cancel();
-    ref.read(activeRideProvider.notifier).acceptRide(widget.ride);
-    ref.read(providerStatusProvider.notifier).setBusy();
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => const ActiveRideScreen(),
-      ),
+    setState(() => _isAccepting = true);
+    final ok =
+        await ref.read(activeRideProvider.notifier).acceptRide(widget.ride);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => const ActiveRideScreen(),
+        ),
+      );
+      return;
+    }
+    // Acceptance failed — surface the error and let the driver dismiss the
+    // request manually. We don't restart the countdown because the matcher
+    // may already have moved on.
+    final message =
+        ref.read(activeRideProvider).errorMessage ?? "Couldn't accept the ride";
+    setState(() => _isAccepting = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 
@@ -149,7 +164,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                         Expanded(
                           flex: 2,
                           child: OutlinedButton.icon(
-                            onPressed: _decline,
+                            onPressed: _isAccepting ? null : _decline,
                             icon: const Icon(Icons.close, size: 18),
                             label: const Text('Decline'),
                             style: OutlinedButton.styleFrom(
@@ -164,17 +179,37 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                         const SizedBox(width: MyShopSpacing.md),
                         Expanded(
                           flex: 3,
-                          child: ElevatedButton.icon(
-                            onPressed: _accept,
-                            icon: const Icon(Icons.check, size: 18),
-                            label: const Text('Accept'),
+                          child: ElevatedButton(
+                            onPressed: _isAccepting ? null : _accept,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: MyShopColors.darkSlate,
                               foregroundColor: MyShopColors.textOnPrimary,
+                              disabledBackgroundColor:
+                                  MyShopColors.darkSlate.withValues(alpha: 0.6),
+                              disabledForegroundColor:
+                                  MyShopColors.textOnPrimary,
                               minimumSize: const Size(0, 52),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               textStyle: const TextStyle(fontFamily: 'Raleway', fontSize: 16, fontWeight: FontWeight.w700),
                             ),
+                            child: _isAccepting
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                      valueColor: AlwaysStoppedAnimation(
+                                          MyShopColors.textOnPrimary),
+                                    ),
+                                  )
+                                : const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.check, size: 18),
+                                      SizedBox(width: 8),
+                                      Text('Accept'),
+                                    ],
+                                  ),
                           ),
                         ),
                       ],

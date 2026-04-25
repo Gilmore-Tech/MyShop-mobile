@@ -211,7 +211,9 @@ final localProfilePhotoProvider =
 /// Tracks which specific items are missing so the UI can tell the user
 /// exactly what they need to complete before going online.
 ///
-/// **Driver**: full name, photo, vehicle, Ghana Card, KYC, police check, licence.
+/// **Driver**: full name, photo, vehicle info, plus 4 required documents
+/// (Ghana Card, Driver's Licence, Vehicle Registration, Roadworthiness)
+/// approved.
 /// **Artisan**: full name, photo, categories, plus 3 required documents
 /// (Ghana Card, Business Registration, Trade Certificate) approved.
 final profileCompletionProvider = Provider<ProfileCompletion>((ref) {
@@ -220,7 +222,7 @@ final profileCompletionProvider = Provider<ProfileCompletion>((ref) {
     return const ProfileCompletion(completed: 0, total: 1, missing: ['Sign in']);
   }
 
-  // Backend document statuses — needed for artisan doc approval checks.
+  // Backend document statuses — drives every doc-approval check below.
   final verificationAsync = ref.watch(verificationStatusProvider);
   final isLoadingDocs = verificationAsync.isLoading;
   final docs = verificationAsync.valueOrNull;
@@ -237,12 +239,21 @@ final profileCompletionProvider = Provider<ProfileCompletion>((ref) {
       (user.fullName.isNotEmpty, 'Full name'),
       (dp?.profilePhotoUrl != null, 'Profile photo'),
       (dp?.vehicleMake != null, 'Vehicle information'),
-      (dp?.ghanaCardVerified == true, 'Ghana Card verification'),
-      (dp?.kycStatus == 'verified', 'KYC verification'),
-      (dp?.policeCheckStatus == 'clear', 'Police background check'),
-      (dp?.licenceNumber != null, "Driver's licence"),
+      (isDocApproved(DocumentType.ghanaCard), 'Ghana Card (approved)'),
+      (
+        isDocApproved(DocumentType.driversLicence),
+        "Driver's Licence (approved)",
+      ),
+      (
+        isDocApproved(DocumentType.vehicleRegistration),
+        'Vehicle Registration (approved)',
+      ),
+      (
+        isDocApproved(DocumentType.roadworthinessCertificate),
+        'Roadworthiness Certificate (approved)',
+      ),
     ];
-    return ProfileCompletion.fromChecks(items);
+    return ProfileCompletion.fromChecks(items, isLoading: isLoadingDocs);
   } else {
     final items = <(bool, String)>[
       (user.fullName.isNotEmpty, 'Full name'),
