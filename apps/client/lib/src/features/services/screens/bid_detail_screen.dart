@@ -185,6 +185,7 @@ bool _isJobLocked(JobStatus status) {
     case JobStatus.arrived:
     case JobStatus.inProgress:
     case JobStatus.artisanMarkedComplete:
+    case JobStatus.pendingPayment:
     case JobStatus.completed:
     case JobStatus.cancelled:
       return true;
@@ -1392,6 +1393,7 @@ class _JobLockedActionContent extends StatelessWidget {
       case JobStatus.arrived:
       case JobStatus.inProgress:
       case JobStatus.artisanMarkedComplete:
+      case JobStatus.pendingPayment:
         return (
           Icons.directions_run_rounded,
           MyShopColors.primaryGold,

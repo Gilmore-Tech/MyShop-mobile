@@ -81,8 +81,9 @@ class _PaymentMethodSheet extends StatelessWidget {
             title: 'Pay in-app',
             subtitle: "Instant MoMo or card via Paystack. Funds held in "
                 'escrow until the job is confirmed.',
-            onTap: () =>
-                Navigator.of(context).pop(PaymentMethod.platformPayment),
+            // Defaults to MTN Mobile Money — user can switch to Telecel,
+            // AirtelTigo, Visa, or Mastercard on the payment screen.
+            onTap: () => Navigator.of(context).pop(PaymentMethod.momoMtn),
           ),
           SizedBox(height: h * 0.012),
           _MethodCard(

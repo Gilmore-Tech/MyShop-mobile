@@ -18,6 +18,7 @@ enum JobStatus {
   arrived,
   inProgress,
   artisanMarkedComplete,
+  pendingPayment,
   completed,
   cancelled,
 }
@@ -31,6 +32,7 @@ extension JobStatusX on JobStatus {
         JobStatus.arrived              => 'Arrived',
         JobStatus.inProgress           => 'In Progress',
         JobStatus.artisanMarkedComplete => 'Awaiting Confirmation',
+        JobStatus.pendingPayment       => 'Processing Payment',
         JobStatus.completed            => 'Completed',
         JobStatus.cancelled            => 'Cancelled',
       };
@@ -40,6 +42,7 @@ extension JobStatusX on JobStatus {
         JobStatus.cancelled            => MyShopColors.error,
         JobStatus.inProgress           => MyShopColors.primaryGold,
         JobStatus.artisanMarkedComplete => MyShopColors.primaryGold,
+        JobStatus.pendingPayment       => MyShopColors.primaryGold,
         JobStatus.enRoute              => MyShopColors.primaryGold,
         JobStatus.arrived              => MyShopColors.primaryGold,
         JobStatus.confirmed            => MyShopColors.success,
@@ -257,6 +260,7 @@ class _JobDetailNotifier
       'arrived'                      => JobStatus.arrived,
       'in_progress'                  => JobStatus.inProgress,
       'artisan_marked_complete'      => JobStatus.artisanMarkedComplete,
+      'pending_payment'              => JobStatus.pendingPayment,
       'completed'                    => JobStatus.completed,
       'cancelled'                    => JobStatus.cancelled,
       _                              => JobStatus.open,
@@ -287,6 +291,7 @@ class _JobDetailNotifier
       (JobStatus.arrived, 'Arrived', 'The artisan has arrived at your location.'),
       (JobStatus.inProgress, 'In Progress', 'Work is underway.'),
       (JobStatus.artisanMarkedComplete, 'Awaiting Confirmation', 'The artisan has marked the job complete. Please confirm.'),
+      (JobStatus.pendingPayment, 'Processing Payment', 'Your payment is being processed. This usually takes a few seconds.'),
       (JobStatus.completed, 'Completed', 'The job has been completed successfully.'),
     ];
 

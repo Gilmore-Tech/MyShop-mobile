@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../../../core/constants/mapbox_config.dart';
 import '../../../core/di/providers.dart';
+import '../../../core/providers/current_location_provider.dart';
 import '../providers/job_form_provider.dart';
 
 /// Full-screen Google Map with a center crosshair for pin-dropping.
@@ -21,12 +23,14 @@ class JobMapPickerScreen extends ConsumerStatefulWidget {
 class _JobMapPickerScreenState extends ConsumerState<JobMapPickerScreen> {
   GoogleMapController? _mapController;
 
-  /// Default center: Kumasi, Ashanti Region.
-  static const _defaultCenter = LatLng(6.6885, -1.6244);
+  /// Ultimate fallback when GPS is unavailable AND we have no prior fix.
+  static const _kumasiFallback =
+      LatLng(MapboxConfig.defaultLat, MapboxConfig.defaultLng);
 
-  LatLng _currentCenter = _defaultCenter;
+  late LatLng _currentCenter;
   String _address = '';
   bool _isGeocoding = false;
+  bool _centerOnUserOnMapReady = false;
 
   @override
   void initState() {
@@ -35,7 +39,25 @@ class _JobMapPickerScreenState extends ConsumerState<JobMapPickerScreen> {
     final state = ref.read(jobFormProvider);
     if (state.latitude != null && state.longitude != null) {
       _currentCenter = LatLng(state.latitude!, state.longitude!);
+      return;
     }
+    // Otherwise seed from the cached device fix; fall back to Kumasi and
+    // hand-off to GPS once the map controller is ready.
+    final cached = ref.read(currentDevicePositionProvider);
+    if (cached != null) {
+      _currentCenter = LatLng(cached.latitude, cached.longitude);
+    } else {
+      _currentCenter = _kumasiFallback;
+      _centerOnUserOnMapReady = true;
+    }
+  }
+
+  Future<void> _goToMyLocation() async {
+    final position =
+        await ref.read(currentLocationServiceProvider).ensure(forceRefresh: true);
+    if (!mounted || position == null) return;
+    final target = LatLng(position.latitude, position.longitude);
+    _mapController?.animateCamera(CameraUpdate.newLatLngZoom(target, 16));
   }
 
   void _onCameraIdle() {
@@ -87,7 +109,10 @@ class _JobMapPickerScreenState extends ConsumerState<JobMapPickerScreen> {
                 target: _currentCenter,
                 zoom: 15,
               ),
-              onMapCreated: (controller) => _mapController = controller,
+              onMapCreated: (controller) {
+                _mapController = controller;
+                if (_centerOnUserOnMapReady) _goToMyLocation();
+              },
               onCameraMove: _onCameraMove,
               onCameraIdle: _onCameraIdle,
               myLocationEnabled: true,
@@ -163,11 +188,7 @@ class _JobMapPickerScreenState extends ConsumerState<JobMapPickerScreen> {
               shape: const CircleBorder(),
               elevation: 3,
               child: IconButton(
-                onPressed: () {
-                  _mapController?.animateCamera(
-                    CameraUpdate.newLatLng(_defaultCenter),
-                  );
-                },
+                onPressed: _goToMyLocation,
                 icon: const Icon(
                   Icons.my_location_rounded,
                   color: MyShopColors.textPrimary,

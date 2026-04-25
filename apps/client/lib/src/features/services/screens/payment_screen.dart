@@ -7,7 +7,31 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../providers/active_job_provider.dart';
 import '../providers/payment_provider.dart';
+import '../widgets/otp_entry_sheet.dart';
 import 'payment_confirmed_dialog.dart';
+
+/// Pops the OTP entry sheet for a Paystack `send_otp` charge and either
+/// forwards the entered code to [PaymentNotifier.submitOtp] or — if the
+/// user dismissed without entering — calls [cancelOtp] so the screen
+/// drops back to the idle state instead of staying stuck in
+/// awaitingOtp with no visible UI.
+Future<void> _promptForOtp(
+  BuildContext context,
+  WidgetRef ref, {
+  required PaymentSummary summary,
+  String? errorMessage,
+}) async {
+  final otp = await showOtpEntrySheet(context, errorMessage: errorMessage);
+  if (otp == null || !context.mounted) {
+    ref.read(paymentNotifierProvider.notifier).cancelOtp();
+    return;
+  }
+  ref.read(paymentNotifierProvider.notifier).submitOtp(
+        otp,
+        jobId: summary.jobId,
+        summary: summary,
+      );
+}
 
 /// Opens the Paystack checkout URL, trying external browser first and
 /// falling back to an in-app webview. Clears the URL from state on
@@ -51,6 +75,128 @@ Future<void> _launchCheckout(
   }
 }
 
+/// Pops a dialog when /payments/initiate returns 409
+/// PAYMENT_ALREADY_INITIATED. Two outcomes:
+///   - "Cancel & retry" — calls POST /payments/:id/abandon then re-runs
+///     /initiate with the current form values.
+///   - "Wait" — dismisses; the backend's stale-payment cron will clear
+///     the in-flight charge after retryAfterSeconds and the user can
+///     tap Confirm & Pay again.
+Future<void> _showStalePaymentDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  required PaymentSummary summary,
+  required StalePaymentAttempt stale,
+  required String momoPhone,
+}) async {
+  final size = MediaQuery.sizeOf(context);
+  final w = size.width;
+  final waitHint = stale.retryAfterSeconds > 0
+      ? 'Or wait about ${stale.retryAfterSeconds}s for it to clear automatically.'
+      : 'It should clear automatically in a moment.';
+
+  final action = await showDialog<_StalePaymentAction>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => AlertDialog(
+      backgroundColor: MyShopColors.surfaceWhite,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(w * 0.041),
+      ),
+      title: Row(
+        children: [
+          Container(
+            width: w * 0.115,
+            height: w * 0.115,
+            decoration: const BoxDecoration(
+              color: MyShopColors.warningLight,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.hourglass_top_rounded,
+              size: w * 0.056,
+              color: MyShopColors.warning,
+            ),
+          ),
+          SizedBox(width: w * 0.031),
+          Expanded(
+            child: Text(
+              'Payment in progress',
+              style: TextStyle(
+                fontSize: w * 0.046,
+                fontWeight: FontWeight.w700,
+                color: MyShopColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+      content: Text(
+        'A payment for this job started ${stale.ageSeconds}s ago and is '
+        'still pending. If you missed the prompt or closed the app, '
+        'cancel it and try again now. $waitHint',
+        style: TextStyle(
+          fontSize: w * 0.036,
+          color: MyShopColors.textSecondary,
+          height: 1.5,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () =>
+              Navigator.of(context).pop(_StalePaymentAction.wait),
+          child: Text(
+            'Wait',
+            style: TextStyle(
+              fontSize: w * 0.036,
+              fontWeight: FontWeight.w600,
+              color: MyShopColors.textSecondary,
+            ),
+          ),
+        ),
+        ElevatedButton(
+          onPressed: () =>
+              Navigator.of(context).pop(_StalePaymentAction.cancelAndRetry),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: MyShopColors.warning,
+            foregroundColor: MyShopColors.surfaceWhite,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(w * 0.021),
+            ),
+            padding: EdgeInsets.symmetric(
+              horizontal: w * 0.046,
+              vertical: w * 0.026,
+            ),
+          ),
+          child: Text(
+            'Cancel & retry',
+            style: TextStyle(
+              fontSize: w * 0.036,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  if (!context.mounted) return;
+  final notifier = ref.read(paymentNotifierProvider.notifier);
+  switch (action ?? _StalePaymentAction.wait) {
+    case _StalePaymentAction.cancelAndRetry:
+      await notifier.abandonStaleAttemptAndRetry(
+        jobId: summary.jobId,
+        summary: summary,
+        momoPhone: momoPhone.isNotEmpty ? momoPhone : null,
+      );
+    case _StalePaymentAction.wait:
+      notifier.dismissStaleAttempt();
+  }
+}
+
+enum _StalePaymentAction { wait, cancelAndRetry }
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 // PRD 7.2 — client reviews job cost, selects payment method, and confirms.
 // Funds are held in micro-escrow via Flutterwave until dual confirmation.
@@ -77,6 +223,11 @@ class PaymentScreen extends ConsumerStatefulWidget {
 }
 
 class _PaymentScreenState extends ConsumerState<PaymentScreen> {
+  /// MoMo number the user enters — lives in widget state because we need
+  /// a TextEditingController with proper lifecycle. Passed into
+  /// [PaymentNotifier.confirmPayment] when the selected method requires it.
+  final TextEditingController _momoPhoneCtrl = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -90,6 +241,12 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         ref.read(paymentNotifierProvider.notifier).selectMethod(preset);
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _momoPhoneCtrl.dispose();
+    super.dispose();
   }
 
   @override
@@ -108,7 +265,12 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           message: 'Could not load payment summary',
           onRetry: () => ref.invalidate(paymentSummaryProvider(widget.jobId)),
         ),
-        data: (summary) => _PaymentBody(summary: summary, w: w, h: h),
+        data: (summary) => _PaymentBody(
+          summary: summary,
+          w: w,
+          h: h,
+          momoPhoneCtrl: _momoPhoneCtrl,
+        ),
       ),
     );
   }
@@ -120,8 +282,18 @@ class _PaymentBody extends ConsumerWidget {
   final PaymentSummary summary;
   final double w;
   final double h;
-  const _PaymentBody(
-      {required this.summary, required this.w, required this.h});
+
+  /// Owned by the parent stateful widget — lives across rebuilds. Used
+  /// by the MoMo row to capture the phone number and by the bottom bar
+  /// to pass it to [PaymentNotifier.confirmPayment].
+  final TextEditingController momoPhoneCtrl;
+
+  const _PaymentBody({
+    required this.summary,
+    required this.w,
+    required this.h,
+    required this.momoPhoneCtrl,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -136,15 +308,48 @@ class _PaymentBody extends ConsumerWidget {
         _launchCheckout(context, ref, next.authorizationUrl!);
       }
 
+      // Paystack returned `send_otp` — pop the sheet for the user to
+      // type the SMS code. Only fires on the *transition* into
+      // awaitingOtp so we don't reopen the sheet on every rebuild while
+      // the phase is still awaitingOtp (the notifier flips back here on
+      // a wrong-OTP retry, with a fresh errorMessage).
+      if (next.phase == PaymentPhase.awaitingOtp &&
+          previous?.phase != PaymentPhase.awaitingOtp) {
+        _promptForOtp(
+          context,
+          ref,
+          summary: summary,
+          // Prefer the inline error (e.g. "Wrong OTP") on a retry; fall
+          // back to Paystack's displayText ("Enter the OTP we sent…") on
+          // the first open.
+          errorMessage: next.errorMessage ?? next.displayText,
+        );
+      }
+
       // Settlement landed → show the success dialog.
       if (next.confirmation != null && previous?.confirmation == null) {
         showPaymentConfirmedDialog(context, next.confirmation!);
       }
 
-      // Surface errors (initiate failed, or non-PAYMENT_NOT_SETTLED errors
-      // bubbled out of confirmCompletion) as a snackbar.
+      // 409 PAYMENT_ALREADY_INITIATED — backend has an in-flight charge
+      // for this booking. Pop a dialog with the timing details and let
+      // the user cancel-and-retry (POST /payments/:id/abandon then
+      // re-initiate) or wait for the backend's stale-payment cron.
+      if (next.staleAttempt != null && previous?.staleAttempt == null) {
+        _showStalePaymentDialog(
+          context,
+          ref,
+          summary: summary,
+          stale: next.staleAttempt!,
+          momoPhone: momoPhoneCtrl.text,
+        );
+      }
+
+      // Surface errors as a snackbar — but skip while we're in awaitingOtp
+      // since the sheet renders the error inline.
       if (next.errorMessage != null &&
-          next.errorMessage != previous?.errorMessage) {
+          next.errorMessage != previous?.errorMessage &&
+          next.phase != PaymentPhase.awaitingOtp) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(next.errorMessage!)),
         );
@@ -191,13 +396,23 @@ class _PaymentBody extends ConsumerWidget {
                 SizedBox(height: h * 0.014),
                 _PaymentSummaryCard(summary: summary, w: w, h: h),
                 SizedBox(height: h * 0.014),
-                _PaymentMethodCard(summary: summary, w: w, h: h),
+                _PaymentMethodCard(
+                  summary: summary,
+                  w: w,
+                  h: h,
+                  momoPhoneCtrl: momoPhoneCtrl,
+                ),
                 SizedBox(height: h * 0.028),
               ],
             ),
           ),
         ),
-        _BottomBar(summary: summary, w: w, h: h),
+        _BottomBar(
+          summary: summary,
+          w: w,
+          h: h,
+          momoPhoneCtrl: momoPhoneCtrl,
+        ),
       ],
     );
   }
@@ -672,8 +887,13 @@ class _PaymentMethodCard extends ConsumerWidget {
   final PaymentSummary summary;
   final double w;
   final double h;
-  const _PaymentMethodCard(
-      {required this.summary, required this.w, required this.h});
+  final TextEditingController momoPhoneCtrl;
+  const _PaymentMethodCard({
+    required this.summary,
+    required this.w,
+    required this.h,
+    required this.momoPhoneCtrl,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -704,30 +924,88 @@ class _PaymentMethodCard extends ConsumerWidget {
           ),
           SizedBox(height: h * 0.017),
 
-          // ── Platform Payment ──
-          _PaymentOption(
-            method: PaymentMethod.platformPayment,
-            subtitle: PaymentMethod.platformPayment.subtitle,
-            isSelected: selected == PaymentMethod.platformPayment,
-            onTap: () => ref
-                .read(paymentNotifierProvider.notifier)
-                .selectMethod(PaymentMethod.platformPayment),
-            w: w,
-            h: h,
-          ),
-          SizedBox(height: h * 0.012),
-
-          // ── Cash ──
-          _PaymentOption(
-            method: PaymentMethod.cash,
-            subtitle: 'Balance: ${summary.walletBalanceDisplay}',
-            isSelected: selected == PaymentMethod.cash,
-            onTap: () => ref
-                .read(paymentNotifierProvider.notifier)
-                .selectMethod(PaymentMethod.cash),
-            w: w,
-            h: h,
-          ),
+          // One row per backend-supported method + cash. Values come from
+          // [PaymentMethod.values] so adding a provider on the server
+          // surfaces automatically once the enum is updated.
+          for (int i = 0; i < PaymentMethod.values.length; i++) ...[
+            _PaymentOption(
+              method: PaymentMethod.values[i],
+              subtitle: PaymentMethod.values[i].subtitle,
+              isSelected: selected == PaymentMethod.values[i],
+              onTap: () => ref
+                  .read(paymentNotifierProvider.notifier)
+                  .selectMethod(PaymentMethod.values[i]),
+              w: w,
+              h: h,
+            ),
+            if (i < PaymentMethod.values.length - 1)
+              SizedBox(height: h * 0.010),
+          ],
+          // MoMo charges are routed by phone number on the backend. Show
+          // a compact input directly under the method grid whenever the
+          // selected method needs one — the value is read off the shared
+          // controller by the bottom bar when "Confirm & Pay" is tapped.
+          if (selected.requiresMomoPhone) ...[
+            SizedBox(height: h * 0.017),
+            Text(
+              'Mobile money number',
+              style: TextStyle(
+                fontSize: w * 0.031,
+                fontWeight: FontWeight.w700,
+                color: MyShopColors.textPrimary,
+              ),
+            ),
+            SizedBox(height: h * 0.008),
+            TextField(
+              controller: momoPhoneCtrl,
+              keyboardType: TextInputType.phone,
+              style: TextStyle(
+                fontSize: w * 0.038,
+                color: MyShopColors.textPrimary,
+              ),
+              decoration: InputDecoration(
+                hintText: '024 123 4567',
+                hintStyle: TextStyle(
+                  color: MyShopColors.textSecondary,
+                  fontSize: w * 0.036,
+                ),
+                prefixIcon: const Icon(
+                  Icons.phone_android_rounded,
+                  color: MyShopColors.textSecondary,
+                ),
+                filled: true,
+                fillColor: MyShopColors.surfaceGrey,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: w * 0.031,
+                  vertical: h * 0.017,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(w * 0.021),
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(w * 0.021),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(w * 0.021),
+                  borderSide: const BorderSide(
+                    color: MyShopColors.primaryGold,
+                    width: 1.5,
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(height: h * 0.006),
+            Text(
+              "You'll receive a prompt on this number to approve the charge.",
+              style: TextStyle(
+                fontSize: w * 0.026,
+                color: MyShopColors.textSecondary,
+                height: 1.4,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -865,8 +1143,13 @@ class _BottomBar extends ConsumerWidget {
   final PaymentSummary summary;
   final double w;
   final double h;
-  const _BottomBar(
-      {required this.summary, required this.w, required this.h});
+  final TextEditingController momoPhoneCtrl;
+  const _BottomBar({
+    required this.summary,
+    required this.w,
+    required this.h,
+    required this.momoPhoneCtrl,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -952,6 +1235,9 @@ class _BottomBar extends ConsumerWidget {
                     .confirmPayment(
                       jobId: summary.jobId,
                       summary: summary,
+                      momoPhone: state.selectedMethod.requiresMomoPhone
+                          ? momoPhoneCtrl.text
+                          : null,
                     ),
                 // Re-launch the checkout if the user dismissed Paystack
                 // without finishing, or if the auto-launch was blocked.
@@ -979,18 +1265,37 @@ class _BottomBar extends ConsumerWidget {
           ),
           SizedBox(height: h * 0.010),
 
-          // ── Disclaimer ──
-          Text(
-            "By clicking 'Confirm & Pay', you agree to the Escrow Terms of "
-            'Service. Funds are held by GhanaMobile Marketplace.',
-            style: TextStyle(
-              fontSize: w * 0.026,
-              fontWeight: FontWeight.w400,
-              color: MyShopColors.textHint,
-              height: 1.4,
+          // ── Status / disclaimer ──
+          // While we're waiting on the USSD push, prefer Paystack's
+          // own message ("A request has been sent…", "Authorize on
+          // your MTN line", etc.) over the legal disclaimer. The
+          // gateway's wording is the most accurate instruction the
+          // user can follow at that moment.
+          if (state.phase == PaymentPhase.awaitingSettlement &&
+              state.displayText != null &&
+              state.displayText!.isNotEmpty)
+            Text(
+              state.displayText!,
+              style: TextStyle(
+                fontSize: w * 0.030,
+                fontWeight: FontWeight.w600,
+                color: MyShopColors.textSecondary,
+                height: 1.4,
+              ),
+              textAlign: TextAlign.center,
+            )
+          else
+            Text(
+              "By clicking 'Confirm & Pay', you agree to the Escrow Terms of "
+              'Service. Funds are held by GhanaMobile Marketplace.',
+              style: TextStyle(
+                fontSize: w * 0.026,
+                fontWeight: FontWeight.w400,
+                color: MyShopColors.textHint,
+                height: 1.4,
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
-          ),
         ],
       ),
     );
@@ -1047,6 +1352,9 @@ class _BottomBar extends ConsumerWidget {
           ],
         );
       }
+      // Live Ghana MoMo on Paystack uses a USSD push (not OTP). Label
+      // the wait state accordingly so the user looks at their phone for
+      // the carrier prompt instead of expecting a code in-app.
       return Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -1060,7 +1368,7 @@ class _BottomBar extends ConsumerWidget {
           ),
           SizedBox(width: w * 0.026),
           Text(
-            'Waiting for payment…',
+            'Approve on your phone',
             style: TextStyle(
               fontSize: w * 0.038,
               fontWeight: FontWeight.w600,

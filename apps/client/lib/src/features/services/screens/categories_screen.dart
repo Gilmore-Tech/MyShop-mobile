@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
+import '../../../core/providers/current_location_label_provider.dart';
 import '../providers/services_provider.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
@@ -52,11 +53,11 @@ class CategoriesScreen extends StatelessWidget {
 
 // ── App Bar ────────────────────────────────────────────────────────────────────
 
-class _AppBar extends StatelessWidget {
+class _AppBar extends ConsumerWidget {
   const _AppBar();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final size = MediaQuery.sizeOf(context);
     final w = size.width;
     final h = size.height;
@@ -87,12 +88,17 @@ class _AppBar extends StatelessWidget {
             children: [
               Icon(Icons.location_on_rounded, size: w * 0.036, color: MyShopColors.primaryGold),
               SizedBox(width: w * 0.010),
-              Text(
-                'Kumasi, Ashanti Region',
-                style: TextStyle(
-                  fontSize:   w * 0.031,
-                  fontWeight: FontWeight.w400,
-                  color:      MyShopColors.textSecondary,
+              Expanded(
+                child: Text(
+                  ref.watch(currentLocationLabelProvider).value ??
+                      'Locating...',
+                  style: TextStyle(
+                    fontSize:   w * 0.031,
+                    fontWeight: FontWeight.w400,
+                    color:      MyShopColors.textSecondary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],

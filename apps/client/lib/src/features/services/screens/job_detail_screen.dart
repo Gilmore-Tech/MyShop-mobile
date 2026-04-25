@@ -9,7 +9,6 @@ import '../../../app/router.dart';
 import '../providers/bid_list_provider.dart';
 import '../providers/job_detail_provider.dart';
 import '../widgets/bid_list_sheet.dart';
-import '../widgets/payment_method_sheet.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD 4.5 — Client views full job request detail, timeline progression,
@@ -1089,6 +1088,15 @@ class _BottomActionBar extends StatelessWidget {
     final Widget content;
     if (status == JobStatus.artisanMarkedComplete) {
       content = _ConfirmCompletionButton(jobId: jobId, w: w, h: h);
+    } else if (status == JobStatus.pendingPayment) {
+      // Charge is in flight with Paystack. Happy path: webhook lands in
+      // seconds and flips the job to completed. Stuck path: client
+      // closed the app or never finished Paystack's USSD/checkout, and
+      // Paystack never fires a webhook — job sits here forever. The tile
+      // shows the in-flight state plus a "didn't complete it?" retry
+      // affordance so the client can recover without waiting on a
+      // backend reconciliation cron.
+      content = _PendingPaymentTile(jobId: jobId, w: w, h: h);
     } else if (status == JobStatus.completed) {
       content = _JobCompletedTile(w: w, h: h);
     } else if (hasSelectedArtisan) {
@@ -1149,11 +1157,10 @@ class _ConfirmCompletionButtonState
     if (_submitting) return;
     setState(() => _submitting = true);
     try {
-      // Step 1: satisfaction check. The dialog's CTA now says "Yes, Proceed
-      // to Payment" — confirming the work kicks off the Paystack flow
-      // rather than marking the job complete directly. PATCH /confirm only
-      // fires after the charge settles (webhook) or the artisan confirms
-      // cash receipt, whichever happens first.
+      // Step 1: satisfaction check. Confirming kicks off the Paystack
+      // flow rather than marking the job complete directly. PATCH /confirm
+      // only fires after the charge settles (webhook) or the artisan
+      // confirms cash receipt, whichever happens first.
       final confirmed = await showDialog<bool>(
         context: context,
         barrierDismissible: true,
@@ -1161,14 +1168,10 @@ class _ConfirmCompletionButtonState
       );
       if (confirmed != true || !mounted) return;
 
-      // Step 2: pick how to pay.
-      final method = await showPaymentMethodSheet(context);
-      if (method == null || !mounted) return;
-
-      // Step 3: hand off to the payment screen, which owns the rest of the
-      // flow (initiate → Paystack checkout or cash prompt → PATCH /confirm
-      // on settlement).
-      context.push(AppRoutes.jobPaymentPath(widget.jobId), extra: method);
+      // Step 2: hand off to the payment screen, which owns method
+      // selection (MTN / Telecel / AirtelTigo / Visa / Mastercard /
+      // Cash), the MoMo phone input, and the rest of the flow.
+      context.push(AppRoutes.jobPaymentPath(widget.jobId));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -1332,7 +1335,228 @@ class _ConfirmCompletionDialog extends StatelessWidget {
   }
 }
 
-/// Read-only tile shown when the job is already completed.
+/// Action-bar button shown when the job is in `pending_payment` — the
+/// backend still believes a Paystack charge is in flight. In practice
+/// this is also the state a client lands in after killing the app
+/// mid-payment, since Paystack's failure webhook can take minutes (or
+/// never fires). The tile from before showed "Processing payment…" with
+/// a small recovery link beneath it, but in production that reads as
+/// "no pay button" — so the retry is now the primary action, with the
+/// processing context demoted to a subtitle.
+///
+/// Distinct gold styling (vs. the green "Proceed to Payment" used for
+/// the first attempt) signals "this is a recovery, your previous
+/// attempt is still on file." A confirm dialog warns about creating a
+/// duplicate charge before navigating to the payment screen.
+class _PendingPaymentTile extends StatefulWidget {
+  final String jobId;
+  final double w;
+  final double h;
+  const _PendingPaymentTile({
+    required this.jobId,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  State<_PendingPaymentTile> createState() => _PendingPaymentTileState();
+}
+
+class _PendingPaymentTileState extends State<_PendingPaymentTile> {
+  bool _submitting = false;
+
+  Future<void> _handleTap() async {
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => const _RestartPaymentDialog(),
+      );
+      if (confirmed != true || !mounted) return;
+      context.push(AppRoutes.jobPaymentPath(widget.jobId));
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w = widget.w;
+    final h = widget.h;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          height: h * 0.062,
+          child: ElevatedButton(
+            onPressed: _submitting ? null : _handleTap,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: MyShopColors.warning,
+              foregroundColor: MyShopColors.surfaceWhite,
+              disabledBackgroundColor: MyShopColors.surfaceGrey,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(w * 0.021),
+              ),
+            ),
+            child: _submitting
+                ? SizedBox(
+                    width: w * 0.051,
+                    height: w * 0.051,
+                    child: const CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: MyShopColors.surfaceWhite,
+                    ),
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.refresh_rounded,
+                        size: w * 0.051,
+                        color: MyShopColors.surfaceWhite,
+                      ),
+                      SizedBox(width: w * 0.021),
+                      Text(
+                        'Resume Payment',
+                        style: TextStyle(
+                          fontSize: w * 0.040,
+                          fontWeight: FontWeight.w700,
+                          color: MyShopColors.surfaceWhite,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ),
+        SizedBox(height: h * 0.008),
+        Text(
+          'Your earlier payment is still pending. Tap to start over.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: w * 0.030,
+            fontWeight: FontWeight.w500,
+            color: MyShopColors.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Confirmation dialog shown before restarting a payment that the
+/// backend still believes is in flight. Spells out the consequence
+/// (previous attempt is replaced) so the client doesn't tap retry
+/// while a legitimate USSD prompt is sitting on their phone.
+class _RestartPaymentDialog extends StatelessWidget {
+  const _RestartPaymentDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    return AlertDialog(
+      backgroundColor: MyShopColors.surfaceWhite,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(w * 0.041),
+      ),
+      titlePadding: EdgeInsets.fromLTRB(
+        w * 0.051,
+        w * 0.051,
+        w * 0.051,
+        w * 0.021,
+      ),
+      contentPadding: EdgeInsets.symmetric(
+        horizontal: w * 0.051,
+        vertical: w * 0.015,
+      ),
+      actionsPadding: EdgeInsets.fromLTRB(
+        w * 0.031,
+        0,
+        w * 0.031,
+        w * 0.031,
+      ),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: w * 0.123,
+            height: w * 0.123,
+            decoration: const BoxDecoration(
+              color: MyShopColors.warningLight,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.refresh_rounded,
+              size: w * 0.062,
+              color: MyShopColors.warning,
+            ),
+          ),
+          SizedBox(height: w * 0.031),
+          Text(
+            'Restart payment?',
+            style: TextStyle(
+              fontSize: w * 0.046,
+              fontWeight: FontWeight.w700,
+              color: MyShopColors.textPrimary,
+            ),
+          ),
+        ],
+      ),
+      content: Text(
+        "Only restart if you didn't finish the previous attempt. If a "
+        "Paystack prompt is still on your phone, please complete it "
+        "instead — restarting may create a second charge request.",
+        style: TextStyle(
+          fontSize: w * 0.036,
+          fontWeight: FontWeight.w400,
+          color: MyShopColors.textSecondary,
+          height: 1.5,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text(
+            'Keep waiting',
+            style: TextStyle(
+              fontSize: w * 0.036,
+              fontWeight: FontWeight.w600,
+              color: MyShopColors.textSecondary,
+            ),
+          ),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: MyShopColors.warning,
+            foregroundColor: MyShopColors.surfaceWhite,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(w * 0.021),
+            ),
+            padding: EdgeInsets.symmetric(
+              horizontal: w * 0.046,
+              vertical: w * 0.026,
+            ),
+          ),
+          child: Text(
+            'Restart payment',
+            style: TextStyle(
+              fontSize: w * 0.036,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _JobCompletedTile extends StatelessWidget {
   final double w;
   final double h;

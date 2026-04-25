@@ -2,6 +2,7 @@ import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/providers/current_location_provider.dart';
 
 // ── Job Form State ─────────────────────────────────────────────────────────────
 // PRD 4.5 — Client fills out service request: category, title, description,
@@ -121,9 +122,10 @@ class JobFormState {
 // ── Notifier ──────────────────────────────────────────────────────────────────
 
 class JobFormNotifier extends StateNotifier<JobFormState> {
-  JobFormNotifier(this._jobService, this._mediaService)
+  JobFormNotifier(this._ref, this._jobService, this._mediaService)
       : super(const JobFormState());
 
+  final Ref _ref;
   final JobService _jobService;
   final MediaService _mediaService;
 
@@ -198,11 +200,14 @@ class JobFormNotifier extends StateNotifier<JobFormState> {
         );
       }
 
+      // Fall back to the cached device fix when the form has no explicit
+      // location — keeps the job near the user instead of the pilot city.
+      final cached = _ref.read(currentDevicePositionProvider);
       final result = await _jobService.createJob(
         categoryId: state.selectedCategoryId!,
         description: '${state.title}\n\n${state.description}',
-        latitude: state.latitude ?? 6.6885,
-        longitude: state.longitude ?? -1.6244,
+        latitude: state.latitude ?? cached?.latitude ?? 6.6885,
+        longitude: state.longitude ?? cached?.longitude ?? -1.6244,
         addressText: state.destinationAddress,
         scheduledFor: state.isImmediate ? null : state.scheduledFor?.toIso8601String(),
         photoUrls: photoUrls,
@@ -233,6 +238,7 @@ class JobFormNotifier extends StateNotifier<JobFormState> {
 final jobFormProvider =
     StateNotifierProvider.autoDispose<JobFormNotifier, JobFormState>(
   (ref) => JobFormNotifier(
+        ref,
         ref.watch(jobServiceProvider),
         ref.watch(mediaServiceProvider),
       ),

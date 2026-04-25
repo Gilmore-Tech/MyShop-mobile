@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
 import '../providers/active_job_provider.dart';
-import '../widgets/payment_method_sheet.dart';
 
 // ── Timeline step model ───────────────────────────────────────────────────────
 
@@ -1432,24 +1431,19 @@ class _BottomBar extends ConsumerWidget {
     return _isCtaEnabled(phase) ? MyShopColors.darkSlate : MyShopColors.surfaceGrey;
   }
 
-  Future<void> _onCtaTap(
-    BuildContext context,
-    WidgetRef ref,
-    ActiveJobData job,
-  ) async {
+  void _onCtaTap(BuildContext context, WidgetRef ref, ActiveJobData job) {
     final notifier = ref.read(activeJobActionProvider.notifier);
     if (job.phase == ActiveJobPhase.arrived) {
       notifier.confirmArrival(jobId: job.jobId);
       return;
     }
     if (job.phase == ActiveJobPhase.awaitingApproval) {
-      // Ask the user how they want to settle — in-app Paystack charge vs.
-      // cash handed to the artisan. The payment screen handles the rest
-      // of the flow for both paths (initiate → wait on webhook or on the
-      // artisan's cash-confirmation → PATCH /confirm idempotently).
-      final method = await showPaymentMethodSheet(context);
-      if (method == null || !context.mounted) return;
-      context.push(AppRoutes.jobPaymentPath(job.jobId), extra: method);
+      // Straight to the payment screen — it already exposes every
+      // backend-supported method (MTN / Telecel / AirtelTigo / Visa /
+      // Mastercard / Cash) plus the MoMo phone input. A separate "how
+      // would you like to pay" sheet on top of that was a redundant
+      // double-pick.
+      context.push(AppRoutes.jobPaymentPath(job.jobId));
     }
   }
 

@@ -4,6 +4,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../core/constants/mapbox_config.dart';
+import '../../../core/providers/current_location_provider.dart';
 import '../providers/artisan_live_location_provider.dart';
 import '../providers/bid_detail_provider.dart';
 
@@ -71,8 +73,10 @@ class _TrackingBody extends ConsumerStatefulWidget {
 
 class _TrackingBodyState extends ConsumerState<_TrackingBody>
     with SingleTickerProviderStateMixin {
-  /// Default center when we have no coordinates at all — Kumasi.
-  static const _fallbackCenter = LatLng(6.6885, -1.6244);
+  /// Ultimate fallback when we have neither job nor artisan coordinates AND
+  /// no cached device fix. Kept as a const so it's never null.
+  static const _kumasiFallback =
+      LatLng(MapboxConfig.defaultLat, MapboxConfig.defaultLng);
 
   GoogleMapController? _mapController;
   bool _initialFitDone = false;
@@ -272,8 +276,12 @@ class _TrackingBodyState extends ConsumerState<_TrackingBody>
         : null;
     final int etaMinutes = live?.etaMinutes ?? bid.artisan.etaMinutes;
 
+    final cached = ref.watch(currentDevicePositionProvider);
+    final cachedLatLng = cached == null
+        ? null
+        : LatLng(cached.latitude, cached.longitude);
     final initialCamera = CameraPosition(
-      target: job ?? displayed ?? _fallbackCenter,
+      target: job ?? displayed ?? cachedLatLng ?? _kumasiFallback,
       zoom: 14,
     );
 
