@@ -4,11 +4,12 @@ import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/providers/current_location_provider.dart';
 import 'ride_search_provider.dart';
 
 // ── Models ────────────────────────────────────────────────────────────────────
 
-enum BookingPhase { idle, searching, driverFound }
+enum BookingPhase { idle, searching, driverFound, failed }
 
 class VehicleOption {
   final String id;
@@ -175,27 +176,6 @@ const recentDestinations = [
   ),
 ];
 
-const _mockMatchedDriver = MatchedDriver(
-  name: 'Kofi Mensah',
-  vehicle: 'Midnight Black Toyota Camry Hybrid',
-  plateNumber: 'GR-4557-23',
-  rating: 4.92,
-  minutesAway: 3,
-  driversAvailable: 3,
-  tripCount: 1450,
-  isVerified: true,
-  isPoliceChecked: true,
-  maskedPhone: '+233 ••• ••• 42',
-  vehicleTier: 'Premier Comfort',
-  baseFarePesewas: 1200,
-  distanceFarePesewas: 1550,
-  distanceKm: 5.2,
-  bookingFeePesewas: 250,
-  vehicleShortName: 'Toyota Vitz',
-  confirmedFarePesewas: 4250,
-  paymentMethod: 'Cash',
-);
-
 // ── Ride Receipt ─────────────────────────────────────────────────────────────
 
 /// Immutable receipt returned after a ride is completed.
@@ -344,17 +324,22 @@ final selectedVehicleProvider = StateProvider<String>(
   (_) => vehicleOptions.first.id,
 );
 
-/// Booking phase: idle → searching → driverFound
+/// Booking phase: idle → searching → driverFound | failed
 final bookingPhaseProvider =
     StateNotifierProvider<BookingPhaseNotifier, BookingPhase>(
   (_) => BookingPhaseNotifier(),
 );
+
+/// Human-readable reason for [BookingPhase.failed] — surfaced on the
+/// driver-matching screen so the rider sees what went wrong.
+final bookingFailureMessageProvider = StateProvider<String?>((_) => null);
 
 class BookingPhaseNotifier extends StateNotifier<BookingPhase> {
   BookingPhaseNotifier() : super(BookingPhase.idle);
 
   void startSearch() => state = BookingPhase.searching;
   void driverFound() => state = BookingPhase.driverFound;
+  void fail() => state = BookingPhase.failed;
   void reset() => state = BookingPhase.idle;
 }
 
@@ -427,25 +412,43 @@ class WaitingCountdownNotifier extends StateNotifier<int> {
 /// Creates a ride via the backend and polls until a driver is matched.
 ///
 /// Call this after the client confirms the ride on the fare-estimate screen.
-/// Falls back to mock data if the API call fails so the flow is never blocked
-/// during development.
-Future<void> simulateDriverMatching(WidgetRef ref) async {
+/// Failures (couldn't request, no drivers, timeout, cancelled) flip
+/// [bookingPhaseProvider] to [BookingPhase.failed] and store a message in
+/// [bookingFailureMessageProvider] so the matching screen can render a
+/// real error state instead of a fake driver.
+///
+/// Takes a [ProviderContainer] (not a [WidgetRef]) because the caller
+/// navigates away from the fare-estimate screen on the same frame as
+/// kicking this off — using the screen's `WidgetRef` past the next
+/// `await` would throw `StateError: Cannot use "ref" after the widget
+/// was disposed`. The container outlives any single widget.
+Future<void> requestRideAndMatchDriver(ProviderContainer ref) async {
   final rideService = ref.read(rideServiceProvider);
   final search = ref.read(rideSearchProvider);
 
   ref.read(bookingPhaseProvider.notifier).startSearch();
   ref.read(searchCountdownProvider.notifier).reset();
   ref.read(rideMatchedViaSocketProvider.notifier).state = false;
+  ref.read(bookingFailureMessageProvider.notifier).state = null;
+
+  void failWith(String message) {
+    ref.read(bookingFailureMessageProvider.notifier).state = message;
+    ref.read(bookingPhaseProvider.notifier).fail();
+  }
 
   // ── 1. Create ride via POST /rides ──────────────────────────────────────
   String? rideId;
   try {
     final pickup = search.pickup;
     final destination = search.destination;
+    // Pickup falls back to the cached device fix so an unset pickup still
+    // resolves to a real coordinate near the user (rather than the pilot
+    // city centre, which would mis-route the driver).
+    final cached = ref.read(currentDevicePositionProvider);
 
     final result = await rideService.createRide(
-      pickupLat: pickup?.lat ?? 6.6884,
-      pickupLng: pickup?.lng ?? -1.6244,
+      pickupLat: pickup?.lat ?? cached?.latitude ?? 6.6884,
+      pickupLng: pickup?.lng ?? cached?.longitude ?? -1.6244,
       destinationLat: destination?.lat ?? 6.7000,
       destinationLng: destination?.lng ?? -1.6300,
       pickupAddress: pickup?.address,
@@ -460,88 +463,115 @@ Future<void> simulateDriverMatching(WidgetRef ref) async {
       'createRide failed (${e.statusCode}): ${e.message}',
       name: 'RideProvider',
     );
-    // Fall through — we'll use mock data below if rideId is null.
+    failWith(
+      e.message.isNotEmpty
+          ? e.message
+          : "Couldn't request a ride. Please check your connection and try again.",
+    );
+    return;
   } catch (e) {
     developer.log('createRide error: $e', name: 'RideProvider');
-  }
-
-  // ── 2. Poll GET /rides/:id until driver matched or timeout ─────────────
-  if (rideId != null) {
-    const maxPolls = 45;
-    const pollInterval = Duration(seconds: 2);
-
-    for (var i = 0; i < maxPolls; i++) {
-      await Future.delayed(pollInterval);
-
-      // Exit early if a WebSocket event already delivered the driver match.
-      if (ref.read(rideMatchedViaSocketProvider)) return;
-
-      ref.read(searchCountdownProvider.notifier).tick();
-      ref.read(searchCountdownProvider.notifier).tick(); // 2 ticks per 2s
-
-      try {
-        final ride = await rideService.getRide(rideId);
-        final status = ride['status'] as String? ?? '';
-        final driver =
-            ride['driver'] as Map<String, dynamic>? ?? <String, dynamic>{};
-
-        if (status == 'accepted' || status == 'driver_assigned') {
-          final matched = MatchedDriver(
-            name: driver['name'] as String? ?? 'Driver',
-            vehicle: driver['vehicle'] as String? ?? '',
-            plateNumber: driver['plateNumber'] as String? ?? '',
-            rating: (driver['rating'] as num?)?.toDouble() ?? 4.5,
-            minutesAway: (driver['eta'] as num?)?.toInt() ?? 3,
-            driversAvailable: 1,
-            tripCount: (driver['tripCount'] as num?)?.toInt() ?? 0,
-            isVerified: driver['isVerified'] as bool? ?? false,
-            isPoliceChecked: driver['isPoliceChecked'] as bool? ?? false,
-            maskedPhone: driver['maskedPhone'] as String? ?? '',
-            vehicleTier: driver['vehicleTier'] as String? ?? '',
-            baseFarePesewas:
-                (ride['baseFare'] as num?)?.toInt() ?? 0,
-            distanceFarePesewas:
-                (ride['distanceFare'] as num?)?.toInt() ?? 0,
-            distanceKm:
-                (ride['distanceKm'] as num?)?.toDouble() ?? 0,
-            bookingFeePesewas:
-                (ride['bookingFee'] as num?)?.toInt() ?? 0,
-            vehicleShortName: driver['vehicleShortName'] as String? ?? '',
-            confirmedFarePesewas:
-                (ride['totalFare'] as num?)?.toInt() ?? 0,
-            paymentMethod: ride['paymentMethod'] as String? ?? 'Cash',
-          );
-
-          ref.read(matchedDriverProvider.notifier).state = matched;
-          ref.read(bookingPhaseProvider.notifier).driverFound();
-          return;
-        }
-
-        if (status == 'cancelled' || status == 'no_drivers') {
-          developer.log('Ride $status — stopping poll', name: 'RideProvider');
-          ref.read(bookingPhaseProvider.notifier).reset();
-          return;
-        }
-      } on ApiException catch (e) {
-        developer.log(
-          'getRide poll failed (${e.statusCode}): ${e.message}',
-          name: 'RideProvider',
-        );
-      }
-    }
-
-    // Timeout — no driver matched after max polls
-    developer.log('Driver matching timed out', name: 'RideProvider');
-    ref.read(bookingPhaseProvider.notifier).reset();
+    failWith("Couldn't request a ride. Please try again.");
     return;
   }
 
-  // ── 3. Fallback to mock when API unavailable ───────────────────────────
-  for (var i = 0; i < 8; i++) {
-    await Future.delayed(const Duration(seconds: 1));
-    ref.read(searchCountdownProvider.notifier).tick();
+  if (rideId == null) {
+    failWith("The server didn't return a ride ID. Please try again.");
+    return;
   }
 
-  ref.read(matchedDriverProvider.notifier).state = _mockMatchedDriver;
-  ref.read(bookingPhaseProvider.notifier).driverFound();
+  // ── 2. Poll GET /rides/:id until driver matched or timeout ─────────────
+  const maxPolls = 45;
+  const pollInterval = Duration(seconds: 2);
+
+  for (var i = 0; i < maxPolls; i++) {
+    await Future.delayed(pollInterval);
+
+    // Exit early if a WebSocket event already delivered the driver match.
+    if (ref.read(rideMatchedViaSocketProvider)) return;
+
+    ref.read(searchCountdownProvider.notifier).tick();
+    ref.read(searchCountdownProvider.notifier).tick(); // 2 ticks per 2s
+
+    try {
+      final ride = await rideService.getRide(rideId);
+      final status = ride['status'] as String? ?? '';
+      final driver =
+          ride['driver'] as Map<String, dynamic>? ?? <String, dynamic>{};
+
+      if (status == 'accepted' || status == 'driver_assigned') {
+        final matched = MatchedDriver(
+          name: driver['name'] as String? ?? 'Driver',
+          vehicle: driver['vehicle'] as String? ?? '',
+          plateNumber: driver['plateNumber'] as String? ?? '',
+          rating: (driver['rating'] as num?)?.toDouble() ?? 4.5,
+          minutesAway: (driver['eta'] as num?)?.toInt() ?? 3,
+          driversAvailable: 1,
+          tripCount: (driver['tripCount'] as num?)?.toInt() ?? 0,
+          isVerified: driver['isVerified'] as bool? ?? false,
+          isPoliceChecked: driver['isPoliceChecked'] as bool? ?? false,
+          maskedPhone: driver['maskedPhone'] as String? ?? '',
+          vehicleTier: driver['vehicleTier'] as String? ?? '',
+          baseFarePesewas: (ride['baseFare'] as num?)?.toInt() ?? 0,
+          distanceFarePesewas: (ride['distanceFare'] as num?)?.toInt() ?? 0,
+          distanceKm: (ride['distanceKm'] as num?)?.toDouble() ?? 0,
+          bookingFeePesewas: (ride['bookingFee'] as num?)?.toInt() ?? 0,
+          vehicleShortName: driver['vehicleShortName'] as String? ?? '',
+          confirmedFarePesewas: (ride['totalFare'] as num?)?.toInt() ?? 0,
+          paymentMethod: ride['paymentMethod'] as String? ?? 'Cash',
+        );
+
+        ref.read(matchedDriverProvider.notifier).state = matched;
+        ref.read(bookingPhaseProvider.notifier).driverFound();
+        return;
+      }
+
+      if (status == 'no_drivers') {
+        developer.log('Ride no_drivers — stopping poll', name: 'RideProvider');
+        failWith('No drivers are available nearby right now. Please try again in a moment.');
+        return;
+      }
+
+      if (status == 'cancelled') {
+        developer.log('Ride cancelled — stopping poll', name: 'RideProvider');
+        failWith('This ride was cancelled.');
+        return;
+      }
+    } on ApiException catch (e) {
+      developer.log(
+        'getRide poll failed (${e.statusCode}): ${e.message}',
+        name: 'RideProvider',
+      );
+    }
+  }
+
+  // Timeout — no driver accepted within the search window.
+  developer.log('Driver matching timed out', name: 'RideProvider');
+  failWith("We couldn't find a driver in time. Please try again.");
+}
+
+/// Cancel an in-flight ride request from the matching screen — best-effort
+/// PATCH so the backend can release the slot. Local state is reset
+/// regardless of whether the cancel call succeeds.
+Future<void> cancelInFlightRideRequest(ProviderContainer ref) async {
+  final rideId = ref.read(activeRideIdProvider);
+  if (rideId != null && rideId.isNotEmpty) {
+    try {
+      await ref.read(rideServiceProvider).cancelRide(
+            rideId,
+            reason: 'rider_cancelled_during_search',
+          );
+    } on ApiException catch (e) {
+      developer.log(
+        'cancelRide failed (${e.statusCode}): ${e.message}',
+        name: 'RideProvider',
+      );
+    } catch (e) {
+      developer.log('cancelRide error: $e', name: 'RideProvider');
+    }
+  }
+  ref.read(activeRideIdProvider.notifier).state = null;
+  ref.read(matchedDriverProvider.notifier).state = null;
+  ref.read(bookingFailureMessageProvider.notifier).state = null;
+  ref.read(bookingPhaseProvider.notifier).reset();
 }

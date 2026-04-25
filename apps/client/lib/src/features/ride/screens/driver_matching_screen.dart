@@ -10,9 +10,11 @@ import '../widgets/driver_radar.dart';
 
 /// PRD 4.3 — Driver Matching Screen
 /// Radar animation while finding nearby drivers.
-/// Purely reactive: simulateDriverMatching() is started by FareEstimateScreen
-/// before navigating here. This screen watches [bookingPhaseProvider] and
-/// [matchedDriverProvider] and navigates to tracking once a driver is found.
+/// Purely reactive: requestRideAndMatchDriver() is started by
+/// FareEstimateScreen before navigating here. This screen watches
+/// [bookingPhaseProvider] and [matchedDriverProvider] and navigates to
+/// tracking once a driver is found, or shows a failure card if the
+/// request fails / no drivers accept in time.
 class DriverMatchingScreen extends ConsumerStatefulWidget {
   const DriverMatchingScreen({super.key});
 
@@ -41,29 +43,122 @@ class _DriverMatchingScreenState extends ConsumerState<DriverMatchingScreen> {
     final phase = ref.watch(bookingPhaseProvider);
     final driver = ref.watch(matchedDriverProvider);
     final driversFound = phase == BookingPhase.driverFound;
+    final failed = phase == BookingPhase.failed;
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
       body: SafeArea(
-        child: Column(
-          children: [
-            _TopBar(
-              driversFound: driversFound,
-              driversAvailable: driver?.driversAvailable ?? 0,
+        child: failed
+            ? const _FailureView()
+            : Column(
+                children: [
+                  _TopBar(
+                    driversFound: driversFound,
+                    driversAvailable: driver?.driversAvailable ?? 0,
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: DriverRadar(
+                        driversFound: driversFound,
+                        driversAvailable: driver?.driversAvailable ?? 0,
+                      ),
+                    ),
+                  ),
+                  if (!driversFound) const _SearchStatusBar(),
+                  if (driversFound && driver != null)
+                    DriverInfoCard(driver: driver),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+// ── Failure view ──────────────────────────────────────────────────────────────
+
+class _FailureView extends ConsumerWidget {
+  const _FailureView();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final message = ref.watch(bookingFailureMessageProvider) ??
+        "We couldn't request your ride.";
+
+    Future<void> dismiss() async {
+      final container = ProviderScope.containerOf(context, listen: false);
+      await cancelInFlightRideRequest(container);
+      if (!context.mounted) return;
+      context.go(AppRoutes.home);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: IconButton(
+              icon: const Icon(Icons.close_rounded,
+                  color: MyShopColors.textPrimary),
+              onPressed: dismiss,
             ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: DriverRadar(
-                  driversFound: driversFound,
-                  driversAvailable: driver?.driversAvailable ?? 0,
-                ),
+          ),
+          const Spacer(),
+          Container(
+            width: 88,
+            height: 88,
+            decoration: BoxDecoration(
+              color: MyShopColors.error.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.error_outline_rounded,
+              size: 44,
+              color: MyShopColors.error,
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'No driver matched',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: MyShopColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w400,
+              color: MyShopColors.textSecondary,
+              height: 1.4,
+            ),
+          ),
+          const Spacer(),
+          ElevatedButton(
+            onPressed: dismiss,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: MyShopColors.primaryGold,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 56),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+              ),
+              textStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
               ),
             ),
-            if (!driversFound) const _SearchStatusBar(),
-            if (driversFound && driver != null) DriverInfoCard(driver: driver),
-          ],
-        ),
+            child: const Text('Back to home'),
+          ),
+          const SizedBox(height: 24),
+        ],
       ),
     );
   }

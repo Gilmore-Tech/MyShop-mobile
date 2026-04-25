@@ -37,15 +37,7 @@ class RideSearchState {
 }
 
 class RideSearchNotifier extends StateNotifier<RideSearchState> {
-  RideSearchNotifier()
-      : super(
-          const RideSearchState(
-            pickup: RideLocation(
-              name: 'Kumasi Central Market',
-              address: 'Adum, Kumasi',
-            ),
-          ),
-        );
+  RideSearchNotifier() : super(const RideSearchState());
 
   void setLocation(RideSearchField field, RideLocation location) {
     state = field == RideSearchField.pickup

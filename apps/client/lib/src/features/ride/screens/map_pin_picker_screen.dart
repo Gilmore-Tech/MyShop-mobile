@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../../../core/constants/mapbox_config.dart';
 import '../../../core/di/providers.dart';
+import '../../../core/providers/current_location_provider.dart';
 import '../providers/edit_trip_provider.dart';
 import '../providers/ride_search_provider.dart';
 import 'destination_search_screen.dart' show kNewStopSentinel;
@@ -34,10 +35,12 @@ class MapPinPickerScreen extends ConsumerStatefulWidget {
 class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
   GoogleMapController? _mapController;
 
-  /// Default center: Kumasi, Ashanti Region.
-  static const _defaultCenter = LatLng(6.6885, -1.6244);
+  /// Ultimate fallback when GPS is unavailable AND we have no prior fix —
+  /// matches the pilot city center so the map isn't blank.
+  static const _kumasiFallback =
+      LatLng(MapboxConfig.defaultLat, MapboxConfig.defaultLng);
 
-  LatLng _currentCenter = _defaultCenter;
+  late LatLng _currentCenter;
   String _address = '';
   bool _isGeocoding = false;
   bool _centerOnUserOnMapReady = false;
@@ -52,32 +55,23 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
     final existing = _isPickup ? searchState.pickup : searchState.destination;
     if (existing?.lat != null && existing?.lng != null) {
       _currentCenter = LatLng(existing!.lat!, existing.lng!);
+      return;
+    }
+    // No prior location — seed from the cached device fix if we have one;
+    // otherwise hand-off to GPS once the map controller is ready.
+    final cached = ref.read(currentDevicePositionProvider);
+    if (cached != null) {
+      _currentCenter = LatLng(cached.latitude, cached.longitude);
     } else {
-      // No prior location — will move to GPS once the map controller is ready.
+      _currentCenter = _kumasiFallback;
       _centerOnUserOnMapReady = true;
     }
   }
 
   Future<void> _goToMyLocation() async {
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return;
-
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.deniedForever) {
-      return;
-    }
-
-    final position = await Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-      ),
-    );
-    if (!mounted) return;
-
+    final position =
+        await ref.read(currentLocationServiceProvider).ensure(forceRefresh: true);
+    if (!mounted || position == null) return;
     final target = LatLng(position.latitude, position.longitude);
     _mapController?.animateCamera(CameraUpdate.newLatLngZoom(target, 16));
   }

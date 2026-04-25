@@ -94,7 +94,12 @@ class FareEstimateScreen extends ConsumerWidget {
           if (estimateReady)
             _BottomActions(
               onConfirm: () {
-                simulateDriverMatching(ref);
+                // Hand the long-running matcher a container instead of
+                // `ref` — the screen disposes on the next line's `go`,
+                // and `WidgetRef` becomes unusable past the next await.
+                requestRideAndMatchDriver(
+                  ProviderScope.containerOf(context, listen: false),
+                );
                 context.go(AppRoutes.rideMatching);
               },
             ),

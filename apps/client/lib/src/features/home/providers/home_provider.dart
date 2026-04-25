@@ -98,11 +98,6 @@ class RecentPlacesNotifier extends AsyncNotifier<List<RecentPlace>> {
   }
 }
 
-/// Current location display string.
-/// In production, resolve via geolocator + reverse geocoding.
-/// For pilot, defaults to the Ashanti Region scope.
-final currentLocationProvider = Provider<String>((_) => 'Kumasi, Ashanti Region');
-
 /// User's display name from auth state — used in the greeting.
 final userDisplayNameProvider = Provider<String>((ref) {
   final authState = ref.watch(clientAuthControllerProvider);

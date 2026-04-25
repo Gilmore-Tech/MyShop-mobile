@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
+import '../../../core/providers/current_location_label_provider.dart';
 import '../../profile/providers/profile_provider.dart';
 import '../../ride/providers/ride_search_provider.dart';
 import '../providers/home_provider.dart';
@@ -21,8 +22,9 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final search = ref.watch(rideSearchProvider);
+    final currentLabel = ref.watch(currentLocationLabelProvider).value;
     final String pickupName =
-        search.pickup?.name ?? ref.watch(currentLocationProvider);
+        search.pickup?.name ?? currentLabel ?? 'Locating...';
     final destinationName = search.destination?.name;
 
     final h = MediaQuery.sizeOf(context).height;
