@@ -48,8 +48,9 @@ class LocationService {
     }
   }
 
-  /// POST /location/driver/update — set driver's current location and
-  /// mark them as online.
+  /// POST /location/update — set driver's current location and mark them
+  /// online. Backend is rate-limited to 1 update per 3 seconds and blocks
+  /// the call if there's an active ride in progress (`TOGGLE_LOCKED_ACTIVE_RIDE`).
   Future<Map<String, dynamic>> updateDriverLocation({
     required double latitude,
     required double longitude,
@@ -57,7 +58,7 @@ class LocationService {
   }) async {
     try {
       final response = await _dio.post(
-        '/location/driver/update',
+        '/location/update',
         data: {
           'latitude': latitude,
           'longitude': longitude,

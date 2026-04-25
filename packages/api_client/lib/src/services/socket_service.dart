@@ -183,6 +183,36 @@ class SocketService {
     _socket!.emit(event, data);
   }
 
+  /// Emit an event and await the server's ack response. Used for handlers
+  /// that return a result the caller needs (e.g. `ride:accept` returns the
+  /// accepted ride payload, or throws if the acceptance window has closed).
+  ///
+  /// Times out after [timeout] (default 8s) so a flaky socket doesn't hang
+  /// the UI forever. The call also fails fast with a [StateError] if the
+  /// socket is disconnected at emit time.
+  Future<dynamic> emitWithAck(
+    String event,
+    dynamic data, {
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    if (_socket?.connected != true) {
+      throw StateError('Cannot emit "$event" — socket not connected');
+    }
+    final completer = Completer<dynamic>();
+    _socket!.emitWithAck(
+      event,
+      data,
+      ack: (response, [_]) {
+        if (!completer.isCompleted) completer.complete(response);
+      },
+    );
+    return completer.future.timeout(
+      timeout,
+      onTimeout: () =>
+          throw TimeoutException('No ack for "$event" within $timeout'),
+    );
+  }
+
   /// Permanently dispose the socket and close streams.
   void dispose() {
     _disposed = true;
