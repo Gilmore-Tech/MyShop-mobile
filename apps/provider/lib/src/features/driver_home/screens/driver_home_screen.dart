@@ -280,6 +280,25 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
       next.whenData(_onDriverPositionUpdate);
     });
 
+    // While offline, the position-stream listener above is dormant — but the
+    // app-level warm-up in `main.dart` still pushes a fresh fix into
+    // `lastKnownPositionProvider` shortly after launch. Animate the camera
+    // off the Kumasi fallback once that fix arrives so the driver doesn't
+    // see the pilot-city flash until they toggle online.
+    ref.listen<Position?>(lastKnownPositionProvider, (prev, next) async {
+      if (next == null) return;
+      if (_hasCenteredOnDriver) return;
+      if (prev != null) return;
+      final controller = await _mapController.future;
+      if (!mounted) return;
+      await controller.animateCamera(
+        CameraUpdate.newLatLngZoom(
+          LatLng(next.latitude, next.longitude),
+          15,
+        ),
+      );
+    });
+
     final status = ref.watch(providerStatusProvider);
     final isOnline = status.isOnline || status.isBusy;
 

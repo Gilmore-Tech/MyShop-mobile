@@ -9,6 +9,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import 'package:go_router/go_router.dart';
+
 import '../../../core/services/directions_service.dart';
 import '../providers/driver_location_provider.dart';
 import '../providers/ride_request_provider.dart';
@@ -87,7 +89,6 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
 
   Future<void> _handlePrimaryAction(Ride ride) async {
     final notifier = ref.read(activeRideProvider.notifier);
-    final wasInProgress = ride.status == RideStatus.inProgress;
     final ok = switch (ride.status) {
       RideStatus.accepted ||
       RideStatus.driverEnRoute =>
@@ -105,9 +106,10 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
       );
       return;
     }
-    if (wasInProgress) {
-      Navigator.of(context).pop('completed');
-    }
+    // The activeRideProvider listener below handles navigation when the
+    // ride hits a terminal state (completed → trip summary, cancelled →
+    // back to home). Don't pop from here — that double-pop was leaving
+    // the navigator on a black screen below the home shell.
   }
 
   /// Bottom sheet with the "off the happy path" actions — currently just
@@ -217,6 +219,38 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(activeRideProvider);
+    // When the backend tells us the ride has reached a terminal state,
+    // navigate off this screen so the driver isn't stuck tapping buttons
+    // that 400 every time.
+    //
+    //   - `completed`: replace this screen with the trip-summary so the
+    //     driver lands on the earnings summary. Don't `clearRide()` here
+    //     — DriverRideCompleteScreen reads the ride/state and clears it
+    //     itself when the user dismisses.
+    //   - `cancelled`: snackbar + clear state + pop. There's no summary
+    //     screen for a cancelled ride.
+    ref.listen<ActiveRideState>(activeRideProvider, (prev, next) {
+      final wasActive = prev?.ride?.status.isActive ?? false;
+      final nextStatus = next.ride?.status;
+      if (!wasActive) return;
+      if (!mounted) return;
+      if (nextStatus == RideStatus.completed) {
+        // Use GoRouter so the underlying nav stack stays consistent —
+        // pushReplacement on a raw MaterialPageRoute would replace the
+        // GoRoute entry and leave nothing on the stack to pop back to,
+        // which is the "black screen on back" the driver was seeing.
+        context.go('/ride-complete');
+        return;
+      }
+      if (nextStatus == RideStatus.cancelled) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('This ride was cancelled.')),
+        );
+        ref.read(activeRideProvider.notifier).clearRide();
+        Navigator.of(context).pop('cancelled');
+      }
+    });
+
     final ride = state.ride;
     if (ride == null) {
       return const Scaffold(

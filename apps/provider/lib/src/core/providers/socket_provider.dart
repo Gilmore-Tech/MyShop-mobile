@@ -58,17 +58,21 @@ final lastSocketEventProvider = StateProvider<String?>((ref) => null);
 
 /// Manages the Socket.IO connection lifecycle.
 ///
-/// Automatically connects when the provider goes online and disconnects
-/// when they go offline. Listens for incoming ride/job events and pushes
-/// them into the appropriate state providers.
+/// Connects whenever the provider is `online` OR `busy` (the latter covers
+/// the recovered-active-ride case where the driver is mid-trip and must keep
+/// receiving `ride:state` snapshots and pushing the location heartbeat).
+/// Disconnects only on `offline`. Gating on `status.isOnline` would have
+/// torn the socket down the moment a recovered ride flipped status to
+/// `busy`, leaving the rider's marker frozen and the driver invisible to
+/// completion broadcasts.
 final socketConnectionProvider = Provider<void>((ref) {
   final status = ref.watch(providerStatusProvider);
   final socket = ref.read(socketServiceProvider);
 
-  if (status.isOnline) {
-    _connectAndListen(ref, socket);
-  } else {
+  if (status == DriverStatus.offline) {
     socket.disconnect();
+  } else {
+    _connectAndListen(ref, socket);
   }
 });
 
@@ -81,7 +85,10 @@ final socketConnectionProvider = Provider<void>((ref) {
 /// Watched by the shell — activates whenever the provider is online.
 final locationSocketBridgeProvider = Provider<void>((ref) {
   final status = ref.watch(providerStatusProvider);
-  if (!status.isOnline) {
+  // Run while online OR busy. During an active ride (busy) the rider's map
+  // depends on this heartbeat to track the car; if we gated on `isOnline`
+  // alone the marker would freeze the moment the trip moved to `busy`.
+  if (status == DriverStatus.offline) {
     debugPrint('[LOC] bridge: status=$status — idle');
     return;
   }
@@ -133,7 +140,7 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   final heartbeat = Timer.periodic(const Duration(seconds: 4), (_) {
     final pos = ref.read(lastKnownPositionProvider);
     if (pos == null) return;
-    socket.emit('location:update', {
+    socket.emit('driver:location:update', {
       'latitude': pos.latitude,
       'longitude': pos.longitude,
       'status': 'online',
@@ -149,12 +156,37 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   // below intentionally does NOT post REST (heartbeat owns that channel).
   final cached = ref.read(lastKnownPositionProvider);
   if (cached != null) {
-    socket.emit('location:update', {
+    socket.emit('driver:location:update', {
       'latitude': cached.latitude,
       'longitude': cached.longitude,
       'status': 'online',
     });
     postLocation(cached);
+  } else {
+    // No cached fix yet (e.g. recovered into busy on a fresh launch where
+    // the warm-up hadn't settled). Pull one synchronously so the matcher
+    // and the rider's marker have a starting point — without this, a
+    // freshly-recovered driver is invisible until the position stream
+    // produces its first emission.
+    Future<void>(() async {
+      try {
+        final fresh = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 8),
+          ),
+        );
+        ref.read(lastKnownPositionProvider.notifier).state = fresh;
+        socket.emit('driver:location:update', {
+          'latitude': fresh.latitude,
+          'longitude': fresh.longitude,
+          'status': 'online',
+        });
+        postLocation(fresh);
+      } catch (e) {
+        debugPrint('[LOC] bridge: cold-fix fetch failed: $e');
+      }
+    });
   }
 
   // Listen to the existing position stream so the cached fix advances as
@@ -166,7 +198,7 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
 
         // Socket emit on every fix is cheap and gives the matcher fresh
         // coords between heartbeat ticks while the driver is moving.
-        socket.emit('location:update', {
+        socket.emit('driver:location:update', {
           'latitude': position.latitude,
           'longitude': position.longitude,
           'status': 'online',
@@ -239,11 +271,12 @@ void _connectAndListen(Ref ref, SocketService socket) {
 
     // off+on guards against duplicate handlers if _connectAndListen runs
     // more than once against the same socket instance.
+    //
+    // Backend stopped emitting `ride:request` per the architectural
+    // migration; only `ride:new` carries new incoming requests now.
     socket
       ..off('ride:new')
-      ..off('ride:request')
-      ..on('ride:new', handleRide)
-      ..on('ride:request', handleRide); // legacy
+      ..on('ride:new', handleRide);
 
     // Listen for incoming job requests (artisan) — new + legacy event names
     void handleJob(dynamic data) {
@@ -285,27 +318,28 @@ void _connectAndListen(Ref ref, SocketService socket) {
 
     debugPrint('[WS] Job/ride listeners attached (id=${socket.isConnected})');
 
-    // Listen for ride status updates — pushed when the client cancels, when
-    // the matcher reassigns a ride that's been ignored, or when the backend
-    // echoes a status the driver just set. Mirrors the artisan job:status
-    // handler so the active-ride sheet stays in sync without polling.
-    void handleRideStatus(dynamic data) {
-      debugPrint('[WS] Received ride:status: $data');
+    // Canonical ride snapshot — fired by the backend on every ride state
+    // change (status transition, fare update, location bump while active,
+    // cancel, completion). Replaces the slim `ride:status` event. Payload
+    // is the same shape as `GET /rides/:id`.
+    void handleRideState(dynamic data) {
       if (data is! Map<String, dynamic>) return;
-      final rideId = data['rideId'] as String? ?? data['id'] as String?;
-      final statusStr = data['status'] as String?;
-      if (rideId == null || statusStr == null) return;
       try {
+        final ride = Ride.fromJson(data);
         final active = ref.read(activeRideProvider).ride;
-        if (active?.id != rideId) return;
-        final next = RideStatus.fromString(statusStr);
-        ref.read(activeRideProvider.notifier).applyRemoteStatus(next);
-      } catch (_) {}
+        // Only apply snapshots for the ride we're tracking. The driver
+        // socket shouldn't see snapshots for unrelated rides, but guard
+        // anyway in case the backend rooms ever cross-talk.
+        if (active != null && active.id != ride.id) return;
+        ref.read(activeRideProvider.notifier).applySnapshot(ride);
+      } catch (e) {
+        debugPrint('[WS] Failed to apply ride:state snapshot: $e');
+      }
     }
 
     socket
-      ..off('ride:status')
-      ..on('ride:status', handleRideStatus);
+      ..off('ride:state')
+      ..on('ride:state', handleRideState);
 
     // Listen for job status updates — emitted to the artisan's room when
     // their bid is accepted/rejected, when the job is cancelled, or when

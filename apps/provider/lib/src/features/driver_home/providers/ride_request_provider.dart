@@ -8,7 +8,6 @@ import 'package:shared_models/shared_models.dart';
 import '../../../core/di/providers.dart';
 import '../../../core/providers/provider_status_provider.dart';
 import '../../../core/providers/socket_provider.dart';
-import 'active_ride_persistence.dart';
 
 // The incoming ride/job request providers are in
 // core/providers/socket_provider.dart — driven by Socket.IO events.
@@ -45,26 +44,26 @@ class ActiveRideState {
 
 /// Drives the driver-side ride lifecycle.
 ///
-/// Acceptance is a WebSocket call (`ride:accept`) because the backend's
-/// REST `PATCH /rides/:id/status` endpoint only handles transitions out of
-/// `accepted` and won't accept a `requested → accepted` move. The socket
-/// path also wins the race against other notified drivers (Redis-backed
-/// first-come) and broadcasts `ride:accepted` to the rider's tracking room.
+/// Acceptance is a WebSocket call (`ride:accept`) — the backend atomically
+/// assigns the ride (first driver wins) and broadcasts `ride:state` to the
+/// driver's and rider's rooms.
 ///
-/// Subsequent transitions go through REST PATCH:
-///   accepted         → driver_en_route   (heading to pickup)
-///   driver_en_route  → arrived_at_pickup (at pickup)
-///   arrived          → in_progress       (trip started)
-///   in_progress      → completed         (trip finished)
+/// Subsequent transitions go through REST `PATCH /rides/:id/status`, which
+/// is now idempotent on the backend: passing any forward status walks the
+/// state machine in one transaction. After every transition the backend
+/// emits a fresh `ride:state` snapshot which the socket listener applies
+/// via [applySnapshot]. This notifier therefore stops trying to maintain
+/// its own copy of the lifecycle — it just reflects whatever the backend
+/// broadcasts.
 class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   ActiveRideNotifier(this._ref) : super(const ActiveRideState());
 
   final Ref _ref;
 
   /// Accept an incoming ride. Sends the `ride:accept` socket event and
-  /// awaits the backend's ack — the backend atomically assigns the ride
-  /// (first driver wins) and broadcasts `ride:accepted` to the rider on
-  /// our behalf.
+  /// awaits the backend's ack. The full ride entity arrives over the
+  /// `ride:state` socket event shortly after — until then the slim ride
+  /// payload from the request modal is good enough to render the screen.
   Future<bool> acceptRide(Ride ride) async {
     if (state.isUpdating) return false;
     state = ActiveRideState(ride: ride, isUpdating: true);
@@ -92,22 +91,13 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
         ride: ride.copyWith(status: RideStatus.accepted),
       );
       _setBusy();
-      // Persist the id so a crash or force-quit doesn't leave the driver
-      // permanently flagged `busy` on the backend with no way for the app
-      // to know there's a stuck ride to resume / cancel.
-      unawaited(ActiveRidePersistence().save(ride.id));
-      // The slim `ride:new` broadcast omits client name/photo/rating to
-      // keep the request modal lean. Now that we've accepted, fetch the
-      // full ride so the active-ride screen shows real passenger info
-      // instead of "Passenger" and a default rating.
-      unawaited(_hydrateRide(ride.id));
-      // Eagerly advance `accepted → driver_en_route`. The backend's
-      // RideStageTimeoutService auto-cancels rides that sit in `accepted`
-      // for ~2 minutes, and the PATCH is the only way for the driver to
-      // promise they're heading to the pickup. Doing this here (rather
-      // than from the screen's initState) means it fires the moment the
-      // socket ack lands, immune to widget-lifecycle / Riverpod build
-      // guards that were silently swallowing the call before.
+      // Advance immediately to `driver_en_route`. Backend's PATCH is
+      // idempotent now, but `RideStageTimeoutService` still auto-cancels
+      // rides that sit in `accepted` for >2 minutes — and a real driver
+      // takes 5–10 minutes to reach the pickup. Without this kick, the
+      // backend cancels the ride out from under us before the driver
+      // arrives. The PATCH is fire-and-forget; the resulting `ride:state`
+      // snapshot reconciles local state.
       unawaited(markEnRoute());
       return true;
     } on TimeoutException {
@@ -149,7 +139,9 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   }
 
   /// Advance through the next valid state. Returns true on success — caller
-  /// can then read `errorMessage` from state on failure.
+  /// can then read `errorMessage` from state on failure. The backend's
+  /// PATCH walks the legal path in one transaction, so a single call from
+  /// any forward status to any forward status is valid.
   Future<bool> advance() async {
     final ride = state.ride;
     if (ride == null) return false;
@@ -173,11 +165,16 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
             ride.id,
             status: next.toJson(),
           );
+      // PATCH response is the full ride snapshot (same shape the
+      // `ride:state` socket event carries). Apply it directly so the UI
+      // reacts on this round-trip even if the socket event is delayed.
+      // The socket listener will arrive a moment later with an identical
+      // payload — `applySnapshot` is idempotent.
       final updated = _safeParseRide(json) ?? ride.copyWith(status: next);
       state = state.copyWith(ride: updated, isUpdating: false);
-      if (next == RideStatus.completed) {
+      if (updated.status == RideStatus.completed ||
+          updated.status == RideStatus.cancelled) {
         _resumeOnline();
-        unawaited(ActiveRidePersistence().clear());
       }
       return true;
     } on ApiException catch (e) {
@@ -190,6 +187,17 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
         isUpdating: false,
         errorMessage: _friendlyError(e),
       );
+      // If the backend says we can't transition, our local copy of the
+      // ride is almost certainly stale — most often because the backend
+      // auto-cancelled the ride out from under us via a stage timeout
+      // and the cancellation broadcast didn't reach this socket. Pull
+      // the authoritative state so the screen can react (e.g. navigate
+      // away when status is now `cancelled`).
+      if (e.errorCode == 'INVALID_STATUS_TRANSITION' ||
+          e.errorCode == 'NOT_ASSIGNED_DRIVER' ||
+          e.errorCode == 'RIDE_ALREADY_ASSIGNED') {
+        unawaited(_refreshFromBackend(ride.id));
+      }
       return false;
     } catch (e) {
       developer.log(
@@ -206,10 +214,10 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   }
 
   /// Cancel the active ride. Best-effort PATCH so the backend gets a
-  /// proper `cancelled` row, then ALWAYS clear local state + persistence
-  /// — even if the backend refuses (data corruption, Prisma error,
-  /// network drop) the driver should still be able to escape the screen
-  /// rather than be permanently stuck on a ride they can't progress.
+  /// proper `cancelled` row, then ALWAYS clear local state — even if the
+  /// backend refuses (data corruption, network drop) the driver should
+  /// still be able to escape the screen rather than be permanently stuck
+  /// on a ride they can't progress.
   Future<void> cancelRide({String? reason}) async {
     final ride = state.ride;
     if (ride == null) {
@@ -241,26 +249,42 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
     clearRide();
   }
 
-  /// Mirror a `ride:status` socket event into local state — used when the
-  /// client cancels mid-trip or the backend pushes a status the driver
-  /// didn't trigger.
-  void applyRemoteStatus(RideStatus next) {
-    final ride = state.ride;
-    if (ride == null) return;
-    if (ride.status == next) return;
-    state = state.copyWith(ride: ride.copyWith(status: next));
-    if (next == RideStatus.completed || next == RideStatus.cancelled) {
+  /// Apply a full ride snapshot from a `ride:state` socket event (or any
+  /// other authoritative source — REST PATCH response, recovery fetch).
+  /// Replaces the local ride wholesale; on terminal states (completed /
+  /// cancelled) flips the driver back to `online`.
+  ///
+  /// Idempotent — re-applying an identical snapshot is a no-op.
+  void applySnapshot(Ride snapshot) {
+    final current = state.ride;
+    if (current != null && current.id != snapshot.id) {
+      // Snapshot for a different ride than the one we're tracking — guard
+      // against cross-ride leaks (shouldn't happen, but keeps the screen
+      // stable if the backend rooms ever cross-talk).
+      return;
+    }
+    state = state.copyWith(ride: snapshot);
+    if (snapshot.status == RideStatus.completed ||
+        snapshot.status == RideStatus.cancelled) {
       _resumeOnline();
-      unawaited(ActiveRidePersistence().clear());
     }
   }
 
-  /// Restore an active ride from the recovery flow on app start. Skips the
-  /// persistence write (the id is already on disk) and the busy-toggle
-  /// (the bridge will reconcile it from the ride status).
+  /// Restore an active ride from the recovery flow on app start. Same
+  /// shape as [applySnapshot] but also flips the provider status to busy
+  /// (recovery means we're definitely on a live ride).
   void restore(Ride ride) {
     state = ActiveRideState(ride: ride);
     _setBusy();
+    // Tag the ride as already surfaced so the request modal doesn't pop
+    // over the active-ride screen if a stale `ride:new` re-broadcast
+    // lands while we're recovering. Without this, a force-quit during
+    // acceptance could re-show the request modal post-recovery.
+    try {
+      _ref.read(surfacedRideIdsProvider.notifier).update(
+            (s) => {...s, ride.id},
+          );
+    } catch (_) {}
   }
 
   /// Clear the slot and return the driver to `online` — called when the
@@ -268,7 +292,6 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   void clearRide() {
     state = const ActiveRideState();
     _resumeOnline();
-    unawaited(ActiveRidePersistence().clear());
   }
 
   void _setBusy() {
@@ -285,24 +308,20 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
     } catch (_) {}
   }
 
-  /// Pull the full ride entity from REST and replace local state with it.
-  /// Called after a successful socket accept so the screen can render real
-  /// client name / photo / rating instead of the slim broadcast's defaults.
-  /// Failures are non-fatal — the screen falls back to whatever fields the
-  /// `ride:new` broadcast did include.
-  Future<void> _hydrateRide(String rideId) async {
+  /// Pull the authoritative ride state from REST and apply it via
+  /// [applySnapshot]. Called when a PATCH bounces back with a code that
+  /// implies our local state has drifted (ride auto-cancelled by the
+  /// backend's stage-timeout cron, another driver reassigned, etc.).
+  /// Failures are non-fatal — the user sees the original error message.
+  Future<void> _refreshFromBackend(String rideId) async {
     try {
       final json = await _ref.read(rideServiceProvider).getRide(rideId);
       final fresh = Ride.fromJson(json);
-      final current = state.ride;
-      if (current == null || current.id != rideId) return;
-      // Preserve the local lifecycle status — by the time hydrate returns,
-      // the auto-driverEnRoute kick (or a later transition the user just
-      // triggered) may have already advanced past what the backend's GET
-      // returned, and we don't want to silently regress.
-      state = state.copyWith(ride: fresh.copyWith(status: current.status));
+      if (state.ride?.id != rideId) return;
+      applySnapshot(fresh);
     } catch (e) {
-      developer.log('hydrateRide failed: $e', name: 'ActiveRide', level: 800);
+      developer.log('refreshFromBackend failed: $e',
+          name: 'ActiveRide', level: 800);
     }
   }
 

@@ -21,13 +21,62 @@ import '../services/local_notification_service.dart';
 ///   than artisans, so no intermediate sheet).
 ///
 /// Mount this inside the shell so incoming requests pop up from any tab.
-class IncomingRequestListener extends ConsumerWidget {
+class IncomingRequestListener extends ConsumerStatefulWidget {
   const IncomingRequestListener({super.key, required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<IncomingRequestListener> createState() =>
+      _IncomingRequestListenerState();
+}
+
+class _IncomingRequestListenerState
+    extends ConsumerState<IncomingRequestListener> {
+  /// Tracks whether we've routed for the *currently-recovered* active
+  /// ride. Reset to false when [activeRideProvider] goes back to null so
+  /// a new recovery (after the user completes/cancels the previous one)
+  /// can route again.
+  bool _routedForCurrentActiveRide = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Cold-start race guard: the recovery bridge in main.dart fires
+    // tryRecover() the moment auth flips to authenticated. If the GET
+    // returns before this widget mounts, [activeRideProvider] is already
+    // populated and `ref.listen` below — which only fires on subsequent
+    // transitions, never on the initial registered value — silently
+    // misses it. Check the current state once after the first frame and
+    // route if needed.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ride = ref.read(activeRideProvider).ride;
+      if (ride != null) {
+        _maybeRouteToActiveRide(ride);
+      }
+    });
+  }
+
+  void _maybeRouteToActiveRide(Ride ride) {
+    if (_routedForCurrentActiveRide) return;
+    if (!mounted) return;
+    final currentLocation = GoRouterState.of(context).matchedLocation;
+    if (currentLocation == '/active-ride' ||
+        currentLocation == '/ride-request') {
+      // We're already on the right screen — flip the flag so we don't
+      // try to re-route on the next state change for the same ride.
+      _routedForCurrentActiveRide = true;
+      return;
+    }
+    debugPrint('[IncomingRequestListener] active ride ${ride.id} '
+        '(status=${ride.status}) — routing to /active-ride');
+    _routedForCurrentActiveRide = true;
+    context.go('/active-ride');
+  }
+
+  @override
+  Widget build(BuildContext context) {
     // Listen for new ride requests (driver)
     ref.listen<Ride?>(incomingRideRequestProvider, (prev, next) {
       debugPrint(
@@ -42,24 +91,33 @@ class IncomingRequestListener extends ConsumerWidget {
       }
     });
 
-    // Surface a recovered active ride after a crash / force-quit. The
-    // recovery bridge populates [activeRideProvider] from a persisted ride
-    // id; this listener routes to the active-ride screen if we're not
-    // already there. Skipped for the normal accept flow because that path
-    // does its own `pushReplacement` from the request screen — by the time
-    // this listener fires, we'd already be on /active-ride.
+    // Surface a recovered (or freshly-accepted) active ride. The recovery
+    // bridge populates [activeRideProvider] from `GET /drivers/me/active-
+    // ride`; the live accept flow does its own pushReplacement so we
+    // gate on the current location below.
     ref.listen<ActiveRideState>(activeRideProvider, (prev, next) {
-      final hadRide = prev?.ride != null;
-      final hasRide = next.ride != null;
-      if (hadRide || !hasRide) return;
-      final currentLocation = GoRouterState.of(context).matchedLocation;
-      if (currentLocation == '/active-ride' ||
-          currentLocation == '/ride-request') {
+      // Reset the routing latch when the slot empties — completing or
+      // cancelling a ride should let the next recovery re-route.
+      if (next.ride == null) {
+        _routedForCurrentActiveRide = false;
         return;
       }
-      debugPrint('[IncomingRequestListener] recovered active ride '
-          '${next.ride!.id} — routing to /active-ride');
-      context.go('/active-ride');
+      // Reset the latch if the user navigated off /active-ride (e.g.
+      // background→foreground landed them on /home). Without this, an
+      // active ride that came back through ref.listen but didn't trigger
+      // a state change couldn't be recovered.
+      if (mounted) {
+        final loc = GoRouterState.of(context).matchedLocation;
+        if (loc != '/active-ride' && loc != '/ride-request') {
+          _routedForCurrentActiveRide = false;
+        }
+      }
+      // Only act on the null → non-null transition. Status updates within
+      // an already-active ride are handled inside the active-ride screen
+      // itself.
+      final hadRide = prev?.ride != null;
+      if (hadRide) return;
+      _maybeRouteToActiveRide(next.ride!);
     });
 
     // Listen for new job requests (artisan)
@@ -73,7 +131,7 @@ class IncomingRequestListener extends ConsumerWidget {
       }
     });
 
-    return child;
+    return widget.child;
   }
 
   void _goToRideRequest(BuildContext context, Ride ride, WidgetRef ref) {

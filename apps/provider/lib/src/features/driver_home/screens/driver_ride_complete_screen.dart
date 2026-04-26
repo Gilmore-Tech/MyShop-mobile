@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
@@ -13,35 +14,98 @@ import '../providers/ride_request_provider.dart';
 /// Shows: completion banner, passenger info, pickup/dropoff, distance/duration,
 /// full fare breakdown, commission, payment method, MoMo payout status,
 /// dispute link, "GO TO WALLET" CTA.
+///
+/// Reads the completed ride from `activeRideProvider` (still populated until
+/// the user dismisses the screen). The provider was set by the PATCH-status
+/// response, so `finalFarePesewas`, `actualDistanceKm` etc. reflect the real
+/// trip. Backend doesn't yet break down the fare into base/distance/time
+/// rows — we show what's authoritative (total + commission split) and skip
+/// the fabricated line items rather than display made-up numbers.
 class DriverRideCompleteScreen extends ConsumerWidget {
   const DriverRideCompleteScreen({super.key});
 
-  // Mock trip summary matching Figma design
-  static const _summary = TripSummary(
-    rideId: 'RID-92834',
-    clientName: 'Kofi Mensah',
-    clientRating: 4.9,
-    paymentMethod: 'Cash Payment',
-    pickupAddress: 'Makola Market, Accra Central',
-    dropoffAddress: 'Legon Botanical Gardens',
-    distanceKm: 12.4,
-    durationMins: 24,
-    baseFarePesewas: 1200,
-    distanceFarePesewas: 3250,
-    timeFarePesewas: 600,
-    surgeFarePesewas: 920,
-    taxesPesewas: 180,
-    promoPesewas: 500,
-    totalFarePesewas: 5650,
-    commissionPesewas: 1130,
-    netEarningsPesewas: 4250,
-    payoutMethod: 'Instant MoMo Payout',
-    payoutStatus: 'PROCESSING',
-  );
+  /// Platform commission rate (PRD: 20% on every transaction).
+  static const _commissionRate = 0.20;
+
+  TripSummary _summaryFromRide(Ride ride) {
+    final total =
+        ride.finalFarePesewas ?? ride.estimatedFarePesewas;
+    final commission = (total * _commissionRate).round();
+    final net = total - commission;
+    final distanceKm = ride.actualDistanceKm ?? ride.estimatedDistanceKm;
+    final durationMins =
+        ride.actualDurationMins ?? ride.estimatedDurationMins;
+    return TripSummary(
+      rideId: ride.id,
+      clientName: ride.clientName ?? 'Passenger',
+      clientPhotoUrl: ride.clientPhotoUrl,
+      clientRating: ride.clientRating ?? 0,
+      paymentMethod: _formatPaymentMethod(ride.paymentMethod),
+      pickupAddress: ride.pickupAddress,
+      dropoffAddress: ride.dropoffAddress,
+      distanceKm: distanceKm,
+      durationMins: durationMins,
+      // Backend does not yet break the fare into components — show 0 for
+      // the per-line items so the breakdown collapses to just the total.
+      baseFarePesewas: 0,
+      distanceFarePesewas: 0,
+      timeFarePesewas: 0,
+      surgeFarePesewas: 0,
+      taxesPesewas: 0,
+      promoPesewas: 0,
+      totalFarePesewas: total,
+      commissionPesewas: commission,
+      netEarningsPesewas: net,
+      payoutMethod: 'MoMo Payout',
+      payoutStatus: 'PROCESSING',
+    );
+  }
+
+  String _formatPaymentMethod(String raw) {
+    switch (raw) {
+      case 'cash':
+        return 'Cash Payment';
+      case 'card':
+        return 'Card Payment';
+      case 'momo':
+      case 'mobile_money':
+        return 'MoMo Payment';
+      default:
+        return raw.isEmpty ? 'Payment' : raw;
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    const s = _summary;
+    final ride = ref.watch(activeRideProvider).ride;
+    if (ride == null) {
+      // Recovery / hot-reload edge case — fall back to a benign empty state
+      // rather than the previous Figma-mock summary so we never display
+      // numbers that don't correspond to a real ride.
+      return Scaffold(
+        backgroundColor: MyShopColors.surfaceGrey,
+        appBar: AppBar(
+          backgroundColor: MyShopColors.surfaceWhite,
+          elevation: 0,
+          leading: IconButton(
+            icon:
+                const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          title: const Text('Trip Summary'),
+        ),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'No completed ride to summarise.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+    final s = _summaryFromRide(ride);
 
     return Scaffold(
       backgroundColor: MyShopColors.surfaceGrey,
@@ -52,7 +116,9 @@ class DriverRideCompleteScreen extends ConsumerWidget {
           icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
           onPressed: () {
             ref.read(activeRideProvider.notifier).clearRide();
-            Navigator.of(context).pop();
+            // GoRouter — Navigator.pop here would pop off the entire
+            // GoRoute and leave a black screen.
+            context.go('/home');
           },
         ),
         title: const Text('Trip Summary', style: TextStyle(fontFamily: 'Raleway', fontSize: 18, fontWeight: FontWeight.w700, color: MyShopColors.textPrimary)),
@@ -128,25 +194,31 @@ class DriverRideCompleteScreen extends ConsumerWidget {
           ),
           const SizedBox(height: MyShopSpacing.md),
 
-          // Fare breakdown
+          // Fare summary. Per-line breakdown only renders if the backend
+          // supplied non-zero components — otherwise we just show the total
+          // rather than fabricate base/distance/time amounts that don't
+          // tie out to the real fare.
           Container(
             padding: const EdgeInsets.all(MyShopSpacing.md),
             decoration: BoxDecoration(color: MyShopColors.surfaceWhite, borderRadius: BorderRadius.circular(16)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                 const Text('Fare Breakdown', style: TextStyle(fontFamily: 'Raleway', fontSize: 16, fontWeight: FontWeight.w700, color: MyShopColors.textPrimary)),
-                Text('ID: #${s.rideId}', style: MyShopTypography.body2.copyWith(color: MyShopColors.primaryGold, fontSize: 11)),
+                Text('ID: #${s.rideId.substring(0, s.rideId.length.clamp(0, 8))}', style: MyShopTypography.body2.copyWith(color: MyShopColors.primaryGold, fontSize: 11)),
               ]),
               const SizedBox(height: MyShopSpacing.md),
-              _FareRow(label: 'Base Fare', amount: s.baseFarePesewas),
-              _FareRow(label: 'Distance (${s.distanceKm} km)', amount: s.distanceFarePesewas),
-              _FareRow(label: 'Time (${s.durationMins} mins)', amount: s.timeFarePesewas),
-              if (s.surgeFarePesewas > 0) _FareRow(label: 'Surge Pricing (1.2x)', amount: s.surgeFarePesewas, icon: Icons.bolt),
-              const Divider(height: 24),
-              _FareRow(label: 'Subtotal', amount: s.baseFarePesewas + s.distanceFarePesewas + s.timeFarePesewas + s.surgeFarePesewas),
-              _FareRow(label: 'Taxes & Levies', amount: s.taxesPesewas),
+              if (s.baseFarePesewas > 0)
+                _FareRow(label: 'Base Fare', amount: s.baseFarePesewas),
+              if (s.distanceFarePesewas > 0)
+                _FareRow(label: 'Distance (${s.distanceKm.toStringAsFixed(1)} km)', amount: s.distanceFarePesewas),
+              if (s.timeFarePesewas > 0)
+                _FareRow(label: 'Time (${s.durationMins} mins)', amount: s.timeFarePesewas),
+              if (s.surgeFarePesewas > 0)
+                _FareRow(label: 'Surge Pricing', amount: s.surgeFarePesewas, icon: Icons.bolt),
+              if (s.taxesPesewas > 0) _FareRow(label: 'Taxes & Levies', amount: s.taxesPesewas),
               if (s.promoPesewas > 0) _FareRow(label: 'Promotional Discount', amount: -s.promoPesewas),
-              const Divider(height: 24),
+              if (s.baseFarePesewas + s.distanceFarePesewas + s.timeFarePesewas + s.surgeFarePesewas + s.taxesPesewas + s.promoPesewas > 0)
+                const Divider(height: 24),
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                 const Text('Total Paid', style: TextStyle(fontFamily: 'Raleway', fontSize: 16, fontWeight: FontWeight.w700, color: MyShopColors.textPrimary)),
                 Text(s.totalFareDisplay, style: const TextStyle(fontFamily: 'Raleway', fontSize: 20, fontWeight: FontWeight.w900, color: MyShopColors.primaryGold)),
