@@ -50,6 +50,74 @@ class UserService {
     }
   }
 
+  /// DELETE /users/me — Permanently delete the authenticated user's account.
+  /// Backend cascades to bookings/payments/etc. per its retention policy.
+  /// Caller is responsible for clearing local tokens and routing to the
+  /// auth screen on success.
+  Future<void> deleteAccount() async {
+    try {
+      await _dio.delete('/users/me');
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// POST /users/me/ghana-card — Submit Ghana Card for client KYC review.
+  ///
+  /// Caller must first upload the card image via [MediaService.uploadImage]
+  /// (`purpose: 'profile_photo'` per the backend DTO) and pass the resulting
+  /// hosted URL as [documentImageUrl]. The card number must match the
+  /// `GHA-XXXXXXXXX-X` pattern — the backend rejects anything else.
+  ///
+  /// Sets `client.kycStatus='pending_review'` server-side. Verification is
+  /// async (manual admin review) — clients poll `GET /users/me` and watch for
+  /// `client.ghanaCardVerified` to flip to `true`, or `kycStatus` to flip to
+  /// `'rejected'` with [ClientProfile.kycRejectionReason] populated.
+  ///
+  /// Possible 4xx error codes:
+  ///   • `INVALID_GHANA_CARD_NUMBER` — number format wrong
+  ///   • `ENCRYPTION_UNAVAILABLE`    — backend secret missing
+  ///   • `CLIENT_PROFILE_REQUIRED`   — caller has no Client row
+  ///   • `KYC_IN_PROGRESS`           — already submitted, awaiting review
+  ///   • `KYC_ALREADY_VERIFIED`      — verified already, nothing to do
+  Future<Map<String, dynamic>> submitClientGhanaCard({
+    required String documentImageUrl,
+    required String ghanaCardNumber,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/users/me/ghana-card',
+        data: {
+          'documentImageUrl': documentImageUrl,
+          'ghanaCardNumber':  ghanaCardNumber,
+        },
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// POST /users/me/profile-photo — Persist the client's profile photo URL.
+  ///
+  /// The URL must already be hosted (i.e. a CDN/Cloudinary URL returned by
+  /// `MediaService.uploadProfilePhoto`); this endpoint just attaches the URL
+  /// to the `Client` row server-side. Returns the full updated profile so
+  /// callers can refresh state from one response.
+  Future<Map<String, dynamic>> updateClientProfilePhoto({
+    required String profilePhotoUrl,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/users/me/profile-photo',
+        data: {'profilePhotoUrl': profilePhotoUrl},
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   // ── Saved Locations ───────────────────────────────────────────────────────────
 
   /// GET /users/me/saved-locations — List ordered by last_used_at.
@@ -179,17 +247,9 @@ class UserService {
     }
   }
 
-  // ── Loyalty & Referral ────────────────────────────────────────────────────────
-
-  /// GET /users/me/loyalty — Points balance, tier, ledger.
-  Future<Map<String, dynamic>> getLoyalty() async {
-    try {
-      final response = await _dio.get('/users/me/loyalty');
-      return _unwrap(response) as Map<String, dynamic>;
-    } on DioException catch (e) {
-      throw ApiException.fromDioException(e);
-    }
-  }
+  // ── Referral ──────────────────────────────────────────────────────────────────
+  // Loyalty endpoints live on [LoyaltyService] (`/v1/loyalty/*`). The
+  // points balance itself is read off the user profile via [getMe].
 
   /// GET /users/me/referral — Referral code, stats, recent referrals.
   Future<Map<String, dynamic>> getReferral() async {
@@ -201,37 +261,4 @@ class UserService {
     }
   }
 
-  // ── Notification Preferences ──────────────────────────────────────────────────
-
-  /// GET /users/me/notification-preferences
-  Future<Map<String, dynamic>> getNotificationPreferences() async {
-    try {
-      final response = await _dio.get('/users/me/notification-preferences');
-      return _unwrap(response) as Map<String, dynamic>;
-    } on DioException catch (e) {
-      throw ApiException.fromDioException(e);
-    }
-  }
-
-  /// PATCH /users/me/notification-preferences
-  Future<void> updateNotificationPreferences({
-    bool? pushEnabled,
-    bool? smsEnabled,
-    bool? emailEnabled,
-    bool? criticalSafetyEnabled,
-    String? promoFrequency,
-  }) async {
-    try {
-      await _dio.patch('/users/me/notification-preferences', data: {
-        if (pushEnabled != null) 'pushEnabled': pushEnabled,
-        if (smsEnabled != null) 'smsEnabled': smsEnabled,
-        if (emailEnabled != null) 'emailEnabled': emailEnabled,
-        if (criticalSafetyEnabled != null)
-          'criticalSafetyEnabled': criticalSafetyEnabled,
-        if (promoFrequency != null) 'promoFrequency': promoFrequency,
-      },);
-    } on DioException catch (e) {
-      throw ApiException.fromDioException(e);
-    }
-  }
 }

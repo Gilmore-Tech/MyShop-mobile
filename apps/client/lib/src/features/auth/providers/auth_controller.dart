@@ -1,6 +1,7 @@
 import 'package:api_client/api_client.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/di/providers.dart';
 import '../data/auth_repository.dart';
@@ -92,7 +93,6 @@ final clientAuthControllerProvider =
     StateNotifierProvider<ClientAuthController, ClientAuthState>((ref) {
   final controller = ClientAuthController(
     ref.watch(clientAuthRepositoryProvider),
-    tokenStorage: ref.watch(tokenStorageProvider),
   );
   controller.bootstrap();
   return controller;
@@ -100,10 +100,24 @@ final clientAuthControllerProvider =
 
 final hasSeenOnboardingProvider = StateProvider<bool>((_) => false);
 
+/// Mirrors the SharedPreferences `app_pref_replay_onboarding` flag. The
+/// AppPreferences screen sets it to true; the router redirects authenticated
+/// users to /onboarding while it's true; the OnboardingScreen clears it
+/// (and SharedPrefs) on completion so the next app open lands on home.
+///
+/// Top-level (not autoDispose) so the router redirect can read it on every
+/// navigation without forcing the prefs notifier to stay mounted.
+final pendingReplayOnboardingProvider = StateProvider<bool>((_) => false);
+
 Future<void> loadOnboardingFlag(ProviderContainer container) async {
   final storage = container.read(tokenStorageProvider);
   final seen = await storage.hasSeenOnboarding();
   container.read(hasSeenOnboardingProvider.notifier).state = seen;
+
+  // Also hydrate the one-shot replay flag from SharedPreferences.
+  final prefs = await SharedPreferences.getInstance();
+  final replay = prefs.getBool('app_pref_replay_onboarding') ?? false;
+  container.read(pendingReplayOnboardingProvider.notifier).state = replay;
 }
 
 // ---------------------------------------------------------------------------
@@ -111,14 +125,9 @@ Future<void> loadOnboardingFlag(ProviderContainer container) async {
 // ---------------------------------------------------------------------------
 
 class ClientAuthController extends StateNotifier<ClientAuthState> {
-  ClientAuthController(
-    this._repo, {
-    required TokenStorage tokenStorage,
-  })  : _tokenStorage = tokenStorage,
-        super(const AuthUnknown());
+  ClientAuthController(this._repo) : super(const AuthUnknown());
 
   final ClientAuthRepository _repo;
-  final TokenStorage _tokenStorage;
   bool _requesting = false;
 
   /// Try to restore session from stored tokens.
@@ -265,7 +274,10 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
     try {
       await _repo.verifyOtp(phone: current.phone, code: code);
       final profile = await _repo.fetchProfile();
-      await _tokenStorage.markOnboardingSeen();
+      // markOnboardingSeen() is fired from OnboardingScreen._finish, not
+      // here — verifying OTP doesn't mean the user has been shown the
+      // tutorial yet. Authenticated users without the seen flag get
+      // routed to /onboarding by the router redirect.
       state = AuthAuthenticated(profile);
     } on ApiException catch (e) {
       state = AuthOtpSent(

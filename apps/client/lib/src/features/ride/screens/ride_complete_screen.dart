@@ -52,11 +52,14 @@ class _RideCompleteScreenState extends ConsumerState<RideCompleteScreen> {
         // Edge case: deep-linked here without the snapshot having landed —
         // fall back to home so the rider isn't stuck on a half-rendered
         // screen.
-        if (!mounted) return;
         context.go(AppRoutes.home);
         return;
       }
-      await showRateRideSheet(context, receipt);
+      await showRateRideSheet(
+        context,
+        rideId: receipt.rideId,
+        driverFirstName: receipt.driverFirstName,
+      );
       if (!mounted) return;
       context.pushReplacement(
         AppRoutes.rideReceiptPath(receipt.rideId),

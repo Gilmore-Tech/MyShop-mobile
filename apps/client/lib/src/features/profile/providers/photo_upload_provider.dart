@@ -82,74 +82,85 @@ final localProfilePhotoProvider =
   return LocalProfilePhotoNotifier();
 });
 
-// ── Document Upload State ─────────────────────────────────────────────────────
+// ── Profile Photo Upload ──────────────────────────────────────────────────────
+//
+// Drives the 4-step client profile-photo flow:
+//   1. POST /media/upload-url      (purpose: 'profile_photo')
+//   2. PUT/POST to the storage URL (Cloudinary or S3)
+//   3. POST /media/confirm
+//   4. POST /users/me/profile-photo  ← persists the URL on Client row
+//
+// Steps 1–3 are wrapped in [MediaService.uploadProfilePhoto].
+// Step 4 lives on [UserService.updateClientProfilePhoto].
 
-class DocumentUploadState {
-  const DocumentUploadState({
-    this.uploading  = const {},
-    this.uploaded   = const {},
-    this.remoteUrls = const {},
+class ProfilePhotoUploadState {
+  const ProfilePhotoUploadState({
+    this.isUploading = false,
+    this.remoteUrl,
   });
 
-  final Map<String, bool>   uploading;
-  final Map<String, bool>   uploaded;
-  final Map<String, String> remoteUrls;
+  final bool    isUploading;
+  final String? remoteUrl;
 
-  DocumentUploadState copyWith({
-    Map<String, bool>?   uploading,
-    Map<String, bool>?   uploaded,
-    Map<String, String>? remoteUrls,
+  ProfilePhotoUploadState copyWith({
+    bool?   isUploading,
+    String? remoteUrl,
+    bool    clearRemoteUrl = false,
   }) =>
-      DocumentUploadState(
-        uploading:  uploading  ?? this.uploading,
-        uploaded:   uploaded   ?? this.uploaded,
-        remoteUrls: remoteUrls ?? this.remoteUrls,
+      ProfilePhotoUploadState(
+        isUploading: isUploading ?? this.isUploading,
+        remoteUrl:   clearRemoteUrl ? null : (remoteUrl ?? this.remoteUrl),
       );
 }
 
-class DocumentUploadNotifier extends StateNotifier<DocumentUploadState> {
-  DocumentUploadNotifier(this._service) : super(const DocumentUploadState());
+class ProfilePhotoUploadNotifier
+    extends StateNotifier<ProfilePhotoUploadState> {
+  ProfilePhotoUploadNotifier(this._media, this._user)
+      : super(const ProfilePhotoUploadState());
 
-  final VerificationService _service;
+  final MediaService _media;
+  final UserService  _user;
 
-  Future<String?> upload({
-    required String       providerType,
-    required DocumentType documentType,
-    required File         file,
-  }) async {
-    state = state.copyWith(
-      uploading: {...state.uploading, documentType.value: true},
-    );
+  /// Returns `null` on success and the final hosted URL via
+  /// [ProfilePhotoUploadState.remoteUrl]. On failure returns a user-facing
+  /// error message; UI surfaces it as a toast and clears the local preview.
+  ///
+  /// Guards every state write with [mounted] — the upload spans seconds of
+  /// network I/O, and even though the provider is no longer autoDispose,
+  /// a future logout/reset could still tear the notifier down mid-flight.
+  Future<String?> upload(File file) async {
+    if (!mounted) return 'Upload cancelled.';
+    state = state.copyWith(isUploading: true, clearRemoteUrl: true);
     try {
-      final result = await _service.uploadDocument(
-        providerType: providerType,
-        documentType: documentType,
-        file: file,
-      );
-      state = state.copyWith(
-        uploading: {...state.uploading, documentType.value: false},
-        uploaded:  {...state.uploaded,  documentType.value: true},
-        remoteUrls: {
-          ...state.remoteUrls,
-          if (result.remoteUrl != null) documentType.value: result.remoteUrl!,
-        },
-      );
+      // Steps 1–3: upload bytes via /media/* and get back the final URL.
+      final remoteUrl = await _media.uploadProfilePhoto(file.path);
+
+      // Step 4: persist the URL onto the Client row server-side.
+      await _user.updateClientProfilePhoto(profilePhotoUrl: remoteUrl);
+
+      if (!mounted) return null;
+      state = state.copyWith(isUploading: false, remoteUrl: remoteUrl);
       return null;
     } on ApiException catch (e) {
-      state = state.copyWith(
-        uploading: {...state.uploading, documentType.value: false},
-      );
-      return e.message;
-    } catch (e) {
-      state = state.copyWith(
-        uploading: {...state.uploading, documentType.value: false},
-      );
+      if (mounted) state = state.copyWith(isUploading: false);
+      return e.message.isNotEmpty
+          ? e.message
+          : 'Upload failed. Please try again.';
+    } catch (_) {
+      if (mounted) state = state.copyWith(isUploading: false);
       return 'Upload failed. Please try again.';
     }
   }
 }
 
-final documentUploadProvider =
-    StateNotifierProvider<DocumentUploadNotifier, DocumentUploadState>((ref) {
-  return DocumentUploadNotifier(ref.watch(verificationServiceProvider));
-});
+// NOT autoDispose — the upload is `ref.read`-only (the screen never watches
+// the notifier directly), so an autoDispose provider would tear down the
+// moment the read returns and the asynchronous state writes that come back
+// seconds later would crash with `Tried to use after dispose`.
+final profilePhotoUploadProvider = StateNotifierProvider<
+    ProfilePhotoUploadNotifier, ProfilePhotoUploadState>(
+  (ref) => ProfilePhotoUploadNotifier(
+    ref.watch(mediaServiceProvider),
+    ref.watch(userServiceProvider),
+  ),
+);

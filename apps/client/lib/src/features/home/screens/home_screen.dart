@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
 import '../../../core/providers/current_location_label_provider.dart';
+import '../../../core/providers/current_location_provider.dart';
 import '../../profile/providers/profile_provider.dart';
 import '../../ride/providers/ride_search_provider.dart';
 import '../providers/home_provider.dart';
@@ -170,9 +171,9 @@ class _Avatar extends StatelessWidget {
 
 // ── Service cards ─────────────────────────────────────────────────────────────
 
-class _ServiceCardsRow extends StatelessWidget {
+class _ServiceCardsRow extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final w = MediaQuery.sizeOf(context).width;
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
@@ -181,7 +182,10 @@ class _ServiceCardsRow extends StatelessWidget {
           Expanded(
             child: ServiceCard(
               type: ServiceCardType.ride,
-              onTap: () => context.push(AppRoutes.rideEstimate),
+              onTap: () {
+                _seedPickupFromCurrentLocation(ref);
+                context.push(AppRoutes.rideEstimate);
+              },
             ),
           ),
           SizedBox(width: w * 0.031),
@@ -194,6 +198,27 @@ class _ServiceCardsRow extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Carries the home-screen current location into the ride flow so the user
+  /// doesn't have to pick it again. No-ops when pickup is already set (preserves
+  /// a prior selection) or when the GPS fix isn't ready yet (falls through to
+  /// the existing "Choose pickup" prompt).
+  void _seedPickupFromCurrentLocation(WidgetRef ref) {
+    if (ref.read(rideSearchProvider).pickup != null) return;
+    final pos = ref.read(currentDevicePositionProvider);
+    if (pos == null) return;
+    final label =
+        ref.read(currentLocationLabelProvider).valueOrNull ?? 'Current location';
+    ref.read(rideSearchProvider.notifier).setLocation(
+          RideSearchField.pickup,
+          RideLocation(
+            name: label,
+            address: label,
+            lat: pos.latitude,
+            lng: pos.longitude,
+          ),
+        );
   }
 }
 

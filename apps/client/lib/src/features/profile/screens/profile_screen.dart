@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../providers/profile_provider.dart';
+import '../providers/privacy_security_provider.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../../../app/router.dart' show AppRoutes;
 
@@ -88,7 +89,7 @@ class _ProfileBody extends StatelessWidget {
                       title: 'Notifications',
                       subtitle: 'Alerts, messages, and task updates',
                       badgeCount: notifCount > 0 ? notifCount : null,
-                      onTap: () => context.push(AppRoutes.profileNotifications),
+                      onTap: () => context.push(AppRoutes.notifications),
                       w: w,
                       h: h,
                     ),
@@ -124,41 +125,6 @@ class _ProfileBody extends StatelessWidget {
                       title: 'App Preferences',
                       subtitle: 'Theme, data usage, and display',
                       onTap: () => context.push(AppRoutes.profilePreferences),
-                      w: w,
-                      h: h,
-                    ),
-                    _RowDivider(w: w),
-                    _MenuRow(
-                      icon: Icons.language_rounded,
-                      title: 'Language',
-                      subtitle: 'English, Twi, and more',
-                      onTap: () => context.push(AppRoutes.profileLanguage),
-                      w: w,
-                      h: h,
-                    ),
-                    _RowDivider(w: w),
-                    _MenuRow(
-                      icon: Icons.history_rounded,
-                      title: 'Activity & History',
-                      subtitle: 'Past tasks, reviews, and logs',
-                      onTap: () => context.go(AppRoutes.activity),
-                      w: w,
-                      h: h,
-                    ),
-                  ],
-                ),
-                SizedBox(height: h * 0.022),
-
-                // ── Wallet ──
-                _SectionLabel(label: 'WALLET', w: w, h: h),
-                _SectionCard(
-                  w: w,
-                  children: [
-                    _MenuRow(
-                      icon: Icons.credit_card_rounded,
-                      title: 'Payment Methods',
-                      subtitle: 'MoMo, cards, and wallet balance',
-                      onTap: () => context.push(AppRoutes.profilePayments),
                       w: w,
                       h: h,
                     ),
@@ -740,15 +706,15 @@ class _SignOutRow extends ConsumerWidget {
 // EDD § User Module: soft-delete — data retained 90 days, 24-hour recovery.
 // DELETE /v1/users/me
 
-class _DeactivateLink extends StatelessWidget {
+class _DeactivateLink extends ConsumerWidget {
   final double w;
   final double h;
   const _DeactivateLink({required this.w, required this.h});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
-      onTap: () => _confirmDeactivate(context),
+      onTap: () => _confirmDeactivate(context, ref),
       behavior: HitTestBehavior.opaque,
       child: Padding(
         padding: EdgeInsets.symmetric(vertical: h * 0.005),
@@ -768,9 +734,9 @@ class _DeactivateLink extends StatelessWidget {
     );
   }
 
-  void _confirmDeactivate(BuildContext context) {
+  Future<void> _confirmDeactivate(BuildContext context, WidgetRef ref) async {
     final w = MediaQuery.sizeOf(context).width;
-    showDialog<void>(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(
@@ -795,14 +761,11 @@ class _DeactivateLink extends StatelessWidget {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
+            onPressed: () => Navigator.of(ctx).pop(false),
             child: Text('Cancel', style: TextStyle(color: MyShopColors.darkSlate)),
           ),
           TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              // TODO: DELETE /v1/users/me — then navigate to auth screen
-            },
+            onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(
               'Deactivate',
               style: TextStyle(
@@ -814,6 +777,17 @@ class _DeactivateLink extends StatelessWidget {
         ],
       ),
     );
+    if (confirmed != true || !context.mounted) return;
+
+    // Reuse the privacy provider's delete flow — it hits DELETE /v1/users/me,
+    // clears local tokens, and flips auth state to unauthenticated. The
+    // GoRouter redirect then routes the user back to /auth/phone.
+    await ref.read(privacySecurityProvider.notifier).deleteAccount();
+    if (!context.mounted) return;
+    final error = ref.read(privacySecurityProvider).errorMessage;
+    if (error != null) {
+      MyShopToast.show(context, message: error, type: ToastType.error);
+    }
   }
 }
 

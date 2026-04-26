@@ -5,6 +5,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../../app/router.dart';
 import '../../auth/providers/auth_controller.dart';
+import '../../profile/providers/app_preferences_provider.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -16,6 +17,7 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final _controller = PageController();
   int _index = 0;
+  bool _isFinishing = false;
 
   static const _pages = <_OnboardingPage>[
     _OnboardingPage(
@@ -65,10 +67,27 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     super.dispose();
   }
 
-  void _markSeenAndGo() {
-    ref.read(tokenStorageProvider).markOnboardingSeen();
+  Future<void> _markSeenAndGo() async {
+    if (_isFinishing || !mounted) return;
+    setState(() => _isFinishing = true);
+
+    // Sticky flag — user has now seen onboarding at least once.
+    await ref.read(tokenStorageProvider).markOnboardingSeen();
+    if (!mounted) return;
     ref.read(hasSeenOnboardingProvider.notifier).state = true;
-    context.go(AppRoutes.authPhone);
+
+    // One-shot replay flag — clear both the SharedPrefs key and the
+    // top-level mirror the router watches, so the next launch lands on
+    // home instead of bouncing back here.
+    await ref
+        .read(appPreferencesProvider.notifier)
+        .toggleReplayOnboarding(false);
+    if (!mounted) return;
+    ref.read(pendingReplayOnboardingProvider.notifier).state = false;
+
+    // Router redirect handles routing from here based on auth state
+    // (unauth → phone screen, auth → home).
+    context.go(AppRoutes.home);
   }
 
   void _next() {

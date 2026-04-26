@@ -680,6 +680,7 @@ class _PaymentSummaryCard extends StatelessWidget {
             children: [
               // ── Header row ──
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Text(
                     'Payment Summary',
@@ -689,13 +690,17 @@ class _PaymentSummaryCard extends StatelessWidget {
                       color: MyShopColors.textPrimary,
                     ),
                   ),
-                  const Spacer(),
-                  Text(
-                    summary.paymentRef,
-                    style: TextStyle(
-                      fontSize: w * 0.028,
-                      fontWeight: FontWeight.w400,
-                      color: MyShopColors.textSecondary,
+                  SizedBox(width: w * 0.020),
+                  Expanded(
+                    child: Text(
+                      summary.paymentRef,
+                      textAlign: TextAlign.right,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: w * 0.028,
+                        fontWeight: FontWeight.w400,
+                        color: MyShopColors.textSecondary,
+                      ),
                     ),
                   ),
                 ],
@@ -745,6 +750,7 @@ class _PaymentSummaryCard extends StatelessWidget {
 
               // ── Total ──
               Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
                     'Total Amount',
@@ -754,14 +760,20 @@ class _PaymentSummaryCard extends StatelessWidget {
                       color: MyShopColors.textPrimary,
                     ),
                   ),
-                  const Spacer(),
-                  Text(
-                    summary.totalDisplay,
-                    style: TextStyle(
-                      fontSize: w * 0.051,
-                      fontWeight: FontWeight.w800,
-                      color: MyShopColors.textPrimary,
-                      height: 1.0,
+                  SizedBox(width: w * 0.020),
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        summary.totalDisplay,
+                        style: TextStyle(
+                          fontSize: w * 0.051,
+                          fontWeight: FontWeight.w800,
+                          color: MyShopColors.textPrimary,
+                          height: 1.0,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -1263,6 +1275,41 @@ class _BottomBar extends ConsumerWidget {
               child: _buildCtaChild(state, w),
             ),
           ),
+
+          // ── Manual "I've paid" fallback ──
+          // Shown only during the USSD-push wait (awaitingSettlement with no
+          // checkout URL). Lets the user dismiss the spinner and surface the
+          // receipt themselves when the webhook → socket chain is slow or
+          // outright broken — they've just authorized on their phone, so
+          // we trust them. The polling fallback still runs in parallel; this
+          // is purely an escape hatch from a stuck UI.
+          if (state.phase == PaymentPhase.awaitingSettlement &&
+              state.authorizationUrl == null) ...[
+            SizedBox(height: h * 0.010),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: () => ref
+                    .read(paymentNotifierProvider.notifier)
+                    .markPaymentSettledLocally(summary: summary),
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.symmetric(vertical: h * 0.012),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(w * 0.031),
+                  ),
+                ),
+                child: Text(
+                  "I've completed the payment",
+                  style: TextStyle(
+                    fontSize:   w * 0.036,
+                    fontWeight: FontWeight.w700,
+                    color:      MyShopColors.primaryGold,
+                  ),
+                ),
+              ),
+            ),
+          ],
+
           SizedBox(height: h * 0.010),
 
           // ── Status / disclaimer ──

@@ -149,8 +149,11 @@ class RatingNotifier extends StateNotifier<RatingState> {
 
   /// Submits the blind rating.
   /// POST /v1/ratings  { bookingType: "job", bookingId, rating, comment? }
-  Future<void> submitRating({required String jobId}) async {
-    if (!state.canSubmit) return;
+  ///
+  /// Returns `true` on success so the caller (sheet, screen) can decide
+  /// whether to dismiss UI or keep the form open for the user to retry.
+  Future<bool> submitRating({required String jobId}) async {
+    if (!state.canSubmit) return false;
     state = state.copyWith(isSubmitting: true, clearError: true);
     try {
       await _ratingService.submitRating(
@@ -160,11 +163,21 @@ class RatingNotifier extends StateNotifier<RatingState> {
         comment: state.reviewText.isNotEmpty ? state.reviewText : null,
       );
       state = state.copyWith(isSubmitting: false, isSubmitted: true);
+      return true;
     } on ApiException catch (e) {
-      state = state.copyWith(isSubmitting: false, errorMessage: e.message);
+      state = state.copyWith(
+        isSubmitting: false,
+        errorMessage: e.message.isNotEmpty
+            ? e.message
+            : "Couldn't submit your rating. Please try again.",
+      );
+      return false;
     } catch (_) {
-      // Fallback: treat as success during development
-      state = state.copyWith(isSubmitting: false, isSubmitted: true);
+      state = state.copyWith(
+        isSubmitting: false,
+        errorMessage: "Couldn't submit your rating. Please try again.",
+      );
+      return false;
     }
   }
 }

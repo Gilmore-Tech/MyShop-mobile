@@ -112,34 +112,40 @@ class MediaService {
 
   /// Convenience: upload a local file and return its final remote URL.
   /// Handles the full 3-step flow: request URL → upload → confirm.
-  Future<String> uploadJobPhoto(String localPath) async {
+  Future<String> uploadJobPhoto(String localPath) =>
+      _uploadImage(localPath, purpose: 'job_photo');
+
+  /// Convenience: upload a profile photo. Same 3-step flow as [uploadJobPhoto]
+  /// but with `purpose: 'profile_photo'` so the backend stores it under
+  /// `media/profile_photo/<userId>/...`. Caller must then PATCH the URL onto
+  /// the user via `UserService.updateClientProfilePhoto`.
+  Future<String> uploadProfilePhoto(String localPath) =>
+      _uploadImage(localPath, purpose: 'profile_photo');
+
+  Future<String> _uploadImage(
+    String localPath, {
+    required String purpose,
+  }) async {
     final file = File(localPath);
     final fileSize = await file.length();
     final mimeType = localPath.toLowerCase().endsWith('.png')
         ? 'image/png'
         : 'image/jpeg';
 
-    // 1. Get presigned URL
     final uploadInfo = await requestUploadUrl(
-      purpose: 'job_photo',
+      purpose: purpose,
       mimeType: mimeType,
       fileSize: fileSize,
     );
-
-    // 2. Upload to storage
     final remoteUrl = await uploadFile(
       filePath: localPath,
       uploadInfo: uploadInfo,
       mimeType: mimeType,
     );
-
-    // 3. Confirm
-    final finalUrl = await confirmUpload(
+    return confirmUpload(
       storageKey: uploadInfo.storageKey,
       remoteUrl: remoteUrl,
     );
-
-    return finalUrl;
   }
 }
 

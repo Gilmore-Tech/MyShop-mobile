@@ -13,8 +13,8 @@ import 'main_shell.dart';
 import '../dev/dev_menu_screen.dart';
 
 // ── Onboarding ─────────────────────────────────────────────────────────────────
-import '../features/onboarding/screens/splash_screen.dart';
 import '../features/onboarding/screens/onboarding_screen.dart';
+import '../features/onboarding/screens/splash_screen.dart';
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
 import '../features/auth/screens/phone_input_screen.dart';
@@ -60,6 +60,7 @@ import '../features/services/screens/payment_screen.dart';
 
 // ── Activity ───────────────────────────────────────────────────────────────────
 import '../features/activity/screens/activity_list_screen.dart';
+import '../features/activity/screens/detailed_report_screen.dart';
 import '../features/activity/screens/ride_detail_screen.dart';
 import '../features/activity/screens/job_detail_screen.dart'
     as activity_job_detail;
@@ -68,14 +69,12 @@ import '../features/activity/screens/job_detail_screen.dart'
 import '../features/profile/screens/profile_screen.dart';
 import '../features/profile/screens/edit_profile_screen.dart';
 import '../features/profile/screens/saved_locations_screen.dart';
-import '../features/profile/screens/notification_settings_screen.dart';
 import '../features/profile/screens/privacy_security_screen.dart';
 import '../features/profile/screens/app_preferences_screen.dart';
 import '../features/profile/screens/support_legal_screen.dart';
 import '../features/profile/screens/referral_screen.dart';
 import '../features/profile/screens/payment_methods_screen.dart';
 import '../features/profile/screens/emergency_contacts_screen.dart';
-import '../features/profile/screens/language_settings_screen.dart';
 import '../features/profile/screens/loyalty_points_screen.dart';
 
 // ── Chat / Safety / Notifications ─────────────────────────────────────────────
@@ -151,6 +150,7 @@ abstract final class AppRoutes {
   // Activity history
   static const activityRide    = '/activity/ride/:rideId';
   static const activityJob     = '/activity/job/:jobId';
+  static const activityReport  = '/activity/report';
 
   static String activityRidePath(String rideId) => '/activity/ride/$rideId';
   static String activityJobPath(String jobId)   => '/activity/job/$jobId';
@@ -158,10 +158,8 @@ abstract final class AppRoutes {
   // Profile sub-screens
   static const profileEdit         = '/profile/edit';
   static const profileSavedPlaces  = '/profile/saved-places';
-  static const profileNotifications = '/profile/notifications';
   static const profilePrivacy      = '/profile/privacy';
   static const profilePreferences  = '/profile/preferences';
-  static const profileLanguage     = '/profile/language';
   static const profileSupport      = '/profile/support';
   static const profileReferral     = '/profile/referral';
   static const profilePayments     = '/profile/payments';
@@ -194,14 +192,20 @@ final _profileNavKey        = GlobalKey<NavigatorState>(debugLabel: 'profile');
 // navigator keys are module-level so navigation state is preserved.
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(clientAuthControllerProvider);
-  final hasSeenOnboarding = ref.watch(hasSeenOnboardingProvider);
-  return _buildRouter(authState, hasSeenOnboarding: hasSeenOnboarding);
+  final authState     = ref.watch(clientAuthControllerProvider);
+  final hasSeen       = ref.watch(hasSeenOnboardingProvider);
+  final pendingReplay = ref.watch(pendingReplayOnboardingProvider);
+  return _buildRouter(
+    authState:     authState,
+    hasSeen:       hasSeen,
+    pendingReplay: pendingReplay,
+  );
 });
 
-GoRouter _buildRouter(
-  ClientAuthState authState, {
-  required bool hasSeenOnboarding,
+GoRouter _buildRouter({
+  required ClientAuthState authState,
+  required bool            hasSeen,
+  required bool            pendingReplay,
 }) {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
@@ -226,7 +230,7 @@ GoRouter _buildRouter(
 
       // Not authenticated — first-time users see onboarding before sign-in.
       if (authState is AuthUnauthenticated) {
-        if (!hasSeenOnboarding) {
+        if (!hasSeen) {
           return path == AppRoutes.onboarding ? null : AppRoutes.onboarding;
         }
         if (path == AppRoutes.authPhone || path == AppRoutes.authSignUp) {
@@ -248,9 +252,22 @@ GoRouter _buildRouter(
         return path == AppRoutes.authOtp ? null : AppRoutes.authOtp;
       }
 
-      // Authenticated — redirect away from auth screens
+      // Authenticated — gate on onboarding before letting them through.
+      //   • First-time users (!hasSeen) must finish onboarding.
+      //   • Users who flipped the "Replay Onboarding" pref see it once
+      //     more on next launch (pendingReplay==true). The screen clears
+      //     the flag on completion so subsequent launches go straight
+      //     to home.
       if (authState is AuthAuthenticated) {
-        return isAuthRoute ? AppRoutes.home : null;
+        final needsOnboarding = !hasSeen || pendingReplay;
+        if (needsOnboarding) {
+          return path == AppRoutes.onboarding ? null : AppRoutes.onboarding;
+        }
+        // Past onboarding — redirect away from any auth/onboarding routes.
+        if (isAuthRoute || path == AppRoutes.onboarding) {
+          return AppRoutes.home;
+        }
+        return null;
       }
 
       return null;
@@ -539,6 +556,11 @@ GoRouter _buildRouter(
         path: AppRoutes.activityJob,
         builder: (_, __) => const activity_job_detail.JobDetailScreen(),
       ),
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: AppRoutes.activityReport,
+        builder: (_, __) => const DetailedReportScreen(),
+      ),
 
       // ── Profile sub-screens (full-screen, above shell) ─────────────────────────
       GoRoute(
@@ -553,11 +575,6 @@ GoRouter _buildRouter(
       ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
-        path: AppRoutes.profileNotifications,
-        builder: (_, __) => const NotificationSettingsScreen(),
-      ),
-      GoRoute(
-        parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.profilePrivacy,
         builder: (_, __) => const PrivacySecurityScreen(),
       ),
@@ -565,11 +582,6 @@ GoRouter _buildRouter(
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.profilePreferences,
         builder: (_, __) => const AppPreferencesScreen(),
-      ),
-      GoRoute(
-        parentNavigatorKey: _rootNavigatorKey,
-        path: AppRoutes.profileLanguage,
-        builder: (_, __) => const LanguageSettingsScreen(),
       ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,

@@ -5,6 +5,8 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/saved_places_provider.dart';
+import '../widgets/rename_place_sheet.dart';
+import '../widgets/save_place_sheet.dart';
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 // PRD 4.11 — Saved places: Home, Work, Favourites + custom.
@@ -109,9 +111,7 @@ class _SearchBar extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: GestureDetector(
-        onTap: () {
-          // TODO: open Google Places autocomplete to add a new saved place
-        },
+        onTap: () => showSavePlaceSheet(context),
         behavior: HitTestBehavior.opaque,
         child: Container(
           height: h * 0.058,
@@ -398,9 +398,7 @@ class _PlaceCard extends ConsumerWidget {
                     ),
                     // Edit
                     GestureDetector(
-                      onTap: () {
-                        // TODO: navigate to edit saved place screen
-                      },
+                      onTap: () => showRenamePlaceSheet(context, place),
                       behavior: HitTestBehavior.opaque,
                       child: Padding(
                         padding: EdgeInsets.symmetric(
@@ -824,9 +822,7 @@ class _AddFab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FloatingActionButton(
-      onPressed: () {
-        // TODO: open add-place sheet (map pin selection via Mapbox)
-      },
+      onPressed: () => showSavePlaceSheet(context),
       backgroundColor:   MyShopColors.darkSlate,
       elevation:         4,
       shape: RoundedRectangleBorder(

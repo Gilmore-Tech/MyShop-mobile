@@ -82,6 +82,12 @@ final userServiceProvider = Provider<UserService>((ref) {
   return UserService(ref.watch(dioProvider));
 });
 
+/// Loyalty service — transaction history + in-booking redemption.
+/// The points balance itself lives on the user profile, not this service.
+final loyaltyServiceProvider = Provider<LoyaltyService>((ref) {
+  return LoyaltyService(ref.watch(dioProvider));
+});
+
 /// Verification service for document + profile photo uploads.
 final verificationServiceProvider = Provider<VerificationService>((ref) {
   return VerificationService(ref.watch(dioProvider));

@@ -1,14 +1,13 @@
 import 'dart:io';
 
-import 'package:api_client/api_client.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../auth/providers/auth_controller.dart';
 import '../providers/edit_profile_provider.dart';
 import '../providers/photo_upload_provider.dart';
-import '../../auth/providers/auth_controller.dart';
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 // PRD 4.11 — Edit full name and email. Phone requires OTP flow. KYC is separate.
@@ -52,6 +51,14 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     if (_emailCtrl.text != s.email)    _emailCtrl.text = s.email;
   }
 
+  /// Profile photo flow:
+  ///   1. Pick an image from camera/gallery.
+  ///   2. Show it instantly via [localProfilePhotoProvider] while we upload.
+  ///   3. Run the 4-step backend flow (presign → upload → confirm → persist
+  ///      onto the Client row) via [profilePhotoUploadProvider].
+  ///   4. On success: store the hosted URL locally + refresh the auth
+  ///      profile so the rest of the app reflects it. On failure: clear
+  ///      the local preview and surface the error.
   Future<void> _pickAndUploadPhoto() async {
     final file = await MediaPickerHelper.pickImage(context);
     if (file == null || !mounted) return;
@@ -59,33 +66,38 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     ref.read(localProfilePhotoProvider.notifier).setLocalFile(file);
     setState(() => _isUploadingPhoto = true);
 
-    final error = await ref.read(documentUploadProvider.notifier).upload(
-      providerType: 'client',
-      documentType: DocumentType.profilePhoto,
-      file: file,
-    );
-
+    final error = await ref
+        .read(profilePhotoUploadProvider.notifier)
+        .upload(file);
     if (!mounted) return;
 
     if (error != null) {
       ref.read(localProfilePhotoProvider.notifier).clear();
       setState(() => _isUploadingPhoto = false);
-      MyShopToast.show(context, message: error, type: ToastType.error,
-          duration: const Duration(seconds: 6));
-    } else {
-      final uploadState  = ref.read(documentUploadProvider);
-      final cloudinaryUrl = uploadState.remoteUrls[DocumentType.profilePhoto.value];
-      if (cloudinaryUrl != null) {
-        await ref.read(localProfilePhotoProvider.notifier).setCloudinaryUrl(cloudinaryUrl);
-      }
-      await ref.read(clientAuthControllerProvider.notifier).refreshProfile();
-      if (!mounted) return;
-      setState(() => _isUploadingPhoto = false);
       MyShopToast.show(
         context,
-        message: cloudinaryUrl != null ? 'Profile photo updated' : 'Photo uploaded (processing)',
+        message: error,
+        type: ToastType.error,
+        duration: const Duration(seconds: 6),
       );
+      return;
     }
+
+    // Persist the hosted URL so the photo survives an app restart even
+    // before the next /users/me fetch lands.
+    final remoteUrl = ref.read(profilePhotoUploadProvider).remoteUrl;
+    if (remoteUrl != null) {
+      await ref
+          .read(localProfilePhotoProvider.notifier)
+          .setCloudinaryUrl(remoteUrl);
+    }
+    // Pull the updated profile so the avatar URL flows back through
+    // editProfileProvider on the next rebuild.
+    await ref.read(clientAuthControllerProvider.notifier).refreshProfile();
+    if (!mounted) return;
+
+    setState(() => _isUploadingPhoto = false);
+    MyShopToast.show(context, message: 'Profile photo updated');
   }
 
   @override
@@ -381,9 +393,12 @@ class _FormCard extends ConsumerWidget {
               const Spacer(),
               if (state.emailChanged)
                 GestureDetector(
-                  onTap: () {
-                    // TODO: navigate to OTP verification screen for email change
-                  },
+                  onTap: () => MyShopToast.show(
+                    context,
+                    message: 'Email verification by OTP is on the way. '
+                        "We'll send a code to the new address as soon as the flow ships.",
+                    duration: const Duration(seconds: 5),
+                  ),
                   behavior: HitTestBehavior.opaque,
                   child: Text(
                     'VERIFY',
