@@ -1,302 +1,131 @@
-# Backend Changes Needed — Ride Matching & Lifecycle
+# Backend / Mobile Ride Contract — Status & Outstanding Items
 
-Discovered while debugging the rider/driver flow on `myshop-mobile`. Mobile workarounds are in place where possible, but the items below need backend work for the system to be reliable in production.
+Snapshot of the rider/driver ride lifecycle from the mobile-app perspective. Reads as a checklist of what the backend ships, what the mobile depends on, and what's still outstanding. Last verified against `myshop` HEAD on 2026-04-26.
 
-Ordered by impact: P0 = causes user-visible bugs today, P1 = simplifies the mobile, P2 = nice-to-have UX.
-
----
-
-## P0-0 — `prisma.ride.update()` rejects `commissionPesewas` on `complete`
-
-### Problem
-`PATCH /v1/rides/:id/status` with `{status: "completed"}` 500s with:
-
-```
-PrismaClientValidationError: Unknown argument `commissionPesewas`.
-  at RideStatusService.updateStatus (apps/api/dist/modules/ride/ride-status.service.js:116)
-```
-
-The service is trying to write `commissionPesewas` to the `Ride` row, but the `Ride` Prisma model doesn't have that column — only `finalFarePesewas` is recognised. The ride therefore stays in `in_progress` indefinitely; the mobile recovery bridge keeps restoring it on every relaunch, and the driver is stuck on the active-ride screen.
-
-Reproduction: drive any test ride to `in_progress`, tap End Trip.
-
-### Proposed change
-Pick one in `apps/api/src/modules/ride/ride-status.service.ts` near the `completed` branch:
-
-- **(preferred)** Drop `commissionPesewas` from the `prisma.ride.update({ data })` call and write it to the related earnings/payout table instead. Commission is a payout concern, not a ride field.
-- Add a `commissionPesewas Int?` column to the `Ride` model in `prisma/schema.prisma` and run a migration. Quick fix if you want the field on the ride row.
-- Compute commission at read time from `finalFarePesewas × commissionRate` and don't persist it.
-
-### Mobile impact
-Mobile shipped a temporary escape hatch — kebab → "Cancel ride" on the active-ride screen — that calls `PATCH /rides/:id/cancel` best-effort and clears local state regardless. Once the backend fix lands, drivers can finish trips normally and the cancel hatch becomes a true cancel-only path.
+> **Before chasing any "ride is broken" report, check the deployed Render version first.** See [§5 Render deployment check](#5-render-deployment-check) — most of the bugs we used to investigate here turned out to be the deployed image lagging HEAD.
 
 ---
 
-## P0-1 — Stuck "busy" state cleanup
+## 1. Landed on backend (mobile depends on these)
 
-### Problem
-When a driver accepts a ride but never advances it (app crash, force-quit, network drop), the ride sits in `accepted` indefinitely and the driver remains flagged `busy`. All subsequent ride requests in that driver's area return `NO_DRIVERS_AVAILABLE` even though the driver appears online in the app. We hit this in QA after the bounce-back bug forced an accept loop.
+The items below are implemented in `myshop/apps/api/` and the mobile assumes them. If a bug looks like one of these is missing, suspect a stale Render deploy first.
 
-### Proposed change
-Pick one (or both):
+| # | Item | Mobile assumption | Backend implementation |
+|---|---|---|---|
+| 1 | **Canonical `ride:state` event** | Single full-snapshot event drives every rider/driver state derivation. | Emitted on every status transition, on accept, on stage-timeout cancel, and per-ride throttled (5 s) during location updates. See [`ride-status.service.ts:168`](../../myshop/apps/api/src/modules/ride/ride-status.service.ts), [`location.gateway.ts`](../../myshop/apps/api/src/modules/location/location.gateway.ts), [`ride-stage-timeout.service.ts:161`](../../myshop/apps/api/src/modules/ride/ride-stage-timeout.service.ts). |
+| 2 | **Idempotent `PATCH /v1/rides/:id/status`** | Mobile sends `desired_status` (e.g. `completed`) once; backend walks the ladder. Replays of the same status are no-ops, not 400s. | [`ride-status.service.ts:106-146`](../../myshop/apps/api/src/modules/ride/ride-status.service.ts) walks `STAGE_ORDER` transactionally; idempotent replay returns the current snapshot. |
+| 3 | **Completion writes commission to `Payment` (not `Ride`)** | PATCH-status `completed` returns the ride entity with `finalFarePesewas`; commission is *not* a Ride column. | [`ride-status.service.ts:188-194`](../../myshop/apps/api/src/modules/ride/ride-status.service.ts) calls `paymentService.recordRideCompletion(rideId)` fire-and-forget after the transaction commits. |
+| 4 | **Stage-timeout windows tunable via `PlatformConfigService`** | Driver realistically takes 4 min from `accepted`, 15 min en-route, 10 min at pickup. | [`ride-stage-timeout.service.ts:11-78`](../../myshop/apps/api/src/modules/ride/ride-stage-timeout.service.ts) reads `ride_accepted_max_secs` (default 120s), `ride_en_route_max_secs` (900s), `ride_arrived_max_secs` (600s). |
+| 5 | **Stuck-busy cleanup** | If the driver disappears mid-ride, server auto-cancels and frees them. | `RideStageTimeoutService.sweepStuckStages()` runs every 30 s; cancel sets `driver.onlineStatus = 'online'`, clears matcher Redis state, emits `ride:state` + legacy events. |
+| 6 | **`ride:decline` socket event** | Driver-side acceptance window expires → emit `ride:decline { rideId }` so the matcher can pivot. | [`location.gateway.ts:481-493`](../../myshop/apps/api/src/modules/location/location.gateway.ts) handler. |
+| 7 | **Notified-driver dedupe** | Each candidate driver hears `ride:new` exactly once per ride; expansion-radius emit only sees new candidates. | `RIDE_NOTIFIED_KEY` Redis set in [`ride.service.ts:186-188`](../../myshop/apps/api/src/modules/ride/ride.service.ts), filtered on radius expansion at lines 630-635 / 731-735. |
+| 8 | **`GET /drivers/me/active-ride`** | Driver app calls this on every `AuthAuthenticated` transition to recover a stranded mid-trip session. | [`drivers.controller.ts:23-39`](../../myshop/apps/api/src/modules/ride/drivers.controller.ts), backed by `RideService.getActiveRideForDriver()`. Composite index `(driverId, status)`. |
+| 9 | **Location throttle is 2 s** | Driver heartbeats every 4 s; one missed POST is fine. | `RATE_LIMIT_TTL_SECS = 2` in [`location.service.ts:23`](../../myshop/apps/api/src/modules/location/location.service.ts). |
+| 10 | **Geo entries don't auto-expire** | Driver visibility persists until explicit offline. | `redis.geoadd(DRIVERS_GEO_KEY, …)` is called without TTL; cleared via `redis.zrem` on `goOffline` ([`location.service.ts:117`](../../myshop/apps/api/src/modules/location/location.service.ts)). |
+| 11 | **Per-fix `driver:location` broadcast** | Rider's marker animates on every fix; payload includes `latitude`, `longitude`, `heading`, `speed`, `etaMinutes`, `rideStatus`, `timestamp`. | [`location.gateway.ts:381-390`](../../myshop/apps/api/src/modules/location/location.gateway.ts) under `@SubscribeMessage('driver:location:update')` — note the event name. |
+| 12 | **Snapshot includes driver coords** | Used to seed the rider's marker before the first per-fix event arrives. | [`ride-snapshot.service.ts:117-118`](../../myshop/apps/api/src/modules/ride/ride-snapshot.service.ts) — `driver.currentLat` / `driver.currentLng` (PostGIS-derived). |
 
-**A. Server-side timeout per status** (preferred)
-- If a ride sits in `accepted` for more than **120s** without transitioning to `driver_en_route`, auto-cancel with reason `driver_no_progress`, free the driver (`busy → online`), and re-emit the request to the next driver in the matcher pool.
-- Same idea for `driver_en_route → arrived_at_pickup` (e.g. 15min timeout) and `arrived → in_progress` (e.g. 10min).
+### Wire-shape gotchas the mobile depends on
 
-**B. Driver-initiated cancel before pickup**
-- Add `PATCH /rides/:id/cancel` permission for the assigned driver pre-pickup (currently the docs only allow client cancel).
-- Body: `{ reason: string }`. Backend response: `{ status: 'cancelled' }`. Free the driver afterwards.
+These are the field names the mobile reads from the canonical snapshot. If the backend ever renames them, mobile silently shows blanks.
 
-### Mobile impact
-- Mobile already has an active-ride-recovery bridge (`active_ride_recovery_bridge.dart`) that calls `GET /rides/:id` on app start. Once `(A)` is in place, the recovery flow will see `cancelled` and clear cleanly. Without it, the only recovery path is to manually intervene in the DB.
-
----
-
-## P0-2 — `ride:decline` event (or server-side acceptance window)
-
-### Problem
-The driver-side acceptance window is currently a **22-second client-only timer**. When it expires, the screen pops back to home but the **backend never finds out**. The matcher keeps re-broadcasting to the same driver until something else times it out, blocking reassignment to the next driver.
-
-### Proposed change
-Pick one:
-
-**A. Explicit decline event** (preferred — gives matcher fast signal)
-- Driver socket emits `ride:decline { rideId }`.
-- Backend ack: `{ ok: true }`.
-- Backend reaction: remove this driver from the candidate set for this ride and immediately try the next eligible driver.
-
-**B. Server-side acceptance window**
-- Backend tracks per-driver `assignedAt` timestamp; if no `ride:accept` ack within **20s**, mark this driver as having declined and try the next.
-- This is more resilient (works even if driver app crashes) but loses the ability to distinguish "ignored" from "explicit decline" for analytics.
-
-Recommend implementing **both** — A for fast happy-path, B as a safety net.
-
-### Mobile impact
-- Once shipped, the driver app's `_decline()` (in `apps/provider/lib/src/features/driver_home/screens/ride_request_screen.dart`) will emit `ride:decline` instead of just popping the screen.
+- **Driver coords on snapshot**: `driver.currentLat` / `driver.currentLng` (NOT `latitude`/`longitude`).
+- **Driver coords on per-fix `driver:location` event**: `latitude` / `longitude` (legacy shape, kept for backward compat).
+- **Ride coords**: `pickupLat` / `pickupLng` / `dropoffLat` / `dropoffLng`. Aliases `pickupLatitude` etc. accepted by mobile parser as defensive fallback.
+- **Driver-side socket emit for location**: `driver:location:update`. (Earlier mobile builds emitted `location:update` — that name has no handler and was silently dropped.)
+- **Total fare**: `finalFarePesewas` after completion, `estimatedFarePesewas` before. Mobile reads `totalFare` as the canonical "what the rider paid" — backend computes this in `ride-snapshot.service.ts:122` as `finalFarePesewas ?? estimatedFarePesewas ?? 0`.
 
 ---
 
-## P0-3 — Stop re-broadcasting the same request to the same driver
+## 2. Outstanding — would simplify the mobile
 
-### Problem
-Provider logs show `ride:request` AND `ride:new` for the same `rideId` firing 3+ times to the same driver within ~10s. Mobile dedupes via `surfacedRideIdsProvider`, but the network/CPU waste and the matcher's confused state are still real.
+### 2.1 Per-line fare components in `RideSnapshot`
 
-### Proposed change
-- The matcher should notify each candidate driver **exactly once** per ride.
-- After their acceptance window expires (P0-2), move to the next candidate.
-- Don't fan out the same request to the same socket more than once.
+**Problem**: snapshot returns `baseFare`, `distanceFare`, `bookingFee` as constant `0` ([`ride-snapshot.service.ts:150-152`](../../myshop/apps/api/src/modules/ride/ride-snapshot.service.ts)). The driver completion summary and rider receipt screens have UI for a per-line breakdown but currently suppress those rows because the values are zero. Without backing data the rider sees only "Total Paid" — fine for now, but the breakdown UI exists and is wasted.
 
-### Mobile impact
-- The mobile dedupe set can stay (defensive), but the symptom goes away.
+**Ask**: when `status='completed'`, populate `baseFare`, `distanceFarePesewas`, `timeFarePesewas`, `surgeFarePesewas`, `taxesPesewas`, `promoDiscountPesewas`. Source from the same calculation that produces `finalFarePesewas` in `fare.service.ts`.
 
----
+**Mobile impact**: receipt screens (`apps/client/lib/src/features/ride/screens/ride_complete_screen.dart`, `ride_receipt_screen.dart`, `apps/provider/lib/src/features/driver_home/screens/driver_ride_complete_screen.dart`) already render the rows when components are non-zero — they just need real numbers.
 
-## P0-4 — Loosen location-update throttle OR raise Redis TTL
+### 2.2 `GET /clients/me/active-ride` endpoint
 
-### Problem
-- Current config: driver location entry has **5s TTL** in Redis (per EDD §5.3); REST `POST /location/update` is rate-limited to **1 per 3s**.
-- The driver app heartbeats every 4s. Any single throttled POST (which we observed in logs as `ThrottlerException: Too Many Requests`) means the entry expires before the next successful write → driver invisible to the matcher → `NO_DRIVERS_AVAILABLE` even when stationary and online.
+**Problem**: rider recovery currently calls `listRides(limit: 5)` and filters for the most recent active row ([`apps/client/lib/src/core/providers/active_ride_recovery_bridge.dart:41`](../apps/client/lib/src/core/providers/active_ride_recovery_bridge.dart)). Drivers got `GET /drivers/me/active-ride` (item #8); riders need the equivalent.
 
-### Proposed change
-Pick one:
-- **Raise TTL to 10–15s.** The matcher tolerance for slightly older fixes is fine; even 15s old is acceptable for ride matching.
-- **OR loosen throttle to 1 per 2s.** Gives the 4s heartbeat enough headroom that one missed POST doesn't kill the entry.
+**Ask**: `GET /v1/clients/me/active-ride` — auth: bearer (client only); response: full `RideSnapshot` or `{ data: null }`. "Active" = `clientId == me` AND status in `[accepted, driver_en_route, arrived_at_pickup, in_progress]`. Mirror the driver endpoint's index strategy.
 
-Recommend the TTL change — it's a single config flip and addresses the root cause.
+**Mobile impact**: replace the listRides workaround with a single dedicated GET.
 
-### Mobile impact
-- Mobile heartbeat already at 4s with `socket.emit` between fixes; nothing to change client-side.
+### 2.3 Drop legacy `ride:request` event
 
----
+**Problem**: backend still emits both `ride:new` (canonical) and the legacy `ride:request`. Mobile listens to and dedupes both ([`apps/provider/lib/src/core/providers/socket_provider.dart:245-247`](../apps/provider/lib/src/core/providers/socket_provider.dart)).
 
-## P1-1 — `GET /drivers/me/active-ride` endpoint
+**Ask**: deprecate after one mobile release cycle, then stop emitting.
 
-### Problem
-There's no driver-side equivalent of "what ride am I currently on?" — `GET /rides/:id` requires knowing the id. Mobile currently persists the rideId in `SharedPreferences` to recover from crashes, but this:
-- Doesn't survive app reinstall.
-- Doesn't work if the driver signs in on a new device.
-- Drifts if the backend cleans up a ride server-side without the app knowing.
+**Mobile impact**: drop the `..off('ride:request') ..on('ride:request', ...)` lines once deprecated.
 
-### Proposed change
-- New endpoint: `GET /drivers/me/active-ride`.
-- Auth: Bearer (driver only).
-- Response 200 (active ride exists): full Ride entity (same shape as `GET /rides/:id`).
-- Response 200 (no active ride): `{ data: null }`.
-- "Active" = ride status in `[accepted, driver_en_route, arrived_at_pickup, in_progress]` AND `assignedDriverId == me`.
+### 2.4 Push ETA refreshes (P2-1)
 
-### Mobile impact
-- Replace the SharedPreferences round-trip in `active_ride_recovery_bridge.dart` with a single call to this endpoint. Simpler, more correct, no local-state drift risk.
+**Problem**: rider's "X min away" pill is seeded from the match payload and stays static until `ride:state` rolls over. The backend already computes `etaMinutes` per fix in [`location.gateway.ts:374-376`](../../myshop/apps/api/src/modules/location/location.gateway.ts) and emits `ride:eta` during `driver_en_route`; mobile just hasn't wired the listener yet.
+
+**Mobile impact**: subscribe to `ride:eta { rideId, etaMins }` in `apps/client/lib/src/core/providers/socket_provider.dart` and route into `rideEtaProvider`. Already a tracking issue on the mobile side.
+
+### 2.5 Surface matcher progress (P2-2)
+
+**Problem**: while the matcher is iterating drivers (1 declined, trying 2), the rider sees no signal — they wait on the matching screen with no indication of progress.
+
+**Ask**: emit `ride:matcher_progress { rideId, attempt, driversTried, driversRemaining }` whenever the matcher reassigns.
+
+**Mobile impact**: small "Reassigning…" indicator on the matching screen.
 
 ---
 
-## P1-2 — Drop the legacy `ride:request` event
+## 3. Mobile-only follow-ups (no backend dep)
 
-### Problem
-Backend emits both `ride:request` (legacy) AND `ride:new` for every driver notification. Mobile has to listen to both and dedupe. Each event also has a slightly different payload shape (`pickupLat` vs `pickupLatitude`).
+For visibility — these don't need backend work, just mobile:
 
-### Proposed change
-- Pick `ride:new` as canonical (richer payload, includes `clientName`, `clientPhotoUrl`).
-- Deprecate `ride:request` — remove after one mobile release cycle.
-- Document the canonical event in the EDD.
-
-### Mobile impact
-- Drop the `..off('ride:request') ..on('ride:request', ...)` lines once deprecated.
+- **Rider tracking maintainer interval** drops to 5 s during `in_progress` (vs 12 s otherwise) to reduce the worst-case End-Trip → /ride-complete navigation lag if the canonical `ride:state` push is delayed. See [`ride_provider.dart` `activeRideTrackingMaintainerProvider`](../apps/client/lib/src/features/ride/providers/ride_provider.dart).
+- **Driver socket stays connected while `busy`**, not just `online` — recovery into a mid-trip ride keeps receiving `ride:state` updates and the location heartbeat keeps firing for the rider's marker.
+- **Rider recovery seeds `rideSearchProvider`** with pickup/destination from the snapshot so the tracking map's markers, polyline, and HEADING-TO overlay render after force-quit/relaunch.
 
 ---
 
-## P1-3 — Confirm rider socket events are wired
+## 4. Architectural target — mostly delivered
 
-### Problem
-Mobile assumes the following but we haven't been able to verify all of them in QA (the rider was sometimes stuck on the matching screen even after the driver accepted, before our recent fixes):
+The "M-1 to M-5" migration plan from the original doc has largely landed:
 
-### Required events
-On the rider's tracking room (joined via `client:track:ride { rideId }`):
+- ✅ **M-1** Canonical `ride:state` event with full snapshots — see item #1 above.
+- ✅ **M-2** Idempotent status walker — see item #2.
+- 🟡 **M-3** Structured error envelope — backend wraps Prisma errors in NestJS exception filters, but mobile would benefit from a documented `{ error: { code, message, details } }` shape for every 4xx/5xx so we stop guessing at error formats. Verify by reading `apps/api/src/common/filters/`.
+- ✅ **M-4** `GET /drivers/me/active-ride` — see item #8. Client equivalent in §2.2.
+- ✅ **M-5** Socket.IO Redis adapter — implied by `feat(ride,api,common): canonical ride:state, idempotent status walker, multi-instance socket adapter` (commit `a8094f1`). Verify with a multi-task Fargate test before pilot peak.
 
-| Event           | When                                  | Payload                                        |
-|-----------------|---------------------------------------|------------------------------------------------|
-| `ride:accepted` | Driver `ride:accept` succeeds         | `{ rideId, driver: { name, vehicle, plateNumber, rating, eta, ... }, baseFare, distanceFare, bookingFee, totalFare, distanceKm, paymentMethod }` |
-| `ride:status`   | Every backend status transition       | `{ rideId, status: 'driver_en_route' \| 'arrived_at_pickup' \| 'in_progress' \| 'completed' \| 'cancelled' \| 'no_drivers' }` |
-
-### Ask
-- Confirm the events fire and match the payload shape.
-- Confirm `client:track:ride` is handled by the gateway and adds the socket to a `ride:{rideId}:client` room.
-- If the payloads differ from what's listed, send the actual schema and we'll adapt — or better, document them in the EDD.
-
-### Mobile impact
-- Already coded against the contract above (see `apps/client/lib/src/core/providers/socket_provider.dart`). Any payload divergence shows up as silent failures (defaults applied), not crashes — please flag if shapes differ.
+Outstanding from the migration: drop the 5 s `getRide` poll loop in `apps/client/lib/src/features/ride/providers/ride_provider.dart` (`requestRideAndMatchDriver`) and the multi-name driver-location listener fallbacks now that `ride:state` is the single source of truth. Plan once §2 items land.
 
 ---
 
-## P2-1 — Push ETA refreshes to the rider
+## 5. Render deployment check
 
-### Problem
-Mobile previously simulated ETA decrement with client-side timers. We removed the simulation; ETA now stays at the snapshot value from the match payload. UX is correct but static — riders don't see a live-updating "3 min away" pill.
+The free-tier Render service deploys from GitHub but **does not auto-deploy on every push**. The deployed image can lag HEAD by days. A bug that "should be fixed in the code" often turns out to be the deployed image not reflecting recent commits.
 
-### Proposed change
-Either:
-- Add a `ride:eta { rideId, etaMins }` event emitted every ~15s while the ride is `driver_en_route`, OR
-- Include `etaMins` in the periodic location broadcasts the rider already gets.
+**Verify before debugging**:
 
-### Mobile impact
-- Wire the new event to `rideEtaProvider` in `apps/client/lib/src/core/providers/socket_provider.dart`.
+1. Check the deployed commit SHA — `curl https://staging-api.myshop.com.gh/health` (or whichever endpoint surfaces it) and compare against `git log -1 --format=%h` in `myshop`.
+2. If lagging: trigger a manual deploy from the Render dashboard, OR push an empty commit to kick CI:
+   ```bash
+   cd ~/Desktop/ayiks/gilmore/myshop
+   git commit --allow-empty -m "chore: trigger redeploy"
+   git push
+   ```
+3. Wait ~3 min for Render to build + start, then re-test.
+4. Keep in mind: Render free tier sleeps after ~15 min idle; first request after a long pause takes 30–60 s.
 
----
-
-## P2-2 — Surface matcher progress to the rider
-
-### Problem
-The rider currently sees only two signals: "drivers notified" (from POST `/rides`) and "accepted" (from `ride:accepted`). When the matcher is iterating through drivers (driver 1 declined, trying driver 2), the rider sees nothing — they wait on the same screen with no indication of progress.
-
-### Proposed change
-- Emit `ride:matcher_progress { rideId, attempt: int, driversTried: int, driversRemaining: int }` whenever the matcher reassigns.
-- Optional: include an estimated continuation time so the UI can show "Still searching — usually 10–30s".
-
-### Mobile impact
-- Add a small "Reassigning…" indicator in the matching screen between `driverFound` and `accepted` phases.
+If you find a bug that this doc claims is fixed and the deploy is current, update §1 to reflect reality and add it to §2.
 
 ---
 
-## Coordination notes
+## 6. Coordination notes
 
-- The mobile changes for P0-2 (`ride:decline`) and P1-1 (`GET /drivers/me/active-ride`) are blocked on backend. Everything else (P0-1, P0-3, P0-4) is mobile-transparent — backend ships, mobile gets healthier without any code change.
-- P1-2 (event rename) needs a release-cycle handshake — backend keeps both events live until mobile drops the legacy listener.
-- Recommend tracking each item as a separate ticket so progress is visible per-fix.
-
----
-
-# Architectural migration target — canonical ride contract
-
-The P0 / P1 fixes above are individually correct, but the *class* of bugs we keep hitting (matching-screen freezes, stuck active rides, status-transition rejections, lifecycle hook races, raw Prisma leaks) all stem from the same root cause: **mobile and backend each run their own ride state machine, with three reconciliation channels (sockets, REST polling, SharedPreferences) that have different latencies and failure modes.**
-
-This section is the long-term contract we want the backend to ship so the mobile becomes a pure reflection of backend state. It supersedes piecemeal fixes once delivered. Mobile migration is phased and only starts once items 1–4 land.
-
-## Backend deliverables
-
-### M-1. Single canonical event: `ride:state`
-
-Backend emits `ride:state` to both `ride:{rideId}:driver` and `ride:{rideId}:client` rooms on **every** ride state change (status transition, driver location bump, fare update, stop added/cancelled, anything observable to the participants). Payload is the **full ride snapshot** — same shape as `GET /rides/:id`:
-
-```jsonc
-{
-  "rideId": "…",
-  "status": "driver_en_route",
-  "client": { "id", "name", "photoUrl", "rating", "tripCount", … },
-  "driver": { "id", "name", "photoUrl", "rating", "vehicle", "plateNumber",
-              "latitude", "longitude", "heading", "etaMins", … },
-  "fare": { "estimated", "final?", "currency", "paymentMethod", … },
-  "route": { "pickup": {…}, "dropoff": {…}, "stops": [...] },
-  "timestamps": { "createdAt", "acceptedAt", "driverEnRouteAt",
-                  "arrivedAtPickupAt", "startedAt", "completedAt",
-                  "cancelledAt" }
-}
-```
-
-Replaces all of: `ride:accepted`, `ride:status`, `ride:driver_location`, `driver:location`, `ride:location`, `ride:eta`, `ride:matcher_progress`. The mobile applies one snapshot — no partial mutations across multiple handlers.
-
-Driver location is **just a field on the snapshot** that bumps every ~5 s while the ride is active.
-
-### M-2. Idempotent `PATCH /v1/rides/:id/status`
-
-Accept `{ desired_status }`; the backend walks the legal path in one transaction:
-
-| Driver desires | Backend transitions through |
-|---|---|
-| `driver_en_route` | `accepted → driver_en_route` |
-| `arrived_at_pickup` | `accepted → driver_en_route → arrived_at_pickup` (if needed) |
-| `in_progress` | (ditto, then `→ in_progress`) |
-| `completed` | (ditto, then `→ completed`) |
-
-Returns the full ride entity (same shape as the snapshot). Replays of the same desired status are no-ops, not 400s.
-
-Eliminates the mobile-side `markEnRoute` workaround (currently fired from `ActiveRideNotifier.acceptRide`), the `_hasAutoStartedEnRoute` guard, and the `INVALID_STATUS_TRANSITION` band-aids.
-
-### M-3. Structured error envelope
-
-Every 4xx / 5xx returns:
-
-```json
-{ "error": { "code": "INTERNAL_RIDE_UPDATE_FAILED",
-             "message": "human-readable",
-             "details": { "field": "commissionPesewas" } } }
-```
-
-Wrap Prisma exceptions in a Nest exception filter so a `PrismaClientValidationError` becomes `INTERNAL_RIDE_UPDATE_FAILED` with the offending column in `details.field`. Same for foreign-key errors, transaction rollbacks, etc. P0-0 was hidden as a generic 500 for hours of debugging — that's the failure mode this kills.
-
-### M-4. `GET /v1/drivers/me/active-ride`
-
-Already in P1-1. Re-stating because it's load-bearing for the migration: it replaces SharedPreferences-based recovery (`apps/provider/lib/src/core/providers/active_ride_recovery_bridge.dart` + `apps/provider/lib/src/features/driver_home/providers/active_ride_persistence.dart`).
-
-Composite index on `(assigned_driver_id, status)` so the query is sub-ms at pilot scale.
-
-### M-5. socket.io Redis adapter
-
-Add `@socket.io/redis-adapter` against the same Redis used for geo. Required for multi-task Fargate (EDD §2.3) — without it, a rider connected to task A can't receive emits from a driver connected to task B.
-
-## Mobile migration phases (gated on backend)
-
-### Phase A — once M-1, M-2, M-3, M-4 ship
-
-- Drop the 5 s `getRide` poll loop in `apps/client/lib/src/features/ride/providers/ride_provider.dart` (`requestRideAndMatchDriver`).
-- Drop `activeRideDriverPollerProvider` (8 s poll fallback for driver location).
-- Drop the multi-name driver-location listeners in `apps/client/lib/src/core/providers/socket_provider.dart`; replace with a single `ride:state` listener.
-- Add `ActiveRideNotifier.applySnapshot(Ride)` in `apps/provider/lib/src/features/driver_home/providers/ride_request_provider.dart`. Delete `applyRemoteStatus`, `_hydrateRide`, the auto-`markEnRoute` call, and the `_hasAutoStartedEnRoute` plumbing.
-- Mirror snapshot-driven state on the client: replace `applyDriverMatch` + `bookingPhaseProvider` flips with one `RideTrackingState` derived from snapshots.
-- Replace SharedPreferences recovery with `GET /drivers/me/active-ride`. Delete `active_ride_persistence.dart`.
-
-### Phase B — once M-5 + P0-3 + P0-4 ship
-
-- Drop `surfacedRideIdsProvider` dedupe in `apps/provider/lib/src/core/providers/socket_provider.dart` (matcher is exactly-once).
-- Drop the REST POST + socket emit duplication in driver heartbeat; rely on socket-only.
-- Confirm zero `429` in logs over a 30-min staging soak at pilot peak.
-
-## Bugs resolved by this migration vs. discrete bugs that aren't
-
-**Resolved (architectural class):** matching-screen freeze on accept, "modify provider during build" crashes on tracking-screen mount, `accepted → arrived_at_pickup` rejection, auto-`markEnRoute` silently failing, stuck active ride restored on relaunch, driver photo / live-tracking event-name guessing, REST poll stamping rate limits.
-
-**Not resolved by migration (still need targeted fixes):** P0-0 (Prisma `commissionPesewas`), P0-3 (matcher dedupe), P0-4 (location TTL math). Migration makes the next P0-0-shaped bug a 30-second diagnosis instead of a multi-turn investigation.
-
-## Verification
-
-- Staging load test at pilot peak: 200 simulated drivers (4 s heartbeat), 50 concurrent ride requests, 5,000 idle authenticated clients. Targets per EDD §14.1: p99 PATCH `< 500 ms`, zero 429 over 30 min, zero ride stuck in `accepted` `> 30 s`, WS disconnect rate `< 0.5 % / min`, Redis driver-geo hit rate `> 99 %`.
-- Per phase, on-device end-to-end ride request → completion with backend logs showing **exactly one `ride:state` per state change** and no fallback REST hits.
+- Track each open §2 item as a separate ticket so progress is visible per-fix.
+- §1 items are mobile-transparent — backend ships, mobile gets healthier without code change.
+- Any wire-shape change in §1 (field renames, event renames) needs a release-cycle handshake — keep both shapes live until mobile drops the legacy reader.
+- Update this doc whenever a §2 item lands or a new mobile-affecting bug is discovered.

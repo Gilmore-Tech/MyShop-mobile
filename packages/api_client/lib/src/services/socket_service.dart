@@ -308,15 +308,14 @@ class SocketService {
           '[WS] Token refresh DioException: type=${e.type} status=$status '
           'message=${e.message} body=$body',
         );
-        if (body is Map<String, dynamic>) {
-          final code = (body['error'] as Map<String, dynamic>?)?['code'];
-          if (code == 'TOKEN_EXPIRED' ||
-              code == 'INVALID_TOKEN' ||
-              code == 'SESSION_INACTIVE' ||
-              code == 'USER_NOT_FOUND') {
-            await _tokenStorage.clearTokens();
-            _onForceLogout?.call();
-          }
+        // Any 4xx on /auth/refresh is terminal — the backend has rejected
+        // the refresh token and the only path forward is sign-in. Don't
+        // gate on specific error codes: we've seen the backend's 401 body
+        // sometimes lack `error.code`, leaving the user in a zombie state
+        // where every subsequent request 401s.
+        if (status != null && status >= 400 && status < 500) {
+          await _tokenStorage.clearTokens();
+          _onForceLogout?.call();
         }
         return null;
       } on TimeoutException catch (e) {

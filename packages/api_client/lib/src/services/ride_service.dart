@@ -126,6 +126,22 @@ class RideService {
     }
   }
 
+  /// GET /drivers/me/active-ride — Driver: fetch the ride this driver is
+  /// currently assigned to (status in `accepted | driver_en_route |
+  /// arrived_at_pickup | in_progress`), or null if none. Replaces the
+  /// SharedPreferences-based recovery flow with an authoritative
+  /// server-side lookup that survives reinstalls and device changes.
+  Future<Map<String, dynamic>?> getMyActiveRide() async {
+    try {
+      final response = await _dio.get('/drivers/me/active-ride');
+      final unwrapped = _unwrap(response);
+      // Backend returns `{ data: null }` when no active ride exists.
+      return unwrapped is Map<String, dynamic> ? unwrapped : null;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   /// PATCH /rides/:id/status — Driver: advance the ride lifecycle.
   ///
   /// Valid transitions (and their required predecessors):

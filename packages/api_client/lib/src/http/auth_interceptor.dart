@@ -185,17 +185,21 @@ class AuthInterceptor extends QueuedInterceptor {
           '[Auth] refresh DioException: status=${e.response?.statusCode} '
           'body=${e.response?.data}',
         );
-        final body = e.response?.data;
-        if (body is Map<String, dynamic>) {
-          final errorCode = (body['error'] as Map<String, dynamic>?)?['code'];
-          if (errorCode == 'TOKEN_EXPIRED' ||
-              errorCode == 'INVALID_TOKEN' ||
-              errorCode == 'SESSION_INACTIVE' ||
-              errorCode == 'USER_NOT_FOUND') {
-            debugPrint('[Auth] hard auth failure ($errorCode) — clearing tokens');
-            await _tokenStorage.clearTokens();
-            _onForceLogout?.call();
-          }
+        // Any 4xx on /auth/refresh is terminal: the backend has rejected
+        // the refresh token and there's no path forward without a fresh
+        // sign-in. Clear local tokens + force the auth controller back
+        // to unauthenticated so the router lands on the sign-in screen
+        // rather than leaving the app stuck in a zombie state where every
+        // subsequent request 401s. We previously only force-logged-out for
+        // a specific set of error codes — but in practice the backend's
+        // 401 body sometimes lacks `error.code`, sometimes uses different
+        // codes, and we don't want to depend on that to escape a dead
+        // session.
+        final status = e.response?.statusCode;
+        if (status != null && status >= 400 && status < 500) {
+          debugPrint('[Auth] hard auth failure ($status) — clearing tokens');
+          await _tokenStorage.clearTokens();
+          _onForceLogout?.call();
         }
         return null;
       } catch (e, st) {
