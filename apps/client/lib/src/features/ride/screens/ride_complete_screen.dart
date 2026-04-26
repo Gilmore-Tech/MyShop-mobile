@@ -48,6 +48,14 @@ class _RideCompleteScreenState extends ConsumerState<RideCompleteScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       final receipt = ref.read(rideReceiptProvider);
+      if (receipt == null) {
+        // Edge case: deep-linked here without the snapshot having landed —
+        // fall back to home so the rider isn't stuck on a half-rendered
+        // screen.
+        if (!mounted) return;
+        context.go(AppRoutes.home);
+        return;
+      }
       await showRateRideSheet(context, receipt);
       if (!mounted) return;
       context.pushReplacement(
@@ -68,6 +76,16 @@ class _RideCompleteScreenState extends ConsumerState<RideCompleteScreen> {
     final receipt = ref.watch(rideReceiptProvider);
     final tipState = ref.watch(tipStateProvider);
     final h = MediaQuery.sizeOf(context).height;
+
+    if (receipt == null) {
+      // Snapshot hasn't arrived yet — render a transient loading state
+      // rather than crashing on null fields. The post-frame callback above
+      // will redirect home if it stays null.
+      return const Scaffold(
+        backgroundColor: MyShopColors.offWhite,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,

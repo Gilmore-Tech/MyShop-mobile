@@ -15,6 +15,13 @@ import '../../features/services/providers/job_detail_provider.dart';
 import '../di/providers.dart';
 import 'nav_badge_provider.dart';
 
+/// True while the Socket.IO connection is open. Mirrored from the underlying
+/// [SocketService.connectionStream] inside [_connectAndListen] so other
+/// providers can react to connect/reconnect transitions (e.g. the
+/// active-ride recovery bridge re-checks for a stranded ride when the
+/// socket finally comes through after a Render cold-start).
+final socketConnectedProvider = StateProvider<bool>((_) => false);
+
 /// Provides the [SocketService] singleton for the client app.
 final socketServiceProvider = Provider<SocketService>((ref) {
   final config = ref.watch(apiConfigProvider);
@@ -51,11 +58,11 @@ final socketConnectionProvider = Provider<void>((ref) {
 void _connectAndListen(Ref ref, SocketService socket) {
   // Whenever the socket finishes connecting (initial or after a reconnect),
   // (re-)join the active ride's tracking room so the rider receives
-  // `ride:accepted` / `ride:status` events. Without this, an emit issued
-  // before the handshake completes is dropped silently and the rider is
-  // stuck on the matching screen until the REST poll picks it up — which
-  // also trips the backend rate limit on long searches.
+  // `ride:state` snapshots. Without this, an emit issued before the
+  // handshake completes is dropped silently and the rider is stuck on the
+  // matching screen indefinitely.
   socket.connectionStream.listen((connected) {
+    ref.read(socketConnectedProvider.notifier).state = connected;
     if (!connected) return;
     final rideId = ref.read(activeRideIdProvider);
     if (rideId == null || rideId.isEmpty) return;
@@ -64,10 +71,27 @@ void _connectAndListen(Ref ref, SocketService socket) {
   });
 
   socket.connect().then((_) {
-    // Build the matched-driver model from a payload that may come from
-    // either `ride:status` (driver/fare fields at top level) or
-    // `ride:accepted` (the backend's dedicated match event).
-    void applyDriverMatch(Map<String, dynamic> data) {
+    // Diagnostic: log every event the rider's socket sees so we can tell
+    // a "no events arriving" problem (room-join race, auth issue) apart
+    // from a "wrong event name" problem (backend renamed something) at a
+    // glance. Stripped to the first ~200 chars to keep the log readable.
+    socket.onAnyEvent((event, data) {
+      final preview = data.toString();
+      final trimmed =
+          preview.length > 200 ? '${preview.substring(0, 200)}…' : preview;
+      developer.log('[any] $event → $trimmed', name: 'WS');
+    });
+
+    // Apply a `ride:state` snapshot — the backend's canonical event that
+    // fires on every ride state change (status transition, fare update,
+    // location bump while active, cancel, completion). Drives every ride
+    // provider on the rider side: matched driver, booking phase, tracking
+    // phase, and the live driver marker.
+    //
+    // Replaces the legacy `ride:accepted` + `ride:status` listeners and
+    // the multi-name `ride:driver_location` / `ride:location` guesses;
+    // backend's M-1 spec guarantees one event with a full snapshot.
+    void applyRideSnapshot(Map<String, dynamic> data) {
       final driver =
           data['driver'] as Map<String, dynamic>? ?? <String, dynamic>{};
       // Driver name may arrive as a single `name` field or split into
@@ -104,34 +128,115 @@ void _connectAndListen(Ref ref, SocketService socket) {
             (driver['avatarUrl'] as String?) ??
             '',
       );
-      ref.read(matchedDriverProvider.notifier).state = matched;
-      ref.read(bookingPhaseProvider.notifier).accepted();
-      ref.read(rideMatchedViaSocketProvider.notifier).state = true;
+
+      // Drive the booking + tracking phases off the ride status. The
+      // matching screen listens for `bookingPhase == accepted` to navigate;
+      // the tracking screen listens for `rideTrackingPhase` transitions to
+      // drive timers and the eventual `/ride-complete` redirect.
+      final status = data['status'] as String? ?? '';
+      switch (status) {
+        case 'accepted' ||
+              'driver_assigned' ||
+              'driver_en_route' ||
+              'arrived_at_pickup' ||
+              'arrived' ||
+              'in_progress':
+          // Only push the matched-driver model once the driver is real
+          // (avoid clobbering with a half-built model on `requested`).
+          ref.read(matchedDriverProvider.notifier).state = matched;
+          ref.read(bookingPhaseProvider.notifier).accepted();
+          ref.read(rideMatchedViaSocketProvider.notifier).state = true;
+        case 'completed':
+          // Final snapshot — keep the matched driver around for the
+          // receipt screen but flip tracking phase to navigate away.
+          ref.read(matchedDriverProvider.notifier).state = matched;
+        case 'cancelled' || 'no_drivers':
+          // Failed states: clear out so the matching screen can render
+          // its failure card and the activity list refreshes.
+          break;
+        default:
+          break;
+      }
+
+      // Tracking phase (only when the ride is past `accepted`).
+      switch (status) {
+        case 'driver_en_route':
+          ref.read(rideTrackingPhaseProvider.notifier).state =
+              RideTrackingPhase.enRoute;
+        case 'arrived_at_pickup' || 'arrived':
+          ref.read(rideTrackingPhaseProvider.notifier).state =
+              RideTrackingPhase.arrived;
+        case 'in_progress':
+          ref.read(rideTrackingPhaseProvider.notifier).state =
+              RideTrackingPhase.inProgress;
+        case 'completed':
+          ref.read(rideTrackingPhaseProvider.notifier).state =
+              RideTrackingPhase.completed;
+          // Build the receipt from the same snapshot before the tracking
+          // screen navigates to /ride-complete — without this the rider
+          // lands on the receipt screen with a null provider and an
+          // empty fallback.
+          ref.read(rideReceiptProvider.notifier).state =
+              buildRideReceiptFromSnapshot(data);
+          if (ref.exists(activityNotifierProvider)) {
+            ref.read(activityNotifierProvider.notifier).reload();
+          }
+          if (ref.exists(activityHistoryProvider)) {
+            ref.read(activityHistoryProvider.notifier).silentReload();
+          }
+          ref.read(navBadgeProvider.notifier).increment('/activity');
+        case 'cancelled' || 'no_drivers':
+          ref.read(bookingPhaseProvider.notifier).reset();
+          if (ref.exists(activityHistoryProvider)) {
+            ref.read(activityHistoryProvider.notifier).silentReload();
+          }
+      }
+
+      // Snapshot may also carry the driver's last fix as a field on the
+      // driver sub-object — seed the live position provider so the map's
+      // marker has something to render before the next per-fix
+      // `driver:location` event arrives.
+      //
+      // Backend's RideSnapshot uses `currentLat` / `currentLng` (see
+      // `apps/api/src/modules/ride/ride-snapshot.service.ts`); we keep
+      // `latitude` / `lat` aliases as defensive fallbacks in case other
+      // emit sites use the per-fix payload shape.
+      final dLat =
+          (driver['currentLat'] ?? driver['latitude'] ?? driver['lat'])
+              as num?;
+      final dLng =
+          (driver['currentLng'] ?? driver['longitude'] ?? driver['lng'])
+              as num?;
+      if (dLat != null && dLng != null) {
+        final heading = (driver['heading'] ?? driver['bearing']) as num?;
+        ref.read(liveDriverPositionProvider.notifier).state =
+            LiveDriverPosition(
+          latitude: dLat.toDouble(),
+          longitude: dLng.toDouble(),
+          heading: heading?.toDouble(),
+          updatedAt: DateTime.now(),
+        );
+      }
     }
 
-    // The backend emits `ride:accepted` to the rider's tracking room as
-    // soon as a driver wins the assignment race. Without this listener
-    // the rider only learns about the match via the 2-second REST poll —
-    // and if the poll's status field doesn't transition the rider stays
-    // stuck on the matching screen indefinitely.
-    socket.on('ride:accepted', (data) {
-      developer.log('Received ride:accepted event: $data', name: 'WS');
-      if (data is! Map<String, dynamic>) return;
-      try {
-        applyDriverMatch(data);
-      } catch (e) {
-        developer.log('Failed to handle ride:accepted: $e',
-            name: 'WS', level: 900);
-      }
-    });
+    socket
+      ..off('ride:state')
+      ..on('ride:state', (data) {
+        if (data is! Map<String, dynamic>) return;
+        try {
+          applyRideSnapshot(data);
+        } catch (e) {
+          developer.log('Failed to apply ride:state snapshot: $e',
+              name: 'WS', level: 900);
+        }
+      });
 
     // ── Live driver location ─────────────────────────────────────────────
-    // Backend relays the driver's `location:update` emits to the rider's
-    // ride room while a ride is active. We don't have a single canonical
-    // event name documented yet, so listen for the obvious variants and
-    // gate on `rideId` matching the active ride. Anything that doesn't
-    // match the active ride is ignored — keeps a chatty admin feed from
-    // jumping the marker around if it ever leaks into this socket.
+    // Per-fix marker updates. `ride:state` carries the full snapshot at a
+    // ~5s cadence (throttled server-side); `driver:location` continues to
+    // fire on every GPS bump so the marker animates smoothly between
+    // snapshots. Gated on the active ride id so the rider's marker
+    // doesn't jitter from unrelated ride traffic.
     void handleDriverLocation(dynamic data) {
       if (data is! Map<String, dynamic>) return;
       final activeRideId = ref.read(activeRideIdProvider);
@@ -152,63 +257,8 @@ void _connectAndListen(Ref ref, SocketService socket) {
     }
 
     socket
-      ..off('ride:driver_location')
       ..off('driver:location')
-      ..off('ride:location')
-      ..on('ride:driver_location', handleDriverLocation)
-      ..on('driver:location', handleDriverLocation)
-      ..on('ride:location', handleDriverLocation);
-
-    // ── Ride status updates ──────────────────────────────────────────────
-    socket.on('ride:status', (data) {
-      developer.log('Received ride:status event: $data', name: 'WS');
-      if (data is! Map<String, dynamic>) return;
-      try {
-        final status = data['status'] as String? ?? '';
-
-        switch (status) {
-          case 'accepted' || 'driver_assigned':
-            applyDriverMatch(data);
-
-          case 'en_route':
-            ref.read(rideTrackingPhaseProvider.notifier).state =
-                RideTrackingPhase.enRoute;
-
-          case 'arrived':
-            ref.read(rideTrackingPhaseProvider.notifier).state =
-                RideTrackingPhase.arrived;
-
-          case 'in_progress':
-            ref.read(rideTrackingPhaseProvider.notifier).state =
-                RideTrackingPhase.inProgress;
-
-          case 'completed':
-            // Flip the tracking screen to its `completed` phase so it can
-            // navigate to /ride-complete — the previous flow relied on
-            // client-side timers to do this, which only worked when the
-            // simulated trip ETA hit zero.
-            ref.read(rideTrackingPhaseProvider.notifier).state =
-                RideTrackingPhase.completed;
-            // Ride completed — activity list should refresh
-            if (ref.exists(activityNotifierProvider)) {
-              ref.read(activityNotifierProvider.notifier).reload();
-            }
-            if (ref.exists(activityHistoryProvider)) {
-              ref.read(activityHistoryProvider.notifier).silentReload();
-            }
-            ref.read(navBadgeProvider.notifier).increment('/activity');
-
-          case 'cancelled' || 'no_drivers':
-            ref.read(bookingPhaseProvider.notifier).reset();
-            if (ref.exists(activityHistoryProvider)) {
-              ref.read(activityHistoryProvider.notifier).silentReload();
-            }
-        }
-      } catch (e) {
-        developer.log('Failed to handle ride:status: $e',
-            name: 'WS', level: 900);
-      }
-    });
+      ..on('driver:location', handleDriverLocation);
 
     // ── Job status updates ───────────────────────────────────────────────
     // The backend emits `job:status:changed` (new name per the Paystack

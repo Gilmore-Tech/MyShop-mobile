@@ -7,6 +7,7 @@ import 'package:myshop_client/firebase_options.dart';
 import 'src/app/client_app.dart';
 import 'src/core/constants/mapbox_config.dart';
 import 'src/core/di/providers.dart';
+import 'src/core/providers/active_ride_recovery_bridge.dart';
 import 'src/core/providers/current_location_provider.dart';
 import 'src/core/providers/socket_provider.dart';
 import 'src/core/services/fcm_service.dart';
@@ -69,6 +70,11 @@ Future<void> main() async {
   // changes. Connects automatically when the user logs in, disconnects on
   // logout. Incoming events push live updates into Riverpod providers.
   container.read(socketConnectionProvider);
+
+  // On every transition into authenticated, check whether the rider has
+  // an in-flight ride that needs to be resumed (force-quit / crash mid-
+  // trip). Mirrors the driver-side recovery bridge.
+  container.read(clientActiveRideRecoveryBridgeProvider);
 
   // Register the FCM token with the backend on login; tears it down on
   // logout. Fire this BEFORE runApp so the subscription survives the

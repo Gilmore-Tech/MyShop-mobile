@@ -46,9 +46,9 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
     super.initState();
     // Seed the ETA values from whatever the backend gave us via the matched
     // driver payload. These don't tick down on the client any more —
-    // `ride:status` events from the driver advance the phase; if the backend
-    // pushes refreshed ETAs in the future, drop them straight into these
-    // providers from socket_provider.dart.
+    // `ride:state` snapshots from the driver advance the phase; if the
+    // backend pushes refreshed ETAs in the future, drop them straight into
+    // these providers from socket_provider.dart.
     //
     // Deferred to a microtask: when this screen is pushed via `context.go`
     // from a post-frame callback (e.g. the matching screen's already-
@@ -101,12 +101,18 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // React to phase transitions pushed in by `ride:status` socket events.
+    // Self-healing belt: re-emits `client:track:ride` and periodically
+    // hydrates from REST so a dropped socket / room-join race during the
+    // ride doesn't leave the rider stuck on a stale phase. Auto-disposes
+    // when this screen unmounts.
+    ref.watch(activeRideTrackingMaintainerProvider);
+
+    // React to phase transitions pushed in by `ride:state` socket events.
     // The driver app is the source of truth for ride lifecycle: when they
-    // tap "Arrived" / "Start Trip" / "End Trip", the backend broadcasts
-    // ride:status to the rider's room and socket_provider flips
-    // rideTrackingPhaseProvider — this listener turns those flips into the
-    // matching local side-effects (waiting timer, navigation).
+    // tap "Arrived" / "Start Trip" / "End Trip", the backend broadcasts a
+    // fresh `ride:state` snapshot to the rider's room and socket_provider
+    // flips rideTrackingPhaseProvider — this listener turns those flips
+    // into the matching local side-effects (waiting timer, navigation).
     ref.listen<RideTrackingPhase>(rideTrackingPhaseProvider, (prev, next) {
       if (prev == next) return;
       switch (next) {
@@ -122,11 +128,6 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
           context.go(AppRoutes.rideComplete);
       }
     });
-
-    // Keep the driver-location poller alive while this screen is visible.
-    // Socket events drive the marker primarily; the poller is a fallback
-    // in case the gateway doesn't relay location updates to the rider.
-    ref.watch(activeRideDriverPollerProvider);
 
     final phase = ref.watch(rideTrackingPhaseProvider);
     final pickupEta = ref.watch(rideEtaProvider);

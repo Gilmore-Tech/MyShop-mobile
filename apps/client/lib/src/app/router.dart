@@ -14,6 +14,7 @@ import '../dev/dev_menu_screen.dart';
 
 // ── Onboarding ─────────────────────────────────────────────────────────────────
 import '../features/onboarding/screens/splash_screen.dart';
+import '../features/onboarding/screens/onboarding_screen.dart';
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
 import '../features/auth/screens/phone_input_screen.dart';
@@ -88,6 +89,7 @@ import '../features/notifications/screens/notifications_list_screen.dart';
 abstract final class AppRoutes {
   // Onboarding
   static const splash          = '/';
+  static const onboarding      = '/onboarding';
   // Auth
   static const authPhone       = '/auth/phone';
   static const authSignUp      = '/auth/sign-up';
@@ -193,10 +195,14 @@ final _profileNavKey        = GlobalKey<NavigatorState>(debugLabel: 'profile');
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(clientAuthControllerProvider);
-  return _buildRouter(authState);
+  final hasSeenOnboarding = ref.watch(hasSeenOnboardingProvider);
+  return _buildRouter(authState, hasSeenOnboarding: hasSeenOnboarding);
 });
 
-GoRouter _buildRouter(ClientAuthState authState) {
+GoRouter _buildRouter(
+  ClientAuthState authState, {
+  required bool hasSeenOnboarding,
+}) {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: AppRoutes.splash,
@@ -204,6 +210,7 @@ GoRouter _buildRouter(ClientAuthState authState) {
     redirect: (context, state) {
       final path = state.uri.path;
       final isAuthRoute = path == AppRoutes.splash ||
+          path == AppRoutes.onboarding ||
           path == AppRoutes.authPhone ||
           path == AppRoutes.authSignUp ||
           path == AppRoutes.authOtp;
@@ -217,8 +224,11 @@ GoRouter _buildRouter(ClientAuthState authState) {
         return path == AppRoutes.splash ? null : AppRoutes.splash;
       }
 
-      // Not authenticated — allow phone or sign-up screens
+      // Not authenticated — first-time users see onboarding before sign-in.
       if (authState is AuthUnauthenticated) {
+        if (!hasSeenOnboarding) {
+          return path == AppRoutes.onboarding ? null : AppRoutes.onboarding;
+        }
         if (path == AppRoutes.authPhone || path == AppRoutes.authSignUp) {
           return null;
         }
@@ -257,6 +267,10 @@ GoRouter _buildRouter(ClientAuthState authState) {
       GoRoute(
         path: AppRoutes.splash,
         builder: (_, __) => const SplashScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.onboarding,
+        builder: (_, __) => const OnboardingScreen(),
       ),
 
       // ── Auth ──────────────────────────────────────────────────────────────────

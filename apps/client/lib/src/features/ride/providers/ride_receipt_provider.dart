@@ -93,7 +93,12 @@ class _RideReceiptNotifier
             ' · ${driver['plateNumber'] ?? ''}',
         driverRating: (driver['rating'] as num?)?.toDouble() ?? 0.0,
         pickupAddress: ride['pickupAddress'] as String? ?? '',
-        dropoffAddress: ride['destinationAddress'] as String? ?? '',
+        // Backend's RideSnapshot serves the field as `dropoffAddress`; the
+        // older `destinationAddress` alias never made it into the canonical
+        // payload, so reading it returned null and the receipt was blank.
+        dropoffAddress: (ride['dropoffAddress'] ??
+                ride['destinationAddress']) as String? ??
+            '',
         baseFarePesewas: (ride['baseFare'] as num?)?.toInt() ?? 0,
         distanceKm: (ride['distanceKm'] as num?)?.toDouble() ?? 0,
         distanceFarePesewas:
