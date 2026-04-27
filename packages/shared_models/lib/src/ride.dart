@@ -165,7 +165,7 @@ class Ride {
   bool get hasSurge => surgeMultiplier > 1.0;
   String get surgeDisplay => '${surgeMultiplier.toStringAsFixed(1)}x';
 
-  Ride copyWith({RideStatus? status}) {
+  Ride copyWith({RideStatus? status, List<RideStop>? stops}) {
     return Ride(
       id: id,
       clientId: clientId,
@@ -195,7 +195,7 @@ class Ride {
       clientPhotoUrl: clientPhotoUrl,
       clientRating: clientRating,
       clientTripCount: clientTripCount,
-      stops: stops,
+      stops: stops ?? this.stops,
     );
   }
 }
