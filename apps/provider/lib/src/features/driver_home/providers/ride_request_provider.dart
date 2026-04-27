@@ -263,9 +263,16 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       // stable if the backend rooms ever cross-talk).
       return;
     }
-    state = state.copyWith(ride: snapshot);
-    if (snapshot.status == RideStatus.completed ||
-        snapshot.status == RideStatus.cancelled) {
+    // Backend's `ride:state` payload doesn't yet include `stops`; preserve
+    // whatever we already have locally so a snapshot doesn't blow away
+    // stops that arrived via `ride:route_updated` REST refetch.
+    final preserved =
+        snapshot.stops.isEmpty && current != null && current.stops.isNotEmpty
+            ? snapshot.copyWith(stops: current.stops)
+            : snapshot;
+    state = state.copyWith(ride: preserved);
+    if (preserved.status == RideStatus.completed ||
+        preserved.status == RideStatus.cancelled) {
       _resumeOnline();
     }
   }

@@ -55,6 +55,11 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
   /// driver getting close to the pickup pin.
   static const _proximityDelay = Duration(seconds: 6);
   static const _previewSize = 0.55;
+  /// Smallest fraction of the screen the passenger panel can occupy. Keeps
+  /// a peek tab visible so the driver can always grab the panel back even
+  /// after collapsing it — without this they could drag it fully off-screen
+  /// and have no way to bring it back without re-accepting a ride.
+  static const _peekSize = 0.12;
 
   Timer? _proximityTimer;
 
@@ -320,17 +325,19 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
           ),
 
           // ── Bottom passenger panel (draggable sheet) ──
-          // While the driver is en-route, the sheet sits fully off-screen
-          // (`minChildSize == 0`). When proximity fires we animate it up to
-          // its preview size; the driver can drag it further to expand,
-          // collapse it back, or pull it down to peek the map.
+          // Sheet starts at a small peek (driver always has a grab handle)
+          // and the proximity timer animates it up to the preview size
+          // shortly after the screen mounts. The minimum is fixed at the
+          // peek so a careless swipe-down can't dismiss the panel entirely
+          // — without this the driver could swipe it off screen and have
+          // no way to bring it back during an active trip.
           DraggableScrollableSheet(
             controller: _sheetController,
-            initialChildSize: 0,
-            minChildSize: 0,
+            initialChildSize: _peekSize,
+            minChildSize: _peekSize,
             maxChildSize: 0.78,
             snap: true,
-            snapSizes: const [0, 0.55, 0.78],
+            snapSizes: const [_peekSize, _previewSize, 0.78],
             builder: (context, scrollController) {
               return _PassengerPanel(
                 ride: ride,
@@ -1019,6 +1026,26 @@ class _PassengerPanel extends StatelessWidget {
                       label: 'PICKUP POINT',
                       address: ride.pickupAddress,
                     ),
+                    // Intermediate stops the rider added (mid-trip or
+                    // at booking). The driver sees them in route order
+                    // between pickup and destination so the next-stop
+                    // address is always obvious — these rows mirror
+                    // exactly what the rider's "Edit your trip" sheet
+                    // shows.
+                    for (final stop in ride.stops) ...[
+                      Container(
+                        width: 1.5,
+                        height: 14,
+                        margin: const EdgeInsets.only(
+                            left: 9, top: 2, bottom: 2),
+                        child: const _DottedVerticalLine(),
+                      ),
+                      _RoutePoint(
+                        colorRing: MyShopColors.warning,
+                        label: 'STOP',
+                        address: stop.address,
+                      ),
+                    ],
                     Container(
                       width: 1.5,
                       height: 14,

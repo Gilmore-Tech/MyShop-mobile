@@ -9,14 +9,24 @@ final earningsServiceProvider = Provider<EarningsService>((ref) {
   return EarningsService(ref.watch(dioProvider));
 });
 
-/// Provides the driver's earnings summary for today.
-///
-/// Calls GET /payments/earnings?period=today. Falls back to
-/// [DriverEarnings.empty] if the endpoint is unavailable or returns no data.
+/// Driver earnings (today + week aggregate). Drives both the home-screen
+/// summary card and the earnings dashboard. Refresh is triggered by:
+///   - the screen mounting (FutureProvider builds once)
+///   - `ride:state` snapshots flipping to `completed` (the driver socket
+///     listener invalidates this provider so the next `ref.watch` rebuilds
+///     and re-fetches both periods)
+///   - manual `ref.invalidate(driverEarningsProvider)` (pull-to-refresh).
 final driverEarningsProvider = FutureProvider<DriverEarnings>((ref) async {
   try {
-    return await ref.watch(earningsServiceProvider).getEarnings();
+    return await ref.watch(earningsServiceProvider).getEarningsAggregate();
   } catch (_) {
     return DriverEarnings.empty;
   }
+});
+
+/// Recent payouts (most-recent-first, capped at 50). Same refresh story as
+/// [driverEarningsProvider] — invalidated by the completion listener so
+/// fresh payouts surface as soon as the backend records them.
+final driverPayoutsProvider = FutureProvider<List<DriverPayout>>((ref) async {
+  return ref.watch(earningsServiceProvider).getPayouts();
 });

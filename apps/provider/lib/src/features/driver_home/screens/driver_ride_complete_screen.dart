@@ -5,6 +5,7 @@ import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../providers/ride_request_provider.dart';
+import '../widgets/rate_passenger_sheet.dart';
 
 /// Trip summary screen shown after ride completion.
 ///
@@ -21,11 +22,42 @@ import '../providers/ride_request_provider.dart';
 /// trip. Backend doesn't yet break down the fare into base/distance/time
 /// rows — we show what's authoritative (total + commission split) and skip
 /// the fabricated line items rather than display made-up numbers.
-class DriverRideCompleteScreen extends ConsumerWidget {
+class DriverRideCompleteScreen extends ConsumerStatefulWidget {
   const DriverRideCompleteScreen({super.key});
 
+  @override
+  ConsumerState<DriverRideCompleteScreen> createState() =>
+      _DriverRideCompleteScreenState();
+}
+
+class _DriverRideCompleteScreenState
+    extends ConsumerState<DriverRideCompleteScreen> {
   /// Platform commission rate (PRD: 20% on every transaction).
   static const _commissionRate = 0.20;
+
+  /// One-shot guard so we only auto-show the rate-passenger sheet once
+  /// per landing on the screen — without it a rebuild during the sheet's
+  /// open animation would queue another sheet underneath.
+  bool _rateSheetShown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowRateSheet());
+  }
+
+  Future<void> _maybeShowRateSheet() async {
+    if (_rateSheetShown || !mounted) return;
+    final ride = ref.read(activeRideProvider).ride;
+    if (ride == null || ride.id.isEmpty) return;
+    _rateSheetShown = true;
+    final firstName = (ride.clientName ?? 'Passenger').split(' ').first;
+    await showRatePassengerSheet(
+      context,
+      rideId: ride.id,
+      passengerFirstName: firstName,
+    );
+  }
 
   TripSummary _summaryFromRide(Ride ride) {
     final total =
@@ -76,7 +108,7 @@ class DriverRideCompleteScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final ride = ref.watch(activeRideProvider).ride;
     if (ride == null) {
       // Recovery / hot-reload edge case — fall back to a benign empty state

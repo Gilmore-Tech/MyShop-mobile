@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/current_user_provider.dart';
+import '../../driver_home/data/earnings_service.dart';
 import '../../driver_home/providers/driver_earnings_provider.dart';
 import '../../profile/providers/verification_provider.dart';
 import '../widgets/weekly_performance_chart.dart';
@@ -29,7 +31,12 @@ class EarningsDashboardScreen extends ConsumerWidget {
 
     final todayAmount = earningsAsync.whenOrNull(data: (e) => e.todayAmountPesewas) ?? 0;
     final weekAmount = earningsAsync.whenOrNull(data: (e) => e.weekAmountPesewas) ?? 0;
+    final weekCommission =
+        earningsAsync.whenOrNull(data: (e) => e.weekCommissionPesewas) ?? 0;
+    final weekNet = earningsAsync.whenOrNull(data: (e) => e.weekNetPesewas) ?? 0;
     final todayTrips = earningsAsync.whenOrNull(data: (e) => e.todayTrips) ?? 0;
+    final peakHours =
+        earningsAsync.whenOrNull(data: (e) => e.peakHours) ?? const [];
     final isVerified = user?.verificationStatus == 'approved';
 
     return Scaffold(
@@ -133,14 +140,18 @@ class EarningsDashboardScreen extends ConsumerWidget {
             // ── Weekly performance chart ──
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-              child: _WeeklyPerformanceCard(),
+              child: _WeeklyPerformanceCard(peakHours: peakHours),
             ),
             const SizedBox(height: MyShopSpacing.md),
 
             // ── Commission & Tax card ──
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-              child: _CommissionCard(weekPesewas: weekAmount),
+              child: _CommissionCard(
+                weekPesewas: weekAmount,
+                weekCommissionPesewas: weekCommission,
+                weekNetPesewas: weekNet,
+              ),
             ),
             const SizedBox(height: MyShopSpacing.lg),
 
@@ -169,41 +180,9 @@ class EarningsDashboardScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: MyShopSpacing.sm),
-            // Empty state — no payouts endpoint wired yet
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 32),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFAFAFB),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: MyShopColors.divider),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: MyShopColors.surfaceGrey,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Icon(Icons.history,
-                          size: 20, color: MyShopColors.textSecondary),
-                    ),
-                    const SizedBox(height: MyShopSpacing.sm),
-                    Text('No payouts yet',
-                        style: MyShopTypography.body1.copyWith(
-                            fontWeight: FontWeight.w600)),
-                    const SizedBox(height: MyShopSpacing.xs),
-                    Text('Your payout history will appear here',
-                        style: MyShopTypography.body2.copyWith(
-                            color: MyShopColors.textSecondary)),
-                  ],
-                ),
-              ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+              child: _PayoutsList(),
             ),
             const SizedBox(height: MyShopSpacing.md),
 
@@ -456,8 +435,30 @@ class _StatCard extends StatelessWidget {
 // ─── Weekly performance card ────────────────────────────────────────────────
 
 class _WeeklyPerformanceCard extends StatelessWidget {
+  const _WeeklyPerformanceCard({required this.peakHours});
+
+  /// One row per hour-of-week the backend has activity for. Empty list
+  /// renders the chart with no bars (driver hasn't earned yet this week).
+  final List<EarningsPeakHour> peakHours;
+
+  /// Folds the per-hour rows into a 7-day count (Mon..Sun) so the existing
+  /// bar chart can render real data instead of the hardcoded mock values.
+  /// Backend reports `dayOfWeek` in Postgres' Sun=0..Sat=6 convention; we
+  /// remap to Mon=0..Sun=6 to match the chart's visual order.
+  List<double> get _weeklyCounts {
+    final perDay = List<double>.filled(7, 0);
+    for (final row in peakHours) {
+      // Postgres Sun=0..Sat=6 → Mon=0..Sun=6 (Sun maps to slot 6).
+      final mondayIndex = (row.dayOfWeek + 6) % 7;
+      perDay[mondayIndex] += row.count.toDouble();
+    }
+    return perDay;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final counts = _weeklyCounts;
+    final maxCount = counts.fold<double>(0, (m, v) => v > m ? v : m);
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),
       decoration: BoxDecoration(
@@ -502,10 +503,27 @@ class _WeeklyPerformanceCard extends StatelessWidget {
           ],
         ),
         const SizedBox(height: MyShopSpacing.md),
-        const WeeklyPerformanceChart(
-          values: [115, 230, 200, 320, 460, 410, 175],
-          maxValue: 460,
-        ),
+        if (maxCount == 0)
+          // No rides yet this week — render a calm empty state instead
+          // of a flat chart that looks broken.
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 28),
+            child: Center(
+              child: Text(
+                'No rides yet this week',
+                style: MyShopTypography.body2.copyWith(
+                  color: MyShopColors.textSecondary,
+                ),
+              ),
+            ),
+          )
+        else
+          WeeklyPerformanceChart(
+            values: counts,
+            // Round up to a clean tick so the topmost bar isn't pinned to
+            // the top edge of the chart.
+            maxValue: (maxCount * 1.15).ceilToDouble(),
+          ),
       ]),
     );
   }
@@ -516,16 +534,245 @@ extension on OutlinedButton {
   OutlinedButton copyWithTrailingChevron() => this;
 }
 
-// ─── Commission card ────────────────────────────────────────────────────────
+// ─── Payouts list ──────────────────────────────────────────────────────────
 
-class _CommissionCard extends StatelessWidget {
-  const _CommissionCard({required this.weekPesewas});
-  final int weekPesewas;
+class _PayoutsList extends ConsumerWidget {
+  const _PayoutsList();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final payouts = ref.watch(driverPayoutsProvider);
+    return payouts.when(
+      loading: () => const _PayoutsEmpty(
+        title: 'Loading payouts…',
+        subtitle: 'Fetching the most recent transfers',
+      ),
+      error: (_, __) => const _PayoutsEmpty(
+        title: "Couldn't load payouts",
+        subtitle: 'Pull down to retry',
+      ),
+      data: (rows) {
+        if (rows.isEmpty) {
+          return const _PayoutsEmpty(
+            title: 'No payouts yet',
+            subtitle: 'Your payout history will appear here',
+          );
+        }
+        return Column(
+          children: [
+            for (final row in rows.take(5))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _PayoutRow(payout: row),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _PayoutsEmpty extends StatelessWidget {
+  const _PayoutsEmpty({required this.title, required this.subtitle});
+
+  final String title;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
-    final commission = (weekPesewas * 0.20).round();
-    final net = weekPesewas - commission;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 32),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAFAFB),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: MyShopColors.divider),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: MyShopColors.surfaceGrey,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Icon(Icons.history,
+                size: 20, color: MyShopColors.textSecondary),
+          ),
+          const SizedBox(height: MyShopSpacing.sm),
+          Text(
+            title,
+            style:
+                MyShopTypography.body1.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: MyShopSpacing.xs),
+          Text(
+            subtitle,
+            style: MyShopTypography.body2
+                .copyWith(color: MyShopColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PayoutRow extends StatelessWidget {
+  const _PayoutRow({required this.payout});
+
+  final DriverPayout payout;
+
+  @override
+  Widget build(BuildContext context) {
+    final dateLabel = _formatDate(payout.createdAt);
+    final statusColor = _statusColor(payout.status);
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: MyShopSpacing.md, vertical: 12),
+      decoration: BoxDecoration(
+        color: MyShopColors.surfaceWhite,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: MyShopColors.divider),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: MyShopColors.surfaceGrey,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.smartphone,
+                size: 18, color: MyShopColors.textSecondary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _methodLabel(payout.method),
+                  style: const TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: MyShopColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  dateLabel,
+                  style: MyShopTypography.body2.copyWith(fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                payout.amountDisplay,
+                style: const TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: MyShopColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                payout.status.toUpperCase(),
+                style: TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 9,
+                  fontWeight: FontWeight.w900,
+                  color: statusColor,
+                  letterSpacing: 0.6,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Color _statusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'paid':
+      case 'success':
+      case 'succeeded':
+      case 'completed':
+        return MyShopColors.success;
+      case 'failed':
+      case 'declined':
+        return MyShopColors.error;
+      default:
+        return MyShopColors.textSecondary;
+    }
+  }
+
+  static String _methodLabel(String raw) {
+    switch (raw.toLowerCase()) {
+      case 'momo':
+      case 'mobile_money':
+      case 'momo_mtn':
+        return 'MTN MoMo';
+      case 'momo_telecel':
+        return 'Telecel Cash';
+      case 'momo_airteltigo':
+        return 'AirtelTigo Money';
+      case 'card':
+        return 'Card payout';
+      case 'bank':
+        return 'Bank transfer';
+      default:
+        return raw.isEmpty ? 'Payout' : raw;
+    }
+  }
+
+  static String _formatDate(DateTime at) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    final local = at.toLocal();
+    final hh = local.hour.toString().padLeft(2, '0');
+    final mm = local.minute.toString().padLeft(2, '0');
+    return '${local.day} ${months[local.month - 1]} · $hh:$mm';
+  }
+}
+
+// ─── Commission card ────────────────────────────────────────────────────────
+
+class _CommissionCard extends StatelessWidget {
+  const _CommissionCard({
+    required this.weekPesewas,
+    required this.weekCommissionPesewas,
+    required this.weekNetPesewas,
+  });
+
+  final int weekPesewas;
+
+  /// Commission already reported by the backend's `/payments/earnings`
+  /// (sum of `commissionPesewas` on Payment rows for this driver this
+  /// week). Falls back to a 20% estimate of [weekPesewas] when the
+  /// backend hasn't yet recorded any commission — e.g. fresh-driver
+  /// case where the response carries an empty totals.
+  final int weekCommissionPesewas;
+  final int weekNetPesewas;
+
+  @override
+  Widget build(BuildContext context) {
+    final commission = weekCommissionPesewas > 0
+        ? weekCommissionPesewas
+        : (weekPesewas * 0.20).round();
+    final net = weekNetPesewas > 0
+        ? weekNetPesewas
+        : weekPesewas - commission;
 
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),

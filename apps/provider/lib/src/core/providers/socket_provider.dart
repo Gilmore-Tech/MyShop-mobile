@@ -11,6 +11,7 @@ import '../../features/artisan_home/providers/job_poller_provider.dart';
 import '../../features/artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../features/auth/providers/auth_controller.dart';
+import '../../features/driver_home/providers/driver_earnings_provider.dart';
 import '../../features/driver_home/providers/driver_location_provider.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
 import 'availability_controller.dart';
@@ -332,6 +333,20 @@ void _connectAndListen(Ref ref, SocketService socket) {
         // anyway in case the backend rooms ever cross-talk.
         if (active != null && active.id != ride.id) return;
         ref.read(activeRideProvider.notifier).applySnapshot(ride);
+
+        // Refresh earnings + payouts when the ride completes — the
+        // backend's `recordRideCompletion()` writes a `Payment` row
+        // fire-and-forget right after the status transition, so the new
+        // /payments/earnings totals land within a tick or two of this
+        // snapshot. Invalidating both providers means the dashboard
+        // (and the home-screen earnings card) reflect the new trip
+        // without the driver pulling-to-refresh.
+        if (ride.status == RideStatus.completed) {
+          try {
+            ref.invalidate(driverEarningsProvider);
+            ref.invalidate(driverPayoutsProvider);
+          } catch (_) {/* providers may not be mounted in tests */}
+        }
       } catch (e) {
         debugPrint('[WS] Failed to apply ride:state snapshot: $e');
       }
@@ -340,6 +355,35 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('ride:state')
       ..on('ride:state', handleRideState);
+
+    // Backend fires `ride:route_updated` when the rider adds or declines
+    // a stop. The event itself only carries a thin `{rideId, …}` shape,
+    // not the new stops list, so we re-fetch the full ride via REST and
+    // hand it to applySnapshot — which now preserves the stops list
+    // through subsequent stops-less `ride:state` snapshots.
+    void handleRouteUpdated(dynamic data) {
+      String? rideId;
+      if (data is Map<String, dynamic>) {
+        rideId = data['rideId'] as String? ?? data['id'] as String?;
+      }
+      rideId ??= ref.read(activeRideProvider).ride?.id;
+      if (rideId == null) return;
+      final svc = ref.read(rideServiceProvider);
+      svc.getRide(rideId).then((json) {
+        try {
+          final ride = Ride.fromJson(json);
+          ref.read(activeRideProvider.notifier).applySnapshot(ride);
+        } catch (e) {
+          debugPrint('[WS] route_updated parse failed: $e');
+        }
+      }).catchError((Object e) {
+        debugPrint('[WS] route_updated refetch failed: $e');
+      });
+    }
+
+    socket
+      ..off('ride:route_updated')
+      ..on('ride:route_updated', handleRouteUpdated);
 
     // Listen for job status updates — emitted to the artisan's room when
     // their bid is accepted/rejected, when the job is cancelled, or when

@@ -55,6 +55,14 @@ final rideServiceProvider = Provider<RideService>((ref) {
   return RideService(ref.watch(dioProvider));
 });
 
+/// Ratings — `POST /ratings` (blind 24h window). Used by the driver-side
+/// rate-passenger sheet on the trip-complete screen; same endpoint the
+/// rider hits to rate the driver, just with `bookingType: 'ride'` and a
+/// rateeId pulled from the ride payload server-side.
+final ratingServiceProvider = Provider<RatingService>((ref) {
+  return RatingService(ref.watch(dioProvider));
+});
+
 /// Backend notification service — exposes `/notifications` endpoints
 /// (list, mark-as-read, register FCM device token).
 final apiNotificationServiceProvider = Provider<NotificationService>((ref) {
