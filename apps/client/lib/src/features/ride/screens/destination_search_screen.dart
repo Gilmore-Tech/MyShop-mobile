@@ -157,9 +157,12 @@ class _DestinationSearchScreenState
       final stops = ref.read(tripStopsProvider.notifier);
       final fullAddress = '$name, $address';
       if (widget.stopId == kNewStopSentinel) {
-        stops.addIntermediateStop(fullAddress);
+        // Pass lat/lng so the confirm step can submit this row to the
+        // backend without an extra round-trip — addStop on the API
+        // requires real coords, not just the typed address.
+        stops.addIntermediateStop(fullAddress, lat: lat, lng: lng);
       } else {
-        stops.updateStopAddress(widget.stopId!, fullAddress);
+        stops.updateStopAddress(widget.stopId!, fullAddress, lat: lat, lng: lng);
       }
     } else {
       ref.read(rideSearchProvider.notifier).setLocation(

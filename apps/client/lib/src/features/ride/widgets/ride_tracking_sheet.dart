@@ -4,6 +4,7 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
+import '../providers/ride_payment_method_provider.dart';
 import '../providers/ride_provider.dart';
 
 class RideTrackingSheet extends StatelessWidget {
@@ -172,8 +173,13 @@ class _PaymentMethod extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
+    // `method` here is the raw `paymentMethod` field off the snapshot
+    // (e.g. `cash` / `momo_mtn`). Translate to display copy via the same
+    // helper that powers the fare-estimate selector and the receipt — one
+    // source of truth keeps "Cash trip" / "MTN Mobile Money" consistent.
     final isCash = method.toLowerCase() == 'cash';
-    final label = isCash ? 'Cash trip' : method;
+    final label =
+        isCash ? 'Cash trip' : formatRidePaymentMethodLabel(method);
     final icon = isCash
         ? Icons.payments_rounded
         : Icons.phone_android_rounded;

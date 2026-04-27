@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
+import '../providers/ride_payment_method_provider.dart';
 import '../providers/ride_provider.dart';
 import '../providers/ride_search_provider.dart';
 import '../widgets/ride_route_map.dart';
@@ -125,7 +126,18 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
         case RideTrackingPhase.completed:
           _waitingTimer?.cancel();
           if (!mounted) return;
-          context.go(AppRoutes.rideComplete);
+          // Route in-app payments through /ride/:id/payment to settle the
+          // Paystack charge before the rate sheet + receipt. Cash trips
+          // skip straight to /ride/complete since there's nothing to
+          // charge — the driver collects in person.
+          final receipt = ref.read(rideReceiptProvider);
+          final method = ridePaymentMethodFromWire(receipt?.paymentMethod);
+          final rideId = ref.read(activeRideIdProvider);
+          if (method != null && method.isInApp && rideId != null) {
+            context.go(AppRoutes.ridePaymentPath(rideId));
+          } else {
+            context.go(AppRoutes.rideComplete);
+          }
       }
     });
 

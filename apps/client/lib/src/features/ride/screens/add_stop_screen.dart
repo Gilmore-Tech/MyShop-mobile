@@ -1,3 +1,4 @@
+import 'package:api_client/api_client.dart' show ApiException;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,11 +12,71 @@ import '../widgets/route_stop_list.dart';
 
 /// PRD 4.4 — Edit Your Trip / Add Stop Screen
 /// Reorder stops, add intermediate stops, view fare recalculation + surge.
-class AddStopScreen extends ConsumerWidget {
+class AddStopScreen extends ConsumerStatefulWidget {
   const AddStopScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AddStopScreen> createState() => _AddStopScreenState();
+}
+
+class _AddStopScreenState extends ConsumerState<AddStopScreen> {
+  bool _submitting = false;
+  String? _submitError;
+
+  @override
+  void initState() {
+    super.initState();
+    // Seed from the rider's actual route. Without this the screen would
+    // open with the hardcoded mock stops, and a "Confirm Changes" tap
+    // would PATCH bogus addresses to the backend.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      seedTripStopsFromCurrentRide(ref.read);
+    });
+  }
+
+  Future<void> _submitChanges() async {
+    if (_submitting) return;
+    setState(() {
+      _submitting = true;
+      _submitError = null;
+    });
+    try {
+      final notifier = ref.read(tripStopsProvider.notifier);
+      final submitted = await notifier.submitNewStopsToBackend();
+      if (!mounted) return;
+      // No new stops = the rider only reordered or hit Confirm without
+      // adding anything; either way pop with `true` so the caller knows
+      // the user committed (the backend is authoritative on order so
+      // there's nothing else to do for a pure reorder right now).
+      Navigator.of(context).pop(submitted >= 0);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _submitError = _friendlyError(e));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() =>
+          _submitError = "Couldn't add the stop. Please try again.");
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
+  }
+
+  String _friendlyError(ApiException e) {
+    switch (e.errorCode) {
+      case 'INVALID_STATUS_TRANSITION':
+        return "You can't add stops once the trip has finished.";
+      case 'STOP_OUT_OF_PILOT_REGION':
+        return 'That location is outside the pilot service area.';
+      default:
+        return e.message;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final stops = ref.watch(tripStopsProvider);
     final fare = ref.watch(fareRecalculationProvider);
 
@@ -25,7 +86,7 @@ class AddStopScreen extends ConsumerWidget {
       body: Stack(
         children: [
           SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: 160),
+            padding: const EdgeInsets.only(bottom: 180),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -64,6 +125,19 @@ class AddStopScreen extends ConsumerWidget {
                 const SizedBox(height: 20),
                 // ── FARE SUMMARY (original + difference) ─────────────────
                 _FareSummaryRow(fare: fare),
+                if (_submitError != null) ...[
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      _submitError!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: MyShopColors.error,
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -72,7 +146,11 @@ class AddStopScreen extends ConsumerWidget {
             bottom: 0,
             left: 0,
             right: 0,
-            child: _StickyFooter(fare: fare),
+            child: _StickyFooter(
+              fare: fare,
+              isSubmitting: _submitting,
+              onConfirm: _submitChanges,
+            ),
           ),
         ],
       ),
@@ -223,7 +301,13 @@ class _FareSummaryRow extends StatelessWidget {
 
 class _StickyFooter extends StatelessWidget {
   final FareRecalculation fare;
-  const _StickyFooter({required this.fare});
+  final bool isSubmitting;
+  final VoidCallback onConfirm;
+  const _StickyFooter({
+    required this.fare,
+    required this.isSubmitting,
+    required this.onConfirm,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -234,13 +318,13 @@ class _StickyFooter extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           MyShopPrimaryButton(
-            label: 'Confirm Changes',
+            label: isSubmitting ? 'Adding stop…' : 'Confirm Changes',
             trailingIcon: Icons.chevron_right_rounded,
-            onPressed: () => context.pop(true),
+            onPressed: isSubmitting ? null : onConfirm,
           ),
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () => context.pop(false),
+            onTap: isSubmitting ? null : () => context.pop(false),
             child: const Text(
               'Discard & Return to Map',
               style: TextStyle(

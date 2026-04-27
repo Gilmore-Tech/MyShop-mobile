@@ -26,9 +26,22 @@ class RouteStopList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
-    final pickup = stops.firstWhere((s) => s.type == StopType.pickup);
-    final destination =
-        stops.firstWhere((s) => s.type == StopType.destination);
+    // The provider seeds asynchronously (postFrameCallback) so the very
+    // first build can run with an empty list. Bail with a thin loading
+    // sliver in that case — `firstWhere` would otherwise throw
+    // `Bad state: No element` and crash the screen as it opens.
+    final pickup = stops
+        .cast<TripStop?>()
+        .firstWhere((s) => s?.type == StopType.pickup, orElse: () => null);
+    final destination = stops
+        .cast<TripStop?>()
+        .firstWhere((s) => s?.type == StopType.destination, orElse: () => null);
+    if (pickup == null || destination == null) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 32),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
     final intermediates =
         stops.where((s) => s.type == StopType.intermediate).toList();
 

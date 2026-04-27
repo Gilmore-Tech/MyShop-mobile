@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/di/providers.dart';
 import '../../../core/providers/current_location_provider.dart';
 import '../../../core/providers/socket_provider.dart';
+import 'ride_payment_method_provider.dart';
 import 'ride_search_provider.dart';
 
 // ── Models ────────────────────────────────────────────────────────────────────
@@ -395,19 +396,8 @@ String _formatCompletedAt(DateTime? at) {
       '${months[local.month - 1]} | $hh:$mm';
 }
 
-String _formatPaymentMethod(String raw) {
-  switch (raw) {
-    case 'cash':
-      return 'Cash';
-    case 'card':
-      return 'Card';
-    case 'momo':
-    case 'mobile_money':
-      return 'Mobile Money';
-    default:
-      return raw.isEmpty ? 'Payment' : raw;
-  }
-}
+String _formatPaymentMethod(String raw) =>
+    formatRidePaymentMethodLabel(raw);
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
@@ -644,6 +634,7 @@ Future<void> requestRideAndMatchDriver(ProviderContainer ref) async {
     // city centre, which would mis-route the driver).
     final cached = ref.read(currentDevicePositionProvider);
 
+    final selectedMethod = ref.read(selectedRidePaymentMethodProvider);
     final result = await rideService.createRide(
       pickupLat: pickup?.lat ?? cached?.latitude ?? 6.6884,
       pickupLng: pickup?.lng ?? cached?.longitude ?? -1.6244,
@@ -651,6 +642,7 @@ Future<void> requestRideAndMatchDriver(ProviderContainer ref) async {
       destinationLng: destination?.lng ?? -1.6300,
       pickupAddress: pickup?.address,
       destinationAddress: destination?.address,
+      paymentMethod: selectedMethod.wireValue,
     );
 
     developer.log('createRide raw result: $result', name: 'RideProvider');

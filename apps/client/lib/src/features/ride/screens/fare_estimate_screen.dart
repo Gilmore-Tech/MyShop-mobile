@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
 import '../providers/fare_estimate_provider.dart';
+import '../providers/ride_payment_method_provider.dart';
 import '../providers/ride_provider.dart';
 import '../providers/ride_search_provider.dart';
 import '../widgets/payment_method_row.dart';
@@ -295,11 +296,12 @@ class _VehicleEstimateError extends StatelessWidget {
   }
 }
 
-class _PaymentSection extends StatelessWidget {
+class _PaymentSection extends ConsumerWidget {
   const _PaymentSection();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final method = ref.watch(selectedRidePaymentMethodProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -314,7 +316,17 @@ class _PaymentSection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        PaymentMethodRow(onChangeTap: () {}),
+        PaymentMethodRow(
+          method: method,
+          onChangeTap: () async {
+            final picked =
+                await showRidePaymentMethodSheet(context, method);
+            if (picked != null) {
+              ref.read(selectedRidePaymentMethodProvider.notifier).state =
+                  picked;
+            }
+          },
+        ),
       ],
     );
   }
