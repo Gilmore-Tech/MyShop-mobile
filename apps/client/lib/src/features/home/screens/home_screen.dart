@@ -26,7 +26,6 @@ class HomeScreen extends ConsumerWidget {
     final currentLabel = ref.watch(currentLocationLabelProvider).value;
     final String pickupName =
         search.pickup?.name ?? currentLabel ?? 'Locating...';
-    final destinationName = search.destination?.name;
 
     final h = MediaQuery.sizeOf(context).height;
     return Scaffold(
@@ -43,15 +42,10 @@ class HomeScreen extends ConsumerWidget {
                     SizedBox(height: h * 0.05),
                     LocationSearchCard(
                       pickupLabel: pickupName,
-                      destinationLabel: destinationName,
                       onPickupTap: () => context.push(
                           AppRoutes.rideSearchPath('pickup')),
-                      onDestinationTap: () => context.push(
-                          AppRoutes.rideSearchPath('destination')),
                       onPickupPinTap: () => context.push(
                           AppRoutes.ridePinPickerPath('pickup')),
-                      onDestinationPinTap: () => context.push(
-                          AppRoutes.ridePinPickerPath('destination')),
                     ),
                     SizedBox(height: h * 0.05),
                     _ServiceCardsRow(),

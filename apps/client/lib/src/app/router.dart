@@ -36,6 +36,7 @@ import '../features/ride/screens/driver_found_screen.dart';
 import '../features/ride/screens/ride_tracking_screen.dart';
 import '../features/ride/screens/ride_complete_screen.dart';
 import '../features/ride/screens/ride_dispute_screen.dart';
+import '../features/ride/screens/ride_payment_screen.dart';
 import '../features/ride/screens/ride_receipt_screen.dart';
 import '../features/ride/providers/ride_provider.dart' show MatchedDriver;
 
@@ -109,11 +110,13 @@ abstract final class AppRoutes {
   static const rideDriverFound = '/ride/driver-found';
   static const rideTracking    = '/ride/tracking';
   static const rideComplete    = '/ride/complete';
+  static const ridePayment     = '/ride/:rideId/payment';
   static const rideReceipt     = '/ride/:rideId/receipt';
   static const rideDispute     = '/ride/:rideId/dispute';
 
   static String rideSearchPath(String field)      => '/ride/search/$field';
   static String ridePinPickerPath(String field)   => '/ride/pin-picker/$field';
+  static String ridePaymentPath(String rideId)    => '/ride/$rideId/payment';
   static String rideReceiptPath(String rideId)    => '/ride/$rideId/receipt';
   static String rideDisputePath(String rideId)    => '/ride/$rideId/dispute';
 
@@ -409,6 +412,14 @@ GoRouter _buildRouter({
           final driver = state.extra as MatchedDriver?;
           if (driver == null) return const DriverMatchingScreen();
           return RideTrackingScreen(driver: driver);
+        },
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: AppRoutes.ridePayment,
+        builder: (_, state) {
+          final rideId = state.pathParameters['rideId']!;
+          return RidePaymentScreen(rideId: rideId);
         },
       ),
       GoRoute(

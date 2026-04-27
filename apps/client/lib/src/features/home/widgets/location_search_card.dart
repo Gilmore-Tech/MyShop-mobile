@@ -4,27 +4,21 @@ import 'package:shared_ui/shared_ui.dart';
 // Design tokens — will migrate to MyShopColors once shared_ui is exported here.
 const _goldSoft      = Color(0xFFFDF3E1); // subtle gold background for pin tap target
 
-/// Home-screen location card with two tappable rows (pickup + destination).
+/// Home-screen pickup card.
 ///
-/// Each row opens the destination-search screen (autocomplete predictions).
-/// The trailing gold map-pin chip opens the map pin picker for that field.
+/// Tapping the row opens the pickup search screen (autocomplete predictions).
+/// The trailing gold map-pin chip opens the map pin picker for pickup.
 class LocationSearchCard extends StatelessWidget {
   final String pickupLabel;
-  final String? destinationLabel;
 
   final VoidCallback? onPickupTap;
-  final VoidCallback? onDestinationTap;
   final VoidCallback? onPickupPinTap;
-  final VoidCallback? onDestinationPinTap;
 
   const LocationSearchCard({
     super.key,
     required this.pickupLabel,
-    this.destinationLabel,
     this.onPickupTap,
-    this.onDestinationTap,
     this.onPickupPinTap,
-    this.onDestinationPinTap,
   });
 
   @override
@@ -44,41 +38,17 @@ class LocationSearchCard extends StatelessWidget {
         ],
       ),
       padding: EdgeInsets.symmetric(vertical: w * 0.01),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _LocationRow(
-            leading: const _PickupDot(),
-            valueLabel: 'Current: $pickupLabel',
-            valueStyle: TextStyle(
-              fontSize: w * 0.033,
-              fontWeight: FontWeight.w600,
-              color: MyShopColors.primaryGold,
-            ),
-            onTap: onPickupTap,
-            onPinTap: onPickupPinTap,
-            pinTooltip: 'Pick pickup on map',
-          ),
-          const _RowDivider(),
-          _LocationRow(
-            leading: Icon(
-              Icons.search_rounded,
-              size: w * 0.051,
-              color: MyShopColors.textSecondary,
-            ),
-            valueLabel: destinationLabel ?? 'Where are you going?',
-            valueStyle: TextStyle(
-              fontSize: w * 0.036,
-              fontWeight: destinationLabel == null
-                  ? FontWeight.w400
-                  : FontWeight.w600,
-              color: destinationLabel == null ? MyShopColors.textHint : MyShopColors.textPrimary,
-            ),
-            onTap: onDestinationTap,
-            onPinTap: onDestinationPinTap,
-            pinTooltip: 'Drop destination on map',
-          ),
-        ],
+      child: _LocationRow(
+        leading: const _PickupDot(),
+        valueLabel: 'Current: $pickupLabel',
+        valueStyle: TextStyle(
+          fontSize: w * 0.033,
+          fontWeight: FontWeight.w600,
+          color: MyShopColors.primaryGold,
+        ),
+        onTap: onPickupTap,
+        onPinTap: onPickupPinTap,
+        pinTooltip: 'Pick pickup on map',
       ),
     );
   }
@@ -160,21 +130,6 @@ class _PickupDot extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: MyShopColors.primaryGold, width: 2),
       ),
-    );
-  }
-}
-
-// ── Divider between rows (thin, inset past the leading icon column) ─────────
-
-class _RowDivider extends StatelessWidget {
-  const _RowDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    final w = MediaQuery.sizeOf(context).width;
-    return Padding(
-      padding: EdgeInsets.only(left: w * 0.097, right: w * 0.041),
-      child: const Divider(height: 1, thickness: 1, color: MyShopColors.divider),
     );
   }
 }

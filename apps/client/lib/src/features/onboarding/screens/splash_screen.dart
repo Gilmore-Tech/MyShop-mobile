@@ -257,102 +257,31 @@ class _LogoMark extends StatelessWidget {
   final double w;
   const _LogoMark({required this.w});
 
-  static const _gold     = MyShopColors.primaryGold;
-  static const _goldDark = MyShopColors.primaryGoldDark;
-
   @override
   Widget build(BuildContext context) {
-    final size = w * 0.26;
+    final size = w * 0.32;
 
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [_gold, _goldDark],
-        ),
         boxShadow: [
           BoxShadow(
-            color: _gold.withAlpha(100),
+            color: MyShopColors.primaryGold.withAlpha(90),
             blurRadius: w * 0.10,
-            spreadRadius: w * 0.01,
+            spreadRadius: w * 0.005,
           ),
         ],
       ),
-      child: Center(
-        child: _ShoppingBagIcon(size: size * 0.52),
+      child: Image.asset(
+        'assets/images/myshop_logo.png',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.medium,
       ),
     );
   }
-}
-
-/// Custom shopping bag icon built from Flutter primitives.
-class _ShoppingBagIcon extends StatelessWidget {
-  final double size;
-  const _ShoppingBagIcon({required this.size});
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      size: Size(size, size),
-      painter: _BagPainter(),
-    );
-  }
-}
-
-class _BagPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    final paint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-
-    // Bag body — rounded rectangle, bottom 72 % of height
-    final bodyTop = h * 0.30;
-    final bodyRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(w * 0.08, bodyTop, w * 0.84, h * 0.64),
-      Radius.circular(w * 0.12),
-    );
-    canvas.drawRRect(bodyRect, paint);
-
-    // Handle cut-out — oval hole at top of body
-    final cutoutPaint = Paint()
-      ..color = MyShopColors.primaryGoldDark  // matches logo gradient end
-      ..style = PaintingStyle.fill;
-    final handlePath = Path()
-      ..addOval(Rect.fromCenter(
-        center: Offset(w * 0.5, h * 0.31),
-        width:  w * 0.42,
-        height: h * 0.22,
-      ));
-    canvas.drawPath(handlePath, cutoutPaint);
-
-    // Handle stroke — white arc above body
-    final strokePaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.10
-      ..strokeCap = StrokeCap.round;
-    canvas.drawArc(
-      Rect.fromCenter(
-        center: Offset(w * 0.5, h * 0.28),
-        width:  w * 0.48,
-        height: h * 0.38,
-      ),
-      3.14159,   // π — start at left (180°)
-      3.14159,   // π — sweep to right (360°)
-      false,
-      strokePaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_BagPainter old) => false;
 }
 
 class _Wordmark extends StatelessWidget {

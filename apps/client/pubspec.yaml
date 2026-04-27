@@ -80,11 +80,41 @@ dev_dependencies:
   riverpod_lint: ^2.6.0
   mockito: ^5.4.0
   mocktail: ^1.0.0
+  flutter_launcher_icons: ^0.14.3
+  flutter_native_splash: ^2.4.4
 
 flutter:
   uses-material-design: true
-  
+
   assets:
     - assets/images/
     - assets/icons/
     - assets/i18n/
+
+# ── Launcher Icons ──────────────────────────────────────────────────────────
+# NOTE: source PNG (assets/images/myshop_logo.png) is currently 286×306 — too
+# small for production. Swap for a 1024×1024 transparent-background master and
+# regenerate before any store submission. For internal testing this is OK.
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "assets/images/myshop_logo.png"
+  remove_alpha_ios: true
+  background_color_ios: "#0F1923"
+  adaptive_icon_background: "#0F1923"
+  adaptive_icon_foreground: "assets/images/myshop_logo.png"
+  min_sdk_android: 24
+
+# ── Native Splash ──────────────────────────────────────────────────────────
+# Native splash is a solid dark-navy color with NO logo. The animated in-app
+# SplashScreen owns the brand identity — showing the logo here too would mean
+# the user sees it twice (native splash → in-app splash). Keeping this plain
+# gives a seamless handoff: OS draws #0F1923, Flutter takes over on the same bg.
+flutter_native_splash:
+  color: "#0F1923"
+  android: true
+  ios: true
+  android_12:
+    color: "#0F1923"
+    icon_background_color: "#0F1923"
+  fullscreen: false

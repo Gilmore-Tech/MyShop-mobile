@@ -2,11 +2,13 @@ import 'dart:developer' as developer;
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_models/shared_models.dart' show RideStop;
 
 import '../../features/auth/providers/auth_controller.dart';
 import '../../features/activity/providers/activity_history_provider.dart';
 import '../../features/activity/providers/activity_provider.dart';
 import '../../features/notifications/providers/notifications_provider.dart';
+import '../../features/ride/providers/edit_trip_provider.dart';
 import '../../features/ride/providers/ride_provider.dart';
 import '../../features/services/providers/active_job_provider.dart';
 import '../../features/services/providers/bid_detail_provider.dart';
@@ -229,6 +231,46 @@ void _connectAndListen(Ref ref, SocketService socket) {
           developer.log('Failed to apply ride:state snapshot: $e',
               name: 'WS', level: 900);
         }
+      });
+
+    // ── Route changes (rider added / cancelled a stop) ──────────────────
+    // Backend emits `ride:route_updated` to the room when stops change.
+    // The event payload doesn't carry the new stops list, so we re-fetch
+    // the full ride and re-seed `tripStopsProvider` — the AddStopScreen
+    // (and any future "stops list" widget) renders from there.
+    socket
+      ..off('ride:route_updated')
+      ..on('ride:route_updated', (data) {
+        final rideId = ref.read(activeRideIdProvider);
+        if (rideId == null || rideId.isEmpty) return;
+        ref.read(rideServiceProvider).getRide(rideId).then((json) {
+          try {
+            final stops = (json['stops'] as List<dynamic>?)
+                    ?.whereType<Map<String, dynamic>>()
+                    .map(RideStop.fromJson)
+                    .toList() ??
+                const <RideStop>[];
+            ref.read(tripStopsProvider.notifier).seed(
+                  pickup: (
+                    address: json['pickupAddress'] as String?,
+                    lat: (json['pickupLat'] as num?)?.toDouble(),
+                    lng: (json['pickupLng'] as num?)?.toDouble(),
+                  ),
+                  destination: (
+                    address: json['dropoffAddress'] as String?,
+                    lat: (json['dropoffLat'] as num?)?.toDouble(),
+                    lng: (json['dropoffLng'] as num?)?.toDouble(),
+                  ),
+                  existingStops: stops,
+                );
+          } catch (e) {
+            developer.log('route_updated parse failed: $e',
+                name: 'WS', level: 800);
+          }
+        }).catchError((Object e) {
+          developer.log('route_updated refetch failed: $e',
+              name: 'WS', level: 800);
+        });
       });
 
     // ── Live driver location ─────────────────────────────────────────────
