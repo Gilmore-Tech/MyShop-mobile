@@ -17,8 +17,22 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 
+    <!-- ── Camera & media (image_picker for profile photos / job photos) ─ -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- Android 13+ scoped media access -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <!-- Legacy storage read (Android 12 and below) for file_picker / image_picker -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"/>
+
+    <!-- Camera hardware is optional — phones without a camera can still install. -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false"/>
+
     <application
-        android:label="myshop_client"
+        android:label="MyShop"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
