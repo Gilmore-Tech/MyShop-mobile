@@ -9,6 +9,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../../core/providers/availability_controller.dart';
 import '../../../core/providers/socket_provider.dart';
+import '../../profile/providers/verification_provider.dart';
 import '../data/road_snap_service.dart';
 import '../providers/driver_location_provider.dart';
 import '../../../core/providers/provider_status_provider.dart';
@@ -269,6 +270,11 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Eagerly load verification status so profileCompletionProvider has data
+    // ready when the user taps "Go Online" (avoids the false "checking your
+    // profile — please try again" snackbar from a cold first read).
+    ref.watch(verificationStatusProvider);
+
     // React to the driver going online/offline: stream location updates when
     // online and clear the car marker when they toggle off.
     ref.listen<DriverStatus>(providerStatusProvider, (prev, next) {

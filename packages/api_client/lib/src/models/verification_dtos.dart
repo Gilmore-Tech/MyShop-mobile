@@ -184,10 +184,29 @@ class VerificationStatusResponse {
   final Map<String, dynamic>? artisanData;
   final List<DocumentInfo> documents;
 
-  /// Find the current document for a given type, or null if not uploaded.
+  /// Find the document for a given type, preferring the latest current
+  /// row but falling back to the most recently approved row when the
+  /// backend hasn't (or no longer has) any `isCurrent` flag set.
+  ///
+  /// The match is case- and underscore-insensitive so a backend that
+  /// emits `documentType: 'driversLicence'` (camelCase) still resolves
+  /// against the `'drivers_licence'` enum value the mobile uses.
   DocumentInfo? documentFor(String type) {
-    return documents
-        .where((d) => d.documentType == type && d.isCurrent)
-        .firstOrNull;
+    String normalize(String s) =>
+        s.toLowerCase().replaceAll('_', '').replaceAll('-', '');
+    final target = normalize(type);
+    final matches =
+        documents.where((d) => normalize(d.documentType) == target).toList();
+    if (matches.isEmpty) return null;
+    // Preference: current+approved → approved → current → anything.
+    int score(DocumentInfo d) {
+      if (d.isCurrent && d.isApproved) return 0;
+      if (d.isApproved) return 1;
+      if (d.isCurrent) return 2;
+      return 3;
+    }
+
+    matches.sort((a, b) => score(a).compareTo(score(b)));
+    return matches.first;
   }
 }

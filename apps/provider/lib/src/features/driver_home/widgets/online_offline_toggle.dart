@@ -4,6 +4,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../../core/providers/availability_controller.dart';
 import '../../../core/providers/provider_status_provider.dart';
+import '../../auth/providers/auth_controller.dart';
 import '../../profile/providers/verification_provider.dart';
 import '../../profile/widgets/incomplete_profile_sheet.dart';
 
@@ -14,14 +15,24 @@ import '../../profile/widgets/incomplete_profile_sheet.dart';
 /// - Green accent when online, grey when offline
 /// - Locked (non-interactive) when driver status is busy
 /// - Gated by profile completion — shows missing items sheet when incomplete
-class OnlineOfflineToggle extends ConsumerWidget {
+/// - While going online, the Online segment swaps its bolt icon for a spinner
+///   so the user sees the verification + availability checks in flight.
+class OnlineOfflineToggle extends ConsumerStatefulWidget {
   const OnlineOfflineToggle({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<OnlineOfflineToggle> createState() =>
+      _OnlineOfflineToggleState();
+}
+
+class _OnlineOfflineToggleState extends ConsumerState<OnlineOfflineToggle> {
+  bool _isGoingOnline = false;
+
+  @override
+  Widget build(BuildContext context) {
     final status = ref.watch(providerStatusProvider);
     final isOnline = status.isOnline || status.isBusy;
-    final isLocked = status.isBusy;
+    final isLocked = status.isBusy || _isGoingOnline;
 
     return Padding(
       padding: const EdgeInsets.symmetric(
@@ -29,11 +40,9 @@ class OnlineOfflineToggle extends ConsumerWidget {
         vertical: MyShopSpacing.sm,
       ),
       child: Opacity(
-        opacity: isLocked ? 0.5 : 1.0,
+        opacity: status.isBusy ? 0.5 : 1.0,
         child: GestureDetector(
-          onTap: isLocked
-              ? null
-              : () => _handleToggle(context, ref, isOnline),
+          onTap: isLocked ? null : () => _handleToggle(isOnline),
           child: Container(
             height: 48,
             decoration: BoxDecoration(
@@ -82,21 +91,18 @@ class OnlineOfflineToggle extends ConsumerWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              Icons.bolt,
-                              size: 18,
-                              color: isOnline
-                                  ? MyShopColors.textOnPrimary
-                                  : MyShopColors.textSecondary,
+                            _OnlineSegmentLeading(
+                              isActive: isOnline,
+                              isWorking: _isGoingOnline,
                             ),
                             const SizedBox(width: 6),
                             Text(
-                              'Online',
+                              _isGoingOnline ? 'Checking…' : 'Online',
                               style: TextStyle(
                                 fontFamily: 'Raleway',
                                 fontSize: 14,
                                 fontWeight: FontWeight.w700,
-                                color: isOnline
+                                color: isOnline || _isGoingOnline
                                     ? MyShopColors.textOnPrimary
                                     : MyShopColors.textSecondary,
                               ),
@@ -145,11 +151,7 @@ class OnlineOfflineToggle extends ConsumerWidget {
     );
   }
 
-  Future<void> _handleToggle(
-    BuildContext context,
-    WidgetRef ref,
-    bool isOnline,
-  ) async {
+  Future<void> _handleToggle(bool isOnline) async {
     final availability = ref.read(availabilityControllerProvider);
 
     // Going offline: flip local state + fire backend offline POST so the
@@ -160,30 +162,74 @@ class OnlineOfflineToggle extends ConsumerWidget {
       return;
     }
 
-    // Going online requires verification data to be loaded AND complete.
-    // Blocking on isLoading prevents a race where the user goes online
-    // while verification is still fetching — they'd bypass the incomplete
-    // profile sheet.
-    final completion = ref.read(profileCompletionProvider);
-    if (completion.isLoading) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Checking your profile — please try again.'),
+    setState(() => _isGoingOnline = true);
+    try {
+      // Force a fresh read of both the verification docs and the user
+      // profile before deciding completeness. The home screen warms the
+      // verification provider once on mount and Riverpod caches it for the
+      // session; without invalidating, an approval (or vehicle/photo
+      // update) that happened server-side mid-session never reaches the
+      // toggle and the user sees a stale "incomplete profile" sheet.
+      ref.invalidate(verificationStatusProvider);
+      await Future.wait<void>([
+        ref
+            .read(verificationStatusProvider.future)
+            .then<void>((_) {})
+            .catchError((_) {}),
+        ref
+            .read(authControllerProvider.notifier)
+            .refreshProfile()
+            .then<void>((_) {}),
+      ]);
+
+      final completion = ref.read(profileCompletionProvider);
+      if (!mounted) return;
+
+      if (!completion.isComplete) {
+        showIncompleteProfileSheet(context, completion: completion);
+        return;
+      }
+
+      final error = await availability.goOnline();
+      if (error != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error)),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isGoingOnline = false);
+    }
+  }
+}
+
+class _OnlineSegmentLeading extends StatelessWidget {
+  const _OnlineSegmentLeading({
+    required this.isActive,
+    required this.isWorking,
+  });
+
+  final bool isActive;
+  final bool isWorking;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isWorking) {
+      return const SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          valueColor:
+              AlwaysStoppedAnimation<Color>(MyShopColors.textOnPrimary),
         ),
       );
-      return;
     }
-
-    if (!completion.isComplete) {
-      showIncompleteProfileSheet(context, completion: completion);
-      return;
-    }
-
-    final error = await availability.goOnline();
-    if (error != null && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error)),
-      );
-    }
+    return Icon(
+      Icons.bolt,
+      size: 18,
+      color: isActive
+          ? MyShopColors.textOnPrimary
+          : MyShopColors.textSecondary,
+    );
   }
 }

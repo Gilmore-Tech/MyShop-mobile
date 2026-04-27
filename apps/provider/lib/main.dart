@@ -16,7 +16,7 @@ import 'src/features/auth/providers/auth_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
+//CE27-04A6
   // Cap the in-memory image cache. Flutter's default is 100 MB / 1000
   // entries — a handful of full-resolution client-uploaded photos is
   // enough to blow past that AND iOS's ~300 MB jetsam threshold. Paired

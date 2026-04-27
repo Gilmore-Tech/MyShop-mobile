@@ -167,7 +167,7 @@ class _CategoriesSection extends ConsumerWidget {
         _SectionHeader(
           title:       'Categories',
           actionLabel: 'View All',
-          onActionTap: () {},
+          onActionTap: () => context.push(AppRoutes.servicesAllCategories),
         ),
         SizedBox(height: h * 0.014),
         categoriesAsync.when(

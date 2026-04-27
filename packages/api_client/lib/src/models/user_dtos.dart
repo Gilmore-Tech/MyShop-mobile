@@ -148,6 +148,7 @@ class DriverProfile {
     this.licenceExpiry,
     this.payoutMethod,
     this.payoutAccountNumber,
+    this.payoutLocked = false,
   });
 
   factory DriverProfile.fromJson(Map<String, dynamic> json) {
@@ -169,6 +170,7 @@ class DriverProfile {
       payoutPreference: _asString(json['payoutPreference']) ?? 'standard',
       payoutMethod: _asString(json['payoutMethod']),
       payoutAccountNumber: _asString(json['payoutAccountNumber']),
+      payoutLocked: json['payoutLocked'] as bool? ?? false,
       licenceNumber: _asString(json['licenceNumber']),
       licenceExpiry: _asString(json['licenceExpiry']),
       cancellationCount30d: json['cancellationCount30d'] as int? ?? 0,
@@ -195,6 +197,11 @@ class DriverProfile {
   final String payoutPreference;
   final String? payoutMethod;
   final String? payoutAccountNumber;
+
+  /// True once the driver has OTP-verified their payout number. Server
+  /// rejects further changes to `payoutMethod` / `payoutAccountNumber`
+  /// via `PUT /users/me/driver` until an admin clears the lock.
+  final bool payoutLocked;
   final String? licenceNumber;
   final String? licenceExpiry;
   final int cancellationCount30d;
@@ -222,6 +229,7 @@ class ArtisanProfile {
     this.serviceLongitude,
     this.payoutMethod,
     this.payoutAccountNumber,
+    this.payoutLocked = false,
     this.serviceCategories,
   });
 
@@ -244,6 +252,7 @@ class ArtisanProfile {
       payoutPreference: _asString(json['payoutPreference']) ?? 'standard',
       payoutMethod: _asString(json['payoutMethod']),
       payoutAccountNumber: _asString(json['payoutAccountNumber']),
+      payoutLocked: json['payoutLocked'] as bool? ?? false,
       completedJobsCount: json['completedJobsCount'] as int? ?? 0,
       cancellationCount30d: json['cancellationCount30d'] as int? ?? 0,
       serviceCategories: (json['serviceCategories'] as List<dynamic>?)
@@ -278,6 +287,11 @@ class ArtisanProfile {
   final String payoutPreference;
   final String? payoutMethod;
   final String? payoutAccountNumber;
+
+  /// True once the artisan has OTP-verified their payout number. Server
+  /// rejects further changes to `payoutMethod` / `payoutAccountNumber`
+  /// via `PUT /users/me/artisan` until an admin clears the lock.
+  final bool payoutLocked;
   final int completedJobsCount;
   final int cancellationCount30d;
   final List<ServiceCategoryLink>? serviceCategories;

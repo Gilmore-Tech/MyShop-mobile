@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/current_user_provider.dart';
+import '../widgets/payout_method_sheet.dart';
 
 /// Payout Methods screen — MoMo + bank accounts, payout history, schedule.
 ///
@@ -18,6 +20,10 @@ class PayoutMethodsScreen extends ConsumerWidget {
     final payoutMethod = dp?.payoutMethod ?? ap?.payoutMethod;
     final payoutAccount = dp?.payoutAccountNumber ?? ap?.payoutAccountNumber;
     final hasPayoutMethod = payoutMethod != null && payoutAccount != null;
+    // The backend flips this to true once the user verifies their MoMo
+    // number via OTP. After that, only an admin can change it.
+    final payoutLocked =
+        (dp?.payoutLocked ?? false) || (ap?.payoutLocked ?? false);
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
       appBar: AppBar(
@@ -132,11 +138,16 @@ class PayoutMethodsScreen extends ConsumerWidget {
           const SizedBox(height: MyShopSpacing.sm),
           if (hasPayoutMethod)
             _MomoCard(
-              provider: payoutMethod.toUpperCase(),
+              provider: payoutMethodLabel(payoutMethod),
               name: user?.fullName ?? '',
               number: '**** **** ${payoutAccount.substring(payoutAccount.length > 4 ? payoutAccount.length - 4 : 0)}',
               isPrimary: true,
-              verified: false,
+              verified: payoutLocked,
+              // No edit affordance once OTP-verified — only an admin can
+              // change the locked payout method.
+              onEdit: payoutLocked
+                  ? null
+                  : () => showPayoutMethodSheet(context),
             )
           else
             Container(
@@ -165,18 +176,26 @@ class PayoutMethodsScreen extends ConsumerWidget {
                       style: MyShopTypography.body1.copyWith(
                           fontWeight: FontWeight.w600)),
                   const SizedBox(height: MyShopSpacing.xs),
-                  Text('Add a MoMo or bank account to receive payouts',
+                  Text(
+                      'Add a MoMo number — we\'ll send a 6-digit code to '
+                      'verify it before locking it in.',
+                      textAlign: TextAlign.center,
                       style: MyShopTypography.body2.copyWith(
                           color: MyShopColors.textSecondary)),
                 ],
               ),
             ),
           const SizedBox(height: MyShopSpacing.sm),
-          DottedCta(
-            icon: Icons.add,
-            label: 'Add Payout Method',
-            onTap: () {},
-          ),
+          if (payoutLocked)
+            _LockedFooter(onContactSupport: () => context.push('/account/support'))
+          else
+            DottedCta(
+              icon: hasPayoutMethod ? Icons.swap_horiz : Icons.add,
+              label: hasPayoutMethod
+                  ? 'Change Payout Method'
+                  : 'Add Payout Method',
+              onTap: () => showPayoutMethodSheet(context),
+            ),
           const SizedBox(height: MyShopSpacing.lg),
 
           // Recent payout history — empty state
@@ -289,12 +308,14 @@ class _MomoCard extends StatelessWidget {
     required this.number,
     required this.isPrimary,
     required this.verified,
+    this.onEdit,
   });
   final String provider;
   final String name;
   final String number;
   final bool isPrimary;
   final bool verified;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -334,8 +355,15 @@ class _MomoCard extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                         color: MyShopColors.textPrimary)),
               ])),
-          const Icon(Icons.more_vert,
-              size: 20, color: MyShopColors.textSecondary),
+          IconButton(
+            onPressed: onEdit,
+            icon: const Icon(Icons.edit_outlined,
+                size: 18, color: MyShopColors.textSecondary),
+            tooltip: 'Edit payout method',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            visualDensity: VisualDensity.compact,
+          ),
         ]),
         const SizedBox(height: MyShopSpacing.sm),
         Row(children: [
@@ -514,6 +542,72 @@ class _LinkRow extends StatelessWidget {
         const Icon(Icons.chevron_right,
             size: 20, color: MyShopColors.textSecondary),
       ]),
+    );
+  }
+}
+
+/// Replaces the "Add / Change" CTA when the payout method is locked.
+/// Surfaces the immutability rule and a deep-link to support.
+class _LockedFooter extends StatelessWidget {
+  const _LockedFooter({required this.onContactSupport});
+
+  final VoidCallback onContactSupport;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      decoration: BoxDecoration(
+        color: MyShopColors.offWhite,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: MyShopColors.divider),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.lock_outline,
+              size: 18, color: MyShopColors.textSecondary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Payout number is locked',
+                  style: TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: MyShopColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'You\'ve already verified your payout number. To change '
+                  'it, please contact support with the reason.',
+                  style: MyShopTypography.body2.copyWith(
+                    color: MyShopColors.textSecondary,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: onContactSupport,
+                  child: const Text(
+                    'Contact support',
+                    style: TextStyle(
+                      fontFamily: 'Raleway',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: MyShopColors.primaryGold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

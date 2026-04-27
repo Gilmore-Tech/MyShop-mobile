@@ -14,6 +14,9 @@ class DriverEarnings {
     required this.todayTipsPesewas,
     required this.weekTipsPesewas,
     required this.weekTrendPct,
+    this.availableBalancePesewas = 0,
+    this.todayPaidOutPesewas = 0,
+    this.weekPaidOutPesewas = 0,
     this.peakHours = const [],
     this.hoursOnline = 0,
     this.acceptanceRate = 0,
@@ -22,8 +25,12 @@ class DriverEarnings {
   /// Builds a [DriverEarnings] by merging two backend payloads — one for
   /// `today` and one for `week`. The backend's per-period response shape is:
   /// `{ totalEarningsPesewas, totalCommissionPesewas, totalTipsPesewas,
-  ///    completedRides, trendPct, peakHours }`.
+  ///    completedRides, trendPct, availableBalancePesewas, paidOutPesewas,
+  ///    peakHours }`.
   /// (See `apps/api/src/modules/payment/payment.service.ts` `EarningsResponse`.)
+  ///
+  /// `availableBalancePesewas` is not period-bound — both payloads carry the
+  /// same current value, so we prefer `today` and fall back to `week`.
   factory DriverEarnings.fromBackendPeriods({
     required Map<String, dynamic> today,
     required Map<String, dynamic> week,
@@ -32,6 +39,10 @@ class DriverEarnings {
         (j[k] as num?)?.toInt() ?? 0;
     double? _doubleOpt(Map<String, dynamic> j, String k) =>
         (j[k] as num?)?.toDouble();
+
+    final available = _int(today, 'availableBalancePesewas') > 0
+        ? _int(today, 'availableBalancePesewas')
+        : _int(week, 'availableBalancePesewas');
 
     return DriverEarnings(
       todayAmountPesewas: _int(today, 'totalEarningsPesewas'),
@@ -43,6 +54,9 @@ class DriverEarnings {
       todayTipsPesewas: _int(today, 'totalTipsPesewas'),
       weekTipsPesewas: _int(week, 'totalTipsPesewas'),
       weekTrendPct: _doubleOpt(week, 'trendPct'),
+      availableBalancePesewas: available,
+      todayPaidOutPesewas: _int(today, 'paidOutPesewas'),
+      weekPaidOutPesewas: _int(week, 'paidOutPesewas'),
       peakHours: (week['peakHours'] as List<dynamic>?)
               ?.whereType<Map<String, dynamic>>()
               .map(EarningsPeakHour.fromJson)
@@ -78,6 +92,17 @@ class DriverEarnings {
   final int weekCommissionPesewas;
   final int todayTipsPesewas;
   final int weekTipsPesewas;
+
+  /// Currently withdrawable balance (pesewas), authoritative source for
+  /// the payout-button gate. Sum of escrow-released payments not yet
+  /// disbursed. Not period-bound.
+  final int availableBalancePesewas;
+
+  /// Money disbursed to the provider today (pesewas).
+  final int todayPaidOutPesewas;
+
+  /// Money disbursed to the provider this week (pesewas).
+  final int weekPaidOutPesewas;
 
   /// Percentage trend vs. the previous week (negative = down). Null when
   /// the backend doesn't have enough history to compute it.

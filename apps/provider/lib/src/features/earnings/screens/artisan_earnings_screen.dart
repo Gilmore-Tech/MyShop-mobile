@@ -5,6 +5,13 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../artisan_home/providers/artisan_earnings_provider.dart';
 import '../../auth/providers/current_user_provider.dart';
+import '../../driver_home/data/earnings_service.dart';
+import '../data/ratings_service.dart';
+import '../providers/ratings_provider.dart';
+import '../widgets/commission_card.dart';
+import '../widgets/payout_request_flow.dart';
+import '../widgets/payouts_list.dart';
+import '../widgets/weekly_performance_card.dart';
 
 /// Artisan-side earnings details screen.
 ///
@@ -86,7 +93,7 @@ class _ArtisanEarningsScreenState
                 ),
               ),
             ),
-            _PayoutFooter(onTap: () {}),
+            const _PayoutFooter(),
           ],
         ),
       ),
@@ -94,7 +101,7 @@ class _ArtisanEarningsScreenState
   }
 }
 
-class _EarningsContent extends StatelessWidget {
+class _EarningsContent extends ConsumerWidget {
   const _EarningsContent({
     required this.earnings,
     required this.period,
@@ -108,15 +115,29 @@ class _EarningsContent extends StatelessWidget {
   final int jobsDone;
 
   @override
-  Widget build(BuildContext context) {
-    // Compute display values from the earnings response
+  Widget build(BuildContext context, WidgetRef ref) {
+    // The "Available" headline now reflects the backend's authoritative
+    // withdrawable balance (escrow-released, not yet paid out) — which is
+    // what the payout endpoint actually accepts. The period total stays
+    // alongside as gross revenue context for the selected window.
     final totalPesewas = period == _Period.today
         ? earnings.todayAmountPesewas
         : earnings.weekAmountPesewas;
     final totalGhs = totalPesewas / 100;
     // Platform commission is 20% of total
     final commissionGhs = totalGhs * 0.20;
-    final netGhs = totalGhs - commissionGhs;
+    final availableGhs = earnings.availableBalancePesewas / 100;
+
+    // Weekly chart and commission breakdown always show this-week data
+    // regardless of the segmented control above (which drives the balance
+    // card). Riverpod caches by family key so this is at most one extra
+    // network call when the user is viewing a non-week period.
+    final weekAsync = ref.watch(artisanEarningsByPeriodProvider('week'));
+    final week = weekAsync.valueOrNull ?? DriverEarnings.empty;
+
+    final ratings =
+        ref.watch(providerRatingsProvider).valueOrNull ??
+            ProviderRatingsSummary.empty;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(
@@ -129,16 +150,17 @@ class _EarningsContent extends StatelessWidget {
         _PeriodSegmented(value: period, onChanged: onPeriodChanged),
         const SizedBox(height: MyShopSpacing.md),
         _BalanceCard(
-          available: netGhs,
+          available: availableGhs,
           totalRevenue: totalGhs,
           jobsDone: jobsDone,
+          ratings: ratings,
         ),
         const SizedBox(height: MyShopSpacing.md),
         Row(
           children: [
             Expanded(
               child: _MiniStatCard(
-                label: 'TRIPS',
+                label: 'JOBS',
                 value: earnings.todayTrips.toString(),
                 subtitle: 'Today',
               ),
@@ -153,14 +175,32 @@ class _EarningsContent extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: MyShopSpacing.md),
+
+        // Weekly performance chart (same widget the driver uses)
+        WeeklyPerformanceCard(
+          peakHours: week.peakHours,
+          emptyLabel: 'No jobs yet this week',
+        ),
+        const SizedBox(height: MyShopSpacing.md),
+
+        // Commission & Tax breakdown (weekly)
+        CommissionCard(
+          weekPesewas: week.weekAmountPesewas,
+          weekCommissionPesewas: week.weekCommissionPesewas,
+          weekNetPesewas: week.weekNetPesewas,
+        ),
         const SizedBox(height: MyShopSpacing.lg),
 
-        // Activity section — empty state until job history endpoint exists
+        // Recent Payouts header + list (backend filters by role)
         Row(
           children: [
+            const Icon(Icons.history,
+                size: 18, color: MyShopColors.textPrimary),
+            const SizedBox(width: 6),
             Expanded(
               child: Text(
-                'Recent Activity',
+                'Recent Payouts',
                 style: MyShopTypography.h2.copyWith(
                   fontWeight: FontWeight.w800,
                   fontSize: 16,
@@ -169,35 +209,8 @@ class _EarningsContent extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: MyShopSpacing.md),
-        Container(
-          padding: const EdgeInsets.all(MyShopSpacing.lg),
-          decoration: BoxDecoration(
-            color: MyShopColors.offWhite,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            children: [
-              const Icon(
-                Icons.receipt_long_outlined,
-                size: 40,
-                color: MyShopColors.textSecondary,
-              ),
-              const SizedBox(height: MyShopSpacing.sm),
-              Text(
-                'No activity yet',
-                style: MyShopTypography.body1.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Completed jobs will appear here.',
-                style: MyShopTypography.body2,
-              ),
-            ],
-          ),
-        ),
+        const SizedBox(height: MyShopSpacing.sm),
+        const PayoutsList(),
         const SizedBox(height: MyShopSpacing.lg),
       ],
     );
@@ -309,11 +322,13 @@ class _BalanceCard extends StatelessWidget {
     required this.available,
     required this.totalRevenue,
     required this.jobsDone,
+    required this.ratings,
   });
 
   final double available;
   final double totalRevenue;
   final int jobsDone;
+  final ProviderRatingsSummary ratings;
 
   @override
   Widget build(BuildContext context) {
@@ -326,13 +341,21 @@ class _BalanceCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Net Earnings',
-            style: MyShopTypography.body1.copyWith(
-              color: MyShopColors.textOnDarkSlate.withValues(alpha: 0.85),
-              fontWeight: FontWeight.w600,
-              fontSize: 15,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Net Earnings',
+                  style: MyShopTypography.body1.copyWith(
+                    color:
+                        MyShopColors.textOnDarkSlate.withValues(alpha: 0.85),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+              if (ratings.hasRatings) _RatingChip(ratings: ratings),
+            ],
           ),
           const SizedBox(height: MyShopSpacing.sm),
           Text(
@@ -401,6 +424,57 @@ class _BalanceCard extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
+// Rating chip (header of the balance card)
+// ---------------------------------------------------------------------------
+
+class _RatingChip extends StatelessWidget {
+  const _RatingChip({required this.ratings});
+
+  final ProviderRatingsSummary ratings;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.star_rounded,
+            size: 14,
+            color: MyShopColors.primaryGold,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            ratings.averageDisplay,
+            style: const TextStyle(
+              fontFamily: 'Raleway',
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: MyShopColors.textOnDarkSlate,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '(${ratings.count})',
+            style: TextStyle(
+              fontFamily: 'Raleway',
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: MyShopColors.textOnDarkSlate.withValues(alpha: 0.75),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Mini stat card
 // ---------------------------------------------------------------------------
 
@@ -462,13 +536,41 @@ class _MiniStatCard extends StatelessWidget {
 // Payout footer
 // ---------------------------------------------------------------------------
 
-class _PayoutFooter extends StatelessWidget {
-  const _PayoutFooter({required this.onTap});
+class _PayoutFooter extends ConsumerStatefulWidget {
+  const _PayoutFooter();
 
-  final VoidCallback onTap;
+  @override
+  ConsumerState<_PayoutFooter> createState() => _PayoutFooterState();
+}
+
+class _PayoutFooterState extends ConsumerState<_PayoutFooter> {
+  bool _isRequesting = false;
+
+  Future<void> _onTap() async {
+    if (_isRequesting) return;
+    setState(() => _isRequesting = true);
+    try {
+      await requestProviderPayout(context, ref);
+    } finally {
+      if (mounted) setState(() => _isRequesting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    // Pre-flight balance gate driven by the backend's authoritative
+    // `availableBalancePesewas` — the same number the payout endpoint
+    // checks server-side, so the gate matches the eventual response.
+    final weekAsync = ref.watch(artisanEarningsByPeriodProvider('week'));
+    final available =
+        weekAsync.whenOrNull(data: (e) => e.availableBalancePesewas) ?? 0;
+    final belowThreshold = available < kMinPayoutPesewas;
+    final canRequest = !_isRequesting && !belowThreshold;
+
+    final hint = belowThreshold
+        ? 'Earn at least GHS ${(kMinPayoutPesewas / 100).toStringAsFixed(0)} to request a payout'
+        : 'Settlement usually takes 2-4 hours';
+
     return Container(
       padding: EdgeInsets.fromLTRB(
         MyShopSpacing.md,
@@ -492,7 +594,7 @@ class _PayoutFooter extends StatelessWidget {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'Settlement usually takes 2-4 hours',
+                  hint,
                   style: MyShopTypography.body2,
                 ),
               ),
@@ -500,23 +602,35 @@ class _PayoutFooter extends StatelessWidget {
           ),
           const SizedBox(height: MyShopSpacing.sm),
           GestureDetector(
-            onTap: onTap,
+            onTap: canRequest ? _onTap : null,
             child: Container(
               height: 56,
               width: double.infinity,
               decoration: BoxDecoration(
-                color: MyShopColors.darkSlate,
+                color: canRequest
+                    ? MyShopColors.darkSlate
+                    : MyShopColors.darkSlate.withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(28),
               ),
               alignment: Alignment.center,
-              child: Text(
-                'Request Payout Now',
-                style: MyShopTypography.button.copyWith(
-                  color: MyShopColors.textOnDarkSlate,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
-                ),
-              ),
+              child: _isRequesting
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                            MyShopColors.textOnDarkSlate),
+                      ),
+                    )
+                  : Text(
+                      'Request Payout Now',
+                      style: MyShopTypography.button.copyWith(
+                        color: MyShopColors.textOnDarkSlate,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
             ),
           ),
         ],

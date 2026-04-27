@@ -42,6 +42,7 @@ import '../features/ride/providers/ride_provider.dart' show MatchedDriver;
 
 // ── Services ───────────────────────────────────────────────────────────────────
 import '../features/services/screens/categories_screen.dart';
+import '../features/services/screens/all_categories_screen.dart';
 import '../features/services/screens/job_form_screen.dart';
 import '../features/services/screens/job_location_search_screen.dart';
 import '../features/services/screens/job_map_picker_screen.dart';
@@ -121,6 +122,7 @@ abstract final class AppRoutes {
   static String rideDisputePath(String rideId)    => '/ride/$rideId/dispute';
 
   // Services sub-flow
+  static const servicesAllCategories = '/services/categories';
   static const jobNew           = '/services/job/new';
   static const jobLocation      = '/services/job/location';
   static const jobLocationMap   = '/services/job/location/map';
@@ -441,6 +443,11 @@ GoRouter _buildRouter({
       ),
 
       // ── Services sub-flow (full-screen, above shell) ──────────────────────────
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: AppRoutes.servicesAllCategories,
+        builder: (_, __) => const AllCategoriesScreen(),
+      ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.jobNew,

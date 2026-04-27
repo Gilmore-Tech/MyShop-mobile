@@ -20,6 +20,7 @@ class DriverCarMarker {
 
   static Future<BitmapDescriptor> create({
     double devicePixelRatio = 3.0,
+    double scale = 0.7,
   }) async {
     // Logical size of the square bitmap. The car itself occupies the middle
     // column — extra horizontal space is just margin for the drop shadow.
@@ -138,6 +139,13 @@ class DriverCarMarker {
     final picture = recorder.endRecording();
     final image = await picture.toImage(size.toInt(), size.toInt());
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.bytes(byteData!.buffer.asUint8List());
+    // Tell Google Maps the bitmap is authored at `devicePixelRatio / scale`
+    // so it renders at `logicalSize * scale` logical pixels. The bitmap is
+    // still rasterised at full pixel density (so the car stays crisp) — only
+    // the on-map size is reduced. Lower `scale` → smaller car.
+    return BitmapDescriptor.bytes(
+      byteData!.buffer.asUint8List(),
+      imagePixelRatio: devicePixelRatio / scale,
+    );
   }
 }
