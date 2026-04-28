@@ -23,6 +23,7 @@ import '../features/artisan_home/screens/artisan_home_screen.dart';
 import '../features/artisan_home/screens/job_request_screen.dart';
 import '../features/artisan_jobs/screens/artisan_jobs_screen.dart';
 import '../features/artisan_home/widgets/bid_status_banner.dart';
+import '../features/driver_home/providers/online_session_provider.dart';
 import '../features/driver_home/screens/active_ride_screen.dart';
 import '../features/driver_home/screens/driver_home_screen.dart';
 import '../core/providers/nav_badge_provider.dart';
@@ -405,6 +406,11 @@ class _DriverShell extends ConsumerWidget {
     // REST-polling fallback for incoming jobs — covers zombie sockets
     // and missed `job:new` emits. Deduped against the socket path.
     ref.watch(jobPollerProvider);
+
+    // Online-session accumulator — every offline transition writes the
+    // session length into a per-day SharedPreferences bucket so the
+    // home-screen "HOURS" stat reflects today's real total.
+    ref.watch(onlineSessionRecorderProvider);
 
     final currentIndex = _currentIndex(context);
     final isArtisan = ref.watch(providerTypeProvider).isArtisan;

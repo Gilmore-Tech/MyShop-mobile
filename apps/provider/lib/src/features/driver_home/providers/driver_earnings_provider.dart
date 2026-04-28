@@ -16,12 +16,13 @@ final earningsServiceProvider = Provider<EarningsService>((ref) {
 ///     listener invalidates this provider so the next `ref.watch` rebuilds
 ///     and re-fetches both periods)
 ///   - manual `ref.invalidate(driverEarningsProvider)` (pull-to-refresh).
+///
+/// Re-throws on failure so callers can render an error banner with retry —
+/// the previous "swallow and return empty" path made an API outage look
+/// identical to "driver hasn't earned yet today", hiding production
+/// failures behind a normal-looking dashboard.
 final driverEarningsProvider = FutureProvider<DriverEarnings>((ref) async {
-  try {
-    return await ref.watch(earningsServiceProvider).getEarningsAggregate();
-  } catch (_) {
-    return DriverEarnings.empty;
-  }
+  return ref.watch(earningsServiceProvider).getEarningsAggregate();
 });
 
 /// Recent payouts (most-recent-first, capped at 50). Same refresh story as

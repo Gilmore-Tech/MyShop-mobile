@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'dart:math';
 
 import 'package:dio/dio.dart';
@@ -37,9 +38,11 @@ class EarningsService {
   /// them. The backend's per-period endpoint only returns one period at a
   /// time, so the dashboard needs two calls — kicked in parallel.
   ///
-  /// Falls back to whichever side resolved successfully when the other
-  /// errors, rather than failing the whole dashboard. Returns
-  /// [DriverEarnings.empty] only when both calls error.
+  /// Throws when both period fetches fail so the screen surfaces an
+  /// error state instead of silently rendering zeros (which is what made
+  /// "the dashboard is empty" look identical to "the driver hasn't
+  /// completed any rides yet" — the failure mode that hid the recent
+  /// production issue from us until the user reported it).
   Future<DriverEarnings> getEarningsAggregate() async {
     final results = await Future.wait<Map<String, dynamic>?>([
       _fetchPeriodRaw('today'),
@@ -47,11 +50,21 @@ class EarningsService {
     ]);
     final today = results[0];
     final week = results[1];
-    if (today == null && week == null) return DriverEarnings.empty;
-    return DriverEarnings.fromBackendPeriods(
+    if (today == null && week == null) {
+      throw Exception('Earnings fetch failed for both periods');
+    }
+    final merged = DriverEarnings.fromBackendPeriods(
       today: today ?? const {},
       week: week ?? today ?? const {},
     );
+    developer.log(
+      'earnings merged: today=₵${merged.todayAmountPesewas / 100} '
+      'trips=${merged.todayTrips} '
+      'week=₵${merged.weekAmountPesewas / 100} '
+      'available=₵${merged.availableBalancePesewas / 100}',
+      name: 'Earnings',
+    );
+    return merged;
   }
 
   Future<Map<String, dynamic>?> _fetchPeriodRaw(String period) async {
@@ -61,11 +74,35 @@ class EarningsService {
         queryParameters: {'period': period},
       );
       final body = response.data as Map<String, dynamic>;
+      developer.log(
+        'GET /payments/earnings?period=$period → '
+        'success=${body['success']} data=${body['data']}',
+        name: 'Earnings',
+      );
       if (body['success'] == true && body['data'] is Map<String, dynamic>) {
         return body['data'] as Map<String, dynamic>;
       }
+      developer.log(
+        'unexpected envelope shape for period=$period: $body',
+        name: 'Earnings',
+        level: 900,
+      );
       return null;
-    } catch (_) {
+    } on DioException catch (e) {
+      developer.log(
+        'GET /payments/earnings?period=$period failed: '
+        'status=${e.response?.statusCode} body=${e.response?.data} '
+        'message=${e.message}',
+        name: 'Earnings',
+        level: 1000,
+      );
+      return null;
+    } catch (e) {
+      developer.log(
+        'GET /payments/earnings?period=$period crashed: $e',
+        name: 'Earnings',
+        level: 1000,
+      );
       return null;
     }
   }

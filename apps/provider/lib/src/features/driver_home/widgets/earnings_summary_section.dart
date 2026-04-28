@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../providers/driver_earnings_provider.dart';
+import '../providers/online_session_provider.dart';
 
 /// Today's earnings section inside the draggable sheet.
 ///
@@ -16,6 +17,8 @@ class EarningsSummarySection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final earningsAsync = ref.watch(driverEarningsProvider);
+    final hoursLabel =
+        formatOnlineSeconds(ref.watch(onlineSecondsTodayValueProvider));
 
     return earningsAsync.when(
       loading: () => const _EarningsSkeleton(),
@@ -85,12 +88,12 @@ class EarningsSummarySection extends ConsumerWidget {
                     const _VerticalDivider(),
                     _StatColumn(
                       label: 'HOURS',
-                      value: earnings.hoursOnlineDisplay,
+                      value: hoursLabel,
                     ),
                     const _VerticalDivider(),
                     _StatColumn(
                       label: 'TIPS',
-                      value: 'GH₵ ${_formatAmount(earnings.weekAmountPesewas)}',
+                      value: 'GH₵ ${_formatAmount(earnings.todayTipsPesewas)}',
                     ),
                   ],
                 ),

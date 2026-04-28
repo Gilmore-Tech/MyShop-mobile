@@ -97,6 +97,27 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
   }
 
   Future<void> _goToCurrentLocation() async {
+    // The app-level warm-up in `main.dart` already requests location
+    // permission and caches a fresh fix into `lastKnownPositionProvider`.
+    // If it landed first, just animate to that and bail — calling
+    // `requestPermission` again here races with the warm-up and crashes
+    // Geolocator with "A request for location permissions is already
+    // running" (real failure mode observed in QA).
+    final cached = ref.read(lastKnownPositionProvider);
+    if (cached != null) {
+      try {
+        final controller = await _mapController.future;
+        if (!mounted) return;
+        await controller.animateCamera(
+          CameraUpdate.newLatLngZoom(
+            LatLng(cached.latitude, cached.longitude),
+            15,
+          ),
+        );
+      } catch (_) {/* map controller may not be ready yet — listener picks it up */}
+      return;
+    }
+
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       debugPrint('[LOC] services disabled — staying on Kumasi fallback');
@@ -105,7 +126,18 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
 
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
+      // Re-check just before prompting — the warm-up may have answered
+      // the user since we last looked, in which case requesting again
+      // throws.
+      permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        try {
+          permission = await Geolocator.requestPermission();
+        } catch (e) {
+          debugPrint('[LOC] requestPermission race — letting warm-up finish: $e');
+          return;
+        }
+      }
     }
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) {

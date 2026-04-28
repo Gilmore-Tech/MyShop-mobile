@@ -31,17 +31,21 @@ class EarningsDashboardScreen extends ConsumerWidget {
             ? NetworkImage(backendPhotoUrl ?? photoState.cloudinaryUrl!)
             : null;
 
-    final todayAmount = earningsAsync.whenOrNull(data: (e) => e.todayAmountPesewas) ?? 0;
-    final weekAmount = earningsAsync.whenOrNull(data: (e) => e.weekAmountPesewas) ?? 0;
-    final weekCommission =
-        earningsAsync.whenOrNull(data: (e) => e.weekCommissionPesewas) ?? 0;
-    final weekNet = earningsAsync.whenOrNull(data: (e) => e.weekNetPesewas) ?? 0;
-    final availableBalance =
-        earningsAsync.whenOrNull(data: (e) => e.availableBalancePesewas) ?? 0;
-    final todayTrips = earningsAsync.whenOrNull(data: (e) => e.todayTrips) ?? 0;
-    final peakHours =
-        earningsAsync.whenOrNull(data: (e) => e.peakHours) ?? const [];
+    final earnings = earningsAsync.valueOrNull;
+    final todayAmount = earnings?.todayAmountPesewas ?? 0;
+    final weekAmount = earnings?.weekAmountPesewas ?? 0;
+    final weekCommission = earnings?.weekCommissionPesewas ?? 0;
+    final weekNet = earnings?.weekNetPesewas ?? 0;
+    final availableBalance = earnings?.availableBalancePesewas ?? 0;
+    final todayTrips = earnings?.todayTrips ?? 0;
+    final peakHours = earnings?.peakHours ?? const [];
     final isVerified = user?.verificationStatus == 'approved';
+
+    // Surface a clear failure banner instead of letting "API down" look
+    // identical to "driver hasn't earned yet" — the dashboard's all-zeros
+    // state was masking real production failures.
+    final loadError = earningsAsync.hasError;
+    final isLoading = earningsAsync.isLoading && earnings == null;
 
     final ratingsAsync = ref.watch(providerRatingsProvider);
     final ratings = ratingsAsync.valueOrNull;
@@ -117,6 +121,26 @@ class EarningsDashboardScreen extends ConsumerWidget {
             const Divider(
                 height: 0.5, thickness: 0.5, color: MyShopColors.divider),
             const SizedBox(height: MyShopSpacing.md),
+
+            // Diagnostic banners — surface "API down" or "still loading"
+            // states explicitly so the all-zeros render below is never
+            // mistaken for genuine zero earnings.
+            if (loadError)
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                child: _EarningsErrorBanner(
+                  onRetry: () => ref.invalidate(driverEarningsProvider),
+                ),
+              )
+            else if (isLoading)
+              const Padding(
+                padding:
+                    EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                child: _EarningsLoadingBanner(),
+              ),
+            if (loadError || isLoading)
+              const SizedBox(height: MyShopSpacing.sm),
 
             // ── Balance card ──
             Padding(
@@ -249,6 +273,99 @@ class EarningsDashboardScreen extends ConsumerWidget {
             const SizedBox(height: MyShopSpacing.xxl),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─── Diagnostic banners ─────────────────────────────────────────────────────
+
+/// Surfaced when [driverEarningsProvider] is in error state — without it,
+/// the dashboard's `?? 0` fallbacks made an API outage look identical to
+/// "driver has zero earnings", which is exactly how a recent prod
+/// regression hid for hours.
+class _EarningsErrorBanner extends StatelessWidget {
+  const _EarningsErrorBanner({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: MyShopSpacing.md, vertical: 12),
+      decoration: BoxDecoration(
+        color: MyShopColors.errorLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: MyShopColors.error.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline_rounded,
+              size: 18, color: MyShopColors.error),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              "Couldn't load earnings — check the logs (tag: Earnings).",
+              style: TextStyle(
+                fontFamily: 'Raleway',
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: MyShopColors.textPrimary,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: onRetry,
+            style: TextButton.styleFrom(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+              minimumSize: const Size(0, 28),
+              foregroundColor: MyShopColors.error,
+              textStyle: const TextStyle(
+                fontFamily: 'Raleway',
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EarningsLoadingBanner extends StatelessWidget {
+  const _EarningsLoadingBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: MyShopSpacing.md, vertical: 12),
+      decoration: BoxDecoration(
+        color: MyShopColors.surfaceGrey,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: const [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 1.5),
+          ),
+          SizedBox(width: 10),
+          Text(
+            'Loading earnings…',
+            style: TextStyle(
+              fontFamily: 'Raleway',
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: MyShopColors.textSecondary,
+            ),
+          ),
+        ],
       ),
     );
   }

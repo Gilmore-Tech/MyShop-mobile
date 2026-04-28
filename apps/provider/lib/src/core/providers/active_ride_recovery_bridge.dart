@@ -59,6 +59,15 @@ final activeRideRecoveryBridgeProvider = Provider<void>((ref) {
             '${e.errorCode ?? e.message}');
         // Hard auth failures aren't transient — bail.
         if (e.statusCode == 401 || e.statusCode == 403) return;
+      } on TypeError catch (e) {
+        // Wire-shape mismatch — retrying won't help; the next request
+        // returns the same bad payload. Bail and surface in the log so
+        // we can fix the parser instead of burning the 9s backoff.
+        debugPrint('[ActiveRideRecovery] getMyActiveRide parse failed: $e');
+        return;
+      } on FormatException catch (e) {
+        debugPrint('[ActiveRideRecovery] getMyActiveRide parse failed: $e');
+        return;
       } catch (e) {
         debugPrint('[ActiveRideRecovery] getMyActiveRide crashed '
             '(attempt $attempt/$attempts): $e');

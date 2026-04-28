@@ -14,6 +14,7 @@ import '../../features/auth/providers/auth_controller.dart';
 import '../../features/driver_home/providers/driver_earnings_provider.dart';
 import '../../features/driver_home/providers/driver_location_provider.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
+import '../../features/trips/providers/driver_trips_provider.dart';
 import 'availability_controller.dart';
 import 'provider_status_provider.dart';
 import '../../features/profile/providers/provider_type_provider.dart';
@@ -345,6 +346,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
           try {
             ref.invalidate(driverEarningsProvider);
             ref.invalidate(driverPayoutsProvider);
+            ref.invalidate(driverTripsProvider);
           } catch (_) {/* providers may not be mounted in tests */}
         }
       } catch (e) {
