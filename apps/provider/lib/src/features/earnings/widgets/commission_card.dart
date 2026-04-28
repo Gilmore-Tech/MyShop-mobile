@@ -15,16 +15,21 @@ class CommissionCard extends StatelessWidget {
     required this.weekNetPesewas,
   });
 
+  /// Gross revenue (pre-commission) for the week.
   final int weekPesewas;
+
+  /// Commission already deducted by the backend for the week.
   final int weekCommissionPesewas;
+
+  /// Net take-home for the week (gross minus commission). Trusts the
+  /// backend — no fallback subtraction here, which used to double-deduct
+  /// the commission whenever the backend reported a real value.
   final int weekNetPesewas;
 
   @override
   Widget build(BuildContext context) {
-    final commission = weekCommissionPesewas > 0
-        ? weekCommissionPesewas
-        : (weekPesewas * 0.20).round();
-    final net = weekNetPesewas > 0 ? weekNetPesewas : weekPesewas - commission;
+    final commission = weekCommissionPesewas;
+    final net = weekNetPesewas;
 
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),

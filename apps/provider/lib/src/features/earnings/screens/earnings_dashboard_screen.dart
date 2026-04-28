@@ -187,7 +187,7 @@ class EarningsDashboardScreen extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
               child: CommissionCard(
-                weekPesewas: weekAmount,
+                weekPesewas: weekAmount + weekCommission,
                 weekCommissionPesewas: weekCommission,
                 weekNetPesewas: weekNet,
               ),

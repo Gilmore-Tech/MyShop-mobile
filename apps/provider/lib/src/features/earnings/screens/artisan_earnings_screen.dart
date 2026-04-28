@@ -116,16 +116,24 @@ class _EarningsContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // The "Available" headline now reflects the backend's authoritative
-    // withdrawable balance (escrow-released, not yet paid out) — which is
-    // what the payout endpoint actually accepts. The period total stays
-    // alongside as gross revenue context for the selected window.
-    final totalPesewas = period == _Period.today
+    // The "Available" headline reflects the backend's authoritative
+    // withdrawable balance (escrow-released, not yet paid out) — what the
+    // payout endpoint will actually accept.
+    //
+    // For the selected period we surface gross (pre-commission) revenue
+    // and the real commission the backend recorded — never the
+    // 20%-of-net approximation that used to live here, which silently
+    // showed a smaller fee than the user was actually charged.
+    final periodNetPesewas = period == _Period.today
         ? earnings.todayAmountPesewas
         : earnings.weekAmountPesewas;
-    final totalGhs = totalPesewas / 100;
-    // Platform commission is 20% of total
-    final commissionGhs = totalGhs * 0.20;
+    final periodCommissionPesewas = period == _Period.today
+        ? earnings.todayCommissionPesewas
+        : earnings.weekCommissionPesewas;
+    final periodGrossPesewas = periodNetPesewas + periodCommissionPesewas;
+
+    final totalGhs = periodGrossPesewas / 100;
+    final commissionGhs = periodCommissionPesewas / 100;
     final availableGhs = earnings.availableBalancePesewas / 100;
 
     // Weekly chart and commission breakdown always show this-week data
@@ -186,7 +194,7 @@ class _EarningsContent extends ConsumerWidget {
 
         // Commission & Tax breakdown (weekly)
         CommissionCard(
-          weekPesewas: week.weekAmountPesewas,
+          weekPesewas: week.weekGrossPesewas,
           weekCommissionPesewas: week.weekCommissionPesewas,
           weekNetPesewas: week.weekNetPesewas,
         ),

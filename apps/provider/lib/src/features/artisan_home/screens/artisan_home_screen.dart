@@ -5,6 +5,7 @@ import 'package:shared_ui/shared_ui.dart';
 import '../../../core/providers/availability_controller.dart';
 import '../../../core/providers/provider_status_provider.dart';
 import '../../../core/widgets/socket_debug_banner.dart';
+import '../../auth/providers/auth_controller.dart';
 import '../../auth/providers/current_user_provider.dart';
 import '../../profile/providers/verification_provider.dart';
 import '../../profile/widgets/incomplete_profile_sheet.dart';
@@ -31,6 +32,8 @@ class ArtisanHomeScreen extends ConsumerStatefulWidget {
 }
 
 class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
+  bool _isGoingOnline = false;
+
   Future<void> _handleToggle() async {
     final status = ref.read(providerStatusProvider);
     final availability = ref.read(availabilityControllerProvider);
@@ -53,27 +56,40 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
       return;
     }
 
-    // Going online requires verification data to be loaded AND complete.
-    final completion = ref.read(profileCompletionProvider);
-    if (completion.isLoading) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Checking your profile — please try again.'),
-        ),
-      );
-      return;
-    }
+    setState(() => _isGoingOnline = true);
+    try {
+      // Force a fresh read of both the verification docs and the user
+      // profile before deciding completeness — mid-session approvals
+      // would otherwise be missed because Riverpod caches the verification
+      // provider for the lifetime of the screen.
+      ref.invalidate(verificationStatusProvider);
+      await Future.wait<void>([
+        ref
+            .read(verificationStatusProvider.future)
+            .then<void>((_) {})
+            .catchError((_) {}),
+        ref
+            .read(authControllerProvider.notifier)
+            .refreshProfile()
+            .then<void>((_) {}),
+      ]);
 
-    if (!completion.isComplete) {
-      showIncompleteProfileSheet(context, completion: completion);
-      return;
-    }
+      if (!mounted) return;
+      final completion = ref.read(profileCompletionProvider);
 
-    final error = await availability.goOnline();
-    if (error != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error)),
-      );
+      if (!completion.isComplete) {
+        showIncompleteProfileSheet(context, completion: completion);
+        return;
+      }
+
+      final error = await availability.goOnline();
+      if (error != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error)),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isGoingOnline = false);
     }
   }
 
@@ -134,6 +150,7 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
             // 2. Online status banner
             ArtisanOnlineBanner(
               isOnline: ref.watch(providerStatusProvider).isOnline,
+              isWorking: _isGoingOnline,
               onToggle: _handleToggle,
             ),
 

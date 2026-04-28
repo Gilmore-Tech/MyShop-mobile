@@ -5,15 +5,22 @@ import 'package:shared_ui/shared_ui.dart';
 ///
 /// Online: green-tinted background, success check, "You are Online" /
 /// "Receiving live requests", dark "Go Offline" pill button.
+///
+/// While the parent is awaiting the verification + profile-completion
+/// checks (set [isWorking] = true), the pill swaps its label for an
+/// inline spinner so the user sees the call in flight rather than a
+/// frozen-looking button.
 class ArtisanOnlineBanner extends StatelessWidget {
   const ArtisanOnlineBanner({
     super.key,
     required this.isOnline,
     required this.onToggle,
+    this.isWorking = false,
   });
 
   final bool isOnline;
   final VoidCallback onToggle;
+  final bool isWorking;
 
   @override
   Widget build(BuildContext context) {
@@ -57,18 +64,21 @@ class ArtisanOnlineBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  isOnline
-                      ? 'Receiving live requests'
-                      : 'Tap to start receiving jobs',
+                  isWorking
+                      ? 'Checking your profile…'
+                      : isOnline
+                          ? 'Receiving live requests'
+                          : 'Tap to start receiving jobs',
                   style: MyShopTypography.body2.copyWith(color: accent),
                 ),
               ],
             ),
           ),
 
-          // Toggle button
+          // Toggle button — spinner replaces label while we're awaiting
+          // verification + profile checks so the tap doesn't look ignored.
           GestureDetector(
-            onTap: onToggle,
+            onTap: isWorking ? null : onToggle,
             child: Container(
               padding: const EdgeInsets.symmetric(
                 horizontal: MyShopSpacing.md,
@@ -78,13 +88,24 @@ class ArtisanOnlineBanner extends StatelessWidget {
                 color: MyShopColors.darkSlate,
                 borderRadius: BorderRadius.circular(24),
               ),
-              child: Text(
-                isOnline ? 'Go Offline' : 'Go Online',
-                style: MyShopTypography.button.copyWith(
-                  color: MyShopColors.textOnDarkSlate,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              child: isWorking
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          MyShopColors.textOnDarkSlate,
+                        ),
+                      ),
+                    )
+                  : Text(
+                      isOnline ? 'Go Offline' : 'Go Online',
+                      style: MyShopTypography.button.copyWith(
+                        color: MyShopColors.textOnDarkSlate,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
             ),
           ),
         ],

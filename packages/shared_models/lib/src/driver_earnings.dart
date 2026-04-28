@@ -119,13 +119,21 @@ class DriverEarnings {
   final double hoursOnline;
   final double acceptanceRate;
 
-  /// Net of commission — what actually lands in the driver's wallet for
-  /// today (before tip).
-  int get todayNetPesewas =>
-      (todayAmountPesewas - todayCommissionPesewas).clamp(0, 1 << 31);
+  /// Net of commission — what actually lands in the provider's wallet.
+  ///
+  /// Backend's `totalEarningsPesewas` is already `_sum(netPayoutPesewas)`
+  /// — i.e. gross minus commission. These are pass-throughs so callers
+  /// have a semantically named accessor without re-deducting commission.
+  int get todayNetPesewas => todayAmountPesewas;
 
-  int get weekNetPesewas =>
-      (weekAmountPesewas - weekCommissionPesewas).clamp(0, 1 << 31);
+  int get weekNetPesewas => weekAmountPesewas;
+
+  /// Gross revenue (pre-commission) — net plus the commission already
+  /// deducted upstream. Useful for "you billed X, we took Y, you keep Z"
+  /// breakdowns.
+  int get todayGrossPesewas => todayAmountPesewas + todayCommissionPesewas;
+
+  int get weekGrossPesewas => weekAmountPesewas + weekCommissionPesewas;
 
   /// Display today's earnings in GHS: ₵47, ₵1,250
   String get todayDisplay => _ghs(todayAmountPesewas);
