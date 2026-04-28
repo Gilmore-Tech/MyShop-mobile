@@ -86,6 +86,13 @@ final clientActiveRideRecoveryBridgeProvider = Provider<void>((ref) {
             '(attempt $attempt/$attempts, status ${e.statusCode}): '
             '${e.errorCode ?? e.message}');
         if (e.statusCode == 401 || e.statusCode == 403) return;
+      } on TypeError catch (e) {
+        // Parse error — retrying won't help. Bail.
+        debugPrint('[ClientActiveRideRecovery] listRides parse failed: $e');
+        return;
+      } on FormatException catch (e) {
+        debugPrint('[ClientActiveRideRecovery] listRides parse failed: $e');
+        return;
       } catch (e) {
         debugPrint('[ClientActiveRideRecovery] listRides crashed '
             '(attempt $attempt/$attempts): $e');
