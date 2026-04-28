@@ -131,12 +131,24 @@ class RideService {
   /// arrived_at_pickup | in_progress`), or null if none. Replaces the
   /// SharedPreferences-based recovery flow with an authoritative
   /// server-side lookup that survives reinstalls and device changes.
+  ///
+  /// The wire shape is double-wrapped: the controller returns
+  /// `{ data: ride | null }` and the global `TransformInterceptor` wraps
+  /// it again as `{ success, data: { data: ride | null } }`. After
+  /// stripping both envelopes we hand `Ride.fromJson` the bare ride map,
+  /// or null when there's no active ride.
   Future<Map<String, dynamic>?> getMyActiveRide() async {
     try {
       final response = await _dio.get('/drivers/me/active-ride');
-      final unwrapped = _unwrap(response);
-      // Backend returns `{ data: null }` when no active ride exists.
-      return unwrapped is Map<String, dynamic> ? unwrapped : null;
+      final outer = _unwrap(response);
+      if (outer is! Map<String, dynamic>) return null;
+      // Peel the controller's `{ data: ride }` wrapper. Older builds of
+      // the backend returned the bare ride here, so accept that shape too
+      // by checking for a top-level `id` before stripping.
+      if (outer.containsKey('id') && outer['id'] is String) return outer;
+      final inner = outer['data'];
+      if (inner is Map<String, dynamic>) return inner;
+      return null;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
     }
