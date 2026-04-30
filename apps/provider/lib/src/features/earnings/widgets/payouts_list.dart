@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-import '../../driver_home/data/earnings_service.dart';
-import '../../driver_home/providers/driver_earnings_provider.dart';
+import '../data/earnings_service.dart';
+import '../providers/earnings_providers.dart';
 
-/// Recent payouts list backed by `driverPayoutsProvider`. The underlying
+/// Recent payouts list backed by [payoutsProvider]. The underlying
 /// `/payments/payouts` endpoint is role-agnostic — backend filters by the
 /// authenticated user's role — so this widget is shared between the driver
 /// and artisan earnings screens.
@@ -16,7 +16,7 @@ class PayoutsList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final payouts = ref.watch(driverPayoutsProvider);
+    final payouts = ref.watch(payoutsProvider);
     return payouts.when(
       loading: () => const _PayoutsEmpty(
         title: 'Loading payouts…',

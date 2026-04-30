@@ -4,8 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/current_user_provider.dart';
-import '../../driver_home/data/earnings_service.dart';
-import '../../driver_home/providers/driver_earnings_provider.dart';
+import '../providers/earnings_providers.dart';
 
 /// Drives the "Request Payout" tap flow for both the driver and artisan
 /// dashboards.
@@ -16,17 +15,13 @@ import '../../driver_home/providers/driver_earnings_provider.dart';
 ///      method screen and bail.
 ///   2. POST `/payments/payouts/request` with the stored method via
 ///      [EarningsService.requestPayout] (idempotency key auto-generated).
-///   3. On success, invalidate `driverPayoutsProvider` so the new row
-///      appears immediately and `driverEarningsProvider` so the available
-///      balance updates. Show a "Payout requested" snackbar.
+///   3. On success, invalidate every earnings surface so the new payout row
+///      and the updated available balance both appear immediately. Show a
+///      "Payout requested" snackbar.
 ///   4. On failure, decode the backend's error code into the tailored copy
 ///      already baked into the [PayoutRequestResult] message.
 ///
-/// Returns `true` on success, `false` otherwise — callers don't usually
-/// need this, but it's handy for tests and could drive analytics later.
-/// The caller is responsible for any per-button loading indicator (see
-/// [requestProviderPayoutWith] for the typical ConsumerStatefulWidget
-/// flow).
+/// Returns `true` on success, `false` otherwise.
 Future<bool> requestProviderPayout(
   BuildContext context,
   WidgetRef ref,
@@ -59,8 +54,13 @@ Future<bool> requestProviderPayout(
   if (!context.mounted) return result.success;
 
   if (result.success) {
-    ref.invalidate(driverPayoutsProvider);
-    ref.invalidate(driverEarningsProvider);
+    // Invalidating each family provider invalidates all its instances —
+    // homepage card, every (role, period) summary key, every open report
+    // query, and the payouts list all refetch on their next watch.
+    ref.invalidate(payoutsProvider);
+    ref.invalidate(todayCardProvider);
+    ref.invalidate(earningsSummaryProvider);
+    ref.invalidate(earningsReportProvider);
     messenger.showSnackBar(
       const SnackBar(
         content: Text('Payout requested — funds usually arrive in 5 minutes.'),

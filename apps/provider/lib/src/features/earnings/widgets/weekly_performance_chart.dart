@@ -1,34 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-/// A clean weekly bar chart with Y-axis labels and gridlines.
+/// A clean bar chart with Y-axis labels and gridlines.
 ///
-/// Used inside the Earnings Dashboard "Weekly Performance" card.
-/// Matches the Figma design: dark slate bars, dotted gridlines,
-/// numeric Y-axis on the left, day labels Mon–Sun on the bottom.
+/// Renders the gap-filled `series[]` from the earnings summary or report
+/// endpoint as a vertical bar per bucket. Y-axis labels are derived from
+/// [maxValue] and rounded to a clean tick.
 class WeeklyPerformanceChart extends StatelessWidget {
   const WeeklyPerformanceChart({
     super.key,
     required this.values,
     required this.maxValue,
+    required this.xLabels,
   });
 
-  /// Seven values, one per day Mon–Sun.
+  /// One value per bar (left → right). Length must equal [xLabels.length].
   final List<double> values;
 
   /// Highest gridline value (e.g. 460).
   final double maxValue;
 
-  static const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  /// X-axis labels rendered under each bar (Mon..Sun, 1..30, week numbers).
+  final List<String> xLabels;
 
   @override
   Widget build(BuildContext context) {
-    assert(values.length == 7, 'Provide 7 values, one per day.');
+    assert(values.length == xLabels.length,
+        'values and xLabels must be the same length.');
 
-    // Y-axis label values (4 lines + 0)
     final step = maxValue / 4;
     final yLabels = List.generate(5, (i) => (maxValue - step * i).round())
-        .map((v) => v.toString())
+        .map(_compactLabel)
         .toList();
 
     return SizedBox(
@@ -38,7 +40,7 @@ class WeeklyPerformanceChart extends StatelessWidget {
         children: [
           // ── Y-axis labels ──
           SizedBox(
-            width: 32,
+            width: 36,
             child: Column(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -65,13 +67,11 @@ class WeeklyPerformanceChart extends StatelessWidget {
                 Expanded(
                   child: Stack(
                     children: [
-                      // Gridlines
                       Positioned.fill(
                         child: CustomPaint(
                           painter: _GridlinePainter(),
                         ),
                       ),
-                      // Bars
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                         child: Row(
@@ -80,7 +80,9 @@ class WeeklyPerformanceChart extends StatelessWidget {
                             for (var i = 0; i < values.length; i++) ...[
                               Expanded(
                                 child: _Bar(
-                                  fraction: (values[i] / maxValue).clamp(0, 1),
+                                  fraction: maxValue == 0
+                                      ? 0
+                                      : (values[i] / maxValue).clamp(0, 1),
                                 ),
                               ),
                               if (i < values.length - 1) const SizedBox(width: 8),
@@ -92,14 +94,16 @@ class WeeklyPerformanceChart extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                // X-axis labels
                 Row(
                   children: [
-                    for (var i = 0; i < _days.length; i++) ...[
+                    for (var i = 0; i < xLabels.length; i++) ...[
                       Expanded(
                         child: Center(
                           child: Text(
-                            _days[i],
+                            xLabels[i],
+                            maxLines: 1,
+                            overflow: TextOverflow.fade,
+                            softWrap: false,
                             style: MyShopTypography.caption.copyWith(
                               fontSize: 11,
                               color: MyShopColors.textSecondary,
@@ -107,7 +111,7 @@ class WeeklyPerformanceChart extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (i < _days.length - 1) const SizedBox(width: 8),
+                      if (i < xLabels.length - 1) const SizedBox(width: 8),
                     ],
                   ],
                 ),
@@ -117,6 +121,14 @@ class WeeklyPerformanceChart extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Compacts axis labels so a 12,000 value renders as "12k" instead of
+  /// blowing past the 36px Y-axis lane.
+  static String _compactLabel(int v) {
+    if (v >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M';
+    if (v >= 1000) return '${(v / 1000).toStringAsFixed(v % 1000 == 0 ? 0 : 1)}k';
+    return v.toString();
   }
 }
 
@@ -153,7 +165,6 @@ class _GridlinePainter extends CustomPainter {
       ..color = MyShopColors.divider
       ..strokeWidth = 0.5;
 
-    // Draw 5 horizontal gridlines (top, 3 middle, bottom)
     for (var i = 0; i < 5; i++) {
       final y = size.height * i / 4;
       _drawDashedLine(canvas, Offset(0, y), Offset(size.width, y), paint);

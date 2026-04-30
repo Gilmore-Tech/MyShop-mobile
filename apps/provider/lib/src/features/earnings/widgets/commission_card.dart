@@ -1,36 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-/// Weekly commission + net-earnings breakdown card.
+/// Commission + net-earnings breakdown card.
 ///
-/// Shared between the driver and artisan dashboards. The backend reports
-/// `weekCommissionPesewas` directly when it has Payment rows for the user;
-/// we fall back to a 20% estimate of the gross when it doesn't (fresh
-/// account that hasn't yet earned anything).
+/// Shared between the driver and artisan dashboards. Driven by the report
+/// endpoint's `grossEarningsPesewas` / `commissionChargedPesewas` /
+/// `netEarningsPesewas` for whatever window the caller chose (defaults to
+/// the week).
 class CommissionCard extends StatelessWidget {
   const CommissionCard({
     super.key,
-    required this.weekPesewas,
-    required this.weekCommissionPesewas,
-    required this.weekNetPesewas,
+    required this.grossPesewas,
+    required this.commissionPesewas,
+    required this.netPesewas,
+    this.title = 'Commission & Tax',
   });
 
-  /// Gross revenue (pre-commission) for the week.
-  final int weekPesewas;
+  /// Gross revenue for the window (pre-commission, includes cash + in-app).
+  final int grossPesewas;
 
-  /// Commission already deducted by the backend for the week.
-  final int weekCommissionPesewas;
+  /// Commission already deducted by the backend.
+  final int commissionPesewas;
 
-  /// Net take-home for the week (gross minus commission). Trusts the
-  /// backend — no fallback subtraction here, which used to double-deduct
-  /// the commission whenever the backend reported a real value.
-  final int weekNetPesewas;
+  /// Net take-home (gross minus commission). Trusts the backend — no
+  /// fallback subtraction here, which used to double-deduct the commission
+  /// whenever the backend reported a real value.
+  final int netPesewas;
+
+  final String title;
 
   @override
   Widget build(BuildContext context) {
-    final commission = weekCommissionPesewas;
-    final net = weekNetPesewas;
-
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),
       decoration: BoxDecoration(
@@ -46,9 +46,9 @@ class CommissionCard extends StatelessWidget {
               const Icon(Icons.swap_horiz,
                   size: 18, color: MyShopColors.textPrimary),
               const SizedBox(width: 6),
-              const Text(
-                'Commission & Tax',
-                style: TextStyle(
+              Text(
+                title,
+                style: const TextStyle(
                   fontFamily: 'Raleway',
                   fontSize: 16,
                   fontWeight: FontWeight.w900,
@@ -73,15 +73,20 @@ class CommissionCard extends StatelessWidget {
           ),
           const SizedBox(height: MyShopSpacing.md),
           _Row(
+            label: 'Gross Revenue',
+            value: 'GHS ${_fmtGhs(grossPesewas)}',
+          ),
+          const SizedBox(height: 12),
+          _Row(
             label: 'App Commission (20%)',
-            value: '- GHS ${_fmtGhs(commission)}',
+            value: '- GHS ${_fmtGhs(commissionPesewas)}',
           ),
           const SizedBox(height: 12),
           const Divider(height: 1, thickness: 0.5, color: MyShopColors.divider),
           const SizedBox(height: 12),
           _Row(
             label: 'Net Earnings',
-            value: 'GHS ${_fmtGhs(net)}',
+            value: 'GHS ${_fmtGhs(netPesewas)}',
             bold: true,
           ),
         ],

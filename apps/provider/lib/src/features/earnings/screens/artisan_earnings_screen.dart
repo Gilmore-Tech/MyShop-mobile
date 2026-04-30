@@ -3,10 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-import '../../artisan_home/providers/artisan_earnings_provider.dart';
 import '../../auth/providers/current_user_provider.dart';
-import '../../driver_home/data/earnings_service.dart';
+import '../data/earnings_service.dart';
 import '../data/ratings_service.dart';
+import '../providers/earnings_providers.dart';
 import '../providers/ratings_provider.dart';
 import '../widgets/commission_card.dart';
 import '../widgets/payout_request_flow.dart';
@@ -16,7 +16,12 @@ import '../widgets/weekly_performance_card.dart';
 /// Artisan-side earnings details screen.
 ///
 /// PRD Reference: PRD 5.4 — provider earnings & payouts.
-/// Fetches real earnings from GET /payments/earnings?period=today|week|month.
+///
+/// Wires the new earnings split:
+///   - summary (selected period) → top balance card + sparkline + period-net
+///   - report  (week)            → commission card + average fare context
+const _kArtisanRole = EarningsRole.artisan;
+
 class ArtisanEarningsScreen extends ConsumerStatefulWidget {
   const ArtisanEarningsScreen({super.key});
 
@@ -27,25 +32,13 @@ class ArtisanEarningsScreen extends ConsumerStatefulWidget {
 
 class _ArtisanEarningsScreenState
     extends ConsumerState<ArtisanEarningsScreen> {
-  _Period _period = _Period.weekly;
-
-  String get _periodKey {
-    switch (_period) {
-      case _Period.today:
-        return 'today';
-      case _Period.weekly:
-        return 'week';
-      case _Period.monthly:
-        return 'month';
-    }
-  }
+  EarningsPeriod _period = EarningsPeriod.week;
 
   @override
   Widget build(BuildContext context) {
-    final earningsAsync =
-        ref.watch(artisanEarningsByPeriodProvider(_periodKey));
-    final user = ref.watch(currentUserProvider);
-    final ap = user?.artisanProfile;
+    final summaryKey =
+        EarningsSummaryKey(role: _kArtisanRole, period: _period);
+    final summaryAsync = ref.watch(earningsSummaryProvider(summaryKey));
 
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
@@ -55,7 +48,7 @@ class _ArtisanEarningsScreenState
           children: [
             _Header(),
             Expanded(
-              child: earningsAsync.when(
+              child: summaryAsync.when(
                 loading: () => const Center(
                   child: CircularProgressIndicator(
                     color: MyShopColors.primaryGold,
@@ -78,18 +71,17 @@ class _ArtisanEarningsScreenState
                       const SizedBox(height: MyShopSpacing.sm),
                       TextButton(
                         onPressed: () => ref.invalidate(
-                          artisanEarningsByPeriodProvider(_periodKey),
+                          earningsSummaryProvider(summaryKey),
                         ),
                         child: const Text('Retry'),
                       ),
                     ],
                   ),
                 ),
-                data: (earnings) => _EarningsContent(
-                  earnings: earnings,
+                data: (summary) => _EarningsContent(
+                  summary: summary,
                   period: _period,
                   onPeriodChanged: (p) => setState(() => _period = p),
-                  jobsDone: ap?.completedJobsCount ?? 0,
                 ),
               ),
             ),
@@ -103,49 +95,38 @@ class _ArtisanEarningsScreenState
 
 class _EarningsContent extends ConsumerWidget {
   const _EarningsContent({
-    required this.earnings,
+    required this.summary,
     required this.period,
     required this.onPeriodChanged,
-    required this.jobsDone,
   });
 
-  final DriverEarnings earnings;
-  final _Period period;
-  final ValueChanged<_Period> onPeriodChanged;
-  final int jobsDone;
+  final EarningsSummary summary;
+  final EarningsPeriod period;
+  final ValueChanged<EarningsPeriod> onPeriodChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // The "Available" headline reflects the backend's authoritative
-    // withdrawable balance (escrow-released, not yet paid out) — what the
-    // payout endpoint will actually accept.
-    //
-    // For the selected period we surface gross (pre-commission) revenue
-    // and the real commission the backend recorded — never the
-    // 20%-of-net approximation that used to live here, which silently
-    // showed a smaller fee than the user was actually charged.
-    final periodNetPesewas = period == _Period.today
-        ? earnings.todayAmountPesewas
-        : earnings.weekAmountPesewas;
-    final periodCommissionPesewas = period == _Period.today
-        ? earnings.todayCommissionPesewas
-        : earnings.weekCommissionPesewas;
-    final periodGrossPesewas = periodNetPesewas + periodCommissionPesewas;
+    // Top headline reflects the backend's authoritative withdrawable balance
+    // — what the payout endpoint will actually accept. The selected-period
+    // net earnings + a weekly commission card live below it.
+    final user = ref.watch(currentUserProvider);
+    final jobsDone = user?.artisanProfile?.completedJobsCount ?? 0;
+    final available = summary.availableBalancePesewas / 100;
+    final periodNet = summary.netEarningsPesewas / 100;
 
-    final totalGhs = periodGrossPesewas / 100;
-    final commissionGhs = periodCommissionPesewas / 100;
-    final availableGhs = earnings.availableBalancePesewas / 100;
+    // Commission breakdown always uses the week regardless of the period
+    // toggle above (which drives the headline). Riverpod caches by family
+    // key so this is one extra request only when the user switches off the
+    // week.
+    final weekReportQuery = const EarningsReportQuery.preset(
+      role: _kArtisanRole,
+      period: EarningsPeriod.week,
+    );
+    final weekReportAsync = ref.watch(earningsReportProvider(weekReportQuery));
+    final weekReport = weekReportAsync.valueOrNull;
 
-    // Weekly chart and commission breakdown always show this-week data
-    // regardless of the segmented control above (which drives the balance
-    // card). Riverpod caches by family key so this is at most one extra
-    // network call when the user is viewing a non-week period.
-    final weekAsync = ref.watch(artisanEarningsByPeriodProvider('week'));
-    final week = weekAsync.valueOrNull ?? DriverEarnings.empty;
-
-    final ratings =
-        ref.watch(providerRatingsProvider).valueOrNull ??
-            ProviderRatingsSummary.empty;
+    final ratings = ref.watch(providerRatingsProvider).valueOrNull ??
+        ProviderRatingsSummary.empty;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(
@@ -158,8 +139,8 @@ class _EarningsContent extends ConsumerWidget {
         _PeriodSegmented(value: period, onChanged: onPeriodChanged),
         const SizedBox(height: MyShopSpacing.md),
         _BalanceCard(
-          available: availableGhs,
-          totalRevenue: totalGhs,
+          available: available,
+          periodNet: periodNet,
           jobsDone: jobsDone,
           ratings: ratings,
         ),
@@ -168,39 +149,42 @@ class _EarningsContent extends ConsumerWidget {
           children: [
             Expanded(
               child: _MiniStatCard(
-                label: 'JOBS',
-                value: earnings.todayTrips.toString(),
-                subtitle: 'Today',
+                label: 'JOBS THIS WEEK',
+                value: '${weekReport?.bookingsCompleted ?? 0}',
+                subtitle: 'Completed',
               ),
             ),
             const SizedBox(width: MyShopSpacing.md),
             Expanded(
               child: _MiniStatCard(
-                label: 'PLATFORM FEE',
-                value: 'GH₵ ${commissionGhs.toStringAsFixed(2)}',
-                subtitle: '20% commission',
+                label: 'AVG FARE',
+                value:
+                    'GH₵ ${((weekReport?.averageFarePesewas ?? 0) / 100).toStringAsFixed(2)}',
+                subtitle: 'Per job',
               ),
             ),
           ],
         ),
         const SizedBox(height: MyShopSpacing.md),
 
-        // Weekly performance chart (same widget the driver uses)
+        // Performance chart from the summary's gap-filled series
         WeeklyPerformanceCard(
-          peakHours: week.peakHours,
-          emptyLabel: 'No jobs yet this week',
+          series: summary.series,
+          granularity: summary.granularity,
+          subtitle: _seriesSubtitle(period),
+          emptyLabel: 'No jobs yet this period',
         ),
         const SizedBox(height: MyShopSpacing.md),
 
-        // Commission & Tax breakdown (weekly)
+        // Commission & Tax (week)
         CommissionCard(
-          weekPesewas: week.weekGrossPesewas,
-          weekCommissionPesewas: week.weekCommissionPesewas,
-          weekNetPesewas: week.weekNetPesewas,
+          grossPesewas: weekReport?.grossEarningsPesewas ?? 0,
+          commissionPesewas: weekReport?.commissionChargedPesewas ?? 0,
+          netPesewas: weekReport?.netEarningsPesewas ?? 0,
         ),
         const SizedBox(height: MyShopSpacing.lg),
 
-        // Recent Payouts header + list (backend filters by role)
+        // Recent Payouts
         Row(
           children: [
             const Icon(Icons.history,
@@ -222,6 +206,17 @@ class _EarningsContent extends ConsumerWidget {
         const SizedBox(height: MyShopSpacing.lg),
       ],
     );
+  }
+
+  static String _seriesSubtitle(EarningsPeriod p) {
+    switch (p) {
+      case EarningsPeriod.today:
+        return 'Net earnings today';
+      case EarningsPeriod.week:
+        return 'Net earnings, last 7 days';
+      case EarningsPeriod.month:
+        return 'Net earnings, last 30 days';
+    }
   }
 }
 
@@ -257,13 +252,11 @@ class _Header extends StatelessWidget {
 // Period segmented control
 // ---------------------------------------------------------------------------
 
-enum _Period { today, weekly, monthly }
-
 class _PeriodSegmented extends StatelessWidget {
   const _PeriodSegmented({required this.value, required this.onChanged});
 
-  final _Period value;
-  final ValueChanged<_Period> onChanged;
+  final EarningsPeriod value;
+  final ValueChanged<EarningsPeriod> onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -275,15 +268,15 @@ class _PeriodSegmented extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _seg('Today', _Period.today),
-          _seg('Weekly', _Period.weekly),
-          _seg('Monthly', _Period.monthly),
+          _seg('Today', EarningsPeriod.today),
+          _seg('Weekly', EarningsPeriod.week),
+          _seg('Monthly', EarningsPeriod.month),
         ],
       ),
     );
   }
 
-  Widget _seg(String label, _Period p) {
+  Widget _seg(String label, EarningsPeriod p) {
     final selected = value == p;
     return Expanded(
       child: GestureDetector(
@@ -328,13 +321,13 @@ class _PeriodSegmented extends StatelessWidget {
 class _BalanceCard extends StatelessWidget {
   const _BalanceCard({
     required this.available,
-    required this.totalRevenue,
+    required this.periodNet,
     required this.jobsDone,
     required this.ratings,
   });
 
   final double available;
-  final double totalRevenue;
+  final double periodNet;
   final int jobsDone;
   final ProviderRatingsSummary ratings;
 
@@ -353,7 +346,7 @@ class _BalanceCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'Net Earnings',
+                  'Available Balance',
                   style: MyShopTypography.body1.copyWith(
                     color:
                         MyShopColors.textOnDarkSlate.withValues(alpha: 0.85),
@@ -386,8 +379,8 @@ class _BalanceCard extends StatelessWidget {
             children: [
               Expanded(
                 child: _miniStat(
-                  label: 'GROSS REVENUE',
-                  value: 'GH₵ ${totalRevenue.toStringAsFixed(2)}',
+                  label: 'PERIOD NET',
+                  value: 'GH₵ ${periodNet.toStringAsFixed(2)}',
                 ),
               ),
               Expanded(
@@ -567,11 +560,17 @@ class _PayoutFooterState extends ConsumerState<_PayoutFooter> {
   @override
   Widget build(BuildContext context) {
     // Pre-flight balance gate driven by the backend's authoritative
-    // `availableBalancePesewas` — the same number the payout endpoint
-    // checks server-side, so the gate matches the eventual response.
-    final weekAsync = ref.watch(artisanEarningsByPeriodProvider('week'));
+    // `availableBalancePesewas` — same number the payout endpoint checks
+    // server-side. We read it from the week summary because that's the
+    // default tab; switching periods doesn't move the available balance
+    // (it's period-agnostic per the backend contract).
+    const summaryKey = EarningsSummaryKey(
+      role: _kArtisanRole,
+      period: EarningsPeriod.week,
+    );
+    final summaryAsync = ref.watch(earningsSummaryProvider(summaryKey));
     final available =
-        weekAsync.whenOrNull(data: (e) => e.availableBalancePesewas) ?? 0;
+        summaryAsync.whenOrNull(data: (s) => s.availableBalancePesewas) ?? 0;
     final belowThreshold = available < kMinPayoutPesewas;
     final canRequest = !_isRequesting && !belowThreshold;
 

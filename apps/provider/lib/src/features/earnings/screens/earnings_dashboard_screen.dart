@@ -1,28 +1,42 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/current_user_provider.dart';
-import '../../driver_home/data/earnings_service.dart';
-import '../../driver_home/providers/driver_earnings_provider.dart';
 import '../../profile/providers/verification_provider.dart';
+import '../data/earnings_service.dart';
+import '../providers/earnings_providers.dart';
 import '../providers/ratings_provider.dart';
 import '../widgets/commission_card.dart';
 import '../widgets/payout_request_flow.dart';
 import '../widgets/payouts_list.dart';
 import '../widgets/weekly_performance_card.dart';
 
-/// Earnings dashboard — balance card, stats, weekly chart, commission, payouts.
+/// Earnings dashboard — balance card, stats, performance chart, commission, payouts.
 ///
 /// Figma: node 213:12474
 /// PRD Reference: PRD 5.4
+///
+/// Backed by two endpoints in parallel:
+///   - summary (week)  → top balance card + sparkline + today/week mini stats
+///   - report  (week)  → commission breakdown card
 class EarningsDashboardScreen extends ConsumerWidget {
   const EarningsDashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
-    final earningsAsync = ref.watch(driverEarningsProvider);
+    final role = ref.watch(activeEarningsRoleProvider);
+    final summaryKey =
+        EarningsSummaryKey(role: role, period: EarningsPeriod.week);
+    final reportQuery = EarningsReportQuery.preset(
+      role: role,
+      period: EarningsPeriod.week,
+    );
+    final summaryAsync = ref.watch(earningsSummaryProvider(summaryKey));
+    final reportAsync = ref.watch(earningsReportProvider(reportQuery));
+
     final photoState = ref.watch(localProfilePhotoProvider);
     final backendPhotoUrl = user?.profilePhotoUrl;
     final ImageProvider? avatarImage = photoState.localFile != null
@@ -31,21 +45,20 @@ class EarningsDashboardScreen extends ConsumerWidget {
             ? NetworkImage(backendPhotoUrl ?? photoState.cloudinaryUrl!)
             : null;
 
-    final earnings = earningsAsync.valueOrNull;
-    final todayAmount = earnings?.todayAmountPesewas ?? 0;
-    final weekAmount = earnings?.weekAmountPesewas ?? 0;
-    final weekCommission = earnings?.weekCommissionPesewas ?? 0;
-    final weekNet = earnings?.weekNetPesewas ?? 0;
-    final availableBalance = earnings?.availableBalancePesewas ?? 0;
-    final todayTrips = earnings?.todayTrips ?? 0;
-    final peakHours = earnings?.peakHours ?? const [];
+    final summary = summaryAsync.valueOrNull;
+    final report = reportAsync.valueOrNull;
+
+    final availableBalance = summary?.availableBalancePesewas ?? 0;
+    final todayAvailable = summary?.todayAvailableBalancePesewas ?? 0;
+    final weeklyAvailable = summary?.weeklyAvailableBalancePesewas ?? 0;
+    final tripsCompleted = report?.bookingsCompleted ?? 0;
     final isVerified = user?.verificationStatus == 'approved';
 
     // Surface a clear failure banner instead of letting "API down" look
     // identical to "driver hasn't earned yet" — the dashboard's all-zeros
     // state was masking real production failures.
-    final loadError = earningsAsync.hasError;
-    final isLoading = earningsAsync.isLoading && earnings == null;
+    final loadError = summaryAsync.hasError;
+    final isLoading = summaryAsync.isLoading && summary == null;
 
     final ratingsAsync = ref.watch(providerRatingsProvider);
     final ratings = ratingsAsync.valueOrNull;
@@ -60,218 +73,231 @@ class EarningsDashboardScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
       body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            // ── Header ──
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                  MyShopSpacing.md, MyShopSpacing.md, MyShopSpacing.md, MyShopSpacing.md),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    const Text('Earnings',
-                        style: TextStyle(
-                            fontFamily: 'Raleway',
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            color: MyShopColors.textPrimary,
-                            letterSpacing: -0.5)),
-                    Row(children: [
-                      Icon(
-                          isVerified ? Icons.check_circle_outline : Icons.access_time,
-                          size: 12,
-                          color: isVerified ? MyShopColors.success : MyShopColors.textSecondary),
-                      const SizedBox(width: 4),
-                      Text(isVerified ? 'Verified Provider' : 'Pending Verification',
-                          style: MyShopTypography.body2.copyWith(fontSize: 11)),
-                    ]),
-                  ]),
-                  Row(children: [
-                    Stack(children: [
-                      const Icon(Icons.notifications_outlined,
-                          size: 24, color: MyShopColors.textPrimary),
-                      Positioned(
-                        right: 0,
-                        top: 0,
-                        child: Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                              color: MyShopColors.error,
-                              shape: BoxShape.circle),
-                        ),
-                      ),
-                    ]),
-                    const SizedBox(width: MyShopSpacing.md),
-                    CircleAvatar(
-                      radius: 18,
-                      backgroundColor: const Color(0xFFFCEAE1),
-                      backgroundImage: avatarImage,
-                      child: avatarImage == null
-                          ? const Icon(Icons.person,
-                              size: 18, color: MyShopColors.textSecondary)
-                          : null,
-                    ),
-                  ]),
-                ],
-              ),
-            ),
-            const Divider(
-                height: 0.5, thickness: 0.5, color: MyShopColors.divider),
-            const SizedBox(height: MyShopSpacing.md),
-
-            // Diagnostic banners — surface "API down" or "still loading"
-            // states explicitly so the all-zeros render below is never
-            // mistaken for genuine zero earnings.
-            if (loadError)
+        child: RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(earningsSummaryProvider);
+            ref.invalidate(earningsReportProvider);
+            ref.invalidate(payoutsProvider);
+            await ref.read(earningsSummaryProvider(summaryKey).future);
+          },
+          child: ListView(
+            padding: EdgeInsets.zero,
+            children: [
+              // ── Header ──
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-                child: _EarningsErrorBanner(
-                  onRetry: () => ref.invalidate(driverEarningsProvider),
-                ),
-              )
-            else if (isLoading)
-              const Padding(
-                padding:
-                    EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-                child: _EarningsLoadingBanner(),
-              ),
-            if (loadError || isLoading)
-              const SizedBox(height: MyShopSpacing.sm),
-
-            // ── Balance card ──
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-              child: _BalanceCard(
-                availablePesewas: availableBalance,
-                todayPesewas: todayAmount,
-                weekPesewas: weekAmount,
-              ),
-            ),
-            const SizedBox(height: MyShopSpacing.md),
-
-            // ── Trips + Rating stats ──
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-              child: Row(children: [
-                Expanded(
-                    child: _StatCard(
-                        icon: Icons.trending_up,
-                        label: 'TRIPS',
-                        value: '$todayTrips',
-                        subtitle: 'Today',
-                        subtitleColor: MyShopColors.textSecondary)),
-                const SizedBox(width: MyShopSpacing.md),
-                Expanded(
-                    child: _StatCard(
-                        icon: Icons.star_rounded,
-                        label: 'RATING',
-                        value: ratingValue,
-                        subtitle: ratingSubtitle,
-                        subtitleColor: MyShopColors.textSecondary)),
-              ]),
-            ),
-            const SizedBox(height: MyShopSpacing.md),
-
-            // ── Weekly performance chart ──
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-              child: WeeklyPerformanceCard(peakHours: peakHours),
-            ),
-            const SizedBox(height: MyShopSpacing.md),
-
-            // ── Commission & Tax card ──
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-              child: CommissionCard(
-                weekPesewas: weekAmount + weekCommission,
-                weekCommissionPesewas: weekCommission,
-                weekNetPesewas: weekNet,
-              ),
-            ),
-            const SizedBox(height: MyShopSpacing.lg),
-
-            // ── Recent Payouts ──
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(children: [
-                    const Icon(Icons.history,
-                        size: 18, color: MyShopColors.textPrimary),
-                    const SizedBox(width: 6),
-                    const Text('Recent Payouts',
-                        style: TextStyle(
-                            fontFamily: 'Raleway',
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
-                            color: MyShopColors.textPrimary)),
-                  ]),
-                  Text('See All',
-                      style: MyShopTypography.body2.copyWith(
-                          color: MyShopColors.primaryGold,
-                          fontWeight: FontWeight.w700)),
-                ],
-              ),
-            ),
-            const SizedBox(height: MyShopSpacing.sm),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-              child: PayoutsList(),
-            ),
-            const SizedBox(height: MyShopSpacing.md),
-
-            // ── Payment Verification banner ──
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-              child: Container(
-                padding: const EdgeInsets.all(MyShopSpacing.md),
-                decoration: BoxDecoration(
-                  color: MyShopColors.surfaceWhite,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: MyShopColors.primaryGold),
-                ),
+                padding: const EdgeInsets.fromLTRB(MyShopSpacing.md,
+                    MyShopSpacing.md, MyShopSpacing.md, MyShopSpacing.md),
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: MyShopColors.surfaceGrey,
-                        borderRadius: BorderRadius.circular(6),
+                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('Earnings',
+                          style: TextStyle(
+                              fontFamily: 'Raleway',
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: MyShopColors.textPrimary,
+                              letterSpacing: -0.5)),
+                      Row(children: [
+                        Icon(
+                            isVerified ? Icons.check_circle_outline : Icons.access_time,
+                            size: 12,
+                            color: isVerified ? MyShopColors.success : MyShopColors.textSecondary),
+                        const SizedBox(width: 4),
+                        Text(isVerified ? 'Verified Provider' : 'Pending Verification',
+                            style: MyShopTypography.body2.copyWith(fontSize: 11)),
+                      ]),
+                    ]),
+                    Row(children: [
+                      Stack(children: [
+                        const Icon(Icons.notifications_outlined,
+                            size: 24, color: MyShopColors.textPrimary),
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                                color: MyShopColors.error,
+                                shape: BoxShape.circle),
+                          ),
+                        ),
+                      ]),
+                      const SizedBox(width: MyShopSpacing.md),
+                      CircleAvatar(
+                        radius: 18,
+                        backgroundColor: const Color(0xFFFCEAE1),
+                        backgroundImage: avatarImage,
+                        child: avatarImage == null
+                            ? const Icon(Icons.person,
+                                size: 18, color: MyShopColors.textSecondary)
+                            : null,
                       ),
-                      child: const Icon(Icons.info_outline,
-                          size: 16, color: MyShopColors.textPrimary),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('Payment Verification',
-                                style: TextStyle(
-                                    fontFamily: 'Raleway',
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w900,
-                                    color: MyShopColors.textPrimary)),
-                            const SizedBox(height: 4),
-                            Text(
-                                'Standard bank transfers can take up to 24 hours. Use MoMo for instant availability. Contact support for disputes.',
-                                style: MyShopTypography.body2
-                                    .copyWith(fontSize: 11, height: 1.5)),
-                          ]),
-                    ),
+                    ]),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: MyShopSpacing.xxl),
-          ],
+              const Divider(
+                  height: 0.5, thickness: 0.5, color: MyShopColors.divider),
+              const SizedBox(height: MyShopSpacing.md),
+
+              // Diagnostic banners — surface "API down" or "still loading"
+              // states explicitly so the all-zeros render below is never
+              // mistaken for genuine zero earnings.
+              if (loadError)
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                  child: _EarningsErrorBanner(
+                    onRetry: () =>
+                        ref.invalidate(earningsSummaryProvider(summaryKey)),
+                  ),
+                )
+              else if (isLoading)
+                const Padding(
+                  padding:
+                      EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                  child: _EarningsLoadingBanner(),
+                ),
+              if (loadError || isLoading)
+                const SizedBox(height: MyShopSpacing.sm),
+
+              // ── Balance card ──
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                child: _BalanceCard(
+                  availablePesewas: availableBalance,
+                  todayPesewas: todayAvailable,
+                  weekPesewas: weeklyAvailable,
+                ),
+              ),
+              const SizedBox(height: MyShopSpacing.md),
+
+              // ── Trips + Rating stats ──
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                child: Row(children: [
+                  Expanded(
+                      child: _StatCard(
+                          icon: Icons.trending_up,
+                          label: role == EarningsRole.driver ? 'TRIPS' : 'JOBS',
+                          value: '$tripsCompleted',
+                          subtitle: 'This week',
+                          subtitleColor: MyShopColors.textSecondary)),
+                  const SizedBox(width: MyShopSpacing.md),
+                  Expanded(
+                      child: _StatCard(
+                          icon: Icons.star_rounded,
+                          label: 'RATING',
+                          value: ratingValue,
+                          subtitle: ratingSubtitle,
+                          subtitleColor: MyShopColors.textSecondary)),
+                ]),
+              ),
+              const SizedBox(height: MyShopSpacing.md),
+
+              // ── Performance chart (gap-filled daily series) ──
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                child: WeeklyPerformanceCard(
+                  series: summary?.series ?? const [],
+                  granularity: summary?.granularity ?? EarningsGranularity.day,
+                  subtitle: 'Net earnings, last 7 days',
+                ),
+              ),
+              const SizedBox(height: MyShopSpacing.md),
+
+              // ── Commission & Tax card ──
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                child: CommissionCard(
+                  grossPesewas: report?.grossEarningsPesewas ?? 0,
+                  commissionPesewas: report?.commissionChargedPesewas ?? 0,
+                  netPesewas: report?.netEarningsPesewas ?? 0,
+                ),
+              ),
+              const SizedBox(height: MyShopSpacing.lg),
+
+              // ── Recent Payouts ──
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(children: [
+                      const Icon(Icons.history,
+                          size: 18, color: MyShopColors.textPrimary),
+                      const SizedBox(width: 6),
+                      const Text('Recent Payouts',
+                          style: TextStyle(
+                              fontFamily: 'Raleway',
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: MyShopColors.textPrimary)),
+                    ]),
+                    Text('See All',
+                        style: MyShopTypography.body2.copyWith(
+                            color: MyShopColors.primaryGold,
+                            fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: MyShopSpacing.sm),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                child: PayoutsList(),
+              ),
+              const SizedBox(height: MyShopSpacing.md),
+
+              // ── Payment Verification banner ──
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                child: Container(
+                  padding: const EdgeInsets.all(MyShopSpacing.md),
+                  decoration: BoxDecoration(
+                    color: MyShopColors.surfaceWhite,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: MyShopColors.primaryGold),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: MyShopColors.surfaceGrey,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Icon(Icons.info_outline,
+                            size: 16, color: MyShopColors.textPrimary),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Payment Verification',
+                                  style: TextStyle(
+                                      fontFamily: 'Raleway',
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w900,
+                                      color: MyShopColors.textPrimary)),
+                              const SizedBox(height: 4),
+                              Text(
+                                  'Standard bank transfers can take up to 24 hours. Use MoMo for instant availability. Contact support for disputes.',
+                                  style: MyShopTypography.body2
+                                      .copyWith(fontSize: 11, height: 1.5)),
+                            ]),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: MyShopSpacing.xxl),
+            ],
+          ),
         ),
       ),
     );
@@ -280,8 +306,8 @@ class EarningsDashboardScreen extends ConsumerWidget {
 
 // ─── Diagnostic banners ─────────────────────────────────────────────────────
 
-/// Surfaced when [driverEarningsProvider] is in error state — without it,
-/// the dashboard's `?? 0` fallbacks made an API outage look identical to
+/// Surfaced when the summary endpoint is in error state — without it, the
+/// dashboard's `?? 0` fallbacks would make an API outage look identical to
 /// "driver has zero earnings", which is exactly how a recent prod
 /// regression hid for hours.
 class _EarningsErrorBanner extends StatelessWidget {
@@ -379,6 +405,7 @@ class _BalanceCard extends ConsumerStatefulWidget {
     required this.todayPesewas,
     required this.weekPesewas,
   });
+
   /// Authoritative withdrawable balance from the backend (escrow-released,
   /// not yet paid out). Drives the headline number and the payout-button
   /// gate so the UI matches what the payout endpoint will accept.
@@ -405,10 +432,6 @@ class _BalanceCardState extends ConsumerState<_BalanceCard> {
 
   @override
   Widget build(BuildContext context) {
-    // Headline shows the authoritative withdrawable balance from the
-    // backend (escrow-released, not yet paid out). Today/week totals are
-    // *earnings* (escrowed + completed) — useful context but not what
-    // the user can actually withdraw.
     final totalDisplay = _fmtGhs(widget.availablePesewas);
     final todayDisplay = _fmtGhs(widget.todayPesewas);
     final weekDisplay = _fmtGhs(widget.weekPesewas);

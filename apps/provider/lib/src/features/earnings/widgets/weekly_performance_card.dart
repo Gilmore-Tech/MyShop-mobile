@@ -5,42 +5,39 @@ import 'package:shared_ui/shared_ui.dart';
 
 import 'weekly_performance_chart.dart';
 
-/// Card wrapping the weekly bar chart with the section title, "View Reports"
-/// CTA, and an empty-state when the user has no activity this week.
+/// Card wrapping the bar chart with the section title, "View Reports" CTA,
+/// and an empty-state when the user has no activity in the given window.
 ///
-/// Folds the backend's per-hour `peakHours` rows into a 7-day count
-/// (Mon..Sun) so the chart can render without each caller repeating the
-/// remap. The backend reports `dayOfWeek` in Postgres' Sun=0..Sat=6
-/// convention; the chart's visual order is Mon=0..Sun=6.
+/// Backed by the gap-filled `series[]` from
+/// `GET /v1/payments/earnings/summary` (or any caller that gives us a list
+/// of `(bucketStart, netPesewas)` points). Backend already inserts
+/// zero-net buckets for inactive days, so callers can pass the response
+/// straight through.
 ///
-/// Shared between the driver and artisan earnings screens — both backends
-/// return the same `peakHours` shape so the card is fully reusable.
+/// Shared between the driver and artisan earnings screens.
 class WeeklyPerformanceCard extends StatelessWidget {
   const WeeklyPerformanceCard({
     super.key,
-    required this.peakHours,
-    this.subtitle = 'Earnings across last 7 days',
-    this.emptyLabel = 'No activity yet this week',
+    required this.series,
+    required this.granularity,
+    this.subtitle = 'Earnings across the selected period',
+    this.emptyLabel = 'No activity yet this period',
   });
 
-  final List<EarningsPeakHour> peakHours;
+  /// Gap-filled series — one bucket per [granularity] step. May be empty.
+  final List<EarningsSummaryPoint> series;
+
+  /// Drives the X-axis label format (Mon..Sun for day, week numbers for
+  /// week, month names for month).
+  final EarningsGranularity granularity;
+
   final String subtitle;
   final String emptyLabel;
 
-  List<double> get _weeklyCounts {
-    final perDay = List<double>.filled(7, 0);
-    for (final row in peakHours) {
-      // Postgres Sun=0..Sat=6 → Mon=0..Sun=6 (Sun maps to slot 6).
-      final mondayIndex = (row.dayOfWeek + 6) % 7;
-      perDay[mondayIndex] += row.count.toDouble();
-    }
-    return perDay;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final counts = _weeklyCounts;
-    final maxCount = counts.fold<double>(0, (m, v) => v > m ? v : m);
+    final values = series.map((p) => p.netPesewas / 100).toList(growable: false);
+    final maxValue = values.fold<double>(0, (m, v) => v > m ? v : m);
 
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),
@@ -60,7 +57,7 @@ class WeeklyPerformanceCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Weekly Performance',
+                      'Performance',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -105,7 +102,7 @@ class WeeklyPerformanceCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: MyShopSpacing.md),
-          if (maxCount == 0)
+          if (series.isEmpty || maxValue == 0)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 28),
               child: Center(
@@ -119,13 +116,39 @@ class WeeklyPerformanceCard extends StatelessWidget {
             )
           else
             WeeklyPerformanceChart(
-              values: counts,
-              // Round up to a clean tick so the topmost bar isn't pinned to
-              // the top edge of the chart.
-              maxValue: (maxCount * 1.15).ceilToDouble(),
+              values: values,
+              maxValue: (maxValue * 1.15).ceilToDouble(),
+              xLabels: _xLabels(series, granularity),
             ),
         ],
       ),
     );
+  }
+
+  /// Picks a label format that fits the bucket cadence:
+  ///   - day: 3-letter weekday for ≤7 buckets, day-of-month otherwise.
+  ///   - week: ISO week start as "M/d".
+  ///   - month: 3-letter month name.
+  static List<String> _xLabels(
+      List<EarningsSummaryPoint> points, EarningsGranularity g) {
+    const weekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const month = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return points.map((p) {
+      final d = p.bucketStart.toLocal();
+      switch (g) {
+        case EarningsGranularity.day:
+          if (points.length <= 7) {
+            return weekday[(d.weekday - 1).clamp(0, 6)];
+          }
+          return '${d.day}';
+        case EarningsGranularity.week:
+          return '${d.month}/${d.day}';
+        case EarningsGranularity.month:
+          return month[(d.month - 1).clamp(0, 11)];
+      }
+    }).toList(growable: false);
   }
 }

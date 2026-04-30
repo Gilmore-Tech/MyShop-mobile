@@ -1,37 +1,49 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../trips/widgets/date_range_picker_modal.dart';
+import '../providers/earnings_providers.dart';
 import '../widgets/weekly_performance_chart.dart';
 
 /// Detailed earnings & payout reports.
 ///
-/// Custom design built on the existing MyShop design system. Features:
-///   - Date range filter (reuses DateRangePickerModal from trips feature)
-///   - Period segmented control (Daily / Weekly / Monthly)
-///   - Summary stat cards (Gross, Commission, Net, Trips, Avg Fare, Tips)
-///   - Performance bar chart for the selected period
-///   - Day-by-day breakdown table
-///   - Export CTA
-class EarningsReportsScreen extends StatefulWidget {
+/// Wires `GET /v1/payments/earnings/report` in two modes:
+///   - Preset (Daily/Weekly/Monthly tabs) → `?period=today|week|month`
+///   - Custom date range (date picker)    → `?from=YYYY-MM-DD&to=YYYY-MM-DD`
+///
+/// Custom ranges are capped at 90 days server-side. We disable picker
+/// selections beyond that range so users can't trigger
+/// `EARNINGS_RANGE_TOO_LARGE`, but render the inline error if the backend
+/// returns it anyway (e.g. clock skew, picker bug).
+class EarningsReportsScreen extends ConsumerStatefulWidget {
   const EarningsReportsScreen({super.key});
 
   @override
-  State<EarningsReportsScreen> createState() => _EarningsReportsScreenState();
+  ConsumerState<EarningsReportsScreen> createState() =>
+      _EarningsReportsScreenState();
 }
 
-enum _Period { daily, weekly, monthly }
-
-class _EarningsReportsScreenState extends State<EarningsReportsScreen> {
+class _EarningsReportsScreenState extends ConsumerState<EarningsReportsScreen> {
   DateTime? _rangeStart;
   DateTime? _rangeEnd;
-  _Period _period = _Period.weekly;
+  EarningsPeriod _preset = EarningsPeriod.week;
 
-  bool get _hasFilter => _rangeStart != null && _rangeEnd != null;
+  bool get _isCustomRange => _rangeStart != null && _rangeEnd != null;
 
   String get _dateLabel {
-    if (!_hasFilter) return 'All Time';
+    if (!_isCustomRange) {
+      switch (_preset) {
+        case EarningsPeriod.today:
+          return 'Today';
+        case EarningsPeriod.week:
+          return 'Last 7 days';
+        case EarningsPeriod.month:
+          return 'Last 30 days';
+      }
+    }
     final fmt = DateFormat('MMM dd');
     final yearFmt = DateFormat('MMM dd, yyyy');
     final start = _rangeStart!;
@@ -47,7 +59,7 @@ class _EarningsReportsScreenState extends State<EarningsReportsScreen> {
     final today = DateTime(now.year, now.month, now.day);
     final result = await DateRangePickerModal.show(
       context,
-      initialStart: _rangeStart ?? today.subtract(const Duration(days: 29)),
+      initialStart: _rangeStart ?? today.subtract(const Duration(days: 6)),
       initialEnd: _rangeEnd ?? today,
     );
     if (result != null) {
@@ -58,8 +70,31 @@ class _EarningsReportsScreenState extends State<EarningsReportsScreen> {
     }
   }
 
+  void _selectPreset(EarningsPeriod period) {
+    setState(() {
+      _preset = period;
+      _rangeStart = null;
+      _rangeEnd = null;
+    });
+  }
+
+  EarningsReportQuery _buildQuery(EarningsRole role) {
+    if (_isCustomRange) {
+      return EarningsReportQuery.range(
+        role: role,
+        from: _rangeStart!,
+        to: _rangeEnd!,
+      );
+    }
+    return EarningsReportQuery.preset(role: role, period: _preset);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final role = ref.watch(activeEarningsRoleProvider);
+    final query = _buildQuery(role);
+    final reportAsync = ref.watch(earningsReportProvider(query));
+
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
       appBar: AppBar(
@@ -136,188 +171,44 @@ class _EarningsReportsScreenState extends State<EarningsReportsScreen> {
                                   color: MyShopColors.textPrimary)),
                         ]),
                   ),
-                  const Icon(Icons.chevron_right,
-                      size: 18, color: MyShopColors.textSecondary),
+                  if (_isCustomRange)
+                    IconButton(
+                      icon: const Icon(Icons.close,
+                          size: 18, color: MyShopColors.textSecondary),
+                      onPressed: () => setState(() {
+                        _rangeStart = null;
+                        _rangeEnd = null;
+                      }),
+                    )
+                  else
+                    const Icon(Icons.chevron_right,
+                        size: 18, color: MyShopColors.textSecondary),
                 ],
               ),
             ),
           ),
           const SizedBox(height: MyShopSpacing.md),
 
-          // ── Period segmented control ──
-          _PeriodSegment(
-            value: _period,
-            onChanged: (v) => setState(() => _period = v),
-          ),
-          const SizedBox(height: MyShopSpacing.lg),
-
-          // ── Summary stats — no detailed endpoint yet ──
-          Row(children: [
-            const Expanded(
-                child: _SummaryCard(
-                    label: 'GROSS',
-                    value: 'GHS 0',
-                    delta: 'No data yet')),
-            const SizedBox(width: MyShopSpacing.sm),
-            const Expanded(
-                child: _SummaryCard(
-                    label: 'NET',
-                    value: 'GHS 0',
-                    delta: 'No data yet',
-                    highlight: true)),
-          ]),
-          const SizedBox(height: MyShopSpacing.sm),
-          Row(children: [
-            const Expanded(
-                child: _SummaryCard(
-                    label: 'COMMISSION',
-                    value: 'GHS 0',
-                    delta: '20% rate')),
-            const SizedBox(width: MyShopSpacing.sm),
-            const Expanded(
-                child: _SummaryCard(
-                    label: 'TIPS',
-                    value: 'GHS 0',
-                    delta: 'No data yet')),
-          ]),
-          const SizedBox(height: MyShopSpacing.sm),
-          Row(children: [
-            const Expanded(
-                child: _SummaryCard(
-                    label: 'TRIPS',
-                    value: '0',
-                    delta: 'No data yet')),
-            const SizedBox(width: MyShopSpacing.sm),
-            const Expanded(
-                child: _SummaryCard(
-                    label: 'AVG FARE',
-                    value: 'GHS 0',
-                    delta: 'No data yet')),
-          ]),
-          const SizedBox(height: MyShopSpacing.lg),
-
-          // ── Performance chart ──
-          Container(
-            padding: const EdgeInsets.all(MyShopSpacing.md),
-            decoration: BoxDecoration(
-              color: MyShopColors.surfaceWhite,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: MyShopColors.divider),
+          // ── Period segmented control (preset mode only) ──
+          if (!_isCustomRange) ...[
+            _PeriodSegment(
+              value: _preset,
+              onChanged: _selectPreset,
             ),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('Earnings Trend',
-                                style: TextStyle(
-                                    fontFamily: 'Raleway',
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w900,
-                                    color: MyShopColors.textPrimary)),
-                            const SizedBox(height: 2),
-                            Text(_chartSubtitle,
-                                style: MyShopTypography.body2.copyWith(
-                                    fontSize: 11,
-                                    color: MyShopColors.primaryGold,
-                                    fontWeight: FontWeight.w600)),
-                          ]),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: MyShopColors.successLight,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.trending_up,
-                                size: 12, color: MyShopColors.success),
-                            const SizedBox(width: 4),
-                            Text('+12.4%',
-                                style: TextStyle(
-                                    fontFamily: 'Raleway',
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w900,
-                                    color: MyShopColors.success)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: MyShopSpacing.md),
-                  WeeklyPerformanceChart(
-                    values: _chartData,
-                    maxValue: _chartMax,
-                  ),
-                ]),
-          ),
-          const SizedBox(height: MyShopSpacing.lg),
+            const SizedBox(height: MyShopSpacing.lg),
+          ],
 
-          // ── Breakdown table ──
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Daily Breakdown',
-                  style: TextStyle(
-                      fontFamily: 'Raleway',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      color: MyShopColors.textPrimary)),
-              Text('See All',
-                  style: MyShopTypography.body2.copyWith(
-                      color: MyShopColors.primaryGold,
-                      fontWeight: FontWeight.w700)),
-            ],
-          ),
-          const SizedBox(height: MyShopSpacing.sm),
-          Container(
-            decoration: BoxDecoration(
-              color: MyShopColors.surfaceWhite,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: MyShopColors.divider),
+          // ── Body — switches on report state ──
+          reportAsync.when(
+            loading: () => const _ReportSkeleton(),
+            error: (e, _) => _ReportErrorBanner(
+              error: e,
+              onRetry: () =>
+                  ref.invalidate(earningsReportProvider(query)),
             ),
-            child: Column(
-              children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: MyShopSpacing.md, vertical: 10),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFF9FAFB),
-                    borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(12)),
-                    border: Border(
-                        bottom: BorderSide(
-                            color: MyShopColors.divider, width: 0.5)),
-                  ),
-                  child: Row(children: [
-                    Expanded(
-                        flex: 3,
-                        child: Text('DATE',
-                            style: MyShopTypography.overline.copyWith(
-                                fontSize: 10, letterSpacing: 0.6))),
-                    Expanded(
-                        flex: 2,
-                        child: Text('TRIPS',
-                            textAlign: TextAlign.right,
-                            style: MyShopTypography.overline.copyWith(
-                                fontSize: 10, letterSpacing: 0.6))),
-                    Expanded(
-                        flex: 4,
-                        child: Text('NET',
-                            textAlign: TextAlign.right,
-                            style: MyShopTypography.overline.copyWith(
-                                fontSize: 10, letterSpacing: 0.6))),
-                  ]),
-                ),
-                const _BreakdownRow(date: 'No data', trips: 0, net: 'GHS 0', isLast: true),
-              ],
+            data: (report) => _ReportBody(
+              report: report,
+              role: role,
             ),
           ),
           const SizedBox(height: MyShopSpacing.lg),
@@ -351,22 +242,337 @@ class _EarningsReportsScreenState extends State<EarningsReportsScreen> {
       ),
     );
   }
+}
 
-  String get _chartSubtitle {
-    return switch (_period) {
-      _Period.daily => 'Hourly earnings (last 24 hours)',
-      _Period.weekly => 'Earnings across last 7 days',
-      _Period.monthly => 'Earnings across last 4 weeks',
-    };
+// ─── Body — report rendering ────────────────────────────────────────────────
+
+class _ReportBody extends StatelessWidget {
+  const _ReportBody({required this.report, required this.role});
+
+  final EarningsReport report;
+  final EarningsRole role;
+
+  @override
+  Widget build(BuildContext context) {
+    final bookingsLabel =
+        role == EarningsRole.driver ? 'TRIPS' : 'JOBS';
+    final trendBadge = _trendBadge(report.trendPct);
+
+    return Column(
+      children: [
+        // ── Summary stats ──
+        Row(children: [
+          Expanded(
+              child: _SummaryCard(
+                  label: 'GROSS',
+                  value: 'GHS ${_fmtGhs(report.grossEarningsPesewas)}',
+                  delta: 'Includes cash & in-app')),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(
+              child: _SummaryCard(
+                  label: 'NET',
+                  value: 'GHS ${_fmtGhs(report.netEarningsPesewas)}',
+                  delta: 'After commission',
+                  highlight: true)),
+        ]),
+        const SizedBox(height: MyShopSpacing.sm),
+        Row(children: [
+          Expanded(
+              child: _SummaryCard(
+                  label: 'COMMISSION',
+                  value: 'GHS ${_fmtGhs(report.commissionChargedPesewas)}',
+                  delta: '20% rate')),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(
+              child: _SummaryCard(
+                  label: 'TIPS',
+                  value: 'GHS ${_fmtGhs(report.tipsEarnedPesewas)}',
+                  delta: 'Received this window')),
+        ]),
+        const SizedBox(height: MyShopSpacing.sm),
+        Row(children: [
+          Expanded(
+              child: _SummaryCard(
+                  label: bookingsLabel,
+                  value: '${report.bookingsCompleted}',
+                  delta: 'Completed')),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(
+              child: _SummaryCard(
+                  label: 'AVG FARE',
+                  value: report.bookingsCompleted == 0
+                      ? '—'
+                      : 'GHS ${_fmtGhs(report.averageFarePesewas)}',
+                  delta: 'Per booking')),
+        ]),
+        const SizedBox(height: MyShopSpacing.lg),
+
+        // ── Performance chart ──
+        Container(
+          padding: const EdgeInsets.all(MyShopSpacing.md),
+          decoration: BoxDecoration(
+            color: MyShopColors.surfaceWhite,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: MyShopColors.divider),
+          ),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Earnings Trend',
+                              style: TextStyle(
+                                  fontFamily: 'Raleway',
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w900,
+                                  color: MyShopColors.textPrimary)),
+                          const SizedBox(height: 2),
+                          Text(_chartSubtitle(report.granularity),
+                              style: MyShopTypography.body2.copyWith(
+                                  fontSize: 11,
+                                  color: MyShopColors.primaryGold,
+                                  fontWeight: FontWeight.w600)),
+                        ]),
+                    if (trendBadge != null) trendBadge,
+                  ],
+                ),
+                const SizedBox(height: MyShopSpacing.md),
+                _ReportChart(report: report),
+              ]),
+        ),
+        const SizedBox(height: MyShopSpacing.lg),
+
+        // ── Breakdown table ──
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('${_granularityLabel(report.granularity)} Breakdown',
+                style: const TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: MyShopColors.textPrimary)),
+            if (report.series.length > 7)
+              Text('See All',
+                  style: MyShopTypography.body2.copyWith(
+                      color: MyShopColors.primaryGold,
+                      fontWeight: FontWeight.w700)),
+          ],
+        ),
+        const SizedBox(height: MyShopSpacing.sm),
+        _BreakdownTable(
+          report: report,
+          role: role,
+        ),
+      ],
+    );
   }
 
-  // No detailed earnings data yet — show empty chart
-  List<double> get _chartData {
-    return const [0, 0, 0, 0, 0, 0, 0];
+  static String _chartSubtitle(EarningsGranularity g) {
+    switch (g) {
+      case EarningsGranularity.day:
+        return 'Daily buckets';
+      case EarningsGranularity.week:
+        return 'Weekly buckets';
+      case EarningsGranularity.month:
+        return 'Monthly buckets';
+    }
   }
 
-  double get _chartMax {
-    return 100;
+  static String _granularityLabel(EarningsGranularity g) {
+    switch (g) {
+      case EarningsGranularity.day:
+        return 'Daily';
+      case EarningsGranularity.week:
+        return 'Weekly';
+      case EarningsGranularity.month:
+        return 'Monthly';
+    }
+  }
+
+  static Widget? _trendBadge(double? trendPct) {
+    if (trendPct == null) return null;
+    final isUp = trendPct >= 0;
+    final color = isUp ? MyShopColors.success : MyShopColors.error;
+    final bg = isUp ? MyShopColors.successLight : MyShopColors.errorLight;
+    final sign = isUp ? '+' : '';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(isUp ? Icons.trending_up : Icons.trending_down,
+              size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            '$sign${trendPct.toStringAsFixed(1)}%',
+            style: TextStyle(
+              fontFamily: 'Raleway',
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReportChart extends StatelessWidget {
+  const _ReportChart({required this.report});
+
+  final EarningsReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    if (report.series.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 28),
+        child: Center(
+          child: Text(
+            'No data for this period',
+            style: MyShopTypography.body2.copyWith(
+              color: MyShopColors.textSecondary,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final values = report.series
+        .map((p) => p.netPesewas / 100)
+        .toList(growable: false);
+    final maxValue = values.fold<double>(0, (m, v) => v > m ? v : m);
+    if (maxValue == 0) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 28),
+        child: Center(
+          child: Text(
+            'No earnings in this period',
+            style: MyShopTypography.body2.copyWith(
+              color: MyShopColors.textSecondary,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final labels = _xLabels(report.series, report.granularity);
+    return WeeklyPerformanceChart(
+      values: values,
+      maxValue: (maxValue * 1.15).ceilToDouble(),
+      xLabels: labels,
+    );
+  }
+
+  static List<String> _xLabels(
+      List<EarningsReportPoint> points, EarningsGranularity g) {
+    const weekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const month = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return points.map((p) {
+      final d = p.bucketStart.toLocal();
+      switch (g) {
+        case EarningsGranularity.day:
+          if (points.length <= 7) {
+            return weekday[(d.weekday - 1).clamp(0, 6)];
+          }
+          return '${d.day}';
+        case EarningsGranularity.week:
+          return '${d.month}/${d.day}';
+        case EarningsGranularity.month:
+          return month[(d.month - 1).clamp(0, 11)];
+      }
+    }).toList(growable: false);
+  }
+}
+
+class _BreakdownTable extends StatelessWidget {
+  const _BreakdownTable({required this.report, required this.role});
+
+  final EarningsReport report;
+  final EarningsRole role;
+
+  @override
+  Widget build(BuildContext context) {
+    final countLabel = role == EarningsRole.driver ? 'TRIPS' : 'JOBS';
+    final rows = report.series;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: MyShopColors.surfaceWhite,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: MyShopColors.divider),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: MyShopSpacing.md, vertical: 10),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF9FAFB),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+              border: Border(
+                  bottom: BorderSide(
+                      color: MyShopColors.divider, width: 0.5)),
+            ),
+            child: Row(children: [
+              Expanded(
+                  flex: 3,
+                  child: Text('DATE',
+                      style: MyShopTypography.overline.copyWith(
+                          fontSize: 10, letterSpacing: 0.6))),
+              Expanded(
+                  flex: 2,
+                  child: Text(countLabel,
+                      textAlign: TextAlign.right,
+                      style: MyShopTypography.overline.copyWith(
+                          fontSize: 10, letterSpacing: 0.6))),
+              Expanded(
+                  flex: 4,
+                  child: Text('NET',
+                      textAlign: TextAlign.right,
+                      style: MyShopTypography.overline.copyWith(
+                          fontSize: 10, letterSpacing: 0.6))),
+            ]),
+          ),
+          if (rows.isEmpty)
+            const _BreakdownRow(
+                date: 'No data', count: 0, net: 'GHS 0', isLast: true)
+          else
+            for (var i = 0; i < rows.length; i++)
+              _BreakdownRow(
+                date: _formatBucketDate(rows[i].bucketStart, report.granularity),
+                count: rows[i].count,
+                net: 'GHS ${_fmtGhs(rows[i].netPesewas)}',
+                isLast: i == rows.length - 1,
+              ),
+        ],
+      ),
+    );
+  }
+
+  static String _formatBucketDate(DateTime utc, EarningsGranularity g) {
+    final local = utc.toLocal();
+    switch (g) {
+      case EarningsGranularity.day:
+        return DateFormat('EEE, MMM d').format(local);
+      case EarningsGranularity.week:
+        return 'Week of ${DateFormat('MMM d').format(local)}';
+      case EarningsGranularity.month:
+        return DateFormat('MMM yyyy').format(local);
+    }
   }
 }
 
@@ -374,8 +580,8 @@ class _EarningsReportsScreenState extends State<EarningsReportsScreen> {
 
 class _PeriodSegment extends StatelessWidget {
   const _PeriodSegment({required this.value, required this.onChanged});
-  final _Period value;
-  final ValueChanged<_Period> onChanged;
+  final EarningsPeriod value;
+  final ValueChanged<EarningsPeriod> onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -387,7 +593,7 @@ class _PeriodSegment extends StatelessWidget {
       ),
       child: Row(
         children: [
-          for (final p in _Period.values)
+          for (final p in EarningsPeriod.values)
             Expanded(
               child: GestureDetector(
                 onTap: () => onChanged(p),
@@ -411,11 +617,7 @@ class _PeriodSegment extends StatelessWidget {
                   ),
                   child: Center(
                     child: Text(
-                      switch (p) {
-                        _Period.daily => 'Daily',
-                        _Period.weekly => 'Weekly',
-                        _Period.monthly => 'Monthly',
-                      },
+                      _label(p),
                       style: TextStyle(
                         fontFamily: 'Raleway',
                         fontSize: 13,
@@ -433,6 +635,17 @@ class _PeriodSegment extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  static String _label(EarningsPeriod p) {
+    switch (p) {
+      case EarningsPeriod.today:
+        return 'Daily';
+      case EarningsPeriod.week:
+        return 'Weekly';
+      case EarningsPeriod.month:
+        return 'Monthly';
+    }
   }
 }
 
@@ -499,12 +712,12 @@ class _SummaryCard extends StatelessWidget {
 class _BreakdownRow extends StatelessWidget {
   const _BreakdownRow({
     required this.date,
-    required this.trips,
+    required this.count,
     required this.net,
     this.isLast = false,
   });
   final String date;
-  final int trips;
+  final int count;
   final String net;
   final bool isLast;
 
@@ -533,7 +746,7 @@ class _BreakdownRow extends StatelessWidget {
         ),
         Expanded(
           flex: 2,
-          child: Text('$trips',
+          child: Text('$count',
               textAlign: TextAlign.right,
               style: const TextStyle(
                   fontFamily: 'Raleway',
@@ -554,4 +767,124 @@ class _BreakdownRow extends StatelessWidget {
       ]),
     );
   }
+}
+
+// ─── Loading + error states ─────────────────────────────────────────────────
+
+class _ReportSkeleton extends StatelessWidget {
+  const _ReportSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    Widget box(double w, double h) => Container(
+          width: w,
+          height: h,
+          decoration: BoxDecoration(
+            color: MyShopColors.shimmerBase,
+            borderRadius: BorderRadius.circular(8),
+          ),
+        );
+
+    return Column(
+      children: [
+        Row(children: [
+          Expanded(child: box(double.infinity, 80)),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(child: box(double.infinity, 80)),
+        ]),
+        const SizedBox(height: MyShopSpacing.sm),
+        Row(children: [
+          Expanded(child: box(double.infinity, 80)),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(child: box(double.infinity, 80)),
+        ]),
+        const SizedBox(height: MyShopSpacing.lg),
+        box(double.infinity, 220),
+      ],
+    );
+  }
+}
+
+class _ReportErrorBanner extends StatelessWidget {
+  const _ReportErrorBanner({required this.error, required this.onRetry});
+
+  final Object error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final message = _messageFor(error);
+    return Container(
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      decoration: BoxDecoration(
+        color: MyShopColors.errorLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: MyShopColors.error.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.error_outline_rounded,
+                  size: 18, color: MyShopColors.error),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: MyShopColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: MyShopSpacing.sm),
+          TextButton(
+            onPressed: onRetry,
+            style: TextButton.styleFrom(
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(0, 28),
+              foregroundColor: MyShopColors.error,
+              textStyle: const TextStyle(
+                fontFamily: 'Raleway',
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _messageFor(Object e) {
+    if (e is EarningsApiException) {
+      switch (e.code) {
+        case EarningsErrorCodes.rangeTooLarge:
+          return 'Custom ranges are capped at 90 days. Pick a shorter window.';
+        case EarningsErrorCodes.rangeInvalid:
+          return 'Pick a valid start and end date — the end must be on or after the start.';
+        case EarningsErrorCodes.rangeAmbiguous:
+          return 'Pick either a preset or a custom range, not both.';
+        case EarningsErrorCodes.providerNotFound:
+          return "We couldn't find a provider profile for this role. Switch role or finish onboarding.";
+        case EarningsErrorCodes.roleNotResolved:
+          return "We couldn't tell which role to load. Pick a role and try again.";
+      }
+    }
+    return "Couldn't load report — pull to retry.";
+  }
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+String _fmtGhs(int pesewas) {
+  final ghs = pesewas / 100;
+  if (ghs == ghs.truncateToDouble()) return ghs.toStringAsFixed(0);
+  return ghs.toStringAsFixed(2);
 }
