@@ -7,6 +7,7 @@ import 'package:shared_models/shared_models.dart';
 import '../../../core/di/providers.dart';
 import '../../artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../../core/providers/provider_status_provider.dart';
+import '../../earnings/providers/earnings_providers.dart';
 
 /// Snapshot of the artisan's currently-active job — populated when the
 /// artisan taps "Accept & Start Job" on an accepted bid, cleared when the
@@ -103,66 +104,112 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
       try {
         _ref.read(providerStatusProvider.notifier).resumeAfterJob();
       } catch (_) {}
+      // Bust the earnings caches so the dashboard, today-card, performance
+      // chart, detailed report, and payouts list all refetch with the
+      // newly-completed job factored in. Without this, `FutureProvider`s
+      // hold the stale pre-completion snapshot until the screen is
+      // recreated or the user pulls to refresh.
+      _bustEarningsCaches();
     }
   }
 
-  /// Confirm receipt of a cash payment. Runs the same PATCH /jobs/:id/confirm
-  /// the client would — backend is idempotent and flips the job to
-  /// `completed` regardless of who calls it first. The socket event that
-  /// follows drives the overlay's success state via [applyRemoteStatus].
+  /// Confirm receipt of a cash payment. Calls
+  /// `POST /jobs/:id/artisan-confirm-cash` — the dedicated artisan-side
+  /// endpoint that runs the same finalisation path as a Paystack webhook
+  /// (cash payment row, commission split, earnings cache bust, socket
+  /// emit, push notifications). Idempotent: a completed job returns 200
+  /// without re-writing.
   Future<bool> confirmCashReceipt() async {
     final job = state.job;
     if (job == null) return false;
     if (state.isUpdating) return false;
     state = state.copyWith(isUpdating: true, clearError: true);
+    bool success = false;
     try {
-      await _ref.read(jobServiceProvider).confirmJobCompletion(job.id);
-      // Optimistically flip to completed so the overlay swaps to the
-      // success card immediately — the socket event will reconcile.
-      state = state.copyWith(
-        job: job.copyWith(status: JobStatus.completed),
-        isUpdating: false,
-      );
+      await _ref.read(jobServiceProvider).artisanConfirmCash(job.id);
+      // Optimistic flip — the socket event the backend emits will arrive
+      // shortly after and reconcile any drift.
+      state = state.copyWith(job: job.copyWith(status: JobStatus.completed));
+      success = true;
       try {
         _ref.read(providerStatusProvider.notifier).resumeAfterJob();
         if (_ref.exists(artisanJobsProvider)) {
           _ref.read(artisanJobsProvider.notifier).silentReload();
         }
+        // Same reason as in applyRemoteStatus: the cash-confirm endpoint
+        // inserted a payment row and split the commission server-side, so
+        // every earnings provider needs a fresh fetch on next view.
+        _bustEarningsCaches();
       } catch (_) {}
-      return true;
     } on ApiException catch (e) {
       developer.log(
-        'confirmCashReceipt failed: ${e.errorCode} — ${e.message}',
+        'confirmCashReceipt failed: status=${e.statusCode} '
+        'code=${e.errorCode} — ${e.message}',
         name: 'ActiveJob',
         level: 900,
       );
-      state = state.copyWith(
-        isUpdating: false,
-        errorMessage: _friendlyCashError(e),
-      );
-      return false;
-    } catch (e) {
+      state = state.copyWith(errorMessage: _friendlyCashError(e));
+    } catch (e, st) {
       developer.log(
-        'confirmCashReceipt crashed: $e',
+        'confirmCashReceipt crashed: $e\n$st',
         name: 'ActiveJob',
         level: 1000,
       );
       state = state.copyWith(
-        isUpdating: false,
         errorMessage: "Couldn't confirm the payment. Please try again.",
       );
-      return false;
+    } finally {
+      // Guarantee the spinner clears no matter which branch fired.
+      state = state.copyWith(isUpdating: false);
+    }
+    return success;
+  }
+
+  /// Maps the backend's structured error codes for
+  /// `POST /jobs/:id/artisan-confirm-cash` into messages the artisan can
+  /// act on. Codes match docs/architecture.md.
+  /// Invalidates every earnings-flavoured cache so the next read returns
+  /// fresh server data. Called whenever a job lands as `completed` (cash
+  /// confirm or webhook), since the backend's completion path inserts a
+  /// payment row, runs the commission split, and bumps the artisan's
+  /// daily/weekly totals — all of which the cached `FutureProvider`s on
+  /// the dashboard, performance chart, and detailed report would
+  /// otherwise miss.
+  void _bustEarningsCaches() {
+    try {
+      _ref.invalidate(earningsSummaryProvider);
+      _ref.invalidate(earningsReportProvider);
+      _ref.invalidate(todayCardProvider);
+      _ref.invalidate(activeTodayCardProvider);
+      _ref.invalidate(payoutsProvider);
+    } catch (_) {
+      // Providers may not be mounted yet (tests, fresh-launch); harmless
+      // if they aren't, we just lose the eager refetch.
     }
   }
 
   String _friendlyCashError(ApiException e) {
     switch (e.errorCode) {
-      case 'PAYMENT_NOT_SETTLED':
-        return "The client hasn't completed the payment yet.";
+      case 'ARTISAN_PROFILE_REQUIRED':
+        return 'Your artisan profile is incomplete. Finish onboarding to '
+            'confirm cash payments.';
       case 'NOT_ASSIGNED_ARTISAN':
         return "Only this job's assigned artisan can confirm receipt.";
+      case 'PAYSTACK_CHARGE_IN_FLIGHT':
+        return "The client started an in-app payment — wait a moment for "
+            'it to settle. The job will complete automatically.';
+      case 'PAYMENT_RECORD_EXISTS':
+        return 'A payment is already on file for this job. Pull down to '
+            'refresh and check the status.';
+      case 'JOB_NOT_AWAITING_RECEIPT':
+        return "This job isn't ready for cash confirmation yet.";
+      case 'AGREED_PRICE_MISSING':
+        return "We can't find the agreed price for this job. Contact "
+            'support so it can be reconciled manually.';
       default:
-        return e.message;
+        return e.message.isNotEmpty
+            ? e.message
+            : "Couldn't confirm the payment.";
     }
   }
 

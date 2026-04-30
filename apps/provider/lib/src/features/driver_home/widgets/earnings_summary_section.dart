@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-import '../providers/driver_earnings_provider.dart';
-import '../providers/online_session_provider.dart';
+import '../../earnings/providers/earnings_providers.dart';
 
 /// Today's earnings section inside the draggable sheet.
 ///
@@ -11,16 +11,17 @@ import '../providers/online_session_provider.dart';
 /// - "TODAY'S EARNINGS" overline label
 /// - Large "GHS 482.50" price
 /// - Horizontal stats row: Trips | Hours | Tips (separated by vertical lines)
+///
+/// Backed by `GET /payments/earnings/today-card?role=driver`. Hours are
+/// active trip time only (per backend handoff §3.1) — NOT online idle time.
 class EarningsSummarySection extends ConsumerWidget {
   const EarningsSummarySection({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final earningsAsync = ref.watch(driverEarningsProvider);
-    final hoursLabel =
-        formatOnlineSeconds(ref.watch(onlineSecondsTodayValueProvider));
+    final cardAsync = ref.watch(todayCardProvider(EarningsRole.driver));
 
-    return earningsAsync.when(
+    return cardAsync.when(
       loading: () => const _EarningsSkeleton(),
       error: (_, __) => const Padding(
         padding: EdgeInsets.all(MyShopSpacing.md),
@@ -31,7 +32,7 @@ class EarningsSummarySection extends ConsumerWidget {
           ),
         ),
       ),
-      data: (earnings) => Padding(
+      data: (card) => Padding(
         padding: const EdgeInsets.fromLTRB(
           MyShopSpacing.md,
           MyShopSpacing.lg,
@@ -57,7 +58,7 @@ class EarningsSummarySection extends ConsumerWidget {
 
             // Amount
             Text(
-              'GH₵ ${_formatAmount(earnings.todayAmountPesewas)}',
+              'GH₵ ${_formatAmount(card.netEarningsPesewas)}',
               style: const TextStyle(
                 fontFamily: 'Raleway',
                 fontSize: 36,
@@ -83,17 +84,17 @@ class EarningsSummarySection extends ConsumerWidget {
                   children: [
                     _StatColumn(
                       label: 'TRIPS',
-                      value: '${earnings.todayTrips}',
+                      value: '${card.bookingsCount}',
                     ),
                     const _VerticalDivider(),
                     _StatColumn(
                       label: 'HOURS',
-                      value: hoursLabel,
+                      value: _formatMinutes(card.hoursWorkedMinutes),
                     ),
                     const _VerticalDivider(),
                     _StatColumn(
                       label: 'TIPS',
-                      value: 'GH₵ ${_formatAmount(earnings.todayTipsPesewas)}',
+                      value: 'GH₵ ${_formatAmount(card.tipsEarnedPesewas)}',
                     ),
                   ],
                 ),
@@ -111,6 +112,16 @@ class EarningsSummarySection extends ConsumerWidget {
       return ghs.toStringAsFixed(0);
     }
     return ghs.toStringAsFixed(2);
+  }
+
+  /// Formats backend's `hoursWorkedMinutes` (active trip time only). Renders
+  /// "3h 35m" / "45m" / "2h" depending on magnitude.
+  static String _formatMinutes(int totalMinutes) {
+    final hours = totalMinutes ~/ 60;
+    final minutes = totalMinutes % 60;
+    if (hours == 0) return '${minutes}m';
+    if (minutes == 0) return '${hours}h';
+    return '${hours}h ${minutes}m';
   }
 }
 

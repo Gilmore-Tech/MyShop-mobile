@@ -7,9 +7,10 @@ import '../../../core/providers/provider_status_provider.dart';
 import '../../../core/widgets/socket_debug_banner.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../../auth/providers/current_user_provider.dart';
+import '../../earnings/providers/earnings_providers.dart';
 import '../../profile/providers/verification_provider.dart';
 import '../../profile/widgets/incomplete_profile_sheet.dart';
-import '../providers/artisan_earnings_provider.dart';
+import 'package:shared_models/shared_models.dart' show EarningsRole;
 import '../widgets/artisan_home_header.dart';
 import '../widgets/artisan_online_banner.dart';
 import '../widgets/artisan_quick_actions.dart';
@@ -96,7 +97,7 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
-    final earningsAsync = ref.watch(artisanEarningsProvider);
+    final cardAsync = ref.watch(todayCardProvider(EarningsRole.artisan));
 
     // Eagerly load verification status so profileCompletionProvider has data
     // ready when the user taps "Go Online" (avoids false incomplete state).
@@ -107,14 +108,17 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
         ?.map((c) => c.category.name)
         .join(', ');
 
-    // Format earnings from provider
-    final earningsDisplay = earningsAsync.when(
-      data: (e) => _formatGhs(e.todayAmountPesewas),
+    // Today's net earnings drives the headline; the weekly trend stat below
+    // it now shows tips earned today (today-card doesn't carry weekly data,
+    // and the Earnings tab is a tap away for the full weekly view).
+    final earningsDisplay = cardAsync.when(
+      data: (c) => _formatGhs(c.netEarningsPesewas),
       loading: () => '...',
       error: (_, __) => '0',
     );
-    final earningsTrend = earningsAsync.when(
-      data: (e) => e.weekAmountPesewas > 0 ? '+${_formatGhs(e.weekAmountPesewas)}/wk' : '--',
+    final earningsTrend = cardAsync.when(
+      data: (c) =>
+          c.tipsEarnedPesewas > 0 ? '+${_formatGhs(c.tipsEarnedPesewas)} tips' : '--',
       loading: () => '--',
       error: (_, __) => '--',
     );

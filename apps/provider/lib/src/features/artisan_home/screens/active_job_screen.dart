@@ -1301,15 +1301,19 @@ class _CompletionOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final bottomPad = MediaQuery.paddingOf(context).bottom;
     final isCompleted = status == JobStatus.completed;
-    // Show the "Did you receive payment?" Yes/No CTAs for both
-    // artisan_marked_complete AND pending_payment. The reason: the client
-    // can pick Cash on their side, which doesn't hit /payments/initiate,
-    // so the job never transitions to pending_payment. The artisan still
-    // needs a way to confirm receipt — we show the CTAs as soon as the
-    // artisan has marked complete and leave the backend flip to the
-    // idempotent PATCH /confirm when they tap Yes.
-    final isAwaitingReceipt = status == JobStatus.artisanMarkedComplete ||
-        status == JobStatus.pendingPayment;
+    // Two distinct waiting states:
+    //   - awaitingCashReceipt (artisan_marked_complete): client either
+    //     hasn't picked yet OR picked Cash, which never hits
+    //     /payments/initiate. The artisan is the source of truth — show
+    //     the Yes / Not yet CTAs so they can flip the job to completed
+    //     via POST /jobs/:id/artisan-confirm-cash.
+    //   - paystackInFlight (pending_payment): client picked an in-app
+    //     method, charge is queued, Paystack webhook will settle it
+    //     automatically. NO buttons — tapping anything here would 403,
+    //     and any artisan-side action would be wrong: only the webhook
+    //     can authoritatively say the charge cleared.
+    final awaitingCashReceipt = status == JobStatus.artisanMarkedComplete;
+    final paystackInFlight = status == JobStatus.pendingPayment;
 
     return Material(
       color: Colors.transparent,
@@ -1401,15 +1405,13 @@ class _CompletionOverlay extends StatelessWidget {
                   ),
                 ),
               )
-            else if (isAwaitingReceipt)
-              // Shown for both artisan_marked_complete and pending_payment.
-              // The artisan decides whether they've received payment —
-              // MoMo / card settles via the Paystack webhook automatically,
-              // but cash is off-platform so the artisan is the source of
-              // truth. Tapping "Yes" runs PATCH /confirm (idempotent, so
-              // calling after a webhook already completed the job is a
-              // no-op); "Not yet" leaves the job as-is so it keeps showing
-              // on both apps until the artisan comes back and confirms.
+            else if (awaitingCashReceipt)
+              // Job is `artisan_marked_complete` and there's no pending
+              // Paystack charge — either the client picked Cash or hasn't
+              // picked yet. The artisan is the source of truth: tapping
+              // "Yes" calls the artisan-confirms-cash endpoint and flips
+              // the job to completed. "Not yet" closes the overlay and
+              // leaves the job as-is.
               Row(
                 children: [
                   Expanded(
@@ -1481,9 +1483,21 @@ class _CompletionOverlay extends StatelessWidget {
                   ),
                 ],
               )
+            else if (paystackInFlight)
+              // Paystack charge in flight — webhook is the only thing that
+              // can authoritatively settle this. Show a passive progress
+              // bar so the artisan sees the UI is live; do NOT show any
+              // CTAs because the artisan has nothing to do (and any
+              // /confirm call would 403 anyway, since the client owns
+              // that endpoint).
+              const LinearProgressIndicator(
+                minHeight: 3,
+                color: MyShopColors.primaryGold,
+                backgroundColor: MyShopColors.surfaceGrey,
+              )
             else
-              // artisan_marked_complete: just waiting for the client to
-              // start paying. Inline progress bar signals the UI is live.
+              // Other terminal-ish states — fall back to the same passive
+              // progress bar.
               const LinearProgressIndicator(
                 minHeight: 3,
                 color: MyShopColors.primaryGold,
@@ -1498,8 +1512,9 @@ class _CompletionOverlay extends StatelessWidget {
   static String _titleFor(JobStatus status) {
     switch (status) {
       case JobStatus.artisanMarkedComplete:
+        return 'Did you receive cash?';
       case JobStatus.pendingPayment:
-        return 'Did you receive payment?';
+        return 'Client is paying';
       case JobStatus.completed:
         return 'Job complete!';
       default:
@@ -1510,10 +1525,15 @@ class _CompletionOverlay extends StatelessWidget {
   static String _subtitleFor(JobStatus status, String clientFirstName) {
     switch (status) {
       case JobStatus.artisanMarkedComplete:
+        return "$clientFirstName is settling up. If they handed you cash, "
+            "tap \"Yes, I received payment\". If they're paying in-app, "
+            "wait — the job will settle automatically when their charge "
+            'clears.';
       case JobStatus.pendingPayment:
-        return "$clientFirstName is settling up. If they paid in-app the "
-            'job will settle automatically — if they paid in cash, confirm '
-            "receipt below. Tap \"Not yet\" to leave the job pending.";
+        return "$clientFirstName's Paystack charge is settling. Hang "
+            'tight — your earnings release automatically once the bank '
+            "confirms (usually a few seconds). You don't need to do "
+            'anything here.';
       case JobStatus.completed:
         return 'Payment has been released to your wallet. Check your '
             'earnings to see the breakdown.';
