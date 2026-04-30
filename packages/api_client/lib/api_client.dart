@@ -36,5 +36,6 @@ export 'src/services/verification_service.dart';
 // Auth
 export 'src/auth/auth_models.dart';
 export 'src/auth/auth_service.dart';
+export 'src/auth/device_id.dart';
 export 'src/auth/mock_auth_service.dart';
 export 'src/auth/real_auth_service.dart';

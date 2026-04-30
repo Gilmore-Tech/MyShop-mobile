@@ -16,9 +16,29 @@ abstract class TokenStorage {
     required String refreshToken,
   });
   Future<void> writeAccessToken(String accessToken);
+
+  /// Wipe everything tied to the user's identity — tokens, phone, role,
+  /// session timestamp, cached profile. Used when the backend tells us the
+  /// session is fundamentally dead (TOKEN_EXPIRED / INVALID_TOKEN /
+  /// REFRESH_TOKEN_REUSED) or the user explicitly logs out.
+  ///
+  /// The persistent device ID is preserved across this call — it represents
+  /// the install, not the user.
   Future<void> clearTokens();
+
+  /// Wipe ONLY the JWT pair, preserving phone, role, cached profile, and
+  /// session start. Used for SESSION_TAKEN_OVER: the current tokens are
+  /// invalidated server-side but the user's identity context is still
+  /// useful for a quick re-login on the same device.
+  Future<void> clearAuthTokensOnly();
+
   Future<String?> readPhone();
   Future<void> writePhone(String phone);
+
+  /// Persistent device ID — generated on first install, stable across logins
+  /// and logouts, used to disambiguate concurrent sessions for the same user.
+  Future<String?> readDeviceId();
+  Future<void> writeDeviceId(String deviceId);
 
   /// The role the user chose at login (e.g. "driver" or "artisan").
   /// Persisted so bootstrap can restore the correct view after restart.
@@ -54,6 +74,7 @@ class SecureTokenStorage implements TokenStorage {
   static const _kRole = 'auth_role';
   static const _kSessionStartedAt = 'auth_session_started_at';
   static const _kCachedProfile = 'auth_cached_profile';
+  static const _kDeviceId = 'auth_device_id';
 
   final FlutterSecureStorage _storage;
 
@@ -101,7 +122,23 @@ class SecureTokenStorage implements TokenStorage {
     await _storage.delete(key: _kRole);
     await _storage.delete(key: _kSessionStartedAt);
     await _storage.delete(key: _kCachedProfile);
+    // _kDeviceId is intentionally preserved — stable per install.
+    // _kOnboardingSeen is also preserved.
   }
+
+  @override
+  Future<void> clearAuthTokensOnly() async {
+    debugPrint('[TokenStorage] clearAuthTokensOnly');
+    await _storage.delete(key: _kAccessToken);
+    await _storage.delete(key: _kRefreshToken);
+  }
+
+  @override
+  Future<String?> readDeviceId() => _storage.read(key: _kDeviceId);
+
+  @override
+  Future<void> writeDeviceId(String deviceId) =>
+      _storage.write(key: _kDeviceId, value: deviceId);
 
   @override
   Future<DateTime?> readSessionStartedAt() async {

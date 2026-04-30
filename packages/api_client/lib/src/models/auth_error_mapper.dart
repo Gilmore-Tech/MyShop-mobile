@@ -1,5 +1,36 @@
 import 'api_exception.dart';
 
+/// Backend error codes that the mobile app reacts to programmatically
+/// (not just for user-facing messages). Centralised here so the
+/// interceptor, controllers, and mapper agree on the spelling.
+class AuthErrorCodes {
+  AuthErrorCodes._();
+
+  /// Returned by /auth/login/* (409) when the same user has an active
+  /// session on a different device. The app prompts the user to confirm
+  /// the take-over and retries the login with `forceLogin: true`.
+  static const alreadyLoggedInElsewhere = 'ALREADY_LOGGED_IN_ELSEWHERE';
+
+  /// Returned on protected requests (401) when the current session was
+  /// invalidated by another device taking over. Trigger a soft logout —
+  /// clear the JWT pair and route to login, but preserve cached identity
+  /// (phone, role, profile) so re-login is one-tap.
+  static const sessionTakenOver = 'SESSION_TAKEN_OVER';
+
+  /// Returned (401) when the access token's signature is valid but the
+  /// expiry has passed. Refresh attempt should follow.
+  static const tokenExpired = 'TOKEN_EXPIRED';
+
+  /// Returned (401) for malformed/forged tokens. Treated as terminal —
+  /// clears tokens and forces a fresh login.
+  static const invalidToken = 'INVALID_TOKEN';
+
+  /// Returned by /auth/refresh (401) when the supplied refresh token has
+  /// already been consumed (rotation reuse detection). Always terminal —
+  /// the entire token chain is suspect.
+  static const refreshTokenReused = 'REFRESH_TOKEN_REUSED';
+}
+
 /// Maps [ApiException] instances to user-friendly, actionable error messages
 /// for the auth flow (register, login, OTP verification).
 ///
@@ -71,6 +102,22 @@ class AuthErrorMapper {
       case 'ACCOUNT_DEACTIVATED':
       case 'USER_DEACTIVATED':
         return 'Your account has been deactivated. Contact support to reactivate.';
+
+      // ── Multi-device session ────────────────────────────────────────
+      case AuthErrorCodes.alreadyLoggedInElsewhere:
+        return 'You\'re already signed in on another device. Continue here?';
+
+      case AuthErrorCodes.sessionTakenOver:
+        return 'You\'ve been signed out — this account is now active on another device.';
+
+      case AuthErrorCodes.tokenExpired:
+        return 'Your session expired. Please sign in again.';
+
+      case AuthErrorCodes.invalidToken:
+        return 'Your session is no longer valid. Please sign in again.';
+
+      case AuthErrorCodes.refreshTokenReused:
+        return 'Your session was reset for security. Please sign in again.';
 
       // ── OTP ─────────────────────────────────────────────────────────
       case 'INVALID_OTP':

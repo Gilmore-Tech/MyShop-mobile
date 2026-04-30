@@ -26,41 +26,41 @@ class MockAuthService implements AuthService {
   }
 
   @override
-  Future<void> loginDriver(String phone) async {
+  Future<void> loginDriver(LoginRequest request) async {
     await _delay();
-    if (!_registeredPhones.contains(phone)) {
+    if (!_registeredPhones.contains(request.phone)) {
       throw AuthException(
         'No account found for this phone number. Please register first.',
         code: 'ACCOUNT_NOT_FOUND',
       );
     }
-    _lastPhone = phone;
+    _lastPhone = request.phone;
     _lastType = 'driver';
   }
 
   @override
-  Future<void> loginArtisan(String phone) async {
+  Future<void> loginArtisan(LoginRequest request) async {
     await _delay();
-    if (!_registeredPhones.contains(phone)) {
+    if (!_registeredPhones.contains(request.phone)) {
       throw AuthException(
         'No account found for this phone number. Please register first.',
         code: 'ACCOUNT_NOT_FOUND',
       );
     }
-    _lastPhone = phone;
+    _lastPhone = request.phone;
     _lastType = 'artisan';
   }
 
   @override
-  Future<void> loginClient(String phone) async {
+  Future<void> loginClient(LoginRequest request) async {
     await _delay();
-    if (!_registeredPhones.contains(phone)) {
+    if (!_registeredPhones.contains(request.phone)) {
       throw AuthException(
         'No account found for this phone number. Please register first.',
         code: 'ACCOUNT_NOT_FOUND',
       );
     }
-    _lastPhone = phone;
+    _lastPhone = request.phone;
     _lastType = 'client';
   }
 
@@ -79,16 +79,21 @@ class MockAuthService implements AuthService {
   }
 
   @override
-  Future<String> login(String phone) async {
+  Future<String> login(LoginRequest request) async {
     await _delay();
-    if (!_registeredPhones.contains(phone)) {
+    if (!_registeredPhones.contains(request.phone)) {
       throw AuthException(
         'No account found for this phone number. Please register first.',
         code: 'ACCOUNT_NOT_FOUND',
       );
     }
-    _lastPhone = phone;
+    _lastPhone = request.phone;
     return _lastType ?? 'driver';
+  }
+
+  @override
+  Future<void> logout() async {
+    await _delay();
   }
 
   @override

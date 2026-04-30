@@ -35,36 +35,27 @@ class RealAuthService implements AuthService {
   }
 
   @override
-  Future<void> loginDriver(String phone) async {
+  Future<void> loginDriver(LoginRequest request) async {
     try {
-      await _dio.post(
-        '/auth/login/driver',
-        data: LoginRequest(phone: phone).toJson(),
-      );
+      await _dio.post('/auth/login/driver', data: request.toJson());
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
     }
   }
 
   @override
-  Future<void> loginArtisan(String phone) async {
+  Future<void> loginArtisan(LoginRequest request) async {
     try {
-      await _dio.post(
-        '/auth/login/artisan',
-        data: LoginRequest(phone: phone).toJson(),
-      );
+      await _dio.post('/auth/login/artisan', data: request.toJson());
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
     }
   }
 
   @override
-  Future<void> loginClient(String phone) async {
+  Future<void> loginClient(LoginRequest request) async {
     try {
-      await _dio.post(
-        '/auth/login/client',
-        data: LoginRequest(phone: phone).toJson(),
-      );
+      await _dio.post('/auth/login/client', data: request.toJson());
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
     }
@@ -75,7 +66,7 @@ class RealAuthService implements AuthService {
     try {
       final response = await _dio.post(
         '/auth/check-phone',
-        data: LoginRequest(phone: phone).toJson(),
+        data: PhoneOnlyRequest(phone: phone).toJson(),
       );
       final data = _unwrap(response) as Map<String, dynamic>;
       final roles = (data['roles'] as List).cast<String>();
@@ -86,8 +77,8 @@ class RealAuthService implements AuthService {
   }
 
   @override
-  Future<String> login(String phone) async {
-    final data = LoginRequest(phone: phone).toJson();
+  Future<String> login(LoginRequest request) async {
+    final data = request.toJson();
     // Try driver first, then artisan.
     try {
       await _dio.post('/auth/login/driver', data: data);
@@ -100,6 +91,15 @@ class RealAuthService implements AuthService {
     try {
       await _dio.post('/auth/login/artisan', data: data);
       return 'artisan';
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  @override
+  Future<void> logout() async {
+    try {
+      await _dio.post('/auth/logout');
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
     }

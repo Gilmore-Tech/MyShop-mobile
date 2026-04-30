@@ -2,12 +2,19 @@
 /// Matches the contract in `docs/mobile-api-endpoints.md`.
 
 /// POST /auth/register request body.
+///
+/// [deviceId] is required by the backend but defaults to an empty string at
+/// the construction site — the repository layer is responsible for filling
+/// it in from [DeviceIdProvider] before the request hits the network. This
+/// keeps controllers free of device-management concerns.
 class RegisterRequest {
   const RegisterRequest({
     required this.phone,
     required this.fullName,
     required this.type,
     required this.privacyPolicyAccepted,
+    this.deviceId = '',
+    this.deviceInfo,
     this.displayName,
     this.businessName,
     this.email,
@@ -21,6 +28,8 @@ class RegisterRequest {
   final String fullName;
   final String type; // "client", "driver", or "artisan"
   final bool privacyPolicyAccepted;
+  final String deviceId;
+  final Map<String, dynamic>? deviceInfo;
   final String? displayName; // public-facing name for this role
   final String? businessName; // artisan only — trade/shop name
   final String? email;
@@ -35,7 +44,9 @@ class RegisterRequest {
       'fullName': fullName,
       'type': type,
       'privacyPolicyAccepted': privacyPolicyAccepted,
+      'deviceId': deviceId,
     };
+    if (deviceInfo != null) json['deviceInfo'] = deviceInfo;
     if (displayName != null) json['displayName'] = displayName;
     if (businessName != null) json['businessName'] = businessName;
     if (email != null) json['email'] = email;
@@ -50,8 +61,38 @@ class RegisterRequest {
 }
 
 /// POST /auth/login/{role} request body.
+///
+/// [deviceId] is required so the backend can disambiguate concurrent
+/// sessions for the same user. [forceLogin] overrides an existing session
+/// on another device (set to true after the user confirms the take-over
+/// prompt triggered by ALREADY_LOGGED_IN_ELSEWHERE).
 class LoginRequest {
-  const LoginRequest({required this.phone});
+  const LoginRequest({
+    required this.phone,
+    required this.deviceId,
+    this.deviceInfo,
+    this.forceLogin = false,
+  });
+
+  final String phone;
+  final String deviceId;
+  final Map<String, dynamic>? deviceInfo;
+  final bool forceLogin;
+
+  Map<String, dynamic> toJson() {
+    final json = <String, dynamic>{
+      'phone': phone,
+      'deviceId': deviceId,
+    };
+    if (deviceInfo != null) json['deviceInfo'] = deviceInfo;
+    if (forceLogin) json['forceLogin'] = true;
+    return json;
+  }
+}
+
+/// Body for POST /auth/check-phone. Phone-only — no device context needed.
+class PhoneOnlyRequest {
+  const PhoneOnlyRequest({required this.phone});
 
   final String phone;
 

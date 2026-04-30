@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/auth_dtos.dart';
+import '../models/auth_error_mapper.dart';
 import 'token_storage.dart';
 
 /// Interceptor that:
@@ -86,7 +87,22 @@ class AuthInterceptor extends QueuedInterceptor {
       return;
     }
 
-    debugPrint('[Auth] 401 on $path — attempting refresh');
+    final errorCode = _extractErrorCode(response);
+
+    // SESSION_TAKEN_OVER: another device claimed the session. Refreshing
+    // will just produce another SESSION_TAKEN_OVER (refresh tokens were
+    // invalidated server-side). Soft-logout immediately — clear the JWT
+    // pair but preserve phone/role/cached profile so the user can sign
+    // back in with one tap.
+    if (errorCode == AuthErrorCodes.sessionTakenOver) {
+      debugPrint('[Auth] SESSION_TAKEN_OVER on $path — soft logout');
+      await _tokenStorage.clearAuthTokensOnly();
+      _onForceLogout?.call();
+      handler.next(err);
+      return;
+    }
+
+    debugPrint('[Auth] 401 on $path (code=$errorCode) — attempting refresh');
 
     // Dedup: if another concurrent 401 already refreshed the token, the
     // stored access token will differ from the one we sent. Just retry
@@ -115,6 +131,20 @@ class AuthInterceptor extends QueuedInterceptor {
     }
     debugPrint('[Auth] refresh succeeded — retrying $path');
     await _retryWithToken(err.requestOptions, refreshed, handler);
+  }
+
+  /// Pulls `error.code` out of the standard `{ success, error: { code, ... } }`
+  /// envelope. Returns null when the body is malformed or absent.
+  String? _extractErrorCode(Response? response) {
+    final data = response?.data;
+    if (data is Map<String, dynamic>) {
+      final err = data['error'];
+      if (err is Map<String, dynamic>) {
+        final code = err['code'];
+        if (code is String && code.isNotEmpty) return code;
+      }
+    }
+    return null;
   }
 
   Future<void> _retryWithToken(
@@ -185,21 +215,41 @@ class AuthInterceptor extends QueuedInterceptor {
           '[Auth] refresh DioException: status=${e.response?.statusCode} '
           'body=${e.response?.data}',
         );
-        // Any 4xx on /auth/refresh is terminal: the backend has rejected
-        // the refresh token and there's no path forward without a fresh
-        // sign-in. Clear local tokens + force the auth controller back
-        // to unauthenticated so the router lands on the sign-in screen
-        // rather than leaving the app stuck in a zombie state where every
-        // subsequent request 401s. We previously only force-logged-out for
-        // a specific set of error codes — but in practice the backend's
-        // 401 body sometimes lacks `error.code`, sometimes uses different
-        // codes, and we don't want to depend on that to escape a dead
-        // session.
+        // Decide what kind of failure this is by inspecting the error code.
+        // The backend now consistently emits one of:
+        //   - TOKEN_EXPIRED / INVALID_TOKEN / REFRESH_TOKEN_REUSED → the
+        //     entire token chain is dead. Wipe full identity context (the
+        //     user must sign in fresh, and we don't want stale cached
+        //     profile to flash on the way to /signin).
+        //   - SESSION_TAKEN_OVER → another device claimed the session.
+        //     Wipe ONLY the JWT pair so cached identity (phone, role,
+        //     cached profile) is still around for a quick re-login.
+        //   - anything else (network blip pretending to be 4xx, or a code
+        //     we don't recognise) → propagate without clearing. The
+        //     previous "wipe on any 4xx" fallback caused mystery logouts
+        //     when transient backend errors masqueraded as 4xx.
         final status = e.response?.statusCode;
+        final code = _extractErrorCode(e.response);
+        const terminalCodes = {
+          AuthErrorCodes.tokenExpired,
+          AuthErrorCodes.invalidToken,
+          AuthErrorCodes.refreshTokenReused,
+        };
         if (status != null && status >= 400 && status < 500) {
-          debugPrint('[Auth] hard auth failure ($status) — clearing tokens');
-          await _tokenStorage.clearTokens();
-          _onForceLogout?.call();
+          if (code != null && terminalCodes.contains(code)) {
+            debugPrint('[Auth] terminal refresh failure ($code) — clearing tokens');
+            await _tokenStorage.clearTokens();
+            _onForceLogout?.call();
+          } else if (code == AuthErrorCodes.sessionTakenOver) {
+            debugPrint('[Auth] refresh SESSION_TAKEN_OVER — soft logout');
+            await _tokenStorage.clearAuthTokensOnly();
+            _onForceLogout?.call();
+          } else {
+            debugPrint(
+              '[Auth] refresh 4xx with unrecognised code "$code" — '
+              'NOT clearing tokens (will retry on next request)',
+            );
+          }
         }
         return null;
       } catch (e, st) {

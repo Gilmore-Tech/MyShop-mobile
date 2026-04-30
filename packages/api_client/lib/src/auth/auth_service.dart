@@ -13,15 +13,15 @@ abstract class AuthService {
 
   /// Login as an existing driver. Sends OTP to the phone.
   /// POST /auth/login/driver
-  Future<void> loginDriver(String phone);
+  Future<void> loginDriver(LoginRequest request);
 
   /// Login as an existing artisan. Sends OTP to the phone.
   /// POST /auth/login/artisan
-  Future<void> loginArtisan(String phone);
+  Future<void> loginArtisan(LoginRequest request);
 
   /// Login as an existing client. Sends OTP to the phone.
   /// POST /auth/login/client
-  Future<void> loginClient(String phone);
+  Future<void> loginClient(LoginRequest request);
 
   /// Check which roles are registered to a phone number.
   /// POST /auth/check-phone
@@ -30,7 +30,7 @@ abstract class AuthService {
 
   /// Login with phone number, auto-detecting the user's role.
   /// Tries driver first, then artisan. Returns the detected role.
-  Future<String> login(String phone);
+  Future<String> login(LoginRequest request);
 
   /// Verify OTP and receive JWT tokens.
   /// POST /auth/verify-otp
@@ -39,6 +39,12 @@ abstract class AuthService {
   /// Refresh an expired access token.
   /// POST /auth/refresh
   Future<String> refreshToken(String refreshToken);
+
+  /// Revoke the current refresh token server-side. Best-effort: callers
+  /// must clear local tokens regardless of whether this succeeds, since
+  /// the backend is also fine with eventual revocation on next /refresh.
+  /// POST /v1/auth/logout
+  Future<void> logout();
 
   /// Get the current user's full profile.
   /// GET /users/me
