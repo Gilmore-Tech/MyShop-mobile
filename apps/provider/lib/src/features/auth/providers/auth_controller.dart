@@ -69,6 +69,21 @@ class AuthOtpSent extends AuthState {
   final bool isVerifying;
 }
 
+/// Backend rejected the login because the same user has an active session
+/// on a different device. The UI shows a take-over prompt; on confirm, the
+/// controller retries the login with `forceLogin: true`.
+class AuthTakeoverPrompt extends AuthState {
+  const AuthTakeoverPrompt({
+    required this.phone,
+    required this.role,
+    this.isLoading = false,
+  });
+
+  final String phone;
+  final ProviderType role;
+  final bool isLoading;
+}
+
 /// Fully authenticated with a loaded user profile.
 class AuthAuthenticated extends AuthState {
   const AuthAuthenticated(this.user);
@@ -91,10 +106,16 @@ final tokenStorageProvider = Provider<TokenStorage>((ref) {
   return SecureTokenStorage();
 });
 
+/// Persistent per-install device ID + device info collector.
+final deviceIdProviderRef = Provider<DeviceIdProvider>((ref) {
+  return DeviceIdProvider(ref.watch(tokenStorageProvider));
+});
+
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepository(
     service: ref.watch(authServiceProvider),
     tokenStorage: ref.watch(tokenStorageProvider),
+    deviceIdProvider: ref.watch(deviceIdProviderRef),
   );
 });
 
@@ -244,6 +265,7 @@ class AuthController extends StateNotifier<AuthState> {
     if (_requesting) return;
     _requesting = true;
     state = const AuthUnauthenticated(isLoading: true);
+    String? attemptedRole;
     try {
       final roles = await _repo.checkPhone(phone);
       if (roles.isEmpty) {
@@ -254,16 +276,27 @@ class AuthController extends StateNotifier<AuthState> {
       }
       if (roles.length == 1) {
         // Single role — send OTP immediately.
-        await _loginWithRole(phone: phone, role: roles.first);
+        attemptedRole = roles.first;
+        await _loginWithRole(phone: phone, role: attemptedRole);
       } else {
         // Both roles — ask the user to choose.
         state = AuthRoleSelection(phone: phone, roles: roles);
       }
     } on ApiException catch (e) {
-      state = AuthUnauthenticated(
-        error: AuthErrorMapper.message(e),
-        fieldErrors: AuthErrorMapper.fieldErrors(e),
-      );
+      if (e.errorCode == AuthErrorCodes.alreadyLoggedInElsewhere &&
+          attemptedRole != null) {
+        state = AuthTakeoverPrompt(
+          phone: phone,
+          role: attemptedRole == 'artisan'
+              ? ProviderType.artisan
+              : ProviderType.driver,
+        );
+      } else {
+        state = AuthUnauthenticated(
+          error: AuthErrorMapper.message(e),
+          fieldErrors: AuthErrorMapper.fieldErrors(e),
+        );
+      }
     } on AuthException catch (e) {
       state = AuthUnauthenticated(error: e.message);
     } catch (_) {
@@ -289,11 +322,18 @@ class AuthController extends StateNotifier<AuthState> {
     try {
       await _loginWithRole(phone: current.phone, role: role);
     } on ApiException catch (e) {
-      state = AuthRoleSelection(
-        phone: current.phone,
-        roles: current.roles,
-        error: AuthErrorMapper.message(e),
-      );
+      if (e.errorCode == AuthErrorCodes.alreadyLoggedInElsewhere) {
+        state = AuthTakeoverPrompt(
+          phone: current.phone,
+          role: role == 'artisan' ? ProviderType.artisan : ProviderType.driver,
+        );
+      } else {
+        state = AuthRoleSelection(
+          phone: current.phone,
+          roles: current.roles,
+          error: AuthErrorMapper.message(e),
+        );
+      }
     } on AuthException catch (e) {
       state = AuthRoleSelection(
         phone: current.phone,
@@ -315,11 +355,12 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> _loginWithRole({
     required String phone,
     required String role,
+    bool forceLogin = false,
   }) async {
     if (role == 'driver') {
-      await _repo.loginDriver(phone);
+      await _repo.loginDriver(phone, forceLogin: forceLogin);
     } else {
-      await _repo.loginArtisan(phone);
+      await _repo.loginArtisan(phone, forceLogin: forceLogin);
     }
     final providerType =
         role == 'artisan' ? ProviderType.artisan : ProviderType.driver;
@@ -513,10 +554,58 @@ class AuthController extends StateNotifier<AuthState> {
     state = const AuthUnauthenticated();
   }
 
-  /// Log out — clear tokens and return to landing.
+  /// User-initiated logout: revokes the refresh token server-side, then
+  /// wipes local state.
   Future<void> logout() async {
-    await _repo.clear();
+    await _repo.logout();
     state = const AuthUnauthenticated();
+  }
+
+  /// User confirmed they want to take over the session from another device.
+  /// Re-issues the login with `forceLogin: true`.
+  Future<void> confirmTakeover() async {
+    final current = state;
+    if (current is! AuthTakeoverPrompt) return;
+    if (_requesting) return;
+    _requesting = true;
+    state = AuthTakeoverPrompt(
+      phone: current.phone,
+      role: current.role,
+      isLoading: true,
+    );
+    try {
+      await _loginWithRole(
+        phone: current.phone,
+        role: current.role.name,
+        forceLogin: true,
+      );
+    } on ApiException catch (e) {
+      state = AuthUnauthenticated(error: AuthErrorMapper.message(e));
+    } on AuthException catch (e) {
+      state = AuthUnauthenticated(error: e.message);
+    } catch (_) {
+      state = const AuthUnauthenticated(
+        error: 'Could not switch device. Please try again.',
+      );
+    } finally {
+      _requesting = false;
+    }
+  }
+
+  /// User declined the take-over prompt — go back to phone input.
+  void cancelTakeover() {
+    state = const AuthUnauthenticated();
+  }
+
+  /// Called by the Dio interceptor after it has decided the session is
+  /// dead and already wiped tokens from secure storage. Just flips the
+  /// state machine — no token clearing here.
+  void onForceLogoutFromInterceptor() {
+    if (state is AuthAuthenticated) {
+      state = const AuthUnauthenticated(
+        error: 'Your session ended. Please sign in again.',
+      );
+    }
   }
 
   /// Re-validate the session against [kSessionTtl]. Called on app resume

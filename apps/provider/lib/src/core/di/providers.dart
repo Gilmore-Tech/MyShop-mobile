@@ -16,9 +16,11 @@ final appTokenStorageProvider = Provider<TokenStorage>((ref) {
 
 /// Configured Dio HTTP client with auth + logging interceptors.
 ///
-/// `onForceLogout` fires when the auth interceptor determines the refresh
-/// token itself is dead (real backend revocation). The auth controller
-/// flips to unauthenticated and the router redirects to the sign-in flow.
+/// `onForceLogout` fires when the auth interceptor decides the session is
+/// terminal (TOKEN_EXPIRED / INVALID_TOKEN / REFRESH_TOKEN_REUSED) or has
+/// been invalidated by another device (SESSION_TAKEN_OVER). The interceptor
+/// has already cleared the appropriate tokens by the time this fires;
+/// the controller's job is just to flip state to unauthenticated.
 final dioProvider = Provider<Dio>((ref) {
   final config = ref.watch(apiConfigProvider);
   final tokenStorage = ref.watch(appTokenStorageProvider);
@@ -26,7 +28,7 @@ final dioProvider = Provider<Dio>((ref) {
     config: config,
     tokenStorage: tokenStorage,
     onForceLogout: () {
-      ref.read(authControllerProvider.notifier).logout();
+      ref.read(authControllerProvider.notifier).onForceLogoutFromInterceptor();
     },
   );
 });

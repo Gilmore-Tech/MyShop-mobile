@@ -14,7 +14,7 @@ import '../providers/auth_controller.dart';
 /// along with the phone via POST /auth/register.
 enum PhoneInputMode { signIn, signUp }
 
-class ProviderPhoneInputScreen extends ConsumerWidget {
+class ProviderPhoneInputScreen extends ConsumerStatefulWidget {
   const ProviderPhoneInputScreen({
     super.key,
     required this.mode,
@@ -25,14 +25,38 @@ class ProviderPhoneInputScreen extends ConsumerWidget {
   final ProviderType? signUpRole;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProviderPhoneInputScreen> createState() =>
+      _ProviderPhoneInputScreenState();
+}
+
+class _ProviderPhoneInputScreenState
+    extends ConsumerState<ProviderPhoneInputScreen> {
+  bool _takeoverDialogVisible = false;
+
+  PhoneInputMode get mode => widget.mode;
+  ProviderType? get signUpRole => widget.signUpRole;
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(authControllerProvider);
+
+    ref.listen<AuthState>(authControllerProvider, (prev, next) {
+      if (next is AuthTakeoverPrompt && !_takeoverDialogVisible) {
+        _takeoverDialogVisible = true;
+        _showTakeoverDialog(context, next.phone);
+      } else if (next is! AuthTakeoverPrompt && _takeoverDialogVisible) {
+        _takeoverDialogVisible = false;
+        if (Navigator.canPop(context)) Navigator.pop(context);
+      }
+    });
 
     String? remoteError;
     bool isLoading = false;
 
     if (state is AuthUnauthenticated) {
       remoteError = state.error;
+      isLoading = state.isLoading;
+    } else if (state is AuthTakeoverPrompt) {
       isLoading = state.isLoading;
     }
 
@@ -50,7 +74,7 @@ class ProviderPhoneInputScreen extends ConsumerWidget {
       errorText: remoteError,
       onErrorCleared: () =>
           ref.read(authControllerProvider.notifier).clearError(),
-      onSubmit: (phone) => _submit(ref, phone),
+      onSubmit: (phone) => _submit(phone),
       bottomAction: mode == PhoneInputMode.signIn
           ? TextButton(
               onPressed: isLoading ? null : () => context.go('/signup/role'),
@@ -83,7 +107,7 @@ class ProviderPhoneInputScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _submit(WidgetRef ref, String phone) async {
+  Future<void> _submit(String phone) async {
     final notifier = ref.read(authControllerProvider.notifier);
 
     if (mode == PhoneInputMode.signIn) {
@@ -118,5 +142,37 @@ class ProviderPhoneInputScreen extends ConsumerWidget {
         );
       }
     }
+  }
+
+  Future<void> _showTakeoverDialog(BuildContext context, String phone) async {
+    final controller = ref.read(authControllerProvider.notifier);
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Already signed in elsewhere'),
+        content: Text(
+          'This account ($phone) is signed in on another device. '
+          'Continue here? The other device will be signed out.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              controller.cancelTakeover();
+            },
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              controller.confirmTakeover();
+            },
+            child: const Text('Continue here'),
+          ),
+        ],
+      ),
+    );
+    _takeoverDialogVisible = false;
   }
 }

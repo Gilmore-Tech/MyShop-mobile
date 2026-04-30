@@ -6,18 +6,39 @@ import '../providers/auth_controller.dart';
 
 /// Shown when a phone number has both driver and artisan accounts.
 /// The user picks which role to sign in as, then OTP is sent.
-class SignInRoleSelectionScreen extends ConsumerWidget {
+class SignInRoleSelectionScreen extends ConsumerStatefulWidget {
   const SignInRoleSelectionScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SignInRoleSelectionScreen> createState() =>
+      _SignInRoleSelectionScreenState();
+}
+
+class _SignInRoleSelectionScreenState
+    extends ConsumerState<SignInRoleSelectionScreen> {
+  bool _takeoverDialogVisible = false;
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(authControllerProvider);
+
+    ref.listen<AuthState>(authControllerProvider, (prev, next) {
+      if (next is AuthTakeoverPrompt && !_takeoverDialogVisible) {
+        _takeoverDialogVisible = true;
+        _showTakeoverDialog(context, next.phone);
+      } else if (next is! AuthTakeoverPrompt && _takeoverDialogVisible) {
+        _takeoverDialogVisible = false;
+        if (Navigator.canPop(context)) Navigator.pop(context);
+      }
+    });
 
     String? error;
     bool isLoading = false;
 
     if (state is AuthRoleSelection) {
       error = state.error;
+      isLoading = state.isLoading;
+    } else if (state is AuthTakeoverPrompt) {
       isLoading = state.isLoading;
     }
 
@@ -97,6 +118,38 @@ class SignInRoleSelectionScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _showTakeoverDialog(BuildContext context, String phone) async {
+    final controller = ref.read(authControllerProvider.notifier);
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Already signed in elsewhere'),
+        content: Text(
+          'This account ($phone) is signed in on another device. '
+          'Continue here? The other device will be signed out.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              controller.cancelTakeover();
+            },
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              controller.confirmTakeover();
+            },
+            child: const Text('Continue here'),
+          ),
+        ],
+      ),
+    );
+    _takeoverDialogVisible = false;
   }
 }
 
