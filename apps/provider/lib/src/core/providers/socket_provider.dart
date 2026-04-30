@@ -11,7 +11,7 @@ import '../../features/artisan_home/providers/job_poller_provider.dart';
 import '../../features/artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../features/auth/providers/auth_controller.dart';
-import '../../features/driver_home/providers/driver_earnings_provider.dart';
+import '../../features/earnings/providers/earnings_providers.dart';
 import '../../features/driver_home/providers/driver_location_provider.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
 import '../../features/trips/providers/driver_trips_provider.dart';
@@ -335,17 +335,19 @@ void _connectAndListen(Ref ref, SocketService socket) {
         if (active != null && active.id != ride.id) return;
         ref.read(activeRideProvider.notifier).applySnapshot(ride);
 
-        // Refresh earnings + payouts when the ride completes — the
-        // backend's `recordRideCompletion()` writes a `Payment` row
+        // Refresh every earnings surface + payouts when the ride completes
+        // — backend's `recordRideCompletion()` writes a `Payment` row
         // fire-and-forget right after the status transition, so the new
-        // /payments/earnings totals land within a tick or two of this
-        // snapshot. Invalidating both providers means the dashboard
-        // (and the home-screen earnings card) reflect the new trip
-        // without the driver pulling-to-refresh.
+        // earnings figures land within a tick or two of this snapshot.
+        // Invalidating each family provider invalidates all its instances,
+        // so the homepage card, summary, and any open report refetch on
+        // their next watch without the driver pulling-to-refresh.
         if (ride.status == RideStatus.completed) {
           try {
-            ref.invalidate(driverEarningsProvider);
-            ref.invalidate(driverPayoutsProvider);
+            ref.invalidate(todayCardProvider);
+            ref.invalidate(earningsSummaryProvider);
+            ref.invalidate(earningsReportProvider);
+            ref.invalidate(payoutsProvider);
             ref.invalidate(driverTripsProvider);
           } catch (_) {/* providers may not be mounted in tests */}
         }

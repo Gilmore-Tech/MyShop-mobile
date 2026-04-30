@@ -11,7 +11,7 @@ import '../../../core/di/providers.dart';
 ///   - First mount of any consumer (FutureProvider builds once).
 ///   - On `ride:state` `completed` snapshot — the driver socket listener
 ///     invalidates this provider so the row appears the moment the trip
-///     ends, no pull-to-refresh needed (mirrors `driverEarningsProvider`).
+///     ends, no pull-to-refresh needed (mirrors the earnings providers).
 ///   - Manual `ref.invalidate(driverTripsProvider)` (date-range filters,
 ///     pull-to-refresh).
 final driverTripsProvider = FutureProvider<List<Ride>>((ref) async {

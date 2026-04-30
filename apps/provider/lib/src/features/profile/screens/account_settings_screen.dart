@@ -7,7 +7,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/auth_controller.dart';
 import '../../auth/providers/current_user_provider.dart';
-import '../../driver_home/providers/driver_earnings_provider.dart';
+import '../../earnings/providers/earnings_providers.dart';
 import '../providers/provider_type_provider.dart';
 import '../providers/verification_provider.dart';
 import '../widgets/settings_list_tile.dart';
@@ -83,7 +83,7 @@ class AccountSettingsScreen extends ConsumerWidget {
     final providerType = ref.watch(providerTypeProvider);
     final isDriver = providerType.isDriver;
     final user = ref.watch(currentUserProvider);
-    final earningsAsync = ref.watch(driverEarningsProvider);
+    final cardAsync = ref.watch(activeTodayCardProvider);
 
     // Derive verification status from the user's profile
     final driverProfile = user?.driverProfile;
@@ -119,14 +119,15 @@ class AccountSettingsScreen extends ConsumerWidget {
     final kycColor = kycStatus == 'approved' ? MyShopColors.success : MyShopColors.warning;
     final kycBg = kycStatus == 'approved' ? MyShopColors.successLight : MyShopColors.warningLight;
 
-    // Earnings for performance card
-    final todayEarnings = earningsAsync.when(
-      data: (e) => _formatGhs(e.todayAmountPesewas),
+    // Today's earnings for performance card — sourced from the homepage
+    // today-card endpoint, scoped to the active role.
+    final todayEarnings = cardAsync.when(
+      data: (c) => _formatGhs(c.netEarningsPesewas),
       loading: () => '...',
       error: (_, __) => '0',
     );
-    final todayTrips = earningsAsync.when(
-      data: (e) => '${e.todayTrips}',
+    final todayTrips = cardAsync.when(
+      data: (c) => '${c.bookingsCount}',
       loading: () => '...',
       error: (_, __) => '0',
     );
