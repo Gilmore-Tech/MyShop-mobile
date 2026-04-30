@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/current_location_provider.dart';
 import '../services/google_places_service.dart';
+import 'force_logout_handler.dart';
 
 /// API configuration (base URL).
 final apiConfigProvider = Provider<ApiConfig>((ref) {
@@ -15,13 +16,26 @@ final appTokenStorageProvider = Provider<TokenStorage>((ref) {
   return SecureTokenStorage();
 });
 
+/// Persistent per-install device ID + device info collector.
+final deviceIdProvider = Provider<DeviceIdProvider>((ref) {
+  return DeviceIdProvider(ref.watch(appTokenStorageProvider));
+});
+
 /// Configured Dio HTTP client with auth + logging interceptors.
+///
+/// `onForceLogout` fires when the auth interceptor decides the session is
+/// terminal (TOKEN_EXPIRED / INVALID_TOKEN / REFRESH_TOKEN_REUSED) or has
+/// been invalidated by another device (SESSION_TAKEN_OVER). It dispatches
+/// through [forceLogoutHandlerProvider] so the auth controller can register
+/// itself without creating a Dart import cycle.
 final dioProvider = Provider<Dio>((ref) {
   final config = ref.watch(apiConfigProvider);
   final tokenStorage = ref.watch(appTokenStorageProvider);
+  final handler = ref.watch(forceLogoutHandlerProvider);
   return createDioClient(
     config: config,
     tokenStorage: tokenStorage,
+    onForceLogout: handler.call,
   );
 });
 

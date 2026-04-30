@@ -18,11 +18,24 @@ class PhoneInputScreen extends ConsumerStatefulWidget {
 }
 
 class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
+  bool _takeoverDialogVisible = false;
+
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(clientAuthControllerProvider);
 
-    final isLoading = authState is AuthUnauthenticated && authState.isLoading;
+    ref.listen<ClientAuthState>(clientAuthControllerProvider, (prev, next) {
+      if (next is AuthTakeoverPrompt && !_takeoverDialogVisible) {
+        _takeoverDialogVisible = true;
+        _showTakeoverDialog(context, next.phone);
+      } else if (next is! AuthTakeoverPrompt && _takeoverDialogVisible) {
+        _takeoverDialogVisible = false;
+        if (Navigator.canPop(context)) Navigator.pop(context);
+      }
+    });
+
+    final isLoading = (authState is AuthUnauthenticated && authState.isLoading) ||
+        (authState is AuthTakeoverPrompt && authState.isLoading);
     final error = authState is AuthUnauthenticated ? authState.error : null;
 
     return MyShopPhoneInputScreen(
@@ -43,6 +56,38 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
         onTap: () => context.go(AppRoutes.authSignUp),
       ),
     );
+  }
+
+  Future<void> _showTakeoverDialog(BuildContext context, String phone) async {
+    final controller = ref.read(clientAuthControllerProvider.notifier);
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Already signed in elsewhere'),
+        content: Text(
+          'This account ($phone) is signed in on another device. '
+          'Continue here? The other device will be signed out.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              controller.cancelTakeover();
+            },
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              controller.confirmTakeover();
+            },
+            child: const Text('Continue here'),
+          ),
+        ],
+      ),
+    );
+    _takeoverDialogVisible = false;
   }
 }
 

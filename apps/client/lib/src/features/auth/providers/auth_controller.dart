@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/di/force_logout_handler.dart';
 import '../../../core/di/providers.dart';
 import '../data/auth_repository.dart';
 
@@ -64,6 +65,19 @@ class AuthOtpSent extends ClientAuthState {
   final bool isVerifying;
 }
 
+/// Backend rejected the login because the same user has an active session
+/// on a different device. The UI shows a take-over prompt; on confirm, the
+/// controller retries the login with `forceLogin: true`.
+class AuthTakeoverPrompt extends ClientAuthState {
+  const AuthTakeoverPrompt({
+    required this.phone,
+    this.isLoading = false,
+  });
+
+  final String phone;
+  final bool isLoading;
+}
+
 /// Fully authenticated with a loaded user profile.
 class AuthAuthenticated extends ClientAuthState {
   const AuthAuthenticated(this.profile);
@@ -86,6 +100,7 @@ final clientAuthRepositoryProvider = Provider<ClientAuthRepository>((ref) {
   return ClientAuthRepository(
     service: ref.watch(authServiceProvider),
     tokenStorage: ref.watch(tokenStorageProvider),
+    deviceIdProvider: ref.watch(deviceIdProvider),
   );
 });
 
@@ -94,6 +109,12 @@ final clientAuthControllerProvider =
   final controller = ClientAuthController(
     ref.watch(clientAuthRepositoryProvider),
   );
+  // Register with the Dio interceptor's force-logout dispatcher so that
+  // SESSION_TAKEN_OVER / TOKEN_EXPIRED / etc. flip the controller to
+  // unauthenticated and the router redirects to sign-in.
+  ref
+      .read(forceLogoutHandlerProvider)
+      .register(controller.onForceLogoutFromInterceptor);
   controller.bootstrap();
   return controller;
 });
@@ -175,6 +196,8 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
           phone: phone,
           message: 'No account found for this number. Sign up to get started.',
         );
+      } else if (e.errorCode == AuthErrorCodes.alreadyLoggedInElsewhere) {
+        state = AuthTakeoverPrompt(phone: phone);
       } else {
         state = AuthUnauthenticated(
           error: AuthErrorMapper.message(e),
@@ -361,8 +384,50 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
     state = const AuthUnauthenticated();
   }
 
+  /// User-initiated logout: revokes the refresh token server-side, then
+  /// wipes local state.
   Future<void> logout() async {
-    await _repo.clear();
+    await _repo.logout();
     state = const AuthUnauthenticated();
+  }
+
+  /// User confirmed they want to take over the session from another device.
+  /// Re-issues the login with `forceLogin: true`.
+  Future<void> confirmTakeover() async {
+    final current = state;
+    if (current is! AuthTakeoverPrompt) return;
+    if (_requesting) return;
+    _requesting = true;
+    state = AuthTakeoverPrompt(phone: current.phone, isLoading: true);
+    try {
+      await _repo.loginClient(current.phone, forceLogin: true);
+      state = AuthOtpSent(phone: current.phone, isNewUser: false);
+    } on ApiException catch (e) {
+      state = AuthUnauthenticated(error: AuthErrorMapper.message(e));
+    } on AuthException catch (e) {
+      state = AuthUnauthenticated(error: e.message);
+    } catch (_) {
+      state = const AuthUnauthenticated(
+        error: 'Could not switch device. Please try again.',
+      );
+    } finally {
+      _requesting = false;
+    }
+  }
+
+  /// User declined the take-over prompt — go back to phone input.
+  void cancelTakeover() {
+    state = const AuthUnauthenticated();
+  }
+
+  /// Called by the Dio interceptor after it has decided the session is
+  /// dead and already wiped tokens from secure storage. Just flips the
+  /// state machine — no token clearing here.
+  void onForceLogoutFromInterceptor() {
+    if (state is AuthAuthenticated) {
+      state = const AuthUnauthenticated(
+        error: 'Your session ended. Please sign in again.',
+      );
+    }
   }
 }

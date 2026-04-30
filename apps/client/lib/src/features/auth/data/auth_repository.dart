@@ -6,11 +6,14 @@ class ClientAuthRepository {
   ClientAuthRepository({
     required AuthService service,
     required TokenStorage tokenStorage,
+    required DeviceIdProvider deviceIdProvider,
   })  : _service = service,
-        _tokenStorage = tokenStorage;
+        _tokenStorage = tokenStorage,
+        _deviceIdProvider = deviceIdProvider;
 
   final AuthService _service;
   final TokenStorage _tokenStorage;
+  final DeviceIdProvider _deviceIdProvider;
 
   /// Register a new client account. Sends OTP — no tokens persisted yet.
   Future<void> register({
@@ -20,11 +23,15 @@ class ClientAuthRepository {
     String? email,
     String? referralCode,
   }) async {
+    final deviceId = await _deviceIdProvider.ensureDeviceId();
+    final deviceInfo = await _deviceIdProvider.readDeviceInfo();
     await _service.register(RegisterRequest(
       phone: phone,
       fullName: fullName,
       type: 'client',
       privacyPolicyAccepted: privacyPolicyAccepted,
+      deviceId: deviceId,
+      deviceInfo: deviceInfo,
       email: email,
       referralCode: referralCode,
     ));
@@ -37,9 +44,17 @@ class ClientAuthRepository {
     return _service.checkPhone(phone);
   }
 
-  /// Login as an existing client. Sends OTP.
-  Future<void> loginClient(String phone) async {
-    await _service.loginClient(phone);
+  /// Login as an existing client. Sends OTP. [forceLogin] is set to true
+  /// after the user confirms the take-over prompt.
+  Future<void> loginClient(String phone, {bool forceLogin = false}) async {
+    final deviceId = await _deviceIdProvider.ensureDeviceId();
+    final deviceInfo = await _deviceIdProvider.readDeviceInfo();
+    await _service.loginClient(LoginRequest(
+      phone: phone,
+      deviceId: deviceId,
+      deviceInfo: deviceInfo,
+      forceLogin: forceLogin,
+    ));
     await _tokenStorage.writePhone(phone);
   }
 
@@ -85,6 +100,24 @@ class ClientAuthRepository {
   /// Read the stored phone (used for OTP resend).
   Future<String?> readPhone() => _tokenStorage.readPhone();
 
-  /// Clear all stored tokens and phone.
+  /// Sign out: revoke the refresh token server-side (best effort) and wipe
+  /// local identity context. Used by the explicit logout button.
+  Future<void> logout() async {
+    try {
+      await _service.logout();
+    } catch (_) {
+      // Best-effort. Even if the backend call fails (network down, token
+      // already expired), proceed to wipe local state — the user wants out.
+    }
+    await _tokenStorage.clearTokens();
+  }
+
+  /// Clear all stored tokens and identity context — does NOT call the
+  /// backend. Used by force-logout paths where we already know the
+  /// session is dead server-side (e.g. interceptor 4xx on /auth/refresh).
   Future<void> clear() => _tokenStorage.clearTokens();
+
+  /// Clear only the JWT pair, preserving phone/role/cached profile so the
+  /// user can sign back in quickly. Used by the SESSION_TAKEN_OVER path.
+  Future<void> clearTokensOnly() => _tokenStorage.clearAuthTokensOnly();
 }
