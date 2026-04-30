@@ -256,6 +256,31 @@ class JobService {
     }
   }
 
+  /// POST /jobs/:id/artisan-confirm-cash — Artisan: confirm they received
+  /// cash off-platform. Backend inserts a `paymentMethod: 'cash'` payment
+  /// row, runs the same finalisation path the Paystack webhook does, and
+  /// flips the job to `completed`. Returns the updated job (same shape as
+  /// GET /jobs/:id).
+  ///
+  /// Error codes the caller may want to surface:
+  ///   - 403 ARTISAN_PROFILE_REQUIRED  — caller has no artisan profile
+  ///   - 403 NOT_ASSIGNED_ARTISAN      — caller isn't the assigned artisan
+  ///   - 409 PAYSTACK_CHARGE_IN_FLIGHT — let the webhook settle first
+  ///   - 409 PAYMENT_RECORD_EXISTS     — non-failed payment row already there
+  ///   - 400 JOB_NOT_AWAITING_RECEIPT  — job is in an earlier state
+  ///   - 400 AGREED_PRICE_MISSING      — price never recorded on the job
+  /// 200 is idempotent: hitting it on an already-completed job returns
+  /// the job without writing anything.
+  Future<Map<String, dynamic>> artisanConfirmCash(String jobId) async {
+    try {
+      final response =
+          await _dio.post('/jobs/$jobId/artisan-confirm-cash');
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   /// POST /jobs/:id/dispute — Dispute job (2-hour window).
   Future<Map<String, dynamic>> disputeJob(
     String jobId, {
