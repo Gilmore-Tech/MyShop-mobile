@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:developer' as developer;
 import 'dart:io' show Platform;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -10,6 +12,7 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/constants/maps_config.dart';
+import '../../../core/di/providers.dart';
 
 import '../../artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../artisan_jobs/providers/pending_incoming_jobs_provider.dart';
@@ -17,6 +20,7 @@ import '../../artisan_jobs/providers/submitted_bids_provider.dart';
 import '../../auth/providers/current_user_provider.dart';
 import '../../driver_home/providers/driver_location_provider.dart';
 import '../providers/active_job_provider.dart';
+import '../providers/bid_drafts_provider.dart';
 import '../widgets/bid_status_banner.dart';
 import 'bid_submission_screen.dart';
 
@@ -50,12 +54,49 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
   /// to thrash navigation and retain widgets in memory).
   bool _hasRedirectedToActiveJob = false;
 
+  /// Full-fat job fetched from `GET /jobs/:id` on mount. The artisan jobs
+  /// feed (`GET /jobs`) returns slim records that drop client identity
+  /// fields, so when the artisan opens the details from "My Jobs" (any
+  /// tab — active, bids, completed) the constructor's `widget.job` has
+  /// no client name / phone / photo. Hydrating once on mount fills those
+  /// in for the entire screen + downstream active-job + chat handoff.
+  Job? _hydratedJob;
+
+  @override
+  void initState() {
+    super.initState();
+    _hydrateJob();
+  }
+
+  /// Fire-and-forget fetch of the full job record. Failure is non-fatal —
+  /// the screen falls back to whatever `widget.job` already had.
+  Future<void> _hydrateJob() async {
+    try {
+      final raw =
+          await ref.read(jobServiceProvider).getJob(widget.job.id);
+      if (!mounted) return;
+      setState(() => _hydratedJob = Job.fromJson(raw));
+    } catch (e) {
+      developer.log(
+        'Job hydration failed for ${widget.job.id}: $e',
+        name: 'JobRequest',
+        level: 800,
+      );
+    }
+  }
+
+  /// The richest source we have for this job's static fields (client
+  /// identity, category, address). Prefers the hydrated record from
+  /// `GET /jobs/:id` (which always includes the `client: {...}` object)
+  /// and falls back to the constructor copy.
+  Job get _sourceJob => _hydratedJob ?? widget.job;
+
   String get _requestId => widget.job.id.length >= 8
       ? '#${widget.job.id.substring(0, 8).toUpperCase()}'
       : '#${widget.job.id}';
   String get _title =>
-      widget.job.categoryName != null && widget.job.categoryName!.isNotEmpty
-          ? '${widget.job.categoryName} request'
+      _sourceJob.categoryName != null && _sourceJob.categoryName!.isNotEmpty
+          ? '${_sourceJob.categoryName} request'
           : 'Service Request';
 
   @override
@@ -73,7 +114,27 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
         break;
       }
     }
-    final effectiveJob = liveEntry?.job ?? widget.job;
+    // The artisan jobs feed (`GET /jobs`) returns a slim record — it omits
+    // the client identity fields (`clientName`, `clientPhone`,
+    // `clientPhotoUrl`) and the cosmetic `categoryName` / `addressText`.
+    // Without merging, the feed lands and silently replaces our richer
+    // copy, so the artisan sees "Client" + a generic avatar through the
+    // rest of the flow. We prefer live values (lifecycle owns those) and
+    // fall back to `_sourceJob` — either the hydrated `GET /jobs/:id`
+    // response or the constructor copy (which itself may carry socket
+    // `job:new` data on the modal-entry path).
+    final source = _sourceJob;
+    final effectiveJob = liveEntry == null
+        ? source
+        : liveEntry.job.copyWith(
+            clientName: liveEntry.job.clientName ?? source.clientName,
+            clientPhone: liveEntry.job.clientPhone ?? source.clientPhone,
+            clientPhotoUrl:
+                liveEntry.job.clientPhotoUrl ?? source.clientPhotoUrl,
+            categoryName:
+                liveEntry.job.categoryName ?? source.categoryName,
+            addressText: liveEntry.job.addressText ?? source.addressText,
+          );
     final effectiveBidStatus = liveEntry != null
         ? _bidStatusFor(liveEntry, fallback: widget.bidStatus)
         : widget.bidStatus;
@@ -196,6 +257,37 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                       effectiveJob,
                       artisanUserId: ref.watch(currentUserProvider)?.id,
                     )) ...[
+                      // If the artisan started a bid in a previous session
+                      // (or got force-killed mid-submit), surface a tappable
+                      // banner above PLACE BID. The bid sheet itself
+                      // restores the form values; this is just discoverability.
+                      Builder(builder: (_) {
+                        final draft = ref.watch(
+                          bidDraftsProvider
+                              .select((s) => s[effectiveJob.id]),
+                        );
+                        if (draft == null) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.only(
+                            bottom: MyShopSpacing.md,
+                          ),
+                          child: _BidDraftBanner(
+                            submitting: draft.submitting,
+                            onResume: draft.submitting
+                                ? null
+                                : () => BidSubmissionScreen.show(
+                                      context,
+                                      job: effectiveJob,
+                                      distanceKm: distanceKm ?? 0,
+                                    ),
+                            onDiscard: draft.submitting
+                                ? null
+                                : () => ref
+                                    .read(bidDraftsProvider.notifier)
+                                    .remove(effectiveJob.id),
+                          ),
+                        );
+                      }),
                       _PlaceBidButton(
                         onTap: () => BidSubmissionScreen.show(
                           context,
@@ -1322,6 +1414,104 @@ class _SubmittedBidCard extends StatelessWidget {
                 ),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Resume-draft banner — shown above PLACE BID when a previous session left
+// an unsubmitted draft on this job. Tap to reopen the bid sheet (which
+// rehydrates from the draft); × to discard. While the draft is mid-submit
+// (app got killed between request fire and ACK), both controls are inert
+// and the banner reads "Submitting your bid…" — the app-bootstrap
+// reconcile in `BidDraftsNotifier.reconcile` resolves it shortly after.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _BidDraftBanner extends StatelessWidget {
+  const _BidDraftBanner({
+    required this.submitting,
+    required this.onResume,
+    required this.onDiscard,
+  });
+
+  final bool submitting;
+  final VoidCallback? onResume;
+  final VoidCallback? onDiscard;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onResume,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: MyShopSpacing.md,
+          vertical: MyShopSpacing.sm,
+        ),
+        decoration: BoxDecoration(
+          color: MyShopColors.primaryGold.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: MyShopColors.primaryGold.withValues(alpha: 0.45),
+          ),
+        ),
+        child: Row(
+          children: [
+            if (submitting)
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation(
+                    MyShopColors.primaryGold,
+                  ),
+                ),
+              )
+            else
+              const Icon(
+                Icons.drafts_outlined,
+                size: 20,
+                color: MyShopColors.primaryGold,
+              ),
+            const SizedBox(width: MyShopSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    submitting
+                        ? 'Submitting your bid…'
+                        : 'Draft saved · tap to continue',
+                    style: MyShopTypography.body1.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: MyShopColors.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    submitting
+                        ? 'Hang tight — we\'re confirming with the server.'
+                        : 'Your last entries are saved on this device.',
+                    style: MyShopTypography.body2.copyWith(
+                      color: MyShopColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (!submitting)
+              IconButton(
+                icon: const Icon(
+                  Icons.close,
+                  size: 18,
+                  color: MyShopColors.textSecondary,
+                ),
+                onPressed: onDiscard,
+                tooltip: 'Discard draft',
+                visualDensity: VisualDensity.compact,
+              ),
           ],
         ),
       ),

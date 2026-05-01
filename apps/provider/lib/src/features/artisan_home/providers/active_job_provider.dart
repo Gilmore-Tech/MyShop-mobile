@@ -65,12 +65,47 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
   /// keeps emitting GPS fixes. Without this, an artisan who was offline
   /// when the bid landed would see "— km / —" on the active-job header
   /// and no live distance/ETA.
+  ///
+  /// When the seeded [job] is missing client identity fields (the lean
+  /// `GET /jobs` feed shape), kicks off a fire-and-forget
+  /// `GET /jobs/:id` to hydrate them so the active-job header and chat
+  /// don't show "Client" + generic avatar.
   void setJob(Job job) {
     state = state.copyWith(job: job, clearError: true);
     try {
       _ref.read(providerStatusProvider.notifier).setBusy();
     } catch (_) {
       // Status provider may not be mounted during tests — safe to ignore.
+    }
+    if (job.clientName == null || job.clientPhotoUrl == null) {
+      _hydrateClientInfo(job.id);
+    }
+  }
+
+  /// Fetch the full job and merge client identity fields into the active
+  /// slot. Non-fatal: a failed fetch leaves the slot as-is.
+  Future<void> _hydrateClientInfo(String jobId) async {
+    try {
+      final raw = await _ref.read(jobServiceProvider).getJob(jobId);
+      final fresh = Job.fromJson(raw);
+      final current = state.job;
+      // Bail if the slot was cleared or swapped while we were in flight.
+      if (current == null || current.id != jobId) return;
+      state = state.copyWith(
+        job: current.copyWith(
+          clientName: current.clientName ?? fresh.clientName,
+          clientPhone: current.clientPhone ?? fresh.clientPhone,
+          clientPhotoUrl: current.clientPhotoUrl ?? fresh.clientPhotoUrl,
+          categoryName: current.categoryName ?? fresh.categoryName,
+          addressText: current.addressText ?? fresh.addressText,
+        ),
+      );
+    } catch (e) {
+      developer.log(
+        'Active job client hydration failed for $jobId: $e',
+        name: 'ActiveJob',
+        level: 800,
+      );
     }
   }
 

@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/directions_service.dart';
 import '../../driver_home/providers/driver_location_provider.dart';
 import '../providers/active_job_provider.dart';
+import '../widgets/rate_client_sheet.dart';
 
 /// Active job — map-first navigation view the artisan sees after accepting
 /// a bid. Drives the en_route → arrived → in_progress → marked_complete
@@ -44,6 +45,12 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
   /// call entirely and prevents any chance of a tight loop.
   bool _hasAutoStartedEnRoute = false;
 
+  /// One-shot guard so the artisan→client rating sheet only auto-opens
+  /// once when the job settles to `completed`. Without it a rebuild during
+  /// the sheet's open animation would queue another sheet underneath, and
+  /// the socket reconciler can also re-emit the same status.
+  bool _rateSheetShown = false;
+
   @override
   void initState() {
     super.initState();
@@ -64,6 +71,19 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
   void dispose() {
     _liveMetrics.dispose();
     super.dispose();
+  }
+
+  Future<void> _maybeShowRateClientSheet() async {
+    if (_rateSheetShown || !mounted) return;
+    final job = ref.read(activeJobProvider).job;
+    if (job == null || job.id.isEmpty) return;
+    _rateSheetShown = true;
+    final firstName = (job.clientName ?? 'Client').trim().split(' ').first;
+    await showRateClientSheet(
+      context,
+      jobId: job.id,
+      clientFirstName: firstName.isEmpty ? 'Client' : firstName,
+    );
   }
 
   Future<void> _launchExternalNavigation(LatLng destination) async {
@@ -122,7 +142,8 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
       return _NoJobLocation(job: job);
     }
 
-    // Surface notifier errors via snackbar.
+    // Surface notifier errors via snackbar, and auto-open the rating sheet
+    // the first time the job settles to `completed`.
     ref.listen<ActiveJobState>(activeJobProvider, (prev, next) {
       if (!mounted) return;
       if (next.errorMessage != null &&
@@ -130,6 +151,11 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(next.errorMessage!)),
         );
+      }
+      final justCompleted = next.job?.status == JobStatus.completed &&
+          prev?.job?.status != JobStatus.completed;
+      if (justCompleted) {
+        _maybeShowRateClientSheet();
       }
     });
 

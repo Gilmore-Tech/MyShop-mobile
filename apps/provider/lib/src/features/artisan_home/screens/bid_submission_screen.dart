@@ -1,18 +1,24 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:api_client/api_client.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../app/router.dart' show JobRequestRouteExtra;
 import '../../../core/di/providers.dart';
 import '../../artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../artisan_jobs/providers/submitted_bids_provider.dart';
+import '../providers/bid_drafts_provider.dart';
 import '../widgets/bid_confirmation_modal.dart';
 import '../widgets/bid_status_banner.dart';
 
@@ -33,9 +39,15 @@ class BidSubmissionScreen extends ConsumerStatefulWidget {
   final num marketAverage;
 
   String get clientName => job.clientName ?? 'Client';
+  String? get clientPhotoUrl => job.clientPhotoUrl;
   String get clientLocation => job.addressText ?? '';
 
-  /// Pushes the sheet as a draggable, full-rounded modal bottom sheet.
+  /// Pushes the sheet as a full-rounded modal bottom sheet.
+  ///
+  /// Drag-to-dismiss and barrier-tap are disabled — the artisan exits via
+  /// the explicit "Cancel Bid Request" button (or, while submitting, has
+  /// to wait for the request to settle). This prevents an accidental
+  /// dismiss from leaving an in-flight bid in an ambiguous state.
   static Future<void> show(
     BuildContext context, {
     required Job job,
@@ -46,6 +58,8 @@ class BidSubmissionScreen extends ConsumerStatefulWidget {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
+      isDismissible: false,
+      enableDrag: false,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: 0.55),
       builder: (_) => BidSubmissionScreen(
@@ -68,24 +82,137 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
   late final TextEditingController _duration;
   final List<File> _attachments = [];
   bool _submitting = false;
-  String? _error;
+
+  /// 600ms debounce so we don't write SharedPreferences on every keystroke.
+  Timer? _saveDebounce;
+
+  /// True once the artisan touches the form. We don't persist the empty
+  /// initial state — only writes that have actual content survive.
+  bool _isDirty = false;
+
+  /// UUID generated on the first submit attempt and reused on retry so the
+  /// backend can dedupe via `Idempotency-Key`. Survives in the draft.
+  String? _clientRequestId;
 
   @override
   void initState() {
     super.initState();
-    _labour = TextEditingController(text: '175');
-    _eta = TextEditingController(text: '20');
-    _notes = TextEditingController();
-    _duration = TextEditingController(text: '02:00');
+
+    final draft = ref.read(bidDraftsProvider)[widget.job.id];
+    _clientRequestId = draft?.clientRequestId;
+
+    _labour = TextEditingController(text: _labourInitial(draft));
+    _eta = TextEditingController(text: _etaInitial(draft));
+    _duration = TextEditingController(text: _durationInitial(draft));
+    _notes = TextEditingController(text: draft?.notes ?? '');
+    if (draft != null) {
+      for (final path in draft.attachmentPaths) {
+        final f = File(path);
+        if (f.existsSync()) _attachments.add(f);
+      }
+    }
+
+    for (final c in [_labour, _eta, _duration, _notes]) {
+      c.addListener(_scheduleSave);
+    }
   }
 
   @override
   void dispose() {
+    _saveDebounce?.cancel();
+    // Final flush — preserve the last keystroke if the artisan dismissed
+    // (e.g. via the Cancel button) without explicitly submitting. The
+    // future is intentionally not awaited; SharedPreferences writes are
+    // fire-and-forget and the dispose path can't await.
+    if (_isDirty) {
+      _writeDraft();
+    }
+    for (final c in [_labour, _eta, _duration, _notes]) {
+      c.removeListener(_scheduleSave);
+    }
     _labour.dispose();
     _eta.dispose();
     _notes.dispose();
     _duration.dispose();
     super.dispose();
+  }
+
+  /// Pesewas → display GHS. `175` for `17500`. Returns empty when there's
+  /// nothing to restore — controllers start blank.
+  static String _labourInitial(BidDraft? draft) {
+    final p = draft?.labourPesewas ?? 0;
+    return p > 0 ? (p ~/ 100).toString() : '';
+  }
+
+  static String _etaInitial(BidDraft? draft) {
+    final m = draft?.etaMinutes ?? 0;
+    return m > 0 ? '$m' : '';
+  }
+
+  static String _durationInitial(BidDraft? draft) {
+    final m = draft?.durationMinutes ?? 0;
+    if (m <= 0) return '';
+    final hh = (m ~/ 60).toString().padLeft(2, '0');
+    final mm = (m % 60).toString().padLeft(2, '0');
+    return '$hh:$mm';
+  }
+
+  void _scheduleSave() {
+    _isDirty = true;
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(const Duration(milliseconds: 600), _writeDraft);
+  }
+
+  Future<void> _writeDraft() async {
+    final ghs = num.tryParse(_labour.text.trim()) ?? 0;
+    final etaMinutes = int.tryParse(_eta.text.trim()) ?? 0;
+    final durationMinutes = _parseDurationMinutes(_duration.text);
+    final notes = _notes.text.trim();
+
+    final draft = BidDraft(
+      jobId: widget.job.id,
+      savedAt: DateTime.now(),
+      clientRequestId: _clientRequestId,
+      labourPesewas: ghs > 0 ? (ghs * 100).round() : 0,
+      etaMinutes: etaMinutes,
+      durationMinutes: durationMinutes,
+      notes: notes.isEmpty ? null : notes,
+      attachmentPaths: _attachments.map((f) => f.path).toList(growable: false),
+    );
+
+    if (!draft.hasContent) {
+      // Empty form — drop any prior draft for this job so the resume banner
+      // doesn't keep advertising a draft with nothing in it.
+      await ref.read(bidDraftsProvider.notifier).remove(widget.job.id);
+      return;
+    }
+
+    await ref.read(bidDraftsProvider.notifier).upsert(draft);
+  }
+
+  /// Copy the picked file into a per-job dir under app documents so the OS
+  /// doesn't wipe it out from under us between sessions.
+  Future<File> _persistAttachment(File source) async {
+    final docs = await getApplicationDocumentsDirectory();
+    final dir = Directory(p.join(docs.path, 'bid_drafts', widget.job.id));
+    if (!dir.existsSync()) dir.createSync(recursive: true);
+    final dest = File(p.join(
+      dir.path,
+      '${DateTime.now().millisecondsSinceEpoch}_${p.basename(source.path)}',
+    ));
+    return source.copy(dest.path);
+  }
+
+  /// After a successful submit, clear out the per-job attachments dir so
+  /// stale files don't pile up under app docs.
+  Future<void> _clearAttachmentsDir() async {
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final dir = Directory(p.join(docs.path, 'bid_drafts', widget.job.id));
+      if (dir.existsSync()) await dir.delete(recursive: true);
+    } catch (_) {
+      // Best-effort cleanup — don't fail the submit on a leftover file.
+    }
   }
 
   /// Extract `expiresAt` from the bid response so the countdown stays
@@ -117,6 +244,34 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     }
   }
 
+  /// Surface a failure as a SnackBar so the form stays interactive and the
+  /// artisan can adjust the offending field and tap submit again.
+  void _notifyError(String message) {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: MyShopColors.error,
+          content: Text(
+            message,
+            style: MyShopTypography.body1.copyWith(
+              color: MyShopColors.textOnPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          action: SnackBarAction(
+            label: 'DISMISS',
+            textColor: MyShopColors.textOnPrimary,
+            onPressed: () => messenger.hideCurrentSnackBar(),
+          ),
+        ),
+      );
+  }
+
   /// Parse "HH:MM" → total minutes. Falls back to a single integer treated
   /// as minutes. Returns 0 if unparseable.
   int _parseDurationMinutes(String raw) {
@@ -139,19 +294,46 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     final durationMinutes = _parseDurationMinutes(_duration.text);
 
     if (ghs <= 0 || etaMinutes <= 0 || durationMinutes <= 0) {
-      setState(() => _error = 'Fill in labour, ETA, and duration first.');
+      _notifyError('Fill in labour, ETA, and duration first.');
       return;
     }
 
-    setState(() {
-      _submitting = true;
-      _error = null;
-    });
+    // Cancel any pending debounce so we don't race the in-flight write.
+    _saveDebounce?.cancel();
+
+    setState(() => _submitting = true);
 
     final amountPesewas = (ghs * 100).round();
     final trimmedNotes =
         _notes.text.trim().isEmpty ? null : _notes.text.trim();
+
+    // Persist a fresh draft snapshot + claim an idempotency key so a
+    // crash/network-loss between here and ACK is recoverable. Reuses
+    // the existing key on retry so the backend can dedupe a request that
+    // landed last attempt but whose response we never saw.
+    _clientRequestId ??= const Uuid().v4();
+    await ref.read(bidDraftsProvider.notifier).upsert(
+          BidDraft(
+            jobId: widget.job.id,
+            savedAt: DateTime.now(),
+            clientRequestId: _clientRequestId,
+            labourPesewas: amountPesewas,
+            etaMinutes: etaMinutes,
+            durationMinutes: durationMinutes,
+            notes: trimmedNotes,
+            attachmentPaths:
+                _attachments.map((f) => f.path).toList(growable: false),
+            submitting: true,
+          ),
+        );
+
+    // Run the submission with a guaranteed `_submitting = false` reset on
+    // any failure path. We deliberately keep `_submitting = true` on the
+    // success branch so the button stays disabled until the bottom sheet
+    // pops — avoids a one-frame flicker between "submitting" and the
+    // confirmation modal.
     Map<String, dynamic>? bidResponse;
+    String? failureMessage;
     try {
       bidResponse = await ref.read(jobServiceProvider).submitBid(
             widget.job.id,
@@ -159,22 +341,38 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
             etaMinutes: etaMinutes,
             durationMinutes: durationMinutes,
             notes: trimmedNotes,
+            clientRequestId: _clientRequestId,
           );
     } on ApiException catch (e) {
+      failureMessage = _friendlyBidError(e);
+    } catch (e) {
+      // ignore: avoid_print
+      print('[BidSubmissionScreen] unexpected submit error: $e');
+      failureMessage = 'Failed to submit bid. Please try again.';
+    }
+
+    if (failureMessage != null) {
+      // Roll the draft's `submitting` flag back so the resume banner
+      // doesn't show a perpetual "Submitting…" state. The clientRequestId
+      // stays attached for retry.
+      await ref.read(bidDraftsProvider.notifier).markIdle(widget.job.id);
       if (!mounted) return;
-      setState(() {
-        _submitting = false;
-        _error = _friendlyBidError(e);
-      });
-      return;
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _submitting = false;
-        _error = 'Failed to submit bid. Please try again.';
-      });
+      setState(() => _submitting = false);
+      _notifyError(failureMessage);
       return;
     }
+    if (bidResponse == null) {
+      await ref.read(bidDraftsProvider.notifier).markIdle(widget.job.id);
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      return;
+    }
+
+    // Bid landed — discard the draft + on-disk attachments. Order matters:
+    // remove from the provider first so the resume banner stops showing,
+    // then async-clean the dir.
+    await ref.read(bidDraftsProvider.notifier).remove(widget.job.id);
+    unawaited(_clearAttachmentsDir());
 
     if (!mounted) return;
 
@@ -263,13 +461,18 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
   @override
   Widget build(BuildContext context) {
     final viewInsets = MediaQuery.of(context).viewInsets;
-    return Container(
-      decoration: const BoxDecoration(
-        color: MyShopColors.surfaceWhite,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      padding: EdgeInsets.only(bottom: viewInsets.bottom),
-      child: SingleChildScrollView(
+    return PopScope(
+      // Block Android back during an in-flight submit. The sheet is also
+      // configured with `isDismissible: false, enableDrag: false` so the
+      // only way out while submitting is for the request to settle.
+      canPop: !_submitting,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: MyShopColors.surfaceWhite,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        padding: EdgeInsets.only(bottom: viewInsets.bottom),
+        child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(
           MyShopSpacing.md,
           MyShopSpacing.sm,
@@ -296,6 +499,7 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
             // Client card
             _ClientHeader(
               clientName: widget.clientName,
+              clientPhotoUrl: widget.clientPhotoUrl,
               clientLocation: widget.clientLocation,
               distanceKm: widget.distanceKm,
             ),
@@ -314,6 +518,7 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
                     label: 'LABOUR CHARGE',
                     child: _NumberField(
                       controller: _labour,
+                      hintText: 'e.g. 175',
                       prefix: const Text(
                         '₵',
                         style: TextStyle(
@@ -332,6 +537,7 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
                     label: 'ARRIVAL (ETA)',
                     child: _NumberField(
                       controller: _eta,
+                      hintText: 'e.g. 20',
                       prefix: const Icon(
                         Icons.access_time,
                         color: MyShopColors.textPrimary,
@@ -350,7 +556,14 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
               child: _NotesField(
                 controller: _notes,
                 attachments: _attachments,
-                onFilePicked: (file) => setState(() => _attachments.add(file)),
+                onFilePicked: (file) async {
+                  // Copy into app docs so the file survives a cold start.
+                  // Picker temp files get aggressively reaped on iOS.
+                  final stored = await _persistAttachment(file);
+                  if (!mounted) return;
+                  setState(() => _attachments.add(stored));
+                  _scheduleSave();
+                },
               ),
             ),
             const SizedBox(height: MyShopSpacing.lg),
@@ -360,6 +573,7 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
               label: 'JOB DURATION (HH:MM)',
               child: _NumberField(
                 controller: _duration,
+                hintText: 'HH:MM',
                 prefix: const Icon(
                   Icons.timer_outlined,
                   color: MyShopColors.textPrimary,
@@ -369,25 +583,6 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
             ),
             const SizedBox(height: MyShopSpacing.xl),
 
-            if (_error != null) ...[
-              Container(
-                padding: const EdgeInsets.all(MyShopSpacing.sm),
-                decoration: BoxDecoration(
-                  color: MyShopColors.error.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: MyShopColors.error),
-                ),
-                child: Text(
-                  _error!,
-                  style: MyShopTypography.body2.copyWith(
-                    color: MyShopColors.error,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(height: MyShopSpacing.md),
-            ],
-
             // Submit
             _SubmitButton(
               onTap: _handleSubmit,
@@ -395,41 +590,44 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
             ),
             const SizedBox(height: MyShopSpacing.md),
 
-            // Cancel
-            Center(
-              child: GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 18,
-                      height: 18,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
+            // Cancel — hidden during submit so the artisan can't bail on
+            // an in-flight request. The sheet is also non-dismissible at
+            // the navigator level (see [BidSubmissionScreen.show]).
+            if (!_submitting)
+              Center(
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 18,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: MyShopColors.error,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.priority_high,
+                          size: 12,
                           color: MyShopColors.error,
-                          width: 1.5,
                         ),
                       ),
-                      child: const Icon(
-                        Icons.priority_high,
-                        size: 12,
-                        color: MyShopColors.error,
+                      const SizedBox(width: 6),
+                      Text(
+                        'Cancel Bid Request',
+                        style: MyShopTypography.body1.copyWith(
+                          color: MyShopColors.error,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Cancel Bid Request',
-                      style: MyShopTypography.body1.copyWith(
-                        color: MyShopColors.error,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
             const SizedBox(height: MyShopSpacing.sm),
 
             // Helper text
@@ -440,6 +638,7 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -452,11 +651,13 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
 class _ClientHeader extends StatelessWidget {
   const _ClientHeader({
     required this.clientName,
+    required this.clientPhotoUrl,
     required this.clientLocation,
     required this.distanceKm,
   });
 
   final String clientName;
+  final String? clientPhotoUrl;
   final String clientLocation;
   final double distanceKm;
 
@@ -470,15 +671,7 @@ class _ClientHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: const BoxDecoration(
-              color: MyShopColors.avatarPlaceholder,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.person, color: MyShopColors.textSecondary),
-          ),
+          _ClientAvatar(photoUrl: clientPhotoUrl, size: 44),
           const SizedBox(width: MyShopSpacing.sm),
           Expanded(
             child: Column(
@@ -543,6 +736,46 @@ class _ClientHeader extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Round avatar that loads `photoUrl` over the network when available and
+/// falls back to a generic person icon while loading or on error.
+class _ClientAvatar extends StatelessWidget {
+  const _ClientAvatar({required this.photoUrl, required this.size});
+
+  final String? photoUrl;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = photoUrl;
+    if (url == null || url.isEmpty) return _placeholder();
+    final cacheDim = (size * 3).round();
+    return ClipOval(
+      child: CachedNetworkImage(
+        imageUrl: url,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        memCacheWidth: cacheDim,
+        memCacheHeight: cacheDim,
+        placeholder: (_, __) => _placeholder(),
+        errorWidget: (_, __, ___) => _placeholder(),
+      ),
+    );
+  }
+
+  Widget _placeholder() {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        color: MyShopColors.avatarPlaceholder,
+        shape: BoxShape.circle,
+      ),
+      child: const Icon(Icons.person, color: MyShopColors.textSecondary),
     );
   }
 }
@@ -647,10 +880,15 @@ class _FieldWithLabel extends StatelessWidget {
 }
 
 class _NumberField extends StatelessWidget {
-  const _NumberField({required this.controller, required this.prefix});
+  const _NumberField({
+    required this.controller,
+    required this.prefix,
+    this.hintText,
+  });
 
   final TextEditingController controller;
   final Widget prefix;
+  final String? hintText;
 
   @override
   Widget build(BuildContext context) {
@@ -677,10 +915,16 @@ class _NumberField extends StatelessWidget {
                 fontWeight: FontWeight.w800,
                 fontSize: 22,
               ),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: EdgeInsets.zero,
+                hintText: hintText,
+                hintStyle: MyShopTypography.h2.copyWith(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 22,
+                  color: MyShopColors.textSecondary.withValues(alpha: 0.5),
+                ),
               ),
             ),
           ),

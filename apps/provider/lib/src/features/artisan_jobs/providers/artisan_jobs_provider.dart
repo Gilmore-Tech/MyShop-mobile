@@ -121,10 +121,7 @@ class ArtisanJobsState {
 class ArtisanJobsNotifier extends StateNotifier<ArtisanJobsState> {
   ArtisanJobsNotifier(this._ref) : super(const ArtisanJobsState()) {
     load();
-    _pollTimer = Timer.periodic(
-      _kPollInterval,
-      (_) => silentReload(),
-    );
+    _startPollTimer();
   }
 
   final Ref _ref;
@@ -135,6 +132,31 @@ class ArtisanJobsNotifier extends StateNotifier<ArtisanJobsState> {
   void dispose() {
     _pollTimer?.cancel();
     super.dispose();
+  }
+
+  void _startPollTimer() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(
+      _kPollInterval,
+      (_) => silentReload(),
+    );
+  }
+
+  /// Stop the background poll. Call when the app is backgrounded so a
+  /// suspended-then-resumed iOS process doesn't queue 8s ticks while idle.
+  /// FCM is the real wakeup channel for new jobs while the app isn't
+  /// foreground; the poll is only a foreground safety net.
+  void pausePolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
+  /// Restart the poll and fire one immediate silent reload so the list
+  /// reconciles any state we missed while paused.
+  void resumePolling() {
+    if (_pollTimer != null) return;
+    _startPollTimer();
+    silentReload();
   }
 
   Future<void> load() => _fetch(silent: false);
@@ -246,19 +268,36 @@ final artisanJobsFilteredProvider = Provider.autoDispose
   final localBids = ref.watch(submittedBidsProvider);
 
   // 1. Enrich every backend entry with local bid data when present.
+  //    Also merge client identity (name/phone/photo) and cosmetic fields
+  //    (categoryName, addressText) from the saved bid's Job snapshot —
+  //    the backend `GET /jobs` feed drops these, so without this the
+  //    Bids tab card and any subsequent screens fall back to "Client" +
+  //    a generic avatar even though we captured the rich data at bid
+  //    submission time.
   final results = <ArtisanJobEntry>[];
   final seenJobIds = <String>{};
   for (final entry in state.entries) {
     final local = localBids[entry.job.id];
-    final enriched = local != null
-        ? entry.copyWith(
-            bidAmountPesewas:
-                entry.bidAmountPesewas ?? local.amountPesewas,
-            bidStatus: entry.bidStatus ?? 'submitted',
-            bidSubmittedAt:
-                entry.bidSubmittedAt ?? local.submittedAt.toIso8601String(),
-          )
-        : entry;
+    final ArtisanJobEntry enriched;
+    if (local != null) {
+      final mergedJob = entry.job.copyWith(
+        clientName: entry.job.clientName ?? local.job.clientName,
+        clientPhone: entry.job.clientPhone ?? local.job.clientPhone,
+        clientPhotoUrl:
+            entry.job.clientPhotoUrl ?? local.job.clientPhotoUrl,
+        categoryName: entry.job.categoryName ?? local.job.categoryName,
+        addressText: entry.job.addressText ?? local.job.addressText,
+      );
+      enriched = entry.copyWith(
+        job: mergedJob,
+        bidAmountPesewas: entry.bidAmountPesewas ?? local.amountPesewas,
+        bidStatus: entry.bidStatus ?? 'submitted',
+        bidSubmittedAt:
+            entry.bidSubmittedAt ?? local.submittedAt.toIso8601String(),
+      );
+    } else {
+      enriched = entry;
+    }
     if (_matches(enriched, filter)) results.add(enriched);
     seenJobIds.add(entry.job.id);
   }
