@@ -11,6 +11,7 @@ import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/chat/chat_entry_button.dart';
 import '../../../core/services/directions_service.dart';
 import '../../driver_home/providers/driver_location_provider.dart';
 import '../providers/active_job_provider.dart';
@@ -246,7 +247,6 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
                       isUpdating: state.isUpdating,
                       onAdvance: () =>
                           ref.read(activeJobProvider.notifier).advance(),
-                      onMessage: () => context.push('/chat'),
                       onCall: () {},
                     ),
             ),
@@ -940,14 +940,12 @@ class _BottomPanel extends StatelessWidget {
     required this.job,
     required this.isUpdating,
     required this.onAdvance,
-    required this.onMessage,
     required this.onCall,
   });
 
   final Job job;
   final bool isUpdating;
   final VoidCallback onAdvance;
-  final VoidCallback onMessage;
   final VoidCallback onCall;
 
   @override
@@ -985,10 +983,14 @@ class _BottomPanel extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: _SecondaryButton(
-                  icon: Icons.chat_bubble_outline,
+                child: ChatEntryButton(
+                  bookingType: ChatBookingType.artisanJob,
+                  bookingId: job.id,
                   label: 'Message',
-                  onTap: onMessage,
+                  peerName: job.clientName ?? 'Client',
+                  peerStatus: 'On the job',
+                  background: MyShopColors.surfaceWhite,
+                  foreground: MyShopColors.textPrimary,
                 ),
               ),
               const SizedBox(width: MyShopSpacing.sm),
