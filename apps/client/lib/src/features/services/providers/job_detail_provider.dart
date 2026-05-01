@@ -1,3 +1,4 @@
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -162,8 +163,19 @@ class _JobDetailNotifier
   @override
   Future<JobDetail> build(String jobId) async {
     final jobService = ref.watch(jobServiceProvider);
-    final data = await jobService.getJob(jobId);
-    return _parseJobDetail(data);
+    try {
+      final data = await jobService.getJob(jobId);
+      return _parseJobDetail(data);
+    } on ApiException catch (e) {
+      // 429 means the polling + socket-driven refetches outpaced the
+      // backend's throttler. Holding onto the previous snapshot keeps the
+      // timeline visible — the next poll tick will pick up the real state.
+      if (e.statusCode == 429) {
+        final previous = state.valueOrNull;
+        if (previous != null) return previous;
+      }
+      rethrow;
+    }
   }
 
   /// Parse API response into [JobDetail].

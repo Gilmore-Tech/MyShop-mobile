@@ -15,12 +15,12 @@ import '../widgets/bid_list_sheet.dart';
 // reference photos, and triggers bid review.
 // API: GET /v1/jobs/:id  |  GET /v1/jobs/:id/bids
 
-/// How often this screen polls the backend for job + bid updates. Keeps
-/// the status badge, bid count, and timeline in sync even when the socket
-/// `job:bid_new` / `job:status` events are delayed. Matches the bid sheet's
-/// 5-second cadence so the timeline never lags behind a freshly opened
-/// modal — the previous 10s interval made bid arrivals feel sluggish.
-const _jobDetailPollInterval = Duration(seconds: 5);
+/// How often this screen polls the backend for job + bid updates. Acts as
+/// a safety net for delayed/missing socket events — the primary path is
+/// socket invalidation + the explicit invalidate that runs after the
+/// client accepts a bid. 12 s keeps us well under the backend's
+/// per-endpoint throttler when polling on top of socket-driven refetches.
+const _jobDetailPollInterval = Duration(seconds: 12);
 
 class JobDetailScreen extends ConsumerStatefulWidget {
   final String jobId;

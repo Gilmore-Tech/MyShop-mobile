@@ -94,7 +94,12 @@ class _ReceiptBody extends StatelessWidget {
             providerFirstName:
                 receipt.artisanName.split(RegExp(r'\s+')).first,
             providerKind: 'artisan',
-            onTap: () => showRateJobSheet(context, receipt),
+            onTap: () => showRateJobSheet(
+              context,
+              jobId: receipt.jobId,
+              artisanFirstName:
+                  receipt.artisanName.split(RegExp(r'\s+')).first,
+            ),
             w: w,
             h: h,
           ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../providers/payment_provider.dart';
+import '../widgets/rate_job_sheet.dart';
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 // PRD 7.2 / EDD § Payment Endpoints
@@ -203,14 +204,34 @@ class _DialogSheetState extends State<_DialogSheet> {
                 padding: EdgeInsets.symmetric(horizontal: w * 0.041),
                 child: Column(
                   children: [
-                    // Rate & Review Provider — gold CTA
+                    // Rate & Review Provider — gold CTA. Dismisses the
+                    // success dialog first so the rating sheet has a clean
+                    // backdrop, then opens the same `RateJobSheet` the
+                    // service receipt screen uses. The root navigator's
+                    // context is captured BEFORE the pop because this
+                    // widget's `context` is unmounted as the dialog tears
+                    // down.
                     SizedBox(
                       width: double.infinity,
                       height: h * 0.066,
                       child: ElevatedButton(
                         onPressed: () {
-                          // TODO: navigate to rating screen
-                          Navigator.of(context).maybePop();
+                          final firstName = c.artisanName
+                              .trim()
+                              .split(RegExp(r'\s+'))
+                              .first;
+                          final navigator =
+                              Navigator.of(context, rootNavigator: true);
+                          final rootCtx = navigator.context;
+                          navigator.maybePop();
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (!rootCtx.mounted) return;
+                            showRateJobSheet(
+                              rootCtx,
+                              jobId: c.jobId,
+                              artisanFirstName: firstName,
+                            );
+                          });
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: MyShopColors.primaryGold,

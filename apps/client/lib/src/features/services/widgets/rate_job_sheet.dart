@@ -3,27 +3,34 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../providers/job_summary_provider.dart';
-import '../providers/service_receipt_provider.dart';
 
 // ── Public entry-point ────────────────────────────────────────────────────────
 //
 // Bottom sheet that lets the client rate the artisan for a completed job.
 // Mirrors `rate_ride_sheet.dart` for the rides side. Uses [jobRatingProvider]
-// which posts to /v1/ratings with `bookingType: "job"`.
+// which posts to /v1/ratings with `bookingType: "artisan_job"`.
 //
 // PRD § 4.8 / EDD § Rating Module — blind 24-hour window: rating only
 // reveals once both sides have rated or the window closes.
+//
+// Decoupled from any specific receipt shape — both the post-payment flow
+// (`PaymentConfirmation`) and the receipt-screen flow (`ServiceReceiptData`)
+// just hand us the jobId and the artisan's first name.
 
 Future<void> showRateJobSheet(
-  BuildContext context,
-  ServiceReceiptData receipt,
-) {
+  BuildContext context, {
+  required String jobId,
+  required String artisanFirstName,
+}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.45),
-    builder: (_) => RateJobSheet(receipt: receipt),
+    builder: (_) => RateJobSheet(
+      jobId: jobId,
+      artisanFirstName: artisanFirstName,
+    ),
   );
 }
 
@@ -40,8 +47,13 @@ const _jobRatingTags = [
 // ── Sheet root ────────────────────────────────────────────────────────────────
 
 class RateJobSheet extends ConsumerStatefulWidget {
-  final ServiceReceiptData receipt;
-  const RateJobSheet({super.key, required this.receipt});
+  final String jobId;
+  final String artisanFirstName;
+  const RateJobSheet({
+    super.key,
+    required this.jobId,
+    required this.artisanFirstName,
+  });
 
   @override
   ConsumerState<RateJobSheet> createState() => _RateJobSheetState();
@@ -58,8 +70,8 @@ class _RateJobSheetState extends ConsumerState<RateJobSheet> {
   }
 
   String get _artisanFirstName {
-    final parts = widget.receipt.artisanName.trim().split(RegExp(r'\s+'));
-    return parts.isNotEmpty ? parts.first : 'the artisan';
+    final trimmed = widget.artisanFirstName.trim();
+    return trimmed.isEmpty ? 'the artisan' : trimmed;
   }
 
   @override
@@ -141,7 +153,7 @@ class _RateJobSheetState extends ConsumerState<RateJobSheet> {
   Future<void> _handleSubmit() async {
     final ok = await ref
         .read(jobRatingProvider.notifier)
-        .submitRating(jobId: widget.receipt.jobId);
+        .submitRating(jobId: widget.jobId);
     if (!mounted) return;
     if (ok) {
       Navigator.of(context).pop();

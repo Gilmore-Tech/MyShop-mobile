@@ -200,7 +200,20 @@ class _BidsNotifier
   @override
   Future<List<ArtisanBid>> build(String jobId) async {
     final jobService = ref.watch(jobServiceProvider);
-    final data = await jobService.getBids(jobId);
+    final List<dynamic> data;
+    try {
+      data = await jobService.getBids(jobId);
+    } on ApiException catch (e) {
+      // 429 = backend throttler tripped (typically when polling races with
+      // socket-driven invalidation during state changes). Hold the previous
+      // bid list so the screen doesn't flip to an error state — the next
+      // poll/socket event will reconcile.
+      if (e.statusCode == 429) {
+        final previous = state.valueOrNull;
+        if (previous != null) return previous;
+      }
+      rethrow;
+    }
     developer.log(
       'Received ${data.length} bid(s) for job $jobId',
       name: 'BidsForJob',

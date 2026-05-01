@@ -4,6 +4,7 @@ import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
+import 'ride_receipt_provider.dart';
 
 // ── Quick-feedback tags shown on the rating sheet ─────────────────────────────
 // PRD 4.3 — client rates driver post-ride; tags feed the provider analytics dashboard.
@@ -110,6 +111,11 @@ class RideRatingNotifier extends StateNotifier<RideRatingState> {
         comment: state.note.isNotEmpty ? state.note : null,
       );
       developer.log('Rating submitted for ride $rideId', name: 'RideRating');
+      // Bust the cached ride receipt so any backend rollups that ride on
+      // the same fetch land on the next visit. Blind 24-hour window means
+      // the rating average won't move for the rater, but anything else on
+      // the page should refresh.
+      _ref.invalidate(rideReceiptByIdProvider(rideId));
       state = state.copyWith(isSubmitting: false, isSubmitted: true);
       return true;
     } on ApiException catch (e) {
@@ -119,9 +125,7 @@ class RideRatingNotifier extends StateNotifier<RideRatingState> {
       );
       state = state.copyWith(
         isSubmitting: false,
-        errorMessage: e.message.isNotEmpty
-            ? e.message
-            : "Couldn't submit your rating. Please try again.",
+        errorMessage: _friendlyError(e),
       );
       return false;
     } catch (e) {
@@ -131,6 +135,25 @@ class RideRatingNotifier extends StateNotifier<RideRatingState> {
         errorMessage: "Couldn't submit your rating. Please try again.",
       );
       return false;
+    }
+  }
+
+  /// Maps the backend's structured error codes for `POST /v1/ratings` into
+  /// messages a passenger can act on. Mirror of the artisan-side mapper in
+  /// [RatingNotifier] so both rating surfaces speak the same language.
+  String _friendlyError(ApiException e) {
+    switch (e.errorCode) {
+      case 'BOOKING_NOT_COMPLETED':
+        return 'The trip is still being finalized. Wait a moment and try '
+            'again — you can also rate later from your Activity.';
+      case 'ALREADY_RATED':
+        return "You've already rated this trip.";
+      case 'RATING_WINDOW_CLOSED':
+        return 'The rating window for this trip has closed.';
+      default:
+        return e.message.isNotEmpty
+            ? e.message
+            : "Couldn't submit your rating. Please try again.";
     }
   }
 

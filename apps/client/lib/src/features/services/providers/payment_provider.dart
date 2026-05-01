@@ -333,6 +333,10 @@ class PaymentSummary {
 // PRD 7.2: confirms funds are escrowed; released on dual confirmation.
 
 class PaymentConfirmation {
+  /// Job UUID — needed by the success dialog so its "Rate & Review
+  /// Provider" button can hand the rating sheet a valid bookingId.
+  final String jobId;
+
   final String transactionRef;  // e.g. "#TXN-2024-8821"
   final String artisanName;
   final String jobTitle;
@@ -343,6 +347,7 @@ class PaymentConfirmation {
   final String dateTimeLabel;
 
   const PaymentConfirmation({
+    required this.jobId,
     required this.transactionRef,
     required this.artisanName,
     required this.jobTitle,
@@ -934,6 +939,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     state = state.copyWith(
       phase: PaymentPhase.settled,
       confirmation: PaymentConfirmation(
+        jobId: summary.jobId,
         transactionRef: state.paymentId ??
             '#TXN-${summary.jobId.hashCode.abs() % 9000 + 1000}',
         artisanName: summary.artisanName,
@@ -1140,6 +1146,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     state = state.copyWith(
       phase: PaymentPhase.settled,
       confirmation: PaymentConfirmation(
+        jobId:          summary.jobId,
         transactionRef: state.paymentId ??
             '#TXN-${summary.jobId.hashCode.abs() % 9000 + 1000}',
         artisanName:    summary.artisanName,

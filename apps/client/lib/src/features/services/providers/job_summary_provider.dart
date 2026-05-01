@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:api_client/api_client.dart';
 
 import '../../../core/di/providers.dart';
+import 'service_receipt_provider.dart';
 
 // ── Artisan (job summary context) ─────────────────────────────────────────────
 // Subset of provider profile needed for the post-completion summary screen.
@@ -89,7 +90,7 @@ class JobSummaryData {
 
 // ── Rating State ──────────────────────────────────────────────────────────────
 // PRD 4.8 / EDD § Rating Module:
-//   POST /v1/ratings  { bookingType: "job", bookingId, rating, comment? }
+//   POST /v1/ratings  { bookingType: "artisan_job", bookingId, stars, comment? }
 //   Blind 24-hour window — rating is only visible once the artisan also rates
 //   or the window closes.  Prevents retaliatory ratings.
 
@@ -137,9 +138,9 @@ class RatingState {
 // ── Rating Notifier ───────────────────────────────────────────────────────────
 
 class RatingNotifier extends StateNotifier<RatingState> {
-  RatingNotifier(this._ratingService) : super(const RatingState());
+  RatingNotifier(this._ref) : super(const RatingState());
 
-  final RatingService _ratingService;
+  final Ref _ref;
 
   void selectStars(int stars) =>
       state = state.copyWith(selectedStars: stars, clearError: true);
@@ -148,7 +149,7 @@ class RatingNotifier extends StateNotifier<RatingState> {
       state = state.copyWith(reviewText: text);
 
   /// Submits the blind rating.
-  /// POST /v1/ratings  { bookingType: "job", bookingId, rating, comment? }
+  /// POST /v1/ratings  { bookingType: "artisan_job", bookingId, stars, comment? }
   ///
   /// Returns `true` on success so the caller (sheet, screen) can decide
   /// whether to dismiss UI or keep the form open for the user to retry.
@@ -156,20 +157,24 @@ class RatingNotifier extends StateNotifier<RatingState> {
     if (!state.canSubmit) return false;
     state = state.copyWith(isSubmitting: true, clearError: true);
     try {
-      await _ratingService.submitRating(
-        bookingType: 'job',
-        bookingId: jobId,
-        stars: state.selectedStars,
-        comment: state.reviewText.isNotEmpty ? state.reviewText : null,
-      );
+      await _ref.read(ratingServiceProvider).submitRating(
+            bookingType: 'artisan_job',
+            bookingId: jobId,
+            stars: state.selectedStars,
+            comment: state.reviewText.isNotEmpty ? state.reviewText : null,
+          );
+      // Bust the cached job/receipt views so the next visit reflects the
+      // submission. Blind 24-hour window means the average won't move for
+      // the rater, but anything else on the page should refresh.
+      _ref.invalidate(jobSummaryProvider(jobId));
+      _ref.invalidate(serviceReceiptByIdProvider(jobId));
       state = state.copyWith(isSubmitting: false, isSubmitted: true);
       return true;
     } on ApiException catch (e) {
+      final friendly = await _friendlyError(e, jobId: jobId);
       state = state.copyWith(
         isSubmitting: false,
-        errorMessage: e.message.isNotEmpty
-            ? e.message
-            : "Couldn't submit your rating. Please try again.",
+        errorMessage: friendly,
       );
       return false;
     } catch (_) {
@@ -180,11 +185,49 @@ class RatingNotifier extends StateNotifier<RatingState> {
       return false;
     }
   }
+
+  /// Maps the backend's structured error codes for `POST /v1/ratings` to
+  /// messages the user can act on.
+  ///
+  /// For [BOOKING_NOT_COMPLETED] specifically we do a follow-up
+  /// `GET /jobs/:id` and include the actual backend status in the message,
+  /// so the user (and the dev console) can immediately see whether the
+  /// job is stuck in `pending_payment`, `artisan_marked_complete`, etc.
+  /// rather than guessing.
+  Future<String> _friendlyError(ApiException e, {required String jobId}) async {
+    switch (e.errorCode) {
+      case 'BOOKING_NOT_COMPLETED':
+        String? status;
+        try {
+          final raw = await _ref.read(jobServiceProvider).getJob(jobId);
+          status = raw['status'] as String?;
+        } catch (_) {
+          // Best-effort — fall through to the generic message.
+        }
+        if (status == null || status.isEmpty || status == 'completed') {
+          // Either we couldn't fetch (network) or the backend now says
+          // completed but didn't a moment ago — likely a settle race.
+          return 'The job is still being finalized. Wait a moment and try '
+              'again — you can also rate later from your Activity.';
+        }
+        return 'This job is still in "$status" — ratings only open once '
+            'the job is fully completed. Try again once the artisan and '
+            'payment have both settled.';
+      case 'ALREADY_RATED':
+        return "You've already rated this job.";
+      case 'RATING_WINDOW_CLOSED':
+        return 'The rating window for this job has closed.';
+      default:
+        return e.message.isNotEmpty
+            ? e.message
+            : "Couldn't submit your rating. Please try again.";
+    }
+  }
 }
 
 final jobRatingProvider =
     StateNotifierProvider.autoDispose<RatingNotifier, RatingState>(
-  (ref) => RatingNotifier(ref.watch(ratingServiceProvider)),
+  (ref) => RatingNotifier(ref),
 );
 
 // ── Job Summary Provider ──────────────────────────────────────────────────────

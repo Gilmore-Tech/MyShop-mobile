@@ -20,9 +20,11 @@ import '../providers/job_detail_provider.dart';
 /// How often this screen polls for bid + job updates. Single-bid status
 /// flips (pending → accepted/declined/expired) don't currently fire a
 /// socket event, so without polling the screen would only refresh on
-/// navigation — leaving the client looking at a stale status. Matches the
-/// bid sheet's 5-second cadence.
-const _bidDetailPollInterval = Duration(seconds: 5);
+/// navigation. 12 s is the safety-net cadence — socket events still drive
+/// the fast path; this just guarantees eventual consistency without
+/// piling on top of the parent screen's poll and tripping the backend's
+/// throttler.
+const _bidDetailPollInterval = Duration(seconds: 12);
 
 class BidDetailScreen extends ConsumerStatefulWidget {
   final String jobId;
