@@ -17,6 +17,11 @@ export 'src/models/auth_error_mapper.dart';
 export 'src/models/user_dtos.dart';
 export 'src/models/verification_dtos.dart';
 
+// Realtime
+export 'src/realtime/chat_controller.dart';
+export 'src/realtime/chat_outbox.dart';
+export 'src/realtime/chat_realtime.dart';
+
 // Services
 export 'src/services/category_service.dart';
 export 'src/services/chat_service.dart';

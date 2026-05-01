@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_models/shared_models.dart' show ChatBookingType;
 
 import '../../app/router.dart';
 import '../../features/auth/providers/auth_controller.dart';
@@ -151,8 +152,19 @@ class FcmService {
     // Foreground message — surface a local notification even when the
     // user is inside the app so they can't miss an urgent arrival while
     // viewing an unrelated screen.
+    //
+    // `new_message` is the exception: the chat socket already delivers
+    // the message and the in-app surfaces (active-ride/job header, the
+    // chat screen, the unread badge on the entry-point button) reflect
+    // it. Suppress the OS banner so we don't double-notify.
     FirebaseMessaging.onMessage.listen((message) async {
       debugPrint('[FCM] foreground message: ${message.data}');
+      final rawType = message.data[NotificationPayload.keyType] as String?;
+      final type = NotificationPayload.normaliseType(rawType ?? '');
+      if (type == NotificationPayload.typeNewMessage) {
+        debugPrint('[FCM] foreground new_message — suppressing OS banner');
+        return;
+      }
       await _renderFromRemote(message);
     });
 
@@ -342,13 +354,31 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
 
       // ── Cross-cutting ─────────────────────────────────────────────────
       case NotificationPayload.typeNewMessage:
-        if (jobId != null) {
-          router.go(AppRoutes.jobTrackingPath(jobId));
-        } else if (rideId != null) {
-          router.go(AppRoutes.rideTracking);
-        } else {
+        // Push directly into the chat screen for the booking the message
+        // belongs to. Falls back to /activity when the payload is missing
+        // the booking ids — same defensive default as the rest of the
+        // routing table.
+        final rawBookingType =
+            payload[NotificationPayload.keyBookingType] as String?;
+        final bookingType = ChatBookingType.fromWire(rawBookingType);
+        final bookingId =
+            (payload[NotificationPayload.keyBookingId] as String?) ??
+                (bookingType == ChatBookingType.ride ? rideId : jobId);
+        if (bookingType == null ||
+            bookingId == null ||
+            bookingId.isEmpty) {
           router.go(AppRoutes.activity);
+          break;
         }
+        router.push(
+          AppRoutes.chat,
+          extra: <String, Object?>{
+            'bookingType': bookingType,
+            'bookingId': bookingId,
+            'peerName': payload['title'] as String? ?? 'Chat',
+            'peerStatus': '',
+          },
+        );
         break;
 
       // Backend asks the client to rate the counter-party for a completed

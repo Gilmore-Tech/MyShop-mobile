@@ -82,8 +82,12 @@ class NotificationPayload {
     typeJobRequest,
     typeRideRequest,
     typeBidAccepted,
-    typeNewMessage,
   };
+
+  /// Types that should render through the dedicated `chat_messages` channel
+  /// (Android) / `MESSAGE` category (iOS) so the OS treats them like
+  /// conversational pings — time-sensitive but not call-style.
+  static const Set<String> chatTypes = {typeNewMessage};
 }
 
 /// Wraps `flutter_local_notifications` for the provider app. Responsibilities:
@@ -133,6 +137,22 @@ class LocalNotificationService {
     enableVibration: false,
   );
 
+  /// Chat messages — high importance (so the user can hear them) but no
+  /// full-screen call-style banner. Same urgency tier the OS uses for
+  /// SMS/IM, which lets iOS pair it with the `MESSAGE` category for the
+  /// time-sensitive interruption level.
+  static const AndroidNotificationChannel _chatChannel =
+      AndroidNotificationChannel(
+    'chat_messages',
+    'Chat messages',
+    description:
+        'New messages from drivers, artisans, riders and clients during '
+        'your active bookings.',
+    importance: Importance.high,
+    playSound: true,
+    enableVibration: true,
+  );
+
   bool _initialised = false;
 
   void Function(Map<String, dynamic> payload)? _onTap;
@@ -168,6 +188,7 @@ class LocalNotificationService {
         AndroidFlutterLocalNotificationsPlugin>();
     await androidPlugin?.createNotificationChannel(_urgentChannel);
     await androidPlugin?.createNotificationChannel(_timelineChannel);
+    await androidPlugin?.createNotificationChannel(_chatChannel);
     await androidPlugin?.requestNotificationsPermission();
   }
 
@@ -215,7 +236,18 @@ class LocalNotificationService {
     Map<String, String> extras = const {},
   }) async {
     final isUrgent = NotificationPayload.urgentTypes.contains(type);
-    final channel = isUrgent ? _urgentChannel : _timelineChannel;
+    final isChat = NotificationPayload.chatTypes.contains(type);
+    final channel = isUrgent
+        ? _urgentChannel
+        : isChat
+            ? _chatChannel
+            : _timelineChannel;
+
+    final androidCategory = isUrgent
+        ? AndroidNotificationCategory.call
+        : isChat
+            ? AndroidNotificationCategory.message
+            : AndroidNotificationCategory.status;
 
     await _plugin.show(
       _dedupeId(type, extras),
@@ -228,9 +260,7 @@ class LocalNotificationService {
           channelDescription: channel.description,
           importance: isUrgent ? Importance.max : Importance.high,
           priority: isUrgent ? Priority.high : Priority.defaultPriority,
-          category: isUrgent
-              ? AndroidNotificationCategory.call
-              : AndroidNotificationCategory.status,
+          category: androidCategory,
           fullScreenIntent: isUrgent,
           autoCancel: true,
           ongoing: false,
@@ -240,7 +270,12 @@ class LocalNotificationService {
           presentAlert: true,
           presentBadge: true,
           presentSound: true,
-          interruptionLevel: isUrgent
+          // Pair the iOS category with the appropriate interruption tier:
+          //   urgent  → time-sensitive (cuts through Focus modes)
+          //   chat    → time-sensitive + MESSAGE (iOS treats it like SMS)
+          //   default → active
+          categoryIdentifier: isChat ? 'MESSAGE' : null,
+          interruptionLevel: (isUrgent || isChat)
               ? InterruptionLevel.timeSensitive
               : InterruptionLevel.active,
         ),

@@ -262,7 +262,27 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/chat',
-        builder: (context, state) => const ProviderChatScreen(),
+        builder: (context, state) {
+          // `extra` carries the booking + peer hints. Accept the enum
+          // directly OR a wire string (e.g. from a deep-link payload),
+          // and tolerate omission so legacy `context.push('/chat')`
+          // calls still build (they fall back to the messages-list
+          // empty state).
+          final extra = state.extra is Map<String, Object?>
+              ? state.extra! as Map<String, Object?>
+              : const <String, Object?>{};
+          final raw = extra['bookingType'];
+          final bookingType = raw is ChatBookingType
+              ? raw
+              : ChatBookingType.fromWire(raw as String?);
+          return ProviderChatScreen(
+            bookingType: bookingType,
+            bookingId: extra['bookingId'] as String?,
+            clientName: extra['peerName'] as String?,
+            clientStatus: extra['peerStatus'] as String?,
+            jobTitle: extra['jobTitle'] as String?,
+          );
+        },
       ),
       GoRoute(
         path: '/messages',

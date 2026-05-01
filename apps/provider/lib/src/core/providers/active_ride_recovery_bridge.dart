@@ -5,6 +5,7 @@ import 'package:shared_models/shared_models.dart';
 
 import '../../features/auth/providers/auth_controller.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
+import '../../features/profile/providers/provider_type_provider.dart';
 import '../di/providers.dart';
 import 'socket_provider.dart';
 
@@ -87,6 +88,13 @@ final activeRideRecoveryBridgeProvider = Provider<void>((ref) {
       if (next is! AuthAuthenticated) return;
       // Only fire on the transition INTO authenticated, not every rebuild.
       if (prev is AuthAuthenticated) return;
+      // `/drivers/me/active-ride` is gated by @Roles('driver') server-side.
+      // Artisans hitting it always 403 — skip the call entirely instead of
+      // burning a guaranteed-rejected request on every artisan sign-in.
+      if (!ref.read(providerTypeProvider).isDriver) {
+        debugPrint('[ActiveRideRecovery] non-driver role — skipping');
+        return;
+      }
       tryRecover();
     },
     fireImmediately: true,
@@ -103,7 +111,8 @@ final activeRideRecoveryBridgeProvider = Provider<void>((ref) {
     final hasActiveRide = ref.read(activeRideProvider).ride != null;
     final isAuthed =
         ref.read(authControllerProvider) is AuthAuthenticated;
-    if (hasActiveRide || !isAuthed) return;
+    final isDriver = ref.read(providerTypeProvider).isDriver;
+    if (hasActiveRide || !isAuthed || !isDriver) return;
     debugPrint('[ActiveRideRecovery] socket connected — re-checking');
     tryRecover();
   });

@@ -71,9 +71,26 @@ class AuthInterceptor extends QueuedInterceptor {
     }
 
     final token = await _tokenStorage.readAccessToken();
-    if (token != null) {
-      options.headers['Authorization'] = 'Bearer $token';
+    if (token == null) {
+      // No token + non-public path = the user is signed out (or never
+      // signed in). Reject the request locally with a `cancel` type so it
+      // never hits the wire and so [onError] doesn't pattern-match it as
+      // a real 401 and try to refresh against nothing. Background loops
+      // that race with logout (e.g. the location heartbeat firing one
+      // more tick after the user is wiped) used to generate a continuous
+      // 401 storm here; this short-circuit ends them at source.
+      handler.reject(
+        DioException(
+          requestOptions: options,
+          type: DioExceptionType.cancel,
+          error: 'NOT_AUTHENTICATED',
+          message: 'Authenticated request attempted without a token — '
+              'session is over.',
+        ),
+      );
+      return;
     }
+    options.headers['Authorization'] = 'Bearer $token';
     handler.next(options);
   }
 

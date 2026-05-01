@@ -11,6 +11,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import 'package:go_router/go_router.dart';
 
+import '../../../core/providers/chat_controller_provider.dart';
 import '../../../core/services/directions_service.dart';
 import '../providers/driver_location_provider.dart';
 import '../providers/ride_request_provider.dart';
@@ -992,10 +993,9 @@ class _PassengerPanel extends StatelessWidget {
                       ],
                     ),
                   ),
-                  _ContactButton(
-                    icon: Icons.chat_bubble_outline,
-                    filled: true,
-                    onTap: () {},
+                  _ChatContactButton(
+                    rideId: ride.id,
+                    riderName: ride.clientName ?? 'Passenger',
                   ),
                   const SizedBox(width: 8),
                   _ContactButton(
@@ -1210,6 +1210,127 @@ class _ContactButton extends StatelessWidget {
           color: filled ? MyShopColors.textOnPrimary : MyShopColors.darkSlate,
         ),
       ),
+    );
+  }
+}
+
+/// Icon-sized chat affordance used in the passenger panel header. Same
+/// 44×44 silhouette as [_ContactButton] but auto-opens the chat channel
+/// on the orchestrator (so the unread badge is live without the user
+/// visiting `/chat` first) and routes to the chat screen on tap.
+class _ChatContactButton extends ConsumerStatefulWidget {
+  const _ChatContactButton({
+    required this.rideId,
+    required this.riderName,
+  });
+
+  final String rideId;
+  final String riderName;
+
+  @override
+  ConsumerState<_ChatContactButton> createState() =>
+      _ChatContactButtonState();
+}
+
+class _ChatContactButtonState extends ConsumerState<_ChatContactButton> {
+  StreamSubscription<int>? _unreadSub;
+  int _unread = 0;
+  bool _opened = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _ensureOpened();
+  }
+
+  @override
+  void dispose() {
+    _unreadSub?.cancel();
+    super.dispose();
+  }
+
+  void _ensureOpened() {
+    if (widget.rideId.isEmpty) return;
+    final controller = ref.read(chatControllerProvider).valueOrNull;
+    if (controller == null || _opened) return;
+    _opened = true;
+    scheduleMicrotask(() {
+      if (!mounted) return;
+      controller.openChannel(ChatBookingType.ride, widget.rideId);
+    });
+    _unreadSub = controller.unreadCountStream.listen((n) {
+      if (!mounted) return;
+      setState(() => _unread = n);
+    });
+  }
+
+  void _onTap() {
+    if (widget.rideId.isEmpty) return;
+    context.push(
+      '/chat',
+      extra: <String, Object?>{
+        'bookingType': ChatBookingType.ride,
+        'bookingId': widget.rideId,
+        'peerName': widget.riderName,
+        'peerStatus': 'On the trip',
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.watch(chatControllerProvider);
+    _ensureOpened();
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        GestureDetector(
+          onTap: _onTap,
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: MyShopColors.darkSlate,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.chat_bubble_outline,
+              size: 20,
+              color: MyShopColors.textOnPrimary,
+            ),
+          ),
+        ),
+        if (_unread > 0)
+          Positioned(
+            right: -4,
+            top: -4,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: MyShopColors.error,
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(
+                  color: MyShopColors.surfaceWhite,
+                  width: 1.5,
+                ),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                _unread > 99 ? '99+' : _unread.toString(),
+                style: const TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  color: MyShopColors.textOnPrimary,
+                  height: 1,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

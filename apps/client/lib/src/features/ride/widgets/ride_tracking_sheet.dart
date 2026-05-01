@@ -1,9 +1,12 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_models/shared_models.dart' show ChatBookingType;
 import 'package:shared_ui/shared_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
+import '../../../core/chat/chat_entry_button.dart';
 import '../providers/ride_payment_method_provider.dart';
 import '../providers/ride_provider.dart';
 
@@ -73,7 +76,10 @@ class RideTrackingSheet extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _ChatRow(driverFirstName: firstName),
+                  _ChatRow(
+                    driverFirstName: firstName,
+                    driverFullName: driver.name,
+                  ),
                   SizedBox(height: h * 0.012),
                   const _SecondaryActions(),
                   SizedBox(height: h * 0.017),
@@ -482,40 +488,27 @@ class _VehicleInfo extends StatelessWidget {
 
 // ── Chat + phone row ─────────────────────────────────────────────────────────
 
-class _ChatRow extends StatelessWidget {
+class _ChatRow extends ConsumerWidget {
   final String driverFirstName;
-  const _ChatRow({required this.driverFirstName});
+  final String driverFullName;
+  const _ChatRow({
+    required this.driverFirstName,
+    required this.driverFullName,
+  });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final w = MediaQuery.sizeOf(context).width;
-    final h = MediaQuery.sizeOf(context).height;
+    final rideId = ref.watch(activeRideIdProvider) ?? '';
     return Row(
       children: [
         Expanded(
-          child: SizedBox(
-            height: h * 0.059,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                // TODO: Navigate to chat screen
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: MyShopColors.darkSlate,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(w * 0.026),
-                ),
-                elevation: 0,
-              ),
-              icon: Icon(Icons.chat_bubble_rounded, size: w * 0.046),
-              label: Text(
-                'Chat with $driverFirstName',
-                style: TextStyle(
-                  fontSize: w * 0.036,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
+          child: ChatEntryButton(
+            bookingType: ChatBookingType.ride,
+            bookingId: rideId,
+            label: 'Chat with $driverFirstName',
+            peerName: driverFullName,
+            peerStatus: 'On your trip',
           ),
         ),
         SizedBox(width: w * 0.026),

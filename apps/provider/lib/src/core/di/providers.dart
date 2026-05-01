@@ -70,3 +70,9 @@ final ratingServiceProvider = Provider<RatingService>((ref) {
 final apiNotificationServiceProvider = Provider<NotificationService>((ref) {
   return NotificationService(ref.watch(dioProvider));
 });
+
+/// Chat REST — history fetch + send/markRead fallback paths used by the
+/// orchestrator when the `/chat` socket can't deliver in time.
+final chatServiceProvider = Provider<ChatService>((ref) {
+  return ChatService(ref.watch(dioProvider));
+});

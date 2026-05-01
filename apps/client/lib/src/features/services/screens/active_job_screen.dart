@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_models/shared_models.dart' show ChatBookingType;
 
 import '../../../app/router.dart';
+import '../../../core/chat/chat_entry_button.dart';
 import '../providers/active_job_provider.dart';
 
 // ── Timeline step model ───────────────────────────────────────────────────────
@@ -153,7 +155,12 @@ class _ActiveJobBody extends ConsumerWidget {
                 SizedBox(height: h * 0.005),
                 _MapSection(job: job, w: w, h: h),
                 SizedBox(height: h * 0.010),
-                _ActionButtonsRow(artisanName: job.artisan.name, w: w, h: h),
+                _ActionButtonsRow(
+                  jobId: job.jobId,
+                  artisanName: job.artisan.name,
+                  w: w,
+                  h: h,
+                ),
                 SizedBox(height: h * 0.019),
                 _ProgressSection(job: job, w: w, h: h),
                 SizedBox(height: h * 0.014),
@@ -692,11 +699,16 @@ class _ActiveJobMapPainter extends CustomPainter {
 // ── Action Buttons Row ────────────────────────────────────────────────────────
 
 class _ActionButtonsRow extends StatelessWidget {
+  final String jobId;
   final String artisanName;
   final double w;
   final double h;
-  const _ActionButtonsRow(
-      {required this.artisanName, required this.w, required this.h});
+  const _ActionButtonsRow({
+    required this.jobId,
+    required this.artisanName,
+    required this.w,
+    required this.h,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -705,12 +717,14 @@ class _ActionButtonsRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: _OutlinedActionButton(
-              icon: Icons.chat_bubble_outline_rounded,
+            child: ChatEntryButton(
+              bookingType: ChatBookingType.artisanJob,
+              bookingId: jobId,
               label: 'Message',
-              onTap: () {}, // TODO: navigate to chat
-              w: w,
-              h: h,
+              peerName: artisanName,
+              peerStatus: 'On your job',
+              background: MyShopColors.surfaceWhite,
+              foreground: MyShopColors.textPrimary,
             ),
           ),
           SizedBox(width: w * 0.026),

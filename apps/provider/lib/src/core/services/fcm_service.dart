@@ -161,8 +161,20 @@ class FcmService {
     // Foreground messages — the in-app modal is driven by the socket in
     // IncomingRequestListener, so we just surface a local notification as
     // a fallback (useful if the socket is disconnected).
+    //
+    // `new_message` is the exception: the chat socket already delivers the
+    // message and the in-app surfaces (active-job header, chat screen,
+    // unread badge on the entry-point button) reflect it. Suppress the
+    // OS banner so we don't double-notify the user about something
+    // they're already seeing.
     FirebaseMessaging.onMessage.listen((message) async {
       debugPrint('[FCM] foreground message: ${message.data}');
+      final rawType = message.data[NotificationPayload.keyType] as String?;
+      final type = NotificationPayload.normaliseType(rawType ?? '');
+      if (type == NotificationPayload.typeNewMessage) {
+        debugPrint('[FCM] foreground new_message — suppressing OS banner');
+        return;
+      }
       await _renderFromRemote(message);
     });
 
@@ -335,7 +347,33 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         break;
 
       case NotificationPayload.typeNewMessage:
-        router.go('/messages');
+        // Push directly into the chat screen for the booking the message
+        // belongs to. Falls back to /messages when the payload is
+        // missing the booking ids — that route already lists the active
+        // chats.
+        final rawBookingType =
+            payload[NotificationPayload.keyBookingType] as String?;
+        final bookingType = ChatBookingType.fromWire(rawBookingType);
+        final rideId = payload[NotificationPayload.keyRideId] as String?;
+        final jobId = payload[NotificationPayload.keyJobId] as String?;
+        final bookingId =
+            (payload[NotificationPayload.keyBookingId] as String?) ??
+                (bookingType == ChatBookingType.ride ? rideId : jobId);
+        if (bookingType == null ||
+            bookingId == null ||
+            bookingId.isEmpty) {
+          router.go('/messages');
+          break;
+        }
+        router.push(
+          '/chat',
+          extra: <String, Object?>{
+            'bookingType': bookingType,
+            'bookingId': bookingId,
+            'peerName': payload['title'] as String? ?? 'Chat',
+            'peerStatus': '',
+          },
+        );
         break;
 
       // Backend asks the provider to rate the counter-party for a

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_models/shared_models.dart' show ChatBookingType;
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -631,7 +632,25 @@ GoRouter _buildRouter({
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.chat,
-        builder: (_, __) => const ChatScreen(),
+        builder: (_, state) {
+          // `extra` carries the booking + peer hints. Accept the
+          // enum directly OR a wire string (e.g. when restored from a
+          // deep link payload), and tolerate omission so the legacy
+          // `context.push('/chat')` calls still build.
+          final extra = state.extra is Map<String, Object?>
+              ? state.extra! as Map<String, Object?>
+              : const <String, Object?>{};
+          final raw = extra['bookingType'];
+          final bookingType = raw is ChatBookingType
+              ? raw
+              : ChatBookingType.fromWire(raw as String?);
+          return ChatScreen(
+            bookingType: bookingType,
+            bookingId: extra['bookingId'] as String?,
+            peerName: extra['peerName'] as String? ?? 'Chat',
+            peerStatus: extra['peerStatus'] as String? ?? '',
+          );
+        },
       ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
