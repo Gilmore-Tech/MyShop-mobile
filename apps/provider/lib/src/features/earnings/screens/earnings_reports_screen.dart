@@ -6,6 +6,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../trips/widgets/date_range_picker_modal.dart';
 import '../providers/earnings_providers.dart';
+import '../widgets/earnings_line_chart.dart';
 import '../widgets/weekly_performance_chart.dart';
 
 /// Detailed earnings & payout reports.
@@ -346,25 +347,31 @@ class _ReportBody extends StatelessWidget {
         ),
         const SizedBox(height: MyShopSpacing.lg),
 
-        // ── Breakdown table ──
+        // ── Bookings breakdown — line graph of count per bucket ──
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('${_granularityLabel(report.granularity)} Breakdown',
-                style: const TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: MyShopColors.textPrimary)),
-            if (report.series.length > 7)
-              Text('See All',
-                  style: MyShopTypography.body2.copyWith(
-                      color: MyShopColors.primaryGold,
-                      fontWeight: FontWeight.w700)),
+            Text(
+              '${_granularityLabel(report.granularity)} '
+              '${role == EarningsRole.driver ? 'Trips' : 'Jobs'}',
+              style: const TextStyle(
+                fontFamily: 'Raleway',
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+                color: MyShopColors.textPrimary,
+              ),
+            ),
+            Text(
+              '${report.bookingsCompleted} total',
+              style: MyShopTypography.body2.copyWith(
+                color: MyShopColors.textSecondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: MyShopSpacing.sm),
-        _BreakdownTable(
+        _BreakdownLineChart(
           report: report,
           role: role,
         ),
@@ -498,69 +505,93 @@ class _ReportChart extends StatelessWidget {
   }
 }
 
-class _BreakdownTable extends StatelessWidget {
-  const _BreakdownTable({required this.report, required this.role});
+/// Bookings count over time, rendered as a smooth line graph. Replaces the
+/// old date/count/net table — at a glance the user sees the trend; tapping
+/// a point reveals the exact date and count for that bucket.
+class _BreakdownLineChart extends StatelessWidget {
+  const _BreakdownLineChart({required this.report, required this.role});
 
   final EarningsReport report;
   final EarningsRole role;
 
   @override
   Widget build(BuildContext context) {
-    final countLabel = role == EarningsRole.driver ? 'TRIPS' : 'JOBS';
-    final rows = report.series;
+    final series = report.series;
+    final countLabel = role == EarningsRole.driver ? 'trips' : 'jobs';
 
     return Container(
+      padding: const EdgeInsets.all(MyShopSpacing.md),
       decoration: BoxDecoration(
         color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: MyShopColors.divider),
       ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: MyShopSpacing.md, vertical: 10),
-            decoration: const BoxDecoration(
-              color: Color(0xFFF9FAFB),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-              border: Border(
-                  bottom: BorderSide(
-                      color: MyShopColors.divider, width: 0.5)),
-            ),
-            child: Row(children: [
-              Expanded(
-                  flex: 3,
-                  child: Text('DATE',
-                      style: MyShopTypography.overline.copyWith(
-                          fontSize: 10, letterSpacing: 0.6))),
-              Expanded(
-                  flex: 2,
-                  child: Text(countLabel,
-                      textAlign: TextAlign.right,
-                      style: MyShopTypography.overline.copyWith(
-                          fontSize: 10, letterSpacing: 0.6))),
-              Expanded(
-                  flex: 4,
-                  child: Text('NET',
-                      textAlign: TextAlign.right,
-                      style: MyShopTypography.overline.copyWith(
-                          fontSize: 10, letterSpacing: 0.6))),
-            ]),
+      child: _buildChart(series, countLabel),
+    );
+  }
+
+  Widget _buildChart(List<EarningsReportPoint> series, String countLabel) {
+    if (series.isEmpty) {
+      return _empty('No data for this period');
+    }
+
+    final values =
+        series.map((p) => p.count.toDouble()).toList(growable: false);
+    final maxValue = values.fold<double>(0, (m, v) => v > m ? v : m);
+    if (maxValue == 0) {
+      return _empty('No completed $countLabel in this period');
+    }
+
+    return EarningsLineChart(
+      values: values,
+      // Pad by 15% so the topmost point isn't pinned to the chart's top
+      // edge, then round up to a clean integer (counts are whole numbers).
+      maxValue: (maxValue * 1.15).ceilToDouble(),
+      xLabels: _xLabels(series, report.granularity),
+      tooltipBuilder: (i) {
+        final p = series[i];
+        final count = p.count;
+        return '${_formatBucketDate(p.bucketStart, report.granularity)}'
+            ' · $count $countLabel';
+      },
+    );
+  }
+
+  Widget _empty(String message) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 28),
+      child: Center(
+        child: Text(
+          message,
+          style: MyShopTypography.body2.copyWith(
+            color: MyShopColors.textSecondary,
           ),
-          if (rows.isEmpty)
-            const _BreakdownRow(
-                date: 'No data', count: 0, net: 'GHS 0', isLast: true)
-          else
-            for (var i = 0; i < rows.length; i++)
-              _BreakdownRow(
-                date: _formatBucketDate(rows[i].bucketStart, report.granularity),
-                count: rows[i].count,
-                net: 'GHS ${_fmtGhs(rows[i].netPesewas)}',
-                isLast: i == rows.length - 1,
-              ),
-        ],
+        ),
       ),
     );
+  }
+
+  static List<String> _xLabels(
+      List<EarningsReportPoint> points, EarningsGranularity g) {
+    const weekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const month = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return points.map((p) {
+      final d = p.bucketStart.toLocal();
+      switch (g) {
+        case EarningsGranularity.day:
+          if (points.length <= 7) {
+            return weekday[(d.weekday - 1).clamp(0, 6)];
+          }
+          return '${d.day}';
+        case EarningsGranularity.week:
+          return '${d.month}/${d.day}';
+        case EarningsGranularity.month:
+          return month[(d.month - 1).clamp(0, 11)];
+      }
+    }).toList(growable: false);
   }
 
   static String _formatBucketDate(DateTime utc, EarningsGranularity g) {
@@ -703,68 +734,6 @@ class _SummaryCard extends StatelessWidget {
               )),
         ],
       ),
-    );
-  }
-}
-
-// ─── Breakdown row ──────────────────────────────────────────────────────────
-
-class _BreakdownRow extends StatelessWidget {
-  const _BreakdownRow({
-    required this.date,
-    required this.count,
-    required this.net,
-    this.isLast = false,
-  });
-  final String date;
-  final int count;
-  final String net;
-  final bool isLast;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: MyShopSpacing.md, vertical: 14),
-      decoration: BoxDecoration(
-        border: isLast
-            ? null
-            : const Border(
-                bottom: BorderSide(
-                    color: MyShopColors.divider, width: 0.5),
-              ),
-      ),
-      child: Row(children: [
-        Expanded(
-          flex: 3,
-          child: Text(date,
-              style: const TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: MyShopColors.textPrimary)),
-        ),
-        Expanded(
-          flex: 2,
-          child: Text('$count',
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: MyShopColors.textSecondary)),
-        ),
-        Expanded(
-          flex: 4,
-          child: Text(net,
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: MyShopColors.textPrimary)),
-        ),
-      ]),
     );
   }
 }

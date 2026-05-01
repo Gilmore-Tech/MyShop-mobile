@@ -85,7 +85,7 @@ class _ArtisanEarningsScreenState
                 ),
               ),
             ),
-            const _PayoutFooter(),
+            _PayoutFooter(period: _period),
           ],
         ),
       ),
@@ -114,16 +114,16 @@ class _EarningsContent extends ConsumerWidget {
     final available = summary.availableBalancePesewas / 100;
     final periodNet = summary.netEarningsPesewas / 100;
 
-    // Commission breakdown always uses the week regardless of the period
-    // toggle above (which drives the headline). Riverpod caches by family
-    // key so this is one extra request only when the user switches off the
-    // week.
-    final weekReportQuery = const EarningsReportQuery.preset(
+    // Commission, jobs count, and avg-fare follow the segmented control —
+    // the screen reads as a coherent whole, not a half-period/half-week
+    // mash-up. Riverpod caches by family key so each (role, period) pair
+    // is fetched at most once until invalidated.
+    final reportQuery = EarningsReportQuery.preset(
       role: _kArtisanRole,
-      period: EarningsPeriod.week,
+      period: period,
     );
-    final weekReportAsync = ref.watch(earningsReportProvider(weekReportQuery));
-    final weekReport = weekReportAsync.valueOrNull;
+    final reportAsync = ref.watch(earningsReportProvider(reportQuery));
+    final report = reportAsync.valueOrNull;
 
     final ratings = ref.watch(providerRatingsProvider).valueOrNull ??
         ProviderRatingsSummary.empty;
@@ -149,8 +149,8 @@ class _EarningsContent extends ConsumerWidget {
           children: [
             Expanded(
               child: _MiniStatCard(
-                label: 'JOBS THIS WEEK',
-                value: '${weekReport?.bookingsCompleted ?? 0}',
+                label: _jobsLabel(period),
+                value: '${report?.bookingsCompleted ?? 0}',
                 subtitle: 'Completed',
               ),
             ),
@@ -158,8 +158,9 @@ class _EarningsContent extends ConsumerWidget {
             Expanded(
               child: _MiniStatCard(
                 label: 'AVG FARE',
-                value:
-                    'GH₵ ${((weekReport?.averageFarePesewas ?? 0) / 100).toStringAsFixed(2)}',
+                value: report == null || report.bookingsCompleted == 0
+                    ? '—'
+                    : 'GH₵ ${(report.averageFarePesewas / 100).toStringAsFixed(2)}',
                 subtitle: 'Per job',
               ),
             ),
@@ -176,11 +177,12 @@ class _EarningsContent extends ConsumerWidget {
         ),
         const SizedBox(height: MyShopSpacing.md),
 
-        // Commission & Tax (week)
+        // Commission & Tax — follows the period selector
         CommissionCard(
-          grossPesewas: weekReport?.grossEarningsPesewas ?? 0,
-          commissionPesewas: weekReport?.commissionChargedPesewas ?? 0,
-          netPesewas: weekReport?.netEarningsPesewas ?? 0,
+          grossPesewas: report?.grossEarningsPesewas ?? 0,
+          commissionPesewas: report?.commissionChargedPesewas ?? 0,
+          netPesewas: report?.netEarningsPesewas ?? 0,
+          title: _commissionTitle(period),
         ),
         const SizedBox(height: MyShopSpacing.lg),
 
@@ -206,6 +208,28 @@ class _EarningsContent extends ConsumerWidget {
         const SizedBox(height: MyShopSpacing.lg),
       ],
     );
+  }
+
+  static String _jobsLabel(EarningsPeriod p) {
+    switch (p) {
+      case EarningsPeriod.today:
+        return 'JOBS TODAY';
+      case EarningsPeriod.week:
+        return 'JOBS THIS WEEK';
+      case EarningsPeriod.month:
+        return 'JOBS THIS MONTH';
+    }
+  }
+
+  static String _commissionTitle(EarningsPeriod p) {
+    switch (p) {
+      case EarningsPeriod.today:
+        return 'Commission & Tax — Today';
+      case EarningsPeriod.week:
+        return 'Commission & Tax — This Week';
+      case EarningsPeriod.month:
+        return 'Commission & Tax — This Month';
+    }
   }
 
   static String _seriesSubtitle(EarningsPeriod p) {
@@ -538,7 +562,14 @@ class _MiniStatCard extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _PayoutFooter extends ConsumerStatefulWidget {
-  const _PayoutFooter();
+  const _PayoutFooter({required this.period});
+
+  /// The currently-selected period upstream. The footer reads
+  /// `availableBalancePesewas` from this period's summary so it shares the
+  /// cache the parent screen already loaded — `availableBalancePesewas` is
+  /// period-agnostic per the backend contract, so any period yields the
+  /// correct gate value.
+  final EarningsPeriod period;
 
   @override
   ConsumerState<_PayoutFooter> createState() => _PayoutFooterState();
@@ -559,14 +590,9 @@ class _PayoutFooterState extends ConsumerState<_PayoutFooter> {
 
   @override
   Widget build(BuildContext context) {
-    // Pre-flight balance gate driven by the backend's authoritative
-    // `availableBalancePesewas` — same number the payout endpoint checks
-    // server-side. We read it from the week summary because that's the
-    // default tab; switching periods doesn't move the available balance
-    // (it's period-agnostic per the backend contract).
-    const summaryKey = EarningsSummaryKey(
+    final summaryKey = EarningsSummaryKey(
       role: _kArtisanRole,
-      period: EarningsPeriod.week,
+      period: widget.period,
     );
     final summaryAsync = ref.watch(earningsSummaryProvider(summaryKey));
     final available =

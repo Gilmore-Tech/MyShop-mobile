@@ -1,71 +1,37 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
+
+import '../../artisan_home/providers/active_job_provider.dart';
 
 /// In-app chat with the client during an active ride/job.
 ///
 /// PRD Reference: PRD 4.7 — masked phone numbers, real-time messaging,
 /// quick reply chips, attachments, presence indicator.
-class ProviderChatScreen extends StatefulWidget {
+class ProviderChatScreen extends ConsumerStatefulWidget {
   const ProviderChatScreen({
     super.key,
-    this.clientName = 'Ama Serwaa',
-    this.clientStatus = 'Online · Adum, Kumasi',
-    this.jobTitle = 'Emergency: Burst Main Pipe in Kitchen',
+    this.clientName,
+    this.clientStatus,
+    this.jobTitle,
   });
 
-  final String clientName;
-  final String clientStatus;
-  final String jobTitle;
+  /// Optional overrides — when null the header is sourced from the active
+  /// job. Callers that don't have a job context (e.g. the messages list)
+  /// can still pass values explicitly.
+  final String? clientName;
+  final String? clientStatus;
+  final String? jobTitle;
 
   @override
-  State<ProviderChatScreen> createState() => _ProviderChatScreenState();
+  ConsumerState<ProviderChatScreen> createState() =>
+      _ProviderChatScreenState();
 }
 
-class _ProviderChatScreenState extends State<ProviderChatScreen> {
-  late final List<ChatMessage> _messages;
-
-  @override
-  void initState() {
-    super.initState();
-    _messages = [
-      const ChatMessage(
-        id: '1',
-        text: "Hi! I've accepted your job. On my way now.",
-        time: '10:42 AM',
-        fromMe: true,
-        status: ChatMessageStatus.read,
-      ),
-      const ChatMessage(
-        id: '2',
-        text: 'Great, thank you! How long until you arrive?',
-        time: '10:43 AM',
-        fromMe: false,
-      ),
-      const ChatMessage(
-        id: '3',
-        text:
-            'Roughly 15 minutes. Bringing my full plumbing kit and a spare U-bend in case.',
-        time: '10:43 AM',
-        fromMe: true,
-        status: ChatMessageStatus.read,
-      ),
-      const ChatMessage(
-        id: '4',
-        text: 'Perfect. The water is everywhere — please come quickly!',
-        time: '10:44 AM',
-        fromMe: false,
-      ),
-      const ChatMessage(
-        id: '5',
-        text: "Don't worry, I'll be there shortly.",
-        time: '10:45 AM',
-        fromMe: true,
-        status: ChatMessageStatus.delivered,
-      ),
-    ];
-  }
+class _ProviderChatScreenState extends ConsumerState<ProviderChatScreen> {
+  final List<ChatMessage> _messages = <ChatMessage>[];
 
   void _handleSend(String text) {
     setState(() {
@@ -91,15 +57,28 @@ class _ProviderChatScreenState extends State<ProviderChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final activeJob = ref.watch(activeJobProvider).job;
+    final peerName =
+        widget.clientName ?? activeJob?.clientName ?? 'Client';
+    final peerStatus = widget.clientStatus ??
+        (activeJob?.addressText != null && activeJob!.addressText!.isNotEmpty
+            ? 'On a job · ${activeJob.addressText}'
+            : 'In conversation');
+    final jobTitle = widget.jobTitle ??
+        (activeJob?.categoryName != null &&
+                activeJob!.categoryName!.isNotEmpty
+            ? '${activeJob.categoryName} request'
+            : 'Active job');
+
     return MyShopChatScreen(
-      peerName: widget.clientName,
-      peerStatus: widget.clientStatus,
+      peerName: peerName,
+      peerStatus: peerStatus,
       messages: _messages,
       onSend: _handleSend,
       onFilePicked: _handleFilePicked,
       onPhoneCall: () {},
       onMoreMenu: () {},
-      contextBanner: _JobBanner(title: widget.jobTitle),
+      contextBanner: _JobBanner(title: jobTitle),
     );
   }
 }
