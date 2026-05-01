@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:api_client/api_client.dart';
@@ -148,6 +149,59 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
     }
   }
 
+  /// Apply a `job:client_payment_acknowledged` socket event to the active
+  /// slot. Fired by the backend when the client opens the payment screen
+  /// and picks a method — flips the artisan's "Yes, I received payment"
+  /// CTA from disabled (waiting copy) to enabled.
+  void applyClientPaymentAck({
+    required String jobId,
+    required String paymentMethod,
+    required String acknowledgedAt,
+  }) {
+    final job = state.job;
+    if (job == null) return;
+    if (job.id != jobId) return;
+    if (job.clientPaymentAcknowledgedAt == acknowledgedAt &&
+        job.clientPaymentMethod == paymentMethod) {
+      return;
+    }
+    state = state.copyWith(
+      job: job.copyWith(
+        clientPaymentAcknowledgedAt: acknowledgedAt,
+        clientPaymentMethod: paymentMethod,
+      ),
+    );
+  }
+
+  /// Pull the latest job from REST and merge payment-acknowledgement
+  /// fields into the active slot. Used as a safety net when a socket event
+  /// is missed or when the artisan's `artisan-confirm-cash` returns 409
+  /// `CLIENT_PAYMENT_NOT_ACKNOWLEDGED` — in which case the client may have
+  /// just acknowledged but the event hasn't reached us yet.
+  Future<void> refreshFromServer() async {
+    final job = state.job;
+    if (job == null) return;
+    try {
+      final raw = await _ref.read(jobServiceProvider).getJob(job.id);
+      final fresh = Job.fromJson(raw);
+      final current = state.job;
+      if (current == null || current.id != job.id) return;
+      state = state.copyWith(
+        job: current.copyWith(
+          status: fresh.status,
+          clientPaymentAcknowledgedAt: fresh.clientPaymentAcknowledgedAt,
+          clientPaymentMethod: fresh.clientPaymentMethod,
+        ),
+      );
+    } catch (e) {
+      developer.log(
+        'refreshFromServer failed: $e',
+        name: 'ActiveJob',
+        level: 800,
+      );
+    }
+  }
+
   /// Confirm receipt of a cash payment. Calls
   /// `POST /jobs/:id/artisan-confirm-cash` — the dedicated artisan-side
   /// endpoint that runs the same finalisation path as a Paystack webhook
@@ -184,6 +238,13 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
         level: 900,
       );
       state = state.copyWith(errorMessage: _friendlyCashError(e));
+      // If the backend says the client hasn't acknowledged yet, the socket
+      // event may simply have been missed (battery saver, dropped WS).
+      // Pull the job once so the CTA enables the moment the client has
+      // actually acknowledged on their side.
+      if (e.errorCode == 'CLIENT_PAYMENT_NOT_ACKNOWLEDGED') {
+        unawaited(refreshFromServer());
+      }
     } catch (e, st) {
       developer.log(
         'confirmCashReceipt crashed: $e\n$st',
@@ -238,6 +299,9 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
             'refresh and check the status.';
       case 'JOB_NOT_AWAITING_RECEIPT':
         return "This job isn't ready for cash confirmation yet.";
+      case 'CLIENT_PAYMENT_NOT_ACKNOWLEDGED':
+        return "The client hasn't confirmed they're paying with cash yet. "
+            "Ask them to tap 'Proceed to Payment' and pick Cash.";
       case 'AGREED_PRICE_MISSING':
         return "We can't find the agreed price for this job. Contact "
             'support so it can be reconciled manually.';

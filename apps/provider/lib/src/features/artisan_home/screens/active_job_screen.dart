@@ -232,6 +232,7 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
                           .split(' ')
                           .first,
                       isUpdating: state.isUpdating,
+                      clientCashAcknowledged: job.isClientCashAcknowledged,
                       onGoToEarnings: () {
                         ref.read(activeJobProvider.notifier).clear();
                         context.go('/earnings');
@@ -1310,6 +1311,7 @@ class _CompletionOverlay extends StatelessWidget {
     required this.status,
     required this.clientFirstName,
     required this.isUpdating,
+    required this.clientCashAcknowledged,
     required this.onGoToEarnings,
     required this.onConfirmCashReceipt,
   });
@@ -1320,6 +1322,13 @@ class _CompletionOverlay extends StatelessWidget {
   /// True while the PATCH /confirm for cash receipt is in flight — dims
   /// the Yes/No row and swaps the "Yes" label for a spinner.
   final bool isUpdating;
+
+  /// True once the client has tapped "Proceed to Payment" and picked Cash
+  /// (set via `job:client_payment_acknowledged` socket event or a refetch).
+  /// Until this flips true, the artisan-confirm-cash endpoint will 409
+  /// with `CLIENT_PAYMENT_NOT_ACKNOWLEDGED`, so we keep the "Yes, I
+  /// received payment" CTA disabled and show a "Waiting for client" hint.
+  final bool clientCashAcknowledged;
   final VoidCallback onGoToEarnings;
   final VoidCallback onConfirmCashReceipt;
 
@@ -1379,7 +1388,7 @@ class _CompletionOverlay extends StatelessWidget {
             const SizedBox(height: MyShopSpacing.md),
 
             Text(
-              _titleFor(status),
+              _titleFor(status, clientCashAcknowledged),
               textAlign: TextAlign.center,
               style: MyShopTypography.h2.copyWith(
                 fontWeight: FontWeight.w800,
@@ -1388,7 +1397,7 @@ class _CompletionOverlay extends StatelessWidget {
             ),
             const SizedBox(height: MyShopSpacing.sm),
             Text(
-              _subtitleFor(status, clientFirstName),
+              _subtitleFor(status, clientFirstName, clientCashAcknowledged),
               textAlign: TextAlign.center,
               style: MyShopTypography.body1.copyWith(
                 color: MyShopColors.textSecondary,
@@ -1464,11 +1473,14 @@ class _CompletionOverlay extends StatelessWidget {
                   Expanded(
                     flex: 2,
                     child: ElevatedButton(
-                      onPressed: isUpdating ? null : onConfirmCashReceipt,
+                      onPressed:
+                          (isUpdating || !clientCashAcknowledged)
+                              ? null
+                              : onConfirmCashReceipt,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: MyShopColors.success,
                         disabledBackgroundColor:
-                            MyShopColors.success.withValues(alpha: 0.6),
+                            MyShopColors.success.withValues(alpha: 0.4),
                         elevation: 0,
                         minimumSize: const Size.fromHeight(52),
                         shape: RoundedRectangleBorder(
@@ -1489,14 +1501,18 @@ class _CompletionOverlay extends StatelessWidget {
                           : Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Icon(
-                                  Icons.check_circle_outline,
+                                Icon(
+                                  clientCashAcknowledged
+                                      ? Icons.check_circle_outline
+                                      : Icons.hourglass_empty_rounded,
                                   color: MyShopColors.surfaceWhite,
                                   size: 20,
                                 ),
                                 const SizedBox(width: MyShopSpacing.sm),
                                 Text(
-                                  "Yes, I received payment",
+                                  clientCashAcknowledged
+                                      ? 'Yes, I received payment'
+                                      : 'Waiting for client',
                                   style: MyShopTypography.button.copyWith(
                                     color: MyShopColors.surfaceWhite,
                                     fontWeight: FontWeight.w800,
@@ -1535,10 +1551,12 @@ class _CompletionOverlay extends StatelessWidget {
     );
   }
 
-  static String _titleFor(JobStatus status) {
+  static String _titleFor(JobStatus status, bool clientCashAcknowledged) {
     switch (status) {
       case JobStatus.artisanMarkedComplete:
-        return 'Did you receive cash?';
+        return clientCashAcknowledged
+            ? 'Did you receive cash?'
+            : 'Waiting for client to confirm payment';
       case JobStatus.pendingPayment:
         return 'Client is paying';
       case JobStatus.completed:
@@ -1548,13 +1566,20 @@ class _CompletionOverlay extends StatelessWidget {
     }
   }
 
-  static String _subtitleFor(JobStatus status, String clientFirstName) {
+  static String _subtitleFor(
+    JobStatus status,
+    String clientFirstName,
+    bool clientCashAcknowledged,
+  ) {
     switch (status) {
       case JobStatus.artisanMarkedComplete:
-        return "$clientFirstName is settling up. If they handed you cash, "
-            "tap \"Yes, I received payment\". If they're paying in-app, "
-            "wait — the job will settle automatically when their charge "
-            'clears.';
+        if (!clientCashAcknowledged) {
+          return "$clientFirstName hasn't picked a payment method yet. "
+              "Once they tap 'Proceed to Payment' and choose Cash, you'll "
+              'be able to confirm receipt here.';
+        }
+        return "$clientFirstName has chosen Cash. If they've handed you "
+            'the money, tap "Yes, I received payment" to settle the job.';
       case JobStatus.pendingPayment:
         return "$clientFirstName's Paystack charge is settling. Hang "
             'tight — your earnings release automatically once the bank '

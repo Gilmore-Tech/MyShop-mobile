@@ -451,5 +451,29 @@ void _connectAndListen(Ref ref, SocketService socket) {
       ..on('job:bid_rejected', handleJobStatus)
       ..on('bid:accepted', handleJobStatus)
       ..on('bid:rejected', handleJobStatus);
+
+    // Fired by the backend's POST /payments/acknowledge-cash when the
+    // client lands on the payment screen and picks a method. Flips the
+    // active job's clientPaymentAcknowledgedAt/clientPaymentMethod so the
+    // CompletionOverlay's "Yes, I received payment" CTA enables.
+    void handleClientPaymentAck(dynamic data) {
+      debugPrint('[WS] Received job:client_payment_acknowledged: $data');
+      if (data is! Map<String, dynamic>) return;
+      final jobId = data['jobId'] as String? ?? data['id'] as String?;
+      final method = data['paymentMethod'] as String?;
+      final ackAt = data['acknowledgedAt'] as String?;
+      if (jobId == null || method == null || ackAt == null) return;
+      try {
+        ref.read(activeJobProvider.notifier).applyClientPaymentAck(
+              jobId: jobId,
+              paymentMethod: method,
+              acknowledgedAt: ackAt,
+            );
+      } catch (_) {}
+    }
+
+    socket
+      ..off('job:client_payment_acknowledged')
+      ..on('job:client_payment_acknowledged', handleClientPaymentAck);
   });
 }
