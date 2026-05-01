@@ -98,7 +98,11 @@ class JobService {
       // confirmed showing real names end-to-end.
       // ignore: avoid_print
       print(
-        '[JobService.getJob] $jobId topKeys=${data.keys.toList()} '
+        '[JobService.getJob] $jobId status=${data['status']} '
+        'completedAt=${data['completedAt']} '
+        'clientConfirmedCompleteAt=${data['clientConfirmedCompleteAt']} '
+        'artisanMarkedCompleteAt=${data['artisanMarkedCompleteAt']} '
+        'topKeys=${data.keys.toList()} '
         'client=${data['client']} clientName=${data['clientName']}',
       );
       return data;
