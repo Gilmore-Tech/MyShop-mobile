@@ -9,6 +9,12 @@ import '../../ride/providers/ride_receipt_provider.dart' show PaymentMethodType;
 
 class ServiceReceiptData {
   final String            jobId;              // "JOB-44102-GH"
+
+  /// Backend job status — used to gate the Rate CTA so the client only
+  /// sees it once the booking is truly settled (not at
+  /// `artisan_marked_complete`, where the rating endpoint will 410).
+  final String            status;             // "completed", "artisan_marked_complete", ...
+
   final String            artisanName;        // "Ama Serwaa"
   final String            artisanSpecialty;   // "Certified Electrician"
   final double            artisanRating;      // 4.8
@@ -28,6 +34,7 @@ class ServiceReceiptData {
 
   const ServiceReceiptData({
     required this.jobId,
+    required this.status,
     required this.artisanName,
     required this.artisanSpecialty,
     required this.artisanRating,
@@ -42,6 +49,11 @@ class ServiceReceiptData {
     required this.paymentMethodLabel,
     required this.paymentMethodType,
   });
+
+  /// True once the backend has flipped the job to `completed` — i.e.
+  /// payment has settled (Paystack webhook OR artisan-confirms-cash).
+  /// The rating endpoint only accepts submissions in this state.
+  bool get isCompleted => status == 'completed';
 
   static String _fmt(int p) => 'GH¢ ${(p / 100.0).toStringAsFixed(2)}';
 
@@ -104,6 +116,7 @@ class _ServiceReceiptNotifier
 
     return ServiceReceiptData(
       jobId: data['id'] as String? ?? '',
+      status: data['status'] as String? ?? '',
       artisanName: artisanName.isNotEmpty ? artisanName : 'Artisan',
       artisanSpecialty: artisanData['specialty'] as String? ?? '',
       artisanRating: (artisanData['rating'] as num?)?.toDouble() ?? 0.0,
@@ -125,6 +138,7 @@ class _ServiceReceiptNotifier
 
 const _defaultMock = ServiceReceiptData(
   jobId:                  'JOB-44102-GH',
+  status:                 'completed',
   artisanName:            'Ama Serwaa',
   artisanSpecialty:       'Certified Electrician',
   artisanRating:          4.8,

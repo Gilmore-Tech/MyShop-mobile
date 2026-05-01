@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../app/router.dart';
+import '../../../core/di/providers.dart';
 import '../providers/payment_provider.dart';
 import '../widgets/rate_job_sheet.dart';
 
@@ -65,7 +69,7 @@ class _PaymentConfirmedDialog extends StatelessWidget {
 
 // ── Dialog sheet ──────────────────────────────────────────────────────────────
 
-class _DialogSheet extends StatefulWidget {
+class _DialogSheet extends ConsumerStatefulWidget {
   final PaymentConfirmation confirmation;
   final double w;
   final double h;
@@ -76,15 +80,71 @@ class _DialogSheet extends StatefulWidget {
   });
 
   @override
-  State<_DialogSheet> createState() => _DialogSheetState();
+  ConsumerState<_DialogSheet> createState() => _DialogSheetState();
 }
 
-class _DialogSheetState extends State<_DialogSheet> {
+class _DialogSheetState extends ConsumerState<_DialogSheet> {
   bool _detailsExpanded = false;
+  bool _checkingStatus = false;
 
   PaymentConfirmation get c   => widget.confirmation;
   double              get w   => widget.w;
   double              get h   => widget.h;
+
+  /// Tap handler for the "Rate & Review Provider" CTA. Re-fetches the job
+  /// before opening the rating sheet so we never present a sheet that's
+  /// going to 410 against the backend. When the job isn't yet `completed`
+  /// (most often `artisan_marked_complete` for cash payments) we route the
+  /// user to Activity with a snackbar — they can rate from the receipt
+  /// screen once the artisan settles.
+  Future<void> _onRateTapped() async {
+    final firstName = c.artisanName.trim().split(RegExp(r'\s+')).first;
+    setState(() => _checkingStatus = true);
+
+    String? status;
+    try {
+      final raw = await ref.read(jobServiceProvider).getJob(c.jobId);
+      status = raw['status'] as String?;
+    } catch (_) {
+      // Network blip — fall through to the generic "still settling" path.
+    }
+    if (!mounted || !context.mounted) return;
+    setState(() => _checkingStatus = false);
+
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final rootCtx = navigator.context;
+
+    if (status == 'completed') {
+      navigator.maybePop();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!rootCtx.mounted) return;
+        showRateJobSheet(
+          rootCtx,
+          jobId: c.jobId,
+          artisanFirstName: firstName,
+        );
+      });
+      return;
+    }
+
+    // Not settled yet. Send the user to Activity with a clear note —
+    // they can rate from the receipt screen once the job lands as
+    // completed (artisan confirms cash, or Paystack webhook fires).
+    final messenger = ScaffoldMessenger.of(rootCtx);
+    navigator.maybePop();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!rootCtx.mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'The job is still being finalized. You can rate it from '
+            'Activity once the artisan confirms payment.',
+          ),
+        ),
+      );
+      rootCtx.go(AppRoutes.activity);
+    });
+  }
 
   /// Display format: GH¢ X,XXX.XX  (matches design)
   String _fmt(int pesewas) {
@@ -204,35 +264,18 @@ class _DialogSheetState extends State<_DialogSheet> {
                 padding: EdgeInsets.symmetric(horizontal: w * 0.041),
                 child: Column(
                   children: [
-                    // Rate & Review Provider — gold CTA. Dismisses the
-                    // success dialog first so the rating sheet has a clean
-                    // backdrop, then opens the same `RateJobSheet` the
-                    // service receipt screen uses. The root navigator's
-                    // context is captured BEFORE the pop because this
-                    // widget's `context` is unmounted as the dialog tears
-                    // down.
+                    // Rate & Review Provider — gold CTA. The dialog can
+                    // open before the backend has flipped the job to
+                    // `completed` (e.g. cash payment still waiting on the
+                    // artisan's "I received payment" tap), so we re-fetch
+                    // status before opening the sheet. If the job isn't
+                    // settled yet, route the user to Activity where they
+                    // can rate once it lands as completed.
                     SizedBox(
                       width: double.infinity,
                       height: h * 0.066,
                       child: ElevatedButton(
-                        onPressed: () {
-                          final firstName = c.artisanName
-                              .trim()
-                              .split(RegExp(r'\s+'))
-                              .first;
-                          final navigator =
-                              Navigator.of(context, rootNavigator: true);
-                          final rootCtx = navigator.context;
-                          navigator.maybePop();
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (!rootCtx.mounted) return;
-                            showRateJobSheet(
-                              rootCtx,
-                              jobId: c.jobId,
-                              artisanFirstName: firstName,
-                            );
-                          });
-                        },
+                        onPressed: _checkingStatus ? null : _onRateTapped,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: MyShopColors.primaryGold,
                           elevation: 0,
@@ -240,14 +283,23 @@ class _DialogSheetState extends State<_DialogSheet> {
                             borderRadius: BorderRadius.circular(w * 0.031),
                           ),
                         ),
-                        child: Text(
-                          'Rate & Review Provider',
-                          style: TextStyle(
-                            fontSize: w * 0.041,
-                            fontWeight: FontWeight.w700,
-                            color: MyShopColors.surfaceWhite,
-                          ),
-                        ),
+                        child: _checkingStatus
+                            ? SizedBox(
+                                width:  w * 0.051,
+                                height: w * 0.051,
+                                child: const CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: MyShopColors.surfaceWhite,
+                                ),
+                              )
+                            : Text(
+                                'Rate & Review Provider',
+                                style: TextStyle(
+                                  fontSize: w * 0.041,
+                                  fontWeight: FontWeight.w700,
+                                  color: MyShopColors.surfaceWhite,
+                                ),
+                              ),
                       ),
                     ),
                     SizedBox(height: h * 0.014),

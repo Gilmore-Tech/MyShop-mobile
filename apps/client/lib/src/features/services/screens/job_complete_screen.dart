@@ -82,6 +82,19 @@ class _BodyState extends ConsumerState<_Body> {
       );
     }
 
+    // Block the rating form until the backend has flipped the job to
+    // `completed`. At `artisan_marked_complete` (cash payment still
+    // waiting on the artisan's "Yes, I received payment" tap) the rating
+    // endpoint will 410. Show a settling notice instead so the client
+    // knows what they're waiting on.
+    if (!widget.summary.isCompleted) {
+      return _StillSettlingState(
+        w: w, h: h, bot: bot,
+        summary: widget.summary,
+        onDone: () => context.go(AppRoutes.activity),
+      );
+    }
+
     return Column(
       children: [
         Expanded(
@@ -141,6 +154,101 @@ class _BodyState extends ConsumerState<_Body> {
           w: w, h: h, bot: bot,
         ),
       ],
+    );
+  }
+}
+
+// ── Still-settling state ───────────────────────────────────────────────────────
+//
+// Replaces the rating form when the backend job hasn't reached
+// `completed` yet. Most often hits during cash payments — the artisan
+// taps "Mark Complete" (status -> artisan_marked_complete) but hasn't
+// yet confirmed receipt of the cash on their side. The client can still
+// rate later from Activity once the artisan settles.
+
+class _StillSettlingState extends StatelessWidget {
+  final double w, h, bot;
+  final JobSummaryData summary;
+  final VoidCallback onDone;
+
+  const _StillSettlingState({
+    required this.w,
+    required this.h,
+    required this.bot,
+    required this.summary,
+    required this.onDone,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        w * 0.08, h * 0.04, w * 0.08, bot + h * 0.040,
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width:  w * 0.22,
+            height: w * 0.22,
+            decoration: const BoxDecoration(
+              color: MyShopColors.surfaceGrey,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.hourglass_top_rounded,
+              color: MyShopColors.textSecondary,
+              size: 56,
+            ),
+          ),
+          SizedBox(height: h * 0.024),
+          Text(
+            'Still settling…',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color:      MyShopColors.textPrimary,
+              fontSize:   w * 0.052,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          SizedBox(height: h * 0.012),
+          Text(
+            "${summary.artisan.firstName} hasn't confirmed payment "
+            'receipt yet, so this job is still finalizing on our '
+            "end. You'll be able to leave a rating from Activity as "
+            'soon as it lands as completed.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color:    MyShopColors.textSecondary,
+              fontSize: w * 0.036,
+              height:   1.6,
+            ),
+          ),
+          SizedBox(height: h * 0.040),
+          SizedBox(
+            width:  double.infinity,
+            height: h * 0.062,
+            child: ElevatedButton(
+              onPressed: onDone,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: MyShopColors.primaryGold,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                elevation: 0,
+              ),
+              child: Text(
+                'Go to Activity',
+                style: TextStyle(
+                  fontSize:   w * 0.040,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

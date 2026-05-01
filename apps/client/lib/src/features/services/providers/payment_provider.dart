@@ -647,6 +647,46 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
 
     // ── Cash: no backend charge ───────────────────────────────────────
     if (method.isCash) {
+      // Tell the backend the client has chosen Cash so it can gate the
+      // artisan's "Yes, I received payment" button. Without this the
+      // artisan's confirm-cash endpoint 409s with
+      // CLIENT_PAYMENT_NOT_ACKNOWLEDGED, leaving the cash flow stuck.
+      // The acknowledge call also emits `job:client_payment_acknowledged`
+      // to the artisan room so their UI flips live.
+      state = state.copyWith(phase: PaymentPhase.processing, clearError: true);
+      try {
+        await _paymentService.acknowledgeCash(
+          bookingType: 'artisan_job',
+          bookingId: jobId,
+        );
+      } on ApiException catch (e) {
+        developer.log(
+          'acknowledgeCash failed: status=${e.statusCode} '
+          'code=${e.errorCode} — ${e.message}',
+          name: 'Payment',
+          level: 900,
+        );
+        state = state.copyWith(
+          phase: PaymentPhase.idle,
+          errorMessage: e.message.isNotEmpty
+              ? e.message
+              : "We couldn't confirm cash with the artisan. Please try again.",
+        );
+        return;
+      } catch (e) {
+        developer.log(
+          'acknowledgeCash crashed: $e',
+          name: 'Payment',
+          level: 1000,
+        );
+        state = state.copyWith(
+          phase: PaymentPhase.idle,
+          errorMessage:
+              "We couldn't confirm cash with the artisan. Please try again.",
+        );
+        return;
+      }
+
       // Park the UI in awaitingSettlement with no URL — the CTA renders
       // as "Waiting for artisan to confirm receipt" and the socket event
       // that follows the artisan's "Yes" tap flips us to completed.

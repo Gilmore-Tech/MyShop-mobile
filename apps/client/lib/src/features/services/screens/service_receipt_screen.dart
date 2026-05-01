@@ -90,19 +90,32 @@ class _ReceiptBody extends StatelessWidget {
             h: h,
           ),
           const Divider(height: 1, thickness: 1, color: MyShopColors.divider),
-          _RateProviderCTA(
-            providerFirstName:
-                receipt.artisanName.split(RegExp(r'\s+')).first,
-            providerKind: 'artisan',
-            onTap: () => showRateJobSheet(
-              context,
-              jobId: receipt.jobId,
-              artisanFirstName:
+          // Only show the Rate CTA once the backend has settled the job
+          // to `completed`. At `artisan_marked_complete` (cash payment
+          // pending the artisan's "Yes, I received payment" tap) the
+          // rating endpoint will 410. Surface a "pending settlement"
+          // notice instead so the client knows what they're waiting on.
+          if (receipt.isCompleted)
+            _RateProviderCTA(
+              providerFirstName:
                   receipt.artisanName.split(RegExp(r'\s+')).first,
+              providerKind: 'artisan',
+              onTap: () => showRateJobSheet(
+                context,
+                jobId: receipt.jobId,
+                artisanFirstName:
+                    receipt.artisanName.split(RegExp(r'\s+')).first,
+              ),
+              w: w,
+              h: h,
+            )
+          else
+            _RatePendingNotice(
+              providerFirstName:
+                  receipt.artisanName.split(RegExp(r'\s+')).first,
+              w: w,
+              h: h,
             ),
-            w: w,
-            h: h,
-          ),
           const Divider(height: 1, thickness: 1, color: MyShopColors.divider),
           _ServiceDetailsSection(receipt: receipt, w: w, h: h),
           const Divider(height: 1, thickness: 1, color: MyShopColors.divider),
@@ -988,6 +1001,81 @@ class _RateProviderCTA extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Rate Provider — pending state ─────────────────────────────────────────────
+//
+// Shown in place of the Rate CTA while the booking is still settling
+// (typically `artisan_marked_complete` for cash payments — the artisan
+// has finished but hasn't yet confirmed receipt of the cash). Tapping
+// would only earn the user a 410 BOOKING_NOT_COMPLETED, so we surface
+// a passive notice with the reason instead.
+
+class _RatePendingNotice extends StatelessWidget {
+  final String providerFirstName;
+  final double w, h;
+
+  const _RatePendingNotice({
+    required this.providerFirstName,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: w * 0.041,
+        vertical:   h * 0.022,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width:  w * 0.108,
+            height: w * 0.108,
+            decoration: BoxDecoration(
+              color: MyShopColors.surfaceGrey,
+              shape: BoxShape.circle,
+              border: Border.all(color: MyShopColors.divider),
+            ),
+            child: Icon(
+              Icons.hourglass_top_rounded,
+              size:  w * 0.056,
+              color: MyShopColors.textSecondary,
+            ),
+          ),
+          SizedBox(width: w * 0.031),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Rating opens once $providerFirstName settles',
+                  style: TextStyle(
+                    fontSize:   w * 0.041,
+                    fontWeight: FontWeight.w700,
+                    color:      MyShopColors.textPrimary,
+                  ),
+                ),
+                SizedBox(height: h * 0.003),
+                Text(
+                  'Waiting for the artisan to confirm payment receipt. '
+                  "You'll be able to leave a rating from your Activity "
+                  'as soon as the job is fully completed.',
+                  style: TextStyle(
+                    fontSize:   w * 0.031,
+                    fontWeight: FontWeight.w400,
+                    color:      MyShopColors.textSecondary,
+                    height:     1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

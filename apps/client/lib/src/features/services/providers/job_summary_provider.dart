@@ -57,6 +57,13 @@ class JobSummaryData {
   /// Formatted reference shown in the summary card, e.g. "#JOB-29384".
   final String jobRef;
 
+  /// Backend job status — used to gate the inline rating form so the
+  /// client only sees it once the booking is truly settled. The rating
+  /// endpoint will 410 BOOKING_NOT_COMPLETED at any other status (most
+  /// often `artisan_marked_complete` for cash payments still waiting on
+  /// the artisan's "Yes, I received payment" tap).
+  final String status;
+
   final JobSummaryArtisan artisan;
 
   /// Labour portion of the agreed bid (pesewas).
@@ -74,12 +81,17 @@ class JobSummaryData {
   const JobSummaryData({
     required this.jobId,
     required this.jobRef,
+    required this.status,
     required this.artisan,
     required this.laborChargePesewas,
     required this.materialCostPesewas,
     required this.totalPaidPesewas,
     this.tipIncluded = false,
   });
+
+  /// True once the backend has flipped the job to `completed` — the only
+  /// state where `POST /v1/ratings` will accept a submission.
+  bool get isCompleted => status == 'completed';
 
   String _fmt(int pesewas) => 'GHS ${(pesewas / 100).toStringAsFixed(2)}';
 
@@ -268,6 +280,7 @@ class _JobSummaryNotifier
     return JobSummaryData(
       jobId: data['id'] as String? ?? '',
       jobRef: '#${data['id'] ?? ''}',
+      status: data['status'] as String? ?? '',
       artisan: JobSummaryArtisan(
         artisanId: artisanData['id'] as String? ?? '',
         name: artisanName.isNotEmpty ? artisanName : 'Artisan',
@@ -306,6 +319,7 @@ const _mockArtisan = JobSummaryArtisan(
 const _defaultMockJob = JobSummaryData(
   jobId:               'JOB-29384',
   jobRef:              '#JOB-29384',
+  status:              'completed',
   artisan:             _mockArtisan,
   laborChargePesewas:  25000,   // GHS 250.00
   materialCostPesewas: 12000,   // GHS 120.00
