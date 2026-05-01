@@ -86,6 +86,13 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
   /// 600ms debounce so we don't write SharedPreferences on every keystroke.
   Timer? _saveDebounce;
 
+  /// Inline error shown at the top of the sheet. Auto-dismisses after a
+  /// few seconds — a SnackBar would be hidden behind the modal barrier and
+  /// only surface once the sheet is dismissed, leaving the artisan with no
+  /// signal that anything went wrong.
+  String? _inlineError;
+  Timer? _errorTimer;
+
   /// True once the artisan touches the form. We don't persist the empty
   /// initial state — only writes that have actual content survive.
   bool _isDirty = false;
@@ -120,6 +127,7 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
   @override
   void dispose() {
     _saveDebounce?.cancel();
+    _errorTimer?.cancel();
     // Final flush — preserve the last keystroke if the artisan dismissed
     // (e.g. via the Cancel button) without explicitly submitting. The
     // future is intentionally not awaited; SharedPreferences writes are
@@ -244,32 +252,25 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     }
   }
 
-  /// Surface a failure as a SnackBar so the form stays interactive and the
-  /// artisan can adjust the offending field and tap submit again.
+  /// Show a failure as an inline banner pinned to the top of the sheet.
+  /// Lives inside the modal's widget tree so it's actually visible (a
+  /// `ScaffoldMessenger` SnackBar would queue behind the modal barrier and
+  /// only flash after the sheet was dismissed). Auto-dismisses after 6s,
+  /// or sooner if the artisan taps the close icon.
   void _notifyError(String message) {
     if (!mounted) return;
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    if (messenger == null) return;
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: MyShopColors.error,
-          content: Text(
-            message,
-            style: MyShopTypography.body1.copyWith(
-              color: MyShopColors.textOnPrimary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          action: SnackBarAction(
-            label: 'DISMISS',
-            textColor: MyShopColors.textOnPrimary,
-            onPressed: () => messenger.hideCurrentSnackBar(),
-          ),
-        ),
-      );
+    _errorTimer?.cancel();
+    setState(() => _inlineError = message);
+    _errorTimer = Timer(const Duration(seconds: 6), () {
+      if (!mounted) return;
+      setState(() => _inlineError = null);
+    });
+  }
+
+  void _dismissInlineError() {
+    _errorTimer?.cancel();
+    if (!mounted) return;
+    setState(() => _inlineError = null);
   }
 
   /// Parse "HH:MM" → total minutes. Falls back to a single integer treated
@@ -495,6 +496,14 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
                 ),
               ),
             ),
+
+            if (_inlineError != null) ...[
+              _InlineErrorBanner(
+                message: _inlineError!,
+                onDismiss: _dismissInlineError,
+              ),
+              const SizedBox(height: MyShopSpacing.md),
+            ],
 
             // Client card
             _ClientHeader(
@@ -1099,6 +1108,72 @@ class _SubmitButton extends StatelessWidget {
                   fontSize: 15,
                 ),
               ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inline error banner — sits inside the modal so the artisan actually sees
+// failure messages (a ScaffoldMessenger SnackBar would queue behind the
+// modal barrier).
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _InlineErrorBanner extends StatelessWidget {
+  const _InlineErrorBanner({
+    required this.message,
+    required this.onDismiss,
+  });
+
+  final String message;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        MyShopSpacing.md,
+        MyShopSpacing.sm,
+        MyShopSpacing.sm,
+        MyShopSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: MyShopColors.error.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: MyShopColors.error, width: 1.2),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.error_outline,
+            color: MyShopColors.error,
+            size: 20,
+          ),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(
+            child: Text(
+              message,
+              style: MyShopTypography.body2.copyWith(
+                color: MyShopColors.error,
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: onDismiss,
+            behavior: HitTestBehavior.opaque,
+            child: const Padding(
+              padding: EdgeInsets.all(4),
+              child: Icon(
+                Icons.close,
+                size: 18,
+                color: MyShopColors.error,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
