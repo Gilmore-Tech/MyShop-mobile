@@ -7,7 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 
 import '../../app/router.dart';
+import '../../features/artisan_home/widgets/rate_client_sheet.dart';
 import '../../features/auth/providers/auth_controller.dart';
+import '../../features/driver_home/widgets/rate_passenger_sheet.dart';
 import '../di/providers.dart';
 import 'local_notification_service.dart';
 
@@ -82,6 +84,8 @@ String _fallbackTitle(String type) {
       return 'New message';
     case NotificationPayload.typePaymentReceived:
       return 'Payout received';
+    case NotificationPayload.typeRatingPrompt:
+      return 'Rate your client';
     default:
       return 'MyShop';
   }
@@ -101,6 +105,8 @@ String _fallbackBody(String type) {
       return 'The client cancelled this job.';
     case NotificationPayload.typeRideCancelled:
       return 'The client cancelled this ride.';
+    case NotificationPayload.typeRatingPrompt:
+      return 'Tap to leave a rating before the 24-hour window closes.';
     default:
       return 'Open MyShop to see the latest update.';
   }
@@ -330,6 +336,71 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
 
       case NotificationPayload.typeNewMessage:
         router.go('/messages');
+        break;
+
+      // Backend asks the provider to rate the counter-party for a
+      // completed booking. There's no dedicated rating screen in this
+      // app — the rating UI lives as a modal sheet — so we land on
+      // /home and surface the matching sheet over it. Hydrate the
+      // counter-party's first name so the title reads "Rate Akua"
+      // rather than the generic "Rate your client" fallback.
+      case NotificationPayload.typeRatingPrompt:
+        final bookingType =
+            payload[NotificationPayload.keyBookingType] as String?;
+        final bookingId =
+            (payload[NotificationPayload.keyBookingId] as String?) ??
+                (bookingType == 'ride'
+                    ? payload[NotificationPayload.keyRideId] as String?
+                    : payload[NotificationPayload.keyJobId] as String?);
+        if (bookingId == null || bookingId.isEmpty) {
+          router.go('/home');
+          break;
+        }
+        router.go('/home');
+        // Defer past the route push so the navigator key resolves to the
+        // newly-mounted shell rather than a popping route.
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        final ctx = router.routerDelegate.navigatorKey.currentContext;
+        if (ctx == null) break;
+        if (bookingType == 'ride') {
+          var firstName = 'Passenger';
+          try {
+            final raw =
+                await ref.read(rideServiceProvider).getRide(bookingId);
+            final ride = Ride.fromJson(raw);
+            final name = ride.clientName;
+            if (name != null && name.trim().isNotEmpty) {
+              firstName = name.trim().split(RegExp(r'\s+')).first;
+            }
+          } catch (e) {
+            debugPrint('[FCM] hydrate ride for rating failed: $e');
+          }
+          if (!ctx.mounted) break;
+          await showRatePassengerSheet(
+            ctx,
+            rideId: bookingId,
+            passengerFirstName: firstName,
+          );
+        } else if (bookingType == 'artisan_job' || bookingType == 'job') {
+          var firstName = 'Client';
+          try {
+            final raw =
+                await ref.read(jobServiceProvider).getJob(bookingId);
+            final job = Job.fromJson(raw);
+            final name = job.clientName;
+            if (name != null && name.trim().isNotEmpty) {
+              firstName = name.trim().split(RegExp(r'\s+')).first;
+            }
+          } catch (e) {
+            debugPrint('[FCM] hydrate job for rating failed: $e');
+          }
+          if (!ctx.mounted) break;
+          await showRateClientSheet(
+            ctx,
+            jobId: bookingId,
+            clientFirstName: firstName,
+          );
+        }
         break;
 
       case NotificationPayload.typeBidRejected:

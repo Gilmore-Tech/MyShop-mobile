@@ -18,6 +18,8 @@ class NotificationPayload {
   static const keyBidId = 'bidId';
   static const keyChatId = 'chatId';
   static const keyNotificationId = 'notificationId';
+  static const keyBookingType = 'bookingType';
+  static const keyBookingId = 'bookingId';
 
   /// The backend sends types prefixed by domain with a dot separator
   /// (e.g. `ride.driver_assigned`, `job.bid_accepted`, `chat.message`).
@@ -64,6 +66,11 @@ class NotificationPayload {
 
   /// Payout / payment received from MyShop.
   static const typePaymentReceived = 'payment_received';
+
+  /// Backend asks the provider to rate the counter-party for a completed
+  /// booking. Payload carries `bookingType` (`ride` | `artisan_job`) and
+  /// `bookingId`. Tapping deep-links to the matching rating sheet.
+  static const typeRatingPrompt = 'rating_prompt';
 
   /// Generic / info — routes to notification inbox.
   static const typeGeneric = 'generic';
