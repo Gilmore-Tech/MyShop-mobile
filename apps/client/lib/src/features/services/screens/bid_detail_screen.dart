@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/router.dart';
 import '../providers/artisan_live_location_provider.dart';
 import '../providers/bid_detail_provider.dart';
+import '../providers/bid_list_provider.dart';
 import '../providers/job_detail_provider.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
@@ -16,7 +17,14 @@ import '../providers/job_detail_provider.dart';
 // location, artisan note, and portfolio before accepting or declining.
 // API: GET /v1/jobs/:id/bids  |  PATCH /v1/jobs/:id/select-bid
 
-class BidDetailScreen extends ConsumerWidget {
+/// How often this screen polls for bid + job updates. Single-bid status
+/// flips (pending → accepted/declined/expired) don't currently fire a
+/// socket event, so without polling the screen would only refresh on
+/// navigation — leaving the client looking at a stale status. Matches the
+/// bid sheet's 5-second cadence.
+const _bidDetailPollInterval = Duration(seconds: 5);
+
+class BidDetailScreen extends ConsumerStatefulWidget {
   final String jobId;
   final String bidId;
   const BidDetailScreen({
@@ -26,12 +34,38 @@ class BidDetailScreen extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<BidDetailScreen> createState() => _BidDetailScreenState();
+}
+
+class _BidDetailScreenState extends ConsumerState<BidDetailScreen> {
+  Timer? _poll;
+
+  @override
+  void initState() {
+    super.initState();
+    _poll = Timer.periodic(_bidDetailPollInterval, (_) {
+      if (!mounted) return;
+      // Refresh the bid list (which `bidDetailProvider` watches) and the
+      // parent job so both the bid status and the footer's job-status
+      // badge stay live without depending on socket delivery.
+      ref.invalidate(bidsForJobProvider(widget.jobId));
+      ref.invalidate(jobDetailProvider(widget.jobId));
+    });
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final w    = size.width;
     final h    = size.height;
 
-    final key = (jobId: jobId, bidId: bidId);
+    final key = (jobId: widget.jobId, bidId: widget.bidId);
     final bidAsync = ref.watch(bidDetailProvider(key));
 
     return Scaffold(

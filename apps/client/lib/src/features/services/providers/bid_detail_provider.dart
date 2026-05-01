@@ -263,8 +263,10 @@ class BidDetailActionState {
 // ── Notifier ──────────────────────────────────────────────────────────────────
 
 class BidDetailNotifier extends StateNotifier<BidDetailActionState> {
-  BidDetailNotifier(this._jobService) : super(const BidDetailActionState());
+  BidDetailNotifier(this._ref, this._jobService)
+      : super(const BidDetailActionState());
 
+  final Ref _ref;
   final JobService _jobService;
 
   void toggleMaterials() => state = state.copyWith(
@@ -283,6 +285,11 @@ class BidDetailNotifier extends StateNotifier<BidDetailActionState> {
         isAwaitingConfirmation: true,
         countdownEndTime: DateTime.now().add(const Duration(minutes: 5)),
       );
+      // Force the timeline + bid list to re-fetch so the user sees the
+      // accepted state on return without waiting for the next poll tick
+      // or a delayed `job:status:changed` socket event.
+      _ref.invalidate(jobDetailProvider(jobId));
+      _ref.invalidate(bidsForJobProvider(jobId));
     } on ApiException catch (e) {
       state = state.copyWith(isAccepting: false, errorMessage: e.message);
     } catch (_) {
@@ -353,7 +360,7 @@ class BidDetailNotifier extends StateNotifier<BidDetailActionState> {
 
 final bidDetailActionProvider =
     StateNotifierProvider.autoDispose<BidDetailNotifier, BidDetailActionState>(
-  (ref) => BidDetailNotifier(ref.watch(jobServiceProvider)),
+  (ref) => BidDetailNotifier(ref, ref.watch(jobServiceProvider)),
 );
 
 // ── Bid Detail Data Provider ──────────────────────────────────────────────────

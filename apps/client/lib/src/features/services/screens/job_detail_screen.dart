@@ -17,8 +17,10 @@ import '../widgets/bid_list_sheet.dart';
 
 /// How often this screen polls the backend for job + bid updates. Keeps
 /// the status badge, bid count, and timeline in sync even when the socket
-/// `job:bid_new` / `job:status` events are delayed.
-const _jobDetailPollInterval = Duration(seconds: 10);
+/// `job:bid_new` / `job:status` events are delayed. Matches the bid sheet's
+/// 5-second cadence so the timeline never lags behind a freshly opened
+/// modal — the previous 10s interval made bid arrivals feel sluggish.
+const _jobDetailPollInterval = Duration(seconds: 5);
 
 class JobDetailScreen extends ConsumerStatefulWidget {
   final String jobId;
@@ -36,7 +38,12 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
     super.initState();
     _poll = Timer.periodic(_jobDetailPollInterval, (_) {
       if (!mounted) return;
+      // Invalidate both the job AND its bids — the timeline-summary card
+      // shows the live bid count, and a stale bid list under it is what
+      // made new bids feel like they only "arrived" after opening the
+      // modal. Refreshing both together keeps the screen self-consistent.
       ref.invalidate(jobDetailProvider(widget.jobId));
+      ref.invalidate(bidsForJobProvider(widget.jobId));
     });
   }
 

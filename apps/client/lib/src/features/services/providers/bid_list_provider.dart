@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:api_client/api_client.dart';
 
 import '../../../core/di/providers.dart';
+import 'job_detail_provider.dart';
 
 // ── Artisan Bid ───────────────────────────────────────────────────────────────
 // Represents a single bid submitted by an artisan for a client's job request.
@@ -147,8 +148,9 @@ class BidListState {
 // ── Notifier ──────────────────────────────────────────────────────────────────
 
 class BidListNotifier extends StateNotifier<BidListState> {
-  BidListNotifier(this._jobService) : super(const BidListState());
+  BidListNotifier(this._ref, this._jobService) : super(const BidListState());
 
+  final Ref _ref;
   final JobService _jobService;
 
   /// Selects a bid — PATCH /v1/jobs/:id/select-bid
@@ -162,6 +164,11 @@ class BidListNotifier extends StateNotifier<BidListState> {
     try {
       await _jobService.selectBid(jobId, bidId: bidId);
       state = state.copyWith(clearSelecting: true);
+      // Force the timeline + bid list to re-fetch so the user sees the
+      // accepted state on return without waiting for the next poll tick
+      // or a delayed `job:status:changed` socket event.
+      _ref.invalidate(jobDetailProvider(jobId));
+      _ref.invalidate(bidsForJobProvider(jobId));
     } on ApiException catch (e) {
       state = state.copyWith(clearSelecting: true, errorMessage: e.message);
     } catch (_) {
@@ -178,7 +185,7 @@ class BidListNotifier extends StateNotifier<BidListState> {
 /// autoDispose — state resets when the sheet is dismissed.
 final bidListNotifierProvider =
     StateNotifierProvider.autoDispose<BidListNotifier, BidListState>(
-  (ref) => BidListNotifier(ref.watch(jobServiceProvider)),
+  (ref) => BidListNotifier(ref, ref.watch(jobServiceProvider)),
 );
 
 /// Fetches bids for a given job ID.
