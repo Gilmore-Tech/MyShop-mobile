@@ -497,18 +497,19 @@ class _MessageBubble extends StatelessWidget {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
+                    // Sender bubbles use the design system's red so own
+                    // messages stand out against the muted grey of the
+                    // other side. Tail-corner radii flip per side so the
+                    // bubble points back at the speaker.
                     color: isMine
-                        ? MyShopColors.primaryGold
-                        : MyShopColors.surfaceWhite,
+                        ? MyShopColors.error
+                        : MyShopColors.surfaceGrey,
                     borderRadius: BorderRadius.only(
                       topLeft: const Radius.circular(16),
                       topRight: const Radius.circular(16),
                       bottomLeft: Radius.circular(isMine ? 16 : 4),
                       bottomRight: Radius.circular(isMine ? 4 : 16),
                     ),
-                    border: isMine
-                        ? null
-                        : Border.all(color: MyShopColors.divider),
                   ),
                   child: Text(
                     message.text,
