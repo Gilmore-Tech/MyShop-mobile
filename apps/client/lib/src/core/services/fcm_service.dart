@@ -86,6 +86,8 @@ String _fallbackTitle(String type) {
       return 'New message';
     case NotificationPayload.typePaymentConfirmed:
       return 'Payment received';
+    case NotificationPayload.typeRatingPrompt:
+      return 'Rate your experience';
     default:
       return 'MyShop';
   }
@@ -101,6 +103,8 @@ String _fallbackBody(String type) {
       return 'Confirm the work to release payment.';
     case NotificationPayload.typeJobBidSubmitted:
       return 'An artisan has placed a bid on your request.';
+    case NotificationPayload.typeRatingPrompt:
+      return 'Tap to leave a rating before the 24-hour window closes.';
     default:
       return 'Open MyShop to see the latest update.';
   }
@@ -342,6 +346,34 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           router.go(AppRoutes.jobTrackingPath(jobId));
         } else if (rideId != null) {
           router.go(AppRoutes.rideTracking);
+        } else {
+          router.go(AppRoutes.activity);
+        }
+        break;
+
+      // Backend asks the client to rate the counter-party for a completed
+      // booking. Land on the screen that already hosts the rating sheet
+      // (ride receipt for rides, job complete for jobs); both either
+      // auto-open the sheet or surface a clearly visible Rate CTA.
+      case NotificationPayload.typeRatingPrompt:
+        final bookingType =
+            payload[NotificationPayload.keyBookingType] as String?;
+        final bookingId =
+            payload[NotificationPayload.keyBookingId] as String?;
+        if (bookingType == 'ride') {
+          final id = bookingId ?? rideId;
+          if (id != null) {
+            router.go(AppRoutes.rideReceiptPath(id));
+          } else {
+            router.go(AppRoutes.activity);
+          }
+        } else if (bookingType == 'artisan_job' || bookingType == 'job') {
+          final id = bookingId ?? jobId;
+          if (id != null) {
+            router.go(AppRoutes.jobCompletePath(id));
+          } else {
+            router.go(AppRoutes.activity);
+          }
         } else {
           router.go(AppRoutes.activity);
         }
