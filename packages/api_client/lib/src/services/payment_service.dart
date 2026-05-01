@@ -53,6 +53,32 @@ class PaymentService {
     }
   }
 
+  /// POST /payments/acknowledge-cash — Tell the backend the client has
+  /// arrived at the payment screen and selected Cash. Sets
+  /// `job.clientPaymentAcknowledgedAt`/`job.clientPaymentMethod` and emits
+  /// `job:client_payment_acknowledged` to the artisan room. Without this
+  /// call the artisan's `POST /jobs/:id/artisan-confirm-cash` will 409 with
+  /// `CLIENT_PAYMENT_NOT_ACKNOWLEDGED` — the gate that prevents an artisan
+  /// from marking a job paid before the client has even opened the payment
+  /// screen.
+  ///
+  /// Idempotent: hitting it twice returns the same timestamp. Errors:
+  ///   400 JOB_NOT_AWAITING_PAYMENT — job isn't `artisan_marked_complete`
+  Future<Map<String, dynamic>> acknowledgeCash({
+    required String bookingType,
+    required String bookingId,
+  }) async {
+    try {
+      final response = await _dio.post('/payments/acknowledge-cash', data: {
+        'bookingType': bookingType,
+        'bookingId': bookingId,
+      },);
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   /// POST /payments/submit-otp — Forward an OTP for a Paystack MoMo charge
   /// that returned `data.status === 'send_otp'` from /payments/initiate.
   ///

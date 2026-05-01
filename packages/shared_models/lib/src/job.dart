@@ -31,6 +31,8 @@ class Job {
     this.assignedArtisanId,
     this.assignedByAdmin,
     this.assignedAt,
+    this.clientPaymentAcknowledgedAt,
+    this.clientPaymentMethod,
   });
 
   factory Job.fromJson(Map<String, dynamic> json) {
@@ -100,6 +102,9 @@ class Job {
           (json['assignedArtisanId'] ?? json['artisanId']) as String?,
       assignedByAdmin: json['assignedByAdmin'] as String?,
       assignedAt: json['assignedAt'] as String?,
+      clientPaymentAcknowledgedAt:
+          json['clientPaymentAcknowledgedAt'] as String?,
+      clientPaymentMethod: json['clientPaymentMethod'] as String?,
     );
   }
 
@@ -131,6 +136,24 @@ class Job {
   /// When the admin / client assigned the artisan.
   final String? assignedAt;
 
+  /// ISO timestamp set by the backend when the client opens the payment
+  /// screen and picks a method (any method — cash, momo, card). Null until
+  /// the client has acknowledged. Used by the artisan UI to gate the
+  /// "Yes, I received payment" button: tapping before this is set returns
+  /// 409 CLIENT_PAYMENT_NOT_ACKNOWLEDGED from `artisan-confirm-cash`.
+  final String? clientPaymentAcknowledgedAt;
+
+  /// What the client selected on the payment screen — `'cash'`, `'momo'`,
+  /// or `'card'`. Null until the client has acknowledged. Lets the artisan
+  /// UI tell "client picked Cash, please confirm receipt" apart from
+  /// "client picked MoMo, wait for the webhook".
+  final String? clientPaymentMethod;
+
+  /// Convenience: has the client confirmed they're paying with cash?
+  /// Used to enable the artisan's "Yes, I received payment" CTA.
+  bool get isClientCashAcknowledged =>
+      clientPaymentAcknowledgedAt != null && clientPaymentMethod == 'cash';
+
   /// Whether this job reached the admin-assignment fallback path.
   bool get isAdminAssigned => assignedByAdmin != null;
 
@@ -159,6 +182,8 @@ class Job {
     String? assignedArtisanId,
     String? assignedByAdmin,
     String? assignedAt,
+    String? clientPaymentAcknowledgedAt,
+    String? clientPaymentMethod,
   }) {
     return Job(
       id: id ?? this.id,
@@ -181,6 +206,9 @@ class Job {
       assignedArtisanId: assignedArtisanId ?? this.assignedArtisanId,
       assignedByAdmin: assignedByAdmin ?? this.assignedByAdmin,
       assignedAt: assignedAt ?? this.assignedAt,
+      clientPaymentAcknowledgedAt:
+          clientPaymentAcknowledgedAt ?? this.clientPaymentAcknowledgedAt,
+      clientPaymentMethod: clientPaymentMethod ?? this.clientPaymentMethod,
     );
   }
 }
