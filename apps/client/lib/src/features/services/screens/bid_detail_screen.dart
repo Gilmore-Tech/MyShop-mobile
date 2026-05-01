@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_models/shared_models.dart' show ChatBookingType;
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/router.dart';
+import '../../../core/providers/chat_controller_provider.dart';
 import '../providers/artisan_live_location_provider.dart';
 import '../providers/bid_detail_provider.dart';
 import '../providers/bid_list_provider.dart';
@@ -1727,6 +1729,132 @@ class _IconCircleButton extends StatelessWidget {
   }
 }
 
+/// Same circular silhouette as [_IconCircleButton] but wired to the chat
+/// orchestrator. Auto-opens the channel for `(artisanJob, jobId)` so the
+/// unread badge is live the moment the bid lands on the confirmed state,
+/// and pushes `/chat` with the artisan's name + a status hint on tap.
+class _ChatCircleButton extends ConsumerStatefulWidget {
+  const _ChatCircleButton({
+    required this.jobId,
+    required this.artisanName,
+    required this.w,
+    required this.h,
+  });
+
+  final String jobId;
+  final String artisanName;
+  final double w;
+  final double h;
+
+  @override
+  ConsumerState<_ChatCircleButton> createState() => _ChatCircleButtonState();
+}
+
+class _ChatCircleButtonState extends ConsumerState<_ChatCircleButton> {
+  StreamSubscription<int>? _unreadSub;
+  int _unread = 0;
+  bool _opened = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _ensureOpened();
+  }
+
+  @override
+  void dispose() {
+    _unreadSub?.cancel();
+    super.dispose();
+  }
+
+  void _ensureOpened() {
+    if (widget.jobId.isEmpty) return;
+    final controller = ref.read(chatControllerProvider).valueOrNull;
+    if (controller == null || _opened) return;
+    _opened = true;
+    scheduleMicrotask(() {
+      if (!mounted) return;
+      controller.openChannel(ChatBookingType.artisanJob, widget.jobId);
+    });
+    _unreadSub = controller.unreadCountStream.listen((n) {
+      if (!mounted) return;
+      setState(() => _unread = n);
+    });
+  }
+
+  void _onTap() {
+    if (widget.jobId.isEmpty) return;
+    context.push(
+      AppRoutes.chat,
+      extra: <String, Object?>{
+        'bookingType': ChatBookingType.artisanJob,
+        'bookingId': widget.jobId,
+        'peerName': widget.artisanName,
+        'peerStatus': 'On your job',
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.watch(chatControllerProvider);
+    _ensureOpened();
+
+    final size = widget.h * 0.062;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        GestureDetector(
+          onTap: _onTap,
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              color: MyShopColors.surfaceWhite,
+              shape: BoxShape.circle,
+              border: Border.all(color: MyShopColors.divider, width: 1.5),
+            ),
+            child: Icon(
+              Icons.chat_bubble_outline_rounded,
+              size: widget.w * 0.051,
+              color: MyShopColors.textPrimary,
+            ),
+          ),
+        ),
+        if (_unread > 0)
+          Positioned(
+            right: -2,
+            top: -2,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: MyShopColors.error,
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(
+                  color: MyShopColors.surfaceWhite,
+                  width: 1.5,
+                ),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                _unread > 99 ? '99+' : _unread.toString(),
+                style: const TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  color: MyShopColors.textOnPrimary,
+                  height: 1,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _AcceptButton extends StatelessWidget {
   final String artisanFirstName;
   final bool isLoading;
@@ -2104,9 +2232,9 @@ class _ConfirmedActionContent extends StatelessWidget {
       children: [
         Row(
           children: [
-            _IconCircleButton(
-              icon: Icons.chat_bubble_outline_rounded,
-              onTap: () {}, // TODO: navigate to chat
+            _ChatCircleButton(
+              jobId: bid.jobId,
+              artisanName: bid.artisan.name,
               w: w,
               h: h,
             ),
