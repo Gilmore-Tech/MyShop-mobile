@@ -11,6 +11,7 @@ import '../../features/artisan_home/providers/job_poller_provider.dart';
 import '../../features/artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../features/auth/providers/auth_controller.dart';
+import '../../features/auth/providers/current_user_provider.dart';
 import '../../features/earnings/providers/earnings_providers.dart';
 import '../../features/driver_home/providers/driver_location_provider.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
@@ -31,6 +32,11 @@ final socketServiceProvider = Provider<SocketService>((ref) {
     tokenStorage: tokenStorage,
     dio: dio,
     onForceLogout: () {
+      // Flip provider status to offline FIRST so the location heartbeat
+      // and any other status-gated side effects tear themselves down
+      // before the auth state is wiped. Otherwise the bridge keeps
+      // firing into an interceptor that has nothing to attach.
+      ref.read(providerStatusProvider.notifier).goOffline();
       ref.read(authControllerProvider.notifier).logout();
     },
   );
@@ -86,6 +92,17 @@ final socketConnectionProvider = Provider<void>((ref) {
 ///
 /// Watched by the shell — activates whenever the provider is online.
 final locationSocketBridgeProvider = Provider<void>((ref) {
+  // Gate on auth state first — even if `providerStatus` is stale (e.g. a
+  // logout race that hasn't flipped status yet), a null user means there
+  // is no token to attach and every heartbeat would 401-storm. This is
+  // defence-in-depth alongside the force-logout cascade in
+  // `socketServiceProvider`.
+  final user = ref.watch(currentUserProvider);
+  if (user == null) {
+    debugPrint('[LOC] bridge: unauthenticated — idle');
+    return;
+  }
+
   final status = ref.watch(providerStatusProvider);
   // Run while online OR busy. During an active ride (busy) the rider's map
   // depends on this heartbeat to track the car; if we gated on `isOnline`
