@@ -63,6 +63,21 @@ class Job {
         clientMap?['profilePhotoUrl'] as String? ??
         clientMap?['photoUrl'] as String?;
 
+    // Diagnostic — when the parser can't find any client identity, dump
+    // the top-level keys + the nested `client` keys (if present) so we
+    // can tell whether the backend simply isn't sending the data, or is
+    // sending it under a key we don't yet handle. Filter `printOnDebug`
+    // by your IDE if it gets noisy; remove once the artisan flow is
+    // confirmed showing real names end-to-end.
+    if (resolvedClientName == null && resolvedClientPhotoUrl == null) {
+      // ignore: avoid_print
+      print(
+        '[Job.fromJson] No client identity for jobId=${json['id'] ?? json['jobId']} '
+        'topKeys=${json.keys.toList()} '
+        'clientKeys=${clientMap?.keys.toList()}',
+      );
+    }
+
     return Job(
       id: json['jobId'] as String? ?? json['id'] as String,
       status: JobStatus.fromString(json['status'] as String),

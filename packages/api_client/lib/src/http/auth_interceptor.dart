@@ -215,19 +215,23 @@ class AuthInterceptor extends QueuedInterceptor {
           '[Auth] refresh DioException: status=${e.response?.statusCode} '
           'body=${e.response?.data}',
         );
-        // Decide what kind of failure this is by inspecting the error code.
-        // The backend now consistently emits one of:
-        //   - TOKEN_EXPIRED / INVALID_TOKEN / REFRESH_TOKEN_REUSED → the
-        //     entire token chain is dead. Wipe full identity context (the
-        //     user must sign in fresh, and we don't want stale cached
-        //     profile to flash on the way to /signin).
-        //   - SESSION_TAKEN_OVER → another device claimed the session.
-        //     Wipe ONLY the JWT pair so cached identity (phone, role,
-        //     cached profile) is still around for a quick re-login.
-        //   - anything else (network blip pretending to be 4xx, or a code
-        //     we don't recognise) → propagate without clearing. The
-        //     previous "wipe on any 4xx" fallback caused mystery logouts
-        //     when transient backend errors masqueraded as 4xx.
+        // Refresh-failure policy:
+        //   - 401 with TOKEN_EXPIRED / INVALID_TOKEN / REFRESH_TOKEN_REUSED →
+        //     the entire token chain is dead. Wipe full identity context
+        //     so the user signs in fresh and no stale cached profile
+        //     flashes on the way to /signin.
+        //   - 401 with SESSION_TAKEN_OVER → another device claimed the
+        //     session. Soft-clear only the JWT pair, preserving cached
+        //     identity for one-tap re-login.
+        //   - 401 with anything else (or no code) → still terminal, but
+        //     soft-clear: a 401 on /auth/refresh can only mean "this
+        //     refresh token is rejected" — there's no recovery path, so
+        //     we MUST kick the user out. Backend is migrating to the
+        //     specific codes (rollout in progress); until that's
+        //     consistent we fall back to soft-clear so the app isn't
+        //     stranded with dead tokens.
+        //   - other 4xx (400, 403, 422 etc.) → don't clear. These are
+        //     client errors, not auth-chain death.
         final status = e.response?.statusCode;
         final code = _extractErrorCode(e.response);
         const terminalCodes = {
@@ -235,21 +239,23 @@ class AuthInterceptor extends QueuedInterceptor {
           AuthErrorCodes.invalidToken,
           AuthErrorCodes.refreshTokenReused,
         };
-        if (status != null && status >= 400 && status < 500) {
+        if (status == 401) {
           if (code != null && terminalCodes.contains(code)) {
             debugPrint('[Auth] terminal refresh failure ($code) — clearing tokens');
             await _tokenStorage.clearTokens();
             _onForceLogout?.call();
-          } else if (code == AuthErrorCodes.sessionTakenOver) {
-            debugPrint('[Auth] refresh SESSION_TAKEN_OVER — soft logout');
-            await _tokenStorage.clearAuthTokensOnly();
-            _onForceLogout?.call();
           } else {
             debugPrint(
-              '[Auth] refresh 4xx with unrecognised code "$code" — '
-              'NOT clearing tokens (will retry on next request)',
+              '[Auth] refresh 401 (code="$code") — soft logout',
             );
+            await _tokenStorage.clearAuthTokensOnly();
+            _onForceLogout?.call();
           }
+        } else if (status != null && status >= 400 && status < 500) {
+          debugPrint(
+            '[Auth] refresh non-401 4xx ($status, code="$code") — '
+            'NOT clearing tokens (likely a client error, not auth death)',
+          );
         }
         return null;
       } catch (e, st) {

@@ -91,7 +91,17 @@ class JobService {
   Future<Map<String, dynamic>> getJob(String jobId) async {
     try {
       final response = await _dio.get('/jobs/$jobId');
-      return _unwrap(response) as Map<String, dynamic>;
+      final data = _unwrap(response) as Map<String, dynamic>;
+      // Diagnostic — surface what the backend actually returns for a
+      // single-job fetch so we can confirm whether `client: {...}` is
+      // present and what shape it has. Remove once the artisan flow is
+      // confirmed showing real names end-to-end.
+      // ignore: avoid_print
+      print(
+        '[JobService.getJob] $jobId topKeys=${data.keys.toList()} '
+        'client=${data['client']} clientName=${data['clientName']}',
+      );
+      return data;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
     }
@@ -105,12 +115,17 @@ class JobService {
   ///   - `etaMinutes`     (required, int 1–180)
   ///   - `durationMinutes` (required, int 15–1440)
   ///   - `message`        (optional, free-text)
+  ///
+  /// [clientRequestId] is forwarded as `Idempotency-Key`. Same key on a retry
+  /// must return the original response — used to recover from app-kill
+  /// between request leaving the device and ACK arriving.
   Future<Map<String, dynamic>> submitBid(
     String jobId, {
     required int amountPesewas,
     required int etaMinutes,
     required int durationMinutes,
     String? notes,
+    String? clientRequestId,
   }) async {
     try {
       final payload = <String, dynamic>{
@@ -124,6 +139,9 @@ class JobService {
       final response = await _dio.post(
         '/jobs/$jobId/bids',
         data: payload,
+        options: clientRequestId == null
+            ? null
+            : Options(headers: {'Idempotency-Key': clientRequestId}),
       );
       // ignore: avoid_print
       print('[JobService] submitBid response=${response.statusCode} data=${response.data}');
