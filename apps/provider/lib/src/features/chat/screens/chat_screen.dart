@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:api_client/api_client.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart' as models;
@@ -114,8 +115,24 @@ class _ProviderChatScreenState extends ConsumerState<ProviderChatScreen> {
     _controller = null;
   }
 
-  ChatMessage _toUi(models.ChatMessage m, String selfId) {
-    final isMine = m.senderId == selfId;
+  ChatMessage _toUi(
+    models.ChatMessage m,
+    String selfId,
+    Set<String> debugSeen,
+  ) {
+    // Both ids must be non-empty before they can match — otherwise an
+    // empty-vs-empty comparison would route every bubble to the right.
+    // `tmp_…` ids are always our own messages by construction.
+    final isMine = m.id.startsWith('tmp_') ||
+        (selfId.isNotEmpty &&
+            m.senderId.isNotEmpty &&
+            m.senderId == selfId);
+    if (kDebugMode && debugSeen.add(m.id)) {
+      debugPrint(
+        '[CHAT-UI] id=${m.id} senderId="${m.senderId}" '
+        'selfId="$selfId" → isMine=$isMine',
+      );
+    }
     final ChatMessageStatus status;
     if (!isMine) {
       status = m.isRead ? ChatMessageStatus.read : ChatMessageStatus.sent;
@@ -175,7 +192,9 @@ class _ProviderChatScreenState extends ConsumerState<ProviderChatScreen> {
                 : 'Active job');
 
         final selfId = controller.selfUserId;
-        final uiMessages = _messages.map((m) => _toUi(m, selfId)).toList();
+        final debugSeen = <String>{};
+        final uiMessages =
+            _messages.map((m) => _toUi(m, selfId, debugSeen)).toList();
 
         return MyShopChatScreen(
           peerName: peerName,

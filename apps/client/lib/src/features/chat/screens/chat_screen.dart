@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:api_client/api_client.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart' as models;
@@ -121,8 +122,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   /// Maps the typed orchestrator message to the shell's UI model. The
   /// status enum collapses three pieces of state — id-shape, failed-set
   /// membership, and `readAt` — into one renderable value.
-  ChatMessage _toUi(models.ChatMessage m, String selfId) {
-    final isMine = m.senderId == selfId;
+  /// Per-render set of ids we've already logged a routing decision for.
+  /// Cleared each build (function-local set) — the goal is one log per
+  /// id per visible render, not one per rebuild.
+  ChatMessage _toUi(
+    models.ChatMessage m,
+    String selfId,
+    Set<String> debugSeen,
+  ) {
+    // Both ids must be non-empty before they can match — otherwise an
+    // empty-vs-empty comparison would route every bubble to the right.
+    // Also treat `tmp_…` ids as "mine" by construction; the orchestrator
+    // assigns those locally on send before the server-id swap.
+    final isMine = m.id.startsWith('tmp_') ||
+        (selfId.isNotEmpty &&
+            m.senderId.isNotEmpty &&
+            m.senderId == selfId);
+    if (kDebugMode && debugSeen.add(m.id)) {
+      debugPrint(
+        '[CHAT-UI] id=${m.id} senderId="${m.senderId}" '
+        'selfId="$selfId" → isMine=$isMine',
+      );
+    }
     final ChatMessageStatus status;
     if (!isMine) {
       status = m.isRead ? ChatMessageStatus.read : ChatMessageStatus.sent;
@@ -167,7 +188,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _attach(controller);
 
         final selfId = controller.selfUserId;
-        final uiMessages = _messages.map((m) => _toUi(m, selfId)).toList();
+        final debugSeen = <String>{};
+        final uiMessages =
+            _messages.map((m) => _toUi(m, selfId, debugSeen)).toList();
         final isClosed = _channel?.isClosed == true;
 
         return MyShopChatScreen(

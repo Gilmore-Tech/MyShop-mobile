@@ -51,9 +51,19 @@ class ChatMessage {
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    // Tolerate the backend emitting `senderId` (camelCase, current spec),
+    // `sender_id` (snake_case, common Postgres-driven payloads), or
+    // `userId` (a few legacy paths) — any divergence here was the
+    // smoking gun behind every bubble rendering as `fromMe` because
+    // the parser fell back to `''` and matched an equally-empty selfId.
+    final sender = (json['senderId'] ??
+            json['sender_id'] ??
+            json['userId'] ??
+            json['user_id']) as String? ??
+        '';
     return ChatMessage(
       id: json['id'] as String,
-      senderId: json['senderId'] as String,
+      senderId: sender,
       message: json['message'] as String? ?? json['content'] as String? ?? '',
       readAt: _parseDate(json['readAt']),
       createdAt: _parseDate(json['createdAt']) ?? DateTime.now().toUtc(),
