@@ -193,11 +193,35 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             _messages.map((m) => _toUi(m, selfId, debugSeen)).toList();
         final isClosed = _channel?.isClosed == true;
 
+        // Debug-only routing diagnostic — when bubbles render on the
+        // wrong side we want the actual values visible in the running
+        // simulator, not just stuck in the log buffer. Strips out of
+        // release builds via kDebugMode.
+        final lastIncoming = _messages.lastWhere(
+          (m) => !m.id.startsWith('tmp_'),
+          orElse: () => _messages.isNotEmpty
+              ? _messages.last
+              : models.ChatMessage(
+                  id: '',
+                  senderId: '',
+                  message: '',
+                  createdAt: DateTime.now().toUtc(),
+                ),
+        );
+        final composedBanner = kDebugMode
+            ? _ChatDebugBanner(
+                selfId: selfId,
+                lastSenderId: lastIncoming.senderId,
+                lastMessageId: lastIncoming.id,
+                inner: widget.contextBanner,
+              )
+            : widget.contextBanner;
+
         return MyShopChatScreen(
           peerName: widget.peerName,
           peerStatus: isClosed ? 'Chat closed' : widget.peerStatus,
           messages: uiMessages,
-          contextBanner: widget.contextBanner,
+          contextBanner: composedBanner,
           isInputLocked: isClosed,
           lockedReason: isClosed
               ? 'This chat is closed because the booking ended.'
@@ -263,4 +287,66 @@ class _ChatNotSignedIn extends StatelessWidget {
           ),
         ),
       );
+}
+
+/// Debug-only diagnostic strip rendered above the existing context
+/// banner. Surfaces the values the bubble's `isMine` check relies on so
+/// a routing-bug investigation doesn't require digging through the
+/// debug console. Stripped out of release builds via `kDebugMode`.
+class _ChatDebugBanner extends StatelessWidget {
+  const _ChatDebugBanner({
+    required this.selfId,
+    required this.lastSenderId,
+    required this.lastMessageId,
+    this.inner,
+  });
+
+  final String selfId;
+  final String lastSenderId;
+  final String lastMessageId;
+  final Widget? inner;
+
+  String _short(String s) =>
+      s.length <= 8 ? s : '${s.substring(0, 8)}…';
+
+  @override
+  Widget build(BuildContext context) {
+    final hasMessage = lastMessageId.isNotEmpty;
+    final wouldBeMine = selfId.isNotEmpty &&
+        lastSenderId.isNotEmpty &&
+        selfId == lastSenderId;
+    final summary = !hasMessage
+        ? 'no messages yet'
+        : 'last → ${wouldBeMine ? "MINE (right)" : "PEER (left)"}';
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: double.infinity,
+          color: MyShopColors.warning.withValues(alpha: 0.18),
+          padding: const EdgeInsets.symmetric(
+            horizontal: MyShopSpacing.md,
+            vertical: 6,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'DEBUG · self=${_short(selfId)} | '
+                'lastSender=${_short(lastSenderId)} · $summary',
+                style: const TextStyle(
+                  fontFamily: 'Roboto',
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: MyShopColors.textPrimary,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (inner != null) inner!,
+      ],
+    );
+  }
 }
