@@ -63,8 +63,7 @@ class SubmittedBid {
   String get jobId => job.id;
 
   /// Display like `GHS 175.00`.
-  String get amountDisplay =>
-      'GHS ${(amountPesewas / 100).toStringAsFixed(2)}';
+  String get amountDisplay => 'GHS ${(amountPesewas / 100).toStringAsFixed(2)}';
 
   /// Whether the 5-minute bidding window is still open.
   bool get isActive => DateTime.now().isBefore(expiresAt);
@@ -108,8 +107,7 @@ Map<String, dynamic> _jobToJson(Job j) => {
 /// restarts even when the backend response doesn't include `myBid`.
 ///
 /// The map is keyed by `jobId` — one bid per job.
-class SubmittedBidsNotifier
-    extends StateNotifier<Map<String, SubmittedBid>> {
+class SubmittedBidsNotifier extends StateNotifier<Map<String, SubmittedBid>> {
   SubmittedBidsNotifier() : super(const {}) {
     _restore();
   }

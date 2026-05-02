@@ -135,7 +135,8 @@ class _PolicyCheckbox extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         InkWell(
-          onTap: () => ref.read(policyAcceptedProvider.notifier).state = !accepted,
+          onTap: () =>
+              ref.read(policyAcceptedProvider.notifier).state = !accepted,
           borderRadius: BorderRadius.circular(8),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -145,8 +146,9 @@ class _PolicyCheckbox extends ConsumerWidget {
                 height: 24,
                 child: Checkbox(
                   value: accepted,
-                  onChanged: (v) =>
-                      ref.read(policyAcceptedProvider.notifier).state = v ?? false,
+                  onChanged: (v) => ref
+                      .read(policyAcceptedProvider.notifier)
+                      .state = v ?? false,
                   activeColor: MyShopColors.primaryGold,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(4),

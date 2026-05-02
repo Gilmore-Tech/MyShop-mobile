@@ -276,7 +276,8 @@ class _FilterChips extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? MyShopColors.primaryGold : MyShopColors.surfaceWhite,
+          color:
+              selected ? MyShopColors.primaryGold : MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: selected ? MyShopColors.primaryGold : MyShopColors.divider,

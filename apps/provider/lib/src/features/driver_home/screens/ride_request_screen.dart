@@ -97,9 +97,11 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Icon(Icons.more_vert, color: MyShopColors.textSecondary),
+                  const Icon(Icons.more_vert,
+                      color: MyShopColors.textSecondary),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: MyShopColors.surfaceWhite,
                       borderRadius: BorderRadius.circular(16),
@@ -109,11 +111,16 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                       children: [
                         _Dot(color: MyShopColors.online),
                         SizedBox(width: 6),
-                        Text('Online', style: TextStyle(fontFamily: 'Raleway', fontSize: 14, fontWeight: FontWeight.w600)),
+                        Text('Online',
+                            style: TextStyle(
+                                fontFamily: 'Raleway',
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600)),
                       ],
                     ),
                   ),
-                  const Icon(Icons.notifications_outlined, color: MyShopColors.textSecondary),
+                  const Icon(Icons.notifications_outlined,
+                      color: MyShopColors.textSecondary),
                 ],
               ),
             ),
@@ -137,12 +144,19 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('New Ride Request', style: MyShopTypography.body2),
+                            Text('New Ride Request',
+                                style: MyShopTypography.body2),
                             const SizedBox(height: 4),
-                            const Text('Immediate Pickup', style: TextStyle(fontFamily: 'Raleway', fontSize: 18, fontWeight: FontWeight.w700, color: MyShopColors.textPrimary)),
+                            const Text('Immediate Pickup',
+                                style: TextStyle(
+                                    fontFamily: 'Raleway',
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: MyShopColors.textPrimary)),
                           ],
                         ),
-                        _CountdownTimer(progress: progress, seconds: _secondsRemaining),
+                        _CountdownTimer(
+                            progress: progress, seconds: _secondsRemaining),
                       ],
                     ),
                     const SizedBox(height: MyShopSpacing.lg),
@@ -172,8 +186,12 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                               foregroundColor: MyShopColors.error,
                               side: const BorderSide(color: MyShopColors.error),
                               minimumSize: const Size(0, 52),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              textStyle: const TextStyle(fontFamily: 'Raleway', fontSize: 16, fontWeight: FontWeight.w700),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              textStyle: const TextStyle(
+                                  fontFamily: 'Raleway',
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700),
                             ),
                           ),
                         ),
@@ -190,8 +208,12 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                               disabledForegroundColor:
                                   MyShopColors.textOnPrimary,
                               minimumSize: const Size(0, 52),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              textStyle: const TextStyle(fontFamily: 'Raleway', fontSize: 16, fontWeight: FontWeight.w700),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              textStyle: const TextStyle(
+                                  fontFamily: 'Raleway',
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700),
                             ),
                             child: _isAccepting
                                 ? const SizedBox(
@@ -229,13 +251,22 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(color: MyShopColors.error, borderRadius: BorderRadius.circular(12)),
+                        decoration: BoxDecoration(
+                            color: MyShopColors.error,
+                            borderRadius: BorderRadius.circular(12)),
                         child: const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.warning_amber, size: 18, color: MyShopColors.textOnPrimary),
+                            Icon(Icons.warning_amber,
+                                size: 18, color: MyShopColors.textOnPrimary),
                             SizedBox(width: 8),
-                            Text('HIGH DEMAND', style: TextStyle(fontFamily: 'Raleway', fontSize: 14, fontWeight: FontWeight.w900, color: MyShopColors.textOnPrimary, letterSpacing: 0.5)),
+                            Text('HIGH DEMAND',
+                                style: TextStyle(
+                                    fontFamily: 'Raleway',
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w900,
+                                    color: MyShopColors.textOnPrimary,
+                                    letterSpacing: 0.5)),
                           ],
                         ),
                       ),
@@ -244,12 +275,19 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                     // Safety notice
                     Container(
                       padding: const EdgeInsets.all(MyShopSpacing.md),
-                      decoration: BoxDecoration(color: MyShopColors.surfaceGrey, borderRadius: BorderRadius.circular(12)),
+                      decoration: BoxDecoration(
+                          color: MyShopColors.surfaceGrey,
+                          borderRadius: BorderRadius.circular(12)),
                       child: Row(
                         children: [
-                          const Icon(Icons.shield_outlined, size: 20, color: MyShopColors.textSecondary),
+                          const Icon(Icons.shield_outlined,
+                              size: 20, color: MyShopColors.textSecondary),
                           const SizedBox(width: 12),
-                          Expanded(child: Text('For your security, passenger phone numbers are masked. All calls are recorded for safety.', style: MyShopTypography.body2.copyWith(fontSize: 12))),
+                          Expanded(
+                              child: Text(
+                                  'For your security, passenger phone numbers are masked. All calls are recorded for safety.',
+                                  style: MyShopTypography.body2
+                                      .copyWith(fontSize: 12))),
                         ],
                       ),
                     ),
@@ -268,7 +306,10 @@ class _Dot extends StatelessWidget {
   const _Dot({required this.color});
   final Color color;
   @override
-  Widget build(BuildContext context) => Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle));
+  Widget build(BuildContext context) => Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle));
 }
 
 class _CountdownTimer extends StatelessWidget {
@@ -278,12 +319,23 @@ class _CountdownTimer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 56, height: 56,
+      width: 56,
+      height: 56,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          CircularProgressIndicator(value: progress, strokeWidth: 3, backgroundColor: MyShopColors.divider, valueColor: const AlwaysStoppedAnimation(MyShopColors.primaryGold)),
-          Text('${seconds}s', style: const TextStyle(fontFamily: 'Raleway', fontSize: 16, fontWeight: FontWeight.w700, color: MyShopColors.primaryGold)),
+          CircularProgressIndicator(
+              value: progress,
+              strokeWidth: 3,
+              backgroundColor: MyShopColors.divider,
+              valueColor:
+                  const AlwaysStoppedAnimation(MyShopColors.primaryGold)),
+          Text('${seconds}s',
+              style: const TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: MyShopColors.primaryGold)),
         ],
       ),
     );
@@ -297,24 +349,37 @@ class _ClientCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),
-      decoration: BoxDecoration(color: MyShopColors.surfaceWhite, borderRadius: BorderRadius.circular(16), border: Border.all(color: MyShopColors.divider)),
+      decoration: BoxDecoration(
+          color: MyShopColors.surfaceWhite,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: MyShopColors.divider)),
       child: Row(
         children: [
           _ClientAvatar(photoUrl: ride.clientPhotoUrl, size: 48),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                Text(ride.clientName ?? 'Passenger', style: const TextStyle(fontFamily: 'Raleway', fontSize: 16, fontWeight: FontWeight.w700)),
+                Text(ride.clientName ?? 'Passenger',
+                    style: const TextStyle(
+                        fontFamily: 'Raleway',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700)),
                 const SizedBox(width: 4),
                 const Icon(Icons.verified, size: 16, color: MyShopColors.info),
               ]),
               const SizedBox(height: 4),
               Row(children: [
-                const Icon(Icons.star, size: 14, color: MyShopColors.ratingStar),
+                const Icon(Icons.star,
+                    size: 14, color: MyShopColors.ratingStar),
                 const SizedBox(width: 2),
-                Text('${ride.clientRating ?? 0}', style: MyShopTypography.body2.copyWith(fontWeight: FontWeight.w600, color: MyShopColors.textPrimary)),
-                Text(' (${ride.clientTripCount ?? 0}+ trips)', style: MyShopTypography.body2),
+                Text('${ride.clientRating ?? 0}',
+                    style: MyShopTypography.body2.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: MyShopColors.textPrimary)),
+                Text(' (${ride.clientTripCount ?? 0}+ trips)',
+                    style: MyShopTypography.body2),
               ]),
             ]),
           ),
@@ -330,19 +395,40 @@ class _PickupInfo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Container(width: 32, height: 32, decoration: BoxDecoration(color: MyShopColors.surfaceGrey, borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.location_on, size: 18, color: MyShopColors.textSecondary)),
+      Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+              color: MyShopColors.surfaceGrey,
+              borderRadius: BorderRadius.circular(16)),
+          child: const Icon(Icons.location_on,
+              size: 18, color: MyShopColors.textSecondary)),
       const SizedBox(width: 12),
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('PICKUP LOCATION', style: MyShopTypography.overline.copyWith(fontSize: 11, letterSpacing: 0.5)),
+      Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('PICKUP LOCATION',
+            style: MyShopTypography.overline
+                .copyWith(fontSize: 11, letterSpacing: 0.5)),
         const SizedBox(height: 4),
-        Text(ride.pickupAddress, style: const TextStyle(fontFamily: 'Raleway', fontSize: 16, fontWeight: FontWeight.w600, color: MyShopColors.textPrimary)),
+        Text(ride.pickupAddress,
+            style: const TextStyle(
+                fontFamily: 'Raleway',
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: MyShopColors.textPrimary)),
         const SizedBox(height: 8),
         Row(children: [
-          const Icon(Icons.straighten, size: 14, color: MyShopColors.textSecondary), const SizedBox(width: 4),
+          const Icon(Icons.straighten,
+              size: 14, color: MyShopColors.textSecondary),
+          const SizedBox(width: 4),
           Text(ride.distanceDisplay, style: MyShopTypography.body2),
           const SizedBox(width: 16),
-          const Icon(Icons.access_time, size: 14, color: MyShopColors.online), const SizedBox(width: 4),
-          Text('${ride.estimatedDurationMins} min drive', style: MyShopTypography.body2.copyWith(color: MyShopColors.online)),
+          const Icon(Icons.access_time, size: 14, color: MyShopColors.online),
+          const SizedBox(width: 4),
+          Text('${ride.estimatedDurationMins} min drive',
+              style:
+                  MyShopTypography.body2.copyWith(color: MyShopColors.online)),
         ]),
       ])),
     ]);
@@ -356,18 +442,40 @@ class _EarningsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),
-      decoration: BoxDecoration(color: MyShopColors.primaryGoldLight, borderRadius: BorderRadius.circular(16)),
+      decoration: BoxDecoration(
+          color: MyShopColors.primaryGoldLight,
+          borderRadius: BorderRadius.circular(16)),
       child: Row(children: [
-        Container(width: 40, height: 40, decoration: BoxDecoration(color: MyShopColors.primaryGold.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.account_balance_wallet, size: 20, color: MyShopColors.primaryGold)),
+        Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+                color: MyShopColors.primaryGold.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(12)),
+            child: const Icon(Icons.account_balance_wallet,
+                size: 20, color: MyShopColors.primaryGold)),
         const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Estimated Earnings', style: MyShopTypography.body2),
-          Text(ride.estimatedFareDisplay, style: const TextStyle(fontFamily: 'Raleway', fontSize: 22, fontWeight: FontWeight.w900, color: MyShopColors.textPrimary)),
+          Text(ride.estimatedFareDisplay,
+              style: const TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: MyShopColors.textPrimary)),
         ])),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(color: MyShopColors.surfaceWhite, borderRadius: BorderRadius.circular(8), border: Border.all(color: MyShopColors.divider)),
-          child: Text(ride.paymentMethod, style: MyShopTypography.body2.copyWith(fontWeight: FontWeight.w600, color: MyShopColors.textPrimary)),
+          decoration: BoxDecoration(
+              color: MyShopColors.surfaceWhite,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: MyShopColors.divider)),
+          child: Text(ride.paymentMethod,
+              style: MyShopTypography.body2.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: MyShopColors.textPrimary)),
         ),
       ]),
     );

@@ -30,14 +30,12 @@ class ArtisanEarningsScreen extends ConsumerStatefulWidget {
       _ArtisanEarningsScreenState();
 }
 
-class _ArtisanEarningsScreenState
-    extends ConsumerState<ArtisanEarningsScreen> {
+class _ArtisanEarningsScreenState extends ConsumerState<ArtisanEarningsScreen> {
   EarningsPeriod _period = EarningsPeriod.week;
 
   @override
   Widget build(BuildContext context) {
-    final summaryKey =
-        EarningsSummaryKey(role: _kArtisanRole, period: _period);
+    final summaryKey = EarningsSummaryKey(role: _kArtisanRole, period: _period);
     final summaryAsync = ref.watch(earningsSummaryProvider(summaryKey));
 
     return Scaffold(
@@ -372,8 +370,7 @@ class _BalanceCard extends StatelessWidget {
                 child: Text(
                   'Available Balance',
                   style: MyShopTypography.body1.copyWith(
-                    color:
-                        MyShopColors.textOnDarkSlate.withValues(alpha: 0.85),
+                    color: MyShopColors.textOnDarkSlate.withValues(alpha: 0.85),
                     fontWeight: FontWeight.w600,
                     fontSize: 15,
                   ),

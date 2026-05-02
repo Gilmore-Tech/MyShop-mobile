@@ -79,8 +79,7 @@ class _PayoutsEmpty extends StatelessWidget {
           const SizedBox(height: MyShopSpacing.sm),
           Text(
             title,
-            style:
-                MyShopTypography.body1.copyWith(fontWeight: FontWeight.w600),
+            style: MyShopTypography.body1.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: MyShopSpacing.xs),
           Text(
@@ -211,8 +210,18 @@ class _PayoutRow extends StatelessWidget {
 
   static String _formatDate(DateTime at) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     final local = at.toLocal();
     final hh = local.hour.toString().padLeft(2, '0');

@@ -174,18 +174,16 @@ class _SettingToggle extends StatelessWidget {
             child: Icon(icon, size: 18, color: MyShopColors.darkSlate)),
         const SizedBox(width: 12),
         Expanded(
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-              Text(title,
-                  style: const TextStyle(
-                      fontFamily: 'Raleway',
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: MyShopColors.textPrimary)),
-              Text(subtitle,
-                  style: MyShopTypography.body2.copyWith(fontSize: 11)),
-            ])),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title,
+              style: const TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: MyShopColors.textPrimary)),
+          Text(subtitle, style: MyShopTypography.body2.copyWith(fontSize: 11)),
+        ])),
         Switch(
           value: value,
           onChanged: onChanged,
@@ -223,18 +221,16 @@ class _LinkRow extends StatelessWidget {
             child: Icon(icon, size: 18, color: MyShopColors.darkSlate)),
         const SizedBox(width: 12),
         Expanded(
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-              Text(title,
-                  style: const TextStyle(
-                      fontFamily: 'Raleway',
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: MyShopColors.textPrimary)),
-              Text(subtitle,
-                  style: MyShopTypography.body2.copyWith(fontSize: 11)),
-            ])),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title,
+              style: const TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: MyShopColors.textPrimary)),
+          Text(subtitle, style: MyShopTypography.body2.copyWith(fontSize: 11)),
+        ])),
         const Icon(Icons.chevron_right,
             size: 18, color: MyShopColors.textSecondary),
       ]),

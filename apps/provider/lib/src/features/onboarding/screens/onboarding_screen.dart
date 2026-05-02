@@ -79,11 +79,13 @@ class OnboardingScreen extends ConsumerWidget {
                     MyShopPrimaryButton(
                       label: 'Get Started',
                       icon: Icons.arrow_forward_rounded,
-                      onPressed: () => _markSeenAndGo(ref, context, '/signup/role'),
+                      onPressed: () =>
+                          _markSeenAndGo(ref, context, '/signup/role'),
                     ),
                     const SizedBox(height: MyShopSpacing.sm),
                     TextButton(
-                      onPressed: () => _markSeenAndGo(ref, context, '/signin/phone'),
+                      onPressed: () =>
+                          _markSeenAndGo(ref, context, '/signin/phone'),
                       style: TextButton.styleFrom(
                         minimumSize: const Size(double.infinity, 48),
                         foregroundColor: MyShopColors.primaryGoldDark,

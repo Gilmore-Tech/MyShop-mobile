@@ -22,10 +22,9 @@ class BusinessInformationScreen extends ConsumerWidget {
 
     final businessName =
         ap?.businessName ?? user?.displayName ?? 'Your Business';
-    final categories = ap?.serviceCategories
-            ?.map((sc) => sc.category.name)
-            .join(', ') ??
-        'No categories';
+    final categories =
+        ap?.serviceCategories?.map((sc) => sc.category.name).join(', ') ??
+            'No categories';
     final serviceRadius = '${ap?.serviceRadiusKm.toStringAsFixed(0) ?? '5'}km';
     final shopCapacity = ap?.shopCapacity ?? 'solo';
     final maxJobs = ap?.maxConcurrentJobs ?? 1;
@@ -586,8 +585,7 @@ class _ServiceCoverageCard extends StatelessWidget {
                     circleId: const CircleId('service-area'),
                     center: LatLng(latitude!, longitude!),
                     radius: radiusKm * 1000,
-                    fillColor:
-                        MyShopColors.primaryGold.withValues(alpha: 0.18),
+                    fillColor: MyShopColors.primaryGold.withValues(alpha: 0.18),
                     strokeColor: MyShopColors.primaryGold,
                     strokeWidth: 2,
                   ),

@@ -89,8 +89,8 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
   }
 
   Future<void> _loadCarIcon() async {
-    final pixelRatio = WidgetsBinding.instance.platformDispatcher.views.first
-        .devicePixelRatio;
+    final pixelRatio =
+        WidgetsBinding.instance.platformDispatcher.views.first.devicePixelRatio;
     final icon = await DriverCarMarker.create(devicePixelRatio: pixelRatio);
     if (!mounted) return;
     setState(() => _carIcon = icon);
@@ -114,7 +114,9 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
             15,
           ),
         );
-      } catch (_) {/* map controller may not be ready yet — listener picks it up */}
+      } catch (_) {
+        /* map controller may not be ready yet — listener picks it up */
+      }
       return;
     }
 
@@ -134,7 +136,8 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
         try {
           permission = await Geolocator.requestPermission();
         } catch (e) {
-          debugPrint('[LOC] requestPermission race — letting warm-up finish: $e');
+          debugPrint(
+              '[LOC] requestPermission race — letting warm-up finish: $e');
           return;
         }
       }
@@ -434,7 +437,8 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
                         width: 48,
                         height: 6,
                         decoration: BoxDecoration(
-                          color: MyShopColors.surfaceGrey.withValues(alpha: 0.5),
+                          color:
+                              MyShopColors.surfaceGrey.withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(3),
                         ),
                       ),
@@ -448,7 +452,8 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
 
                     // Auto-accept toggle
                     const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                      padding:
+                          EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
                       child: AutoAcceptCard(),
                     ),
 
@@ -456,7 +461,8 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
 
                     // Quick Operations
                     const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                      padding:
+                          EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
                       child: QuickOperationsGrid(),
                     ),
 
@@ -464,7 +470,8 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
 
                     // Recent Activity
                     const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                      padding:
+                          EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
                       child: RecentActivitySection(),
                     ),
 

@@ -229,9 +229,8 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
               child: _isCompletionPhase(job.status)
                   ? _CompletionOverlay(
                       status: job.status,
-                      clientFirstName: (job.clientName ?? 'Client')
-                          .split(' ')
-                          .first,
+                      clientFirstName:
+                          (job.clientName ?? 'Client').split(' ').first,
                       isUpdating: state.isUpdating,
                       clientCashAcknowledged: job.isClientCashAcknowledged,
                       onGoToEarnings: () {
@@ -446,8 +445,7 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
       Marker(
         markerId: const MarkerId('client'),
         position: widget.destination,
-        icon:
-            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
       ),
       if (artisan != null)
         Marker(
@@ -1073,9 +1071,8 @@ class _JobTimeline extends StatelessWidget {
             Container(
               width: 12,
               height: 2,
-              color: i < active
-                  ? MyShopColors.primaryGold
-                  : MyShopColors.divider,
+              color:
+                  i < active ? MyShopColors.primaryGold : MyShopColors.divider,
             ),
         ],
       ],
@@ -1141,9 +1138,8 @@ class _PhaseDot extends StatelessWidget {
           phase.label,
           textAlign: TextAlign.center,
           style: MyShopTypography.caption.copyWith(
-            fontWeight: state == _PhaseState.active
-                ? FontWeight.w900
-                : FontWeight.w600,
+            fontWeight:
+                state == _PhaseState.active ? FontWeight.w900 : FontWeight.w600,
             color: state == _PhaseState.upcoming
                 ? MyShopColors.textSecondary
                 : MyShopColors.textPrimary,
@@ -1475,10 +1471,9 @@ class _CompletionOverlay extends StatelessWidget {
                   Expanded(
                     flex: 2,
                     child: ElevatedButton(
-                      onPressed:
-                          (isUpdating || !clientCashAcknowledged)
-                              ? null
-                              : onConfirmCashReceipt,
+                      onPressed: (isUpdating || !clientCashAcknowledged)
+                          ? null
+                          : onConfirmCashReceipt,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: MyShopColors.success,
                         disabledBackgroundColor:

@@ -173,9 +173,7 @@ class _RateClientSheetState extends ConsumerState<RateClientSheet> {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 6),
                     child: Icon(
-                      filled
-                          ? Icons.star_rounded
-                          : Icons.star_border_rounded,
+                      filled ? Icons.star_rounded : Icons.star_border_rounded,
                       size: 36,
                       color: MyShopColors.primaryGold,
                     ),
@@ -204,8 +202,7 @@ class _RateClientSheetState extends ConsumerState<RateClientSheet> {
                 maxLines: null,
                 maxLength: 500,
                 decoration: InputDecoration(
-                  hintText:
-                      'How was the job with ${widget.clientFirstName}?',
+                  hintText: 'How was the job with ${widget.clientFirstName}?',
                   hintStyle: const TextStyle(
                     fontSize: 13,
                     color: MyShopColors.disabled,
@@ -267,9 +264,8 @@ class _RateClientSheetState extends ConsumerState<RateClientSheet> {
             const SizedBox(height: 8),
             Center(
               child: TextButton(
-                onPressed: _isSubmitting
-                    ? null
-                    : () => Navigator.of(context).pop(),
+                onPressed:
+                    _isSubmitting ? null : () => Navigator.of(context).pop(),
                 child: const Text(
                   'No thanks, just close',
                   style: TextStyle(

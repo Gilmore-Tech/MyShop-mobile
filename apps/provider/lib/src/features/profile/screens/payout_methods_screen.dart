@@ -45,8 +45,8 @@ class PayoutMethodsScreen extends ConsumerWidget {
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(
-            MyShopSpacing.md, MyShopSpacing.md, MyShopSpacing.md, MyShopSpacing.lg),
+        padding: const EdgeInsets.fromLTRB(MyShopSpacing.md, MyShopSpacing.md,
+            MyShopSpacing.md, MyShopSpacing.lg),
         children: [
           // Available balance card
           Container(
@@ -63,8 +63,7 @@ class PayoutMethodsScreen extends ConsumerWidget {
                         children: [
                       Text('Available for Payout',
                           style: MyShopTypography.body2.copyWith(
-                              fontSize: 13,
-                              color: MyShopColors.textSecondary)),
+                              fontSize: 13, color: MyShopColors.textSecondary)),
                       const SizedBox(height: 6),
                       const Text('₵0',
                           style: TextStyle(
@@ -140,14 +139,14 @@ class PayoutMethodsScreen extends ConsumerWidget {
             _MomoCard(
               provider: payoutMethodLabel(payoutMethod),
               name: user?.fullName ?? '',
-              number: '**** **** ${payoutAccount.substring(payoutAccount.length > 4 ? payoutAccount.length - 4 : 0)}',
+              number:
+                  '**** **** ${payoutAccount.substring(payoutAccount.length > 4 ? payoutAccount.length - 4 : 0)}',
               isPrimary: true,
               verified: payoutLocked,
               // No edit affordance once OTP-verified — only an admin can
               // change the locked payout method.
-              onEdit: payoutLocked
-                  ? null
-                  : () => showPayoutMethodSheet(context),
+              onEdit:
+                  payoutLocked ? null : () => showPayoutMethodSheet(context),
             )
           else
             Container(
@@ -173,21 +172,22 @@ class PayoutMethodsScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: MyShopSpacing.sm),
                   Text('No payout method set up',
-                      style: MyShopTypography.body1.copyWith(
-                          fontWeight: FontWeight.w600)),
+                      style: MyShopTypography.body1
+                          .copyWith(fontWeight: FontWeight.w600)),
                   const SizedBox(height: MyShopSpacing.xs),
                   Text(
                       'Add a MoMo number — we\'ll send a 6-digit code to '
                       'verify it before locking it in.',
                       textAlign: TextAlign.center,
-                      style: MyShopTypography.body2.copyWith(
-                          color: MyShopColors.textSecondary)),
+                      style: MyShopTypography.body2
+                          .copyWith(color: MyShopColors.textSecondary)),
                 ],
               ),
             ),
           const SizedBox(height: MyShopSpacing.sm),
           if (payoutLocked)
-            _LockedFooter(onContactSupport: () => context.push('/account/support'))
+            _LockedFooter(
+                onContactSupport: () => context.push('/account/support'))
           else
             DottedCta(
               icon: hasPayoutMethod ? Icons.swap_horiz : Icons.add,
@@ -234,12 +234,12 @@ class PayoutMethodsScreen extends ConsumerWidget {
               ),
               const SizedBox(height: MyShopSpacing.sm),
               Text('No payouts yet',
-                  style: MyShopTypography.body1.copyWith(
-                      fontWeight: FontWeight.w600)),
+                  style: MyShopTypography.body1
+                      .copyWith(fontWeight: FontWeight.w600)),
               const SizedBox(height: MyShopSpacing.xs),
               Text('Your payout history will appear here',
-                  style: MyShopTypography.body2.copyWith(
-                      color: MyShopColors.textSecondary)),
+                  style: MyShopTypography.body2
+                      .copyWith(color: MyShopColors.textSecondary)),
               const SizedBox(height: MyShopSpacing.md),
             ]),
           ),
@@ -265,8 +265,7 @@ class PayoutMethodsScreen extends ConsumerWidget {
                     height: 1.5),
                 children: const [
                   TextSpan(
-                      text:
-                          'Need help managing your payouts? Contact our '),
+                      text: 'Need help managing your payouts? Contact our '),
                   TextSpan(
                       text: 'Financial Support Team',
                       style: TextStyle(
@@ -290,8 +289,8 @@ class PayoutMethodsScreen extends ConsumerWidget {
           Center(
             child: Text(
               'Version 2.4.1 (Stable)  •  © 2026 MyShop Provider App',
-              style: MyShopTypography.caption.copyWith(
-                  fontSize: 10, color: MyShopColors.textSecondary),
+              style: MyShopTypography.caption
+                  .copyWith(fontSize: 10, color: MyShopColors.textSecondary),
             ),
           ),
           const SizedBox(height: MyShopSpacing.lg),
@@ -393,8 +392,7 @@ class _MomoCard extends StatelessWidget {
           ),
           if (verified)
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
               decoration: BoxDecoration(
                 color: MyShopColors.successLight,
                 borderRadius: BorderRadius.circular(20),
@@ -449,10 +447,7 @@ class DottedCta extends StatelessWidget {
 /// Lightweight dashed-border container (avoids extra package dependency).
 class DottedBorder extends StatelessWidget {
   const DottedBorder(
-      {super.key,
-      required this.child,
-      required this.color,
-      this.radius = 12});
+      {super.key, required this.child, required this.color, this.radius = 12});
   final Widget child;
   final Color color;
   final double radius;
@@ -480,8 +475,8 @@ class _DashedRectPainter extends CustomPainter {
       ..color = color
       ..strokeWidth = 1.2
       ..style = PaintingStyle.stroke;
-    final rrect = RRect.fromRectAndRadius(
-        Offset.zero & size, Radius.circular(radius));
+    final rrect =
+        RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(radius));
     final path = Path()..addRRect(rrect);
     const dash = 6.0;
     const gap = 4.0;
@@ -525,20 +520,19 @@ class _LinkRow extends StatelessWidget {
             child: Icon(icon, size: 20, color: MyShopColors.darkSlate)),
         const SizedBox(width: 12),
         Expanded(
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-              Text(title,
-                  style: const TextStyle(
-                      fontFamily: 'Raleway',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: MyShopColors.textPrimary)),
-              const SizedBox(height: 2),
-              Text(subtitle,
-                  style: MyShopTypography.caption.copyWith(
-                      fontSize: 11, color: MyShopColors.textSecondary)),
-            ])),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title,
+              style: const TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: MyShopColors.textPrimary)),
+          const SizedBox(height: 2),
+          Text(subtitle,
+              style: MyShopTypography.caption
+                  .copyWith(fontSize: 11, color: MyShopColors.textSecondary)),
+        ])),
         const Icon(Icons.chevron_right,
             size: 20, color: MyShopColors.textSecondary),
       ]),

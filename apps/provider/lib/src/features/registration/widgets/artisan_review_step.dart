@@ -28,9 +28,7 @@ class ArtisanReviewStep extends ConsumerWidget {
     }
     final services = draft.serviceCategories.isEmpty
         ? ''
-        : draft.serviceCategories
-            .map((id) => nameMap[id] ?? id)
-            .join(', ');
+        : draft.serviceCategories.map((id) => nameMap[id] ?? id).join(', ');
     final experience = draft.yearsOfExperience == 0
         ? 'Less than a year'
         : '${draft.yearsOfExperience} years';
@@ -151,7 +149,8 @@ class _PolicyCheckbox extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         InkWell(
-          onTap: () => ref.read(policyAcceptedProvider.notifier).state = !accepted,
+          onTap: () =>
+              ref.read(policyAcceptedProvider.notifier).state = !accepted,
           borderRadius: BorderRadius.circular(8),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -161,8 +160,9 @@ class _PolicyCheckbox extends ConsumerWidget {
                 height: 24,
                 child: Checkbox(
                   value: accepted,
-                  onChanged: (v) =>
-                      ref.read(policyAcceptedProvider.notifier).state = v ?? false,
+                  onChanged: (v) => ref
+                      .read(policyAcceptedProvider.notifier)
+                      .state = v ?? false,
                   activeColor: MyShopColors.primaryGold,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(4),

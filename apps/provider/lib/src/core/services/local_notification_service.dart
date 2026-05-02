@@ -75,6 +75,17 @@ class NotificationPayload {
   /// Generic / info — routes to notification inbox.
   static const typeGeneric = 'generic';
 
+  // ── Support tickets ──────────────────────────────────────────────────────
+  /// New message from a support agent on an open ticket.
+  static const typeSupportTicketMessage = 'support_ticket_message';
+
+  /// Ticket status flipped server-side (resolved by agent, etc.).
+  static const typeSupportTicketStatusChanged = 'support_ticket_status_changed';
+
+  /// Payload key for support deeplinks.
+  static const keyTicketId = 'ticketId';
+  static const keyMessageId = 'messageId';
+
   /// Types that must fire a full-screen-intent, heads-up, call-style banner.
   /// Incoming requests MUST be in this set so the provider sees them on the
   /// lock-screen even when the phone is in a pocket.

@@ -65,7 +65,8 @@ class _NotificationSettingsScreenState
                         icon: Icons.notifications_none,
                         iconColor: MyShopColors.textPrimary,
                         title: 'Push Notifications',
-                        subtitle: 'Instant updates on job requests and earnings.',
+                        subtitle:
+                            'Instant updates on job requests and earnings.',
                         value: _push,
                         onChanged: (v) => setState(() => _push = v),
                       ),
@@ -126,7 +127,8 @@ class _NotificationSettingsScreenState
                         icon: Icons.shield_outlined,
                         iconColor: MyShopColors.error,
                         title: 'Emergency SOS',
-                        subtitle: 'Real-time alerts for safety incidents in your area.',
+                        subtitle:
+                            'Real-time alerts for safety incidents in your area.',
                         value: _emergencySos,
                         onChanged: (v) => setState(() => _emergencySos = v),
                       ),
@@ -135,7 +137,8 @@ class _NotificationSettingsScreenState
                         icon: Icons.flash_on,
                         iconColor: MyShopColors.primaryGold,
                         title: 'Critical System Alerts',
-                        subtitle: 'App outages and essential service maintenance.',
+                        subtitle:
+                            'App outages and essential service maintenance.',
                         value: _criticalSystem,
                         onChanged: (v) => setState(() => _criticalSystem = v),
                       ),
@@ -166,8 +169,7 @@ class _NotificationSettingsScreenState
                         icon: Icons.campaign_outlined,
                         iconColor: MyShopColors.textPrimary,
                         title: 'Marketing & Tips',
-                        subtitle:
-                            'News on promotions and ways to earn more.',
+                        subtitle: 'News on promotions and ways to earn more.',
                         value: _marketing,
                         onChanged: (v) => setState(() => _marketing = v),
                       ),

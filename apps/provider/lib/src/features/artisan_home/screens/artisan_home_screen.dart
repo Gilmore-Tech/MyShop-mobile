@@ -117,8 +117,9 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
       error: (_, __) => '0',
     );
     final earningsTrend = cardAsync.when(
-      data: (c) =>
-          c.tipsEarnedPesewas > 0 ? '+${_formatGhs(c.tipsEarnedPesewas)} tips' : '--',
+      data: (c) => c.tipsEarnedPesewas > 0
+          ? '+${_formatGhs(c.tipsEarnedPesewas)} tips'
+          : '--',
       loading: () => '--',
       error: (_, __) => '--',
     );
@@ -135,15 +136,14 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
 
             // 1. Header — real user data
             ArtisanHomeHeader(
-              businessName: user?.businessName ??
-                  user?.displayName ??
-                  'My Business',
+              businessName:
+                  user?.businessName ?? user?.displayName ?? 'My Business',
               region: categories != null && categories.isNotEmpty
                   ? categories
                   : 'Ghana',
               hasUnreadNotifications: false,
-              avatarUrl: user?.profilePhotoUrl
-                  ?? ref.watch(localProfilePhotoProvider).cloudinaryUrl,
+              avatarUrl: user?.profilePhotoUrl ??
+                  ref.watch(localProfilePhotoProvider).cloudinaryUrl,
               localAvatarFile: ref.watch(localProfilePhotoProvider).localFile,
               onNotificationsTap: () {
                 // TODO: Navigate to notifications screen

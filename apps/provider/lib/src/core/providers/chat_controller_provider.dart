@@ -14,8 +14,7 @@ import 'chat_realtime_provider.dart';
 /// the rebuild keeps the same instance for the whole signed-in session
 /// and only reconstructs when auth state changes (login → load,
 /// logout → null + dispose).
-final chatControllerProvider =
-    FutureProvider<ChatController?>((ref) async {
+final chatControllerProvider = FutureProvider<ChatController?>((ref) async {
   final auth = ref.watch(authControllerProvider);
   if (auth is! AuthAuthenticated) return null;
 

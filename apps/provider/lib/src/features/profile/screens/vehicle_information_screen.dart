@@ -96,8 +96,8 @@ class VehicleInformationScreen extends ConsumerWidget {
                   top: MyShopSpacing.md,
                   right: MyShopSpacing.md,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: MyShopColors.success,
                       borderRadius: BorderRadius.circular(12),
@@ -161,15 +161,31 @@ class VehicleInformationScreen extends ConsumerWidget {
           ]),
           const SizedBox(height: MyShopSpacing.sm),
           Row(children: [
-            Expanded(child: _SpecCard(icon: Icons.palette_outlined, label: 'COLOR', value: color)),
+            Expanded(
+                child: _SpecCard(
+                    icon: Icons.palette_outlined,
+                    label: 'COLOR',
+                    value: color)),
             const SizedBox(width: 8),
-            Expanded(child: _SpecCard(icon: Icons.directions_car_outlined, label: 'MAKE', value: dp?.vehicleMake ?? '--')),
+            Expanded(
+                child: _SpecCard(
+                    icon: Icons.directions_car_outlined,
+                    label: 'MAKE',
+                    value: dp?.vehicleMake ?? '--')),
           ]),
           const SizedBox(height: 8),
           Row(children: [
-            Expanded(child: _SpecCard(icon: Icons.calendar_today_outlined, label: 'YEAR', value: year)),
+            Expanded(
+                child: _SpecCard(
+                    icon: Icons.calendar_today_outlined,
+                    label: 'YEAR',
+                    value: year)),
             const SizedBox(width: 8),
-            Expanded(child: _SpecCard(icon: Icons.badge_outlined, label: 'MODEL', value: dp?.vehicleModel ?? '--')),
+            Expanded(
+                child: _SpecCard(
+                    icon: Icons.badge_outlined,
+                    label: 'MODEL',
+                    value: dp?.vehicleModel ?? '--')),
           ]),
           const SizedBox(height: MyShopSpacing.lg),
 
@@ -200,8 +216,8 @@ class VehicleInformationScreen extends ConsumerWidget {
                       color: MyShopColors.surfaceGrey,
                       borderRadius: BorderRadius.circular(10)),
                   child: Text('2 Active',
-                      style: MyShopTypography.body2.copyWith(
-                          fontSize: 10, fontWeight: FontWeight.w700)),
+                      style: MyShopTypography.body2
+                          .copyWith(fontSize: 10, fontWeight: FontWeight.w700)),
                 ),
               ]),
               const SizedBox(height: 12),
@@ -278,18 +294,21 @@ class VehicleInformationScreen extends ConsumerWidget {
               if (file == null || !context.mounted) return;
 
               // Upload as vehicle registration document
-              final error =
-                  await ref.read(documentUploadProvider.notifier).upload(
-                        providerType: providerType.isDriver ? 'driver' : 'artisan',
-                        documentType: DocumentType.vehicleRegistration,
-                        file: file,
-                      );
+              final error = await ref
+                  .read(documentUploadProvider.notifier)
+                  .upload(
+                    providerType: providerType.isDriver ? 'driver' : 'artisan',
+                    documentType: DocumentType.vehicleRegistration,
+                    file: file,
+                  );
 
               if (!context.mounted) return;
               if (error != null) {
-                MyShopToast.show(context, message: error, type: ToastType.error);
+                MyShopToast.show(context,
+                    message: error, type: ToastType.error);
               } else {
-                MyShopToast.show(context, message: 'Uploaded: ${file.path.split('/').last}');
+                MyShopToast.show(context,
+                    message: 'Uploaded: ${file.path.split('/').last}');
               }
             },
             icon: const Icon(Icons.add, size: 16),
@@ -310,9 +329,7 @@ class VehicleInformationScreen extends ConsumerWidget {
           Center(
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               Icon(
-                completion.isComplete
-                    ? Icons.check_circle
-                    : Icons.info_outline,
+                completion.isComplete ? Icons.check_circle : Icons.info_outline,
                 size: 14,
                 color: completion.isComplete
                     ? MyShopColors.success

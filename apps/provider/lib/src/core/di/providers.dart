@@ -76,3 +76,8 @@ final apiNotificationServiceProvider = Provider<NotificationService>((ref) {
 final chatServiceProvider = Provider<ChatService>((ref) {
   return ChatService(ref.watch(dioProvider));
 });
+
+/// Media upload — presigned URL flow for ticket attachments.
+final mediaServiceProvider = Provider<MediaService>((ref) {
+  return MediaService(ref.watch(dioProvider));
+});

@@ -305,8 +305,7 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     setState(() => _submitting = true);
 
     final amountPesewas = (ghs * 100).round();
-    final trimmedNotes =
-        _notes.text.trim().isEmpty ? null : _notes.text.trim();
+    final trimmedNotes = _notes.text.trim().isEmpty ? null : _notes.text.trim();
 
     // Persist a fresh draft snapshot + claim an idempotency key so a
     // crash/network-loss between here and ACK is recoverable. Reuses
@@ -474,180 +473,180 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
         ),
         padding: EdgeInsets.only(bottom: viewInsets.bottom),
         child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(
-          MyShopSpacing.md,
-          MyShopSpacing.sm,
-          MyShopSpacing.md,
-          MyShopSpacing.lg,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Drag handle
-            Center(
-              child: Container(
-                width: 48,
-                height: 5,
-                margin: const EdgeInsets.only(bottom: MyShopSpacing.md),
-                decoration: BoxDecoration(
-                  color: MyShopColors.divider,
-                  borderRadius: BorderRadius.circular(3),
+          padding: const EdgeInsets.fromLTRB(
+            MyShopSpacing.md,
+            MyShopSpacing.sm,
+            MyShopSpacing.md,
+            MyShopSpacing.lg,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Drag handle
+              Center(
+                child: Container(
+                  width: 48,
+                  height: 5,
+                  margin: const EdgeInsets.only(bottom: MyShopSpacing.md),
+                  decoration: BoxDecoration(
+                    color: MyShopColors.divider,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
                 ),
               ),
-            ),
 
-            if (_inlineError != null) ...[
-              _InlineErrorBanner(
-                message: _inlineError!,
-                onDismiss: _dismissInlineError,
+              if (_inlineError != null) ...[
+                _InlineErrorBanner(
+                  message: _inlineError!,
+                  onDismiss: _dismissInlineError,
+                ),
+                const SizedBox(height: MyShopSpacing.md),
+              ],
+
+              // Client card
+              _ClientHeader(
+                clientName: widget.clientName,
+                clientPhotoUrl: widget.clientPhotoUrl,
+                clientLocation: widget.clientLocation,
+                distanceKm: widget.distanceKm,
               ),
               const SizedBox(height: MyShopSpacing.md),
-            ],
 
-            // Client card
-            _ClientHeader(
-              clientName: widget.clientName,
-              clientPhotoUrl: widget.clientPhotoUrl,
-              clientLocation: widget.clientLocation,
-              distanceKm: widget.distanceKm,
-            ),
-            const SizedBox(height: MyShopSpacing.md),
+              // Price guardrails
+              _PriceGuardrails(marketAverage: widget.marketAverage),
+              const SizedBox(height: MyShopSpacing.lg),
 
-            // Price guardrails
-            _PriceGuardrails(marketAverage: widget.marketAverage),
-            const SizedBox(height: MyShopSpacing.lg),
-
-            // Labour + ETA row
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: _FieldWithLabel(
-                    label: 'LABOUR CHARGE',
-                    child: _NumberField(
-                      controller: _labour,
-                      hintText: 'e.g. 175',
-                      prefix: const Text(
-                        '₵',
-                        style: TextStyle(
-                          fontFamily: 'Raleway',
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                          color: MyShopColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: MyShopSpacing.md),
-                Expanded(
-                  child: _FieldWithLabel(
-                    label: 'ARRIVAL (ETA)',
-                    child: _NumberField(
-                      controller: _eta,
-                      hintText: 'e.g. 20',
-                      prefix: const Icon(
-                        Icons.access_time,
-                        color: MyShopColors.textPrimary,
-                        size: 22,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: MyShopSpacing.lg),
-
-            // Notes
-            _FieldWithLabel(
-              label: 'NOTES',
-              child: _NotesField(
-                controller: _notes,
-                attachments: _attachments,
-                onFilePicked: (file) async {
-                  // Copy into app docs so the file survives a cold start.
-                  // Picker temp files get aggressively reaped on iOS.
-                  final stored = await _persistAttachment(file);
-                  if (!mounted) return;
-                  setState(() => _attachments.add(stored));
-                  _scheduleSave();
-                },
-              ),
-            ),
-            const SizedBox(height: MyShopSpacing.lg),
-
-            // Job duration
-            _FieldWithLabel(
-              label: 'JOB DURATION (HH:MM)',
-              child: _NumberField(
-                controller: _duration,
-                hintText: 'HH:MM',
-                prefix: const Icon(
-                  Icons.timer_outlined,
-                  color: MyShopColors.textPrimary,
-                  size: 22,
-                ),
-              ),
-            ),
-            const SizedBox(height: MyShopSpacing.xl),
-
-            // Submit
-            _SubmitButton(
-              onTap: _handleSubmit,
-              isLoading: _submitting,
-            ),
-            const SizedBox(height: MyShopSpacing.md),
-
-            // Cancel — hidden during submit so the artisan can't bail on
-            // an in-flight request. The sheet is also non-dismissible at
-            // the navigator level (see [BidSubmissionScreen.show]).
-            if (!_submitting)
-              Center(
-                child: GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 18,
-                        height: 18,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: MyShopColors.error,
-                            width: 1.5,
+              // Labour + ETA row
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _FieldWithLabel(
+                      label: 'LABOUR CHARGE',
+                      child: _NumberField(
+                        controller: _labour,
+                        hintText: 'e.g. 175',
+                        prefix: const Text(
+                          '₵',
+                          style: TextStyle(
+                            fontFamily: 'Raleway',
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            color: MyShopColors.textPrimary,
                           ),
                         ),
-                        child: const Icon(
-                          Icons.priority_high,
-                          size: 12,
-                          color: MyShopColors.error,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: MyShopSpacing.md),
+                  Expanded(
+                    child: _FieldWithLabel(
+                      label: 'ARRIVAL (ETA)',
+                      child: _NumberField(
+                        controller: _eta,
+                        hintText: 'e.g. 20',
+                        prefix: const Icon(
+                          Icons.access_time,
+                          color: MyShopColors.textPrimary,
+                          size: 22,
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Cancel Bid Request',
-                        style: MyShopTypography.body1.copyWith(
-                          color: MyShopColors.error,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: MyShopSpacing.lg),
+
+              // Notes
+              _FieldWithLabel(
+                label: 'NOTES',
+                child: _NotesField(
+                  controller: _notes,
+                  attachments: _attachments,
+                  onFilePicked: (file) async {
+                    // Copy into app docs so the file survives a cold start.
+                    // Picker temp files get aggressively reaped on iOS.
+                    final stored = await _persistAttachment(file);
+                    if (!mounted) return;
+                    setState(() => _attachments.add(stored));
+                    _scheduleSave();
+                  },
+                ),
+              ),
+              const SizedBox(height: MyShopSpacing.lg),
+
+              // Job duration
+              _FieldWithLabel(
+                label: 'JOB DURATION (HH:MM)',
+                child: _NumberField(
+                  controller: _duration,
+                  hintText: 'HH:MM',
+                  prefix: const Icon(
+                    Icons.timer_outlined,
+                    color: MyShopColors.textPrimary,
+                    size: 22,
                   ),
                 ),
               ),
-            const SizedBox(height: MyShopSpacing.sm),
+              const SizedBox(height: MyShopSpacing.xl),
 
-            // Helper text
-            Text(
-              'Bidding ensures you are considered for this job immediately.',
-              textAlign: TextAlign.center,
-              style: MyShopTypography.body2,
-            ),
-          ],
+              // Submit
+              _SubmitButton(
+                onTap: _handleSubmit,
+                isLoading: _submitting,
+              ),
+              const SizedBox(height: MyShopSpacing.md),
+
+              // Cancel — hidden during submit so the artisan can't bail on
+              // an in-flight request. The sheet is also non-dismissible at
+              // the navigator level (see [BidSubmissionScreen.show]).
+              if (!_submitting)
+                Center(
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 18,
+                          height: 18,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: MyShopColors.error,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.priority_high,
+                            size: 12,
+                            color: MyShopColors.error,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Cancel Bid Request',
+                          style: MyShopTypography.body1.copyWith(
+                            color: MyShopColors.error,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              const SizedBox(height: MyShopSpacing.sm),
+
+              // Helper text
+              Text(
+                'Bidding ensures you are considered for this job immediately.',
+                textAlign: TextAlign.center,
+                style: MyShopTypography.body2,
+              ),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -1000,8 +999,7 @@ class _NotesField extends StatelessWidget {
                           style: MyShopTypography.body2,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        deleteIcon:
-                            const Icon(Icons.close, size: 14),
+                        deleteIcon: const Icon(Icons.close, size: 14),
                         onDeleted: () {},
                         visualDensity: VisualDensity.compact,
                       ))

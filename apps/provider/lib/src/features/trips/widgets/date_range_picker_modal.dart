@@ -147,151 +147,151 @@ class _DateRangePickerModalState extends State<DateRangePickerModal> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
           child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Select Date Range',
-                  style: TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: MyShopColors.textPrimary,
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Select Date Range',
+                    style: TextStyle(
+                      fontFamily: 'Raleway',
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: MyShopColors.textPrimary,
+                    ),
                   ),
-                ),
-                GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
-                  child: const Icon(Icons.close,
-                      size: 22, color: MyShopColors.textSecondary),
-                ),
-              ],
-            ),
-            const SizedBox(height: MyShopSpacing.lg),
-
-            // Quick-select chips
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _Chip(
-                    label: 'Today',
-                    isActive: _activeQuick == _QuickOption.today,
-                    onTap: () => _selectQuick(_QuickOption.today)),
-                _Chip(
-                    label: 'Last 7 days',
-                    isActive: _activeQuick == _QuickOption.last7,
-                    onTap: () => _selectQuick(_QuickOption.last7)),
-                _Chip(
-                    label: 'Last 30 days',
-                    isActive: _activeQuick == _QuickOption.last30,
-                    onTap: () => _selectQuick(_QuickOption.last30)),
-                _Chip(
-                    label: 'Custom',
-                    isActive: _activeQuick == _QuickOption.custom,
-                    onTap: () => _selectQuick(_QuickOption.custom)),
-              ],
-            ),
-            const SizedBox(height: MyShopSpacing.lg),
-
-            // Calendar
-            _CalendarView(
-              viewMonth: _viewMonth,
-              start: _start,
-              end: _end,
-              onDayTap: _onDayTap,
-              onPrevMonth: _prevMonth,
-              onNextMonth: _nextMonth,
-            ),
-            const SizedBox(height: MyShopSpacing.lg),
-
-            // FROM / TO row
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('FROM',
-                          style: MyShopTypography.overline
-                              .copyWith(fontSize: 10, letterSpacing: 0.5)),
-                      const SizedBox(height: 4),
-                      Text(
-                        DateFormat('MMM d, yyyy').format(_start),
-                        style: const TextStyle(
-                          fontFamily: 'Raleway',
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: MyShopColors.textPrimary,
-                        ),
-                      ),
-                    ],
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: const Icon(Icons.close,
+                        size: 22, color: MyShopColors.textSecondary),
                   ),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('TO',
-                          style: MyShopTypography.overline
-                              .copyWith(fontSize: 10, letterSpacing: 0.5)),
-                      const SizedBox(height: 4),
-                      Text(
-                        DateFormat('MMM d, yyyy').format(_end),
-                        style: const TextStyle(
-                          fontFamily: 'Raleway',
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: MyShopColors.textPrimary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: MyShopSpacing.lg),
-
-            // Apply button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _apply,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: MyShopColors.darkSlate,
-                  foregroundColor: MyShopColors.textOnPrimary,
-                  minimumSize: const Size(0, 52),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
-                  textStyle: const TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                child: const Text('Apply Filter'),
+                ],
               ),
-            ),
-            const SizedBox(height: MyShopSpacing.sm),
+              const SizedBox(height: MyShopSpacing.lg),
 
-            // Reset link
-            Center(
-              child: TextButton(
-                onPressed: _reset,
-                child: Text(
-                  'Reset to default',
-                  style: MyShopTypography.body2.copyWith(
-                    color: MyShopColors.textSecondary,
-                    decoration: TextDecoration.underline,
+              // Quick-select chips
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _Chip(
+                      label: 'Today',
+                      isActive: _activeQuick == _QuickOption.today,
+                      onTap: () => _selectQuick(_QuickOption.today)),
+                  _Chip(
+                      label: 'Last 7 days',
+                      isActive: _activeQuick == _QuickOption.last7,
+                      onTap: () => _selectQuick(_QuickOption.last7)),
+                  _Chip(
+                      label: 'Last 30 days',
+                      isActive: _activeQuick == _QuickOption.last30,
+                      onTap: () => _selectQuick(_QuickOption.last30)),
+                  _Chip(
+                      label: 'Custom',
+                      isActive: _activeQuick == _QuickOption.custom,
+                      onTap: () => _selectQuick(_QuickOption.custom)),
+                ],
+              ),
+              const SizedBox(height: MyShopSpacing.lg),
+
+              // Calendar
+              _CalendarView(
+                viewMonth: _viewMonth,
+                start: _start,
+                end: _end,
+                onDayTap: _onDayTap,
+                onPrevMonth: _prevMonth,
+                onNextMonth: _nextMonth,
+              ),
+              const SizedBox(height: MyShopSpacing.lg),
+
+              // FROM / TO row
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('FROM',
+                            style: MyShopTypography.overline
+                                .copyWith(fontSize: 10, letterSpacing: 0.5)),
+                        const SizedBox(height: 4),
+                        Text(
+                          DateFormat('MMM d, yyyy').format(_start),
+                          style: const TextStyle(
+                            fontFamily: 'Raleway',
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: MyShopColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('TO',
+                            style: MyShopTypography.overline
+                                .copyWith(fontSize: 10, letterSpacing: 0.5)),
+                        const SizedBox(height: 4),
+                        Text(
+                          DateFormat('MMM d, yyyy').format(_end),
+                          style: const TextStyle(
+                            fontFamily: 'Raleway',
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: MyShopColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: MyShopSpacing.lg),
+
+              // Apply button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _apply,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: MyShopColors.darkSlate,
+                    foregroundColor: MyShopColors.textOnPrimary,
+                    minimumSize: const Size(0, 52),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                    textStyle: const TextStyle(
+                      fontFamily: 'Raleway',
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  child: const Text('Apply Filter'),
                 ),
               ),
-            ),
-            const SizedBox(height: MyShopSpacing.sm),
-          ],
+              const SizedBox(height: MyShopSpacing.sm),
+
+              // Reset link
+              Center(
+                child: TextButton(
+                  onPressed: _reset,
+                  child: Text(
+                    'Reset to default',
+                    style: MyShopTypography.body2.copyWith(
+                      color: MyShopColors.textSecondary,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: MyShopSpacing.sm),
+            ],
           ),
         ),
       ),
@@ -324,12 +324,11 @@ class _Chip extends StatelessWidget {
         height: 34,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
-          color: isActive ? MyShopColors.primaryGold : MyShopColors.surfaceWhite,
+          color:
+              isActive ? MyShopColors.primaryGold : MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(17),
           border: Border.all(
-            color: isActive
-                ? MyShopColors.primaryGold
-                : MyShopColors.divider,
+            color: isActive ? MyShopColors.primaryGold : MyShopColors.divider,
           ),
         ),
         child: Center(
@@ -373,8 +372,7 @@ class _CalendarView extends StatelessWidget {
   Widget build(BuildContext context) {
     final monthLabel = DateFormat('MMMM yyyy').format(viewMonth);
     final firstDay = DateTime(viewMonth.year, viewMonth.month, 1);
-    final daysInMonth =
-        DateTime(viewMonth.year, viewMonth.month + 1, 0).day;
+    final daysInMonth = DateTime(viewMonth.year, viewMonth.month + 1, 0).day;
     // Sunday = 0 offset in the grid (Figma calendar starts on Sunday)
     final startWeekday = firstDay.weekday % 7;
 
@@ -448,9 +446,10 @@ class _CalendarView extends StatelessWidget {
                   if (dayIndex < 1 || dayIndex > daysInMonth) {
                     return const Expanded(child: SizedBox(height: 36));
                   }
-                  final date = DateTime(
-                      viewMonth.year, viewMonth.month, dayIndex);
-                  return Expanded(child: _DayCell(
+                  final date =
+                      DateTime(viewMonth.year, viewMonth.month, dayIndex);
+                  return Expanded(
+                      child: _DayCell(
                     day: dayIndex,
                     date: date,
                     start: start,
@@ -513,12 +512,8 @@ class _DayCell extends StatelessWidget {
                   ? MyShopColors.primaryGoldLight
                   : Colors.transparent,
           borderRadius: BorderRadius.horizontal(
-            left: _isStart || !inRange
-                ? const Radius.circular(8)
-                : Radius.zero,
-            right: _isEnd || !inRange
-                ? const Radius.circular(8)
-                : Radius.zero,
+            left: _isStart || !inRange ? const Radius.circular(8) : Radius.zero,
+            right: _isEnd || !inRange ? const Radius.circular(8) : Radius.zero,
           ),
         ),
         child: Center(

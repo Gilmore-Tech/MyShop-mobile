@@ -100,8 +100,7 @@ class TripDetailModal extends StatelessWidget {
                           const Icon(Icons.calendar_today,
                               size: 12, color: MyShopColors.textSecondary),
                           const SizedBox(width: 8),
-                          Text(trip.date,
-                              style: _metaStyle),
+                          Text(trip.date, style: _metaStyle),
                           const SizedBox(width: 12),
                           const Text('•',
                               style: TextStyle(
@@ -111,8 +110,7 @@ class TripDetailModal extends StatelessWidget {
                           const Icon(Icons.access_time,
                               size: 12, color: MyShopColors.textSecondary),
                           const SizedBox(width: 8),
-                          Text(trip.timeRange,
-                              style: _metaStyle),
+                          Text(trip.timeRange, style: _metaStyle),
                         ],
                       ),
                       const SizedBox(height: MyShopSpacing.lg),
@@ -135,7 +133,8 @@ class TripDetailModal extends StatelessWidget {
 
                 // ── 7. Report link ──
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: MyShopSpacing.md),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: MyShopSpacing.md),
                   child: Center(
                     child: GestureDetector(
                       onTap: () {},
@@ -192,8 +191,7 @@ class _MapPreview extends StatelessWidget {
           Container(
             decoration: const BoxDecoration(
               color: MyShopColors.surfaceGrey,
-              borderRadius:
-                  BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
             ),
             child: const Center(
               child: Icon(Icons.map_outlined,
@@ -299,12 +297,10 @@ class _StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = _isCompleted
-        ? const Color(0xFFD1FAE5)
-        : MyShopColors.errorLight;
-    final textColor = _isCompleted
-        ? const Color(0xFF047857)
-        : MyShopColors.error;
+    final bgColor =
+        _isCompleted ? const Color(0xFFD1FAE5) : MyShopColors.errorLight;
+    final textColor =
+        _isCompleted ? const Color(0xFF047857) : MyShopColors.error;
     final icon = _isCompleted ? Icons.check_circle : Icons.cancel;
 
     return Container(
@@ -473,15 +469,12 @@ class _FareBreakdownCard extends StatelessWidget {
         children: [
           // Header
           Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 10, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
             decoration: const BoxDecoration(
               color: Color(0xFFF9FAFB),
-              borderRadius:
-                  BorderRadius.vertical(top: Radius.circular(8)),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
               border: Border(
-                bottom:
-                    BorderSide(color: MyShopColors.divider, width: 0.5),
+                bottom: BorderSide(color: MyShopColors.divider, width: 0.5),
               ),
             ),
             child: Row(
@@ -538,8 +531,7 @@ class _FareBreakdownCard extends StatelessWidget {
                 ),
                 _FareLine(label: 'Subtotal', amount: trip.subtotal),
                 const SizedBox(height: 16),
-                _FareLine(
-                    label: 'Taxes & Levies', amount: trip.taxes),
+                _FareLine(label: 'Taxes & Levies', amount: trip.taxes),
                 const SizedBox(height: 16),
                 _FareLine(
                   label: 'Promotional Discount',
@@ -638,12 +630,10 @@ class _FareBreakdownCard extends StatelessWidget {
           // Payment method footer
           Container(
             margin: const EdgeInsets.only(top: 12),
-            padding: const EdgeInsets.symmetric(
-                horizontal: 20, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             decoration: const BoxDecoration(
               color: Color(0xFFF9FAFB),
-              borderRadius:
-                  BorderRadius.vertical(bottom: Radius.circular(8)),
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(8)),
               border: Border(
                 top: BorderSide(color: MyShopColors.divider, width: 0.5),
               ),

@@ -38,8 +38,7 @@ final todayCardProvider =
 /// Convenience wrapper that auto-resolves the active role from
 /// [activeEarningsRoleProvider]. Use this from screens that should always
 /// reflect "the currently-active provider scope".
-final activeTodayCardProvider =
-    FutureProvider<EarningsTodayCard>((ref) async {
+final activeTodayCardProvider = FutureProvider<EarningsTodayCard>((ref) async {
   final role = ref.watch(activeEarningsRoleProvider);
   return ref.watch(todayCardProvider(role).future);
 });

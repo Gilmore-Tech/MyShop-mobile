@@ -76,10 +76,10 @@ class _EarningsLineChartState extends State<EarningsLineChart> {
                 Expanded(
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTapDown: (d) =>
-                        setState(() => _activeIndex = _hitIndex(d.localPosition)),
-                    onPanUpdate: (d) =>
-                        setState(() => _activeIndex = _hitIndex(d.localPosition)),
+                    onTapDown: (d) => setState(
+                        () => _activeIndex = _hitIndex(d.localPosition)),
+                    onPanUpdate: (d) => setState(
+                        () => _activeIndex = _hitIndex(d.localPosition)),
                     onPanEnd: (_) => setState(() => _activeIndex = null),
                     onTapUp: (_) => setState(() => _activeIndex = null),
                     onTapCancel: () => setState(() => _activeIndex = null),
@@ -185,7 +185,9 @@ class _EarningsLineChartState extends State<EarningsLineChart> {
     return List.generate(5, (i) {
       final v = (maxValue - step * i).round();
       if (v >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M';
-      if (v >= 1000) return '${(v / 1000).toStringAsFixed(v % 1000 == 0 ? 0 : 1)}k';
+      if (v >= 1000) {
+        return '${(v / 1000).toStringAsFixed(v % 1000 == 0 ? 0 : 1)}k';
+      }
       return v.toString();
     });
   }
@@ -296,9 +298,8 @@ class _LineChartPainter extends CustomPainter {
   }
 
   List<Offset> _points(Size size) {
-    final stepX = values.length == 1
-        ? size.width / 2
-        : size.width / (values.length - 1);
+    final stepX =
+        values.length == 1 ? size.width / 2 : size.width / (values.length - 1);
     return List.generate(values.length, (i) {
       final x = values.length == 1 ? size.width / 2 : i * stepX;
       final fraction = (values[i] / maxValue).clamp(0.0, 1.0);
@@ -317,8 +318,7 @@ class _LineChartPainter extends CustomPainter {
     }
   }
 
-  void _drawDashedLine(
-      Canvas canvas, Offset start, Offset end, Paint paint) {
+  void _drawDashedLine(Canvas canvas, Offset start, Offset end, Paint paint) {
     const dashWidth = 4.0;
     const dashSpace = 4.0;
     final totalDistance = (end - start).distance;

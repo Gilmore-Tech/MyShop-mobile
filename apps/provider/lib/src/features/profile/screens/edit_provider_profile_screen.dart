@@ -69,12 +69,11 @@ class _EditProviderProfileScreenState
     final providerType =
         ref.read(providerTypeProvider).isDriver ? 'driver' : 'artisan';
 
-    final error =
-        await ref.read(documentUploadProvider.notifier).upload(
-              providerType: providerType,
-              documentType: DocumentType.profilePhoto,
-              file: file,
-            );
+    final error = await ref.read(documentUploadProvider.notifier).upload(
+          providerType: providerType,
+          documentType: DocumentType.profilePhoto,
+          file: file,
+        );
 
     if (!mounted) return;
 
@@ -83,7 +82,10 @@ class _EditProviderProfileScreenState
       setState(() {
         _isUploadingPhoto = false;
       });
-      MyShopToast.show(context, message: error, type: ToastType.error, duration: const Duration(seconds: 6));
+      MyShopToast.show(context,
+          message: error,
+          type: ToastType.error,
+          duration: const Duration(seconds: 6));
     } else {
       // Save the Cloudinary URL so the photo persists across restarts
       final uploadState = ref.read(documentUploadProvider);
@@ -99,7 +101,8 @@ class _EditProviderProfileScreenState
       await ref.read(authControllerProvider.notifier).refreshProfile();
       if (!mounted) return;
       setState(() => _isUploadingPhoto = false);
-      MyShopToast.show(context, message: cloudinaryUrl != null
+      MyShopToast.show(context,
+          message: cloudinaryUrl != null
               ? 'Profile photo updated'
               : 'Photo uploaded (processing)');
     }
@@ -110,19 +113,19 @@ class _EditProviderProfileScreenState
     final email = _emailController.text.trim();
 
     if (name.isEmpty) {
-      MyShopToast.show(context, message: 'Name cannot be empty', type: ToastType.error);
+      MyShopToast.show(context,
+          message: 'Name cannot be empty', type: ToastType.error);
       return;
     }
 
     setState(() => _isSaving = true);
 
-    final error =
-        await ref.read(authControllerProvider.notifier).updateProfile(
-              UpdateProfileRequest(
-                fullName: name,
-                email: email.isNotEmpty ? email : null,
-              ),
-            );
+    final error = await ref.read(authControllerProvider.notifier).updateProfile(
+          UpdateProfileRequest(
+            fullName: name,
+            email: email.isNotEmpty ? email : null,
+          ),
+        );
 
     if (!mounted) return;
     setState(() {
@@ -144,9 +147,8 @@ class _EditProviderProfileScreenState
     final isDriver = providerType.isDriver;
     final dp = user?.driverProfile;
     final ap = user?.artisanProfile;
-    final kycStatus = isDriver
-        ? (dp?.kycStatus ?? 'pending')
-        : (ap?.kycStatus ?? 'pending');
+    final kycStatus =
+        isDriver ? (dp?.kycStatus ?? 'pending') : (ap?.kycStatus ?? 'pending');
     final policeStatus = isDriver
         ? (dp?.policeCheckStatus ?? 'pending')
         : (ap?.policeCheckStatus ?? 'pending');
@@ -189,8 +191,7 @@ class _EditProviderProfileScreenState
           Padding(
             padding: const EdgeInsets.only(right: MyShopSpacing.md),
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
                 color: kycStatus == 'approved'
                     ? MyShopColors.successLight
@@ -228,8 +229,8 @@ class _EditProviderProfileScreenState
         ],
         bottom: const PreferredSize(
           preferredSize: Size.fromHeight(0.5),
-          child: Divider(
-              height: 0.5, thickness: 0.5, color: MyShopColors.divider),
+          child:
+              Divider(height: 0.5, thickness: 0.5, color: MyShopColors.divider),
         ),
       ),
       body: ListView(
@@ -420,8 +421,8 @@ class _EditProviderProfileScreenState
                           .map((c) => Chip(
                                 label: Text(c.category.name),
                                 backgroundColor: MyShopColors.surfaceGrey,
-                                labelStyle: MyShopTypography.body2.copyWith(
-                                    fontWeight: FontWeight.w600),
+                                labelStyle: MyShopTypography.body2
+                                    .copyWith(fontWeight: FontWeight.w600),
                               ))
                           .toList(),
                     )
@@ -447,8 +448,8 @@ class _EditProviderProfileScreenState
           // ── 4. Quick links ──
           Row(children: [
             Expanded(
-                child: _QuickLink(
-                    icon: Icons.help_outline, label: 'HELP CENTER')),
+                child:
+                    _QuickLink(icon: Icons.help_outline, label: 'HELP CENTER')),
             const SizedBox(width: MyShopSpacing.md),
             Expanded(
                 child: _QuickLink(
@@ -649,8 +650,8 @@ class _ProfileField extends StatelessWidget {
       ),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: MyShopTypography.body2.copyWith(
-            fontSize: 12, color: MyShopColors.textSecondary),
+        labelStyle: MyShopTypography.body2
+            .copyWith(fontSize: 12, color: MyShopColors.textSecondary),
         prefixIcon: Icon(icon, size: 18, color: MyShopColors.textSecondary),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -703,9 +704,8 @@ class _VerificationRow extends StatelessWidget {
             ),
             child: Icon(icon,
                 size: 18,
-                color: isApproved
-                    ? MyShopColors.success
-                    : MyShopColors.warning),
+                color:
+                    isApproved ? MyShopColors.success : MyShopColors.warning),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -738,9 +738,8 @@ class _VerificationRow extends StatelessWidget {
                   : MyShopColors.surfaceGrey,
               shape: BoxShape.circle,
               border: Border.all(
-                  color: isApproved
-                      ? MyShopColors.success
-                      : MyShopColors.divider),
+                  color:
+                      isApproved ? MyShopColors.success : MyShopColors.divider),
             ),
             child: Icon(
               isApproved ? Icons.check : Icons.access_time,
@@ -771,8 +770,8 @@ class _VehicleDetail extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label,
-              style: MyShopTypography.body2.copyWith(
-                  fontSize: 13, color: MyShopColors.textSecondary)),
+              style: MyShopTypography.body2
+                  .copyWith(fontSize: 13, color: MyShopColors.textSecondary)),
           Text(value,
               style: const TextStyle(
                   fontFamily: 'Raleway',

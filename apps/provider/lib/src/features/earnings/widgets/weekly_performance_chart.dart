@@ -85,7 +85,8 @@ class WeeklyPerformanceChart extends StatelessWidget {
                                       : (values[i] / maxValue).clamp(0, 1),
                                 ),
                               ),
-                              if (i < values.length - 1) const SizedBox(width: 8),
+                              if (i < values.length - 1)
+                                const SizedBox(width: 8),
                             ],
                           ],
                         ),
@@ -127,7 +128,9 @@ class WeeklyPerformanceChart extends StatelessWidget {
   /// blowing past the 36px Y-axis lane.
   static String _compactLabel(int v) {
     if (v >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M';
-    if (v >= 1000) return '${(v / 1000).toStringAsFixed(v % 1000 == 0 ? 0 : 1)}k';
+    if (v >= 1000) {
+      return '${(v / 1000).toStringAsFixed(v % 1000 == 0 ? 0 : 1)}k';
+    }
     return v.toString();
   }
 }
@@ -171,8 +174,7 @@ class _GridlinePainter extends CustomPainter {
     }
   }
 
-  void _drawDashedLine(
-      Canvas canvas, Offset start, Offset end, Paint paint) {
+  void _drawDashedLine(Canvas canvas, Offset start, Offset end, Paint paint) {
     const dashWidth = 4.0;
     const dashSpace = 4.0;
     final totalDistance = (end - start).distance;

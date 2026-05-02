@@ -50,10 +50,9 @@ String _dayKey(DateTime now) {
 /// shell so it lives for the app's lifetime.
 final onlineSessionRecorderProvider = Provider<void>((ref) {
   ref.listen<DriverStatus>(providerStatusProvider, (prev, next) async {
-    final wasOnline =
-        prev != null && (prev == DriverStatus.online || prev == DriverStatus.busy);
-    final isOnline =
-        next == DriverStatus.online || next == DriverStatus.busy;
+    final wasOnline = prev != null &&
+        (prev == DriverStatus.online || prev == DriverStatus.busy);
+    final isOnline = next == DriverStatus.online || next == DriverStatus.busy;
 
     if (!wasOnline && isOnline) {
       ref.read(onlineSessionStartProvider.notifier).state =
@@ -65,9 +64,10 @@ final onlineSessionRecorderProvider = Provider<void>((ref) {
       final startMs = ref.read(onlineSessionStartProvider);
       ref.read(onlineSessionStartProvider.notifier).state = null;
       if (startMs == null) return;
-      final elapsedSecs = ((DateTime.now().millisecondsSinceEpoch - startMs) / 1000)
-          .round()
-          .clamp(0, 24 * 60 * 60);
+      final elapsedSecs =
+          ((DateTime.now().millisecondsSinceEpoch - startMs) / 1000)
+              .round()
+              .clamp(0, 24 * 60 * 60);
       try {
         final prefs = await ref.read(_prefsProvider.future);
         final key = _dayKey(DateTime.now());

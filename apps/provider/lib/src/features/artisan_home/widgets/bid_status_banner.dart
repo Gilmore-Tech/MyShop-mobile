@@ -94,8 +94,8 @@ class _BidStatusBannerState extends State<BidStatusBanner> {
   void didUpdateWidget(covariant BidStatusBanner oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.expiresAt != oldWidget.expiresAt) {
-      _deadline = widget.expiresAt ??
-          DateTime.now().add(const Duration(minutes: 5));
+      _deadline =
+          widget.expiresAt ?? DateTime.now().add(const Duration(minutes: 5));
     }
   }
 

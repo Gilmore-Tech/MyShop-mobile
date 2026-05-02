@@ -122,9 +122,9 @@ class _JobsTab extends ConsumerWidget {
         child: ListView.separated(
           padding: const EdgeInsets.all(MyShopSpacing.md),
           itemCount: pending.length,
-          separatorBuilder: (_, __) =>
-              const SizedBox(height: MyShopSpacing.sm),
-          itemBuilder: (_, i) => _JobCard(entry: ArtisanJobEntry(job: pending[i])),
+          separatorBuilder: (_, __) => const SizedBox(height: MyShopSpacing.sm),
+          itemBuilder: (_, i) =>
+              _JobCard(entry: ArtisanJobEntry(job: pending[i])),
         ),
       );
     }
@@ -144,8 +144,7 @@ class _JobsTab extends ConsumerWidget {
       child: ListView.separated(
         padding: const EdgeInsets.all(MyShopSpacing.md),
         itemCount: entries.length,
-        separatorBuilder: (_, __) =>
-            const SizedBox(height: MyShopSpacing.sm),
+        separatorBuilder: (_, __) => const SizedBox(height: MyShopSpacing.sm),
         itemBuilder: (_, i) => _JobCard(entry: entries[i]),
       ),
     );

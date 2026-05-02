@@ -103,7 +103,8 @@ class _EditBusinessInformationScreenState
 
   Future<void> _save() async {
     if (_name.text.trim().isEmpty) {
-      MyShopToast.show(context, message: 'Business name is required.', type: ToastType.error);
+      MyShopToast.show(context,
+          message: 'Business name is required.', type: ToastType.error);
       return;
     }
 

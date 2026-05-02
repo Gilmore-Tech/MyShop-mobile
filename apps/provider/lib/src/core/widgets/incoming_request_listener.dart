@@ -176,6 +176,7 @@ class _IncomingRequestListenerState
     ).then((_) {
       debugPrint('[IncomingRequestListener] modal closed id=${job.id}');
     });
-    debugPrint('[IncomingRequestListener] showModalBottomSheet invoked id=${job.id}');
+    debugPrint(
+        '[IncomingRequestListener] showModalBottomSheet invoked id=${job.id}');
   }
 }

@@ -113,9 +113,7 @@ class _Row extends StatelessWidget {
             fontFamily: 'Raleway',
             fontSize: 14,
             fontWeight: bold ? FontWeight.w900 : FontWeight.w400,
-            color: bold
-                ? MyShopColors.textPrimary
-                : MyShopColors.textSecondary,
+            color: bold ? MyShopColors.textPrimary : MyShopColors.textSecondary,
           ),
         ),
         Text(

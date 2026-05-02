@@ -69,20 +69,28 @@ class AuthOtpSent extends AuthState {
   final bool isVerifying;
 }
 
-/// Backend rejected the login because the same user has an active session
-/// on a different device. The UI shows a take-over prompt; on confirm, the
-/// controller retries the login with `forceLogin: true`.
-class AuthTakeoverPrompt extends AuthState {
-  const AuthTakeoverPrompt({
+/// Backend rejected the login because the same account has an active
+/// session on another device. The UI shows a hard-block dialog (no
+/// "Continue here" / force-takeover option). The user must either sign
+/// out on the other device or tap "Contact support" to request a
+/// session recovery from an admin.
+class AuthBlockedByOtherDevice extends AuthState {
+  const AuthBlockedByOtherDevice({
     required this.phone,
     required this.role,
-    this.isLoading = false,
+    this.recoveryRequestStatus = RecoveryRequestStatus.idle,
   });
 
   final String phone;
   final ProviderType role;
-  final bool isLoading;
+
+  /// Tracks the in-flight state of the "request session recovery" call so
+  /// the dialog can show a spinner / success / failure.
+  final RecoveryRequestStatus recoveryRequestStatus;
 }
+
+/// State of the support-recovery request fired from the block dialog.
+enum RecoveryRequestStatus { idle, sending, sent, failed }
 
 /// Fully authenticated with a loaded user profile.
 class AuthAuthenticated extends AuthState {
@@ -270,7 +278,8 @@ class AuthController extends StateNotifier<AuthState> {
       final roles = await _repo.checkPhone(phone);
       if (roles.isEmpty) {
         state = const AuthUnauthenticated(
-          error: 'No account found for this phone number. Please register first.',
+          error:
+              'No account found for this phone number. Please register first.',
         );
         return;
       }
@@ -285,7 +294,7 @@ class AuthController extends StateNotifier<AuthState> {
     } on ApiException catch (e) {
       if (e.errorCode == AuthErrorCodes.alreadyLoggedInElsewhere &&
           attemptedRole != null) {
-        state = AuthTakeoverPrompt(
+        state = AuthBlockedByOtherDevice(
           phone: phone,
           role: attemptedRole == 'artisan'
               ? ProviderType.artisan
@@ -323,7 +332,7 @@ class AuthController extends StateNotifier<AuthState> {
       await _loginWithRole(phone: current.phone, role: role);
     } on ApiException catch (e) {
       if (e.errorCode == AuthErrorCodes.alreadyLoggedInElsewhere) {
-        state = AuthTakeoverPrompt(
+        state = AuthBlockedByOtherDevice(
           phone: current.phone,
           role: role == 'artisan' ? ProviderType.artisan : ProviderType.driver,
         );
@@ -355,12 +364,11 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> _loginWithRole({
     required String phone,
     required String role,
-    bool forceLogin = false,
   }) async {
     if (role == 'driver') {
-      await _repo.loginDriver(phone, forceLogin: forceLogin);
+      await _repo.loginDriver(phone);
     } else {
-      await _repo.loginArtisan(phone, forceLogin: forceLogin);
+      await _repo.loginArtisan(phone);
     }
     final providerType =
         role == 'artisan' ? ProviderType.artisan : ProviderType.driver;
@@ -561,51 +569,58 @@ class AuthController extends StateNotifier<AuthState> {
     state = const AuthUnauthenticated();
   }
 
-  /// User confirmed they want to take over the session from another device.
-  /// Re-issues the login with `forceLogin: true`.
-  Future<void> confirmTakeover() async {
-    final current = state;
-    if (current is! AuthTakeoverPrompt) return;
-    if (_requesting) return;
-    _requesting = true;
-    state = AuthTakeoverPrompt(
-      phone: current.phone,
-      role: current.role,
-      isLoading: true,
-    );
-    try {
-      await _loginWithRole(
-        phone: current.phone,
-        role: current.role.name,
-        forceLogin: true,
-      );
-    } on ApiException catch (e) {
-      state = AuthUnauthenticated(error: AuthErrorMapper.message(e));
-    } on AuthException catch (e) {
-      state = AuthUnauthenticated(error: e.message);
-    } catch (_) {
-      state = const AuthUnauthenticated(
-        error: 'Could not switch device. Please try again.',
-      );
-    } finally {
-      _requesting = false;
+  /// User dismisses the "already signed in elsewhere" block dialog.
+  /// Returns to phone input so they can try a different number or come
+  /// back later (e.g. after signing out on the other device).
+  void dismissBlockedLogin() {
+    if (state is AuthBlockedByOtherDevice) {
+      state = const AuthUnauthenticated();
     }
   }
 
-  /// User declined the take-over prompt — go back to phone input.
-  void cancelTakeover() {
-    state = const AuthUnauthenticated();
+  /// User tapped "Contact support" on the block dialog. Fires the
+  /// admin-alert endpoint with the blocked phone + this device's deviceId.
+  /// Updates [AuthBlockedByOtherDevice.recoveryRequestStatus] so the
+  /// dialog can show progress + outcome.
+  Future<void> requestSessionRecovery() async {
+    final current = state;
+    if (current is! AuthBlockedByOtherDevice) return;
+    if (current.recoveryRequestStatus == RecoveryRequestStatus.sending) return;
+    state = AuthBlockedByOtherDevice(
+      phone: current.phone,
+      role: current.role,
+      recoveryRequestStatus: RecoveryRequestStatus.sending,
+    );
+    try {
+      await _repo.requestSessionRecovery(current.phone);
+      state = AuthBlockedByOtherDevice(
+        phone: current.phone,
+        role: current.role,
+        recoveryRequestStatus: RecoveryRequestStatus.sent,
+      );
+    } catch (_) {
+      state = AuthBlockedByOtherDevice(
+        phone: current.phone,
+        role: current.role,
+        recoveryRequestStatus: RecoveryRequestStatus.failed,
+      );
+    }
   }
 
   /// Called by the Dio interceptor after it has decided the session is
   /// dead and already wiped tokens from secure storage. Just flips the
   /// state machine — no token clearing here.
+  ///
+  /// Transitions from any state EXCEPT [AuthUnauthenticated] (where we'd
+  /// just clobber an existing field-level error). Critical that this also
+  /// fires for [AuthUnknown] — without that, a session that died while
+  /// the app was force-quit gets bounced from /users/me on bootstrap, the
+  /// interceptor wipes tokens, but the UI stays stuck on splash.
   void onForceLogoutFromInterceptor() {
-    if (state is AuthAuthenticated) {
-      state = const AuthUnauthenticated(
-        error: 'Your session ended. Please sign in again.',
-      );
-    }
+    if (state is AuthUnauthenticated) return;
+    state = const AuthUnauthenticated(
+      error: 'Your session ended. Please sign in again.',
+    );
   }
 
   /// Re-validate the session against [kSessionTtl]. Called on app resume

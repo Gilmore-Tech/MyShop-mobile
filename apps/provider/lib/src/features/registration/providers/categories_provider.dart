@@ -10,8 +10,7 @@ final categoryServiceProvider = Provider<CategoryService>((ref) {
 
 /// Fetches the full service category tree from GET /v1/categories.
 /// Cached for the lifetime of the provider — call `ref.invalidate` to refresh.
-final categoriesProvider =
-    FutureProvider<List<ServiceCategory>>((ref) async {
+final categoriesProvider = FutureProvider<List<ServiceCategory>>((ref) async {
   return ref.watch(categoryServiceProvider).getCategories();
 });
 

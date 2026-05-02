@@ -65,8 +65,7 @@ class DirectionsService {
       final response = await _dio.getUri<Map<String, dynamic>>(
         Uri.https('maps.googleapis.com', '/maps/api/directions/json', {
           'origin': '${origin.latitude},${origin.longitude}',
-          'destination':
-              '${destination.latitude},${destination.longitude}',
+          'destination': '${destination.latitude},${destination.longitude}',
           'mode': 'driving',
           'key': MapsConfig.apiKey,
         }),

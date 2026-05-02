@@ -90,7 +90,8 @@ class _EditVehicleInformationScreenState
   Future<void> _save() async {
     final validationError = _validate();
     if (validationError != null) {
-      MyShopToast.show(context, message: validationError, type: ToastType.error);
+      MyShopToast.show(context,
+          message: validationError, type: ToastType.error);
       return;
     }
 
@@ -208,8 +209,7 @@ class _EditVehicleInformationScreenState
                   _SectionCard(
                     icon: Icons.tune,
                     title: 'Specifications',
-                    subtitle:
-                        'Used to match you with the right kind of trip.',
+                    subtitle: 'Used to match you with the right kind of trip.',
                     children: [
                       _DropdownField(
                         label: 'BODY TYPE',
@@ -431,9 +431,8 @@ class _LabelledField extends StatelessWidget {
               keyboardType: keyboardType,
               maxLength: maxLength,
               textCapitalization: textCapitalization,
-              inputFormatters: digitsOnly
-                  ? [FilteringTextInputFormatter.digitsOnly]
-                  : null,
+              inputFormatters:
+                  digitsOnly ? [FilteringTextInputFormatter.digitsOnly] : null,
               style: MyShopTypography.body1.copyWith(
                 fontWeight: FontWeight.w600,
                 fontSize: 15,

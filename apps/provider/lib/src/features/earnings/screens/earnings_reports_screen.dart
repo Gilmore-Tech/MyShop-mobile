@@ -125,8 +125,8 @@ class _EarningsReportsScreenState extends ConsumerState<EarningsReportsScreen> {
         ],
         bottom: const PreferredSize(
           preferredSize: Size.fromHeight(0.5),
-          child: Divider(
-              height: 0.5, thickness: 0.5, color: MyShopColors.divider),
+          child:
+              Divider(height: 0.5, thickness: 0.5, color: MyShopColors.divider),
         ),
       ),
       body: ListView(
@@ -204,8 +204,7 @@ class _EarningsReportsScreenState extends ConsumerState<EarningsReportsScreen> {
             loading: () => const _ReportSkeleton(),
             error: (e, _) => _ReportErrorBanner(
               error: e,
-              onRetry: () =>
-                  ref.invalidate(earningsReportProvider(query)),
+              onRetry: () => ref.invalidate(earningsReportProvider(query)),
             ),
             data: (report) => _ReportBody(
               report: report,
@@ -255,8 +254,7 @@ class _ReportBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bookingsLabel =
-        role == EarningsRole.driver ? 'TRIPS' : 'JOBS';
+    final bookingsLabel = role == EarningsRole.driver ? 'TRIPS' : 'JOBS';
     final trendBadge = _trendBadge(report.trendPct);
 
     return Column(
@@ -316,34 +314,31 @@ class _ReportBody extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: MyShopColors.divider),
           ),
-          child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Earnings Trend',
-                              style: TextStyle(
-                                  fontFamily: 'Raleway',
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w900,
-                                  color: MyShopColors.textPrimary)),
-                          const SizedBox(height: 2),
-                          Text(_chartSubtitle(report.granularity),
-                              style: MyShopTypography.body2.copyWith(
-                                  fontSize: 11,
-                                  color: MyShopColors.primaryGold,
-                                  fontWeight: FontWeight.w600)),
-                        ]),
-                    if (trendBadge != null) trendBadge,
-                  ],
-                ),
-                const SizedBox(height: MyShopSpacing.md),
-                _ReportChart(report: report),
-              ]),
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Earnings Trend',
+                      style: TextStyle(
+                          fontFamily: 'Raleway',
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: MyShopColors.textPrimary)),
+                  const SizedBox(height: 2),
+                  Text(_chartSubtitle(report.granularity),
+                      style: MyShopTypography.body2.copyWith(
+                          fontSize: 11,
+                          color: MyShopColors.primaryGold,
+                          fontWeight: FontWeight.w600)),
+                ]),
+                if (trendBadge != null) trendBadge,
+              ],
+            ),
+            const SizedBox(height: MyShopSpacing.md),
+            _ReportChart(report: report),
+          ]),
         ),
         const SizedBox(height: MyShopSpacing.lg),
 
@@ -455,9 +450,8 @@ class _ReportChart extends StatelessWidget {
       );
     }
 
-    final values = report.series
-        .map((p) => p.netPesewas / 100)
-        .toList(growable: false);
+    final values =
+        report.series.map((p) => p.netPesewas / 100).toList(growable: false);
     final maxValue = values.fold<double>(0, (m, v) => v > m ? v : m);
     if (maxValue == 0) {
       return Padding(
@@ -485,8 +479,18 @@ class _ReportChart extends StatelessWidget {
       List<EarningsReportPoint> points, EarningsGranularity g) {
     const weekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const month = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return points.map((p) {
       final d = p.bucketStart.toLocal();
@@ -575,8 +579,18 @@ class _BreakdownLineChart extends StatelessWidget {
       List<EarningsReportPoint> points, EarningsGranularity g) {
     const weekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const month = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return points.map((p) {
       final d = p.bucketStart.toLocal();

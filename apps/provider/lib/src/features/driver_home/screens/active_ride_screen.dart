@@ -56,6 +56,7 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
   /// driver getting close to the pickup pin.
   static const _proximityDelay = Duration(seconds: 6);
   static const _previewSize = 0.55;
+
   /// Smallest fraction of the screen the passenger panel can occupy. Keeps
   /// a peek tab visible so the driver can always grab the panel back even
   /// after collapsing it — without this they could drag it fully off-screen
@@ -145,8 +146,8 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
             ),
             const SizedBox(height: MyShopSpacing.md),
             ListTile(
-              leading: const Icon(Icons.cancel_outlined,
-                  color: MyShopColors.error),
+              leading:
+                  const Icon(Icons.cancel_outlined, color: MyShopColors.error),
               title: const Text('Cancel ride',
                   style: TextStyle(
                     fontFamily: 'Raleway',
@@ -206,9 +207,7 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
 
   String _targetLabel(RideStatus status) {
     return switch (status) {
-      RideStatus.accepted ||
-      RideStatus.driverEnRoute =>
-        'TO PICKUP',
+      RideStatus.accepted || RideStatus.driverEnRoute => 'TO PICKUP',
       RideStatus.arrived => 'AT PICKUP',
       RideStatus.inProgress => 'TO DESTINATION',
       _ => 'TO DESTINATION',
@@ -399,8 +398,8 @@ class _NavigationHeader extends StatelessWidget {
         right: MyShopSpacing.md,
       ),
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: MyShopSpacing.md, vertical: 14),
+        padding: const EdgeInsets.symmetric(
+            horizontal: MyShopSpacing.md, vertical: 14),
         decoration: BoxDecoration(
           color: MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(16),
@@ -670,8 +669,7 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
       Marker(
         markerId: const MarkerId('target'),
         position: widget.target,
-        icon:
-            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
       ),
       if (driver != null)
         Marker(
@@ -915,137 +913,124 @@ class _PassengerPanel extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(
               MyShopSpacing.md, 12, MyShopSpacing.md, MyShopSpacing.md),
           children: [
-              // Drag handle
-              Center(
-                child: Container(
-                  width: 44,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: MyShopColors.divider,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-              ),
-              const SizedBox(height: MyShopSpacing.md),
-
-              // Passenger row: avatar / name+rating / chat / phone
-              Row(
-                children: [
-                  Stack(
-                    children: [
-                      _ClientAvatar(photoUrl: ride.clientPhotoUrl, size: 56),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          width: 14,
-                          height: 14,
-                          decoration: BoxDecoration(
-                            color: MyShopColors.online,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                                color: MyShopColors.surfaceWhite, width: 2),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          ride.clientName ?? 'Passenger',
-                          style: const TextStyle(
-                            fontFamily: 'Raleway',
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                            color: MyShopColors.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: MyShopColors.primaryGoldLight,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.star,
-                                  size: 12, color: MyShopColors.ratingStar),
-                              const SizedBox(width: 3),
-                              Text(
-                                '${ride.clientRating ?? 4.9}',
-                                style: const TextStyle(
-                                  fontFamily: 'Raleway',
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w900,
-                                  color: MyShopColors.textPrimary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  _ChatContactButton(
-                    rideId: ride.id,
-                    riderName: ride.clientName ?? 'Passenger',
-                  ),
-                  const SizedBox(width: 8),
-                  _ContactButton(
-                    icon: Icons.phone,
-                    filled: false,
-                    onTap: () {},
-                  ),
-                ],
-              ),
-              const SizedBox(height: MyShopSpacing.lg),
-
-              // Trip stepper
-              _TripStepper(status: ride.status),
-              const SizedBox(height: MyShopSpacing.md),
-
-              // Pickup → Destination card with FARE
-              Container(
-                padding: const EdgeInsets.all(MyShopSpacing.md),
+            // Drag handle
+            Center(
+              child: Container(
+                width: 44,
+                height: 5,
                 decoration: BoxDecoration(
-                  color: MyShopColors.surfaceGrey,
-                  borderRadius: BorderRadius.circular(16),
+                  color: MyShopColors.divider,
+                  borderRadius: BorderRadius.circular(3),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              ),
+            ),
+            const SizedBox(height: MyShopSpacing.md),
+
+            // Passenger row: avatar / name+rating / chat / phone
+            Row(
+              children: [
+                Stack(
                   children: [
-                    _RoutePoint(
-                      colorRing: MyShopColors.darkSlate,
-                      label: 'PICKUP POINT',
-                      address: ride.pickupAddress,
-                    ),
-                    // Intermediate stops the rider added (mid-trip or
-                    // at booking). The driver sees them in route order
-                    // between pickup and destination so the next-stop
-                    // address is always obvious — these rows mirror
-                    // exactly what the rider's "Edit your trip" sheet
-                    // shows.
-                    for (final stop in ride.stops) ...[
-                      Container(
-                        width: 1.5,
+                    _ClientAvatar(photoUrl: ride.clientPhotoUrl, size: 56),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Container(
+                        width: 14,
                         height: 14,
-                        margin: const EdgeInsets.only(
-                            left: 9, top: 2, bottom: 2),
-                        child: const _DottedVerticalLine(),
+                        decoration: BoxDecoration(
+                          color: MyShopColors.online,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: MyShopColors.surfaceWhite, width: 2),
+                        ),
                       ),
-                      _RoutePoint(
-                        colorRing: MyShopColors.warning,
-                        label: 'STOP',
-                        address: stop.address,
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        ride.clientName ?? 'Passenger',
+                        style: const TextStyle(
+                          fontFamily: 'Raleway',
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: MyShopColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: MyShopColors.primaryGoldLight,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.star,
+                                size: 12, color: MyShopColors.ratingStar),
+                            const SizedBox(width: 3),
+                            Text(
+                              '${ride.clientRating ?? 4.9}',
+                              style: const TextStyle(
+                                fontFamily: 'Raleway',
+                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                                color: MyShopColors.textPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
+                  ),
+                ),
+                _ChatContactButton(
+                  rideId: ride.id,
+                  riderName: ride.clientName ?? 'Passenger',
+                ),
+                const SizedBox(width: 8),
+                _ContactButton(
+                  icon: Icons.phone,
+                  filled: false,
+                  onTap: () {},
+                ),
+              ],
+            ),
+            const SizedBox(height: MyShopSpacing.lg),
+
+            // Trip stepper
+            _TripStepper(status: ride.status),
+            const SizedBox(height: MyShopSpacing.md),
+
+            // Pickup → Destination card with FARE
+            Container(
+              padding: const EdgeInsets.all(MyShopSpacing.md),
+              decoration: BoxDecoration(
+                color: MyShopColors.surfaceGrey,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _RoutePoint(
+                    colorRing: MyShopColors.darkSlate,
+                    label: 'PICKUP POINT',
+                    address: ride.pickupAddress,
+                  ),
+                  // Intermediate stops the rider added (mid-trip or
+                  // at booking). The driver sees them in route order
+                  // between pickup and destination so the next-stop
+                  // address is always obvious — these rows mirror
+                  // exactly what the rider's "Edit your trip" sheet
+                  // shows.
+                  for (final stop in ride.stops) ...[
                     Container(
                       width: 1.5,
                       height: 14,
@@ -1053,103 +1038,113 @@ class _PassengerPanel extends StatelessWidget {
                       child: const _DottedVerticalLine(),
                     ),
                     _RoutePoint(
-                      colorRing: MyShopColors.primaryGold,
-                      label: 'DESTINATION',
-                      address: ride.dropoffAddress,
-                    ),
-                    const SizedBox(height: 12),
-                    const Divider(
-                        height: 0.5,
-                        thickness: 0.5,
-                        color: MyShopColors.divider),
-                    const SizedBox(height: 10),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 28),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'FARE',
-                            style: TextStyle(
-                              fontFamily: 'Raleway',
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                              color: MyShopColors.textSecondary,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            ride.estimatedFareDisplay,
-                            style: const TextStyle(
-                              fontFamily: 'Raleway',
-                              fontSize: 26,
-                              fontWeight: FontWeight.w900,
-                              color: MyShopColors.textPrimary,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                        ],
-                      ),
+                      colorRing: MyShopColors.warning,
+                      label: 'STOP',
+                      address: stop.address,
                     ),
                   ],
-                ),
-              ),
-              const SizedBox(height: MyShopSpacing.md),
-
-              // Primary action button
-              ElevatedButton(
-                onPressed: isUpdating ? null : onPrimaryAction,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: MyShopColors.darkSlate,
-                  foregroundColor: MyShopColors.textOnPrimary,
-                  disabledBackgroundColor:
-                      MyShopColors.darkSlate.withValues(alpha: 0.6),
-                  disabledForegroundColor: MyShopColors.textOnPrimary,
-                  minimumSize: const Size(double.infinity, 60),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(40)),
-                  textStyle: const TextStyle(
-                      fontFamily: 'Raleway',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.5),
-                  elevation: 4,
-                  shadowColor: MyShopColors.darkSlate.withValues(alpha: 0.4),
-                ),
-                child: isUpdating
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          valueColor: AlwaysStoppedAnimation(
-                              MyShopColors.textOnPrimary),
+                  Container(
+                    width: 1.5,
+                    height: 14,
+                    margin: const EdgeInsets.only(left: 9, top: 2, bottom: 2),
+                    child: const _DottedVerticalLine(),
+                  ),
+                  _RoutePoint(
+                    colorRing: MyShopColors.primaryGold,
+                    label: 'DESTINATION',
+                    address: ride.dropoffAddress,
+                  ),
+                  const SizedBox(height: 12),
+                  const Divider(
+                      height: 0.5, thickness: 0.5, color: MyShopColors.divider),
+                  const SizedBox(height: 10),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 28),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'FARE',
+                          style: TextStyle(
+                            fontFamily: 'Raleway',
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            color: MyShopColors.textSecondary,
+                            letterSpacing: 0.5,
+                          ),
                         ),
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(_primaryActionLabel(ride.status)),
-                          const SizedBox(width: 6),
-                          const Icon(Icons.chevron_right, size: 22),
-                        ],
-                      ),
+                        const SizedBox(height: 2),
+                        Text(
+                          ride.estimatedFareDisplay,
+                          style: const TextStyle(
+                            fontFamily: 'Raleway',
+                            fontSize: 26,
+                            fontWeight: FontWeight.w900,
+                            color: MyShopColors.textPrimary,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: MyShopSpacing.sm),
+            ),
+            const SizedBox(height: MyShopSpacing.md),
 
-              // Helper caption
-              Text(
-                _helperCaption(ride.status),
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: MyShopColors.textSecondary,
-                  letterSpacing: 0.6,
-                ),
+            // Primary action button
+            ElevatedButton(
+              onPressed: isUpdating ? null : onPrimaryAction,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: MyShopColors.darkSlate,
+                foregroundColor: MyShopColors.textOnPrimary,
+                disabledBackgroundColor:
+                    MyShopColors.darkSlate.withValues(alpha: 0.6),
+                disabledForegroundColor: MyShopColors.textOnPrimary,
+                minimumSize: const Size(double.infinity, 60),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(40)),
+                textStyle: const TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5),
+                elevation: 4,
+                shadowColor: MyShopColors.darkSlate.withValues(alpha: 0.4),
               ),
+              child: isUpdating
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        valueColor:
+                            AlwaysStoppedAnimation(MyShopColors.textOnPrimary),
+                      ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(_primaryActionLabel(ride.status)),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.chevron_right, size: 22),
+                      ],
+                    ),
+            ),
+            const SizedBox(height: MyShopSpacing.sm),
+
+            // Helper caption
+            Text(
+              _helperCaption(ride.status),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'Raleway',
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: MyShopColors.textSecondary,
+                letterSpacing: 0.6,
+              ),
+            ),
           ],
         ),
       ),
@@ -1228,8 +1223,7 @@ class _ChatContactButton extends ConsumerStatefulWidget {
   final String riderName;
 
   @override
-  ConsumerState<_ChatContactButton> createState() =>
-      _ChatContactButtonState();
+  ConsumerState<_ChatContactButton> createState() => _ChatContactButtonState();
 }
 
 class _ChatContactButtonState extends ConsumerState<_ChatContactButton> {
@@ -1307,8 +1301,7 @@ class _ChatContactButtonState extends ConsumerState<_ChatContactButton> {
             top: -4,
             child: Container(
               constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
               decoration: BoxDecoration(
                 color: MyShopColors.error,
                 borderRadius: BorderRadius.circular(9),
@@ -1405,7 +1398,8 @@ class _StepNode extends StatelessWidget {
           width: 36,
           height: 36,
           decoration: BoxDecoration(
-            color: highlight ? MyShopColors.primaryGold : MyShopColors.surfaceGrey,
+            color:
+                highlight ? MyShopColors.primaryGold : MyShopColors.surfaceGrey,
             shape: BoxShape.circle,
           ),
           child: Icon(
@@ -1421,8 +1415,7 @@ class _StepNode extends StatelessWidget {
             fontFamily: 'Raleway',
             fontSize: 10,
             fontWeight: FontWeight.w900,
-            color:
-                highlight ? MyShopColors.textPrimary : MyShopColors.disabled,
+            color: highlight ? MyShopColors.textPrimary : MyShopColors.disabled,
             letterSpacing: 0.6,
           ),
         ),

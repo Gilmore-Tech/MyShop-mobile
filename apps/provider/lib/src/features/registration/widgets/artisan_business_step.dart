@@ -137,8 +137,8 @@ class _ArtisanBusinessStepState extends ConsumerState<ArtisanBusinessStep>
             const SizedBox(height: MyShopSpacing.xs),
             Text(
               'Select at least one service.',
-              style: MyShopTypography.caption
-                  .copyWith(color: MyShopColors.error),
+              style:
+                  MyShopTypography.caption.copyWith(color: MyShopColors.error),
             ),
           ],
           const SizedBox(height: MyShopSpacing.sm),
@@ -247,9 +247,7 @@ class _CategoriesChips extends StatelessWidget {
         widgets.add(Wrap(
           spacing: MyShopSpacing.sm,
           runSpacing: MyShopSpacing.sm,
-          children: cat.children
-              .map((sub) => _chip(sub.id, sub.name))
-              .toList(),
+          children: cat.children.map((sub) => _chip(sub.id, sub.name)).toList(),
         ));
       } else {
         // Leaf category — collect for a single wrap
@@ -298,9 +296,8 @@ class _CategoriesChips extends StatelessWidget {
       selected: selected,
       showCheckmark: true,
       labelStyle: MyShopTypography.body2.copyWith(
-        color: selected
-            ? MyShopColors.primaryGoldDark
-            : MyShopColors.textPrimary,
+        color:
+            selected ? MyShopColors.primaryGoldDark : MyShopColors.textPrimary,
         fontWeight: FontWeight.w600,
       ),
       backgroundColor: MyShopColors.surfaceWhite,

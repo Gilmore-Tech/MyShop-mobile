@@ -73,7 +73,8 @@ class _NavTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isActive ? MyShopColors.primaryGold : MyShopColors.textSecondary;
+    final color =
+        isActive ? MyShopColors.primaryGold : MyShopColors.textSecondary;
 
     return Expanded(
       child: Column(

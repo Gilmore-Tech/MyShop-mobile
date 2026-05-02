@@ -45,9 +45,8 @@ class SettingsListTile extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: danger
-                    ? MyShopColors.errorLight
-                    : MyShopColors.surfaceGrey,
+                color:
+                    danger ? MyShopColors.errorLight : MyShopColors.surfaceGrey,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(icon, size: 18, color: iconColor),
@@ -79,8 +78,7 @@ class SettingsListTile extends StatelessWidget {
             if (trailingChipLabel != null) ...[
               const SizedBox(width: MyShopSpacing.sm),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: trailingChipBackground ??
                       (trailingChipColor ?? MyShopColors.primaryGold)

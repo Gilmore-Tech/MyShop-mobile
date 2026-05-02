@@ -39,8 +39,7 @@ class ProviderChatScreen extends ConsumerStatefulWidget {
   final String? jobTitle;
 
   @override
-  ConsumerState<ProviderChatScreen> createState() =>
-      _ProviderChatScreenState();
+  ConsumerState<ProviderChatScreen> createState() => _ProviderChatScreenState();
 }
 
 class _ProviderChatScreenState extends ConsumerState<ProviderChatScreen> {
@@ -124,9 +123,7 @@ class _ProviderChatScreenState extends ConsumerState<ProviderChatScreen> {
     // empty-vs-empty comparison would route every bubble to the right.
     // `tmp_…` ids are always our own messages by construction.
     final isMine = m.id.startsWith('tmp_') ||
-        (selfId.isNotEmpty &&
-            m.senderId.isNotEmpty &&
-            m.senderId == selfId);
+        (selfId.isNotEmpty && m.senderId.isNotEmpty && m.senderId == selfId);
     if (kDebugMode && debugSeen.add(m.id)) {
       debugPrint(
         '[CHAT-UI] id=${m.id} senderId="${m.senderId}" '
@@ -175,16 +172,14 @@ class _ProviderChatScreenState extends ConsumerState<ProviderChatScreen> {
         _attach(controller);
 
         final activeJob = ref.watch(activeJobProvider).job;
-        final peerName =
-            widget.clientName ?? activeJob?.clientName ?? 'Client';
+        final peerName = widget.clientName ?? activeJob?.clientName ?? 'Client';
         final fallbackStatus =
             activeJob?.addressText != null && activeJob!.addressText!.isNotEmpty
                 ? 'On a job · ${activeJob.addressText}'
                 : 'In conversation';
         final isClosed = _channel?.isClosed == true;
-        final peerStatus = isClosed
-            ? 'Chat closed'
-            : (widget.clientStatus ?? fallbackStatus);
+        final peerStatus =
+            isClosed ? 'Chat closed' : (widget.clientStatus ?? fallbackStatus);
         final jobTitle = widget.jobTitle ??
             (activeJob?.categoryName != null &&
                     activeJob!.categoryName!.isNotEmpty
@@ -349,15 +344,13 @@ class _ChatDebugBanner extends StatelessWidget {
   final String lastMessageId;
   final Widget? inner;
 
-  String _short(String s) =>
-      s.length <= 8 ? s : '${s.substring(0, 8)}…';
+  String _short(String s) => s.length <= 8 ? s : '${s.substring(0, 8)}…';
 
   @override
   Widget build(BuildContext context) {
     final hasMessage = lastMessageId.isNotEmpty;
-    final wouldBeMine = selfId.isNotEmpty &&
-        lastSenderId.isNotEmpty &&
-        selfId == lastSenderId;
+    final wouldBeMine =
+        selfId.isNotEmpty && lastSenderId.isNotEmpty && selfId == lastSenderId;
     final summary = !hasMessage
         ? 'no messages yet'
         : 'last → ${wouldBeMine ? "MINE (right)" : "PEER (left)"}';

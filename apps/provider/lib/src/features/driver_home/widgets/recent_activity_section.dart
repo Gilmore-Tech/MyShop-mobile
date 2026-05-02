@@ -123,9 +123,7 @@ class _ActivityRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
-              isCompleted
-                  ? Icons.check_circle_outline
-                  : Icons.cancel_outlined,
+              isCompleted ? Icons.check_circle_outline : Icons.cancel_outlined,
               size: 18,
               color: isCompleted
                   ? MyShopColors.success
@@ -138,9 +136,7 @@ class _ActivityRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  trip.dropoffAddress.isEmpty
-                      ? 'Trip'
-                      : trip.dropoffAddress,
+                  trip.dropoffAddress.isEmpty ? 'Trip' : trip.dropoffAddress,
                   style: const TextStyle(
                     fontFamily: 'Raleway',
                     fontSize: 13,
@@ -184,8 +180,18 @@ class _ActivityRow extends StatelessWidget {
     if (diff == 1) return 'Yesterday · $hh:$mm';
     if (diff < 7) return '$diff days ago · $hh:$mm';
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${local.day} ${months[local.month - 1]} · $hh:$mm';
   }

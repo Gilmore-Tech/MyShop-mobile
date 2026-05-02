@@ -36,8 +36,7 @@ class PayoutMethodOtpService {
         return PayoutOtpResult(
           success: true,
           expiresAt: _parseDate(data['expiresAt']),
-          retryAfterSeconds:
-              (data['retryAfterSeconds'] as num?)?.toInt() ?? 60,
+          retryAfterSeconds: (data['retryAfterSeconds'] as num?)?.toInt() ?? 60,
         );
       }
       return const PayoutOtpResult.failure(
@@ -88,8 +87,7 @@ class PayoutMethodOtpService {
           data['errorCode'] ??
           // NestJS HttpException default — `message` often carries the code.
           data['message']) as String?;
-      final message = (data['message'] is String &&
-              data['message'] != code)
+      final message = (data['message'] is String && data['message'] != code)
           ? data['message'] as String
           : null;
       final retryAfter = (data['retryAfterSeconds'] as num?)?.toInt();

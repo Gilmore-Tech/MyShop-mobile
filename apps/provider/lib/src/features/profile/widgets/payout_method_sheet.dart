@@ -237,7 +237,8 @@ class _PayoutMethodSheetState extends ConsumerState<_PayoutMethodSheet> {
                   ),
                 ),
                 const SizedBox(height: MyShopSpacing.lg),
-                if (_step == _SheetStep.form) ..._buildFormStep()
+                if (_step == _SheetStep.form)
+                  ..._buildFormStep()
                 else
                   ..._buildOtpStep(),
               ],
@@ -417,9 +418,7 @@ class _PayoutMethodSheetState extends ConsumerState<_PayoutMethodSheet> {
                 : MyShopColors.surfaceWhite,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: selected
-                  ? MyShopColors.primaryGold
-                  : MyShopColors.divider,
+              color: selected ? MyShopColors.primaryGold : MyShopColors.divider,
               width: selected ? 1.5 : 1,
             ),
           ),

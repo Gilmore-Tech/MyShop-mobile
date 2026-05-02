@@ -36,8 +36,9 @@ class DocumentsVerificationScreen extends ConsumerWidget {
     final requiredDocs = isArtisan
         ? _buildArtisanRequired(user, backendDocs, uploadState)
         : _buildDriverRequired(user, backendDocs, uploadState);
-    final optionalDocs =
-        isArtisan ? _buildArtisanOptional(backendDocs, uploadState) : const <_DocItem>[];
+    final optionalDocs = isArtisan
+        ? _buildArtisanOptional(backendDocs, uploadState)
+        : const <_DocItem>[];
 
     final uploadedRequired =
         requiredDocs.where((d) => d.status != _DocStatus.missing).length;
@@ -170,8 +171,9 @@ class DocumentsVerificationScreen extends ConsumerWidget {
         fallbackMeta: dp?.licenceExpiry != null
             ? 'Expires: ${dp!.licenceExpiry}'
             : 'Tap to upload',
-        fallbackStatus:
-            dp?.licenceNumber != null ? _DocStatus.approved : _DocStatus.missing,
+        fallbackStatus: dp?.licenceNumber != null
+            ? _DocStatus.approved
+            : _DocStatus.missing,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -200,8 +202,9 @@ class DocumentsVerificationScreen extends ConsumerWidget {
         fallbackMeta: dp?.ghanaCardVerified == true
             ? 'Verified'
             : 'Tap to upload front & back',
-        fallbackStatus:
-            dp?.ghanaCardVerified == true ? _DocStatus.approved : _DocStatus.missing,
+        fallbackStatus: dp?.ghanaCardVerified == true
+            ? _DocStatus.approved
+            : _DocStatus.missing,
       ),
     ];
   }
@@ -221,8 +224,9 @@ class DocumentsVerificationScreen extends ConsumerWidget {
         title: 'Ghana Card',
         fallbackMeta:
             ap?.ghanaCardVerified == true ? 'Verified' : 'Tap to upload',
-        fallbackStatus:
-            ap?.ghanaCardVerified == true ? _DocStatus.approved : _DocStatus.missing,
+        fallbackStatus: ap?.ghanaCardVerified == true
+            ? _DocStatus.approved
+            : _DocStatus.missing,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -319,9 +323,8 @@ class DocumentsVerificationScreen extends ConsumerWidget {
         return _DocItem(
           icon: icon,
           title: title,
-          meta: doc.expiresAt != null
-              ? 'Expires: ${doc.expiresAt}'
-              : 'Approved',
+          meta:
+              doc.expiresAt != null ? 'Expires: ${doc.expiresAt}' : 'Approved',
           status: _DocStatus.approved,
           documentType: type,
         );
@@ -426,8 +429,7 @@ class _ProgressCard extends StatelessWidget {
     final progress = total == 0 ? 0.0 : completed / total;
     final percentage = (progress * 100).round();
     final isComplete = completed == total;
-    final accent =
-        isComplete ? MyShopColors.success : MyShopColors.primaryGold;
+    final accent = isComplete ? MyShopColors.success : MyShopColors.primaryGold;
     final accentLight =
         isComplete ? MyShopColors.successLight : MyShopColors.primaryGoldLight;
 
@@ -542,7 +544,14 @@ class _SectionLabel extends StatelessWidget {
 ///   rejected → admin rejected
 ///   uploading → local upload in progress (client-only state)
 ///   missing → no document uploaded yet (client-only state)
-enum _DocStatus { approved, pendingReview, uploaded, uploading, rejected, missing }
+enum _DocStatus {
+  approved,
+  pendingReview,
+  uploaded,
+  uploading,
+  rejected,
+  missing
+}
 
 class _DocItem {
   const _DocItem({
@@ -613,8 +622,7 @@ class _DocRow extends StatelessWidget {
   final WidgetRef ref;
 
   bool get _canUpload =>
-      item.status == _DocStatus.missing ||
-      item.status == _DocStatus.rejected;
+      item.status == _DocStatus.missing || item.status == _DocStatus.rejected;
 
   Future<void> _handleUpload(BuildContext context) async {
     if (item.documentType == null) return;

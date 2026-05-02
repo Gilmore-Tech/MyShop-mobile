@@ -44,7 +44,14 @@ import '../features/profile/screens/edit_provider_profile_screen.dart';
 import '../features/profile/screens/notification_settings_screen.dart';
 import '../features/profile/screens/payout_methods_screen.dart';
 import '../features/profile/screens/privacy_security_screen.dart';
-import '../features/profile/screens/support_legal_screen.dart';
+import '../features/support/screens/help_article_route_screen.dart';
+import '../features/support/screens/help_category_route_screen.dart';
+import '../features/support/screens/help_search_route_screen.dart';
+import '../features/support/screens/legal_document_route_screen.dart';
+import '../features/support/screens/new_ticket_route_screen.dart';
+import '../features/support/screens/support_legal_route_screen.dart';
+import '../features/support/screens/ticket_detail_route_screen.dart';
+import '../features/support/screens/tickets_list_route_screen.dart';
 import '../features/profile/screens/vehicle_information_screen.dart';
 import '../features/trips/screens/trips_history_screen.dart';
 
@@ -86,6 +93,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             !loc.startsWith('/active') &&
             !loc.startsWith('/ride') &&
             !loc.startsWith('/job') &&
+            !loc.startsWith('/legal') &&
             !loc.startsWith('/chat')) {
           return '/home';
         }
@@ -248,7 +256,59 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/account/support',
-        builder: (context, state) => const SupportLegalScreen(),
+        builder: (context, state) => const SupportLegalRouteScreen(),
+        routes: [
+          GoRoute(
+            path: 'tickets',
+            builder: (context, state) => const TicketsListRouteScreen(),
+            routes: [
+              GoRoute(
+                path: 'new',
+                builder: (context, state) {
+                  final extra = state.extra is Map<String, Object?>
+                      ? state.extra! as Map<String, Object?>
+                      : const <String, Object?>{};
+                  return NewTicketRouteScreen(
+                    preselectedCategory:
+                        extra['preselectedCategory'] as TicketCategory?,
+                    referenceType: extra['referenceType'] as String?,
+                    referenceId: extra['referenceId'] as String?,
+                  );
+                },
+              ),
+              GoRoute(
+                path: ':ticketId',
+                builder: (context, state) => TicketDetailRouteScreen(
+                  ticketId: state.pathParameters['ticketId']!,
+                ),
+              ),
+            ],
+          ),
+          GoRoute(
+            path: 'search',
+            builder: (context, state) => HelpSearchRouteScreen(
+              initialQuery: state.uri.queryParameters['q'],
+            ),
+          ),
+          GoRoute(
+            path: 'help/:categorySlug',
+            builder: (context, state) => HelpCategoryRouteScreen(
+              categorySlug: state.pathParameters['categorySlug']!,
+            ),
+          ),
+          GoRoute(
+            path: 'help/article/:slug',
+            builder: (context, state) => HelpArticleRouteScreen(
+              slug: state.pathParameters['slug']!,
+            ),
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/legal/:slug',
+        builder: (context, state) => LegalDocumentRouteScreen(
+          slug: state.pathParameters['slug']!,
+        ),
       ),
       GoRoute(
         path: '/account/deactivate',
@@ -441,8 +501,12 @@ class _DriverShell extends ConsumerWidget {
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           color: Color(0xF2FFFFFF),
-          border: Border(top: BorderSide(color: MyShopColors.divider, width: 0.5)),
-          boxShadow: [BoxShadow(color: Color(0x0D000000), blurRadius: 10, offset: Offset(0, -2))],
+          border:
+              Border(top: BorderSide(color: MyShopColors.divider, width: 0.5)),
+          boxShadow: [
+            BoxShadow(
+                color: Color(0x0D000000), blurRadius: 10, offset: Offset(0, -2))
+          ],
         ),
         child: SafeArea(
           top: false,
@@ -451,16 +515,56 @@ class _DriverShell extends ConsumerWidget {
             child: Row(
               children: isArtisan
                   ? [
-                      _NavTab(icon: Icons.work_outline, label: 'Jobs', isActive: currentIndex == 0, badgeCount: badges['/home'], onTap: () => _onTabTap(context, ref, '/home')),
-                      _NavTab(icon: Icons.account_balance_wallet_outlined, label: 'Earnings', isActive: currentIndex == 1, badgeCount: badges['/earnings'], onTap: () => _onTabTap(context, ref, '/earnings')),
-                      _NavTab(icon: Icons.assignment_outlined, label: 'My Jobs', isActive: currentIndex == 2, badgeCount: badges['/trips'], onTap: () => _onTabTap(context, ref, '/trips')),
-                      _NavTab(icon: Icons.account_circle_outlined, label: 'Account', isActive: currentIndex == 3, badgeCount: badges['/account'], onTap: () => _onTabTap(context, ref, '/account')),
+                      _NavTab(
+                          icon: Icons.work_outline,
+                          label: 'Jobs',
+                          isActive: currentIndex == 0,
+                          badgeCount: badges['/home'],
+                          onTap: () => _onTabTap(context, ref, '/home')),
+                      _NavTab(
+                          icon: Icons.account_balance_wallet_outlined,
+                          label: 'Earnings',
+                          isActive: currentIndex == 1,
+                          badgeCount: badges['/earnings'],
+                          onTap: () => _onTabTap(context, ref, '/earnings')),
+                      _NavTab(
+                          icon: Icons.assignment_outlined,
+                          label: 'My Jobs',
+                          isActive: currentIndex == 2,
+                          badgeCount: badges['/trips'],
+                          onTap: () => _onTabTap(context, ref, '/trips')),
+                      _NavTab(
+                          icon: Icons.account_circle_outlined,
+                          label: 'Account',
+                          isActive: currentIndex == 3,
+                          badgeCount: badges['/account'],
+                          onTap: () => _onTabTap(context, ref, '/account')),
                     ]
                   : [
-                      _NavTab(icon: Icons.dashboard_outlined, label: 'Home', isActive: currentIndex == 0, badgeCount: badges['/home'], onTap: () => _onTabTap(context, ref, '/home')),
-                      _NavTab(icon: Icons.account_balance_wallet_outlined, label: 'Earnings', isActive: currentIndex == 1, badgeCount: badges['/earnings'], onTap: () => _onTabTap(context, ref, '/earnings')),
-                      _NavTab(icon: Icons.history, label: 'Trips', isActive: currentIndex == 2, badgeCount: badges['/trips'], onTap: () => _onTabTap(context, ref, '/trips')),
-                      _NavTab(icon: Icons.account_circle_outlined, label: 'Account', isActive: currentIndex == 3, badgeCount: badges['/account'], onTap: () => _onTabTap(context, ref, '/account')),
+                      _NavTab(
+                          icon: Icons.dashboard_outlined,
+                          label: 'Home',
+                          isActive: currentIndex == 0,
+                          badgeCount: badges['/home'],
+                          onTap: () => _onTabTap(context, ref, '/home')),
+                      _NavTab(
+                          icon: Icons.account_balance_wallet_outlined,
+                          label: 'Earnings',
+                          isActive: currentIndex == 1,
+                          badgeCount: badges['/earnings'],
+                          onTap: () => _onTabTap(context, ref, '/earnings')),
+                      _NavTab(
+                          icon: Icons.history,
+                          label: 'Trips',
+                          isActive: currentIndex == 2,
+                          badgeCount: badges['/trips'],
+                          onTap: () => _onTabTap(context, ref, '/trips')),
+                      _NavTab(
+                          icon: Icons.account_circle_outlined,
+                          label: 'Account',
+                          isActive: currentIndex == 3,
+                          badgeCount: badges['/account'],
+                          onTap: () => _onTabTap(context, ref, '/account')),
                     ],
             ),
           ),
@@ -487,7 +591,8 @@ class _NavTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isActive ? MyShopColors.primaryGold : MyShopColors.textSecondary;
+    final color =
+        isActive ? MyShopColors.primaryGold : MyShopColors.textSecondary;
 
     return Expanded(
       child: GestureDetector(
@@ -498,7 +603,8 @@ class _NavTab extends StatelessWidget {
           children: [
             if (badgeCount != null && badgeCount! > 0)
               Badge(
-                label: Text('$badgeCount', style: const TextStyle(fontSize: 8, color: Colors.white)),
+                label: Text('$badgeCount',
+                    style: const TextStyle(fontSize: 8, color: Colors.white)),
                 backgroundColor: MyShopColors.error,
                 child: Icon(icon, size: 24, color: color),
               )

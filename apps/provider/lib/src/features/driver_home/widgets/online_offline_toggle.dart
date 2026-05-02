@@ -219,17 +219,14 @@ class _OnlineSegmentLeading extends StatelessWidget {
         height: 18,
         child: CircularProgressIndicator(
           strokeWidth: 2,
-          valueColor:
-              AlwaysStoppedAnimation<Color>(MyShopColors.textOnPrimary),
+          valueColor: AlwaysStoppedAnimation<Color>(MyShopColors.textOnPrimary),
         ),
       );
     }
     return Icon(
       Icons.bolt,
       size: 18,
-      color: isActive
-          ? MyShopColors.textOnPrimary
-          : MyShopColors.textSecondary,
+      color: isActive ? MyShopColors.textOnPrimary : MyShopColors.textSecondary,
     );
   }
 }

@@ -37,13 +37,27 @@ class _AvailabilityScheduleScreenState
   // Each day's shift hours. Stored even when the day is inactive so the user
   // can re-enable it without losing their previously set times.
   final Map<int, _ShiftHours> _hoursByDay = {
-    0: const _ShiftHours(start: TimeOfDay(hour: 8, minute: 0), end: TimeOfDay(hour: 17, minute: 0)),
-    1: const _ShiftHours(start: TimeOfDay(hour: 8, minute: 0), end: TimeOfDay(hour: 17, minute: 0)),
-    2: const _ShiftHours(start: TimeOfDay(hour: 8, minute: 0), end: TimeOfDay(hour: 14, minute: 0)),
-    3: const _ShiftHours(start: TimeOfDay(hour: 8, minute: 0), end: TimeOfDay(hour: 17, minute: 0)),
-    4: const _ShiftHours(start: TimeOfDay(hour: 9, minute: 0), end: TimeOfDay(hour: 18, minute: 0)),
-    5: const _ShiftHours(start: TimeOfDay(hour: 9, minute: 0), end: TimeOfDay(hour: 17, minute: 0)),
-    6: const _ShiftHours(start: TimeOfDay(hour: 9, minute: 0), end: TimeOfDay(hour: 17, minute: 0)),
+    0: const _ShiftHours(
+        start: TimeOfDay(hour: 8, minute: 0),
+        end: TimeOfDay(hour: 17, minute: 0)),
+    1: const _ShiftHours(
+        start: TimeOfDay(hour: 8, minute: 0),
+        end: TimeOfDay(hour: 17, minute: 0)),
+    2: const _ShiftHours(
+        start: TimeOfDay(hour: 8, minute: 0),
+        end: TimeOfDay(hour: 14, minute: 0)),
+    3: const _ShiftHours(
+        start: TimeOfDay(hour: 8, minute: 0),
+        end: TimeOfDay(hour: 17, minute: 0)),
+    4: const _ShiftHours(
+        start: TimeOfDay(hour: 9, minute: 0),
+        end: TimeOfDay(hour: 18, minute: 0)),
+    5: const _ShiftHours(
+        start: TimeOfDay(hour: 9, minute: 0),
+        end: TimeOfDay(hour: 17, minute: 0)),
+    6: const _ShiftHours(
+        start: TimeOfDay(hour: 9, minute: 0),
+        end: TimeOfDay(hour: 17, minute: 0)),
   };
 
   Future<void> _editShift(int dayIndex) async {
@@ -216,7 +230,6 @@ class _Header extends StatelessWidget {
               ),
             ),
           ),
-          
         ],
       ),
     );
@@ -268,7 +281,9 @@ class _CurrentStatusCard extends StatelessWidget {
                       width: 11,
                       height: 11,
                       decoration: BoxDecoration(
-                        color: online ? MyShopColors.online : MyShopColors.disabled,
+                        color: online
+                            ? MyShopColors.online
+                            : MyShopColors.disabled,
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: MyShopColors.surfaceWhite,
@@ -444,9 +459,7 @@ class _DayChip extends StatelessWidget {
               width: 4,
               height: 4,
               decoration: BoxDecoration(
-                color: showDot
-                    ? MyShopColors.primaryGold
-                    : Colors.transparent,
+                color: showDot ? MyShopColors.primaryGold : Colors.transparent,
                 shape: BoxShape.circle,
               ),
             ),
@@ -558,9 +571,8 @@ class _ShiftRow extends StatelessWidget {
               child: Icon(
                 Icons.access_time,
                 size: 20,
-                color: isActive
-                    ? MyShopColors.textPrimary
-                    : MyShopColors.disabled,
+                color:
+                    isActive ? MyShopColors.textPrimary : MyShopColors.disabled,
               ),
             ),
             const SizedBox(width: MyShopSpacing.sm),
@@ -585,8 +597,7 @@ class _ShiftRow extends StatelessWidget {
                       color: isActive
                           ? MyShopColors.textSecondary
                           : MyShopColors.error,
-                      fontWeight:
-                          isActive ? FontWeight.w400 : FontWeight.w700,
+                      fontWeight: isActive ? FontWeight.w400 : FontWeight.w700,
                     ),
                   ),
                 ],

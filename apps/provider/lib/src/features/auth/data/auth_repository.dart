@@ -55,28 +55,24 @@ class AuthRepository {
     await _tokenStorage.writePhone(request.phone);
   }
 
-  /// Login as an existing driver. Sends OTP. [forceLogin] is set to true
-  /// after the user confirms the take-over prompt.
-  Future<void> loginDriver(String phone, {bool forceLogin = false}) async {
+  /// Login as an existing driver. Sends OTP.
+  Future<void> loginDriver(String phone) async {
     final ctx = await _deviceContext();
     await _service.loginDriver(LoginRequest(
       phone: phone,
       deviceId: ctx.deviceId,
       deviceInfo: ctx.deviceInfo,
-      forceLogin: forceLogin,
     ));
     await _tokenStorage.writePhone(phone);
   }
 
-  /// Login as an existing artisan. Sends OTP. [forceLogin] is set to true
-  /// after the user confirms the take-over prompt.
-  Future<void> loginArtisan(String phone, {bool forceLogin = false}) async {
+  /// Login as an existing artisan. Sends OTP.
+  Future<void> loginArtisan(String phone) async {
     final ctx = await _deviceContext();
     await _service.loginArtisan(LoginRequest(
       phone: phone,
       deviceId: ctx.deviceId,
       deviceInfo: ctx.deviceInfo,
-      forceLogin: forceLogin,
     ));
     await _tokenStorage.writePhone(phone);
   }
@@ -87,16 +83,25 @@ class AuthRepository {
   }
 
   /// Login with auto role detection. Returns the detected role.
-  Future<String> login(String phone, {bool forceLogin = false}) async {
+  Future<String> login(String phone) async {
     final ctx = await _deviceContext();
     final role = await _service.login(LoginRequest(
       phone: phone,
       deviceId: ctx.deviceId,
       deviceInfo: ctx.deviceInfo,
-      forceLogin: forceLogin,
     ));
     await _tokenStorage.writePhone(phone);
     return role;
+  }
+
+  /// Notify support that another device holds the active session and the
+  /// user can't sign out on it. Public endpoint — no auth required.
+  Future<void> requestSessionRecovery(String phone) async {
+    final ctx = await _deviceContext();
+    await _service.requestSessionRecovery(
+      phone: phone,
+      deviceId: ctx.deviceId,
+    );
   }
 
   /// Verify OTP → persist tokens and stamp the session start time so the
@@ -124,7 +129,8 @@ class AuthRepository {
     if (result.raw.isNotEmpty) {
       await _tokenStorage.writeCachedProfileJson(jsonEncode(result.raw));
     }
-    return AuthUser.fromProfile(result.profile, activeRole: await _activeRole());
+    return AuthUser.fromProfile(result.profile,
+        activeRole: await _activeRole());
   }
 
   /// Try to restore a session from stored tokens.
@@ -146,7 +152,8 @@ class AuthRepository {
     final startedAt = await _tokenStorage.readSessionStartedAt();
     if (startedAt != null &&
         DateTime.now().difference(startedAt) > kSessionTtl) {
-      debugPrint('[Bootstrap] session TTL expired (started $startedAt) — clearing');
+      debugPrint(
+          '[Bootstrap] session TTL expired (started $startedAt) — clearing');
       await _tokenStorage.clearTokens();
       return null;
     }
@@ -160,7 +167,8 @@ class AuthRepository {
         debugPrint('[Bootstrap] restored from cached profile');
         return AuthUser.fromProfile(profile, activeRole: await _activeRole());
       } catch (e) {
-        debugPrint('[Bootstrap] cached profile corrupt: $e — falling back to network');
+        debugPrint(
+            '[Bootstrap] cached profile corrupt: $e — falling back to network');
       }
     } else {
       debugPrint('[Bootstrap] no cached profile — fetching /users/me');

@@ -115,9 +115,14 @@ class AccountSettingsScreen extends ConsumerWidget {
         : 'Not set up yet';
 
     // KYC button label and style
-    final kycLabel = kycStatus == 'approved' ? 'KYC: Verified' : 'KYC: ${_capitalize(kycStatus)}';
-    final kycColor = kycStatus == 'approved' ? MyShopColors.success : MyShopColors.warning;
-    final kycBg = kycStatus == 'approved' ? MyShopColors.successLight : MyShopColors.warningLight;
+    final kycLabel = kycStatus == 'approved'
+        ? 'KYC: Verified'
+        : 'KYC: ${_capitalize(kycStatus)}';
+    final kycColor =
+        kycStatus == 'approved' ? MyShopColors.success : MyShopColors.warning;
+    final kycBg = kycStatus == 'approved'
+        ? MyShopColors.successLight
+        : MyShopColors.warningLight;
 
     // Today's earnings for performance card — sourced from the homepage
     // today-card endpoint, scoped to the active role.
@@ -171,8 +176,8 @@ class AccountSettingsScreen extends ConsumerWidget {
                 fullName: user?.displayName ?? 'Provider',
                 phone: user?.phone ?? '',
                 email: user?.email ?? '',
-                photoUrl: user?.profilePhotoUrl
-                    ?? ref.watch(localProfilePhotoProvider).cloudinaryUrl,
+                photoUrl: user?.profilePhotoUrl ??
+                    ref.watch(localProfilePhotoProvider).cloudinaryUrl,
                 localPhoto: ref.watch(localProfilePhotoProvider).localFile,
                 verificationStatus: verificationStatus,
               ),
@@ -229,8 +234,10 @@ class AccountSettingsScreen extends ConsumerWidget {
             // ── 4. Verification banner ──
             if (!isVerified)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-                child: _VerificationBanner(verificationStatus: verificationStatus),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                child:
+                    _VerificationBanner(verificationStatus: verificationStatus),
               ),
             if (!isVerified) const SizedBox(height: MyShopSpacing.lg),
 
@@ -270,7 +277,9 @@ class AccountSettingsScreen extends ConsumerWidget {
                     SettingsListTile(
                       icon: Icons.business_center_outlined,
                       title: 'Business Information',
-                      subtitle: user?.businessName ?? user?.displayName ?? 'Not set up yet',
+                      subtitle: user?.businessName ??
+                          user?.displayName ??
+                          'Not set up yet',
                       onTap: () => context.push('/account/business'),
                     ),
                   SettingsListTile(
@@ -364,7 +373,8 @@ class AccountSettingsScreen extends ConsumerWidget {
             // ── Continue verification CTA ──
             if (!isVerified)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
                 child: ElevatedButton(
                   onPressed: () => context.push('/account/documents'),
                   style: ElevatedButton.styleFrom(
@@ -456,8 +466,10 @@ class _IdentityCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isVerified = verificationStatus == 'approved';
     final statusLabel = _capitalize(verificationStatus);
-    final statusColor = isVerified ? MyShopColors.success : MyShopColors.warning;
-    final statusIcon = isVerified ? Icons.check_circle_outline : Icons.error_outline;
+    final statusColor =
+        isVerified ? MyShopColors.success : MyShopColors.warning;
+    final statusIcon =
+        isVerified ? Icons.check_circle_outline : Icons.error_outline;
 
     final ImageProvider? avatarImage = localPhoto != null
         ? FileImage(localPhoto!)
@@ -472,7 +484,8 @@ class _IdentityCard extends StatelessWidget {
           backgroundColor: const Color(0xFFFCEAE1),
           backgroundImage: avatarImage,
           child: avatarImage == null
-              ? const Icon(Icons.person, size: 32, color: MyShopColors.textSecondary)
+              ? const Icon(Icons.person,
+                  size: 32, color: MyShopColors.textSecondary)
               : null,
         ),
         const SizedBox(width: MyShopSpacing.md),
@@ -481,11 +494,11 @@ class _IdentityCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(fullName,
-                    style: const TextStyle(
-                        fontFamily: 'Raleway',
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: MyShopColors.textPrimary)),
+                  style: const TextStyle(
+                      fontFamily: 'Raleway',
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: MyShopColors.textPrimary)),
               Row(children: [
                 Container(
                   padding:
@@ -547,7 +560,8 @@ class _VerificationBanner extends StatelessWidget {
     final statusText = isPending
         ? 'Your documents are awaiting review. Please complete any remaining steps.'
         : 'Your KYC and Police Check are currently being reviewed. Results are expected within 24-48 hours.';
-    final title = isPending ? 'Verification Required' : 'Verification in Progress';
+    final title =
+        isPending ? 'Verification Required' : 'Verification in Progress';
 
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),
@@ -559,8 +573,7 @@ class _VerificationBanner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.access_time,
-              size: 22, color: MyShopColors.warning),
+          const Icon(Icons.access_time, size: 22, color: MyShopColors.warning),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -574,8 +587,8 @@ class _VerificationBanner extends StatelessWidget {
                         color: MyShopColors.textPrimary)),
                 const SizedBox(height: 2),
                 Text(statusText,
-                    style:
-                        MyShopTypography.body2.copyWith(fontSize: 11, height: 1.4)),
+                    style: MyShopTypography.body2
+                        .copyWith(fontSize: 11, height: 1.4)),
               ],
             ),
           ),

@@ -124,9 +124,8 @@ class _ArtisanRegistrationScreenState
         onBack: _currentStep == 0 ? null : _goBack,
         onContinue: isLast ? _finish : _handleContinue,
         continueLabel: isLast ? 'Create Account' : 'Continue',
-        isContinueEnabled: isLast
-            ? _canAdvance(draft) && policyAccepted
-            : _canAdvance(draft),
+        isContinueEnabled:
+            isLast ? _canAdvance(draft) && policyAccepted : _canAdvance(draft),
         isSubmitting: false,
         errorText: null,
         child: PageView(

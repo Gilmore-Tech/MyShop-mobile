@@ -39,9 +39,9 @@ class BidDraft {
         etaMinutes: json['etaMinutes'] as int? ?? 0,
         durationMinutes: json['durationMinutes'] as int? ?? 0,
         notes: json['notes'] as String?,
-        attachmentPaths: (json['attachmentPaths'] as List<dynamic>?)
-                ?.cast<String>() ??
-            const [],
+        attachmentPaths:
+            (json['attachmentPaths'] as List<dynamic>?)?.cast<String>() ??
+                const [],
         submitting: json['submitting'] as bool? ?? false,
       );
 

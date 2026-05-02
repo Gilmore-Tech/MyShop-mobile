@@ -26,8 +26,8 @@ class SocketDebugBanner extends ConsumerWidget {
     final connected = ref.watch(socketConnectedProvider);
     final status = ref.watch(providerStatusProvider);
     final lastEvent = ref.watch(lastSocketEventProvider);
-    final verification = ref.watch(currentUserProvider)?.verificationStatus
-        ?? 'unknown';
+    final verification =
+        ref.watch(currentUserProvider)?.verificationStatus ?? 'unknown';
     final isVerified = verification.toLowerCase() == 'approved';
 
     return Material(

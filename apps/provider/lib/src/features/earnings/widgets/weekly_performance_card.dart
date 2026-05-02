@@ -36,7 +36,8 @@ class WeeklyPerformanceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final values = series.map((p) => p.netPesewas / 100).toList(growable: false);
+    final values =
+        series.map((p) => p.netPesewas / 100).toList(growable: false);
     final maxValue = values.fold<double>(0, (m, v) => v > m ? v : m);
 
     return Container(
@@ -133,8 +134,18 @@ class WeeklyPerformanceCard extends StatelessWidget {
       List<EarningsSummaryPoint> points, EarningsGranularity g) {
     const weekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const month = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return points.map((p) {
       final d = p.bucketStart.toLocal();

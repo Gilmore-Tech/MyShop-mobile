@@ -62,8 +62,7 @@ class DocumentUploadNotifier extends StateNotifier<DocumentUploadState> {
         },
         remoteUrls: {
           ...state.remoteUrls,
-          if (result.remoteUrl != null)
-            documentType.value: result.remoteUrl!,
+          if (result.remoteUrl != null) documentType.value: result.remoteUrl!,
         },
       );
       return null;
@@ -219,7 +218,8 @@ final localProfilePhotoProvider =
 final profileCompletionProvider = Provider<ProfileCompletion>((ref) {
   final user = ref.watch(currentUserProvider);
   if (user == null) {
-    return const ProfileCompletion(completed: 0, total: 1, missing: ['Sign in']);
+    return const ProfileCompletion(
+        completed: 0, total: 1, missing: ['Sign in']);
   }
 
   // Backend document statuses — drives every doc-approval check below.

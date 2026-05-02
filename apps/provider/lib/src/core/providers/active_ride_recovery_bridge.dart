@@ -109,8 +109,7 @@ final activeRideRecoveryBridgeProvider = Provider<void>((ref) {
     if (next != true) return;
     if (prev == true) return;
     final hasActiveRide = ref.read(activeRideProvider).ride != null;
-    final isAuthed =
-        ref.read(authControllerProvider) is AuthAuthenticated;
+    final isAuthed = ref.read(authControllerProvider) is AuthAuthenticated;
     final isDriver = ref.read(providerTypeProvider).isDriver;
     if (hasActiveRide || !isAuthed || !isDriver) return;
     debugPrint('[ActiveRideRecovery] socket connected — re-checking');

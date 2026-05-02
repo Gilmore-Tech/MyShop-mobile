@@ -16,18 +16,18 @@ class SignInRoleSelectionScreen extends ConsumerStatefulWidget {
 
 class _SignInRoleSelectionScreenState
     extends ConsumerState<SignInRoleSelectionScreen> {
-  bool _takeoverDialogVisible = false;
+  bool _blockedDialogVisible = false;
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(authControllerProvider);
 
     ref.listen<AuthState>(authControllerProvider, (prev, next) {
-      if (next is AuthTakeoverPrompt && !_takeoverDialogVisible) {
-        _takeoverDialogVisible = true;
-        _showTakeoverDialog(context, next.phone);
-      } else if (next is! AuthTakeoverPrompt && _takeoverDialogVisible) {
-        _takeoverDialogVisible = false;
+      if (next is AuthBlockedByOtherDevice && !_blockedDialogVisible) {
+        _blockedDialogVisible = true;
+        _showBlockedDialog(context, next.phone);
+      } else if (next is! AuthBlockedByOtherDevice && _blockedDialogVisible) {
+        _blockedDialogVisible = false;
         if (Navigator.canPop(context)) Navigator.pop(context);
       }
     });
@@ -37,8 +37,6 @@ class _SignInRoleSelectionScreenState
 
     if (state is AuthRoleSelection) {
       error = state.error;
-      isLoading = state.isLoading;
-    } else if (state is AuthTakeoverPrompt) {
       isLoading = state.isLoading;
     }
 
@@ -50,8 +48,7 @@ class _SignInRoleSelectionScreenState
         foregroundColor: MyShopColors.textPrimary,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () =>
-              ref.read(authControllerProvider.notifier).reset(),
+          onPressed: () => ref.read(authControllerProvider.notifier).reset(),
         ),
       ),
       body: SafeArea(
@@ -120,36 +117,84 @@ class _SignInRoleSelectionScreenState
     );
   }
 
-  Future<void> _showTakeoverDialog(BuildContext context, String phone) async {
+  Future<void> _showBlockedDialog(BuildContext context, String phone) async {
     final controller = ref.read(authControllerProvider.notifier);
+    final messenger = ScaffoldMessenger.of(context);
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Already signed in elsewhere'),
-        content: Text(
-          'This account ($phone) is signed in on another device. '
-          'Continue here? The other device will be signed out.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(dialogContext).pop();
-              controller.cancelTakeover();
-            },
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(dialogContext).pop();
-              controller.confirmTakeover();
-            },
-            child: const Text('Continue here'),
-          ),
-        ],
-      ),
+      builder: (dialogContext) {
+        return Consumer(
+          builder: (context, ref, _) {
+            final state = ref.watch(authControllerProvider);
+            final status = state is AuthBlockedByOtherDevice
+                ? state.recoveryRequestStatus
+                : RecoveryRequestStatus.idle;
+            final sending = status == RecoveryRequestStatus.sending;
+            return AlertDialog(
+              title: const Text('Already signed in elsewhere'),
+              content: Text(
+                'This account ($phone) is signed in on another device. '
+                'Please log out there first to continue. '
+                'If you no longer have access to that device, '
+                'tap Contact support.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: sending
+                      ? null
+                      : () async {
+                          await controller.requestSessionRecovery();
+                          if (!dialogContext.mounted) return;
+                          final after = ref.read(authControllerProvider);
+                          if (after is AuthBlockedByOtherDevice) {
+                            if (after.recoveryRequestStatus ==
+                                RecoveryRequestStatus.sent) {
+                              messenger.showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Support has been notified. '
+                                    "We'll get back to you shortly.",
+                                  ),
+                                ),
+                              );
+                            } else if (after.recoveryRequestStatus ==
+                                RecoveryRequestStatus.failed) {
+                              messenger.showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    "Couldn't reach support. "
+                                    'Please check your connection and try again.',
+                                  ),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                  child: sending
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Contact support'),
+                ),
+                TextButton(
+                  onPressed: sending
+                      ? null
+                      : () {
+                          Navigator.of(dialogContext).pop();
+                          controller.dismissBlockedLogin();
+                        },
+                  child: const Text('OK'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
-    _takeoverDialogVisible = false;
+    _blockedDialogVisible = false;
   }
 }
 

@@ -90,24 +90,34 @@ class EarningsDashboardScreen extends ConsumerWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Text('Earnings',
-                          style: TextStyle(
-                              fontFamily: 'Raleway',
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: MyShopColors.textPrimary,
-                              letterSpacing: -0.5)),
-                      Row(children: [
-                        Icon(
-                            isVerified ? Icons.check_circle_outline : Icons.access_time,
-                            size: 12,
-                            color: isVerified ? MyShopColors.success : MyShopColors.textSecondary),
-                        const SizedBox(width: 4),
-                        Text(isVerified ? 'Verified Provider' : 'Pending Verification',
-                            style: MyShopTypography.body2.copyWith(fontSize: 11)),
-                      ]),
-                    ]),
+                    Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Earnings',
+                              style: TextStyle(
+                                  fontFamily: 'Raleway',
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                  color: MyShopColors.textPrimary,
+                                  letterSpacing: -0.5)),
+                          Row(children: [
+                            Icon(
+                                isVerified
+                                    ? Icons.check_circle_outline
+                                    : Icons.access_time,
+                                size: 12,
+                                color: isVerified
+                                    ? MyShopColors.success
+                                    : MyShopColors.textSecondary),
+                            const SizedBox(width: 4),
+                            Text(
+                                isVerified
+                                    ? 'Verified Provider'
+                                    : 'Pending Verification',
+                                style: MyShopTypography.body2
+                                    .copyWith(fontSize: 11)),
+                          ]),
+                        ]),
                     Row(children: [
                       Stack(children: [
                         const Icon(Icons.notifications_outlined,
@@ -156,8 +166,7 @@ class EarningsDashboardScreen extends ConsumerWidget {
                 )
               else if (isLoading)
                 const Padding(
-                  padding:
-                      EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                  padding: EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
                   child: _EarningsLoadingBanner(),
                 ),
               if (loadError || isLoading)
@@ -165,7 +174,8 @@ class EarningsDashboardScreen extends ConsumerWidget {
 
               // ── Balance card ──
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
                 child: _BalanceCard(
                   availablePesewas: availableBalance,
                   todayPesewas: todayAvailable,
@@ -176,7 +186,8 @@ class EarningsDashboardScreen extends ConsumerWidget {
 
               // ── Trips + Rating stats ──
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
                 child: Row(children: [
                   Expanded(
                       child: _StatCard(
@@ -199,7 +210,8 @@ class EarningsDashboardScreen extends ConsumerWidget {
 
               // ── Performance chart (gap-filled daily series) ──
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
                 child: WeeklyPerformanceCard(
                   series: summary?.series ?? const [],
                   granularity: summary?.granularity ?? EarningsGranularity.day,
@@ -210,7 +222,8 @@ class EarningsDashboardScreen extends ConsumerWidget {
 
               // ── Commission & Tax card ──
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
                 child: CommissionCard(
                   grossPesewas: report?.grossEarningsPesewas ?? 0,
                   commissionPesewas: report?.commissionChargedPesewas ?? 0,
@@ -221,7 +234,8 @@ class EarningsDashboardScreen extends ConsumerWidget {
 
               // ── Recent Payouts ──
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -252,7 +266,8 @@ class EarningsDashboardScreen extends ConsumerWidget {
 
               // ── Payment Verification banner ──
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
                 child: Container(
                   padding: const EdgeInsets.all(MyShopSpacing.md),
                   decoration: BoxDecoration(
@@ -344,8 +359,7 @@ class _EarningsErrorBanner extends StatelessWidget {
           TextButton(
             onPressed: onRetry,
             style: TextButton.styleFrom(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
               minimumSize: const Size(0, 28),
               foregroundColor: MyShopColors.error,
               textStyle: const TextStyle(
@@ -481,10 +495,12 @@ class _BalanceCardState extends ConsumerState<_BalanceCard> {
         const SizedBox(height: MyShopSpacing.md),
         Row(children: [
           Expanded(
-              child: _BalanceMiniStat(label: 'TODAY', value: 'GHS $todayDisplay')),
+              child:
+                  _BalanceMiniStat(label: 'TODAY', value: 'GHS $todayDisplay')),
           const SizedBox(width: MyShopSpacing.sm),
           Expanded(
-              child: _BalanceMiniStat(label: 'WEEKLY', value: 'GHS $weekDisplay')),
+              child:
+                  _BalanceMiniStat(label: 'WEEKLY', value: 'GHS $weekDisplay')),
         ]),
         const SizedBox(height: MyShopSpacing.md),
         SizedBox(

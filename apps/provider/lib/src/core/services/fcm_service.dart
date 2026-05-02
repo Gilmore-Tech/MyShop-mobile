@@ -86,6 +86,10 @@ String _fallbackTitle(String type) {
       return 'Payout received';
     case NotificationPayload.typeRatingPrompt:
       return 'Rate your client';
+    case NotificationPayload.typeSupportTicketMessage:
+      return 'New reply from support';
+    case NotificationPayload.typeSupportTicketStatusChanged:
+      return 'Ticket update';
     default:
       return 'MyShop';
   }
@@ -107,6 +111,10 @@ String _fallbackBody(String type) {
       return 'The client cancelled this ride.';
     case NotificationPayload.typeRatingPrompt:
       return 'Tap to leave a rating before the 24-hour window closes.';
+    case NotificationPayload.typeSupportTicketMessage:
+      return 'Tap to read and reply.';
+    case NotificationPayload.typeSupportTicketStatusChanged:
+      return 'Tap to see the latest status.';
     default:
       return 'Open MyShop to see the latest update.';
   }
@@ -359,9 +367,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         final bookingId =
             (payload[NotificationPayload.keyBookingId] as String?) ??
                 (bookingType == ChatBookingType.ride ? rideId : jobId);
-        if (bookingType == null ||
-            bookingId == null ||
-            bookingId.isEmpty) {
+        if (bookingType == null || bookingId == null || bookingId.isEmpty) {
           router.go('/messages');
           break;
         }
@@ -403,8 +409,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         if (bookingType == 'ride') {
           var firstName = 'Passenger';
           try {
-            final raw =
-                await ref.read(rideServiceProvider).getRide(bookingId);
+            final raw = await ref.read(rideServiceProvider).getRide(bookingId);
             final ride = Ride.fromJson(raw);
             final name = ride.clientName;
             if (name != null && name.trim().isNotEmpty) {
@@ -422,8 +427,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         } else if (bookingType == 'artisan_job' || bookingType == 'job') {
           var firstName = 'Client';
           try {
-            final raw =
-                await ref.read(jobServiceProvider).getJob(bookingId);
+            final raw = await ref.read(jobServiceProvider).getJob(bookingId);
             final job = Job.fromJson(raw);
             final name = job.clientName;
             if (name != null && name.trim().isNotEmpty) {
@@ -438,6 +442,17 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             jobId: bookingId,
             clientFirstName: firstName,
           );
+        }
+        break;
+
+      // ── Support tickets ───────────────────────────────────────────────
+      case NotificationPayload.typeSupportTicketMessage:
+      case NotificationPayload.typeSupportTicketStatusChanged:
+        final ticketId = payload[NotificationPayload.keyTicketId] as String?;
+        if (ticketId != null && ticketId.isNotEmpty) {
+          router.push('/account/support/tickets/$ticketId');
+        } else {
+          router.go('/account/support/tickets');
         }
         break;
 

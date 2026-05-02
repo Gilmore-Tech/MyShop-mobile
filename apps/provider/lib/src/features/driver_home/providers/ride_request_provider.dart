@@ -103,8 +103,7 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
     } on TimeoutException {
       developer.log('acceptRide timed out', name: 'ActiveRide', level: 900);
       state = const ActiveRideState(
-        errorMessage:
-            "We didn't hear back from the server. Please try again.",
+        errorMessage: "We didn't hear back from the server. Please try again.",
       );
       return false;
     } on StateError catch (e) {

@@ -223,10 +223,8 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
           'status': 'online',
         });
       },
-      loading: () =>
-          debugPrint('[LOC] bridge: stream loading — no fix yet'),
-      error: (e, _) =>
-          debugPrint('[LOC] bridge: stream error — $e'),
+      loading: () => debugPrint('[LOC] bridge: stream loading — no fix yet'),
+      error: (e, _) => debugPrint('[LOC] bridge: stream error — $e'),
     );
   }, fireImmediately: true);
 });
@@ -422,8 +420,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
         }
       } catch (_) {}
       if (data is Map<String, dynamic>) {
-        final jobId =
-            data['jobId'] as String? ?? data['id'] as String?;
+        final jobId = data['jobId'] as String? ?? data['id'] as String?;
         if (jobId != null) {
           // Once a job moves past `open`, it can't be picked up from the
           // in-session "New" list any more — drop it so stale entries

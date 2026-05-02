@@ -72,8 +72,7 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
   /// the screen falls back to whatever `widget.job` already had.
   Future<void> _hydrateJob() async {
     try {
-      final raw =
-          await ref.read(jobServiceProvider).getJob(widget.job.id);
+      final raw = await ref.read(jobServiceProvider).getJob(widget.job.id);
       if (!mounted) return;
       setState(() => _hydratedJob = Job.fromJson(raw));
     } catch (e) {
@@ -131,8 +130,7 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
             clientPhone: liveEntry.job.clientPhone ?? source.clientPhone,
             clientPhotoUrl:
                 liveEntry.job.clientPhotoUrl ?? source.clientPhotoUrl,
-            categoryName:
-                liveEntry.job.categoryName ?? source.categoryName,
+            categoryName: liveEntry.job.categoryName ?? source.categoryName,
             addressText: liveEntry.job.addressText ?? source.addressText,
           );
     final effectiveBidStatus = liveEntry != null
@@ -263,8 +261,7 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                       // restores the form values; this is just discoverability.
                       Builder(builder: (_) {
                         final draft = ref.watch(
-                          bidDraftsProvider
-                              .select((s) => s[effectiveJob.id]),
+                          bidDraftsProvider.select((s) => s[effectiveJob.id]),
                         );
                         if (draft == null) return const SizedBox.shrink();
                         return Padding(
@@ -634,9 +631,8 @@ class _ClientSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final distanceText = distanceKm != null
-        ? '${distanceKm!.toStringAsFixed(1)} km away'
-        : '—';
+    final distanceText =
+        distanceKm != null ? '${distanceKm!.toStringAsFixed(1)} km away' : '—';
 
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),

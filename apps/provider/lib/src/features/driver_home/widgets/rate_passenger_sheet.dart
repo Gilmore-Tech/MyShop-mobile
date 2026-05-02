@@ -43,8 +43,7 @@ class RatePassengerSheet extends ConsumerStatefulWidget {
   final String passengerFirstName;
 
   @override
-  ConsumerState<RatePassengerSheet> createState() =>
-      _RatePassengerSheetState();
+  ConsumerState<RatePassengerSheet> createState() => _RatePassengerSheetState();
 }
 
 class _RatePassengerSheetState extends ConsumerState<RatePassengerSheet> {
@@ -178,9 +177,7 @@ class _RatePassengerSheetState extends ConsumerState<RatePassengerSheet> {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 6),
                     child: Icon(
-                      filled
-                          ? Icons.star_rounded
-                          : Icons.star_border_rounded,
+                      filled ? Icons.star_rounded : Icons.star_border_rounded,
                       size: 36,
                       color: MyShopColors.primaryGold,
                     ),
@@ -272,9 +269,8 @@ class _RatePassengerSheetState extends ConsumerState<RatePassengerSheet> {
             const SizedBox(height: 8),
             Center(
               child: TextButton(
-                onPressed: _isSubmitting
-                    ? null
-                    : () => Navigator.of(context).pop(),
+                onPressed:
+                    _isSubmitting ? null : () => Navigator.of(context).pop(),
                 child: const Text(
                   'No thanks, just close',
                   style: TextStyle(

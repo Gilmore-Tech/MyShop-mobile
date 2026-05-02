@@ -212,7 +212,8 @@ class ArtisanJobsNotifier extends StateNotifier<ArtisanJobsState> {
       if (silent || !mounted) return;
       state = state.copyWith(
         isLoading: false,
-        errorMessage: 'Taking too long to load. Check your connection and retry.',
+        errorMessage:
+            'Taking too long to load. Check your connection and retry.',
       );
     } catch (e, st) {
       developer.log('Failed to load artisan jobs: $e\n$st',
@@ -283,8 +284,7 @@ final artisanJobsFilteredProvider = Provider.autoDispose
       final mergedJob = entry.job.copyWith(
         clientName: entry.job.clientName ?? local.job.clientName,
         clientPhone: entry.job.clientPhone ?? local.job.clientPhone,
-        clientPhotoUrl:
-            entry.job.clientPhotoUrl ?? local.job.clientPhotoUrl,
+        clientPhotoUrl: entry.job.clientPhotoUrl ?? local.job.clientPhotoUrl,
         categoryName: entry.job.categoryName ?? local.job.categoryName,
         addressText: entry.job.addressText ?? local.job.addressText,
       );

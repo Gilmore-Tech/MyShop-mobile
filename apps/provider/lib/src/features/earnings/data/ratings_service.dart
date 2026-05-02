@@ -67,6 +67,5 @@ class ProviderRatingsSummary {
 
   /// "4.8" — display-ready average for the dashboard tile. Empty for the
   /// no-ratings case so callers can fall back to a placeholder string.
-  String get averageDisplay =>
-      hasRatings ? average.toStringAsFixed(1) : '';
+  String get averageDisplay => hasRatings ? average.toStringAsFixed(1) : '';
 }
