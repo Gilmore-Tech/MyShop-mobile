@@ -262,6 +262,15 @@ class _RolePickerScreenState extends ConsumerState<RolePickerScreen> {
                     ),
                   ),
                 ),
+                if (!widget.isSignIn) ...[
+                  const SizedBox(height: MyShopSpacing.sm),
+                  _SignInLink(
+                    onTap: () => context.go('/signin/phone'),
+                    color: hasSelection
+                        ? Colors.white
+                        : MyShopColors.textSecondary,
+                  ),
+                ],
               ],
             ),
           ),
@@ -613,6 +622,45 @@ class _FeatureRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _SignInLink extends StatelessWidget {
+  const _SignInLink({required this.onTap, required this.color});
+
+  final VoidCallback onTap;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: MyShopSpacing.sm),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'Already have an account? ',
+              style: MyShopTypography.body2.copyWith(
+                color: color.withValues(alpha: 0.85),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            Text(
+              'Sign in',
+              style: MyShopTypography.body2.copyWith(
+                color: color,
+                fontWeight: FontWeight.w700,
+                decoration: TextDecoration.underline,
+                decorationColor: color,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../app/router.dart';
 import '../providers/auth_controller.dart';
 
 /// PRD § 4.1 — Client registration requires: full name + phone.
@@ -82,6 +84,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                 GestureDetector(
                   onTap: () {
                     ref.read(clientAuthControllerProvider.notifier).reset();
+                    context.go(AppRoutes.authPhone);
                   },
                   child: Container(
                     width: w * 0.1,
@@ -274,6 +277,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                 GestureDetector(
                   onTap: () {
                     ref.read(clientAuthControllerProvider.notifier).reset();
+                    context.go(AppRoutes.authPhone);
                   },
                   behavior: HitTestBehavior.opaque,
                   child: Padding(
