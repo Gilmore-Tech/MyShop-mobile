@@ -8,6 +8,7 @@ import 'package:shared_models/shared_models.dart';
 import '../../../core/di/providers.dart';
 import '../../artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../../core/providers/provider_status_provider.dart';
+import '../../auth/providers/auth_controller.dart';
 import '../../earnings/providers/earnings_providers.dart';
 
 /// Snapshot of the artisan's currently-active job — populated when the
@@ -146,6 +147,7 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
       // hold the stale pre-completion snapshot until the screen is
       // recreated or the user pulls to refresh.
       _bustEarningsCaches();
+      _refreshUserProfile();
     }
   }
 
@@ -229,6 +231,7 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
         // inserted a payment row and split the commission server-side, so
         // every earnings provider needs a fresh fetch on next view.
         _bustEarningsCaches();
+        _refreshUserProfile();
       } catch (_) {}
     } on ApiException catch (e) {
       developer.log(
@@ -281,6 +284,19 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
     } catch (_) {
       // Providers may not be mounted yet (tests, fresh-launch); harmless
       // if they aren't, we just lose the eager refetch.
+    }
+  }
+
+  /// Refetch GET /users/me so `currentUser.artisanProfile.completedJobsCount`
+  /// reflects the just-completed job. Without this the home-screen "Jobs
+  /// Done" tile and the profile/earnings stat stay frozen at whatever value
+  /// was returned at sign-in. Fire-and-forget — `refreshProfile()` updates
+  /// auth state on success and the home screen rebuilds reactively.
+  void _refreshUserProfile() {
+    try {
+      unawaited(_ref.read(authControllerProvider.notifier).refreshProfile());
+    } catch (_) {
+      // Auth controller may not be mounted (tests); harmless.
     }
   }
 

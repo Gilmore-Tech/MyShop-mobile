@@ -1417,24 +1417,27 @@ class _CompletionOverlay extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.account_balance_wallet_outlined,
-                        color: MyShopColors.textOnDarkSlate,
-                        size: 20,
-                      ),
-                      const SizedBox(width: MyShopSpacing.sm),
-                      Text(
-                        'Go to Earnings',
-                        style: MyShopTypography.button.copyWith(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.account_balance_wallet_outlined,
                           color: MyShopColors.textOnDarkSlate,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 15,
+                          size: 20,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: MyShopSpacing.sm),
+                        Text(
+                          'Go to Earnings',
+                          style: MyShopTypography.button.copyWith(
+                            color: MyShopColors.textOnDarkSlate,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               )
@@ -1495,28 +1498,31 @@ class _CompletionOverlay extends StatelessWidget {
                                 ),
                               ),
                             )
-                          : Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  clientCashAcknowledged
-                                      ? Icons.check_circle_outline
-                                      : Icons.hourglass_empty_rounded,
-                                  color: MyShopColors.surfaceWhite,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: MyShopSpacing.sm),
-                                Text(
-                                  clientCashAcknowledged
-                                      ? 'Yes, I received payment'
-                                      : 'Waiting for client',
-                                  style: MyShopTypography.button.copyWith(
+                          : FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    clientCashAcknowledged
+                                        ? Icons.check_circle_outline
+                                        : Icons.hourglass_empty_rounded,
                                     color: MyShopColors.surfaceWhite,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 14,
+                                    size: 20,
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: MyShopSpacing.sm),
+                                  Text(
+                                    clientCashAcknowledged
+                                        ? 'Yes, I received payment'
+                                        : 'Waiting for client',
+                                    style: MyShopTypography.button.copyWith(
+                                      color: MyShopColors.surfaceWhite,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                     ),
                   ),

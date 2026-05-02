@@ -60,15 +60,21 @@ class EarningsDashboardScreen extends ConsumerWidget {
     final loadError = summaryAsync.hasError;
     final isLoading = summaryAsync.isLoading && summary == null;
 
+    // Branch on AsyncValue state explicitly so a real failure (auth lapse,
+    // 5xx, parse error) reads as "Couldn't load ratings" instead of being
+    // visually identical to a freshly-onboarded provider with zero
+    // revealed ratings — that conflation was hiding production failures.
     final ratingsAsync = ref.watch(providerRatingsProvider);
-    final ratings = ratingsAsync.valueOrNull;
-    final ratingValue =
-        ratings != null && ratings.hasRatings ? ratings.averageDisplay : '--';
-    final ratingSubtitle = ratingsAsync.isLoading
-        ? 'Loading…'
-        : ratings == null || !ratings.hasRatings
-            ? 'No ratings yet'
-            : '${ratings.count} ${ratings.count == 1 ? 'review' : 'reviews'}';
+    final (String ratingValue, String ratingSubtitle) = ratingsAsync.when(
+      loading: () => ('—', 'Loading…'),
+      error: (_, __) => ('!', "Couldn't load ratings"),
+      data: (r) => r.hasRatings
+          ? (
+              r.averageDisplay,
+              '${r.count} ${r.count == 1 ? 'review' : 'reviews'}',
+            )
+          : ('--', 'No ratings yet'),
+    );
 
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,

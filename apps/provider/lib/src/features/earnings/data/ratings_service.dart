@@ -8,24 +8,30 @@ class RatingsService {
 
   final Dio _dio;
 
-  /// Returns [ProviderRatingsSummary.empty] when the endpoint is unreachable
-  /// or returns no data — the dashboard renders a "No ratings yet" tile in
-  /// that case rather than an error.
+  /// Returns the parsed summary on a 2xx with a well-formed envelope.
+  /// Lets DioException, FormatException, and unexpected-shape failures
+  /// propagate so the caller (a FutureProvider) exposes them as
+  /// AsyncError — the dashboard then renders a "Couldn't load ratings"
+  /// tile, which is distinct from the legitimate "no ratings yet" state
+  /// (count = 0 in a successful response). Conflating the two used to
+  /// hide real failures (auth lapse, 5xx, parsing bug) behind the same
+  /// silent placeholder as a brand-new provider with zero revealed
+  /// ratings.
   Future<ProviderRatingsSummary> getProviderRatings() async {
-    try {
-      final response = await _dio.get<Map<String, dynamic>>(
-        '/providers/me/ratings',
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/providers/me/ratings',
+    );
+    final body = response.data;
+    if (body == null ||
+        body['success'] != true ||
+        body['data'] is! Map<String, dynamic>) {
+      throw const FormatException(
+        'Unexpected response shape from /providers/me/ratings',
       );
-      final body = response.data ?? const <String, dynamic>{};
-      if (body['success'] == true && body['data'] is Map<String, dynamic>) {
-        return ProviderRatingsSummary.fromJson(
-          body['data'] as Map<String, dynamic>,
-        );
-      }
-      return ProviderRatingsSummary.empty;
-    } catch (_) {
-      return ProviderRatingsSummary.empty;
     }
+    return ProviderRatingsSummary.fromJson(
+      body['data'] as Map<String, dynamic>,
+    );
   }
 }
 

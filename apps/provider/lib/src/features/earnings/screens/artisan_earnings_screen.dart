@@ -123,8 +123,11 @@ class _EarningsContent extends ConsumerWidget {
     final reportAsync = ref.watch(earningsReportProvider(reportQuery));
     final report = reportAsync.valueOrNull;
 
-    final ratings = ref.watch(providerRatingsProvider).valueOrNull ??
-        ProviderRatingsSummary.empty;
+    // Pass the AsyncValue, not just `.valueOrNull ?? empty` — that
+    // collapses every failure into the same "no chip" rendering as a
+    // legitimate zero-rating state. The chip handles loading/error/empty
+    // distinctly so a real backend failure surfaces visibly.
+    final ratingsAsync = ref.watch(providerRatingsProvider);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(
@@ -140,7 +143,7 @@ class _EarningsContent extends ConsumerWidget {
           available: available,
           periodNet: periodNet,
           jobsDone: jobsDone,
-          ratings: ratings,
+          ratingsAsync: ratingsAsync,
         ),
         const SizedBox(height: MyShopSpacing.md),
         Row(
@@ -345,13 +348,13 @@ class _BalanceCard extends StatelessWidget {
     required this.available,
     required this.periodNet,
     required this.jobsDone,
-    required this.ratings,
+    required this.ratingsAsync,
   });
 
   final double available;
   final double periodNet;
   final int jobsDone;
-  final ProviderRatingsSummary ratings;
+  final AsyncValue<ProviderRatingsSummary> ratingsAsync;
 
   @override
   Widget build(BuildContext context) {
@@ -376,7 +379,7 @@ class _BalanceCard extends StatelessWidget {
                   ),
                 ),
               ),
-              if (ratings.hasRatings) _RatingChip(ratings: ratings),
+              _RatingChip(ratingsAsync: ratingsAsync),
             ],
           ),
           const SizedBox(height: MyShopSpacing.sm),
@@ -450,12 +453,47 @@ class _BalanceCard extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _RatingChip extends StatelessWidget {
-  const _RatingChip({required this.ratings});
+  const _RatingChip({required this.ratingsAsync});
 
-  final ProviderRatingsSummary ratings;
+  final AsyncValue<ProviderRatingsSummary> ratingsAsync;
 
   @override
   Widget build(BuildContext context) {
+    // Four distinct states so a real failure isn't visually identical to
+    // a freshly-onboarded artisan with zero revealed ratings.
+    return ratingsAsync.when(
+      loading: () => _chipShell(
+        const _Glyph(icon: Icons.star_rounded, color: MyShopColors.primaryGold),
+        const _ChipText('—'),
+        null,
+      ),
+      error: (_, __) => _chipShell(
+        const _Glyph(
+          icon: Icons.error_outline,
+          color: MyShopColors.error,
+        ),
+        const _ChipText("Couldn't load"),
+        null,
+      ),
+      data: (r) {
+        if (!r.hasRatings) {
+          // Hide the chip entirely for the legitimate empty state — the
+          // dashboard already conveys "new account" via other zero stats.
+          return const SizedBox.shrink();
+        }
+        return _chipShell(
+          const _Glyph(
+            icon: Icons.star_rounded,
+            color: MyShopColors.primaryGold,
+          ),
+          _ChipText(r.averageDisplay),
+          '(${r.count})',
+        );
+      },
+    );
+  }
+
+  Widget _chipShell(Widget glyph, Widget value, String? trailing) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
@@ -465,35 +503,53 @@ class _RatingChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            Icons.star_rounded,
-            size: 14,
-            color: MyShopColors.primaryGold,
-          ),
+          glyph,
           const SizedBox(width: 4),
-          Text(
-            ratings.averageDisplay,
-            style: const TextStyle(
-              fontFamily: 'Raleway',
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              color: MyShopColors.textOnDarkSlate,
+          value,
+          if (trailing != null) ...[
+            const SizedBox(width: 4),
+            Text(
+              trailing,
+              style: TextStyle(
+                fontFamily: 'Raleway',
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: MyShopColors.textOnDarkSlate.withValues(alpha: 0.75),
+              ),
             ),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            '(${ratings.count})',
-            style: TextStyle(
-              fontFamily: 'Raleway',
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: MyShopColors.textOnDarkSlate.withValues(alpha: 0.75),
-            ),
-          ),
+          ],
         ],
       ),
     );
   }
+}
+
+class _Glyph extends StatelessWidget {
+  const _Glyph({required this.icon, required this.color});
+
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) =>
+      Icon(icon, size: 14, color: color);
+}
+
+class _ChipText extends StatelessWidget {
+  const _ChipText(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Text(
+        text,
+        style: const TextStyle(
+          fontFamily: 'Raleway',
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          color: MyShopColors.textOnDarkSlate,
+        ),
+      );
 }
 
 // ---------------------------------------------------------------------------
