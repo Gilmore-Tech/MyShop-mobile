@@ -129,8 +129,7 @@ const mockNotifs = [
     id: 'n4',
     type: NotifType.promo,
     title: 'Weekend offer',
-    body:
-        'Get 20% off all rides this Saturday and Sunday. Use code WEEKEND20.',
+    body: 'Get 20% off all rides this Saturday and Sunday. Use code WEEKEND20.',
     time: 'Yesterday',
     isRead: true,
   ),

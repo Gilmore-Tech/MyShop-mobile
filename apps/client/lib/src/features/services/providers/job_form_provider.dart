@@ -68,9 +68,9 @@ class JobFormState {
     this.errorMessage,
   });
 
-  int  get photoCount    => photoPaths.length;
-  int  get photoSlotsLeft => kMaxJobPhotos - photoPaths.length;
-  bool get canAddPhoto   => photoSlotsLeft > 0;
+  int get photoCount => photoPaths.length;
+  int get photoSlotsLeft => kMaxJobPhotos - photoPaths.length;
+  bool get canAddPhoto => photoSlotsLeft > 0;
 
   /// Form is ready to submit once the required fields are filled.
   /// Photos and landmark note are optional.
@@ -129,8 +129,8 @@ class JobFormNotifier extends StateNotifier<JobFormState> {
   final JobService _jobService;
   final MediaService _mediaService;
 
-  void selectCategory(String id, String name) =>
-      state = state.copyWith(selectedCategoryId: id, selectedCategoryName: name, clearError: true);
+  void selectCategory(String id, String name) => state = state.copyWith(
+      selectedCategoryId: id, selectedCategoryName: name, clearError: true);
 
   void setTitle(String value) =>
       state = state.copyWith(title: value, clearError: true);
@@ -209,7 +209,8 @@ class JobFormNotifier extends StateNotifier<JobFormState> {
         latitude: state.latitude ?? cached?.latitude ?? 6.6885,
         longitude: state.longitude ?? cached?.longitude ?? -1.6244,
         addressText: state.destinationAddress,
-        scheduledFor: state.isImmediate ? null : state.scheduledFor?.toIso8601String(),
+        scheduledFor:
+            state.isImmediate ? null : state.scheduledFor?.toIso8601String(),
         photoUrls: photoUrls,
       );
       state = state.copyWith(isSubmitting: false);
@@ -238,8 +239,8 @@ class JobFormNotifier extends StateNotifier<JobFormState> {
 final jobFormProvider =
     StateNotifierProvider.autoDispose<JobFormNotifier, JobFormState>(
   (ref) => JobFormNotifier(
-        ref,
-        ref.watch(jobServiceProvider),
-        ref.watch(mediaServiceProvider),
-      ),
+    ref,
+    ref.watch(jobServiceProvider),
+    ref.watch(mediaServiceProvider),
+  ),
 );

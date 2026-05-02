@@ -144,10 +144,10 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
     final phase = ref.watch(rideTrackingPhaseProvider);
     final pickupEta = ref.watch(rideEtaProvider);
     final tripEta = ref.watch(tripEtaProvider);
-    final waitingSeconds =
-        phase == RideTrackingPhase.arrived ? ref.watch(waitingCountdownProvider) : null;
-    final mapEta =
-        phase == RideTrackingPhase.inProgress ? tripEta : pickupEta;
+    final waitingSeconds = phase == RideTrackingPhase.arrived
+        ? ref.watch(waitingCountdownProvider)
+        : null;
+    final mapEta = phase == RideTrackingPhase.inProgress ? tripEta : pickupEta;
     final search = ref.watch(rideSearchProvider);
     final destinationLabel = search.destination?.name ?? 'Your destination';
     final screenHeight = MediaQuery.sizeOf(context).height;

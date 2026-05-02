@@ -73,22 +73,22 @@ class RecentArtisan {
 
 IconData _iconForSlug(String slug) {
   return switch (slug) {
-    'towing'       => Icons.car_repair,
-    'electrician'  => Icons.electrical_services,
-    'mechanic'     => Icons.build_outlined,
+    'towing' => Icons.car_repair,
+    'electrician' => Icons.electrical_services,
+    'mechanic' => Icons.build_outlined,
     'seamstress' || 'fashion' => Icons.content_cut,
-    'painter'      => Icons.format_paint,
-    'masonry'      => Icons.home_repair_service_outlined,
-    'carpenter'    => Icons.carpenter,
-    'plumber'      => Icons.plumbing,
+    'painter' => Icons.format_paint,
+    'masonry' => Icons.home_repair_service_outlined,
+    'carpenter' => Icons.carpenter,
+    'plumber' => Icons.plumbing,
     'satellite' || 'satellite-tv' => Icons.satellite_alt,
-    'repairs'      => Icons.handyman,
+    'repairs' => Icons.handyman,
     'repair-laptop' || 'laptop-repair' => Icons.laptop_mac,
     'repair-fridge' || 'fridge-repair' => Icons.kitchen,
-    'repair-tv' || 'tv-repair'        => Icons.tv,
-    'repair-phone' || 'phone-repair'  => Icons.phone_android,
-    'repair-ac' || 'ac-repair'        => Icons.ac_unit,
-    _              => Icons.miscellaneous_services,
+    'repair-tv' || 'tv-repair' => Icons.tv,
+    'repair-phone' || 'phone-repair' => Icons.phone_android,
+    'repair-ac' || 'ac-repair' => Icons.ac_unit,
+    _ => Icons.miscellaneous_services,
   };
 }
 
@@ -162,23 +162,31 @@ class _RecentNotifier extends AsyncNotifier<List<RecentArtisan>> {
 
 const _fallbackCategories = [
   ServiceCategory(id: 'towing', name: 'Towing Car', icon: Icons.car_repair),
-  ServiceCategory(id: 'electrician', name: 'Electrician', icon: Icons.electrical_services),
+  ServiceCategory(
+      id: 'electrician', name: 'Electrician', icon: Icons.electrical_services),
   ServiceCategory(id: 'mechanic', name: 'Mechanic', icon: Icons.build_outlined),
-  ServiceCategory(id: 'seamstress', name: 'Seamstress', icon: Icons.content_cut),
+  ServiceCategory(
+      id: 'seamstress', name: 'Seamstress', icon: Icons.content_cut),
   ServiceCategory(id: 'painter', name: 'Painter', icon: Icons.format_paint),
-  ServiceCategory(id: 'masonry', name: 'Masonry', icon: Icons.home_repair_service_outlined),
+  ServiceCategory(
+      id: 'masonry', name: 'Masonry', icon: Icons.home_repair_service_outlined),
   ServiceCategory(id: 'carpenter', name: 'Carpenter', icon: Icons.carpenter),
   ServiceCategory(id: 'plumber', name: 'Plumber', icon: Icons.plumbing),
-  ServiceCategory(id: 'satellite', name: 'Satellite TV', icon: Icons.satellite_alt),
+  ServiceCategory(
+      id: 'satellite', name: 'Satellite TV', icon: Icons.satellite_alt),
   ServiceCategory(
     id: 'repairs',
     name: 'Repairs',
     icon: Icons.handyman,
     children: [
-      ServiceCategory(id: 'repair-laptop', name: 'Laptop Repair', icon: Icons.laptop_mac),
-      ServiceCategory(id: 'repair-fridge', name: 'Fridge Repair', icon: Icons.kitchen),
-      ServiceCategory(id: 'repair-tv', name: 'Television Repair', icon: Icons.tv),
-      ServiceCategory(id: 'repair-phone', name: 'Phone Repair', icon: Icons.phone_android),
+      ServiceCategory(
+          id: 'repair-laptop', name: 'Laptop Repair', icon: Icons.laptop_mac),
+      ServiceCategory(
+          id: 'repair-fridge', name: 'Fridge Repair', icon: Icons.kitchen),
+      ServiceCategory(
+          id: 'repair-tv', name: 'Television Repair', icon: Icons.tv),
+      ServiceCategory(
+          id: 'repair-phone', name: 'Phone Repair', icon: Icons.phone_android),
     ],
   ),
 ];

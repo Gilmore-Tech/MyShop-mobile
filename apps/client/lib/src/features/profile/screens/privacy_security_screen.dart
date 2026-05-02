@@ -15,9 +15,9 @@ class PrivacySecurityScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final size   = MediaQuery.sizeOf(context);
-    final w      = size.width;
-    final h      = size.height;
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
     final bottom = MediaQuery.paddingOf(context).bottom;
 
     final state = ref.watch(privacySecurityProvider);
@@ -58,13 +58,13 @@ class PrivacySecurityScreen extends ConsumerWidget {
                       // ── Identity Verification ────────────────────────────
                       _SectionTitle(title: 'Identity Verification', w: w, h: h),
                       SizedBox(height: h * 0.014),
-                      _KycStatusCard(
-                          status: state.data!.kycStatus, w: w, h: h),
+                      _KycStatusCard(status: state.data!.kycStatus, w: w, h: h),
                       SizedBox(height: h * 0.012),
                       _KycDescription(
-                        status:             state.data!.kycStatus,
+                        status: state.data!.kycStatus,
                         kycRejectionReason: state.data!.kycRejectionReason,
-                        w: w, h: h,
+                        w: w,
+                        h: h,
                       ),
 
                       SizedBox(height: h * 0.028),
@@ -135,8 +135,7 @@ class _SectionTitle extends StatelessWidget {
   final String title;
   final double w;
   final double h;
-  const _SectionTitle(
-      {required this.title, required this.w, required this.h});
+  const _SectionTitle({required this.title, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
@@ -273,9 +272,9 @@ class _KycStatusCard extends StatelessWidget {
   }
 
   static IconData _resolveIcon(KycStatus s) => switch (s) {
-        KycStatus.verified   => Icons.verified_user_rounded,
-        KycStatus.pending    => Icons.hourglass_top_rounded,
-        KycStatus.rejected   => Icons.gpp_bad_rounded,
+        KycStatus.verified => Icons.verified_user_rounded,
+        KycStatus.pending => Icons.hourglass_top_rounded,
+        KycStatus.rejected => Icons.gpp_bad_rounded,
         KycStatus.unverified => Icons.shield_outlined,
       };
 }
@@ -284,7 +283,7 @@ class _KycStatusCard extends StatelessWidget {
 
 class _KycDescription extends StatelessWidget {
   final KycStatus status;
-  final String?  kycRejectionReason;
+  final String? kycRejectionReason;
   final double w;
   final double h;
   const _KycDescription({
@@ -385,14 +384,12 @@ class _AccountSecurityCard extends StatelessWidget {
                     ),
                 KycStatus.pending => () => MyShopToast.show(
                       ctx,
-                      message:
-                          'Your Ghana Card is under review. We\'ll let '
+                      message: 'Your Ghana Card is under review. We\'ll let '
                           "you know once it's approved.",
                       duration: const Duration(seconds: 5),
                     ),
-                KycStatus.unverified ||
-                KycStatus.rejected =>
-                  () => showSubmitGhanaCardSheet(ctx),
+                KycStatus.unverified || KycStatus.rejected => () =>
+                    showSubmitGhanaCardSheet(ctx),
               };
               return _SecurityRow(
                 icon: Icons.badge_outlined,
@@ -426,8 +423,8 @@ class _AccountSecurityCard extends StatelessWidget {
 
 class _SecurityRow extends StatelessWidget {
   final IconData icon;
-  final String   title;
-  final String   subtitle;
+  final String title;
+  final String subtitle;
   final VoidCallback onTap;
   final double w;
   final double h;
@@ -460,7 +457,8 @@ class _SecurityRow extends StatelessWidget {
                 color: MyShopColors.surfaceGrey,
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, color: MyShopColors.textSecondary, size: w * 0.046),
+              child: Icon(icon,
+                  color: MyShopColors.textSecondary, size: w * 0.046),
             ),
             SizedBox(width: w * 0.031),
             Expanded(
@@ -510,9 +508,9 @@ class _RowDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(
-          left: w * 0.041 + w * 0.092 + w * 0.031),
-      child: const Divider(color: MyShopColors.divider, height: 1, thickness: 1),
+      padding: EdgeInsets.only(left: w * 0.041 + w * 0.092 + w * 0.031),
+      child:
+          const Divider(color: MyShopColors.divider, height: 1, thickness: 1),
     );
   }
 }
@@ -537,7 +535,8 @@ class _DataPrivacyInfoBox extends StatelessWidget {
         decoration: BoxDecoration(
           color: MyShopColors.infoLight,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: MyShopColors.info.withValues(alpha: 0.35), width: 1),
+          border: Border.all(
+              color: MyShopColors.info.withValues(alpha: 0.35), width: 1),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -580,8 +579,7 @@ class _DangerZoneSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isDeleting =
-        ref.watch(privacySecurityProvider).isDeletingAccount;
+    final isDeleting = ref.watch(privacySecurityProvider).isDeletingAccount;
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.044),
@@ -646,9 +644,7 @@ class _DangerZoneSection extends ConsumerWidget {
               color: MyShopColors.error,
               borderRadius: BorderRadius.circular(8),
               child: InkWell(
-                onTap: isDeleting
-                    ? null
-                    : () => _confirmDelete(context, ref),
+                onTap: isDeleting ? null : () => _confirmDelete(context, ref),
                 borderRadius: BorderRadius.circular(8),
                 splashColor: Colors.white.withValues(alpha: 0.15),
                 child: Center(
@@ -700,10 +696,10 @@ class _DangerZoneSection extends ConsumerWidget {
         final h = MediaQuery.sizeOf(ctx).height;
         return AlertDialog(
           backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16)),
-          contentPadding: EdgeInsets.fromLTRB(
-              w * 0.055, h * 0.030, w * 0.055, h * 0.022),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          contentPadding:
+              EdgeInsets.fromLTRB(w * 0.055, h * 0.030, w * 0.055, h * 0.022),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -753,8 +749,7 @@ class _DangerZoneSection extends ConsumerWidget {
                         side: const BorderSide(color: MyShopColors.divider),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8)),
-                        padding:
-                            EdgeInsets.symmetric(vertical: h * 0.015),
+                        padding: EdgeInsets.symmetric(vertical: h * 0.015),
                       ),
                       child: Text(
                         'Cancel',
@@ -776,8 +771,7 @@ class _DangerZoneSection extends ConsumerWidget {
                         elevation: 0,
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8)),
-                        padding:
-                            EdgeInsets.symmetric(vertical: h * 0.015),
+                        padding: EdgeInsets.symmetric(vertical: h * 0.015),
                       ),
                       child: Text(
                         'Delete',
@@ -799,9 +793,7 @@ class _DangerZoneSection extends ConsumerWidget {
     );
 
     if (confirmed == true) {
-      await ref
-          .read(privacySecurityProvider.notifier)
-          .deleteAccount();
+      await ref.read(privacySecurityProvider.notifier).deleteAccount();
       // The provider clears tokens + flips auth state to unauthenticated,
       // which the GoRouter redirect picks up and routes to /auth/phone.
       // Errors are surfaced as a snackbar on the screen below.
@@ -819,7 +811,8 @@ class _Footer extends StatelessWidget {
   // A short session ID derived from the current session — for display only.
   static String get _sessionId {
     final now = DateTime.now();
-    final code = (now.millisecondsSinceEpoch % 999999).toRadixString(36)
+    final code = (now.millisecondsSinceEpoch % 999999)
+        .toRadixString(36)
         .toUpperCase()
         .padLeft(6, '0');
     return '${code.substring(0, 3)}-${code.substring(3)}';
@@ -873,8 +866,7 @@ class _LoadingSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: EdgeInsets.symmetric(
-          horizontal: w * 0.044, vertical: h * 0.022),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.044, vertical: h * 0.022),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -914,4 +906,3 @@ class _Shimmer extends StatelessWidget {
     );
   }
 }
-

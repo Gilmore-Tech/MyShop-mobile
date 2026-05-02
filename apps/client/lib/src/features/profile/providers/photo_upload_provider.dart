@@ -18,7 +18,7 @@ const _kClientProfilePhotoUrl = 'client_profile_photo_url';
 class ProfilePhotoState {
   const ProfilePhotoState({this.localFile, this.cloudinaryUrl});
 
-  final File?   localFile;
+  final File? localFile;
   final String? cloudinaryUrl;
 }
 
@@ -29,8 +29,8 @@ class LocalProfilePhotoNotifier extends StateNotifier<ProfilePhotoState> {
 
   Future<void> _restore() async {
     final prefs = await SharedPreferences.getInstance();
-    final url   = prefs.getString(_kClientProfilePhotoUrl);
-    final path  = prefs.getString(_kClientLocalPhotoPath);
+    final url = prefs.getString(_kClientProfilePhotoUrl);
+    final path = prefs.getString(_kClientLocalPhotoPath);
 
     File? file;
     if (path != null) {
@@ -49,7 +49,7 @@ class LocalProfilePhotoNotifier extends StateNotifier<ProfilePhotoState> {
 
   Future<void> setLocalFile(File? file) async {
     state = ProfilePhotoState(
-      localFile:     file,
+      localFile: file,
       cloudinaryUrl: state.cloudinaryUrl,
     );
     final prefs = await SharedPreferences.getInstance();
@@ -62,7 +62,7 @@ class LocalProfilePhotoNotifier extends StateNotifier<ProfilePhotoState> {
 
   Future<void> setCloudinaryUrl(String url) async {
     state = ProfilePhotoState(
-      localFile:     state.localFile,
+      localFile: state.localFile,
       cloudinaryUrl: url,
     );
     final prefs = await SharedPreferences.getInstance();
@@ -99,17 +99,17 @@ class ProfilePhotoUploadState {
     this.remoteUrl,
   });
 
-  final bool    isUploading;
+  final bool isUploading;
   final String? remoteUrl;
 
   ProfilePhotoUploadState copyWith({
-    bool?   isUploading,
+    bool? isUploading,
     String? remoteUrl,
-    bool    clearRemoteUrl = false,
+    bool clearRemoteUrl = false,
   }) =>
       ProfilePhotoUploadState(
         isUploading: isUploading ?? this.isUploading,
-        remoteUrl:   clearRemoteUrl ? null : (remoteUrl ?? this.remoteUrl),
+        remoteUrl: clearRemoteUrl ? null : (remoteUrl ?? this.remoteUrl),
       );
 }
 
@@ -119,7 +119,7 @@ class ProfilePhotoUploadNotifier
       : super(const ProfilePhotoUploadState());
 
   final MediaService _media;
-  final UserService  _user;
+  final UserService _user;
 
   /// Returns `null` on success and the final hosted URL via
   /// [ProfilePhotoUploadState.remoteUrl]. On failure returns a user-facing
@@ -157,8 +157,8 @@ class ProfilePhotoUploadNotifier
 // the notifier directly), so an autoDispose provider would tear down the
 // moment the read returns and the asynchronous state writes that come back
 // seconds later would crash with `Tried to use after dispose`.
-final profilePhotoUploadProvider = StateNotifierProvider<
-    ProfilePhotoUploadNotifier, ProfilePhotoUploadState>(
+final profilePhotoUploadProvider =
+    StateNotifierProvider<ProfilePhotoUploadNotifier, ProfilePhotoUploadState>(
   (ref) => ProfilePhotoUploadNotifier(
     ref.watch(mediaServiceProvider),
     ref.watch(userServiceProvider),

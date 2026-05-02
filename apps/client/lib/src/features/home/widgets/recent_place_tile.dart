@@ -19,7 +19,8 @@ class RecentPlaceTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
               children: [
-                const Icon(Icons.access_time_rounded, color: MyShopColors.primaryGold, size: 22),
+                const Icon(Icons.access_time_rounded,
+                    color: MyShopColors.primaryGold, size: 22),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(

@@ -32,10 +32,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _nameCtrl  = TextEditingController();
+    _nameCtrl = TextEditingController();
     _emailCtrl = TextEditingController();
 
-    _nameFocus  = FocusNode();
+    _nameFocus = FocusNode();
     _emailFocus = FocusNode();
 
     for (final fn in [_nameFocus, _emailFocus]) {
@@ -47,8 +47,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
   void _syncControllers() {
     final s = ref.read(editProfileProvider);
-    if (_nameCtrl.text  != s.fullName) _nameCtrl.text  = s.fullName;
-    if (_emailCtrl.text != s.email)    _emailCtrl.text = s.email;
+    if (_nameCtrl.text != s.fullName) _nameCtrl.text = s.fullName;
+    if (_emailCtrl.text != s.email) _emailCtrl.text = s.email;
   }
 
   /// Profile photo flow:
@@ -66,9 +66,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     ref.read(localProfilePhotoProvider.notifier).setLocalFile(file);
     setState(() => _isUploadingPhoto = true);
 
-    final error = await ref
-        .read(profilePhotoUploadProvider.notifier)
-        .upload(file);
+    final error =
+        await ref.read(profilePhotoUploadProvider.notifier).upload(file);
     if (!mounted) return;
 
     if (error != null) {
@@ -112,8 +111,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final w    = size.width;
-    final h    = size.height;
+    final w = size.width;
+    final h = size.height;
 
     // Sync controllers when provider state changes (e.g. initial load).
     ref.listen<EditProfileState>(editProfileProvider, (prev, next) {
@@ -129,7 +128,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       }
     });
 
-    final state      = ref.watch(editProfileProvider);
+    final state = ref.watch(editProfileProvider);
     final photoState = ref.watch(localProfilePhotoProvider);
 
     return Scaffold(
@@ -142,35 +141,32 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
               child: Column(
                 children: [
                   _PhotoSection(
-                    avatarUrl:        state.avatarUrl,
-                    localFile:        photoState.localFile,
-                    cloudinaryUrl:    photoState.cloudinaryUrl,
-                    isUploading:      _isUploadingPhoto,
-                    onPhotoTap:       _pickAndUploadPhoto,
-                    w: w, h: h,
+                    avatarUrl: state.avatarUrl,
+                    localFile: photoState.localFile,
+                    cloudinaryUrl: photoState.cloudinaryUrl,
+                    isUploading: _isUploadingPhoto,
+                    onPhotoTap: _pickAndUploadPhoto,
+                    w: w,
+                    h: h,
                   ),
                   SizedBox(height: h * 0.028),
-
                   _FormCard(
-                    w:          w,
-                    h:          h,
-                    state:      state,
-                    nameCtrl:   _nameCtrl,
-                    emailCtrl:  _emailCtrl,
-                    nameFocus:  _nameFocus,
+                    w: w,
+                    h: h,
+                    state: state,
+                    nameCtrl: _nameCtrl,
+                    emailCtrl: _emailCtrl,
+                    nameFocus: _nameFocus,
                     emailFocus: _emailFocus,
                   ),
-
                   if (state.emailChanged) ...[
                     SizedBox(height: h * 0.014),
                     _WarningBox(w: w, h: h),
                   ],
-
                   if (state.errorMessage != null) ...[
                     SizedBox(height: h * 0.014),
                     _ErrorBanner(message: state.errorMessage!, w: w, h: h),
                   ],
-
                   SizedBox(height: h * 0.022),
                 ],
               ),
@@ -195,10 +191,10 @@ class _AppBar extends StatelessWidget {
     return Container(
       color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.only(
-        top:    topPad + h * 0.010,
+        top: topPad + h * 0.010,
         bottom: h * 0.017,
-        left:   w * 0.041,
-        right:  w * 0.041,
+        left: w * 0.041,
+        right: w * 0.041,
       ),
       child: Row(
         children: [
@@ -214,9 +210,9 @@ class _AppBar extends StatelessWidget {
           Text(
             'Edit Profile',
             style: TextStyle(
-              fontSize:   w * 0.051,
+              fontSize: w * 0.051,
               fontWeight: FontWeight.w700,
-              color:      MyShopColors.textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
         ],
@@ -228,12 +224,12 @@ class _AppBar extends StatelessWidget {
 // ── Photo Section ─────────────────────────────────────────────────────────────
 
 class _PhotoSection extends StatelessWidget {
-  final String?      avatarUrl;
-  final File?        localFile;
-  final String?      cloudinaryUrl;
-  final bool         isUploading;
+  final String? avatarUrl;
+  final File? localFile;
+  final String? cloudinaryUrl;
+  final bool isUploading;
   final VoidCallback onPhotoTap;
-  final double       w, h;
+  final double w, h;
 
   const _PhotoSection({
     required this.avatarUrl,
@@ -251,8 +247,8 @@ class _PhotoSection extends StatelessWidget {
     final displayUrl = cloudinaryUrl ?? avatarUrl;
 
     return Container(
-      color:   MyShopColors.surfaceWhite,
-      width:   double.infinity,
+      color: MyShopColors.surfaceWhite,
+      width: double.infinity,
       padding: EdgeInsets.symmetric(vertical: h * 0.028),
       child: Column(
         children: [
@@ -261,7 +257,7 @@ class _PhotoSection extends StatelessWidget {
             children: [
               // Avatar
               Container(
-                width:  w * 0.256,
+                width: w * 0.256,
                 height: w * 0.256,
                 decoration: const BoxDecoration(
                   color: MyShopColors.primaryGoldLight,
@@ -279,8 +275,8 @@ class _PhotoSection extends StatelessWidget {
                           ? Image.file(localFile!, fit: BoxFit.cover)
                           : displayUrl != null && displayUrl.isNotEmpty
                               ? CachedNetworkImage(
-                                  imageUrl:    displayUrl,
-                                  fit:         BoxFit.cover,
+                                  imageUrl: displayUrl,
+                                  fit: BoxFit.cover,
                                   placeholder: (_, __) => const Center(
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
@@ -289,13 +285,13 @@ class _PhotoSection extends StatelessWidget {
                                   ),
                                   errorWidget: (_, __, ___) => Icon(
                                     Icons.person_rounded,
-                                    size:  w * 0.154,
+                                    size: w * 0.154,
                                     color: const Color(0xFF78909C),
                                   ),
                                 )
                               : Icon(
                                   Icons.person_rounded,
-                                  size:  w * 0.154,
+                                  size: w * 0.154,
                                   color: const Color(0xFF78909C),
                                 ),
                 ),
@@ -304,31 +300,30 @@ class _PhotoSection extends StatelessWidget {
               GestureDetector(
                 onTap: isUploading ? null : onPhotoTap,
                 child: Container(
-                  width:  w * 0.082,
+                  width: w * 0.082,
                   height: w * 0.082,
                   decoration: BoxDecoration(
-                    color:  isUploading
+                    color: isUploading
                         ? MyShopColors.darkSlate.withValues(alpha: 0.5)
                         : MyShopColors.darkSlate,
-                    shape:  BoxShape.circle,
+                    shape: BoxShape.circle,
                     border: Border.all(
                         color: MyShopColors.surfaceWhite, width: 2.5),
                   ),
                   child: Icon(Icons.photo_camera_rounded,
-                      size:  w * 0.041,
-                      color: MyShopColors.surfaceWhite),
+                      size: w * 0.041, color: MyShopColors.surfaceWhite),
                 ),
               ),
             ],
           ),
           SizedBox(height: h * 0.011),
           GestureDetector(
-            onTap:     isUploading ? null : onPhotoTap,
-            behavior:  HitTestBehavior.opaque,
+            onTap: isUploading ? null : onPhotoTap,
+            behavior: HitTestBehavior.opaque,
             child: Text(
               isUploading ? 'Uploading...' : 'Change Profile Photo',
               style: TextStyle(
-                fontSize:   w * 0.033,
+                fontSize: w * 0.033,
                 fontWeight: FontWeight.w500,
                 color: isUploading
                     ? MyShopColors.textHint
@@ -345,10 +340,10 @@ class _PhotoSection extends StatelessWidget {
 // ── Form Card ─────────────────────────────────────────────────────────────────
 
 class _FormCard extends ConsumerWidget {
-  final double                w, h;
-  final EditProfileState      state;
+  final double w, h;
+  final EditProfileState state;
   final TextEditingController nameCtrl, emailCtrl;
-  final FocusNode             nameFocus, emailFocus;
+  final FocusNode nameFocus, emailFocus;
 
   const _FormCard({
     required this.w,
@@ -368,7 +363,7 @@ class _FormCard extends ConsumerWidget {
       color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.symmetric(
         horizontal: w * 0.041,
-        vertical:   h * 0.022,
+        vertical: h * 0.022,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -378,11 +373,12 @@ class _FormCard extends ConsumerWidget {
           SizedBox(height: h * 0.008),
           _ProfileInput(
             controller: nameCtrl,
-            focusNode:  nameFocus,
-            isActive:   nameFocus.hasFocus,
-            hintText:   'Enter your full name',
-            onChanged:  notifier.updateFullName,
-            w: w, h: h,
+            focusNode: nameFocus,
+            isActive: nameFocus.hasFocus,
+            hintText: 'Enter your full name',
+            onChanged: notifier.updateFullName,
+            w: w,
+            h: h,
           ),
           SizedBox(height: h * 0.019),
 
@@ -403,9 +399,9 @@ class _FormCard extends ConsumerWidget {
                   child: Text(
                     'VERIFY',
                     style: TextStyle(
-                      fontSize:      w * 0.028,
-                      fontWeight:    FontWeight.w800,
-                      color:         MyShopColors.primaryGold,
+                      fontSize: w * 0.028,
+                      fontWeight: FontWeight.w800,
+                      color: MyShopColors.primaryGold,
                       letterSpacing: 0.6,
                     ),
                   ),
@@ -414,13 +410,14 @@ class _FormCard extends ConsumerWidget {
           ),
           SizedBox(height: h * 0.008),
           _ProfileInput(
-            controller:   emailCtrl,
-            focusNode:    emailFocus,
-            isActive:     emailFocus.hasFocus || state.emailChanged,
-            hintText:     'Enter your email',
+            controller: emailCtrl,
+            focusNode: emailFocus,
+            isActive: emailFocus.hasFocus || state.emailChanged,
+            hintText: 'Enter your email',
             keyboardType: TextInputType.emailAddress,
-            onChanged:    notifier.updateEmail,
-            w: w, h: h,
+            onChanged: notifier.updateEmail,
+            w: w,
+            h: h,
           ),
           SizedBox(height: h * 0.019),
 
@@ -428,11 +425,12 @@ class _FormCard extends ConsumerWidget {
           _FieldLabel(label: 'PHONE NUMBER', w: w),
           SizedBox(height: h * 0.008),
           _ReadOnlyField(
-            value:  state.phoneNumber,
-            hint:   'Phone number',
-            badge:  _StatusBadge.verified,
-            note:   'Contact support to change your phone number',
-            w: w, h: h,
+            value: state.phoneNumber,
+            hint: 'Phone number',
+            badge: _StatusBadge.verified,
+            note: 'Contact support to change your phone number',
+            w: w,
+            h: h,
           ),
           SizedBox(height: h * 0.019),
 
@@ -440,15 +438,18 @@ class _FormCard extends ConsumerWidget {
           _FieldLabel(label: 'GHANA CARD', w: w),
           SizedBox(height: h * 0.008),
           _ReadOnlyField(
-            value: state.ghanaCardVerified ? 'Identity verified' : 'Not yet verified',
-            hint:  'Ghana Card status',
+            value: state.ghanaCardVerified
+                ? 'Identity verified'
+                : 'Not yet verified',
+            hint: 'Ghana Card status',
             badge: state.ghanaCardVerified
                 ? _StatusBadge.verified
                 : _StatusBadge.pending,
-            note:  state.ghanaCardVerified
+            note: state.ghanaCardVerified
                 ? null
                 : 'Complete KYC verification to verify your identity',
-            w: w, h: h,
+            w: w,
+            h: h,
           ),
         ],
       ),
@@ -461,11 +462,11 @@ class _FormCard extends ConsumerWidget {
 enum _StatusBadge { verified, pending }
 
 class _ReadOnlyField extends StatelessWidget {
-  final String       value;
-  final String       hint;
+  final String value;
+  final String hint;
   final _StatusBadge badge;
-  final String?      note;
-  final double       w, h;
+  final String? note;
+  final double w, h;
 
   const _ReadOnlyField({
     required this.value,
@@ -480,24 +481,24 @@ class _ReadOnlyField extends StatelessWidget {
   Widget build(BuildContext context) {
     final isVerified = badge == _StatusBadge.verified;
     final badgeColor = isVerified ? MyShopColors.success : MyShopColors.warning;
-    final badgeBg    = isVerified ? MyShopColors.successLight : MyShopColors.warningLight;
+    final badgeBg =
+        isVerified ? MyShopColors.successLight : MyShopColors.warningLight;
     final badgeLabel = isVerified ? 'Verified' : 'Pending';
-    final badgeIcon  = isVerified
-        ? Icons.verified_rounded
-        : Icons.access_time_rounded;
+    final badgeIcon =
+        isVerified ? Icons.verified_rounded : Icons.access_time_rounded;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
           decoration: BoxDecoration(
-            color:        MyShopColors.surfaceGrey,
+            color: MyShopColors.surfaceGrey,
             borderRadius: BorderRadius.circular(w * 0.021),
-            border:       Border.all(color: MyShopColors.divider),
+            border: Border.all(color: MyShopColors.divider),
           ),
           padding: EdgeInsets.symmetric(
             horizontal: w * 0.041,
-            vertical:   h * 0.017,
+            vertical: h * 0.017,
           ),
           child: Row(
             children: [
@@ -505,7 +506,7 @@ class _ReadOnlyField extends StatelessWidget {
                 child: Text(
                   value.isNotEmpty ? value : hint,
                   style: TextStyle(
-                    fontSize:   w * 0.036,
+                    fontSize: w * 0.036,
                     fontWeight: FontWeight.w400,
                     color: value.isNotEmpty
                         ? MyShopColors.textPrimary
@@ -517,7 +518,7 @@ class _ReadOnlyField extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color:        badgeBg,
+                  color: badgeBg,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
@@ -527,9 +528,9 @@ class _ReadOnlyField extends StatelessWidget {
                     const SizedBox(width: 4),
                     Text(badgeLabel,
                         style: TextStyle(
-                          fontSize:   w * 0.026,
+                          fontSize: w * 0.026,
                           fontWeight: FontWeight.w700,
-                          color:      badgeColor,
+                          color: badgeColor,
                         )),
                   ],
                 ),
@@ -545,7 +546,7 @@ class _ReadOnlyField extends StatelessWidget {
               note!,
               style: TextStyle(
                 fontSize: w * 0.028,
-                color:    MyShopColors.textSecondary,
+                color: MyShopColors.textSecondary,
               ),
             ),
           ),
@@ -567,9 +568,9 @@ class _FieldLabel extends StatelessWidget {
     return Text(
       label,
       style: TextStyle(
-        fontSize:      w * 0.023,
-        fontWeight:    FontWeight.w900,
-        color:         MyShopColors.textSecondary,
+        fontSize: w * 0.023,
+        fontWeight: FontWeight.w900,
+        color: MyShopColors.textSecondary,
         letterSpacing: 0.7,
       ),
     );
@@ -580,12 +581,12 @@ class _FieldLabel extends StatelessWidget {
 
 class _ProfileInput extends StatelessWidget {
   final TextEditingController controller;
-  final FocusNode             focusNode;
-  final bool                  isActive;
-  final String                hintText;
-  final TextInputType         keyboardType;
-  final ValueChanged<String>  onChanged;
-  final double                w, h;
+  final FocusNode focusNode;
+  final bool isActive;
+  final String hintText;
+  final TextInputType keyboardType;
+  final ValueChanged<String> onChanged;
+  final double w, h;
 
   const _ProfileInput({
     required this.controller,
@@ -603,7 +604,7 @@ class _ProfileInput extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 150),
       decoration: BoxDecoration(
-        color:        isActive ? MyShopColors.surfaceWhite : MyShopColors.surfaceGrey,
+        color: isActive ? MyShopColors.surfaceWhite : MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(w * 0.021),
         border: Border.all(
           color: isActive ? MyShopColors.primaryGold : MyShopColors.divider,
@@ -611,27 +612,28 @@ class _ProfileInput extends StatelessWidget {
         ),
       ),
       child: TextField(
-        controller:   controller,
-        focusNode:    focusNode,
+        controller: controller,
+        focusNode: focusNode,
         keyboardType: keyboardType,
-        onChanged:    onChanged,
+        onChanged: onChanged,
         style: TextStyle(
-          fontSize:   w * 0.036,
+          fontSize: w * 0.036,
           fontWeight: FontWeight.w400,
-          color:      MyShopColors.textPrimary,
+          color: MyShopColors.textPrimary,
         ),
         decoration: InputDecoration(
-          hintText:  hintText,
-          hintStyle: TextStyle(fontSize: w * 0.036, color: MyShopColors.textHint),
+          hintText: hintText,
+          hintStyle:
+              TextStyle(fontSize: w * 0.036, color: MyShopColors.textHint),
           contentPadding: EdgeInsets.symmetric(
             horizontal: w * 0.041,
-            vertical:   h * 0.017,
+            vertical: h * 0.017,
           ),
-          border:             InputBorder.none,
-          enabledBorder:      InputBorder.none,
-          focusedBorder:      InputBorder.none,
-          disabledBorder:     InputBorder.none,
-          errorBorder:        InputBorder.none,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
           focusedErrorBorder: InputBorder.none,
         ),
       ),
@@ -652,12 +654,12 @@ class _WarningBox extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(
           horizontal: w * 0.038,
-          vertical:   h * 0.017,
+          vertical: h * 0.017,
         ),
         decoration: BoxDecoration(
-          color:        MyShopColors.primaryGoldLight,
+          color: MyShopColors.primaryGoldLight,
           borderRadius: BorderRadius.circular(w * 0.026),
-          border:       Border.all(color: MyShopColors.primaryGold, width: 1.5),
+          border: Border.all(color: MyShopColors.primaryGold, width: 1.5),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -673,17 +675,17 @@ class _WarningBox extends StatelessWidget {
                 text: TextSpan(
                   style: TextStyle(
                     fontSize: w * 0.031,
-                    height:   1.45,
-                    color:    MyShopColors.textSecondary,
+                    height: 1.45,
+                    color: MyShopColors.textSecondary,
                   ),
                   children: const [
                     TextSpan(
-                      text:  'Warning: ',
+                      text: 'Warning: ',
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
                     TextSpan(
                       text: 'Changing your email requires a one-time '
-                            'verification code for account security.',
+                          'verification code for account security.',
                       style: TextStyle(fontStyle: FontStyle.italic),
                     ),
                   ],
@@ -702,8 +704,7 @@ class _WarningBox extends StatelessWidget {
 class _ErrorBanner extends StatelessWidget {
   final String message;
   final double w, h;
-  const _ErrorBanner(
-      {required this.message, required this.w, required this.h});
+  const _ErrorBanner({required this.message, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
@@ -712,13 +713,13 @@ class _ErrorBanner extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(
           horizontal: w * 0.038,
-          vertical:   h * 0.015,
+          vertical: h * 0.015,
         ),
         decoration: BoxDecoration(
-          color:        MyShopColors.errorLight,
+          color: MyShopColors.errorLight,
           borderRadius: BorderRadius.circular(w * 0.026),
-          border:       Border.all(
-              color: MyShopColors.error.withAlpha(80), width: 1.5),
+          border:
+              Border.all(color: MyShopColors.error.withAlpha(80), width: 1.5),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -734,8 +735,8 @@ class _ErrorBanner extends StatelessWidget {
                 message,
                 style: TextStyle(
                   fontSize: w * 0.031,
-                  height:   1.45,
-                  color:    MyShopColors.error,
+                  height: 1.45,
+                  color: MyShopColors.error,
                 ),
               ),
             ),
@@ -749,7 +750,7 @@ class _ErrorBanner extends StatelessWidget {
 // ── Bottom Bar ────────────────────────────────────────────────────────────────
 
 class _BottomBar extends ConsumerWidget {
-  final double           w, h;
+  final double w, h;
   final EditProfileState state;
   const _BottomBar({required this.w, required this.h, required this.state});
 
@@ -759,13 +760,13 @@ class _BottomBar extends ConsumerWidget {
 
     return Container(
       decoration: const BoxDecoration(
-        color:  MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         border: Border(top: BorderSide(color: MyShopColors.divider)),
       ),
       padding: EdgeInsets.only(
-        left:   w * 0.041,
-        right:  w * 0.041,
-        top:    h * 0.017,
+        left: w * 0.041,
+        right: w * 0.041,
+        top: h * 0.017,
         bottom: bottomPad + h * 0.017,
       ),
       child: Row(
@@ -778,7 +779,7 @@ class _BottomBar extends ConsumerWidget {
               child: Container(
                 height: h * 0.066,
                 decoration: BoxDecoration(
-                  color:        MyShopColors.surfaceWhite,
+                  color: MyShopColors.surfaceWhite,
                   borderRadius: BorderRadius.circular(w * 0.031),
                   border: Border.all(color: MyShopColors.divider, width: 1.5),
                 ),
@@ -786,9 +787,9 @@ class _BottomBar extends ConsumerWidget {
                   child: Text(
                     'Cancel',
                     style: TextStyle(
-                      fontSize:   w * 0.038,
+                      fontSize: w * 0.038,
                       fontWeight: FontWeight.w600,
-                      color:      MyShopColors.textPrimary,
+                      color: MyShopColors.textPrimary,
                     ),
                   ),
                 ),
@@ -803,33 +804,31 @@ class _BottomBar extends ConsumerWidget {
               height: h * 0.066,
               child: ElevatedButton(
                 onPressed: state.canSave
-                    ? () => ref
-                        .read(editProfileProvider.notifier)
-                        .saveChanges()
+                    ? () => ref.read(editProfileProvider.notifier).saveChanges()
                     : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor:         MyShopColors.darkSlate,
+                  backgroundColor: MyShopColors.darkSlate,
                   disabledBackgroundColor: MyShopColors.surfaceGrey,
-                  elevation:               0,
+                  elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(w * 0.031),
                   ),
                 ),
                 child: state.isSaving
                     ? SizedBox(
-                        width:  w * 0.046,
+                        width: w * 0.046,
                         height: w * 0.046,
                         child: const CircularProgressIndicator(
                           strokeWidth: 2,
-                          color:       MyShopColors.surfaceWhite,
+                          color: MyShopColors.surfaceWhite,
                         ),
                       )
                     : Text(
                         state.isSaved ? 'Saved ✓' : 'Save Changes',
                         style: TextStyle(
-                          fontSize:   w * 0.038,
+                          fontSize: w * 0.038,
                           fontWeight: FontWeight.w600,
-                          color:      MyShopColors.surfaceWhite,
+                          color: MyShopColors.surfaceWhite,
                         ),
                       ),
               ),

@@ -105,9 +105,10 @@ class _JobDetailBody extends StatelessWidget {
                 ),
                 SizedBox(height: h * 0.033),
                 _TimingSection(
-                  isImmediate:  job.isImmediate,
+                  isImmediate: job.isImmediate,
                   scheduledFor: job.scheduledFor,
-                  w: w, h: h,
+                  w: w,
+                  h: h,
                 ),
                 SizedBox(height: h * 0.033),
                 _TimelineSection(steps: job.timeline, w: w, h: h),
@@ -117,7 +118,7 @@ class _JobDetailBody extends StatelessWidget {
           ),
         ),
         _BottomActionBar(
-          jobId:    job.id,
+          jobId: job.id,
           jobTitle: job.title,
           selectedArtisanId: job.selectedArtisanId,
           status: job.status,
@@ -305,13 +306,13 @@ class _JobSummaryCard extends ConsumerWidget {
       margin: EdgeInsets.symmetric(horizontal: w * 0.041),
       padding: EdgeInsets.all(w * 0.046),
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(w * 0.041),
         boxShadow: [
           BoxShadow(
-            color:      Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: w * 0.031,
-            offset:     Offset(0, w * 0.005),
+            offset: Offset(0, w * 0.005),
           ),
         ],
       ),
@@ -402,9 +403,9 @@ class _JobSummaryCard extends ConsumerWidget {
                     Text(
                       'BIDS RECEIVED',
                       style: TextStyle(
-                        fontSize:      w * 0.026,
-                        fontWeight:    FontWeight.w900,
-                        color:         MyShopColors.textSecondary,
+                        fontSize: w * 0.026,
+                        fontWeight: FontWeight.w900,
+                        color: MyShopColors.textSecondary,
                         letterSpacing: 1.2,
                       ),
                     ),
@@ -414,9 +415,9 @@ class _JobSummaryCard extends ConsumerWidget {
                         Text(
                           '$bidCount Artisans',
                           style: TextStyle(
-                            fontSize:   w * 0.038,
+                            fontSize: w * 0.038,
                             fontWeight: FontWeight.w700,
-                            color:      MyShopColors.textPrimary,
+                            color: MyShopColors.textPrimary,
                           ),
                         ),
                         SizedBox(width: w * 0.021),
@@ -745,10 +746,10 @@ class _PhotoCard extends StatelessWidget {
 // ── Timing Section ─────────────────────────────────────────────────────────────
 
 class _TimingSection extends StatelessWidget {
-  final bool      isImmediate;
+  final bool isImmediate;
   final DateTime? scheduledFor;
-  final double    w;
-  final double    h;
+  final double w;
+  final double h;
 
   const _TimingSection({
     required this.isImmediate,
@@ -762,17 +763,29 @@ class _TimingSection extends StatelessWidget {
     final dt = scheduledFor!;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final that  = DateTime(dt.year, dt.month, dt.day);
-    final diff  = that.difference(today).inDays;
+    final that = DateTime(dt.year, dt.month, dt.day);
+    final diff = that.difference(today).inDays;
 
     final hh = dt.hour.toString().padLeft(2, '0');
     final mm = dt.minute.toString().padLeft(2, '0');
     final time = '$hh:$mm';
 
-    if (diff == 0)  return 'Today, $time';
-    if (diff == 1)  return 'Tomorrow, $time';
-    const months = ['Jan','Feb','Mar','Apr','May','Jun',
-                    'Jul','Aug','Sep','Oct','Nov','Dec'];
+    if (diff == 0) return 'Today, $time';
+    if (diff == 1) return 'Tomorrow, $time';
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
     return '${dt.day} ${months[dt.month - 1]}, $time';
   }
 
@@ -782,17 +795,17 @@ class _TimingSection extends StatelessWidget {
       margin: EdgeInsets.symmetric(horizontal: w * 0.041),
       padding: EdgeInsets.symmetric(
         horizontal: w * 0.041,
-        vertical:   h * 0.014,
+        vertical: h * 0.014,
       ),
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceGrey,
+        color: MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(w * 0.041),
       ),
       child: Row(
         children: [
           Icon(
             Icons.access_time_rounded,
-            size:  w * 0.051,
+            size: w * 0.051,
             color: MyShopColors.textPrimary,
           ),
           SizedBox(width: w * 0.026),
@@ -800,9 +813,9 @@ class _TimingSection extends StatelessWidget {
             child: Text(
               'Service Timing',
               style: TextStyle(
-                fontSize:   w * 0.036,
+                fontSize: w * 0.036,
                 fontWeight: FontWeight.w700,
-                color:      MyShopColors.textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
           ),
@@ -810,25 +823,25 @@ class _TimingSection extends StatelessWidget {
           Container(
             padding: EdgeInsets.symmetric(
               horizontal: w * 0.041,
-              vertical:   h * 0.009,
+              vertical: h * 0.009,
             ),
             decoration: BoxDecoration(
-              color:        MyShopColors.surfaceWhite,
+              color: MyShopColors.surfaceWhite,
               borderRadius: BorderRadius.circular(w * 0.026),
               boxShadow: [
                 BoxShadow(
-                  color:      Colors.black.withValues(alpha: 0.06),
+                  color: Colors.black.withValues(alpha: 0.06),
                   blurRadius: w * 0.013,
-                  offset:     Offset(0, w * 0.003),
+                  offset: Offset(0, w * 0.003),
                 ),
               ],
             ),
             child: Text(
               _valueLabel(),
               style: TextStyle(
-                fontSize:   w * 0.033,
+                fontSize: w * 0.033,
                 fontWeight: FontWeight.w700,
-                color:      MyShopColors.textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
           ),
@@ -860,7 +873,7 @@ class _TimelineSection extends StatelessWidget {
           _SectionTitle(label: 'Request Timeline', w: w, h: h),
           SizedBox(height: h * 0.019),
           ...steps.asMap().entries.map((entry) {
-            final i    = entry.key;
+            final i = entry.key;
             final step = entry.value;
             final isLast = i == steps.length - 1;
             return _TimelineRow(
@@ -907,7 +920,7 @@ class _TimelineRow extends StatelessWidget {
                           ? MyShopColors.textPrimary
                           : MyShopColors.divider,
                       dashLength: 4,
-                      gapLength:  4,
+                      gapLength: 4,
                     ),
                   ),
               ],
@@ -1042,9 +1055,15 @@ class _TimelineBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (bg, fg) = switch (status) {
-      TimelineStepStatus.active  => (MyShopColors.primaryGoldLight, MyShopColors.primaryGold),
-      TimelineStepStatus.pending => (MyShopColors.surfaceGrey, MyShopColors.disabled),
-      _                          => (MyShopColors.successLight, MyShopColors.success),
+      TimelineStepStatus.active => (
+          MyShopColors.primaryGoldLight,
+          MyShopColors.primaryGold
+        ),
+      TimelineStepStatus.pending => (
+          MyShopColors.surfaceGrey,
+          MyShopColors.disabled
+        ),
+      _ => (MyShopColors.successLight, MyShopColors.success),
     };
     return Container(
       padding: EdgeInsets.symmetric(
@@ -1723,7 +1742,7 @@ class _ViewBidsButton extends ConsumerWidget {
             height: h * 0.062,
             padding: EdgeInsets.symmetric(horizontal: w * 0.041),
             decoration: BoxDecoration(
-              color:        MyShopColors.darkSlate,
+              color: MyShopColors.darkSlate,
               borderRadius: BorderRadius.circular(w * 0.021),
             ),
             child: Row(
@@ -1736,9 +1755,10 @@ class _ViewBidsButton extends ConsumerWidget {
                       Text(
                         'ACTION NEEDED',
                         style: TextStyle(
-                          fontSize:      w * 0.026,
-                          fontWeight:    FontWeight.w700,
-                          color:         MyShopColors.surfaceWhite.withValues(alpha: 0.7),
+                          fontSize: w * 0.026,
+                          fontWeight: FontWeight.w700,
+                          color:
+                              MyShopColors.surfaceWhite.withValues(alpha: 0.7),
                           letterSpacing: 0.8,
                         ),
                       ),
@@ -1746,9 +1766,9 @@ class _ViewBidsButton extends ConsumerWidget {
                       Text(
                         'View $bidCount Bids',
                         style: TextStyle(
-                          fontSize:   w * 0.038,
+                          fontSize: w * 0.038,
                           fontWeight: FontWeight.w700,
-                          color:      MyShopColors.surfaceWhite,
+                          color: MyShopColors.surfaceWhite,
                         ),
                       ),
                     ],
@@ -1756,7 +1776,7 @@ class _ViewBidsButton extends ConsumerWidget {
                 ),
                 Icon(
                   Icons.chevron_right_rounded,
-                  size:  w * 0.056,
+                  size: w * 0.056,
                   color: MyShopColors.surfaceWhite,
                 ),
               ],
@@ -1764,10 +1784,10 @@ class _ViewBidsButton extends ConsumerWidget {
           ),
           // Bid-count badge (primary gold)
           Positioned(
-            top:   -(h * 0.012),
+            top: -(h * 0.012),
             right: -(w * 0.015),
             child: Container(
-              width:  w * 0.077,
+              width: w * 0.077,
               height: w * 0.077,
               decoration: BoxDecoration(
                 color: MyShopColors.primaryGold,
@@ -1778,9 +1798,9 @@ class _ViewBidsButton extends ConsumerWidget {
                 child: Text(
                   '$bidCount',
                   style: TextStyle(
-                    fontSize:   w * 0.028,
+                    fontSize: w * 0.028,
                     fontWeight: FontWeight.w700,
-                    color:      MyShopColors.surfaceWhite,
+                    color: MyShopColors.surfaceWhite,
                   ),
                 ),
               ),
@@ -1805,9 +1825,9 @@ class _SectionTitle extends StatelessWidget {
     return Text(
       label,
       style: TextStyle(
-        fontSize:   w * 0.038,
+        fontSize: w * 0.038,
         fontWeight: FontWeight.w600,
-        color:      MyShopColors.textPrimary,
+        color: MyShopColors.textPrimary,
         letterSpacing: -0.2,
       ),
     );
@@ -1913,7 +1933,7 @@ class _Shimmer extends StatelessWidget {
 // ── Dashed vertical line (timeline connector) ─────────────────────────────────
 
 class _DashedVerticalLine extends StatelessWidget {
-  final Color  color;
+  final Color color;
   final double dashLength;
   final double gapLength;
 
@@ -1929,9 +1949,9 @@ class _DashedVerticalLine extends StatelessWidget {
       width: 2,
       child: CustomPaint(
         painter: _DashedVerticalLinePainter(
-          color:      color,
+          color: color,
           dashLength: dashLength,
-          gapLength:  gapLength,
+          gapLength: gapLength,
         ),
       ),
     );
@@ -1939,7 +1959,7 @@ class _DashedVerticalLine extends StatelessWidget {
 }
 
 class _DashedVerticalLinePainter extends CustomPainter {
-  final Color  color;
+  final Color color;
   final double dashLength;
   final double gapLength;
 
@@ -1952,9 +1972,9 @@ class _DashedVerticalLinePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color       = color
+      ..color = color
       ..strokeWidth = 2
-      ..style       = PaintingStyle.stroke;
+      ..style = PaintingStyle.stroke;
 
     final x = size.width / 2;
     var y = 0.0;
@@ -1967,7 +1987,7 @@ class _DashedVerticalLinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _DashedVerticalLinePainter old) =>
-      old.color      != color      ||
+      old.color != color ||
       old.dashLength != dashLength ||
-      old.gapLength  != gapLength;
+      old.gapLength != gapLength;
 }

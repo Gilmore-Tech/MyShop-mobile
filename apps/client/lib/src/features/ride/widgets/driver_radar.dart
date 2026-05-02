@@ -2,18 +2,18 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-const _radarFill  = Color(0xFFF5E8D0); // warm sand/cream
-const _pinColor   = MyShopColors.textPrimary; // dark navy pin
+const _radarFill = Color(0xFFF5E8D0); // warm sand/cream
+const _pinColor = MyShopColors.textPrimary; // dark navy pin
 
 /// Radar widget — full-size static circle with an outward-expanding pulse ring.
 /// The main disc stays at full size; the ring expands from the edge and fades.
 class DriverRadar extends StatefulWidget {
   final bool driversFound;
-  final int  driversAvailable;
+  final int driversAvailable;
 
   const DriverRadar({
     super.key,
-    this.driversFound    = false,
+    this.driversFound = false,
     this.driversAvailable = 0,
   });
 
@@ -24,14 +24,14 @@ class DriverRadar extends StatefulWidget {
 class _DriverRadarState extends State<DriverRadar>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
-  late final Animation<double>   _expand;
-  late final Animation<double>   _fade;
+  late final Animation<double> _expand;
+  late final Animation<double> _fade;
 
   @override
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-      vsync:    this,
+      vsync: this,
       duration: const Duration(milliseconds: 2000),
     )..repeat();
 
@@ -56,8 +56,8 @@ class _DriverRadarState extends State<DriverRadar>
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (_, __) => _RadarBody(
-        expandScale:  _expand.value,
-        ringOpacity:  _fade.value,
+        expandScale: _expand.value,
+        ringOpacity: _fade.value,
         driversFound: widget.driversFound,
       ),
     );
@@ -67,7 +67,7 @@ class _DriverRadarState extends State<DriverRadar>
 class _RadarBody extends StatelessWidget {
   final double expandScale;
   final double ringOpacity;
-  final bool   driversFound;
+  final bool driversFound;
 
   const _RadarBody({
     required this.expandScale,
@@ -79,11 +79,11 @@ class _RadarBody extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (_, constraints) {
-        final size   = math.min(constraints.maxWidth, constraints.maxHeight);
+        final size = math.min(constraints.maxWidth, constraints.maxHeight);
         final radius = size / 2;
 
         return SizedBox(
-          width:  size,
+          width: size,
           height: size,
           child: Stack(
             alignment: Alignment.center,
@@ -92,12 +92,13 @@ class _RadarBody extends StatelessWidget {
               Transform.scale(
                 scale: expandScale,
                 child: Container(
-                  width:  size,
+                  width: size,
                   height: size,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: MyShopColors.primaryGold.withAlpha((ringOpacity * 255).round()),
+                      color: MyShopColors.primaryGold
+                          .withAlpha((ringOpacity * 255).round()),
                       width: 3,
                     ),
                   ),
@@ -106,12 +107,13 @@ class _RadarBody extends StatelessWidget {
 
               // ── Main disc ─────────────────────────────────────────────────
               Container(
-                width:  size,
+                width: size,
                 height: size,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: _radarFill,
-                  border: Border.all(color: MyShopColors.primaryGold, width: 2.5),
+                  border:
+                      Border.all(color: MyShopColors.primaryGold, width: 2.5),
                 ),
               ),
 
@@ -149,23 +151,23 @@ class _PinMarker extends StatelessWidget {
   Widget build(BuildContext context) {
     final iconSize = size * 0.14;
     return Container(
-      width:  iconSize * 1.8,
+      width: iconSize * 1.8,
       height: iconSize * 1.8,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color:      Colors.black.withAlpha(24),
+            color: Colors.black.withAlpha(24),
             blurRadius: 10,
-            offset:     const Offset(0, 3),
+            offset: const Offset(0, 3),
           ),
         ],
       ),
       child: Icon(
         Icons.location_on_rounded,
         color: _pinColor,
-        size:  iconSize,
+        size: iconSize,
       ),
     );
   }
@@ -178,22 +180,22 @@ class _CarIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
     return Container(
-      width:  w * 0.092,
+      width: w * 0.092,
       height: w * 0.092,
       decoration: BoxDecoration(
-        color:  Colors.white,
-        shape:  BoxShape.circle,
+        color: Colors.white,
+        shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color:      Colors.black.withAlpha(20),
+            color: Colors.black.withAlpha(20),
             blurRadius: 4,
-            offset:     const Offset(0, 1),
+            offset: const Offset(0, 1),
           ),
         ],
       ),
       child: const Icon(
         Icons.directions_car_rounded,
-        size:  18,
+        size: 18,
         color: MyShopColors.darkSlate,
       ),
     );

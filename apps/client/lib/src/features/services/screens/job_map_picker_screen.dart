@@ -16,8 +16,7 @@ class JobMapPickerScreen extends ConsumerStatefulWidget {
   const JobMapPickerScreen({super.key});
 
   @override
-  ConsumerState<JobMapPickerScreen> createState() =>
-      _JobMapPickerScreenState();
+  ConsumerState<JobMapPickerScreen> createState() => _JobMapPickerScreenState();
 }
 
 class _JobMapPickerScreenState extends ConsumerState<JobMapPickerScreen> {
@@ -53,8 +52,9 @@ class _JobMapPickerScreenState extends ConsumerState<JobMapPickerScreen> {
   }
 
   Future<void> _goToMyLocation() async {
-    final position =
-        await ref.read(currentLocationServiceProvider).ensure(forceRefresh: true);
+    final position = await ref
+        .read(currentLocationServiceProvider)
+        .ensure(forceRefresh: true);
     if (!mounted || position == null) return;
     final target = LatLng(position.latitude, position.longitude);
     _mapController?.animateCamera(CameraUpdate.newLatLngZoom(target, 16));
@@ -206,8 +206,7 @@ class _JobMapPickerScreenState extends ConsumerState<JobMapPickerScreen> {
               padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomPad),
               decoration: const BoxDecoration(
                 color: Colors.white,
-                borderRadius:
-                    BorderRadius.vertical(top: Radius.circular(18)),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -274,10 +273,9 @@ class _JobMapPickerScreenState extends ConsumerState<JobMapPickerScreen> {
                     width: double.infinity,
                     height: 52,
                     child: ElevatedButton(
-                      onPressed:
-                          _address.isNotEmpty && !_isGeocoding
-                              ? _confirm
-                              : null,
+                      onPressed: _address.isNotEmpty && !_isGeocoding
+                          ? _confirm
+                          : null,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: MyShopColors.primaryGold,
                         foregroundColor: Colors.white,

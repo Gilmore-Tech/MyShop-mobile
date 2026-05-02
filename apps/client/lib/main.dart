@@ -38,7 +38,8 @@ Future<void> main() async {
   //     options: DefaultFirebaseOptions.currentPlatform,
   //   );
   try {
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform);
   } catch (e) {
     debugPrint('[main] Firebase init failed — push disabled for this run: $e');
   }

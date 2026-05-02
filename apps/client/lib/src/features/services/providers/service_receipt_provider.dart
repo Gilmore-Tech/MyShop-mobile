@@ -8,28 +8,28 @@ import '../../ride/providers/ride_receipt_provider.dart' show PaymentMethodType;
 // All monetary values in pesewas (int).  100 pesewas = GH¢ 1.
 
 class ServiceReceiptData {
-  final String            jobId;              // "JOB-44102-GH"
+  final String jobId; // "JOB-44102-GH"
 
   /// Backend job status — used to gate the Rate CTA so the client only
   /// sees it once the booking is truly settled (not at
   /// `artisan_marked_complete`, where the rating endpoint will 410).
-  final String            status;             // "completed", "artisan_marked_complete", ...
+  final String status; // "completed", "artisan_marked_complete", ...
 
-  final String            artisanName;        // "Ama Serwaa"
-  final String            artisanSpecialty;   // "Certified Electrician"
-  final double            artisanRating;      // 4.8
-  final String            serviceLocation;    // "Plot 14, East Legon Residential Area"
-  final String            workDurationLabel;  // "2h 15m"
+  final String artisanName; // "Ama Serwaa"
+  final String artisanSpecialty; // "Certified Electrician"
+  final double artisanRating; // 4.8
+  final String serviceLocation; // "Plot 14, East Legon Residential Area"
+  final String workDurationLabel; // "2h 15m"
 
   // Cost breakdown (pesewas)
-  final int               serviceCallFeePesewas;
-  final int               laborPesewas;
-  final String            laborHoursLabel;    // "2 Hours" — shown as "Labor (2 Hours)"
-  final int               materialsPesewas;
-  final int               totalPaidPesewas;
+  final int serviceCallFeePesewas;
+  final int laborPesewas;
+  final String laborHoursLabel; // "2 Hours" — shown as "Labor (2 Hours)"
+  final int materialsPesewas;
+  final int totalPaidPesewas;
 
-  final String            dateTimeLabel;       // "23 May 2024, 10:15"
-  final String            paymentMethodLabel;  // "Visa ****4242"
+  final String dateTimeLabel; // "23 May 2024, 10:15"
+  final String paymentMethodLabel; // "Visa ****4242"
   final PaymentMethodType paymentMethodType;
 
   const ServiceReceiptData({
@@ -58,9 +58,9 @@ class ServiceReceiptData {
   static String _fmt(int p) => 'GH¢ ${(p / 100.0).toStringAsFixed(2)}';
 
   String get serviceCallFeeDisplay => _fmt(serviceCallFeePesewas);
-  String get laborDisplay          => _fmt(laborPesewas);
-  String get materialsDisplay      => _fmt(materialsPesewas);
-  String get totalPaidDisplay      => _fmt(totalPaidPesewas);
+  String get laborDisplay => _fmt(laborPesewas);
+  String get materialsDisplay => _fmt(materialsPesewas);
+  String get totalPaidDisplay => _fmt(totalPaidPesewas);
 }
 
 // ── Provider ───────────────────────────────────────────────────────────────────
@@ -96,22 +96,26 @@ class _ServiceReceiptNotifier
     final costBreakdown = data['costBreakdown'] as Map<String, dynamic>? ?? {};
     final paymentData = data['payment'] as Map<String, dynamic>? ?? {};
 
-    final artisanName = '${artisanData['firstName'] ?? ''} ${artisanData['lastName'] ?? ''}'.trim();
-    final serviceCallFeePesewas = (costBreakdown['serviceCallFeePesewas'] as num?)?.toInt() ?? 0;
+    final artisanName =
+        '${artisanData['firstName'] ?? ''} ${artisanData['lastName'] ?? ''}'
+            .trim();
+    final serviceCallFeePesewas =
+        (costBreakdown['serviceCallFeePesewas'] as num?)?.toInt() ?? 0;
     final laborPesewas = (costBreakdown['laborPesewas'] as num?)?.toInt() ?? 0;
-    final materialsPesewas = (costBreakdown['materialsPesewas'] as num?)?.toInt() ?? 0;
-    final totalPesewas = (data['totalPesewas'] as num?)?.toInt()
-        ?? serviceCallFeePesewas + laborPesewas + materialsPesewas;
+    final materialsPesewas =
+        (costBreakdown['materialsPesewas'] as num?)?.toInt() ?? 0;
+    final totalPesewas = (data['totalPesewas'] as num?)?.toInt() ??
+        serviceCallFeePesewas + laborPesewas + materialsPesewas;
 
     final paymentMethodStr = paymentData['method'] as String? ?? '';
     final paymentMethodType = switch (paymentMethodStr) {
-      'mobile_money' || 'mtn'  => PaymentMethodType.mtn,
-      'vodafone'               => PaymentMethodType.vodafone,
-      'airtel_tigo'            => PaymentMethodType.airtelTigo,
-      'visa'                   => PaymentMethodType.visa,
-      'mastercard'             => PaymentMethodType.mastercard,
-      'cash'                   => PaymentMethodType.cash,
-      _                        => PaymentMethodType.mtn,
+      'mobile_money' || 'mtn' => PaymentMethodType.mtn,
+      'vodafone' => PaymentMethodType.vodafone,
+      'airtel_tigo' => PaymentMethodType.airtelTigo,
+      'visa' => PaymentMethodType.visa,
+      'mastercard' => PaymentMethodType.mastercard,
+      'cash' => PaymentMethodType.cash,
+      _ => PaymentMethodType.mtn,
     };
 
     return ServiceReceiptData(
@@ -137,21 +141,21 @@ class _ServiceReceiptNotifier
 // ── Mock data ──────────────────────────────────────────────────────────────────
 
 const _defaultMock = ServiceReceiptData(
-  jobId:                  'JOB-44102-GH',
-  status:                 'completed',
-  artisanName:            'Ama Serwaa',
-  artisanSpecialty:       'Certified Electrician',
-  artisanRating:          4.8,
-  serviceLocation:        'Plot 14, East Legon Residential Area',
-  workDurationLabel:      '2h 15m',
-  serviceCallFeePesewas:  3000,   // GH¢ 30.00
-  laborPesewas:           8000,   // GH¢ 80.00
-  laborHoursLabel:        '2 Hours',
-  materialsPesewas:       1000,   // GH¢ 10.00
-  totalPaidPesewas:       12000,  // GH¢ 120.00
-  dateTimeLabel:          '23 May 2024, 10:15',
-  paymentMethodLabel:     'Visa ****4242',
-  paymentMethodType:      PaymentMethodType.visa,
+  jobId: 'JOB-44102-GH',
+  status: 'completed',
+  artisanName: 'Ama Serwaa',
+  artisanSpecialty: 'Certified Electrician',
+  artisanRating: 4.8,
+  serviceLocation: 'Plot 14, East Legon Residential Area',
+  workDurationLabel: '2h 15m',
+  serviceCallFeePesewas: 3000, // GH¢ 30.00
+  laborPesewas: 8000, // GH¢ 80.00
+  laborHoursLabel: '2 Hours',
+  materialsPesewas: 1000, // GH¢ 10.00
+  totalPaidPesewas: 12000, // GH¢ 120.00
+  dateTimeLabel: '23 May 2024, 10:15',
+  paymentMethodLabel: 'Visa ****4242',
+  paymentMethodType: PaymentMethodType.visa,
 );
 
 /// Keyed mock receipts — populate when wiring to real API.

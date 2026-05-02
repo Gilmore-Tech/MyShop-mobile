@@ -15,9 +15,9 @@ class JobDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final size  = MediaQuery.sizeOf(context);
-    final w     = size.width;
-    final h     = size.height;
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
     final jobId = GoRouterState.of(context).pathParameters['jobId'] ?? '';
 
     final asyncDetail = ref.watch(jobActivityDetailProvider(jobId));
@@ -27,24 +27,22 @@ class JobDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         backgroundColor: MyShopColors.surfaceWhite,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back,
-              color: MyShopColors.textPrimary),
+          icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
           onPressed: () => context.pop(),
         ),
         title: Text('Job Detail',
             style: TextStyle(
-                color:      MyShopColors.textPrimary,
-                fontSize:   w * 0.044,
+                color: MyShopColors.textPrimary,
+                fontSize: w * 0.044,
                 fontWeight: FontWeight.w700)),
         centerTitle: false,
         actions: [
           TextButton(
-            onPressed: () =>
-                context.push(AppRoutes.jobReceiptPath(jobId)),
+            onPressed: () => context.push(AppRoutes.jobReceiptPath(jobId)),
             child: Text('Receipt',
                 style: TextStyle(
-                    color:      MyShopColors.primaryGold,
-                    fontSize:   w * 0.036,
+                    color: MyShopColors.primaryGold,
+                    fontSize: w * 0.036,
                     fontWeight: FontWeight.w600)),
           ),
         ],
@@ -91,10 +89,8 @@ class _JobDetailBody extends StatelessWidget {
         children: [
           _StatusCard(data: data, w: w, h: h),
           SizedBox(height: h * 0.020),
-          if (data.hasArtisan)
-            _ArtisanCard(data: data, w: w, h: h),
-          if (data.hasArtisan)
-            SizedBox(height: h * 0.020),
+          if (data.hasArtisan) _ArtisanCard(data: data, w: w, h: h),
+          if (data.hasArtisan) SizedBox(height: h * 0.020),
           _JobInfoCard(data: data, w: w, h: h),
           SizedBox(height: h * 0.020),
           _CostCard(data: data, w: w, h: h),
@@ -120,23 +116,21 @@ class _StatusCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-              color:      Colors.black.withAlpha(8),
+              color: Colors.black.withAlpha(8),
               blurRadius: 8,
-              offset:     const Offset(0, 2)),
+              offset: const Offset(0, 2)),
         ],
       ),
       child: Row(
         children: [
           Container(
             padding: EdgeInsets.all(w * 0.032),
-            decoration: BoxDecoration(
-                color: badgeBg, shape: BoxShape.circle),
-            child: Icon(Icons.work_rounded,
-                color: badgeFg, size: 24),
+            decoration: BoxDecoration(color: badgeBg, shape: BoxShape.circle),
+            child: Icon(Icons.work_rounded, color: badgeFg, size: 24),
           ),
           SizedBox(width: w * 0.036),
           Expanded(
@@ -147,29 +141,28 @@ class _StatusCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color:      MyShopColors.textPrimary,
-                      fontSize:   w * 0.038,
+                      color: MyShopColors.textPrimary,
+                      fontSize: w * 0.038,
                       fontWeight: FontWeight.w700,
                     )),
                 const SizedBox(height: 2),
                 Text(data.dateTimeLabel,
                     style: TextStyle(
-                        color:    MyShopColors.textSecondary,
+                        color: MyShopColors.textSecondary,
                         fontSize: w * 0.032)),
               ],
             ),
           ),
           Container(
-            padding: EdgeInsets.symmetric(
-                horizontal: w * 0.024, vertical: 5),
+            padding: EdgeInsets.symmetric(horizontal: w * 0.024, vertical: 5),
             decoration: BoxDecoration(
-              color:        badgeBg,
+              color: badgeBg,
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(data.statusLabel,
                 style: TextStyle(
-                  color:      badgeFg,
-                  fontSize:   w * 0.028,
+                  color: badgeFg,
+                  fontSize: w * 0.028,
                   fontWeight: FontWeight.w600,
                 )),
           ),
@@ -180,14 +173,15 @@ class _StatusCard extends StatelessWidget {
 
   (Color bg, Color fg) _statusColors(String status) {
     return switch (status) {
-      'completed'              => (MyShopColors.successLight, MyShopColors.success),
-      'cancelled'              => (MyShopColors.errorLight, MyShopColors.error),
+      'completed' => (MyShopColors.successLight, MyShopColors.success),
+      'cancelled' => (MyShopColors.errorLight, MyShopColors.error),
       'in_progress' ||
       'artisan_marked_complete' ||
       'artisan_en_route' ||
       'en_route' ||
-      'arrived'                => (MyShopColors.warningLight, MyShopColors.warning),
-      _                        => (MyShopColors.infoLight, MyShopColors.info),
+      'arrived' =>
+        (MyShopColors.warningLight, MyShopColors.warning),
+      _ => (MyShopColors.infoLight, MyShopColors.info),
     };
   }
 }
@@ -204,14 +198,14 @@ class _ArtisanCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: MyShopColors.divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Row(
         children: [
           Container(
-            width:  w * 0.13,
+            width: w * 0.13,
             height: w * 0.13,
             decoration: const BoxDecoration(
                 color: MyShopColors.darkSlate, shape: BoxShape.circle),
@@ -225,15 +219,15 @@ class _ArtisanCard extends StatelessWidget {
               children: [
                 Text(data.artisanName ?? '',
                     style: TextStyle(
-                      color:      MyShopColors.textPrimary,
-                      fontSize:   w * 0.040,
+                      color: MyShopColors.textPrimary,
+                      fontSize: w * 0.040,
                       fontWeight: FontWeight.w700,
                     )),
                 if (data.artisanSpecialty != null) ...[
                   const SizedBox(height: 3),
                   Text(data.artisanSpecialty!,
                       style: TextStyle(
-                          color:    MyShopColors.textSecondary,
+                          color: MyShopColors.textSecondary,
                           fontSize: w * 0.032)),
                 ],
                 if (data.artisanRating != null) ...[
@@ -246,8 +240,8 @@ class _ArtisanCard extends StatelessWidget {
                         '${data.artisanRating!.toStringAsFixed(1)}'
                         '${data.artisanJobCount != null ? '  •  ${data.artisanJobCount} jobs' : ''}',
                         style: TextStyle(
-                          color:      MyShopColors.textPrimary,
-                          fontSize:   w * 0.030,
+                          color: MyShopColors.textPrimary,
+                          fontSize: w * 0.030,
                           fontWeight: FontWeight.w500,
                         )),
                   ]),
@@ -257,10 +251,9 @@ class _ArtisanCard extends StatelessWidget {
           ),
           if (data.artisanVerified)
             Container(
-              padding: EdgeInsets.symmetric(
-                  horizontal: w * 0.020, vertical: 4),
+              padding: EdgeInsets.symmetric(horizontal: w * 0.020, vertical: 4),
               decoration: BoxDecoration(
-                color:        MyShopColors.successLight,
+                color: MyShopColors.successLight,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Row(
@@ -271,8 +264,8 @@ class _ArtisanCard extends StatelessWidget {
                   const SizedBox(width: 3),
                   Text('Verified',
                       style: TextStyle(
-                        color:      MyShopColors.success,
-                        fontSize:   w * 0.026,
+                        color: MyShopColors.success,
+                        fontSize: w * 0.026,
                         fontWeight: FontWeight.w600,
                       )),
                 ],
@@ -296,45 +289,46 @@ class _JobInfoCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: MyShopColors.divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Job Details',
               style: TextStyle(
-                color:      MyShopColors.textPrimary,
-                fontSize:   w * 0.036,
+                color: MyShopColors.textPrimary,
+                fontSize: w * 0.036,
                 fontWeight: FontWeight.w700,
               )),
           SizedBox(height: h * 0.006),
           if (data.location.isNotEmpty)
             _InfoRow(
-                icon:  Icons.location_on_outlined,
+                icon: Icons.location_on_outlined,
                 label: 'Location',
                 value: data.location,
-                w:     w),
+                w: w),
           if (data.location.isNotEmpty) SizedBox(height: h * 0.006),
           if (data.categoryName.isNotEmpty)
             _InfoRow(
-                icon:  Icons.category_outlined,
+                icon: Icons.category_outlined,
                 label: 'Category',
                 value: data.categoryName,
-                w:     w),
+                w: w),
           if (data.categoryName.isNotEmpty) SizedBox(height: h * 0.006),
           _InfoRow(
-              icon:  Icons.people_alt_outlined,
+              icon: Icons.people_alt_outlined,
               label: 'Bids',
-              value: '${data.bidCount} bid${data.bidCount == 1 ? '' : 's'} received',
-              w:     w),
+              value:
+                  '${data.bidCount} bid${data.bidCount == 1 ? '' : 's'} received',
+              w: w),
           SizedBox(height: h * 0.006),
           _InfoRow(
-              icon:  Icons.tag_rounded,
+              icon: Icons.tag_rounded,
               label: 'Job Ref',
               value: '#${data.jobId}',
-              w:     w),
+              w: w),
         ],
       ),
     );
@@ -343,8 +337,8 @@ class _JobInfoCard extends StatelessWidget {
 
 class _InfoRow extends StatelessWidget {
   final IconData icon;
-  final String   label, value;
-  final double   w;
+  final String label, value;
+  final double w;
   const _InfoRow({
     required this.icon,
     required this.label,
@@ -364,8 +358,8 @@ class _InfoRow extends StatelessWidget {
         Expanded(
           child: Text(value,
               style: TextStyle(
-                color:      MyShopColors.textPrimary,
-                fontSize:   w * 0.033,
+                color: MyShopColors.textPrimary,
+                fontSize: w * 0.033,
                 fontWeight: FontWeight.w600,
               )),
         ),
@@ -386,15 +380,20 @@ class _CostCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: MyShopColors.divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         children: [
-          _CostLine(label: 'Agreed price', value: data.agreedPriceDisplay, w: w, h: h),
+          _CostLine(
+              label: 'Agreed price',
+              value: data.agreedPriceDisplay,
+              w: w,
+              h: h),
           if (data.hasSupplement)
-            _CostLine(label: 'Supplement', value: data.supplementDisplay, w: w, h: h),
+            _CostLine(
+                label: 'Supplement', value: data.supplementDisplay, w: w, h: h),
           Padding(
             padding: EdgeInsets.symmetric(vertical: h * 0.010),
             child: const Divider(height: 1, color: MyShopColors.divider),
@@ -404,14 +403,14 @@ class _CostCard extends StatelessWidget {
             children: [
               Text('Total',
                   style: TextStyle(
-                    color:      MyShopColors.textPrimary,
-                    fontSize:   w * 0.038,
+                    color: MyShopColors.textPrimary,
+                    fontSize: w * 0.038,
                     fontWeight: FontWeight.w700,
                   )),
               Text(data.totalDisplay,
                   style: TextStyle(
-                    color:      MyShopColors.textPrimary,
-                    fontSize:   w * 0.044,
+                    color: MyShopColors.textPrimary,
+                    fontSize: w * 0.044,
                     fontWeight: FontWeight.w800,
                   )),
             ],
@@ -434,7 +433,7 @@ class _CostCard extends StatelessWidget {
                         ? 'Released from escrow'
                         : 'Held in escrow',
                     style: TextStyle(
-                        color:    MyShopColors.textSecondary,
+                        color: MyShopColors.textSecondary,
                         fontSize: w * 0.030)),
               ],
             ),
@@ -467,8 +466,8 @@ class _CostLine extends StatelessWidget {
                   color: MyShopColors.textSecondary, fontSize: w * 0.034)),
           Text(value,
               style: TextStyle(
-                color:      MyShopColors.textPrimary,
-                fontSize:   w * 0.034,
+                color: MyShopColors.textPrimary,
+                fontSize: w * 0.034,
                 fontWeight: FontWeight.w500,
               )),
         ],
@@ -497,25 +496,22 @@ class _ActionRow extends StatelessWidget {
         if (data.isCompleted)
           Expanded(
             child: OutlinedButton.icon(
-              onPressed: () =>
-                  context.push(AppRoutes.jobDisputePath(jobId)),
+              onPressed: () => context.push(AppRoutes.jobDisputePath(jobId)),
               icon: const Icon(Icons.flag_outlined, size: 18),
               label: const Text('Dispute'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: MyShopColors.error,
-                side:  const BorderSide(color: MyShopColors.error),
+                side: const BorderSide(color: MyShopColors.error),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
-                padding:
-                    EdgeInsets.symmetric(vertical: h * 0.018),
+                padding: EdgeInsets.symmetric(vertical: h * 0.018),
               ),
             ),
           ),
         if (data.isCompleted) SizedBox(width: w * 0.030),
         Expanded(
           child: ElevatedButton.icon(
-            onPressed: () =>
-                context.push(AppRoutes.jobReceiptPath(jobId)),
+            onPressed: () => context.push(AppRoutes.jobReceiptPath(jobId)),
             icon: const Icon(Icons.receipt_long_rounded, size: 18),
             label: const Text('View Receipt'),
             style: ElevatedButton.styleFrom(
@@ -524,8 +520,7 @@ class _ActionRow extends StatelessWidget {
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)),
               elevation: 0,
-              padding:
-                  EdgeInsets.symmetric(vertical: h * 0.018),
+              padding: EdgeInsets.symmetric(vertical: h * 0.018),
             ),
           ),
         ),

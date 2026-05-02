@@ -542,7 +542,8 @@ class _GridSkeleton extends StatelessWidget {
 
     return SingleChildScrollView(
       child: Padding(
-        padding: EdgeInsets.fromLTRB(w * 0.041, h * 0.024, w * 0.041, h * 0.028),
+        padding:
+            EdgeInsets.fromLTRB(w * 0.041, h * 0.024, w * 0.041, h * 0.028),
         child: GridView.count(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),

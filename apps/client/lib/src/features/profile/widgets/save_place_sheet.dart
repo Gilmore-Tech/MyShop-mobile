@@ -30,18 +30,18 @@ Future<void> showSavePlaceSheet(BuildContext context) {
 // that maps to 'favourite' too.
 
 class _LabelOption {
-  final String   label;
+  final String label;
   final IconData icon;
-  final String   locationType;
+  final String locationType;
   const _LabelOption(this.label, this.icon, this.locationType);
 }
 
 const _kLabelOptions = <_LabelOption>[
-  _LabelOption('Home',   Icons.home_outlined,            'home'),
-  _LabelOption('Work',   Icons.work_outline_rounded,     'work'),
-  _LabelOption('Gym',    Icons.fitness_center_outlined,  'favourite'),
-  _LabelOption('School', Icons.school_outlined,          'favourite'),
-  _LabelOption('Other',  Icons.bookmark_outline_rounded, 'favourite'),
+  _LabelOption('Home', Icons.home_outlined, 'home'),
+  _LabelOption('Work', Icons.work_outline_rounded, 'work'),
+  _LabelOption('Gym', Icons.fitness_center_outlined, 'favourite'),
+  _LabelOption('School', Icons.school_outlined, 'favourite'),
+  _LabelOption('Other', Icons.bookmark_outline_rounded, 'favourite'),
 ];
 
 // ── Sheet root ────────────────────────────────────────────────────────────────
@@ -58,11 +58,11 @@ class _SavePlaceSheetState extends ConsumerState<_SavePlaceSheet> {
   final _customLabelCtrl = TextEditingController();
   Timer? _debounce;
 
-  _LabelOption?     _selectedLabel;
-  PlaceSuggestion?  _selectedPlace;
+  _LabelOption? _selectedLabel;
+  PlaceSuggestion? _selectedPlace;
   List<PlaceSuggestion> _suggestions = const [];
-  bool   _isSearching = false;
-  bool   _isSaving    = false;
+  bool _isSearching = false;
+  bool _isSaving = false;
   String? _errorMessage;
 
   @override
@@ -86,9 +86,7 @@ class _SavePlaceSheetState extends ConsumerState<_SavePlaceSheet> {
   }
 
   bool get _canSave =>
-      !_isSaving &&
-      _resolvedLabel != null &&
-      _selectedPlace != null;
+      !_isSaving && _resolvedLabel != null && _selectedPlace != null;
 
   // ── Search ──────────────────────────────────────────────────────────────────
 
@@ -143,9 +141,9 @@ class _SavePlaceSheetState extends ConsumerState<_SavePlaceSheet> {
       _errorMessage = null;
     });
     final error = await ref.read(savedPlacesProvider.notifier).addPlace(
-          label:        label,
+          label: label,
           locationType: option.locationType,
-          suggestion:   place,
+          suggestion: place,
         );
     if (!mounted) return;
     if (error != null) {
@@ -163,9 +161,9 @@ class _SavePlaceSheetState extends ConsumerState<_SavePlaceSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final size  = MediaQuery.sizeOf(context);
-    final w     = size.width;
-    final h     = size.height;
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
     final inset = MediaQuery.viewInsetsOf(context).bottom;
 
     return Container(
@@ -188,7 +186,7 @@ class _SavePlaceSheetState extends ConsumerState<_SavePlaceSheet> {
             _SectionLabel(text: 'WHAT IS THIS PLACE?', w: w, h: h),
             SizedBox(height: h * 0.012),
             _LabelChipGrid(
-              options:  _kLabelOptions,
+              options: _kLabelOptions,
               selected: _selectedLabel,
               onTap: (opt) => setState(() {
                 _selectedLabel = opt;
@@ -215,7 +213,7 @@ class _SavePlaceSheetState extends ConsumerState<_SavePlaceSheet> {
             SizedBox(height: h * 0.012),
             _SearchField(
               controller: _searchCtrl,
-              onChanged:  _onSearchChanged,
+              onChanged: _onSearchChanged,
               hasSelection: _selectedPlace != null,
               onClear: _clearSelectedPlace,
               w: w,
@@ -249,7 +247,7 @@ class _SavePlaceSheetState extends ConsumerState<_SavePlaceSheet> {
             SizedBox(height: h * 0.024),
             _SaveButton(
               isLoading: _isSaving,
-              canSave:   _canSave,
+              canSave: _canSave,
               onPressed: _onSave,
               w: w,
               h: h,
@@ -277,7 +275,7 @@ class _DragHandle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width:  w * 0.103,
+      width: w * 0.103,
       height: h * 0.005,
       decoration: BoxDecoration(
         color: MyShopColors.divider,
@@ -299,9 +297,9 @@ class _SheetHeader extends StatelessWidget {
       child: Text(
         title,
         style: TextStyle(
-          fontSize:   w * 0.051,
+          fontSize: w * 0.051,
           fontWeight: FontWeight.w700,
-          color:      MyShopColors.textPrimary,
+          color: MyShopColors.textPrimary,
         ),
       ),
     );
@@ -322,9 +320,9 @@ class _SectionLabel extends StatelessWidget {
         child: Text(
           text,
           style: TextStyle(
-            fontSize:      w * 0.026,
-            fontWeight:    FontWeight.w900,
-            color:         MyShopColors.textSecondary,
+            fontSize: w * 0.026,
+            fontWeight: FontWeight.w900,
+            color: MyShopColors.textSecondary,
             letterSpacing: 0.8,
           ),
         ),
@@ -336,8 +334,8 @@ class _SectionLabel extends StatelessWidget {
 // ── Label chip grid ───────────────────────────────────────────────────────────
 
 class _LabelChipGrid extends StatelessWidget {
-  final List<_LabelOption>     options;
-  final _LabelOption?          selected;
+  final List<_LabelOption> options;
+  final _LabelOption? selected;
   final void Function(_LabelOption) onTap;
   final double w, h;
 
@@ -354,14 +352,14 @@ class _LabelChipGrid extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: Wrap(
-        spacing:    w * 0.021,
+        spacing: w * 0.021,
         runSpacing: h * 0.010,
         children: [
           for (final opt in options)
             _LabelChip(
-              option:     opt,
+              option: opt,
               isSelected: selected == opt,
-              onTap:      () => onTap(opt),
+              onTap: () => onTap(opt),
               w: w,
             ),
         ],
@@ -372,9 +370,9 @@ class _LabelChipGrid extends StatelessWidget {
 
 class _LabelChip extends StatelessWidget {
   final _LabelOption option;
-  final bool         isSelected;
+  final bool isSelected;
   final VoidCallback onTap;
-  final double       w;
+  final double w;
 
   const _LabelChip({
     required this.option,
@@ -391,7 +389,7 @@ class _LabelChip extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: EdgeInsets.symmetric(
           horizontal: w * 0.038,
-          vertical:   w * 0.026,
+          vertical: w * 0.026,
         ),
         decoration: BoxDecoration(
           color: isSelected
@@ -417,7 +415,7 @@ class _LabelChip extends StatelessWidget {
             Text(
               option.label,
               style: TextStyle(
-                fontSize:   w * 0.033,
+                fontSize: w * 0.033,
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 color: isSelected
                     ? MyShopColors.primaryGold
@@ -434,11 +432,11 @@ class _LabelChip extends StatelessWidget {
 // ── Search input ──────────────────────────────────────────────────────────────
 
 class _SearchField extends StatelessWidget {
-  final TextEditingController   controller;
-  final ValueChanged<String>    onChanged;
-  final bool                    hasSelection;
-  final VoidCallback            onClear;
-  final double                  w, h;
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final bool hasSelection;
+  final VoidCallback onClear;
+  final double w, h;
 
   const _SearchField({
     required this.controller,
@@ -458,48 +456,47 @@ class _SearchField extends StatelessWidget {
           color: MyShopColors.surfaceGrey,
           borderRadius: BorderRadius.circular(w * 0.021),
           border: Border.all(
-            color: hasSelection
-                ? MyShopColors.primaryGold
-                : MyShopColors.divider,
+            color:
+                hasSelection ? MyShopColors.primaryGold : MyShopColors.divider,
             width: 1.5,
           ),
         ),
         child: TextField(
           controller: controller,
-          onChanged:  onChanged,
-          enabled:    !hasSelection,
+          onChanged: onChanged,
+          enabled: !hasSelection,
           style: TextStyle(
             fontSize: w * 0.036,
-            color:    MyShopColors.textPrimary,
+            color: MyShopColors.textPrimary,
           ),
           decoration: InputDecoration(
             hintText: 'Search address, building, area…',
             hintStyle: TextStyle(
               fontSize: w * 0.033,
-              color:    MyShopColors.textHint,
+              color: MyShopColors.textHint,
             ),
             prefixIcon: Icon(
               Icons.search_rounded,
-              size:  w * 0.051,
+              size: w * 0.051,
               color: MyShopColors.textSecondary,
             ),
             suffixIcon: hasSelection
                 ? IconButton(
                     icon: Icon(
                       Icons.close_rounded,
-                      size:  w * 0.046,
+                      size: w * 0.046,
                       color: MyShopColors.textSecondary,
                     ),
                     onPressed: onClear,
                   )
                 : null,
-            border:        InputBorder.none,
+            border: InputBorder.none,
             enabledBorder: InputBorder.none,
             focusedBorder: InputBorder.none,
             disabledBorder: InputBorder.none,
             contentPadding: EdgeInsets.symmetric(
               horizontal: w * 0.020,
-              vertical:   h * 0.017,
+              vertical: h * 0.017,
             ),
           ),
         ),
@@ -510,9 +507,9 @@ class _SearchField extends StatelessWidget {
 
 class _LabeledTextField extends StatelessWidget {
   final TextEditingController controller;
-  final String                hint;
-  final ValueChanged<String>  onChanged;
-  final double                w, h;
+  final String hint;
+  final ValueChanged<String> onChanged;
+  final double w, h;
   const _LabeledTextField({
     required this.controller,
     required this.hint,
@@ -533,29 +530,29 @@ class _LabeledTextField extends StatelessWidget {
         ),
         child: TextField(
           controller: controller,
-          onChanged:  onChanged,
-          autofocus:  true,
+          onChanged: onChanged,
+          autofocus: true,
           style: TextStyle(
             fontSize: w * 0.036,
-            color:    MyShopColors.textPrimary,
+            color: MyShopColors.textPrimary,
           ),
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: TextStyle(
               fontSize: w * 0.033,
-              color:    MyShopColors.textHint,
+              color: MyShopColors.textHint,
             ),
             prefixIcon: Icon(
               Icons.bookmark_outline_rounded,
-              size:  w * 0.046,
+              size: w * 0.046,
               color: MyShopColors.textSecondary,
             ),
-            border:        InputBorder.none,
+            border: InputBorder.none,
             enabledBorder: InputBorder.none,
             focusedBorder: InputBorder.none,
             contentPadding: EdgeInsets.symmetric(
               horizontal: w * 0.020,
-              vertical:   h * 0.017,
+              vertical: h * 0.017,
             ),
           ),
         ),
@@ -568,8 +565,8 @@ class _LabeledTextField extends StatelessWidget {
 
 class _SuggestionTile extends StatelessWidget {
   final PlaceSuggestion suggestion;
-  final VoidCallback    onTap;
-  final double          w, h;
+  final VoidCallback onTap;
+  final double w, h;
 
   const _SuggestionTile({
     required this.suggestion,
@@ -585,12 +582,12 @@ class _SuggestionTile extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.symmetric(
           horizontal: w * 0.041,
-          vertical:   h * 0.014,
+          vertical: h * 0.014,
         ),
         child: Row(
           children: [
             Container(
-              width:  w * 0.092,
+              width: w * 0.092,
               height: w * 0.092,
               decoration: const BoxDecoration(
                 color: MyShopColors.surfaceGrey,
@@ -598,7 +595,7 @@ class _SuggestionTile extends StatelessWidget {
               ),
               child: Icon(
                 Icons.location_on_outlined,
-                size:  w * 0.046,
+                size: w * 0.046,
                 color: MyShopColors.textSecondary,
               ),
             ),
@@ -612,9 +609,9 @@ class _SuggestionTile extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize:   w * 0.036,
+                      fontSize: w * 0.036,
                       fontWeight: FontWeight.w600,
-                      color:      MyShopColors.textPrimary,
+                      color: MyShopColors.textPrimary,
                     ),
                   ),
                   SizedBox(height: h * 0.003),
@@ -624,7 +621,7 @@ class _SuggestionTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: w * 0.028,
-                      color:    MyShopColors.textSecondary,
+                      color: MyShopColors.textSecondary,
                     ),
                   ),
                 ],
@@ -640,10 +637,10 @@ class _SuggestionTile extends StatelessWidget {
 // ── Submit button ─────────────────────────────────────────────────────────────
 
 class _SaveButton extends StatelessWidget {
-  final bool         isLoading;
-  final bool         canSave;
+  final bool isLoading;
+  final bool canSave;
   final VoidCallback onPressed;
-  final double       w, h;
+  final double w, h;
 
   const _SaveButton({
     required this.isLoading,
@@ -663,12 +660,10 @@ class _SaveButton extends StatelessWidget {
         child: ElevatedButton(
           onPressed: canSave ? onPressed : null,
           style: ElevatedButton.styleFrom(
-            backgroundColor: canSave
-                ? MyShopColors.darkSlate
-                : MyShopColors.surfaceGrey,
-            foregroundColor: canSave
-                ? MyShopColors.surfaceWhite
-                : MyShopColors.disabled,
+            backgroundColor:
+                canSave ? MyShopColors.darkSlate : MyShopColors.surfaceGrey,
+            foregroundColor:
+                canSave ? MyShopColors.surfaceWhite : MyShopColors.disabled,
             disabledBackgroundColor: MyShopColors.surfaceGrey,
             disabledForegroundColor: MyShopColors.disabled,
             elevation: 0,
@@ -678,7 +673,7 @@ class _SaveButton extends StatelessWidget {
           ),
           child: isLoading
               ? SizedBox(
-                  width:  w * 0.051,
+                  width: w * 0.051,
                   height: w * 0.051,
                   child: const CircularProgressIndicator(
                     strokeWidth: 2,
@@ -688,8 +683,8 @@ class _SaveButton extends StatelessWidget {
               : Text(
                   'Save Place',
                   style: TextStyle(
-                    fontSize:      w * 0.036,
-                    fontWeight:    FontWeight.w600,
+                    fontSize: w * 0.036,
+                    fontWeight: FontWeight.w600,
                     letterSpacing: 0.3,
                   ),
                 ),
@@ -701,7 +696,7 @@ class _SaveButton extends StatelessWidget {
 
 class _SkipLink extends StatelessWidget {
   final VoidCallback onTap;
-  final double       w, h;
+  final double w, h;
   const _SkipLink({required this.onTap, required this.w, required this.h});
 
   @override
@@ -711,15 +706,15 @@ class _SkipLink extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Padding(
         padding: EdgeInsets.symmetric(
-          vertical:   h * 0.009,
+          vertical: h * 0.009,
           horizontal: w * 0.041,
         ),
         child: Text(
           'Cancel',
           style: TextStyle(
-            fontSize:   w * 0.033,
+            fontSize: w * 0.033,
             fontWeight: FontWeight.w500,
-            color:      MyShopColors.textSecondary,
+            color: MyShopColors.textSecondary,
           ),
           textAlign: TextAlign.center,
         ),
@@ -742,7 +737,7 @@ class _InlineError extends StatelessWidget {
         children: [
           Icon(
             Icons.error_outline_rounded,
-            size:  w * 0.041,
+            size: w * 0.041,
             color: MyShopColors.error,
           ),
           SizedBox(width: w * 0.020),
@@ -750,10 +745,10 @@ class _InlineError extends StatelessWidget {
             child: Text(
               message,
               style: TextStyle(
-                fontSize:   w * 0.031,
+                fontSize: w * 0.031,
                 fontWeight: FontWeight.w500,
-                color:      MyShopColors.error,
-                height:     1.4,
+                color: MyShopColors.error,
+                height: 1.4,
               ),
             ),
           ),

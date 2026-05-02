@@ -552,9 +552,7 @@ class _PageDots extends StatelessWidget {
           width: selected ? 24 : 8,
           height: 8,
           decoration: BoxDecoration(
-            color: selected
-                ? MyShopColors.darkText
-                : MyShopColors.divider,
+            color: selected ? MyShopColors.darkText : MyShopColors.divider,
             borderRadius: BorderRadius.circular(4),
           ),
         );

@@ -13,9 +13,9 @@ class EmergencyContactsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final size  = MediaQuery.sizeOf(context);
-    final w     = size.width;
-    final h     = size.height;
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
     final state = ref.watch(emergencyContactsProvider);
 
     return Scaffold(
@@ -29,8 +29,8 @@ class EmergencyContactsScreen extends ConsumerWidget {
         title: Text(
           'Emergency Contacts',
           style: TextStyle(
-            color:      MyShopColors.textPrimary,
-            fontSize:   w * 0.044,
+            color: MyShopColors.textPrimary,
+            fontSize: w * 0.044,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -58,27 +58,29 @@ class EmergencyContactsScreen extends ConsumerWidget {
                     _EmptyState(w: w, h: h)
                   else
                     _ContactsList(
-                      contacts:  state.contacts,
+                      contacts: state.contacts,
                       deletingId: state.deletingId,
-                      onRemove:  (id) =>
-                          ref.read(emergencyContactsProvider.notifier).deleteContact(id),
+                      onRemove: (id) => ref
+                          .read(emergencyContactsProvider.notifier)
+                          .deleteContact(id),
                       w: w,
                       h: h,
                     ),
                   SizedBox(height: h * 0.024),
                   if (state.contacts.length < 3)
                     SizedBox(
-                      width:  double.infinity,
+                      width: double.infinity,
                       height: h * 0.062,
                       child: OutlinedButton.icon(
                         onPressed: state.isSaving
                             ? null
                             : () => _showAddSheet(context, ref, w),
-                        icon:  const Icon(Icons.person_add_alt_1_rounded),
+                        icon: const Icon(Icons.person_add_alt_1_rounded),
                         label: const Text('Add Emergency Contact'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: MyShopColors.primaryGold,
-                          side:  const BorderSide(color: MyShopColors.primaryGold),
+                          side:
+                              const BorderSide(color: MyShopColors.primaryGold),
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12)),
                         ),
@@ -127,23 +129,24 @@ class _InfoBanner extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        MyShopColors.errorLight,
+        color: MyShopColors.errorLight,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: MyShopColors.error.withAlpha(60)),
+        border: Border.all(color: MyShopColors.error.withAlpha(60)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.emergency_rounded, color: MyShopColors.error, size: 20),
+          const Icon(Icons.emergency_rounded,
+              color: MyShopColors.error, size: 20),
           SizedBox(width: w * 0.030),
           Expanded(
             child: Text(
               'Emergency contacts are notified when you trigger an SOS alert. '
               'They receive your real-time location link.',
               style: TextStyle(
-                color:    MyShopColors.error,
+                color: MyShopColors.error,
                 fontSize: w * 0.033,
-                height:   1.5,
+                height: 1.5,
               ),
             ),
           ),
@@ -165,14 +168,14 @@ class _ErrorBanner extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: w * 0.04, vertical: w * 0.03),
       decoration: BoxDecoration(
-        color:        MyShopColors.warning.withAlpha(20),
+        color: MyShopColors.warning.withAlpha(20),
         borderRadius: BorderRadius.circular(10),
-        border:       Border.all(color: MyShopColors.warning.withAlpha(80)),
+        border: Border.all(color: MyShopColors.warning.withAlpha(80)),
       ),
       child: Text(
         message,
         style: TextStyle(
-          color:    MyShopColors.warning,
+          color: MyShopColors.warning,
           fontSize: w * 0.032,
         ),
       ),
@@ -183,9 +186,9 @@ class _ErrorBanner extends StatelessWidget {
 // ── Contacts list ──────────────────────────────────────────────────────────────
 
 class _ContactsList extends StatelessWidget {
-  final List<EmergencyContact>  contacts;
-  final String?                 deletingId;
-  final void Function(String)   onRemove;
+  final List<EmergencyContact> contacts;
+  final String? deletingId;
+  final void Function(String) onRemove;
   final double w, h;
 
   const _ContactsList({
@@ -200,14 +203,14 @@ class _ContactsList extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: MyShopColors.divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         children: contacts.map((c) {
-          final isLast      = c == contacts.last;
-          final isDeleting  = deletingId == c.id;
+          final isLast = c == contacts.last;
+          final isDeleting = deletingId == c.id;
           return Column(
             children: [
               Padding(
@@ -216,7 +219,7 @@ class _ContactsList extends StatelessWidget {
                 child: Row(
                   children: [
                     Container(
-                      width:  w * 0.12,
+                      width: w * 0.12,
                       height: w * 0.12,
                       decoration: const BoxDecoration(
                         color: MyShopColors.errorLight,
@@ -238,8 +241,8 @@ class _ContactsList extends StatelessWidget {
                               Text(
                                 c.name,
                                 style: TextStyle(
-                                  color:      MyShopColors.textPrimary,
-                                  fontSize:   w * 0.038,
+                                  color: MyShopColors.textPrimary,
+                                  fontSize: w * 0.038,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -248,18 +251,18 @@ class _ContactsList extends StatelessWidget {
                                 Container(
                                   padding: EdgeInsets.symmetric(
                                     horizontal: w * 0.015,
-                                    vertical:   2,
+                                    vertical: 2,
                                   ),
                                   decoration: BoxDecoration(
-                                    color:        MyShopColors.error.withAlpha(20),
+                                    color: MyShopColors.error.withAlpha(20),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Text(
                                     'PRIMARY',
                                     style: TextStyle(
-                                      color:         MyShopColors.error,
-                                      fontSize:      w * 0.022,
-                                      fontWeight:    FontWeight.w800,
+                                      color: MyShopColors.error,
+                                      fontSize: w * 0.022,
+                                      fontWeight: FontWeight.w800,
                                       letterSpacing: 0.5,
                                     ),
                                   ),
@@ -271,7 +274,7 @@ class _ContactsList extends StatelessWidget {
                           Text(
                             c.phone,
                             style: TextStyle(
-                              color:    MyShopColors.textSecondary,
+                              color: MyShopColors.textSecondary,
                               fontSize: w * 0.032,
                             ),
                           ),
@@ -279,7 +282,7 @@ class _ContactsList extends StatelessWidget {
                           Text(
                             c.relationship,
                             style: TextStyle(
-                              color:    MyShopColors.textSecondary,
+                              color: MyShopColors.textSecondary,
                               fontSize: w * 0.028,
                             ),
                           ),
@@ -288,11 +291,11 @@ class _ContactsList extends StatelessWidget {
                     ),
                     isDeleting
                         ? SizedBox(
-                            width:  w * 0.052,
+                            width: w * 0.052,
                             height: w * 0.052,
                             child: const CircularProgressIndicator(
                               strokeWidth: 2,
-                              color:       MyShopColors.error,
+                              color: MyShopColors.error,
                             ),
                           )
                         : IconButton(
@@ -333,7 +336,7 @@ class _EmptyState extends StatelessWidget {
           children: [
             Icon(Icons.people_outline_rounded,
                 color: MyShopColors.textSecondary.withAlpha(80),
-                size:  w * 0.16),
+                size: w * 0.16),
             SizedBox(height: h * 0.016),
             Text(
               'No contacts added yet',
@@ -350,7 +353,7 @@ class _EmptyState extends StatelessWidget {
 // ── Limit note ─────────────────────────────────────────────────────────────────
 
 class _LimitNote extends StatelessWidget {
-  final int    count;
+  final int count;
   final double w;
   const _LimitNote({required this.count, required this.w});
 
@@ -367,7 +370,8 @@ class _LimitNote extends StatelessWidget {
 
 class _AddContactSheet extends StatefulWidget {
   final double w;
-  final Future<void> Function(String name, String phone, String relation) onSave;
+  final Future<void> Function(String name, String phone, String relation)
+      onSave;
 
   const _AddContactSheet({required this.w, required this.onSave});
 
@@ -376,10 +380,10 @@ class _AddContactSheet extends StatefulWidget {
 }
 
 class _AddContactSheetState extends State<_AddContactSheet> {
-  final _nameCtrl     = TextEditingController();
-  final _phoneCtrl    = TextEditingController();
+  final _nameCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
   final _relationCtrl = TextEditingController();
-  bool  _saving       = false;
+  bool _saving = false;
 
   @override
   void dispose() {
@@ -406,14 +410,14 @@ class _AddContactSheetState extends State<_AddContactSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final w   = widget.w;
-    final h   = MediaQuery.sizeOf(context).height;
+    final w = widget.w;
+    final h = MediaQuery.sizeOf(context).height;
     final bot = MediaQuery.paddingOf(context).bottom;
-    final kb  = MediaQuery.viewInsetsOf(context).bottom;
+    final kb = MediaQuery.viewInsetsOf(context).bottom;
 
     return Container(
       decoration: const BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       padding: EdgeInsets.fromLTRB(
@@ -427,7 +431,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
               width: w * 0.10,
               height: 4,
               decoration: BoxDecoration(
-                color:        MyShopColors.surfaceGrey,
+                color: MyShopColors.surfaceGrey,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -436,46 +440,51 @@ class _AddContactSheetState extends State<_AddContactSheet> {
           Text(
             'Add Emergency Contact',
             style: TextStyle(
-              color:      MyShopColors.textPrimary,
-              fontSize:   w * 0.044,
+              color: MyShopColors.textPrimary,
+              fontSize: w * 0.044,
               fontWeight: FontWeight.w700,
             ),
           ),
           SizedBox(height: h * 0.020),
           _SheetField(
             controller: _nameCtrl,
-            hint:       'Full name',
-            icon:       Icons.person_outline_rounded,
-            onChanged:  (_) => setState(() {}),
-            w: w, h: h,
+            hint: 'Full name',
+            icon: Icons.person_outline_rounded,
+            onChanged: (_) => setState(() {}),
+            w: w,
+            h: h,
           ),
           SizedBox(height: h * 0.014),
           _SheetField(
             controller: _phoneCtrl,
-            hint:       'Phone number (+233...)',
-            icon:       Icons.phone_outlined,
-            keyboard:   TextInputType.phone,
-            formatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d\s\+]'))],
-            onChanged:  (_) => setState(() {}),
-            w: w, h: h,
+            hint: 'Phone number (+233...)',
+            icon: Icons.phone_outlined,
+            keyboard: TextInputType.phone,
+            formatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[\d\s\+]'))
+            ],
+            onChanged: (_) => setState(() {}),
+            w: w,
+            h: h,
           ),
           SizedBox(height: h * 0.014),
           _SheetField(
             controller: _relationCtrl,
-            hint:       'Relationship (optional)',
-            icon:       Icons.people_outline_rounded,
-            onChanged:  (_) => setState(() {}),
-            w: w, h: h,
+            hint: 'Relationship (optional)',
+            icon: Icons.people_outline_rounded,
+            onChanged: (_) => setState(() {}),
+            w: w,
+            h: h,
           ),
           SizedBox(height: h * 0.024),
           SizedBox(
-            width:  double.infinity,
+            width: double.infinity,
             height: h * 0.062,
             child: ElevatedButton(
               onPressed: (_valid && !_saving) ? _save : null,
               style: ElevatedButton.styleFrom(
-                backgroundColor:         MyShopColors.primaryGold,
-                foregroundColor:         Colors.white,
+                backgroundColor: MyShopColors.primaryGold,
+                foregroundColor: Colors.white,
                 disabledBackgroundColor: MyShopColors.primaryGold.withAlpha(80),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
@@ -483,14 +492,15 @@ class _AddContactSheetState extends State<_AddContactSheet> {
               ),
               child: _saving
                   ? const SizedBox(
-                      width: 20, height: 20,
+                      width: 20,
+                      height: 20,
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white),
                     )
                   : Text(
                       'Save Contact',
                       style: TextStyle(
-                        fontSize:   w * 0.040,
+                        fontSize: w * 0.040,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -503,19 +513,19 @@ class _AddContactSheetState extends State<_AddContactSheet> {
 }
 
 class _SheetField extends StatelessWidget {
-  final TextEditingController     controller;
-  final String                    hint;
-  final IconData                  icon;
-  final TextInputType             keyboard;
+  final TextEditingController controller;
+  final String hint;
+  final IconData icon;
+  final TextInputType keyboard;
   final List<TextInputFormatter>? formatters;
-  final ValueChanged<String>      onChanged;
-  final double                    w, h;
+  final ValueChanged<String> onChanged;
+  final double w, h;
 
   const _SheetField({
     required this.controller,
     required this.hint,
     required this.icon,
-    this.keyboard   = TextInputType.text,
+    this.keyboard = TextInputType.text,
     this.formatters,
     required this.onChanged,
     required this.w,
@@ -527,9 +537,9 @@ class _SheetField extends StatelessWidget {
     return Container(
       height: h * 0.064,
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceGrey,
+        color: MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: MyShopColors.divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Row(
         children: [
@@ -538,18 +548,18 @@ class _SheetField extends StatelessWidget {
           SizedBox(width: w * 0.024),
           Expanded(
             child: TextField(
-              controller:      controller,
-              keyboardType:    keyboard,
+              controller: controller,
+              keyboardType: keyboard,
               inputFormatters: formatters,
-              onChanged:       onChanged,
+              onChanged: onChanged,
               style: TextStyle(
                   color: MyShopColors.textPrimary, fontSize: w * 0.036),
               decoration: InputDecoration(
                 hintText: hint,
                 hintStyle: TextStyle(
-                    color:    MyShopColors.textSecondary.withAlpha(120),
+                    color: MyShopColors.textSecondary.withAlpha(120),
                     fontSize: w * 0.034),
-                border:         InputBorder.none,
+                border: InputBorder.none,
                 contentPadding: EdgeInsets.zero,
               ),
             ),

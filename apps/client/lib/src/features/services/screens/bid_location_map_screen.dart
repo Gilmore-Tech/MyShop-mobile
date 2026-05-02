@@ -202,9 +202,8 @@ class _TrackingBodyState extends ConsumerState<_TrackingBody>
     ));
 
     // Resolve a target position: live wins, snapshot is the fallback.
-    final targetArtisan = live != null
-        ? LatLng(live.latitude, live.longitude)
-        : _snapshotArtisan;
+    final targetArtisan =
+        live != null ? LatLng(live.latitude, live.longitude) : _snapshotArtisan;
 
     // Kick off animation when the target moves (deferred so setState during
     // build doesn't throw).
@@ -277,9 +276,8 @@ class _TrackingBodyState extends ConsumerState<_TrackingBody>
     final int etaMinutes = live?.etaMinutes ?? bid.artisan.etaMinutes;
 
     final cached = ref.watch(currentDevicePositionProvider);
-    final cachedLatLng = cached == null
-        ? null
-        : LatLng(cached.latitude, cached.longitude);
+    final cachedLatLng =
+        cached == null ? null : LatLng(cached.latitude, cached.longitude);
     final initialCamera = CameraPosition(
       target: job ?? displayed ?? cachedLatLng ?? _kumasiFallback,
       zoom: 14,
@@ -332,8 +330,8 @@ class _TrackingBodyState extends ConsumerState<_TrackingBody>
         // ── Recenter FAB ────────────────────────────────────────────────────
         Positioned(
           right: w * 0.041,
-          bottom: _bottomCardHeight(h, hasArtisan: displayed != null) +
-              h * 0.024,
+          bottom:
+              _bottomCardHeight(h, hasArtisan: displayed != null) + h * 0.024,
           child: _CircleButton(
             icon: Icons.my_location_rounded,
             onTap: () => _fitBounds(job: job, artisan: displayed),

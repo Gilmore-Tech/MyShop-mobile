@@ -67,8 +67,7 @@ class _PriceUpdateHeader extends StatelessWidget {
           const Spacer(),
           if (fare.surgeActive)
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
@@ -225,12 +224,14 @@ class SurgePricingActiveBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: MyShopColors.primaryGoldLight,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.35)),
+        border:
+            Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.35)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.bolt_rounded, color: MyShopColors.primaryGold, size: 20),
+          const Icon(Icons.bolt_rounded,
+              color: MyShopColors.primaryGold, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -248,8 +249,7 @@ class SurgePricingActiveBanner extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    _SurgeMultiplierBadge(
-                        multiplier: fare.surgeMultiplier),
+                    _SurgeMultiplierBadge(multiplier: fare.surgeMultiplier),
                   ],
                 ),
                 const SizedBox(height: 3),

@@ -66,8 +66,8 @@ class _BidDetailScreenState extends ConsumerState<BidDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final w    = size.width;
-    final h    = size.height;
+    final w = size.width;
+    final h = size.height;
 
     final key = (jobId: widget.jobId, bidId: widget.bidId);
     final bidAsync = ref.watch(bidDetailProvider(key));
@@ -104,10 +104,9 @@ class _BidDetailBody extends ConsumerWidget {
     // The backend bid status is the source of truth. The local action state
     // only drives transient UI (loading spinners, countdown) before the next
     // poll reconciles the real status.
-    final confirmed = bid.status == BidStatus.accepted ||
-        actionState.isBidConfirmed;
-    final expired = bid.status == BidStatus.expired ||
-        actionState.isBidExpired;
+    final confirmed =
+        bid.status == BidStatus.accepted || actionState.isBidConfirmed;
+    final expired = bid.status == BidStatus.expired || actionState.isBidExpired;
     final declined = bid.status == BidStatus.declined;
     final awaiting = !confirmed &&
         !expired &&
@@ -258,7 +257,8 @@ class _AppBar extends StatelessWidget {
             behavior: HitTestBehavior.opaque,
             child: Padding(
               padding: EdgeInsets.only(right: w * 0.031),
-              child: Icon(Icons.arrow_back, size: w * 0.056, color: MyShopColors.textPrimary),
+              child: Icon(Icons.arrow_back,
+                  size: w * 0.056, color: MyShopColors.textPrimary),
             ),
           ),
           Text(
@@ -314,16 +314,15 @@ class _ArtisanProfileCard extends StatelessWidget {
                       ),
                     ),
                     SizedBox(width: w * 0.010),
-                    if (artisan.isKycVerified)
-                      _VerifyBadge(label: 'KYC', w: w),
+                    if (artisan.isKycVerified) _VerifyBadge(label: 'KYC', w: w),
                     SizedBox(width: w * 0.010),
-                    if (artisan.isVetted)
-                      _VerifyBadge(label: 'Vetted', w: w),
+                    if (artisan.isVetted) _VerifyBadge(label: 'Vetted', w: w),
                   ],
                 ),
                 SizedBox(height: h * 0.005),
                 // Trade + experience
-                if (artisan.tradeTitle.isNotEmpty || artisan.yearsExperience > 0)
+                if (artisan.tradeTitle.isNotEmpty ||
+                    artisan.yearsExperience > 0)
                   Text(
                     _tradeLine(artisan),
                     style: TextStyle(
@@ -372,7 +371,7 @@ class _ArtisanProfileCard extends StatelessWidget {
                         ),
                       ),
                     ],
-                ),
+                  ),
               ],
             ),
           ),
@@ -404,7 +403,9 @@ class _Avatar extends StatelessWidget {
   const _Avatar({required this.artisan, required this.w});
 
   String get _initials {
-    final parts = artisan.name.trim().split(RegExp(r'\s+'))
+    final parts = artisan.name
+        .trim()
+        .split(RegExp(r'\s+'))
         .where((s) => s.isNotEmpty)
         .toList();
     if (parts.isEmpty) return '?';
@@ -549,7 +550,8 @@ class _TotalBidCard extends StatelessWidget {
                   h: h,
                 ),
               ),
-              Container(width: 1, height: h * 0.050, color: MyShopColors.divider),
+              Container(
+                  width: 1, height: h * 0.050, color: MyShopColors.divider),
               Expanded(
                 child: _MetaCell(
                   icon: Icons.calendar_today_outlined,
@@ -656,15 +658,17 @@ class _BidBreakdownCard extends ConsumerWidget {
   final BidDetail bid;
   final double w;
   final double h;
-  const _BidBreakdownCard({required this.bid, required this.w, required this.h});
+  const _BidBreakdownCard(
+      {required this.bid, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final actionState = ref.watch(bidDetailActionProvider);
-    final expanded    = actionState.materialItemsExpanded;
-    final br          = bid.breakdown;
-    final hasMaterials = br.materialItems.isNotEmpty || br.materialsFeePesewas > 0;
-    final hasVat       = br.vatRate > 0;
+    final expanded = actionState.materialItemsExpanded;
+    final br = bid.breakdown;
+    final hasMaterials =
+        br.materialItems.isNotEmpty || br.materialsFeePesewas > 0;
+    final hasVat = br.vatRate > 0;
 
     return _Card(
       w: w,
@@ -691,87 +695,88 @@ class _BidBreakdownCard extends ConsumerWidget {
           if (hasMaterials) SizedBox(height: h * 0.014),
 
           // Estimated Materials (expandable) — shown when the bid has materials
-          if (hasMaterials) GestureDetector(
-            onTap: () =>
-                ref.read(bidDetailActionProvider.notifier).toggleMaterials(),
-            behavior: HitTestBehavior.opaque,
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      'Estimated Materials',
-                      style: TextStyle(
-                        fontSize: w * 0.036,
-                        fontWeight: FontWeight.w400,
-                        color: MyShopColors.textPrimary,
+          if (hasMaterials)
+            GestureDetector(
+              onTap: () =>
+                  ref.read(bidDetailActionProvider.notifier).toggleMaterials(),
+              behavior: HitTestBehavior.opaque,
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Estimated Materials',
+                        style: TextStyle(
+                          fontSize: w * 0.036,
+                          fontWeight: FontWeight.w400,
+                          color: MyShopColors.textPrimary,
+                        ),
                       ),
-                    ),
-                    SizedBox(width: w * 0.010),
-                    AnimatedRotation(
-                      turns: expanded ? 0 : -0.5,
-                      duration: const Duration(milliseconds: 200),
-                      child: Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        size: w * 0.046,
-                        color: MyShopColors.textSecondary,
+                      SizedBox(width: w * 0.010),
+                      AnimatedRotation(
+                        turns: expanded ? 0 : -0.5,
+                        duration: const Duration(milliseconds: 200),
+                        child: Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          size: w * 0.046,
+                          color: MyShopColors.textSecondary,
+                        ),
                       ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      br.materialsFeeDisplay,
-                      style: TextStyle(
-                        fontSize: w * 0.036,
-                        fontWeight: FontWeight.w600,
-                        color: MyShopColors.textPrimary,
+                      const Spacer(),
+                      Text(
+                        br.materialsFeeDisplay,
+                        style: TextStyle(
+                          fontSize: w * 0.036,
+                          fontWeight: FontWeight.w600,
+                          color: MyShopColors.textPrimary,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                // Expandable material items
-                AnimatedCrossFade(
-                  firstChild: const SizedBox.shrink(),
-                  secondChild: Padding(
-                    padding: EdgeInsets.only(
-                      top: h * 0.010,
-                      left: w * 0.015,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: br.materialItems.map((item) {
-                        return Padding(
-                          padding: EdgeInsets.only(bottom: h * 0.007),
-                          child: Row(
-                            children: [
-                              Text(
-                                '• ',
-                                style: TextStyle(
-                                  fontSize: w * 0.031,
-                                  color: MyShopColors.textSecondary,
-                                ),
-                              ),
-                              Text(
-                                item.name,
-                                style: TextStyle(
-                                  fontSize: w * 0.031,
-                                  fontWeight: FontWeight.w400,
-                                  color: MyShopColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                    ),
+                    ],
                   ),
-                  crossFadeState: expanded
-                      ? CrossFadeState.showSecond
-                      : CrossFadeState.showFirst,
-                  duration: const Duration(milliseconds: 200),
-                ),
-              ],
+                  // Expandable material items
+                  AnimatedCrossFade(
+                    firstChild: const SizedBox.shrink(),
+                    secondChild: Padding(
+                      padding: EdgeInsets.only(
+                        top: h * 0.010,
+                        left: w * 0.015,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: br.materialItems.map((item) {
+                          return Padding(
+                            padding: EdgeInsets.only(bottom: h * 0.007),
+                            child: Row(
+                              children: [
+                                Text(
+                                  '• ',
+                                  style: TextStyle(
+                                    fontSize: w * 0.031,
+                                    color: MyShopColors.textSecondary,
+                                  ),
+                                ),
+                                Text(
+                                  item.name,
+                                  style: TextStyle(
+                                    fontSize: w * 0.031,
+                                    fontWeight: FontWeight.w400,
+                                    color: MyShopColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    crossFadeState: expanded
+                        ? CrossFadeState.showSecond
+                        : CrossFadeState.showFirst,
+                    duration: const Duration(milliseconds: 200),
+                  ),
+                ],
+              ),
             ),
-          ),
           if (hasVat) ...[
             SizedBox(height: h * 0.014),
             _BreakdownRow(
@@ -860,7 +865,7 @@ class _BreakdownRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final weight = isBold ? FontWeight.w700 : FontWeight.w400;
-    final size   = isBold ? w * 0.038 : w * 0.036;
+    final size = isBold ? w * 0.038 : w * 0.036;
     return Row(
       children: [
         Expanded(
@@ -941,12 +946,12 @@ class _LocationSection extends StatelessWidget {
                           color: MyShopColors.primaryGold,
                         ),
                       ),
-                    SizedBox(width: w * 0.008),
-                    Icon(Icons.open_in_new_rounded,
-                        size: w * 0.036, color: MyShopColors.primaryGold),
-                  ],
+                      SizedBox(width: w * 0.008),
+                      Icon(Icons.open_in_new_rounded,
+                          size: w * 0.036, color: MyShopColors.primaryGold),
+                    ],
+                  ),
                 ),
-              ),
             ],
           ),
           SizedBox(height: h * 0.014),
@@ -959,7 +964,8 @@ class _LocationSection extends StatelessWidget {
                   width: double.infinity,
                   height: h * 0.166, // ~140dp
                   color: const Color(0xFFD0E8C8), // map-like green
-                  child: CustomPaint(painter: _MapPlaceholderPainter(showRoute: showRoute)),
+                  child: CustomPaint(
+                      painter: _MapPlaceholderPainter(showRoute: showRoute)),
                 ),
                 // Distance chip — rebuilds only when the live-location
                 // provider emits. Parent (_LocationSection) does not subscribe.
@@ -1030,8 +1036,8 @@ class _MapPlaceholderPainter extends CustomPainter {
         ..strokeJoin = StrokeJoin.round;
 
       final origin = Offset(size.width * 0.18, size.height * 0.80);
-      final dest   = Offset(size.width * 0.50, size.height * 0.50);
-      final ctrl   = Offset(size.width * 0.28, size.height * 0.35);
+      final dest = Offset(size.width * 0.50, size.height * 0.50);
+      final ctrl = Offset(size.width * 0.28, size.height * 0.35);
 
       final path = Path()
         ..moveTo(origin.dx, origin.dy)
@@ -1291,7 +1297,8 @@ class _TrustBadgesRow extends StatelessWidget {
                 Expanded(
                   child: Column(
                     children: [
-                      Icon(icon, size: w * 0.051, color: MyShopColors.textSecondary),
+                      Icon(icon,
+                          size: w * 0.051, color: MyShopColors.textSecondary),
                       SizedBox(height: h * 0.006),
                       Text(
                         label,
@@ -1348,7 +1355,7 @@ class _BottomActionBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final actionState = ref.watch(bidDetailActionProvider);
-    final bottomPad   = MediaQuery.paddingOf(context).bottom;
+    final bottomPad = MediaQuery.paddingOf(context).bottom;
 
     // Ordering matters: `confirmed` wins over `jobLocked` so the winning
     // bid keeps its "Message / Track" actions even after the job moves to
@@ -1483,7 +1490,8 @@ class _DeclinedActionContent extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(Icons.block_rounded, size: w * 0.041, color: MyShopColors.disabled),
+        Icon(Icons.block_rounded,
+            size: w * 0.041, color: MyShopColors.disabled),
         SizedBox(width: w * 0.015),
         Text(
           'This bid was not selected',
@@ -1534,7 +1542,8 @@ class _PendingActionContent extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.bolt_rounded, size: w * 0.033, color: MyShopColors.primaryGold),
+            Icon(Icons.bolt_rounded,
+                size: w * 0.033, color: MyShopColors.primaryGold),
             SizedBox(width: w * 0.010),
             Expanded(
               child: Text(
@@ -1574,7 +1583,9 @@ class _PendingActionContent extends StatelessWidget {
                     Icon(
                       Icons.close_rounded,
                       size: w * 0.036,
-                      color: actionState.isBusy ? MyShopColors.disabled : MyShopColors.error,
+                      color: actionState.isBusy
+                          ? MyShopColors.disabled
+                          : MyShopColors.error,
                     ),
                     SizedBox(width: w * 0.010),
                     Text(
@@ -1582,7 +1593,9 @@ class _PendingActionContent extends StatelessWidget {
                       style: TextStyle(
                         fontSize: w * 0.033,
                         fontWeight: FontWeight.w600,
-                        color: actionState.isBusy ? MyShopColors.disabled : MyShopColors.error,
+                        color: actionState.isBusy
+                            ? MyShopColors.disabled
+                            : MyShopColors.error,
                       ),
                     ),
                   ],
@@ -1637,10 +1650,10 @@ class _AwaitingActionContent extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width:  double.infinity,
+          width: double.infinity,
           height: h * 0.062,
           decoration: BoxDecoration(
-            color:        MyShopColors.surfaceGrey,
+            color: MyShopColors.surfaceGrey,
             borderRadius: BorderRadius.circular(w * 0.021),
           ),
           child: Row(
@@ -1652,9 +1665,9 @@ class _AwaitingActionContent extends StatelessWidget {
               Text(
                 'Acceptance Sent',
                 style: TextStyle(
-                  fontSize:   w * 0.038,
+                  fontSize: w * 0.038,
                   fontWeight: FontWeight.w600,
-                  color:      MyShopColors.disabled,
+                  color: MyShopColors.disabled,
                 ),
               ),
             ],
@@ -1688,7 +1701,9 @@ class _AwaitingActionContent extends StatelessWidget {
               style: TextStyle(
                 fontSize: w * 0.033,
                 fontWeight: FontWeight.w600,
-                color: actionState.isBusy ? MyShopColors.disabled : MyShopColors.error,
+                color: actionState.isBusy
+                    ? MyShopColors.disabled
+                    : MyShopColors.error,
               ),
               textAlign: TextAlign.center,
             ),
@@ -1827,8 +1842,7 @@ class _ChatCircleButtonState extends ConsumerState<_ChatCircleButton> {
             top: -2,
             child: Container(
               constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
               decoration: BoxDecoration(
                 color: MyShopColors.error,
                 borderRadius: BorderRadius.circular(9),
@@ -1879,8 +1893,10 @@ class _AcceptButton extends StatelessWidget {
       child: ElevatedButton(
         onPressed: canTap ? onPressed : null,
         style: ElevatedButton.styleFrom(
-          backgroundColor: canTap ? MyShopColors.darkSlate : MyShopColors.surfaceGrey,
-          foregroundColor: canTap ? MyShopColors.surfaceWhite : MyShopColors.disabled,
+          backgroundColor:
+              canTap ? MyShopColors.darkSlate : MyShopColors.surfaceGrey,
+          foregroundColor:
+              canTap ? MyShopColors.surfaceWhite : MyShopColors.disabled,
           disabledBackgroundColor: MyShopColors.surfaceGrey,
           disabledForegroundColor: MyShopColors.disabled,
           elevation: 0,
@@ -1902,7 +1918,9 @@ class _AcceptButton extends StatelessWidget {
                 style: TextStyle(
                   fontSize: w * 0.038,
                   fontWeight: FontWeight.w600,
-                  color: canTap ? MyShopColors.surfaceWhite : MyShopColors.disabled,
+                  color: canTap
+                      ? MyShopColors.surfaceWhite
+                      : MyShopColors.disabled,
                   letterSpacing: 0.2,
                 ),
               ),
@@ -1933,7 +1951,8 @@ class _AwaitingConfirmationBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: MyShopColors.primaryGoldLight,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.4)),
+        border:
+            Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.4)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2046,7 +2065,8 @@ class _CountdownTimerRowState extends State<_CountdownTimerRow> {
         Container(
           width: w * 0.023,
           height: w * 0.023,
-          decoration: const BoxDecoration(color: MyShopColors.primaryGold, shape: BoxShape.circle),
+          decoration: const BoxDecoration(
+              color: MyShopColors.primaryGold, shape: BoxShape.circle),
         ),
         SizedBox(width: w * 0.026),
         Expanded(
@@ -2442,4 +2462,3 @@ class _Shimmer extends StatelessWidget {
     );
   }
 }
-

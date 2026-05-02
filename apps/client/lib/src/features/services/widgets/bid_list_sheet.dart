@@ -215,7 +215,8 @@ class _ActiveRequestCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: MyShopColors.primaryGoldLight,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.35)),
+        border:
+            Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.35)),
       ),
       child: Row(
         children: [
@@ -333,7 +334,7 @@ class _BidCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isThisBidSelecting = selectState.selectingBidId == bid.bidId;
-    final anySelecting       = selectState.isSelecting;
+    final anySelecting = selectState.isSelecting;
 
     return Container(
       decoration: BoxDecoration(
@@ -557,9 +558,7 @@ String _etaLabel(int minutes) {
   if (minutes < 60) return 'Arrives in $minutes min';
   final hours = minutes ~/ 60;
   final rem = minutes % 60;
-  return rem == 0
-      ? 'Arrives in ${hours}h'
-      : 'Arrives in ${hours}h ${rem}m';
+  return rem == 0 ? 'Arrives in ${hours}h' : 'Arrives in ${hours}h ${rem}m';
 }
 
 String _durationLabel(int minutes) {
@@ -588,11 +587,8 @@ class _ArtisanAvatar extends StatelessWidget {
 
   String get _initials {
     final parts = name.trim().split(RegExp(r'\s+'));
-    final chars = parts
-        .where((p) => p.isNotEmpty)
-        .take(2)
-        .map((p) => p[0])
-        .join();
+    final chars =
+        parts.where((p) => p.isNotEmpty).take(2).map((p) => p[0]).join();
     return chars.isEmpty ? '?' : chars.toUpperCase();
   }
 
@@ -657,8 +653,10 @@ class _SelectBidButton extends StatelessWidget {
       child: ElevatedButton(
         onPressed: canTap ? onPressed : null,
         style: ElevatedButton.styleFrom(
-          backgroundColor: canTap ? MyShopColors.darkSlate : MyShopColors.surfaceGrey,
-          foregroundColor: canTap ? MyShopColors.surfaceWhite : MyShopColors.disabled,
+          backgroundColor:
+              canTap ? MyShopColors.darkSlate : MyShopColors.surfaceGrey,
+          foregroundColor:
+              canTap ? MyShopColors.surfaceWhite : MyShopColors.disabled,
           disabledBackgroundColor: MyShopColors.surfaceGrey,
           disabledForegroundColor: MyShopColors.disabled,
           elevation: 0,

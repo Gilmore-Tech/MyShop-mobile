@@ -12,8 +12,8 @@ enum PlaceType { home, work, custom }
 
 extension PlaceTypeX on PlaceType {
   IconData get icon => switch (this) {
-        PlaceType.home   => Icons.home_outlined,
-        PlaceType.work   => Icons.work_outline_rounded,
+        PlaceType.home => Icons.home_outlined,
+        PlaceType.work => Icons.work_outline_rounded,
         PlaceType.custom => Icons.place_outlined,
       };
 }
@@ -25,25 +25,25 @@ enum ThumbnailStyle { residential, urban, commercial }
 // ── Quick Category ────────────────────────────────────────────────────────────
 
 class QuickCategory {
-  final String   label;
+  final String label;
   final IconData icon;
   const QuickCategory({required this.label, required this.icon});
 }
 
 const kQuickCategories = <QuickCategory>[
-  QuickCategory(label: 'Gym',     icon: Icons.fitness_center_outlined),
-  QuickCategory(label: 'School',  icon: Icons.school_outlined),
+  QuickCategory(label: 'Gym', icon: Icons.fitness_center_outlined),
+  QuickCategory(label: 'School', icon: Icons.school_outlined),
   QuickCategory(label: 'Parents', icon: Icons.favorite_border_rounded),
 ];
 
 // ── Saved Place ───────────────────────────────────────────────────────────────
 
 class SavedPlace {
-  final String         id;
-  final String         name;
-  final PlaceType      type;
-  final String         address;
-  final String         lastVisitedLabel;
+  final String id;
+  final String name;
+  final PlaceType type;
+  final String address;
+  final String lastVisitedLabel;
   final ThumbnailStyle thumbnailStyle;
 
   const SavedPlace({
@@ -60,14 +60,14 @@ class SavedPlace {
 
 class SavedPlacesState {
   final List<SavedPlace> places;
-  final bool             isLoading;
-  final bool             isDeletingId;
-  final String?          deletingId;
-  final String?          errorMessage;
+  final bool isLoading;
+  final bool isDeletingId;
+  final String? deletingId;
+  final String? errorMessage;
 
   const SavedPlacesState({
-    this.places       = const [],
-    this.isLoading    = false,
+    this.places = const [],
+    this.isLoading = false,
     this.isDeletingId = false,
     this.deletingId,
     this.errorMessage,
@@ -80,19 +80,20 @@ class SavedPlacesState {
 
   SavedPlacesState copyWith({
     List<SavedPlace>? places,
-    bool?             isLoading,
-    bool?             isDeletingId,
-    String?           deletingId,
-    String?           errorMessage,
-    bool              clearError = false,
-    bool              clearDeleting = false,
+    bool? isLoading,
+    bool? isDeletingId,
+    String? deletingId,
+    String? errorMessage,
+    bool clearError = false,
+    bool clearDeleting = false,
   }) =>
       SavedPlacesState(
-        places:       places       ?? this.places,
-        isLoading:    isLoading    ?? this.isLoading,
-        isDeletingId: clearDeleting ? false : (isDeletingId ?? this.isDeletingId),
-        deletingId:   clearDeleting ? null  : (deletingId   ?? this.deletingId),
-        errorMessage: clearError   ? null  : (errorMessage  ?? this.errorMessage),
+        places: places ?? this.places,
+        isLoading: isLoading ?? this.isLoading,
+        isDeletingId:
+            clearDeleting ? false : (isDeletingId ?? this.isDeletingId),
+        deletingId: clearDeleting ? null : (deletingId ?? this.deletingId),
+        errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       );
 }
 
@@ -101,12 +102,12 @@ class SavedPlacesState {
 PlaceType _parsePlaceType(String? raw) => switch (raw) {
       'home' => PlaceType.home,
       'work' => PlaceType.work,
-      _      => PlaceType.custom,
+      _ => PlaceType.custom,
     };
 
 ThumbnailStyle _thumbnailFor(PlaceType type) => switch (type) {
-      PlaceType.home   => ThumbnailStyle.residential,
-      PlaceType.work   => ThumbnailStyle.urban,
+      PlaceType.home => ThumbnailStyle.residential,
+      PlaceType.work => ThumbnailStyle.urban,
       PlaceType.custom => ThumbnailStyle.commercial,
     };
 
@@ -115,22 +116,22 @@ String _relativeTime(String? iso) {
   final dt = DateTime.tryParse(iso);
   if (dt == null) return 'Recently';
   final diff = DateTime.now().difference(dt);
-  if (diff.inMinutes < 1)  return 'Just now';
+  if (diff.inMinutes < 1) return 'Just now';
   if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-  if (diff.inHours < 24)   return '${diff.inHours}h ago';
-  if (diff.inDays == 1)    return 'Yesterday';
+  if (diff.inHours < 24) return '${diff.inHours}h ago';
+  if (diff.inDays == 1) return 'Yesterday';
   return '${diff.inDays} days ago';
 }
 
 SavedPlace _fromJson(Map<String, dynamic> json) {
   final type = _parsePlaceType(json['locationType'] as String?);
   return SavedPlace(
-    id:               json['id'] as String,
-    name:             (json['label'] as String? ?? '').toUpperCase(),
-    type:             type,
-    address:          json['addressText'] as String? ?? '',
+    id: json['id'] as String,
+    name: (json['label'] as String? ?? '').toUpperCase(),
+    type: type,
+    address: json['addressText'] as String? ?? '',
     lastVisitedLabel: _relativeTime(json['lastUsedAt'] as String?),
-    thumbnailStyle:   _thumbnailFor(type),
+    thumbnailStyle: _thumbnailFor(type),
   );
 }
 
@@ -147,14 +148,12 @@ class SavedPlacesNotifier extends StateNotifier<SavedPlacesState> {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final raw = await _ref.read(userServiceProvider).getSavedLocations();
-      final places = raw
-          .cast<Map<String, dynamic>>()
-          .map(_fromJson)
-          .toList();
+      final places = raw.cast<Map<String, dynamic>>().map(_fromJson).toList();
       state = state.copyWith(places: places, isLoading: false);
     } catch (e) {
       developer.log('getSavedLocations error: $e', name: 'SavedPlaces');
-      state = state.copyWith(isLoading: false, errorMessage: 'Could not load saved places');
+      state = state.copyWith(
+          isLoading: false, errorMessage: 'Could not load saved places');
     }
   }
 
@@ -169,8 +168,8 @@ class SavedPlacesNotifier extends StateNotifier<SavedPlacesState> {
   /// [locationType] is the backend enum: 'home' | 'work' | 'favourite' —
   /// derived by the sheet from the chosen label, never user-typed directly.
   Future<String?> addPlace({
-    required String          label,
-    required String          locationType,
+    required String label,
+    required String locationType,
     required PlaceSuggestion suggestion,
   }) async {
     try {
@@ -181,11 +180,11 @@ class SavedPlacesNotifier extends StateNotifier<SavedPlacesState> {
         return "Couldn't fetch the location's details. Try a different place.";
       }
       final json = await _ref.read(userServiceProvider).createSavedLocation(
-            label:        label,
+            label: label,
             locationType: locationType,
-            latitude:     detail.latitude,
-            longitude:    detail.longitude,
-            addressText:  detail.address,
+            latitude: detail.latitude,
+            longitude: detail.longitude,
+            addressText: detail.address,
           );
       // Prepend so the new place is visible at the top of the list.
       state = state.copyWith(
@@ -230,7 +229,8 @@ class SavedPlacesNotifier extends StateNotifier<SavedPlacesState> {
   /// DELETE /users/me/saved-locations/:id
   Future<void> deletePlace(String id) async {
     if (state.isDeletingId) return;
-    state = state.copyWith(isDeletingId: true, deletingId: id, clearError: true);
+    state =
+        state.copyWith(isDeletingId: true, deletingId: id, clearError: true);
     try {
       await _ref.read(userServiceProvider).deleteSavedLocation(id);
       state = state.copyWith(

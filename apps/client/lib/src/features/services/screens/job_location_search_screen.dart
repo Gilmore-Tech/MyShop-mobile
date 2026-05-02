@@ -114,8 +114,7 @@ class _JobLocationSearchScreenState
           Container(
             decoration: const BoxDecoration(
               color: MyShopColors.surfaceWhite,
-              border:
-                  Border(bottom: BorderSide(color: MyShopColors.divider)),
+              border: Border(bottom: BorderSide(color: MyShopColors.divider)),
             ),
             padding: EdgeInsets.only(
               top: topPad + h * 0.012,
@@ -201,8 +200,7 @@ class _JobLocationSearchScreenState
               ),
               decoration: const BoxDecoration(
                 color: MyShopColors.surfaceWhite,
-                border:
-                    Border(bottom: BorderSide(color: MyShopColors.divider)),
+                border: Border(bottom: BorderSide(color: MyShopColors.divider)),
               ),
               child: Row(
                 children: [

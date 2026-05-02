@@ -18,8 +18,8 @@ class RideDisputeScreen extends ConsumerStatefulWidget {
 class _RideDisputeScreenState extends ConsumerState<RideDisputeScreen> {
   final _detailsController = TextEditingController();
   String? _selectedReason;
-  bool    _isSubmitting = false;
-  bool    _submitted    = false;
+  bool _isSubmitting = false;
+  bool _submitted = false;
 
   static const _reasons = [
     'Route was longer than expected',
@@ -31,7 +31,8 @@ class _RideDisputeScreenState extends ConsumerState<RideDisputeScreen> {
 
   bool get _canSubmit =>
       _selectedReason != null &&
-      (_selectedReason != 'Other' || _detailsController.text.trim().length >= 10);
+      (_selectedReason != 'Other' ||
+          _detailsController.text.trim().length >= 10);
 
   @override
   void dispose() {
@@ -45,22 +46,26 @@ class _RideDisputeScreenState extends ConsumerState<RideDisputeScreen> {
     // TODO: POST /v1/rides/:id/dispute { reason, details }
     await Future.delayed(const Duration(milliseconds: 900));
     if (!mounted) return;
-    setState(() { _isSubmitting = false; _submitted = true; });
+    setState(() {
+      _isSubmitting = false;
+      _submitted = true;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final w    = size.width;
-    final h    = size.height;
-    final bot  = MediaQuery.paddingOf(context).bottom;
+    final w = size.width;
+    final h = size.height;
+    final bot = MediaQuery.paddingOf(context).bottom;
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
       appBar: AppBar(
         backgroundColor: MyShopColors.surfaceWhite,
         leading: IconButton(
-          icon: const Icon(Icons.close_rounded, color: MyShopColors.textPrimary),
+          icon:
+              const Icon(Icons.close_rounded, color: MyShopColors.textPrimary),
           onPressed: () => context.pop(),
         ),
         title: Text('Dispute Ride Fare',
@@ -85,7 +90,7 @@ class _RideDisputeScreenState extends ConsumerState<RideDisputeScreen> {
                         _SectionTitle(text: 'What\'s the issue?', w: w),
                         SizedBox(height: h * 0.016),
                         ..._reasons.map((r) => _ReasonTile(
-                              reason:     r,
+                              reason: r,
                               isSelected: _selectedReason == r,
                               onTap: () => setState(() {
                                 _selectedReason = r;
@@ -101,7 +106,7 @@ class _RideDisputeScreenState extends ConsumerState<RideDisputeScreen> {
                         SizedBox(height: h * 0.012),
                         _DetailsField(
                             controller: _detailsController,
-                            onChanged:  (_) => setState(() {}),
+                            onChanged: (_) => setState(() {}),
                             w: w,
                             h: h),
                         SizedBox(height: h * 0.016),
@@ -114,10 +119,11 @@ class _RideDisputeScreenState extends ConsumerState<RideDisputeScreen> {
                   padding: EdgeInsets.fromLTRB(
                       w * 0.05, 0, w * 0.05, bot + h * 0.028),
                   child: _SubmitButton(
-                    enabled:     _canSubmit,
-                    loading:     _isSubmitting,
-                    onTap:       _submit,
-                    w: w, h: h,
+                    enabled: _canSubmit,
+                    loading: _isSubmitting,
+                    onTap: _submit,
+                    w: w,
+                    h: h,
                   ),
                 ),
               ],
@@ -137,9 +143,9 @@ class _InfoBanner extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        MyShopColors.errorLight,
+        color: MyShopColors.errorLight,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: MyShopColors.error.withAlpha(60)),
+        border: Border.all(color: MyShopColors.error.withAlpha(60)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -151,18 +157,20 @@ class _InfoBanner extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Disputes must be raised within 2 hours of ride completion.',
+                Text(
+                    'Disputes must be raised within 2 hours of ride completion.',
                     style: TextStyle(
-                      color:      MyShopColors.error,
-                      fontSize:   w * 0.034,
+                      color: MyShopColors.error,
+                      fontSize: w * 0.034,
                       fontWeight: FontWeight.w600,
                     )),
                 SizedBox(height: 4),
-                Text('Our team reviews GPS data against the optimal route and will respond within 24 hours.',
+                Text(
+                    'Our team reviews GPS data against the optimal route and will respond within 24 hours.',
                     style: TextStyle(
-                        color:    MyShopColors.error.withAlpha(180),
+                        color: MyShopColors.error.withAlpha(180),
                         fontSize: w * 0.030,
-                        height:   1.5)),
+                        height: 1.5)),
               ],
             ),
           ),
@@ -175,10 +183,10 @@ class _InfoBanner extends StatelessWidget {
 // ── Reason tile ────────────────────────────────────────────────────────────────
 
 class _ReasonTile extends StatelessWidget {
-  final String     reason;
-  final bool       isSelected;
+  final String reason;
+  final bool isSelected;
   final VoidCallback onTap;
-  final double     w, h;
+  final double w, h;
 
   const _ReasonTile({
     required this.reason,
@@ -194,25 +202,32 @@ class _ReasonTile extends StatelessWidget {
       onTap: onTap,
       child: Container(
         margin: EdgeInsets.only(bottom: h * 0.010),
-        padding: EdgeInsets.symmetric(
-            horizontal: w * 0.04, vertical: h * 0.018),
+        padding:
+            EdgeInsets.symmetric(horizontal: w * 0.04, vertical: h * 0.018),
         decoration: BoxDecoration(
-          color:        isSelected ? MyShopColors.primaryGold.withAlpha(16) : MyShopColors.surfaceWhite,
+          color: isSelected
+              ? MyShopColors.primaryGold.withAlpha(16)
+              : MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(10),
-          border:       Border.all(
-              color: isSelected ? MyShopColors.primaryGold : MyShopColors.divider,
+          border: Border.all(
+              color:
+                  isSelected ? MyShopColors.primaryGold : MyShopColors.divider,
               width: isSelected ? 1.5 : 1),
         ),
         child: Row(
           children: [
             Container(
-              width:  w * 0.052,
+              width: w * 0.052,
               height: w * 0.052,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: isSelected ? MyShopColors.primaryGold : MyShopColors.surfaceGrey,
+                color: isSelected
+                    ? MyShopColors.primaryGold
+                    : MyShopColors.surfaceGrey,
                 border: Border.all(
-                    color: isSelected ? MyShopColors.primaryGold : MyShopColors.divider),
+                    color: isSelected
+                        ? MyShopColors.primaryGold
+                        : MyShopColors.divider),
               ),
               child: isSelected
                   ? const Icon(Icons.check_rounded,
@@ -223,11 +238,9 @@ class _ReasonTile extends StatelessWidget {
             Expanded(
               child: Text(reason,
                   style: TextStyle(
-                    color:      MyShopColors.textPrimary,
-                    fontSize:   w * 0.036,
-                    fontWeight: isSelected
-                        ? FontWeight.w600
-                        : FontWeight.w400,
+                    color: MyShopColors.textPrimary,
+                    fontSize: w * 0.036,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                   )),
             ),
           ],
@@ -241,8 +254,8 @@ class _ReasonTile extends StatelessWidget {
 
 class _DetailsField extends StatelessWidget {
   final TextEditingController controller;
-  final ValueChanged<String>  onChanged;
-  final double                w, h;
+  final ValueChanged<String> onChanged;
+  final double w, h;
 
   const _DetailsField({
     required this.controller,
@@ -255,17 +268,16 @@ class _DetailsField extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: MyShopColors.divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: TextField(
-        controller:  controller,
-        onChanged:   onChanged,
-        maxLines:    5,
-        minLines:    4,
-        style: TextStyle(
-            color: MyShopColors.textPrimary, fontSize: w * 0.036),
+        controller: controller,
+        onChanged: onChanged,
+        maxLines: 5,
+        minLines: 4,
+        style: TextStyle(color: MyShopColors.textPrimary, fontSize: w * 0.036),
         decoration: InputDecoration(
           hintText: 'Describe the issue in detail…',
           hintStyle: TextStyle(
@@ -288,8 +300,8 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(text,
         style: TextStyle(
-          color:      MyShopColors.textPrimary,
-          fontSize:   w * 0.038,
+          color: MyShopColors.textPrimary,
+          fontSize: w * 0.038,
           fontWeight: FontWeight.w700,
         ));
   }
@@ -305,9 +317,7 @@ class _PolicyNote extends StatelessWidget {
       'If the route exceeded the optimal path by more than 30%, '
       'a partial refund will be issued automatically.',
       style: TextStyle(
-          color:    MyShopColors.textSecondary,
-          fontSize: w * 0.030,
-          height:   1.6),
+          color: MyShopColors.textSecondary, fontSize: w * 0.030, height: 1.6),
     );
   }
 }
@@ -315,10 +325,10 @@ class _PolicyNote extends StatelessWidget {
 // ── Submit button ──────────────────────────────────────────────────────────────
 
 class _SubmitButton extends StatelessWidget {
-  final bool         enabled;
-  final bool         loading;
+  final bool enabled;
+  final bool loading;
   final VoidCallback onTap;
-  final double       w, h;
+  final double w, h;
 
   const _SubmitButton({
     required this.enabled,
@@ -331,28 +341,29 @@ class _SubmitButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedOpacity(
-      opacity:  enabled ? 1.0 : 0.45,
+      opacity: enabled ? 1.0 : 0.45,
       duration: const Duration(milliseconds: 200),
       child: SizedBox(
-        width:  double.infinity,
+        width: double.infinity,
         height: h * 0.066,
         child: Material(
-          color:        MyShopColors.error,
+          color: MyShopColors.error,
           borderRadius: BorderRadius.circular(12),
           child: InkWell(
-            onTap:        enabled ? onTap : null,
+            onTap: enabled ? onTap : null,
             borderRadius: BorderRadius.circular(12),
             child: Center(
               child: loading
                   ? SizedBox(
-                      width: w * 0.052, height: w * 0.052,
+                      width: w * 0.052,
+                      height: w * 0.052,
                       child: const CircularProgressIndicator(
                           color: Colors.white, strokeWidth: 2.5))
                   : Text('Submit Dispute',
                       style: TextStyle(
-                        color:       Colors.white,
-                        fontSize:    w * 0.042,
-                        fontWeight:  FontWeight.w700,
+                        color: Colors.white,
+                        fontSize: w * 0.042,
+                        fontWeight: FontWeight.w700,
                       )),
             ),
           ),
@@ -365,10 +376,9 @@ class _SubmitButton extends StatelessWidget {
 // ── Success state ──────────────────────────────────────────────────────────────
 
 class _SuccessBody extends StatelessWidget {
-  final double       w, h;
+  final double w, h;
   final VoidCallback onDone;
-  const _SuccessBody(
-      {required this.w, required this.h, required this.onDone});
+  const _SuccessBody({required this.w, required this.h, required this.onDone});
 
   @override
   Widget build(BuildContext context) {
@@ -378,7 +388,7 @@ class _SuccessBody extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            width:  w * 0.22,
+            width: w * 0.22,
             height: w * 0.22,
             decoration: const BoxDecoration(
               color: MyShopColors.successLight,
@@ -390,8 +400,8 @@ class _SuccessBody extends StatelessWidget {
           SizedBox(height: h * 0.032),
           Text('Dispute submitted',
               style: TextStyle(
-                color:      MyShopColors.textPrimary,
-                fontSize:   w * 0.056,
+                color: MyShopColors.textPrimary,
+                fontSize: w * 0.056,
                 fontWeight: FontWeight.w800,
               )),
           SizedBox(height: h * 0.012),
@@ -400,9 +410,9 @@ class _SuccessBody extends StatelessWidget {
             'You\'ll be notified via the app.',
             textAlign: TextAlign.center,
             style: TextStyle(
-                color:    MyShopColors.textSecondary,
+                color: MyShopColors.textSecondary,
                 fontSize: w * 0.036,
-                height:   1.6),
+                height: 1.6),
           ),
           SizedBox(height: h * 0.048),
           SizedBox(
@@ -419,8 +429,7 @@ class _SuccessBody extends StatelessWidget {
               ),
               child: Text('Back to Activity',
                   style: TextStyle(
-                      fontSize:   w * 0.042,
-                      fontWeight: FontWeight.w700)),
+                      fontSize: w * 0.042, fontWeight: FontWeight.w700)),
             ),
           ),
         ],

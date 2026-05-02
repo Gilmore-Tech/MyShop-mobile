@@ -15,9 +15,9 @@ class LoyaltyPointsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final size  = MediaQuery.sizeOf(context);
-    final w     = size.width;
-    final h     = size.height;
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
     final async = ref.watch(loyaltyProvider);
 
     return Scaffold(
@@ -30,8 +30,8 @@ class LoyaltyPointsScreen extends ConsumerWidget {
         ),
         title: Text('Loyalty Points',
             style: TextStyle(
-                color:      MyShopColors.textPrimary,
-                fontSize:   w * 0.044,
+                color: MyShopColors.textPrimary,
+                fontSize: w * 0.044,
                 fontWeight: FontWeight.w700)),
         centerTitle: false,
         actions: [
@@ -39,17 +39,19 @@ class LoyaltyPointsScreen extends ConsumerWidget {
             Padding(
               padding: EdgeInsets.only(right: w * 0.038),
               child: const SizedBox(
-                width: 20, height: 20,
+                width: 20,
+                height: 20,
                 child: CircularProgressIndicator(
-                  strokeWidth: 2, color: MyShopColors.primaryGold),
+                    strokeWidth: 2, color: MyShopColors.primaryGold),
               ),
             ),
         ],
       ),
       body: async.when(
         loading: () => const _LoadingBody(),
-        error:   (_, __) => _ErrorBody(onRetry: () => ref.invalidate(loyaltyProvider)),
-        data:    (data) => _Body(data: data, w: w, h: h),
+        error: (_, __) =>
+            _ErrorBody(onRetry: () => ref.invalidate(loyaltyProvider)),
+        data: (data) => _Body(data: data, w: w, h: h),
       ),
     );
   }
@@ -62,7 +64,8 @@ class _LoadingBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(child: CircularProgressIndicator(color: MyShopColors.primaryGold));
+    return const Center(
+        child: CircularProgressIndicator(color: MyShopColors.primaryGold));
   }
 }
 
@@ -137,12 +140,12 @@ class _BalanceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width:   double.infinity,
+      width: double.infinity,
       padding: EdgeInsets.all(w * 0.05),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
-          end:   Alignment.bottomRight,
+          end: Alignment.bottomRight,
           colors: [MyShopColors.primaryGold, MyShopColors.primaryGoldDark],
         ),
         borderRadius: BorderRadius.circular(16),
@@ -155,7 +158,7 @@ class _BalanceCard extends StatelessWidget {
               Container(
                 padding: EdgeInsets.all(w * 0.024),
                 decoration: BoxDecoration(
-                  color:        Colors.white.withAlpha(30),
+                  color: Colors.white.withAlpha(30),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(Icons.military_tech_rounded,
@@ -167,13 +170,13 @@ class _BalanceCard extends StatelessWidget {
                 children: [
                   Text(data.tier.label,
                       style: TextStyle(
-                        color:      Colors.white,
-                        fontSize:   w * 0.034,
+                        color: Colors.white,
+                        fontSize: w * 0.034,
                         fontWeight: FontWeight.w600,
                       )),
                   Text('MyShop Loyalty',
                       style: TextStyle(
-                          color:    Colors.white.withAlpha(180),
+                          color: Colors.white.withAlpha(180),
                           fontSize: w * 0.028)),
                 ],
               ),
@@ -182,21 +185,20 @@ class _BalanceCard extends StatelessWidget {
           SizedBox(height: h * 0.020),
           Text('${data.points}',
               style: TextStyle(
-                color:      Colors.white,
-                fontSize:   w * 0.100,
+                color: Colors.white,
+                fontSize: w * 0.100,
                 fontWeight: FontWeight.w900,
-                height:     1.0,
+                height: 1.0,
               )),
           Text('points available',
               style: TextStyle(
-                  color:    Colors.white.withAlpha(200),
-                  fontSize: w * 0.034)),
+                  color: Colors.white.withAlpha(200), fontSize: w * 0.034)),
           SizedBox(height: h * 0.016),
           Container(
             padding: EdgeInsets.symmetric(
                 horizontal: w * 0.036, vertical: h * 0.012),
             decoration: BoxDecoration(
-              color:        Colors.white.withAlpha(30),
+              color: Colors.white.withAlpha(30),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Row(
@@ -208,8 +210,8 @@ class _BalanceCard extends StatelessWidget {
                 Text(
                   'Worth GHS ${data.ghsValue.toStringAsFixed(2)} in ride discounts',
                   style: TextStyle(
-                    color:      Colors.white,
-                    fontSize:   w * 0.030,
+                    color: Colors.white,
+                    fontSize: w * 0.030,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -232,14 +234,14 @@ class _TierProgress extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final progress = data.tierProgress;
-    final isGold   = data.tier == LoyaltyTier.gold;
+    final isGold = data.tier == LoyaltyTier.gold;
 
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: MyShopColors.divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         children: [
@@ -247,9 +249,9 @@ class _TierProgress extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: LoyaltyTier.values.map((t) {
               return _TierChip(
-                label:    t.label.split(' ').first,
+                label: t.label.split(' ').first,
                 isActive: t == data.tier,
-                w:        w,
+                w: w,
               );
             }).toList(),
           ),
@@ -257,10 +259,11 @@ class _TierProgress extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
-              value:           progress,
+              value: progress,
               backgroundColor: const Color(0xFFE8EAEC),
-              valueColor:      const AlwaysStoppedAnimation<Color>(MyShopColors.primaryGold),
-              minHeight:       8,
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(MyShopColors.primaryGold),
+              minHeight: 8,
             ),
           ),
           SizedBox(height: h * 0.010),
@@ -269,14 +272,15 @@ class _TierProgress extends StatelessWidget {
             children: [
               Text('${data.points} pts',
                   style: TextStyle(
-                    color:      MyShopColors.textPrimary,
-                    fontSize:   w * 0.030,
+                    color: MyShopColors.textPrimary,
+                    fontSize: w * 0.030,
                     fontWeight: FontWeight.w600,
                   )),
               if (!isGold)
-                Text('${data.pointsToNextTier} pts to ${data.tier == LoyaltyTier.bronze ? 'Silver' : 'Gold'}',
+                Text(
+                    '${data.pointsToNextTier} pts to ${data.tier == LoyaltyTier.bronze ? 'Silver' : 'Gold'}',
                     style: TextStyle(
-                        color:    MyShopColors.textSecondary,
+                        color: MyShopColors.textSecondary,
                         fontSize: w * 0.030)),
             ],
           ),
@@ -288,7 +292,7 @@ class _TierProgress extends StatelessWidget {
 
 class _TierChip extends StatelessWidget {
   final String label;
-  final bool   isActive;
+  final bool isActive;
   final double w;
   const _TierChip(
       {required this.label, required this.isActive, required this.w});
@@ -298,15 +302,19 @@ class _TierChip extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: w * 0.030, vertical: 5),
       decoration: BoxDecoration(
-        color:        isActive ? MyShopColors.primaryGoldLight : MyShopColors.surfaceGrey,
+        color:
+            isActive ? MyShopColors.primaryGoldLight : MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-            color: isActive ? MyShopColors.primaryGold : const Color(0xFFE8EAEC)),
+            color:
+                isActive ? MyShopColors.primaryGold : const Color(0xFFE8EAEC)),
       ),
       child: Text(label,
           style: TextStyle(
-            color:      isActive ? MyShopColors.primaryGold : MyShopColors.textSecondary,
-            fontSize:   w * 0.028,
+            color: isActive
+                ? MyShopColors.primaryGold
+                : MyShopColors.textSecondary,
+            fontSize: w * 0.028,
             fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
           )),
     );
@@ -320,28 +328,32 @@ class _EarnGrid extends StatelessWidget {
   const _EarnGrid({required this.w, required this.h});
 
   static const _items = [
-    (icon: Icons.directions_car_rounded, label: 'Complete a ride',  pts: '+5 pts'),
-    (icon: Icons.work_rounded,           label: 'Complete a job',   pts: '+10 pts'),
-    (icon: Icons.person_add_rounded,     label: 'Refer a friend',   pts: '+100 pts'),
-    (icon: Icons.star_rounded,           label: 'Leave a rating',   pts: '+2 pts'),
+    (
+      icon: Icons.directions_car_rounded,
+      label: 'Complete a ride',
+      pts: '+5 pts'
+    ),
+    (icon: Icons.work_rounded, label: 'Complete a job', pts: '+10 pts'),
+    (icon: Icons.person_add_rounded, label: 'Refer a friend', pts: '+100 pts'),
+    (icon: Icons.star_rounded, label: 'Leave a rating', pts: '+2 pts'),
   ];
 
   @override
   Widget build(BuildContext context) {
     return GridView.count(
-      crossAxisCount:   2,
-      shrinkWrap:       true,
-      physics:          const NeverScrollableScrollPhysics(),
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       crossAxisSpacing: w * 0.030,
-      mainAxisSpacing:  w * 0.030,
+      mainAxisSpacing: w * 0.030,
       childAspectRatio: 1.6,
       children: _items.map((item) {
         return Container(
           padding: EdgeInsets.all(w * 0.036),
           decoration: BoxDecoration(
-            color:        MyShopColors.surfaceWhite,
+            color: MyShopColors.surfaceWhite,
             borderRadius: BorderRadius.circular(12),
-            border:       Border.all(color: MyShopColors.divider),
+            border: Border.all(color: MyShopColors.divider),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -350,15 +362,14 @@ class _EarnGrid extends StatelessWidget {
               const Spacer(),
               Text(item.pts,
                   style: TextStyle(
-                    color:      MyShopColors.primaryGold,
-                    fontSize:   w * 0.036,
+                    color: MyShopColors.primaryGold,
+                    fontSize: w * 0.036,
                     fontWeight: FontWeight.w800,
                   )),
               const SizedBox(height: 2),
               Text(item.label,
                   style: TextStyle(
-                      color:    MyShopColors.textSecondary,
-                      fontSize: w * 0.028)),
+                      color: MyShopColors.textSecondary, fontSize: w * 0.028)),
             ],
           ),
         );
@@ -380,21 +391,22 @@ class _RedeemCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        MyShopColors.successLight,
+        color: MyShopColors.successLight,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: MyShopColors.success.withAlpha(60)),
+        border: Border.all(color: MyShopColors.success.withAlpha(60)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.redeem_rounded, color: MyShopColors.success, size: 22),
+              const Icon(Icons.redeem_rounded,
+                  color: MyShopColors.success, size: 22),
               SizedBox(width: w * 0.024),
               Text('Ride Discount',
                   style: TextStyle(
-                    color:      MyShopColors.success,
-                    fontSize:   w * 0.038,
+                    color: MyShopColors.success,
+                    fontSize: w * 0.038,
                     fontWeight: FontWeight.w700,
                   )),
             ],
@@ -404,9 +416,7 @@ class _RedeemCard extends StatelessWidget {
             'Redeem 100 points for GHS 1.00 off your next ride. '
             'Points are applied automatically at checkout.',
             style: TextStyle(
-                color:    MyShopColors.success,
-                fontSize: w * 0.032,
-                height:   1.5),
+                color: MyShopColors.success, fontSize: w * 0.032, height: 1.5),
           ),
           SizedBox(height: h * 0.016),
           SizedBox(
@@ -425,9 +435,8 @@ class _RedeemCard extends StatelessWidget {
                 canRedeem
                     ? 'Redeem 100 pts → GHS 1.00'
                     : 'Need ${100 - data.points} more points',
-                style: TextStyle(
-                    fontSize:   w * 0.034,
-                    fontWeight: FontWeight.w700),
+                style:
+                    TextStyle(fontSize: w * 0.034, fontWeight: FontWeight.w700),
               ),
             ),
           ),
@@ -448,8 +457,8 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(text,
         style: TextStyle(
-          color:      MyShopColors.textPrimary,
-          fontSize:   w * 0.040,
+          color: MyShopColors.textPrimary,
+          fontSize: w * 0.040,
           fontWeight: FontWeight.w700,
         ));
   }
@@ -458,20 +467,19 @@ class _SectionTitle extends StatelessWidget {
 class _LedgerList extends StatelessWidget {
   final List<LedgerEntry> entries;
   final double w, h;
-  const _LedgerList(
-      {required this.entries, required this.w, required this.h});
+  const _LedgerList({required this.entries, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: MyShopColors.divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         children: entries.asMap().entries.map((kv) {
-          final e      = kv.value;
+          final e = kv.value;
           final isLast = kv.key == entries.length - 1;
           return Column(
             children: [
@@ -481,7 +489,7 @@ class _LedgerList extends StatelessWidget {
                 child: Row(
                   children: [
                     Container(
-                      width:  w * 0.10,
+                      width: w * 0.10,
                       height: w * 0.10,
                       decoration: BoxDecoration(
                         color: e.isEarn
@@ -493,8 +501,10 @@ class _LedgerList extends StatelessWidget {
                         e.isEarn
                             ? Icons.add_circle_outline_rounded
                             : Icons.remove_circle_outline_rounded,
-                        color: e.isEarn ? MyShopColors.primaryGold : MyShopColors.error,
-                        size:  w * 0.048,
+                        color: e.isEarn
+                            ? MyShopColors.primaryGold
+                            : MyShopColors.error,
+                        size: w * 0.048,
                       ),
                     ),
                     SizedBox(width: w * 0.030),
@@ -504,14 +514,14 @@ class _LedgerList extends StatelessWidget {
                         children: [
                           Text(e.label,
                               style: TextStyle(
-                                color:      MyShopColors.textPrimary,
-                                fontSize:   w * 0.036,
+                                color: MyShopColors.textPrimary,
+                                fontSize: w * 0.036,
                                 fontWeight: FontWeight.w600,
                               )),
                           const SizedBox(height: 2),
                           Text(e.dateLabel,
                               style: TextStyle(
-                                  color:    MyShopColors.textSecondary,
+                                  color: MyShopColors.textSecondary,
                                   fontSize: w * 0.030)),
                         ],
                       ),
@@ -519,8 +529,10 @@ class _LedgerList extends StatelessWidget {
                     Text(
                       '${e.isEarn ? '+' : '-'}${e.points}',
                       style: TextStyle(
-                        color:      e.isEarn ? MyShopColors.primaryGold : MyShopColors.error,
-                        fontSize:   w * 0.038,
+                        color: e.isEarn
+                            ? MyShopColors.primaryGold
+                            : MyShopColors.error,
+                        fontSize: w * 0.038,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -529,7 +541,9 @@ class _LedgerList extends StatelessWidget {
               ),
               if (!isLast)
                 const Divider(
-                    height: 1, indent: 16, endIndent: 16,
+                    height: 1,
+                    indent: 16,
+                    endIndent: 16,
                     color: MyShopColors.divider),
             ],
           );

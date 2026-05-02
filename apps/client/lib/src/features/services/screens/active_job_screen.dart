@@ -40,12 +40,12 @@ class _TLStep {
 List<_TLStep> _buildSteps(ActiveJobData job) {
   final phase = job.phase;
   final isCompleted = _TLStatus.completed;
-  final isActive    = _TLStatus.active;
-  final isPending   = _TLStatus.pending;
+  final isActive = _TLStatus.active;
+  final isPending = _TLStatus.pending;
 
   _TLStatus s(int stepIndex) {
     const order = [
-      ActiveJobPhase.enRoute,       // step 2 (0-indexed after posted/assigned)
+      ActiveJobPhase.enRoute, // step 2 (0-indexed after posted/assigned)
       ActiveJobPhase.arrived,
       ActiveJobPhase.inProgress,
       ActiveJobPhase.awaitingApproval,
@@ -66,16 +66,14 @@ List<_TLStep> _buildSteps(ActiveJobData job) {
     _TLStep(
       title: 'Artisan Assigned',
       status: isCompleted,
-      description:
-          '${job.artisan.name} (Verified) accepted your job request.',
+      description: '${job.artisan.name} (Verified) accepted your job request.',
       badgeLabel: '3',
     ),
     _TLStep(
       title: 'Artisan En Route',
       status: s(0),
       timeLabel: s(0) == isActive ? 'NOW' : null,
-      description:
-          '${job.artisan.firstName} is currently navigating to your '
+      description: '${job.artisan.firstName} is currently navigating to your '
           'location in ${job.location.split(',').first}.',
     ),
     _TLStep(
@@ -86,16 +84,14 @@ List<_TLStep> _buildSteps(ActiveJobData job) {
     _TLStep(
       title: 'Work in Progress',
       status: s(2),
-      description:
-          '${job.artisan.firstName} will upload arrival and progress '
+      description: '${job.artisan.firstName} will upload arrival and progress '
           'photos here.',
     ),
     if (phase == ActiveJobPhase.awaitingApproval)
       _TLStep(
         title: 'Completed, waiting for approval',
         status: isActive,
-        description:
-            'Artisan has completed the requested job, please inspect '
+        description: 'Artisan has completed the requested job, please inspect '
             'and confirm.',
         activeIcon: Icons.camera_alt_rounded,
       ),
@@ -111,8 +107,8 @@ class ActiveJobScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final size = MediaQuery.sizeOf(context);
-    final w    = size.width;
-    final h    = size.height;
+    final w = size.width;
+    final h = size.height;
 
     final jobAsync = ref.watch(activeJobProvider(jobId));
 
@@ -243,8 +239,7 @@ class _JobHeaderCard extends StatelessWidget {
   final ActiveJobData job;
   final double w;
   final double h;
-  const _JobHeaderCard(
-      {required this.job, required this.w, required this.h});
+  const _JobHeaderCard({required this.job, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
@@ -320,9 +315,7 @@ class _JobHeaderCard extends StatelessWidget {
                 Row(
                   children: [
                     _CategoryChip(
-                        name: job.categoryName,
-                        icon: job.categoryIcon,
-                        w: w),
+                        name: job.categoryName, icon: job.categoryIcon, w: w),
                     SizedBox(width: w * 0.018),
                     Icon(Icons.location_on_rounded,
                         size: w * 0.031, color: MyShopColors.primaryGold),
@@ -358,8 +351,7 @@ class _StatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = phase.statusColor;
     return Container(
-      padding: EdgeInsets.symmetric(
-          horizontal: w * 0.026, vertical: w * 0.010),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.026, vertical: w * 0.010),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(w * 0.051),
@@ -386,8 +378,7 @@ class _CategoryChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.symmetric(
-          horizontal: w * 0.018, vertical: w * 0.008),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.018, vertical: w * 0.008),
       decoration: BoxDecoration(
         color: MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(w * 0.041),
@@ -423,8 +414,7 @@ class _StatsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: w * 0.041),
-      padding: EdgeInsets.symmetric(
-          vertical: h * 0.014, horizontal: w * 0.031),
+      padding: EdgeInsets.symmetric(vertical: h * 0.014, horizontal: w * 0.031),
       decoration: BoxDecoration(
         color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(w * 0.031),
@@ -628,8 +618,8 @@ class _ActiveJobMapPainter extends CustomPainter {
 
     // Gold route: artisan → client
     final artisanPt = Offset(size.width * 0.20, size.height * 0.72);
-    final clientPt  = Offset(size.width * 0.62, size.height * 0.40);
-    final ctrlPt    = Offset(size.width * 0.38, size.height * 0.30);
+    final clientPt = Offset(size.width * 0.62, size.height * 0.40);
+    final ctrlPt = Offset(size.width * 0.38, size.height * 0.30);
 
     final routePath = Path()
       ..moveTo(artisanPt.dx, artisanPt.dy)
@@ -645,23 +635,21 @@ class _ActiveJobMapPainter extends CustomPainter {
     );
 
     // Artisan marker (dark circle + white inner)
-    canvas.drawCircle(
-        artisanPt, 10, Paint()..color = MyShopColors.darkSlate);
-    canvas.drawCircle(
-        artisanPt, 5, Paint()..color = MyShopColors.surfaceWhite);
+    canvas.drawCircle(artisanPt, 10, Paint()..color = MyShopColors.darkSlate);
+    canvas.drawCircle(artisanPt, 5, Paint()..color = MyShopColors.surfaceWhite);
 
     // Client marker (red pin circle)
     canvas.drawCircle(clientPt, 10, Paint()..color = MyShopColors.error);
     canvas.drawCircle(clientPt, 5, Paint()..color = MyShopColors.surfaceWhite);
 
     // Labels
-    _drawLabel(canvas, size, artisanFirstName, artisanPt,
-        MyShopColors.darkSlate);
+    _drawLabel(
+        canvas, size, artisanFirstName, artisanPt, MyShopColors.darkSlate);
     _drawLabel(canvas, size, 'You', clientPt, MyShopColors.error);
   }
 
-  void _drawLabel(Canvas canvas, Size size, String text, Offset anchor,
-      Color color) {
+  void _drawLabel(
+      Canvas canvas, Size size, String text, Offset anchor, Color color) {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
@@ -683,8 +671,8 @@ class _ActiveJobMapPainter extends CustomPainter {
       ),
       const Radius.circular(9),
     );
-    canvas.drawRRect(
-        pillRect, Paint()..color = MyShopColors.surfaceWhite.withValues(alpha: 0.9));
+    canvas.drawRRect(pillRect,
+        Paint()..color = MyShopColors.surfaceWhite.withValues(alpha: 0.9));
 
     tp.paint(
       canvas,
@@ -795,8 +783,7 @@ class _ProgressSection extends StatelessWidget {
   final ActiveJobData job;
   final double w;
   final double h;
-  const _ProgressSection(
-      {required this.job, required this.w, required this.h});
+  const _ProgressSection({required this.job, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
@@ -878,7 +865,7 @@ class _TimelineRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isActive    = step.status == _TLStatus.active;
+    final isActive = step.status == _TLStatus.active;
     final isCompleted = step.status == _TLStatus.completed;
 
     return IntrinsicHeight(
@@ -937,8 +924,7 @@ class _TimelineRow extends StatelessWidget {
           // ── Content ──
           Expanded(
             child: Padding(
-              padding: EdgeInsets.only(
-                  bottom: isLast ? 0 : h * 0.022),
+              padding: EdgeInsets.only(bottom: isLast ? 0 : h * 0.022),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -951,9 +937,8 @@ class _TimelineRow extends StatelessWidget {
                           step.title,
                           style: TextStyle(
                             fontSize: w * 0.033,
-                            fontWeight: isActive
-                                ? FontWeight.w700
-                                : FontWeight.w600,
+                            fontWeight:
+                                isActive ? FontWeight.w700 : FontWeight.w600,
                             color: isActive
                                 ? MyShopColors.primaryGold
                                 : isCompleted
@@ -969,7 +954,9 @@ class _TimelineRow extends StatelessWidget {
                           style: TextStyle(
                             fontSize: w * 0.026,
                             fontWeight: FontWeight.w600,
-                            color: isActive ? MyShopColors.primaryGold : MyShopColors.textSecondary,
+                            color: isActive
+                                ? MyShopColors.primaryGold
+                                : MyShopColors.textSecondary,
                           ),
                         ),
                       ],
@@ -1082,7 +1069,7 @@ class _CostCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final expanded = ref.watch(activeJobActionProvider).costExpanded;
-    final cost     = job.cost;
+    final cost = job.cost;
 
     return Container(
       margin: EdgeInsets.symmetric(horizontal: w * 0.041),
@@ -1179,19 +1166,16 @@ class _CostCard extends ConsumerWidget {
                     SizedBox(height: h * 0.012),
                     Container(
                       padding: EdgeInsets.symmetric(
-                          horizontal: w * 0.026,
-                          vertical: h * 0.010),
+                          horizontal: w * 0.026, vertical: h * 0.010),
                       decoration: BoxDecoration(
                         color: MyShopColors.warningLight,
-                        borderRadius:
-                            BorderRadius.circular(w * 0.021),
+                        borderRadius: BorderRadius.circular(w * 0.021),
                       ),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Icon(Icons.info_outline_rounded,
-                              size: w * 0.033,
-                              color: MyShopColors.warning),
+                              size: w * 0.033, color: MyShopColors.warning),
                           SizedBox(width: w * 0.013),
                           Expanded(
                             child: Text(
@@ -1211,9 +1195,8 @@ class _CostCard extends ConsumerWidget {
                 ],
               ),
             ),
-            crossFadeState: expanded
-                ? CrossFadeState.showSecond
-                : CrossFadeState.showFirst,
+            crossFadeState:
+                expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 200),
           ),
         ],
@@ -1246,7 +1229,9 @@ class _CostRow extends StatelessWidget {
             style: TextStyle(
               fontSize: w * 0.033,
               fontWeight: isBold ? FontWeight.w700 : FontWeight.w400,
-              color: isBold ? MyShopColors.textPrimary : MyShopColors.textSecondary,
+              color: isBold
+                  ? MyShopColors.textPrimary
+                  : MyShopColors.textSecondary,
             ),
           ),
         ),
@@ -1283,7 +1268,8 @@ class _SafetyCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.shield_outlined, size: w * 0.051, color: MyShopColors.success),
+          Icon(Icons.shield_outlined,
+              size: w * 0.051, color: MyShopColors.success),
           SizedBox(width: w * 0.026),
           Expanded(
             child: Column(
@@ -1328,8 +1314,8 @@ class _BottomBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final actionState = ref.watch(activeJobActionProvider);
-    final bottomPad   = MediaQuery.paddingOf(context).bottom;
-    final phase       = job.phase;
+    final bottomPad = MediaQuery.paddingOf(context).bottom;
+    final phase = job.phase;
 
     return Container(
       decoration: const BoxDecoration(
@@ -1419,30 +1405,32 @@ class _BottomBar extends ConsumerWidget {
   }
 
   String _statusHint(ActiveJobPhase phase) => switch (phase) {
-        ActiveJobPhase.enRoute          => 'Waiting for Arrival...',
-        ActiveJobPhase.arrived          => 'Artisan arrived',
-        ActiveJobPhase.inProgress       =>
-            'Confirm only when the technician has finished all listed tasks.',
+        ActiveJobPhase.enRoute => 'Waiting for Arrival...',
+        ActiveJobPhase.arrived => 'Artisan arrived',
+        ActiveJobPhase.inProgress =>
+          'Confirm only when the technician has finished all listed tasks.',
         ActiveJobPhase.awaitingApproval =>
-            'Review the work, then confirm to pay and release escrow.',
-        ActiveJobPhase.pendingPayment   =>
-            "We're processing your payment — this usually takes a few seconds.",
-        ActiveJobPhase.completed        =>
-            'Job complete. Payment released to the artisan.',
+          'Review the work, then confirm to pay and release escrow.',
+        ActiveJobPhase.pendingPayment =>
+          "We're processing your payment — this usually takes a few seconds.",
+        ActiveJobPhase.completed =>
+          'Job complete. Payment released to the artisan.',
       };
 
   bool _isCtaEnabled(ActiveJobPhase phase) => switch (phase) {
-        ActiveJobPhase.enRoute          => false,
-        ActiveJobPhase.arrived          => true,
-        ActiveJobPhase.inProgress       => false,
+        ActiveJobPhase.enRoute => false,
+        ActiveJobPhase.arrived => true,
+        ActiveJobPhase.inProgress => false,
         ActiveJobPhase.awaitingApproval => true,
-        ActiveJobPhase.pendingPayment   => false,
-        ActiveJobPhase.completed        => false,
+        ActiveJobPhase.pendingPayment => false,
+        ActiveJobPhase.completed => false,
       };
 
   Color _ctaBgColor(ActiveJobPhase phase, ActiveJobActionState state) {
     if (state.isBusy) return MyShopColors.surfaceGrey;
-    return _isCtaEnabled(phase) ? MyShopColors.darkSlate : MyShopColors.surfaceGrey;
+    return _isCtaEnabled(phase)
+        ? MyShopColors.darkSlate
+        : MyShopColors.surfaceGrey;
   }
 
   void _onCtaTap(BuildContext context, WidgetRef ref, ActiveJobData job) {
@@ -1461,11 +1449,12 @@ class _BottomBar extends ConsumerWidget {
     }
   }
 
-  Widget _ctaChild(ActiveJobPhase phase, ActiveJobActionState state,
-      double w, double h) {
+  Widget _ctaChild(
+      ActiveJobPhase phase, ActiveJobActionState state, double w, double h) {
     final isEnabled = _isCtaEnabled(phase);
-    final labelColor =
-        (state.isBusy || !isEnabled) ? MyShopColors.disabled : MyShopColors.surfaceWhite;
+    final labelColor = (state.isBusy || !isEnabled)
+        ? MyShopColors.disabled
+        : MyShopColors.surfaceWhite;
 
     if (state.isConfirmingArrival || state.isMarkingComplete) {
       return SizedBox(
@@ -1481,9 +1470,9 @@ class _BottomBar extends ConsumerWidget {
     final label = switch (phase) {
       ActiveJobPhase.enRoute || ActiveJobPhase.arrived => 'Confirm Arrival',
       ActiveJobPhase.awaitingApproval => 'Confirm, proceed to payment',
-      ActiveJobPhase.pendingPayment   => 'Processing payment…',
-      ActiveJobPhase.completed        => 'Job Complete',
-      ActiveJobPhase.inProgress       => 'Mark Complete',
+      ActiveJobPhase.pendingPayment => 'Processing payment…',
+      ActiveJobPhase.completed => 'Job Complete',
+      ActiveJobPhase.inProgress => 'Mark Complete',
     };
 
     return Text(
@@ -1567,4 +1556,3 @@ class _Shimmer extends StatelessWidget {
     );
   }
 }
-

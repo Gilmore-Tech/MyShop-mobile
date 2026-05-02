@@ -12,41 +12,40 @@ class NotificationsListScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final size    = MediaQuery.sizeOf(context);
-    final w       = size.width;
-    final h       = size.height;
-    final notifs  = ref.watch(notifsProvider);
-    final unread  = notifs.where((n) => !n.isRead).length;
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
+    final notifs = ref.watch(notifsProvider);
+    final unread = notifs.where((n) => !n.isRead).length;
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
       appBar: AppBar(
         backgroundColor: MyShopColors.surfaceWhite,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back,
-              color: MyShopColors.textPrimary),
+          icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
           onPressed: () => context.pop(),
         ),
         title: Row(
           children: [
             Text('Notifications',
                 style: TextStyle(
-                    color:      MyShopColors.textPrimary,
-                    fontSize:   w * 0.044,
+                    color: MyShopColors.textPrimary,
+                    fontSize: w * 0.044,
                     fontWeight: FontWeight.w700)),
             if (unread > 0) ...[
               SizedBox(width: w * 0.020),
               Container(
-                padding: EdgeInsets.symmetric(
-                    horizontal: w * 0.020, vertical: 2),
+                padding:
+                    EdgeInsets.symmetric(horizontal: w * 0.020, vertical: 2),
                 decoration: BoxDecoration(
-                  color:        MyShopColors.primaryGold,
+                  color: MyShopColors.primaryGold,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text('$unread',
                     style: TextStyle(
-                      color:      Colors.white,
-                      fontSize:   w * 0.026,
+                      color: Colors.white,
+                      fontSize: w * 0.026,
                       fontWeight: FontWeight.w700,
                     )),
               ),
@@ -56,21 +55,18 @@ class NotificationsListScreen extends ConsumerWidget {
         actions: [
           if (unread > 0)
             TextButton(
-              onPressed: () =>
-                  ref.read(notifsProvider.notifier).markAllRead(),
+              onPressed: () => ref.read(notifsProvider.notifier).markAllRead(),
               child: Text('Mark all read',
                   style: TextStyle(
-                      color:    MyShopColors.primaryGold,
-                      fontSize: w * 0.032)),
+                      color: MyShopColors.primaryGold, fontSize: w * 0.032)),
             ),
         ],
       ),
       body: notifs.isEmpty
           ? _EmptyState(w: w, h: h)
           : _NotifList(
-              notifs:   notifs,
-              onTap:    (id) =>
-                  ref.read(notifsProvider.notifier).markRead(id),
+              notifs: notifs,
+              onTap: (id) => ref.read(notifsProvider.notifier).markRead(id),
               w: w,
               h: h,
             ),
@@ -81,9 +77,9 @@ class NotificationsListScreen extends ConsumerWidget {
 // ── Notification list ──────────────────────────────────────────────────────────
 
 class _NotifList extends StatelessWidget {
-  final List<Notif>          notifs;
+  final List<Notif> notifs;
   final void Function(String) onTap;
-  final double                w, h;
+  final double w, h;
 
   const _NotifList({
     required this.notifs,
@@ -95,7 +91,7 @@ class _NotifList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Group into "Today" and "Earlier"
-    final today   = notifs.where((n) => _isToday(n.time)).toList();
+    final today = notifs.where((n) => _isToday(n.time)).toList();
     final earlier = notifs.where((n) => !_isToday(n.time)).toList();
 
     return ListView(
@@ -103,22 +99,18 @@ class _NotifList extends StatelessWidget {
       children: [
         if (today.isNotEmpty) ...[
           _GroupLabel(label: 'TODAY', w: w),
-          ...today.map((n) => _NotifTile(
-              notif: n, onTap: onTap, w: w, h: h)),
+          ...today.map((n) => _NotifTile(notif: n, onTap: onTap, w: w, h: h)),
         ],
         if (earlier.isNotEmpty) ...[
           _GroupLabel(label: 'EARLIER', w: w),
-          ...earlier.map((n) => _NotifTile(
-              notif: n, onTap: onTap, w: w, h: h)),
+          ...earlier.map((n) => _NotifTile(notif: n, onTap: onTap, w: w, h: h)),
         ],
       ],
     );
   }
 
   static bool _isToday(String time) =>
-      time == 'Just now' ||
-      time.contains('min') ||
-      time.contains('hour');
+      time == 'Just now' || time.contains('min') || time.contains('hour');
 }
 
 class _GroupLabel extends StatelessWidget {
@@ -129,13 +121,12 @@ class _GroupLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-          w * 0.05, w * 0.036, w * 0.05, w * 0.016),
+      padding: EdgeInsets.fromLTRB(w * 0.05, w * 0.036, w * 0.05, w * 0.016),
       child: Text(label,
           style: TextStyle(
-            color:         MyShopColors.textSecondary,
-            fontSize:      w * 0.026,
-            fontWeight:    FontWeight.w900,
+            color: MyShopColors.textSecondary,
+            fontSize: w * 0.026,
+            fontWeight: FontWeight.w900,
             letterSpacing: 1.2,
           )),
     );
@@ -145,9 +136,9 @@ class _GroupLabel extends StatelessWidget {
 // ── Notification tile ──────────────────────────────────────────────────────────
 
 class _NotifTile extends StatelessWidget {
-  final Notif               notif;
+  final Notif notif;
   final void Function(String) onTap;
-  final double               w, h;
+  final double w, h;
 
   const _NotifTile({
     required this.notif,
@@ -164,17 +155,16 @@ class _NotifTile extends StatelessWidget {
       onTap: () => onTap(notif.id),
       child: Container(
         color: notif.isRead ? MyShopColors.offWhite : MyShopColors.surfaceWhite,
-        padding: EdgeInsets.symmetric(
-            horizontal: w * 0.05, vertical: h * 0.016),
+        padding:
+            EdgeInsets.symmetric(horizontal: w * 0.05, vertical: h * 0.016),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Icon
             Container(
-              width:  w * 0.12,
+              width: w * 0.12,
               height: w * 0.12,
-              decoration: BoxDecoration(
-                  color: iconBg, shape: BoxShape.circle),
+              decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
               child: Icon(iconData, color: iconColor, size: w * 0.056),
             ),
             SizedBox(width: w * 0.030),
@@ -189,8 +179,8 @@ class _NotifTile extends StatelessWidget {
                       Expanded(
                         child: Text(notif.title,
                             style: TextStyle(
-                              color:      MyShopColors.textPrimary,
-                              fontSize:   w * 0.036,
+                              color: MyShopColors.textPrimary,
+                              fontSize: w * 0.036,
                               fontWeight: notif.isRead
                                   ? FontWeight.w500
                                   : FontWeight.w700,
@@ -199,23 +189,23 @@ class _NotifTile extends StatelessWidget {
                       SizedBox(width: w * 0.020),
                       Text(notif.time,
                           style: TextStyle(
-                              color:    MyShopColors.textSecondary,
+                              color: MyShopColors.textSecondary,
                               fontSize: w * 0.028)),
                     ],
                   ),
                   const SizedBox(height: 4),
                   Text(notif.body,
                       style: TextStyle(
-                          color:    MyShopColors.textSecondary,
+                          color: MyShopColors.textSecondary,
                           fontSize: w * 0.032,
-                          height:   1.4)),
+                          height: 1.4)),
                 ],
               ),
             ),
             if (!notif.isRead) ...[
               SizedBox(width: w * 0.020),
               Container(
-                width:  8,
+                width: 8,
                 height: 8,
                 margin: EdgeInsets.only(top: h * 0.006),
                 decoration: const BoxDecoration(
@@ -228,15 +218,37 @@ class _NotifTile extends StatelessWidget {
     );
   }
 
-  static (IconData, Color, Color) _iconFor(NotifType type) =>
-      switch (type) {
-        NotifType.ride    => (Icons.directions_car_rounded, MyShopColors.info,    MyShopColors.infoLight),
-        NotifType.job     => (Icons.work_rounded,           MyShopColors.primaryGold,    MyShopColors.primaryGoldLight),
-        NotifType.payment => (Icons.payments_rounded,       MyShopColors.success, MyShopColors.successLight),
-        NotifType.promo   => (Icons.local_offer_rounded,    MyShopColors.warning, MyShopColors.warningLight),
-        NotifType.safety  => (Icons.security_rounded,       MyShopColors.error,  MyShopColors.errorLight),
-        NotifType.system  => (Icons.notifications_rounded,  MyShopColors.darkSlate,
-                               MyShopColors.surfaceGrey),
+  static (IconData, Color, Color) _iconFor(NotifType type) => switch (type) {
+        NotifType.ride => (
+            Icons.directions_car_rounded,
+            MyShopColors.info,
+            MyShopColors.infoLight
+          ),
+        NotifType.job => (
+            Icons.work_rounded,
+            MyShopColors.primaryGold,
+            MyShopColors.primaryGoldLight
+          ),
+        NotifType.payment => (
+            Icons.payments_rounded,
+            MyShopColors.success,
+            MyShopColors.successLight
+          ),
+        NotifType.promo => (
+            Icons.local_offer_rounded,
+            MyShopColors.warning,
+            MyShopColors.warningLight
+          ),
+        NotifType.safety => (
+            Icons.security_rounded,
+            MyShopColors.error,
+            MyShopColors.errorLight
+          ),
+        NotifType.system => (
+            Icons.notifications_rounded,
+            MyShopColors.darkSlate,
+            MyShopColors.surfaceGrey
+          ),
       };
 }
 
@@ -257,15 +269,14 @@ class _EmptyState extends StatelessWidget {
           SizedBox(height: h * 0.016),
           Text('No notifications yet',
               style: TextStyle(
-                color:      MyShopColors.textPrimary,
-                fontSize:   w * 0.042,
+                color: MyShopColors.textPrimary,
+                fontSize: w * 0.042,
                 fontWeight: FontWeight.w700,
               )),
           SizedBox(height: h * 0.008),
           Text("You're all caught up!",
               style: TextStyle(
-                  color:    MyShopColors.textSecondary,
-                  fontSize: w * 0.034)),
+                  color: MyShopColors.textSecondary, fontSize: w * 0.034)),
         ],
       ),
     );

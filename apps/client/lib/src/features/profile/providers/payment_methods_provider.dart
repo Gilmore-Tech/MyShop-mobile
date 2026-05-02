@@ -22,46 +22,46 @@ enum MomoProvider { mtn, vodafone, airteltigo }
 
 extension MomoProviderX on MomoProvider {
   String get label => switch (this) {
-        MomoProvider.mtn        => 'MTN MoMo',
-        MomoProvider.vodafone   => 'Vodafone Cash',
+        MomoProvider.mtn => 'MTN MoMo',
+        MomoProvider.vodafone => 'Vodafone Cash',
         MomoProvider.airteltigo => 'AirtelTigo Money',
       };
 
   String get apiValue => switch (this) {
-        MomoProvider.mtn        => 'mtn',
-        MomoProvider.vodafone   => 'vodafone',
+        MomoProvider.mtn => 'mtn',
+        MomoProvider.vodafone => 'vodafone',
         MomoProvider.airteltigo => 'airteltigo',
       };
 
   Color get color => switch (this) {
-        MomoProvider.mtn        => const Color(0xFFF5A623),
-        MomoProvider.vodafone   => const Color(0xFFEB5757),
+        MomoProvider.mtn => const Color(0xFFF5A623),
+        MomoProvider.vodafone => const Color(0xFFEB5757),
         MomoProvider.airteltigo => const Color(0xFF27AE60),
       };
 
   Color get bgColor => switch (this) {
-        MomoProvider.mtn        => const Color(0xFFFFF8EC),
-        MomoProvider.vodafone   => const Color(0xFFFFF0F0),
+        MomoProvider.mtn => const Color(0xFFFFF8EC),
+        MomoProvider.vodafone => const Color(0xFFFFF0F0),
         MomoProvider.airteltigo => const Color(0xFFEBFAF2),
       };
 }
 
 MomoProvider? _parseMomoProvider(String? raw) => switch (raw?.toLowerCase()) {
-      'mtn'        => MomoProvider.mtn,
-      'vodafone'   => MomoProvider.vodafone,
+      'mtn' => MomoProvider.mtn,
+      'vodafone' => MomoProvider.vodafone,
       'airteltigo' => MomoProvider.airteltigo,
-      _            => null,
+      _ => null,
     };
 
 // ── Payment Method ────────────────────────────────────────────────────────────
 
 class PaymentMethod {
-  final String            id;
+  final String id;
   final PaymentMethodType type;
-  final MomoProvider?     momoProvider;
-  final String            title;
-  final String            subtitle;
-  final bool              isDefault;
+  final MomoProvider? momoProvider;
+  final String title;
+  final String subtitle;
+  final bool isDefault;
 
   const PaymentMethod({
     required this.id,
@@ -74,30 +74,30 @@ class PaymentMethod {
 
   factory PaymentMethod.fromJson(Map<String, dynamic> json) {
     final typeRaw = json['type'] as String? ?? '';
-    final isMomo  = typeRaw == 'momo';
-    final momoP   = _parseMomoProvider(json['provider'] as String?);
+    final isMomo = typeRaw == 'momo';
+    final momoP = _parseMomoProvider(json['provider'] as String?);
 
     String title;
     String subtitle;
 
     if (isMomo && momoP != null) {
-      title    = momoP.label;
+      title = momoP.label;
       subtitle = json['phone'] as String? ?? '';
     } else {
       final brand = json['brand'] as String? ?? 'Card';
       final last4 = json['last4'] as String? ?? '••••';
-      final exp   = json['expiresAt'] as String? ?? '';
-      title       = '$brand  ••••  $last4';
-      subtitle    = exp.isNotEmpty ? 'Expires $exp' : '';
+      final exp = json['expiresAt'] as String? ?? '';
+      title = '$brand  ••••  $last4';
+      subtitle = exp.isNotEmpty ? 'Expires $exp' : '';
     }
 
     return PaymentMethod(
-      id:           json['id'] as String,
-      type:         isMomo ? PaymentMethodType.momo : PaymentMethodType.card,
+      id: json['id'] as String,
+      type: isMomo ? PaymentMethodType.momo : PaymentMethodType.card,
       momoProvider: momoP,
-      title:        title,
-      subtitle:     subtitle,
-      isDefault:    json['isDefault'] as bool? ?? false,
+      title: title,
+      subtitle: subtitle,
+      isDefault: json['isDefault'] as bool? ?? false,
     );
   }
 }
@@ -106,20 +106,20 @@ class PaymentMethod {
 
 class PaymentMethodsState {
   final List<PaymentMethod> methods;
-  final bool                isLoading;
-  final String?             deletingId;
-  final String?             settingDefaultId;
-  final String?             errorMessage;
+  final bool isLoading;
+  final String? deletingId;
+  final String? settingDefaultId;
+  final String? errorMessage;
 
   const PaymentMethodsState({
-    this.methods          = const [],
-    this.isLoading        = false,
+    this.methods = const [],
+    this.isLoading = false,
     this.deletingId,
     this.settingDefaultId,
     this.errorMessage,
   });
 
-  bool get isDeletingAny   => deletingId != null;
+  bool get isDeletingAny => deletingId != null;
   bool get isSettingDefault => settingDefaultId != null;
 
   List<PaymentMethod> get momoMethods =>
@@ -130,20 +130,22 @@ class PaymentMethodsState {
 
   PaymentMethodsState copyWith({
     List<PaymentMethod>? methods,
-    bool?                isLoading,
-    String?              deletingId,
-    String?              settingDefaultId,
-    String?              errorMessage,
-    bool                 clearDeleting         = false,
-    bool                 clearSettingDefault   = false,
-    bool                 clearError            = false,
+    bool? isLoading,
+    String? deletingId,
+    String? settingDefaultId,
+    String? errorMessage,
+    bool clearDeleting = false,
+    bool clearSettingDefault = false,
+    bool clearError = false,
   }) =>
       PaymentMethodsState(
-        methods:          methods         ?? this.methods,
-        isLoading:        isLoading       ?? this.isLoading,
-        deletingId:       clearDeleting        ? null : (deletingId       ?? this.deletingId),
-        settingDefaultId: clearSettingDefault  ? null : (settingDefaultId ?? this.settingDefaultId),
-        errorMessage:     clearError           ? null : (errorMessage     ?? this.errorMessage),
+        methods: methods ?? this.methods,
+        isLoading: isLoading ?? this.isLoading,
+        deletingId: clearDeleting ? null : (deletingId ?? this.deletingId),
+        settingDefaultId: clearSettingDefault
+            ? null
+            : (settingDefaultId ?? this.settingDefaultId),
+        errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       );
 }
 
@@ -159,16 +161,14 @@ class PaymentMethodsNotifier extends StateNotifier<PaymentMethodsState> {
   Future<void> _load() async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
-      final raw     = await _ref.read(paymentServiceProvider).getPaymentMethods();
-      final methods = raw
-          .cast<Map<String, dynamic>>()
-          .map(PaymentMethod.fromJson)
-          .toList();
+      final raw = await _ref.read(paymentServiceProvider).getPaymentMethods();
+      final methods =
+          raw.cast<Map<String, dynamic>>().map(PaymentMethod.fromJson).toList();
       state = state.copyWith(methods: methods, isLoading: false);
     } catch (e) {
       developer.log('getPaymentMethods error: $e', name: 'PaymentMethods');
       state = state.copyWith(
-        isLoading:    false,
+        isLoading: false,
         errorMessage: 'Could not load payment methods',
       );
     }
@@ -183,12 +183,12 @@ class PaymentMethodsNotifier extends StateNotifier<PaymentMethodsState> {
       await _ref.read(paymentServiceProvider).setDefaultMethod(id);
       final updated = state.methods.map((m) {
         return PaymentMethod(
-          id:           m.id,
-          type:         m.type,
+          id: m.id,
+          type: m.type,
           momoProvider: m.momoProvider,
-          title:        m.title,
-          subtitle:     m.subtitle,
-          isDefault:    m.id == id,
+          title: m.title,
+          subtitle: m.subtitle,
+          isDefault: m.id == id,
         );
       }).toList();
       state = state.copyWith(methods: updated, clearSettingDefault: true);
@@ -207,14 +207,14 @@ class PaymentMethodsNotifier extends StateNotifier<PaymentMethodsState> {
     try {
       await _ref.read(paymentServiceProvider).deletePaymentMethod(id);
       state = state.copyWith(
-        methods:        state.methods.where((m) => m.id != id).toList(),
-        clearDeleting:  true,
+        methods: state.methods.where((m) => m.id != id).toList(),
+        clearDeleting: true,
       );
     } catch (e) {
       developer.log('deletePaymentMethod error: $e', name: 'PaymentMethods');
       state = state.copyWith(
         clearDeleting: true,
-        errorMessage:  'Could not remove method. Please try again.',
+        errorMessage: 'Could not remove method. Please try again.',
       );
     }
   }
@@ -226,14 +226,15 @@ class PaymentMethodsNotifier extends StateNotifier<PaymentMethodsState> {
     try {
       final json = await _ref.read(paymentServiceProvider).addMomoMethod(
             provider: provider.apiValue,
-            phone:    phone,
+            phone: phone,
           );
       final method = PaymentMethod.fromJson(json);
       state = state.copyWith(methods: [...state.methods, method]);
       return true;
     } catch (e) {
       developer.log('addMomoMethod error: $e', name: 'PaymentMethods');
-      state = state.copyWith(errorMessage: 'Could not add method. Please try again.');
+      state = state.copyWith(
+          errorMessage: 'Could not add method. Please try again.');
       return false;
     }
   }

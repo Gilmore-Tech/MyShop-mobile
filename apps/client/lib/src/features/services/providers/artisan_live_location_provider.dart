@@ -38,8 +38,8 @@ const _livePollInterval = Duration(seconds: 10);
 /// Scope: watch this **only** from the widgets that actually need the live
 /// coordinates (distance chip, map markers). Do not watch from the screen
 /// root, otherwise the whole page rebuilds on every poll.
-final artisanLiveLocationsProvider = StreamProvider.autoDispose
-    .family<Map<String, ArtisanLiveLocation>, String>(
+final artisanLiveLocationsProvider =
+    StreamProvider.autoDispose.family<Map<String, ArtisanLiveLocation>, String>(
   (ref, jobId) async* {
     final jobService = ref.watch(jobServiceProvider);
 

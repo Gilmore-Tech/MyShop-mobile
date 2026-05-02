@@ -15,9 +15,9 @@ class ReferralScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final size  = MediaQuery.sizeOf(context);
-    final w     = size.width;
-    final h     = size.height;
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
     final async = ref.watch(referralProvider);
 
     return Scaffold(
@@ -30,14 +30,14 @@ class ReferralScreen extends ConsumerWidget {
         ),
         title: Text('Refer & Earn',
             style: TextStyle(
-                color:      MyShopColors.textPrimary,
-                fontSize:   w * 0.044,
+                color: MyShopColors.textPrimary,
+                fontSize: w * 0.044,
                 fontWeight: FontWeight.w700)),
         centerTitle: false,
       ),
       body: async.when(
         loading: () => const Center(
-          child: CircularProgressIndicator(color: MyShopColors.primaryGold)),
+            child: CircularProgressIndicator(color: MyShopColors.primaryGold)),
         error: (_, __) => Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -91,12 +91,12 @@ class _HeroBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width:   double.infinity,
+      width: double.infinity,
       padding: EdgeInsets.all(w * 0.05),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
-          end:   Alignment.bottomRight,
+          end: Alignment.bottomRight,
           colors: [MyShopColors.primaryGold, MyShopColors.primaryGoldDark],
         ),
         borderRadius: BorderRadius.circular(16),
@@ -107,7 +107,7 @@ class _HeroBanner extends StatelessWidget {
           Container(
             padding: EdgeInsets.all(w * 0.032),
             decoration: BoxDecoration(
-              color:        Colors.white.withAlpha(30),
+              color: Colors.white.withAlpha(30),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(Icons.card_giftcard_rounded,
@@ -116,19 +116,19 @@ class _HeroBanner extends StatelessWidget {
           SizedBox(height: h * 0.016),
           Text('Give GHS 10, Get GHS 10',
               style: TextStyle(
-                color:      Colors.white,
-                fontSize:   w * 0.048,
+                color: Colors.white,
+                fontSize: w * 0.048,
                 fontWeight: FontWeight.w800,
-                height:     1.2,
+                height: 1.2,
               )),
           SizedBox(height: h * 0.008),
           Text(
             'Share your code. Your friend gets GHS 10 off their first ride '
             'or job, and you earn GHS 10 in loyalty points.',
             style: TextStyle(
-                color:    Colors.white.withAlpha(210),
+                color: Colors.white.withAlpha(210),
                 fontSize: w * 0.033,
-                height:   1.5),
+                height: 1.5),
           ),
         ],
       ),
@@ -150,37 +150,35 @@ class _CodeCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-              color:      Colors.black.withAlpha(8),
+              color: Colors.black.withAlpha(8),
               blurRadius: 8,
-              offset:     const Offset(0, 2)),
+              offset: const Offset(0, 2)),
         ],
       ),
       child: Column(
         children: [
           Text('Your referral code',
               style: TextStyle(
-                  color:    MyShopColors.textSecondary,
-                  fontSize: w * 0.032)),
+                  color: MyShopColors.textSecondary, fontSize: w * 0.032)),
           SizedBox(height: h * 0.012),
           Container(
-            padding: EdgeInsets.symmetric(
-                horizontal: w * 0.06, vertical: h * 0.018),
+            padding:
+                EdgeInsets.symmetric(horizontal: w * 0.06, vertical: h * 0.018),
             decoration: BoxDecoration(
-              color:        MyShopColors.primaryGoldLight,
+              color: MyShopColors.primaryGoldLight,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                  color: MyShopColors.primaryGold.withAlpha(80),
-                  width: 1.5),
+                  color: MyShopColors.primaryGold.withAlpha(80), width: 1.5),
             ),
             child: Text(displayCode,
                 style: TextStyle(
-                  color:         MyShopColors.textPrimary,
-                  fontSize:      w * 0.056,
-                  fontWeight:    FontWeight.w900,
+                  color: MyShopColors.textPrimary,
+                  fontSize: w * 0.056,
+                  fontWeight: FontWeight.w900,
                   letterSpacing: 4,
                 )),
           ),
@@ -189,7 +187,7 @@ class _CodeCard extends StatelessWidget {
             children: [
               Expanded(
                 child: _ActionBtn(
-                  icon:  Icons.copy_rounded,
+                  icon: Icons.copy_rounded,
                   label: 'Copy Code',
                   onTap: code.isEmpty
                       ? null
@@ -197,17 +195,19 @@ class _CodeCard extends StatelessWidget {
                           Clipboard.setData(ClipboardData(text: code));
                           MyShopToast.show(context, message: 'Code copied!');
                         },
-                  w: w, h: h,
+                  w: w,
+                  h: h,
                 ),
               ),
               SizedBox(width: w * 0.030),
               Expanded(
                 child: _ActionBtn(
-                  icon:      Icons.share_rounded,
-                  label:     'Share',
+                  icon: Icons.share_rounded,
+                  label: 'Share',
                   isPrimary: true,
-                  onTap:     code.isEmpty ? null : () {},
-                  w: w, h: h,
+                  onTap: code.isEmpty ? null : () {},
+                  w: w,
+                  h: h,
                 ),
               ),
             ],
@@ -219,11 +219,11 @@ class _CodeCard extends StatelessWidget {
 }
 
 class _ActionBtn extends StatelessWidget {
-  final IconData     icon;
-  final String       label;
-  final bool         isPrimary;
+  final IconData icon;
+  final String label;
+  final bool isPrimary;
   final VoidCallback? onTap;
-  final double       w, h;
+  final double w, h;
 
   const _ActionBtn({
     required this.icon,
@@ -241,7 +241,7 @@ class _ActionBtn extends StatelessWidget {
       child: isPrimary
           ? ElevatedButton.icon(
               onPressed: onTap,
-              icon:  Icon(icon, size: 18),
+              icon: Icon(icon, size: 18),
               label: Text(label),
               style: ElevatedButton.styleFrom(
                 backgroundColor: MyShopColors.primaryGold,
@@ -253,11 +253,11 @@ class _ActionBtn extends StatelessWidget {
             )
           : OutlinedButton.icon(
               onPressed: onTap,
-              icon:  Icon(icon, size: 18),
+              icon: Icon(icon, size: 18),
               label: Text(label),
               style: OutlinedButton.styleFrom(
                 foregroundColor: MyShopColors.textPrimary,
-                side:  const BorderSide(color: MyShopColors.divider),
+                side: const BorderSide(color: MyShopColors.divider),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
               ),
@@ -281,16 +281,18 @@ class _StatsRow extends StatelessWidget {
           child: _StatCard(
               label: 'Total Referrals',
               value: '${data.totalReferrals}',
-              icon:  Icons.people_alt_rounded,
-              w: w, h: h),
+              icon: Icons.people_alt_rounded,
+              w: w,
+              h: h),
         ),
         SizedBox(width: w * 0.030),
         Expanded(
           child: _StatCard(
               label: 'Rewards Earned',
               value: 'GHS ${data.earnedGhs.toStringAsFixed(2)}',
-              icon:  Icons.local_offer_rounded,
-              w: w, h: h),
+              icon: Icons.local_offer_rounded,
+              w: w,
+              h: h),
         ),
       ],
     );
@@ -298,9 +300,9 @@ class _StatsRow extends StatelessWidget {
 }
 
 class _StatCard extends StatelessWidget {
-  final String   label, value;
+  final String label, value;
   final IconData icon;
-  final double   w, h;
+  final double w, h;
 
   const _StatCard({
     required this.label,
@@ -315,9 +317,9 @@ class _StatCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: MyShopColors.divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -326,15 +328,14 @@ class _StatCard extends StatelessWidget {
           SizedBox(height: h * 0.010),
           Text(value,
               style: TextStyle(
-                color:      MyShopColors.textPrimary,
-                fontSize:   w * 0.048,
+                color: MyShopColors.textPrimary,
+                fontSize: w * 0.048,
                 fontWeight: FontWeight.w800,
               )),
           const SizedBox(height: 3),
           Text(label,
               style: TextStyle(
-                  color:    MyShopColors.textSecondary,
-                  fontSize: w * 0.030)),
+                  color: MyShopColors.textSecondary, fontSize: w * 0.030)),
         ],
       ),
     );
@@ -370,13 +371,13 @@ class _HowItWorks extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: MyShopColors.divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         children: _steps.asMap().entries.map((kv) {
-          final s      = kv.value;
+          final s = kv.value;
           final isLast = kv.key == _steps.length - 1;
           return Column(
             children: [
@@ -386,7 +387,7 @@ class _HowItWorks extends StatelessWidget {
                   Container(
                     padding: EdgeInsets.all(w * 0.028),
                     decoration: BoxDecoration(
-                      color:        MyShopColors.primaryGoldLight,
+                      color: MyShopColors.primaryGoldLight,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(s.icon,
@@ -399,16 +400,16 @@ class _HowItWorks extends StatelessWidget {
                       children: [
                         Text(s.title,
                             style: TextStyle(
-                              color:      MyShopColors.textPrimary,
-                              fontSize:   w * 0.036,
+                              color: MyShopColors.textPrimary,
+                              fontSize: w * 0.036,
                               fontWeight: FontWeight.w700,
                             )),
                         const SizedBox(height: 4),
                         Text(s.desc,
                             style: TextStyle(
-                                color:    MyShopColors.textSecondary,
+                                color: MyShopColors.textSecondary,
                                 fontSize: w * 0.032,
-                                height:   1.4)),
+                                height: 1.4)),
                       ],
                     ),
                   ),
@@ -438,8 +439,8 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(text,
         style: TextStyle(
-          color:      MyShopColors.textPrimary,
-          fontSize:   w * 0.040,
+          color: MyShopColors.textPrimary,
+          fontSize: w * 0.040,
           fontWeight: FontWeight.w700,
         ));
   }
@@ -457,13 +458,13 @@ class _ReferralList extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: MyShopColors.divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         children: entries.asMap().entries.map((kv) {
-          final item   = kv.value;
+          final item = kv.value;
           final isLast = kv.key == entries.length - 1;
           final earned = item.status == 'earned';
           return Column(
@@ -474,7 +475,7 @@ class _ReferralList extends StatelessWidget {
                 child: Row(
                   children: [
                     Container(
-                      width:  w * 0.10,
+                      width: w * 0.10,
                       height: w * 0.10,
                       decoration: const BoxDecoration(
                         color: MyShopColors.surfaceGrey,
@@ -490,14 +491,14 @@ class _ReferralList extends StatelessWidget {
                         children: [
                           Text(item.name,
                               style: TextStyle(
-                                color:      MyShopColors.textPrimary,
-                                fontSize:   w * 0.036,
+                                color: MyShopColors.textPrimary,
+                                fontSize: w * 0.036,
                                 fontWeight: FontWeight.w600,
                               )),
                           const SizedBox(height: 2),
                           Text(item.dateLabel,
                               style: TextStyle(
-                                  color:    MyShopColors.textSecondary,
+                                  color: MyShopColors.textSecondary,
                                   fontSize: w * 0.030)),
                         ],
                       ),
@@ -516,8 +517,10 @@ class _ReferralList extends StatelessWidget {
                             ? '+GHS ${(item.bonusPesewas / 100).toStringAsFixed(2)}'
                             : 'Pending',
                         style: TextStyle(
-                          color:      earned ? MyShopColors.success : MyShopColors.warning,
-                          fontSize:   w * 0.028,
+                          color: earned
+                              ? MyShopColors.success
+                              : MyShopColors.warning,
+                          fontSize: w * 0.028,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -526,7 +529,10 @@ class _ReferralList extends StatelessWidget {
                 ),
               ),
               if (!isLast)
-                const Divider(height: 1, indent: 16, endIndent: 16,
+                const Divider(
+                    height: 1,
+                    indent: 16,
+                    endIndent: 16,
                     color: MyShopColors.divider),
             ],
           );

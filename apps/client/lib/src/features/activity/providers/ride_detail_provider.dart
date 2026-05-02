@@ -59,12 +59,12 @@ class RideDetailData {
     required this.paymentMethod,
   });
 
-  String get baseFareDisplay      => _fmt(baseFarePesewas);
-  String get distanceFareDisplay  => _fmt(distanceFarePesewas);
-  String get bookingFeeDisplay    => _fmt(bookingFeePesewas);
-  String get totalFareDisplay     => _fmt(totalFarePesewas);
-  String get distanceDisplay      => '${distanceKm.toStringAsFixed(1)} km';
-  String get durationDisplay      => '$durationMins min';
+  String get baseFareDisplay => _fmt(baseFarePesewas);
+  String get distanceFareDisplay => _fmt(distanceFarePesewas);
+  String get bookingFeeDisplay => _fmt(bookingFeePesewas);
+  String get totalFareDisplay => _fmt(totalFarePesewas);
+  String get distanceDisplay => '${distanceKm.toStringAsFixed(1)} km';
+  String get durationDisplay => '$durationMins min';
 
   bool get isCompleted => status == 'completed';
   bool get isCancelled => status == 'cancelled';
@@ -108,8 +108,9 @@ class _RideDetailNotifier
         ride['driver'] as Map<String, dynamic>? ?? <String, dynamic>{};
 
     final pickupAddr = ride['pickupAddress'] as String? ?? '';
-    final dropoffAddr =
-        ride['destinationAddress'] as String? ?? ride['dropoffAddress'] as String? ?? '';
+    final dropoffAddr = ride['destinationAddress'] as String? ??
+        ride['dropoffAddress'] as String? ??
+        '';
 
     // Build title from addresses
     final title = pickupAddr.isNotEmpty && dropoffAddr.isNotEmpty
@@ -151,8 +152,7 @@ class _RideDetailNotifier
       pickupTime: pickupTime,
       dropoffTime: dropoffTime,
       driverName: driver['name'] as String? ?? 'Driver',
-      vehicleDisplay:
-          '${driver['vehicleShortName'] ?? driver['vehicle'] ?? ''}'
+      vehicleDisplay: '${driver['vehicleShortName'] ?? driver['vehicle'] ?? ''}'
           ' · ${driver['plateNumber'] ?? ''}',
       driverRating: (driver['rating'] as num?)?.toDouble() ?? 0.0,
       driverPhotoUrl: driver['photoUrl'] as String?,

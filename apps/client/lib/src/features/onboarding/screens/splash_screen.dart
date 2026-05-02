@@ -21,7 +21,7 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   // ── Design tokens ──────────────────────────────────────────────────────────
-  static const _bg   = Color(0xFF0F1923); // rich dark navy
+  static const _bg = Color(0xFF0F1923); // rich dark navy
   static const _gold = MyShopColors.primaryGold;
 
   // ── Animation ──────────────────────────────────────────────────────────────
@@ -38,7 +38,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   late final Animation<double> _logoScale;
   late final Animation<double> _logoFade;
-  late final Animation<double> _wordSlide;  // translateY offset: 24 → 0
+  late final Animation<double> _wordSlide; // translateY offset: 24 → 0
   late final Animation<double> _wordFade;
   late final Animation<double> _taglineFade;
   late final Animation<double> _footerFade;
@@ -178,25 +178,26 @@ class _SplashScreenState extends State<SplashScreen>
           // ── DEV shortcut ───────────────────────────────────────────────
           Positioned(
             bottom: h * 0.015,
-            right:  w * 0.041,
+            right: w * 0.041,
             child: GestureDetector(
               onTap: () {
                 _ctrl.stop();
                 context.go('/dev');
               },
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color:        Colors.white.withAlpha(20),
+                  color: Colors.white.withAlpha(20),
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(color: Colors.white.withAlpha(40)),
                 ),
                 child: Text(
                   'DEV',
                   style: TextStyle(
-                    fontSize:      w * 0.026,
-                    fontWeight:    FontWeight.w900,
-                    color:         Colors.white.withAlpha(120),
+                    fontSize: w * 0.026,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white.withAlpha(120),
                     letterSpacing: 1.0,
                   ),
                 ),
@@ -427,7 +428,7 @@ class _LoadingDotsState extends State<_LoadingDots>
               child: Transform.scale(
                 scale: scale,
                 child: Container(
-                  width:  widget.w * 0.022,
+                  width: widget.w * 0.022,
                   height: widget.w * 0.022,
                   decoration: const BoxDecoration(
                     color: MyShopColors.primaryGold,

@@ -93,10 +93,13 @@ class MatchedDriver {
 
   /// Short vehicle name shown during active tracking, e.g. "Toyota Vitz"
   final String vehicleShortName;
+
   /// Confirmed fare once ride starts (may differ from estimate due to surge)
   final int confirmedFarePesewas;
+
   /// Payment method label shown on tracking screen
   final String paymentMethod;
+
   /// Driver's profile photo URL — empty when the backend payload omits it.
   final String photoUrl;
 
@@ -341,8 +344,7 @@ RideReceipt buildRideReceiptFromSnapshot(Map<String, dynamic> snapshot) {
       (snapshot['totalFare'] as num?)?.toInt() ??
       (snapshot['estimatedFarePesewas'] as num?)?.toInt() ??
       0;
-  final distanceKm =
-      (snapshot['distanceKm'] as num?)?.toDouble() ?? 0;
+  final distanceKm = (snapshot['distanceKm'] as num?)?.toDouble() ?? 0;
   final durationMins = (snapshot['durationMins'] as num?)?.toInt() ?? 0;
   final completedAtRaw = snapshot['completedAt'] as String?;
   final completedAt = completedAtRaw != null
@@ -350,9 +352,7 @@ RideReceipt buildRideReceiptFromSnapshot(Map<String, dynamic> snapshot) {
       : '';
   final paymentMethodRaw = snapshot['paymentMethod'] as String? ?? 'cash';
   return RideReceipt(
-    rideId: snapshot['id'] as String? ??
-        snapshot['rideId'] as String? ??
-        '',
+    rideId: snapshot['id'] as String? ?? snapshot['rideId'] as String? ?? '',
     driverName: driverName,
     vehicleDisplay: vehicleDisplay,
     driverRating: (driver['rating'] as num?)?.toDouble() ?? 0,
@@ -367,8 +367,7 @@ RideReceipt buildRideReceiptFromSnapshot(Map<String, dynamic> snapshot) {
     distanceFarePesewas: 0,
     durationMins: durationMins,
     timeFarePesewas: 0,
-    surgeMultiplier:
-        (snapshot['surgeMultiplier'] as num?)?.toDouble() ?? 1.0,
+    surgeMultiplier: (snapshot['surgeMultiplier'] as num?)?.toDouble() ?? 1.0,
     surgeFarePesewas: 0,
     subtotalPesewas: total,
     taxesPesewas: 0,
@@ -382,12 +381,27 @@ RideReceipt buildRideReceiptFromSnapshot(Map<String, dynamic> snapshot) {
 String _formatCompletedAt(DateTime? at) {
   if (at == null) return '';
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   const weekdays = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday',
-    'Friday', 'Saturday', 'Sunday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
   ];
   final local = at.toLocal();
   final hh = local.hour.toString().padLeft(2, '0');
@@ -396,8 +410,7 @@ String _formatCompletedAt(DateTime? at) {
       '${months[local.month - 1]} | $hh:$mm';
 }
 
-String _formatPaymentMethod(String raw) =>
-    formatRidePaymentMethodLabel(raw);
+String _formatPaymentMethod(String raw) => formatRidePaymentMethodLabel(raw);
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
@@ -492,7 +505,8 @@ class LiveDriverPosition {
   final DateTime? updatedAt;
 }
 
-final liveDriverPositionProvider = StateProvider<LiveDriverPosition?>((_) => null);
+final liveDriverPositionProvider =
+    StateProvider<LiveDriverPosition?>((_) => null);
 
 /// Tracking-screen maintenance loop. Runs while the rider is on an
 /// active ride; auto-disposes when they leave. Two safety belts:
@@ -525,7 +539,6 @@ final activeRideTrackingMaintainerProvider =
       }
     } catch (_) {}
   }
-
 
   Future<void> hydrateIfStale() async {
     // Re-uses the same `_hydrateFromRest` path the matching loop calls,
@@ -800,7 +813,8 @@ Future<void> _hydrateFromRest(
     // here, but `applyRideSnapshot` is private; instead, push the raw
     // status fields into the public providers.
     if (status == 'cancelled' || status == 'no_drivers') {
-      read(bookingFailureMessageProvider.notifier).state = status == 'no_drivers'
+      read(bookingFailureMessageProvider.notifier).state = status ==
+              'no_drivers'
           ? 'No drivers are available nearby right now. Please try again in a moment.'
           : 'This ride was cancelled.';
       read(bookingPhaseProvider.notifier).fail();

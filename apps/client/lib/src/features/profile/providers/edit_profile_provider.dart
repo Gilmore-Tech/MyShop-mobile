@@ -12,25 +12,25 @@ import '../../auth/providers/auth_controller.dart';
 //   - Ghana Card is verified in the KYC flow — not editable here.
 
 class EditProfileState {
-  final String  fullName;
-  final String  email;
-  final String  phoneNumber;
-  final bool    ghanaCardVerified;
+  final String fullName;
+  final String email;
+  final String phoneNumber;
+  final bool ghanaCardVerified;
   final String? avatarUrl;
-  final String  originalEmail;
-  final bool    isSaving;
-  final bool    isSaved;
+  final String originalEmail;
+  final bool isSaving;
+  final bool isSaved;
   final String? errorMessage;
 
   const EditProfileState({
-    this.fullName          = '',
-    this.email             = '',
-    this.phoneNumber       = '',
+    this.fullName = '',
+    this.email = '',
+    this.phoneNumber = '',
     this.ghanaCardVerified = false,
     this.avatarUrl,
-    this.originalEmail     = '',
-    this.isSaving          = false,
-    this.isSaved           = false,
+    this.originalEmail = '',
+    this.isSaving = false,
+    this.isSaved = false,
     this.errorMessage,
   });
 
@@ -40,28 +40,27 @@ class EditProfileState {
   bool get canSave => !isSaving && !isSaved;
 
   EditProfileState copyWith({
-    String?  fullName,
-    String?  email,
-    String?  phoneNumber,
-    bool?    ghanaCardVerified,
-    String?  avatarUrl,
-    String?  originalEmail,
-    bool?    isSaving,
-    bool?    isSaved,
-    String?  errorMessage,
-    bool     clearError = false,
+    String? fullName,
+    String? email,
+    String? phoneNumber,
+    bool? ghanaCardVerified,
+    String? avatarUrl,
+    String? originalEmail,
+    bool? isSaving,
+    bool? isSaved,
+    String? errorMessage,
+    bool clearError = false,
   }) =>
       EditProfileState(
-        fullName:          fullName          ?? this.fullName,
-        email:             email             ?? this.email,
-        phoneNumber:       phoneNumber       ?? this.phoneNumber,
+        fullName: fullName ?? this.fullName,
+        email: email ?? this.email,
+        phoneNumber: phoneNumber ?? this.phoneNumber,
         ghanaCardVerified: ghanaCardVerified ?? this.ghanaCardVerified,
-        avatarUrl:         avatarUrl         ?? this.avatarUrl,
-        originalEmail:     originalEmail     ?? this.originalEmail,
-        isSaving:          isSaving          ?? this.isSaving,
-        isSaved:           isSaved           ?? this.isSaved,
-        errorMessage:
-            clearError ? null : (errorMessage ?? this.errorMessage),
+        avatarUrl: avatarUrl ?? this.avatarUrl,
+        originalEmail: originalEmail ?? this.originalEmail,
+        isSaving: isSaving ?? this.isSaving,
+        isSaved: isSaved ?? this.isSaved,
+        errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       );
 }
 
@@ -79,12 +78,12 @@ class EditProfileNotifier extends StateNotifier<EditProfileState> {
     if (authState is AuthAuthenticated) {
       final profile = authState.profile;
       state = state.copyWith(
-        fullName:          profile.fullName,
-        email:             profile.email ?? '',
-        phoneNumber:       profile.phone,
+        fullName: profile.fullName,
+        email: profile.email ?? '',
+        phoneNumber: profile.phone,
         ghanaCardVerified: profile.client?.ghanaCardVerified ?? false,
-        avatarUrl:         profile.client?.profilePhotoUrl,
-        originalEmail:     profile.email ?? '',
+        avatarUrl: profile.client?.profilePhotoUrl,
+        originalEmail: profile.email ?? '',
       );
     }
   }
@@ -102,8 +101,9 @@ class EditProfileNotifier extends StateNotifier<EditProfileState> {
     try {
       final error = await _authController.updateProfile(
         UpdateProfileRequest(
-          fullName: state.fullName.trim().isNotEmpty ? state.fullName.trim() : null,
-          email:    state.emailChanged ? state.email.trim() : null,
+          fullName:
+              state.fullName.trim().isNotEmpty ? state.fullName.trim() : null,
+          email: state.emailChanged ? state.email.trim() : null,
         ),
       );
       if (error != null) {
@@ -116,7 +116,7 @@ class EditProfileNotifier extends StateNotifier<EditProfileState> {
       }
     } catch (_) {
       state = state.copyWith(
-        isSaving:     false,
+        isSaving: false,
         errorMessage: 'Failed to save. Please try again.',
       );
     }

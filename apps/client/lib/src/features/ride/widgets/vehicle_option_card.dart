@@ -29,7 +29,9 @@ class VehicleOptionCard extends StatelessWidget {
               color: Colors.white,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: isSelected ? MyShopColors.primaryGold : MyShopColors.divider,
+                color: isSelected
+                    ? MyShopColors.primaryGold
+                    : MyShopColors.divider,
                 width: isSelected ? 2 : 1,
               ),
             ),
@@ -81,7 +83,7 @@ class _VehicleIcon extends StatelessWidget {
     final w = MediaQuery.sizeOf(context).width;
     final h = MediaQuery.sizeOf(context).height;
     return Container(
-      width:  w * 0.144,
+      width: w * 0.144,
       height: h * 0.047,
       decoration: BoxDecoration(
         color: MyShopColors.surfaceGrey,
@@ -171,7 +173,9 @@ class _FareInfo extends StatelessWidget {
             Icon(
               Icons.access_time_rounded,
               size: 11,
-              color: isSelected ? MyShopColors.primaryGold : MyShopColors.textSecondary,
+              color: isSelected
+                  ? MyShopColors.primaryGold
+                  : MyShopColors.textSecondary,
             ),
             const SizedBox(width: 3),
             Text(
@@ -179,7 +183,9 @@ class _FareInfo extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
-                color: isSelected ? MyShopColors.primaryGold : MyShopColors.textSecondary,
+                color: isSelected
+                    ? MyShopColors.primaryGold
+                    : MyShopColors.textSecondary,
               ),
             ),
           ],

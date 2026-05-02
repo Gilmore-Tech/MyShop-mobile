@@ -16,12 +16,10 @@ class ActivityListScreen extends ConsumerStatefulWidget {
   const ActivityListScreen({super.key});
 
   @override
-  ConsumerState<ActivityListScreen> createState() =>
-      _ActivityListScreenState();
+  ConsumerState<ActivityListScreen> createState() => _ActivityListScreenState();
 }
 
-class _ActivityListScreenState
-    extends ConsumerState<ActivityListScreen> {
+class _ActivityListScreenState extends ConsumerState<ActivityListScreen> {
   late final TextEditingController _searchCtrl;
 
   @override
@@ -38,12 +36,12 @@ class _ActivityListScreenState
 
   @override
   Widget build(BuildContext context) {
-    final size   = MediaQuery.sizeOf(context);
-    final w      = size.width;
-    final h      = size.height;
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
     final bottom = MediaQuery.paddingOf(context).bottom;
 
-    final state  = ref.watch(activityHistoryProvider);
+    final state = ref.watch(activityHistoryProvider);
     final groups = ref.watch(filteredActivityGroupsProvider);
 
     return Scaffold(
@@ -60,105 +58,103 @@ class _ActivityListScreenState
                   h: h,
                 )
               : CustomScrollView(
-              slivers: [
-                SliverToBoxAdapter(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(height: h * 0.018),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(height: h * 0.018),
 
-                      // ── Search bar ────────────────────────────────────
-                      _SearchBar(
-                        ctrl: _searchCtrl,
-                        w: w,
-                        h: h,
-                        onChanged: (q) => ref
-                            .read(activityHistoryProvider.notifier)
-                            .setSearch(q),
+                          // ── Search bar ────────────────────────────────────
+                          _SearchBar(
+                            ctrl: _searchCtrl,
+                            w: w,
+                            h: h,
+                            onChanged: (q) => ref
+                                .read(activityHistoryProvider.notifier)
+                                .setSearch(q),
+                          ),
+
+                          SizedBox(height: h * 0.014),
+
+                          // ── Filter chips ──────────────────────────────────
+                          _FilterChipsRow(
+                            selected: state.filter,
+                            onSelect: (f) => ref
+                                .read(activityHistoryProvider.notifier)
+                                .setFilter(f),
+                            w: w,
+                            h: h,
+                          ),
+
+                          SizedBox(height: h * 0.018),
+
+                          // ── Summary card ──────────────────────────────────
+                          if (state.summary != null)
+                            _SummaryCard(
+                              summary: state.summary!,
+                              w: w,
+                              h: h,
+                            ),
+
+                          SizedBox(height: h * 0.022),
+
+                          // ── Recent Transactions heading ───────────────────
+                          Padding(
+                            padding:
+                                EdgeInsets.symmetric(horizontal: w * 0.044),
+                            child: Text(
+                              'Recent Transactions',
+                              style: TextStyle(
+                                fontFamily: 'Raleway',
+                                fontSize: w * 0.046,
+                                fontWeight: FontWeight.w700,
+                                color: MyShopColors.textPrimary,
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+
+                          SizedBox(height: h * 0.014),
+                        ],
                       ),
+                    ),
 
-                      SizedBox(height: h * 0.014),
-
-                      // ── Filter chips ──────────────────────────────────
-                      _FilterChipsRow(
-                        selected: state.filter,
-                        onSelect: (f) => ref
-                            .read(activityHistoryProvider.notifier)
-                            .setFilter(f),
-                        w: w,
-                        h: h,
-                      ),
-
-                      SizedBox(height: h * 0.018),
-
-                      // ── Summary card ──────────────────────────────────
-                      if (state.summary != null)
-                        _SummaryCard(
-                          summary: state.summary!,
-                          w: w,
-                          h: h,
+                    // ── Date-grouped transaction list ─────────────────────
+                    if (groups.isEmpty)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: _EmptyState(filter: state.filter, w: w, h: h),
+                      )
+                    else ...[
+                      for (final group in groups) ...[
+                        SliverToBoxAdapter(
+                          child:
+                              _DateGroupHeader(label: group.label, w: w, h: h),
                         ),
-
-                      SizedBox(height: h * 0.022),
-
-                      // ── Recent Transactions heading ───────────────────
-                      Padding(
-                        padding: EdgeInsets.symmetric(
-                            horizontal: w * 0.044),
-                        child: Text(
-                          'Recent Transactions',
-                          style: TextStyle(
-                            fontFamily: 'Raleway',
-                            fontSize: w * 0.046,
-                            fontWeight: FontWeight.w700,
-                            color: MyShopColors.textPrimary,
-                            height: 1.3,
+                        SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (ctx, i) => _TransactionCard(
+                              item: group.items[i],
+                              w: w,
+                              h: h,
+                            ),
+                            childCount: group.items.length,
                           ),
                         ),
-                      ),
+                        SliverToBoxAdapter(child: SizedBox(height: h * 0.008)),
+                      ],
 
-                      SizedBox(height: h * 0.014),
+                      // ── Missing a trip? ──────────────────────────────────
+                      SliverToBoxAdapter(
+                        child: _MissingTripSection(w: w, h: h),
+                      ),
+                      SliverToBoxAdapter(
+                        child: SizedBox(height: bottom + h * 0.032),
+                      ),
                     ],
-                  ),
-                ),
-
-                // ── Date-grouped transaction list ─────────────────────
-                if (groups.isEmpty)
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: _EmptyState(
-                        filter: state.filter, w: w, h: h),
-                  )
-                else ...[
-                  for (final group in groups) ...[
-                    SliverToBoxAdapter(
-                      child: _DateGroupHeader(
-                          label: group.label, w: w, h: h),
-                    ),
-                    SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (ctx, i) => _TransactionCard(
-                          item: group.items[i],
-                          w: w,
-                          h: h,
-                        ),
-                        childCount: group.items.length,
-                      ),
-                    ),
-                    SliverToBoxAdapter(
-                        child: SizedBox(height: h * 0.008)),
                   ],
-
-                  // ── Missing a trip? ──────────────────────────────────
-                  SliverToBoxAdapter(
-                    child: _MissingTripSection(w: w, h: h),
-                  ),
-                  SliverToBoxAdapter(
-                    child: SizedBox(height: bottom + h * 0.032),
-                  ),
-                ],
-              ],
-            ),
+                ),
     );
   }
 
@@ -299,10 +295,11 @@ class _FilterChip extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeInOut,
-        padding: EdgeInsets.symmetric(
-            horizontal: w * 0.034, vertical: h * 0.010),
+        padding:
+            EdgeInsets.symmetric(horizontal: w * 0.034, vertical: h * 0.010),
         decoration: BoxDecoration(
-          color: isSelected ? MyShopColors.darkSlate : MyShopColors.surfaceWhite,
+          color:
+              isSelected ? MyShopColors.darkSlate : MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: isSelected ? MyShopColors.darkSlate : MyShopColors.divider,
@@ -323,8 +320,7 @@ class _FilterChip extends StatelessWidget {
               style: TextStyle(
                 fontFamily: 'Raleway',
                 fontSize: w * 0.034,
-                fontWeight:
-                    isSelected ? FontWeight.w700 : FontWeight.w500,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 color: isSelected ? Colors.white : MyShopColors.textPrimary,
                 height: 1.3,
               ),
@@ -342,25 +338,22 @@ class _SummaryCard extends StatelessWidget {
   final ActivitySummary summary;
   final double w;
   final double h;
-  const _SummaryCard(
-      {required this.summary, required this.w, required this.h});
+  const _SummaryCard({required this.summary, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.044),
       child: Container(
-        padding: EdgeInsets.symmetric(
-            horizontal: w * 0.044, vertical: h * 0.018),
+        padding:
+            EdgeInsets.symmetric(horizontal: w * 0.044, vertical: h * 0.018),
         decoration: BoxDecoration(
           color: MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: MyShopColors.divider, width: 1),
           boxShadow: const [
             BoxShadow(
-                color: Color(0x0A000000),
-                blurRadius: 6,
-                offset: Offset(0, 2))
+                color: Color(0x0A000000), blurRadius: 6, offset: Offset(0, 2))
           ],
         ),
         child: Row(
@@ -433,8 +426,7 @@ class _TripCountBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.symmetric(
-          horizontal: w * 0.030, vertical: h * 0.014),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.030, vertical: h * 0.014),
       decoration: BoxDecoration(
         color: MyShopColors.primaryGoldLight,
         borderRadius: BorderRadius.circular(10),
@@ -493,8 +485,8 @@ class _DateGroupHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(
-          left: w * 0.044, right: w * 0.044, bottom: h * 0.008),
+      padding:
+          EdgeInsets.only(left: w * 0.044, right: w * 0.044, bottom: h * 0.008),
       child: Text(
         label,
         style: TextStyle(
@@ -522,10 +514,8 @@ class _TransactionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(
-          left: w * 0.044,
-          right: w * 0.044,
-          bottom: h * 0.010),
+      padding:
+          EdgeInsets.only(left: w * 0.044, right: w * 0.044, bottom: h * 0.010),
       child: Material(
         color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
@@ -587,12 +577,10 @@ class _TransactionCard extends StatelessWidget {
                             ),
                           ),
                           GestureDetector(
-                            onTap: () =>
-                                _showItemMenu(context, item, w, h),
+                            onTap: () => _showItemMenu(context, item, w, h),
                             behavior: HitTestBehavior.opaque,
                             child: Padding(
-                              padding:
-                                  EdgeInsets.only(left: w * 0.018),
+                              padding: EdgeInsets.only(left: w * 0.018),
                               child: Icon(
                                 Icons.more_horiz_rounded,
                                 color: MyShopColors.textSecondary,
@@ -658,7 +646,7 @@ class _TransactionCard extends StatelessWidget {
   void _openDetail(BuildContext context, TransactionItem item) {
     final path = switch (item.type) {
       TransactionType.ride => AppRoutes.activityRidePath(item.id),
-      TransactionType.job  => AppRoutes.jobDetailPath(item.id),
+      TransactionType.job => AppRoutes.jobDetailPath(item.id),
     };
     context.push(path);
   }
@@ -674,8 +662,7 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.symmetric(
-          horizontal: w * 0.024, vertical: w * 0.011),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.024, vertical: w * 0.011),
       decoration: BoxDecoration(
         color: status.badgeBg,
         borderRadius: BorderRadius.circular(100),
@@ -707,8 +694,7 @@ class _ItemMenuSheet extends StatelessWidget {
   final TransactionItem item;
   final double w;
   final double h;
-  const _ItemMenuSheet(
-      {required this.item, required this.w, required this.h});
+  const _ItemMenuSheet({required this.item, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
@@ -716,11 +702,9 @@ class _ItemMenuSheet extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: MyShopColors.surfaceWhite,
-        borderRadius:
-            BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      padding: EdgeInsets.only(
-          top: h * 0.014, bottom: bottomPad + h * 0.016),
+      padding: EdgeInsets.only(top: h * 0.014, bottom: bottomPad + h * 0.016),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -756,18 +740,20 @@ class _ItemMenuSheet extends StatelessWidget {
               Navigator.of(context).pop();
               final path = switch (item.type) {
                 TransactionType.ride => AppRoutes.activityRidePath(item.id),
-                TransactionType.job  => AppRoutes.jobDetailPath(item.id),
+                TransactionType.job => AppRoutes.jobDetailPath(item.id),
               };
               context.push(path);
             },
-            w: w, h: h,
+            w: w,
+            h: h,
           ),
           const Divider(color: MyShopColors.divider, height: 1),
           _MenuItem(
             icon: Icons.share_outlined,
             label: 'Share Receipt',
             onTap: () => Navigator.of(context).pop(),
-            w: w, h: h,
+            w: w,
+            h: h,
           ),
           const Divider(color: MyShopColors.divider, height: 1),
           _MenuItem(
@@ -775,7 +761,8 @@ class _ItemMenuSheet extends StatelessWidget {
             label: 'Report an Issue',
             color: MyShopColors.error,
             onTap: () => Navigator.of(context).pop(),
-            w: w, h: h,
+            w: w,
+            h: h,
           ),
         ],
       ),
@@ -804,8 +791,8 @@ class _MenuItem extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: EdgeInsets.symmetric(
-            horizontal: w * 0.044, vertical: h * 0.018),
+        padding:
+            EdgeInsets.symmetric(horizontal: w * 0.044, vertical: h * 0.018),
         child: Row(
           children: [
             Icon(icon, color: color, size: w * 0.050),
@@ -837,12 +824,11 @@ class _MissingTripSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.symmetric(
-          horizontal: w * 0.044, vertical: h * 0.018),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.044, vertical: h * 0.018),
       child: Container(
         width: double.infinity,
-        padding: EdgeInsets.symmetric(
-            horizontal: w * 0.044, vertical: h * 0.024),
+        padding:
+            EdgeInsets.symmetric(horizontal: w * 0.044, vertical: h * 0.024),
         decoration: BoxDecoration(
           color: MyShopColors.surfaceGrey,
           borderRadius: BorderRadius.circular(12),
@@ -911,8 +897,7 @@ class _EmptyState extends StatelessWidget {
   final ActivityFilter filter;
   final double w;
   final double h;
-  const _EmptyState(
-      {required this.filter, required this.w, required this.h});
+  const _EmptyState({required this.filter, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
@@ -1046,8 +1031,7 @@ class _LoadingSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: EdgeInsets.symmetric(
-          horizontal: w * 0.044, vertical: h * 0.018),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.044, vertical: h * 0.018),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

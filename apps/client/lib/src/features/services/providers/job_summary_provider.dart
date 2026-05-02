@@ -95,9 +95,9 @@ class JobSummaryData {
 
   String _fmt(int pesewas) => 'GHS ${(pesewas / 100).toStringAsFixed(2)}';
 
-  String get laborChargeDisplay    => _fmt(laborChargePesewas);
-  String get materialCostDisplay   => _fmt(materialCostPesewas);
-  String get totalPaidDisplay      => _fmt(totalPaidPesewas);
+  String get laborChargeDisplay => _fmt(laborChargePesewas);
+  String get materialCostDisplay => _fmt(materialCostPesewas);
+  String get totalPaidDisplay => _fmt(totalPaidPesewas);
 }
 
 // ── Rating State ──────────────────────────────────────────────────────────────
@@ -120,9 +120,9 @@ class RatingState {
 
   const RatingState({
     this.selectedStars = 0,
-    this.reviewText    = '',
-    this.isSubmitting  = false,
-    this.isSubmitted   = false,
+    this.reviewText = '',
+    this.isSubmitting = false,
+    this.isSubmitted = false,
     this.errorMessage,
   });
 
@@ -130,20 +130,19 @@ class RatingState {
   bool get canSubmit => selectedStars > 0 && !isSubmitting && !isSubmitted;
 
   RatingState copyWith({
-    int?    selectedStars,
+    int? selectedStars,
     String? reviewText,
-    bool?   isSubmitting,
-    bool?   isSubmitted,
+    bool? isSubmitting,
+    bool? isSubmitted,
     String? errorMessage,
-    bool    clearError = false,
+    bool clearError = false,
   }) =>
       RatingState(
         selectedStars: selectedStars ?? this.selectedStars,
-        reviewText:    reviewText    ?? this.reviewText,
-        isSubmitting:  isSubmitting  ?? this.isSubmitting,
-        isSubmitted:   isSubmitted   ?? this.isSubmitted,
-        errorMessage:
-            clearError ? null : (errorMessage ?? this.errorMessage),
+        reviewText: reviewText ?? this.reviewText,
+        isSubmitting: isSubmitting ?? this.isSubmitting,
+        isSubmitted: isSubmitted ?? this.isSubmitted,
+        errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       );
 }
 
@@ -157,8 +156,7 @@ class RatingNotifier extends StateNotifier<RatingState> {
   void selectStars(int stars) =>
       state = state.copyWith(selectedStars: stars, clearError: true);
 
-  void updateReview(String text) =>
-      state = state.copyWith(reviewText: text);
+  void updateReview(String text) => state = state.copyWith(reviewText: text);
 
   /// Submits the blind rating.
   /// POST /v1/ratings  { bookingType: "artisan_job", bookingId, stars, comment? }
@@ -269,13 +267,16 @@ class _JobSummaryNotifier
     final costBreakdown = data['costBreakdown'] as Map<String, dynamic>? ?? {};
     final bidData = data['selectedBid'] as Map<String, dynamic>? ?? {};
 
-    final artisanName = '${artisanData['firstName'] ?? ''} ${artisanData['lastName'] ?? ''}'.trim();
-    final laborPesewas = (costBreakdown['laborPesewas'] as num?)?.toInt()
-        ?? (bidData['amountPesewas'] as num?)?.toInt()
-        ?? 0;
-    final materialPesewas = (costBreakdown['materialsPesewas'] as num?)?.toInt() ?? 0;
-    final totalPesewas = (data['totalPesewas'] as num?)?.toInt()
-        ?? laborPesewas + materialPesewas;
+    final artisanName =
+        '${artisanData['firstName'] ?? ''} ${artisanData['lastName'] ?? ''}'
+            .trim();
+    final laborPesewas = (costBreakdown['laborPesewas'] as num?)?.toInt() ??
+        (bidData['amountPesewas'] as num?)?.toInt() ??
+        0;
+    final materialPesewas =
+        (costBreakdown['materialsPesewas'] as num?)?.toInt() ?? 0;
+    final totalPesewas = (data['totalPesewas'] as num?)?.toInt() ??
+        laborPesewas + materialPesewas;
 
     return JobSummaryData(
       jobId: data['id'] as String? ?? '',
@@ -304,27 +305,27 @@ class _JobSummaryNotifier
 // ── Mock data ─────────────────────────────────────────────────────────────────
 
 const _mockArtisan = JobSummaryArtisan(
-  artisanId:       'ART-101',
-  name:            'Kofi Mensah',
-  firstName:       'Kofi',
-  role:            'Master Electrician',
+  artisanId: 'ART-101',
+  name: 'Kofi Mensah',
+  firstName: 'Kofi',
+  role: 'Master Electrician',
   experienceLabel: '8+ Years',
-  avatarColor:     MyShopColors.darkSlate,
-  isVerified:      true,
-  rating:          4.9,
-  reviewCount:     324,
-  location:        'Bantama',
+  avatarColor: MyShopColors.darkSlate,
+  isVerified: true,
+  rating: 4.9,
+  reviewCount: 324,
+  location: 'Bantama',
 );
 
 const _defaultMockJob = JobSummaryData(
-  jobId:               'JOB-29384',
-  jobRef:              '#JOB-29384',
-  status:              'completed',
-  artisan:             _mockArtisan,
-  laborChargePesewas:  25000,   // GHS 250.00
-  materialCostPesewas: 12000,   // GHS 120.00
-  totalPaidPesewas:    40000,   // GHS 400.00 (includes supplement)
-  tipIncluded:         false,
+  jobId: 'JOB-29384',
+  jobRef: '#JOB-29384',
+  status: 'completed',
+  artisan: _mockArtisan,
+  laborChargePesewas: 25000, // GHS 250.00
+  materialCostPesewas: 12000, // GHS 120.00
+  totalPaidPesewas: 40000, // GHS 400.00 (includes supplement)
+  tipIncluded: false,
 );
 
 const Map<String, JobSummaryData> _mockJobs = {};

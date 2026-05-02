@@ -69,8 +69,8 @@ class _RidePaymentScreenState extends ConsumerState<RidePaymentScreen> {
         backgroundColor: MyShopColors.surfaceWhite,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.close_rounded,
-              color: MyShopColors.textPrimary),
+          icon:
+              const Icon(Icons.close_rounded, color: MyShopColors.textPrimary),
           // Pay-later escape hatch: rider can always continue to the
           // receipt; the backend keeps the charge attempt alive and the
           // Activity tab shows it as `pending_payment` so the rider can
@@ -117,9 +117,7 @@ class _RidePaymentScreenState extends ConsumerState<RidePaymentScreen> {
                   ref.read(ridePaymentNotifierProvider.notifier).submitOtp(otp);
                 },
                 onCancel: () async {
-                  await ref
-                      .read(ridePaymentNotifierProvider.notifier)
-                      .cancel();
+                  await ref.read(ridePaymentNotifierProvider.notifier).cancel();
                   if (!context.mounted) return;
                   context.go(AppRoutes.rideComplete);
                 },
@@ -392,8 +390,7 @@ class _OtpForm extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             errorMessage!,
-            style:
-                const TextStyle(fontSize: 12, color: MyShopColors.error),
+            style: const TextStyle(fontSize: 12, color: MyShopColors.error),
           ),
         ],
         const SizedBox(height: 18),
@@ -547,8 +544,7 @@ class _Failed extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Icon(Icons.error_outline,
-            size: 36, color: MyShopColors.error),
+        const Icon(Icons.error_outline, size: 36, color: MyShopColors.error),
         const SizedBox(height: 8),
         const Text(
           'Payment failed',

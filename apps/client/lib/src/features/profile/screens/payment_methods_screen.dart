@@ -17,9 +17,9 @@ class PaymentMethodsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final size  = MediaQuery.sizeOf(context);
-    final w     = size.width;
-    final h     = size.height;
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
     final state = ref.watch(paymentMethodsProvider);
 
     return Scaffold(
@@ -32,8 +32,8 @@ class PaymentMethodsScreen extends ConsumerWidget {
         ),
         title: Text('Payment Methods',
             style: TextStyle(
-                color:      MyShopColors.textPrimary,
-                fontSize:   w * 0.044,
+                color: MyShopColors.textPrimary,
+                fontSize: w * 0.044,
                 fontWeight: FontWeight.w700)),
         centerTitle: false,
       ),
@@ -54,9 +54,11 @@ class _Body extends ConsumerWidget {
       context: ctx,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _AddMethodSheet(w: w, onAdded: () {
-        ref.read(paymentMethodsProvider.notifier).reload();
-      }),
+      builder: (_) => _AddMethodSheet(
+          w: w,
+          onAdded: () {
+            ref.read(paymentMethodsProvider.notifier).reload();
+          }),
     );
   }
 
@@ -64,7 +66,7 @@ class _Body extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     if (state.isLoading) {
       return const Center(
-        child: CircularProgressIndicator(color: MyShopColors.primaryGold));
+          child: CircularProgressIndicator(color: MyShopColors.primaryGold));
     }
 
     return SingleChildScrollView(
@@ -79,17 +81,20 @@ class _Body extends ConsumerWidget {
             _SectionLabel(text: 'MOBILE MONEY', w: w),
             SizedBox(height: h * 0.012),
             ...state.momoMethods.map((m) => Padding(
-              padding: EdgeInsets.only(bottom: h * 0.012),
-              child: _MethodCard(
-                method:      m,
-                isDeleting:  state.deletingId == m.id,
-                onSetDefault: () =>
-                    ref.read(paymentMethodsProvider.notifier).setDefault(m.id),
-                onDelete:    () =>
-                    ref.read(paymentMethodsProvider.notifier).deleteMethod(m.id),
-                w: w, h: h,
-              ),
-            )),
+                  padding: EdgeInsets.only(bottom: h * 0.012),
+                  child: _MethodCard(
+                    method: m,
+                    isDeleting: state.deletingId == m.id,
+                    onSetDefault: () => ref
+                        .read(paymentMethodsProvider.notifier)
+                        .setDefault(m.id),
+                    onDelete: () => ref
+                        .read(paymentMethodsProvider.notifier)
+                        .deleteMethod(m.id),
+                    w: w,
+                    h: h,
+                  ),
+                )),
             SizedBox(height: h * 0.012),
           ],
 
@@ -97,17 +102,20 @@ class _Body extends ConsumerWidget {
             _SectionLabel(text: 'CARDS', w: w),
             SizedBox(height: h * 0.012),
             ...state.cardMethods.map((m) => Padding(
-              padding: EdgeInsets.only(bottom: h * 0.012),
-              child: _MethodCard(
-                method:      m,
-                isDeleting:  state.deletingId == m.id,
-                onSetDefault: () =>
-                    ref.read(paymentMethodsProvider.notifier).setDefault(m.id),
-                onDelete:    () =>
-                    ref.read(paymentMethodsProvider.notifier).deleteMethod(m.id),
-                w: w, h: h,
-              ),
-            )),
+                  padding: EdgeInsets.only(bottom: h * 0.012),
+                  child: _MethodCard(
+                    method: m,
+                    isDeleting: state.deletingId == m.id,
+                    onSetDefault: () => ref
+                        .read(paymentMethodsProvider.notifier)
+                        .setDefault(m.id),
+                    onDelete: () => ref
+                        .read(paymentMethodsProvider.notifier)
+                        .deleteMethod(m.id),
+                    w: w,
+                    h: h,
+                  ),
+                )),
             SizedBox(height: h * 0.016),
           ],
 
@@ -118,15 +126,15 @@ class _Body extends ConsumerWidget {
 
           // Add new
           SizedBox(
-            width:  double.infinity,
+            width: double.infinity,
             height: h * 0.062,
             child: OutlinedButton.icon(
               onPressed: () => _showAddSheet(context, ref),
-              icon:  const Icon(Icons.add_rounded),
+              icon: const Icon(Icons.add_rounded),
               label: const Text('Add Payment Method'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: MyShopColors.primaryGold,
-                side:  const BorderSide(color: MyShopColors.primaryGold),
+                side: const BorderSide(color: MyShopColors.primaryGold),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
               ),
@@ -153,9 +161,9 @@ class _ErrorBanner extends StatelessWidget {
       margin: EdgeInsets.only(bottom: w * 0.032),
       padding: EdgeInsets.symmetric(horizontal: w * 0.04, vertical: 12),
       decoration: BoxDecoration(
-        color:        MyShopColors.errorLight,
+        color: MyShopColors.errorLight,
         borderRadius: BorderRadius.circular(10),
-        border:       Border.all(color: MyShopColors.error.withAlpha(60)),
+        border: Border.all(color: MyShopColors.error.withAlpha(60)),
       ),
       child: Row(
         children: [
@@ -164,9 +172,8 @@ class _ErrorBanner extends StatelessWidget {
           SizedBox(width: w * 0.024),
           Expanded(
             child: Text(message,
-                style: TextStyle(
-                    color:    MyShopColors.error,
-                    fontSize: w * 0.032)),
+                style:
+                    TextStyle(color: MyShopColors.error, fontSize: w * 0.032)),
           ),
         ],
       ),
@@ -194,15 +201,14 @@ class _EmptyState extends StatelessWidget {
             SizedBox(height: h * 0.016),
             Text('No payment methods saved',
                 style: TextStyle(
-                  color:      MyShopColors.textSecondary,
-                  fontSize:   w * 0.038,
+                  color: MyShopColors.textSecondary,
+                  fontSize: w * 0.038,
                   fontWeight: FontWeight.w600,
                 )),
             SizedBox(height: h * 0.008),
             Text('Add a MoMo wallet or card to pay faster',
                 style: TextStyle(
-                    color:    MyShopColors.textSecondary,
-                    fontSize: w * 0.032)),
+                    color: MyShopColors.textSecondary, fontSize: w * 0.032)),
           ],
         ),
       ),
@@ -214,10 +220,10 @@ class _EmptyState extends StatelessWidget {
 
 class _MethodCard extends StatelessWidget {
   final PaymentMethod method;
-  final bool          isDeleting;
-  final VoidCallback  onSetDefault;
-  final VoidCallback  onDelete;
-  final double        w, h;
+  final bool isDeleting;
+  final VoidCallback onSetDefault;
+  final VoidCallback onDelete;
+  final double w, h;
 
   const _MethodCard({
     required this.method,
@@ -243,29 +249,32 @@ class _MethodCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-            color: method.isDefault ? MyShopColors.primaryGold : MyShopColors.divider,
+            color: method.isDefault
+                ? MyShopColors.primaryGold
+                : MyShopColors.divider,
             width: method.isDefault ? 1.5 : 1),
         boxShadow: [
           BoxShadow(
-              color:      Colors.black.withAlpha(6),
+              color: Colors.black.withAlpha(6),
               blurRadius: 6,
-              offset:     const Offset(0, 2)),
+              offset: const Offset(0, 2)),
         ],
       ),
       child: Row(
         children: [
           Container(
-            width:  w * 0.12,
+            width: w * 0.12,
             height: w * 0.12,
             decoration: BoxDecoration(
                 color: _iconBg, borderRadius: BorderRadius.circular(10)),
             child: isDeleting
                 ? const Center(
                     child: SizedBox(
-                      width: 20, height: 20,
+                      width: 20,
+                      height: 20,
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: MyShopColors.error),
                     ),
@@ -281,8 +290,8 @@ class _MethodCard extends StatelessWidget {
                   children: [
                     Text(method.title,
                         style: TextStyle(
-                          color:      MyShopColors.textPrimary,
-                          fontSize:   w * 0.038,
+                          color: MyShopColors.textPrimary,
+                          fontSize: w * 0.038,
                           fontWeight: FontWeight.w700,
                         )),
                     if (method.isDefault) ...[
@@ -291,13 +300,13 @@ class _MethodCard extends StatelessWidget {
                         padding: EdgeInsets.symmetric(
                             horizontal: w * 0.018, vertical: 2),
                         decoration: BoxDecoration(
-                          color:        MyShopColors.successLight,
+                          color: MyShopColors.successLight,
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text('Default',
                             style: TextStyle(
-                              color:      MyShopColors.success,
-                              fontSize:   w * 0.024,
+                              color: MyShopColors.success,
+                              fontSize: w * 0.024,
                               fontWeight: FontWeight.w600,
                             )),
                       ),
@@ -308,7 +317,7 @@ class _MethodCard extends StatelessWidget {
                   const SizedBox(height: 3),
                   Text(method.subtitle,
                       style: TextStyle(
-                          color:    MyShopColors.textSecondary,
+                          color: MyShopColors.textSecondary,
                           fontSize: w * 0.032)),
                 ],
               ],
@@ -324,8 +333,7 @@ class _MethodCard extends StatelessWidget {
             itemBuilder: (_) => [
               if (!method.isDefault)
                 const PopupMenuItem(
-                    value: 'default',
-                    child: Text('Set as default')),
+                    value: 'default', child: Text('Set as default')),
               const PopupMenuItem(
                   value: 'delete',
                   child: Text('Remove',
@@ -341,7 +349,7 @@ class _MethodCard extends StatelessWidget {
 // ── Add method sheet ───────────────────────────────────────────────────────────
 
 class _AddMethodSheet extends ConsumerStatefulWidget {
-  final double       w;
+  final double w;
   final VoidCallback onAdded;
   const _AddMethodSheet({required this.w, required this.onAdded});
 
@@ -365,7 +373,7 @@ class _AddMethodSheetState extends ConsumerState<_AddMethodSheet> {
     setState(() => _loading = true);
     final ok = await ref.read(paymentMethodsProvider.notifier).addMomo(
           provider: _selectedMomo!,
-          phone:    _phoneController.text.trim(),
+          phone: _phoneController.text.trim(),
         );
     if (!mounted) return;
     if (ok) {
@@ -373,32 +381,34 @@ class _AddMethodSheetState extends ConsumerState<_AddMethodSheet> {
       Navigator.of(context).pop();
     } else {
       setState(() => _loading = false);
-      MyShopToast.show(context, message: 'Could not add method. Please try again.');
+      MyShopToast.show(context,
+          message: 'Could not add method. Please try again.');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final h   = MediaQuery.sizeOf(context).height;
+    final h = MediaQuery.sizeOf(context).height;
     final bot = MediaQuery.paddingOf(context).bottom;
-    final w   = widget.w;
+    final w = widget.w;
 
     return Container(
       decoration: const BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      padding: EdgeInsets.fromLTRB(
-          w * 0.05, h * 0.020, w * 0.05, bot + h * 0.028),
+      padding:
+          EdgeInsets.fromLTRB(w * 0.05, h * 0.020, w * 0.05, bot + h * 0.028),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Center(
             child: Container(
-              width: w * 0.10, height: 4,
+              width: w * 0.10,
+              height: 4,
               decoration: BoxDecoration(
-                color:        MyShopColors.surfaceGrey,
+                color: MyShopColors.surfaceGrey,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -406,8 +416,8 @@ class _AddMethodSheetState extends ConsumerState<_AddMethodSheet> {
           SizedBox(height: h * 0.020),
           Text('Add Mobile Money',
               style: TextStyle(
-                color:      MyShopColors.textPrimary,
-                fontSize:   w * 0.044,
+                color: MyShopColors.textPrimary,
+                fontSize: w * 0.044,
                 fontWeight: FontWeight.w700,
               )),
           SizedBox(height: h * 0.020),
@@ -415,8 +425,8 @@ class _AddMethodSheetState extends ConsumerState<_AddMethodSheet> {
           // Provider selection
           Text('Provider',
               style: TextStyle(
-                  color:      MyShopColors.textSecondary,
-                  fontSize:   w * 0.032,
+                  color: MyShopColors.textSecondary,
+                  fontSize: w * 0.032,
                   fontWeight: FontWeight.w600)),
           SizedBox(height: h * 0.010),
           ...MomoProvider.values.map((p) {
@@ -429,10 +439,10 @@ class _AddMethodSheetState extends ConsumerState<_AddMethodSheet> {
                 child: Row(
                   children: [
                     Container(
-                      width:  w * 0.11,
+                      width: w * 0.11,
                       height: w * 0.11,
                       decoration: BoxDecoration(
-                          color:        p.bgColor,
+                          color: p.bgColor,
                           borderRadius: BorderRadius.circular(10)),
                       child: Icon(Icons.phone_android_rounded,
                           color: p.color, size: w * 0.052),
@@ -441,18 +451,18 @@ class _AddMethodSheetState extends ConsumerState<_AddMethodSheet> {
                     Expanded(
                       child: Text(p.label,
                           style: TextStyle(
-                            color:      MyShopColors.textPrimary,
-                            fontSize:   w * 0.038,
+                            color: MyShopColors.textPrimary,
+                            fontSize: w * 0.038,
                             fontWeight: FontWeight.w600,
                           )),
                     ),
                     // Custom radio indicator — avoids deprecated Radio.groupValue
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 150),
-                      width:  22,
+                      width: 22,
                       height: 22,
                       decoration: BoxDecoration(
-                        shape:  BoxShape.circle,
+                        shape: BoxShape.circle,
                         border: Border.all(
                           color: isSelected
                               ? MyShopColors.primaryGold
@@ -472,30 +482,31 @@ class _AddMethodSheetState extends ConsumerState<_AddMethodSheet> {
           // Phone field
           Text('Phone number',
               style: TextStyle(
-                  color:      MyShopColors.textSecondary,
-                  fontSize:   w * 0.032,
+                  color: MyShopColors.textSecondary,
+                  fontSize: w * 0.032,
                   fontWeight: FontWeight.w600)),
           SizedBox(height: h * 0.008),
           TextField(
             controller: _phoneController,
             keyboardType: TextInputType.phone,
             decoration: InputDecoration(
-              hintText:      '+233 XX XXX XXXX',
-              prefixIcon:    const Icon(Icons.phone_outlined),
-              border:        OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10)),
-              contentPadding: EdgeInsets.symmetric(
-                  horizontal: w * 0.038, vertical: 14),
+              hintText: '+233 XX XXX XXXX',
+              prefixIcon: const Icon(Icons.phone_outlined),
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              contentPadding:
+                  EdgeInsets.symmetric(horizontal: w * 0.038, vertical: 14),
             ),
           ),
 
           SizedBox(height: h * 0.024),
 
           SizedBox(
-            width:  double.infinity,
+            width: double.infinity,
             height: h * 0.062,
             child: ElevatedButton(
-              onPressed: (_selectedMomo != null && !_loading) ? _saveMomo : null,
+              onPressed:
+                  (_selectedMomo != null && !_loading) ? _saveMomo : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: MyShopColors.primaryGold,
                 foregroundColor: Colors.white,
@@ -505,12 +516,13 @@ class _AddMethodSheetState extends ConsumerState<_AddMethodSheet> {
               ),
               child: _loading
                   ? const SizedBox(
-                      width: 22, height: 22,
+                      width: 22,
+                      height: 22,
                       child: CircularProgressIndicator(
                           color: Colors.white, strokeWidth: 2))
                   : const Text('Save',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 16)),
+                      style:
+                          TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             ),
           ),
         ],
@@ -530,9 +542,9 @@ class _SectionLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(text,
         style: TextStyle(
-          color:         MyShopColors.textSecondary,
-          fontSize:      w * 0.028,
-          fontWeight:    FontWeight.w900,
+          color: MyShopColors.textSecondary,
+          fontSize: w * 0.028,
+          fontWeight: FontWeight.w900,
           letterSpacing: 1.2,
         ));
   }
@@ -556,9 +568,9 @@ class _SecurityNote extends StatelessWidget {
             'Your payment details are encrypted and stored securely. '
             'MyShop never stores your full card number.',
             style: TextStyle(
-                color:    MyShopColors.textSecondary,
+                color: MyShopColors.textSecondary,
                 fontSize: w * 0.030,
-                height:   1.5),
+                height: 1.5),
           ),
         ),
       ],

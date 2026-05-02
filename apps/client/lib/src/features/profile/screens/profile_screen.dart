@@ -18,8 +18,8 @@ class ProfileScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final size = MediaQuery.sizeOf(context);
-    final w    = size.width;
-    final h    = size.height;
+    final w = size.width;
+    final h = size.height;
 
     final dataAsync = ref.watch(accountScreenProvider);
 
@@ -43,12 +43,11 @@ class _ProfileBody extends StatelessWidget {
   final AccountScreenData data;
   final double w;
   final double h;
-  const _ProfileBody(
-      {required this.data, required this.w, required this.h});
+  const _ProfileBody({required this.data, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
-    final topPad    = MediaQuery.paddingOf(context).top;
+    final topPad = MediaQuery.paddingOf(context).top;
     final bottomPad = MediaQuery.paddingOf(context).bottom;
     final notifCount = data.unreadNotificationCount;
 
@@ -195,7 +194,7 @@ class _AppBar extends StatelessWidget {
   final double w;
   final double h;
   final double topPad;
-  final bool   hasUnread;
+  final bool hasUnread;
   const _AppBar({
     required this.w,
     required this.h,
@@ -208,19 +207,19 @@ class _AppBar extends StatelessWidget {
     return Container(
       color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.only(
-        top:    topPad + h * 0.012,
+        top: topPad + h * 0.012,
         bottom: h * 0.017,
-        left:   w * 0.041,
-        right:  w * 0.041,
+        left: w * 0.041,
+        right: w * 0.041,
       ),
       child: Row(
         children: [
           Text(
             'Account',
             style: TextStyle(
-              fontSize:   w * 0.056,
+              fontSize: w * 0.056,
               fontWeight: FontWeight.w700,
-              color:      MyShopColors.textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
           const Spacer(),
@@ -229,22 +228,22 @@ class _AppBar extends StatelessWidget {
             onTap: () => context.push(AppRoutes.notifications),
             behavior: HitTestBehavior.opaque,
             child: SizedBox(
-              width:  w * 0.082,
+              width: w * 0.082,
               height: w * 0.082,
               child: Stack(
                 alignment: Alignment.center,
                 children: [
                   Icon(
                     Icons.notifications_outlined,
-                    size:  w * 0.056,
+                    size: w * 0.056,
                     color: MyShopColors.textPrimary,
                   ),
                   if (hasUnread)
                     Positioned(
-                      top:   w * 0.010,
+                      top: w * 0.010,
                       right: w * 0.010,
                       child: Container(
-                        width:  w * 0.021,
+                        width: w * 0.021,
                         height: w * 0.021,
                         decoration: const BoxDecoration(
                           color: MyShopColors.error,
@@ -283,50 +282,51 @@ class _ProfileHeader extends StatelessWidget {
           GestureDetector(
             onTap: () => context.push(AppRoutes.profileEdit),
             child: Stack(
-            alignment: Alignment.bottomRight,
-            children: [
-              Container(
-                width:  w * 0.231,
-                height: w * 0.231,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF78909C),
-                  shape: BoxShape.circle,
-                ),
-                child: profile.avatarUrl != null
-                    ? ClipOval(
-                        child: Image.network(
-                          profile.avatarUrl!,
-                          fit: BoxFit.cover,
-                        ),
-                      )
-                    : Center(
-                        child: Text(
-                          profile.initials,
-                          style: TextStyle(
-                            fontSize:   w * 0.082,
-                            fontWeight: FontWeight.w700,
-                            color:      MyShopColors.surfaceWhite,
+              alignment: Alignment.bottomRight,
+              children: [
+                Container(
+                  width: w * 0.231,
+                  height: w * 0.231,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF78909C),
+                    shape: BoxShape.circle,
+                  ),
+                  child: profile.avatarUrl != null
+                      ? ClipOval(
+                          child: Image.network(
+                            profile.avatarUrl!,
+                            fit: BoxFit.cover,
+                          ),
+                        )
+                      : Center(
+                          child: Text(
+                            profile.initials,
+                            style: TextStyle(
+                              fontSize: w * 0.082,
+                              fontWeight: FontWeight.w700,
+                              color: MyShopColors.surfaceWhite,
+                            ),
                           ),
                         ),
-                      ),
-              ),
-              // Camera edit badge
-              Container(
-                width:  w * 0.077,
-                height: w * 0.077,
-                decoration: BoxDecoration(
-                  color:  MyShopColors.primaryGold,
-                  shape:  BoxShape.circle,
-                  border: Border.all(color: MyShopColors.surfaceWhite, width: 2.5),
                 ),
-                child: Icon(
-                  Icons.photo_camera_rounded,
-                  size:  w * 0.038,
-                  color: MyShopColors.surfaceWhite,
+                // Camera edit badge
+                Container(
+                  width: w * 0.077,
+                  height: w * 0.077,
+                  decoration: BoxDecoration(
+                    color: MyShopColors.primaryGold,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                        color: MyShopColors.surfaceWhite, width: 2.5),
+                  ),
+                  child: Icon(
+                    Icons.photo_camera_rounded,
+                    size: w * 0.038,
+                    color: MyShopColors.surfaceWhite,
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
           ),
           SizedBox(height: h * 0.017),
 
@@ -334,9 +334,9 @@ class _ProfileHeader extends StatelessWidget {
           Text(
             profile.displayName,
             style: TextStyle(
-              fontSize:   w * 0.051,
+              fontSize: w * 0.051,
               fontWeight: FontWeight.w700,
-              color:      MyShopColors.textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
           SizedBox(height: h * 0.005),
@@ -345,9 +345,9 @@ class _ProfileHeader extends StatelessWidget {
           Text(
             profile.maskedEmail,
             style: TextStyle(
-              fontSize:   w * 0.033,
+              fontSize: w * 0.033,
               fontWeight: FontWeight.w400,
-              color:      MyShopColors.textSecondary,
+              color: MyShopColors.textSecondary,
             ),
           ),
           SizedBox(height: h * 0.003),
@@ -356,9 +356,9 @@ class _ProfileHeader extends StatelessWidget {
           Text(
             profile.maskedPhone,
             style: TextStyle(
-              fontSize:   w * 0.033,
+              fontSize: w * 0.033,
               fontWeight: FontWeight.w400,
-              color:      MyShopColors.textSecondary,
+              color: MyShopColors.textSecondary,
             ),
           ),
           SizedBox(height: h * 0.017),
@@ -381,12 +381,12 @@ class _KycBadge extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: w * 0.038,
-        vertical:   h * 0.006,
+        vertical: h * 0.006,
       ),
       decoration: BoxDecoration(
-        color:        Colors.transparent,
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(w * 0.051),
-        border:       Border.all(color: MyShopColors.primaryGold, width: 1.5),
+        border: Border.all(color: MyShopColors.primaryGold, width: 1.5),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -397,9 +397,9 @@ class _KycBadge extends StatelessWidget {
           Text(
             'KYC VERIFIED',
             style: TextStyle(
-              fontSize:      w * 0.026,
-              fontWeight:    FontWeight.w700,
-              color:         MyShopColors.primaryGold,
+              fontSize: w * 0.026,
+              fontWeight: FontWeight.w700,
+              color: MyShopColors.primaryGold,
               letterSpacing: 0.6,
             ),
           ),
@@ -415,22 +415,21 @@ class _SectionLabel extends StatelessWidget {
   final String label;
   final double w;
   final double h;
-  const _SectionLabel(
-      {required this.label, required this.w, required this.h});
+  const _SectionLabel({required this.label, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.only(
-        left:   w * 0.041,
+        left: w * 0.041,
         bottom: h * 0.008,
       ),
       child: Text(
         label,
         style: TextStyle(
-          fontSize:      w * 0.023,
-          fontWeight:    FontWeight.w900,
-          color:         MyShopColors.textSecondary,
+          fontSize: w * 0.023,
+          fontWeight: FontWeight.w900,
+          color: MyShopColors.textSecondary,
           letterSpacing: 0.8,
         ),
       ),
@@ -478,13 +477,13 @@ class _RowDivider extends StatelessWidget {
 // ── Menu Row ──────────────────────────────────────────────────────────────────
 
 class _MenuRow extends StatelessWidget {
-  final IconData     icon;
-  final String       title;
-  final String       subtitle;
+  final IconData icon;
+  final String title;
+  final String subtitle;
   final VoidCallback onTap;
-  final int?         badgeCount;
-  final double       w;
-  final double       h;
+  final int? badgeCount;
+  final double w;
+  final double h;
 
   const _MenuRow({
     required this.icon,
@@ -504,19 +503,20 @@ class _MenuRow extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.symmetric(
           horizontal: w * 0.041,
-          vertical:   h * 0.017,
+          vertical: h * 0.017,
         ),
         child: Row(
           children: [
             // Icon circle
             Container(
-              width:  w * 0.115,
+              width: w * 0.115,
               height: w * 0.115,
               decoration: const BoxDecoration(
                 color: MyShopColors.surfaceGrey,
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: w * 0.051, color: MyShopColors.textSecondary),
+              child: Icon(icon,
+                  size: w * 0.051, color: MyShopColors.textSecondary),
             ),
             SizedBox(width: w * 0.031),
 
@@ -528,18 +528,18 @@ class _MenuRow extends StatelessWidget {
                   Text(
                     title,
                     style: TextStyle(
-                      fontSize:   w * 0.036,
+                      fontSize: w * 0.036,
                       fontWeight: FontWeight.w600,
-                      color:      MyShopColors.textPrimary,
+                      color: MyShopColors.textPrimary,
                     ),
                   ),
                   SizedBox(height: h * 0.003),
                   Text(
                     subtitle,
                     style: TextStyle(
-                      fontSize:   w * 0.028,
+                      fontSize: w * 0.028,
                       fontWeight: FontWeight.w400,
-                      color:      MyShopColors.textSecondary,
+                      color: MyShopColors.textSecondary,
                     ),
                   ),
                 ],
@@ -555,7 +555,7 @@ class _MenuRow extends StatelessWidget {
             // Chevron
             Icon(
               Icons.chevron_right_rounded,
-              size:  w * 0.051,
+              size: w * 0.051,
               color: MyShopColors.textHint,
             ),
           ],
@@ -566,7 +566,7 @@ class _MenuRow extends StatelessWidget {
 }
 
 class _NewBadge extends StatelessWidget {
-  final int    count;
+  final int count;
   final double w;
   const _NewBadge({required this.count, required this.w});
 
@@ -575,18 +575,18 @@ class _NewBadge extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: w * 0.021,
-        vertical:   w * 0.008,
+        vertical: w * 0.008,
       ),
       decoration: BoxDecoration(
-        color:        MyShopColors.primaryGold,
+        color: MyShopColors.primaryGold,
         borderRadius: BorderRadius.circular(w * 0.041),
       ),
       child: Text(
         '$count New',
         style: TextStyle(
-          fontSize:   w * 0.026,
+          fontSize: w * 0.026,
           fontWeight: FontWeight.w700,
-          color:      MyShopColors.surfaceWhite,
+          color: MyShopColors.surfaceWhite,
         ),
       ),
     );
@@ -608,13 +608,13 @@ class _SignOutRow extends ConsumerWidget {
       child: Padding(
         padding: EdgeInsets.symmetric(
           horizontal: w * 0.041,
-          vertical:   h * 0.017,
+          vertical: h * 0.017,
         ),
         child: Row(
           children: [
             // Red icon circle
             Container(
-              width:  w * 0.115,
+              width: w * 0.115,
               height: w * 0.115,
               decoration: const BoxDecoration(
                 color: MyShopColors.errorLight,
@@ -622,7 +622,7 @@ class _SignOutRow extends ConsumerWidget {
               ),
               child: Icon(
                 Icons.logout_rounded,
-                size:  w * 0.051,
+                size: w * 0.051,
                 color: MyShopColors.error,
               ),
             ),
@@ -633,16 +633,16 @@ class _SignOutRow extends ConsumerWidget {
               child: Text(
                 'Sign Out',
                 style: TextStyle(
-                  fontSize:   w * 0.036,
+                  fontSize: w * 0.036,
                   fontWeight: FontWeight.w600,
-                  color:      MyShopColors.error,
+                  color: MyShopColors.error,
                 ),
               ),
             ),
 
             Icon(
               Icons.chevron_right_rounded,
-              size:  w * 0.051,
+              size: w * 0.051,
               color: MyShopColors.error.withValues(alpha: 0.50),
             ),
           ],
@@ -658,16 +658,16 @@ class _SignOutRow extends ConsumerWidget {
         title: Text(
           'Sign Out',
           style: TextStyle(
-            fontSize:   MediaQuery.sizeOf(context).width * 0.046,
+            fontSize: MediaQuery.sizeOf(context).width * 0.046,
             fontWeight: FontWeight.w700,
-            color:      MyShopColors.textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
         content: Text(
           'Are you sure you want to sign out?',
           style: TextStyle(
             fontSize: MediaQuery.sizeOf(context).width * 0.033,
-            color:    MyShopColors.textSecondary,
+            color: MyShopColors.textSecondary,
           ),
         ),
         shape: RoundedRectangleBorder(
@@ -691,7 +691,7 @@ class _SignOutRow extends ConsumerWidget {
             child: Text(
               'Sign Out',
               style: TextStyle(
-                color:      MyShopColors.error,
+                color: MyShopColors.error,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -722,9 +722,9 @@ class _DeactivateLink extends ConsumerWidget {
           child: Text(
             'Deactivate My Account',
             style: TextStyle(
-              fontSize:   w * 0.033,
+              fontSize: w * 0.033,
               fontWeight: FontWeight.w500,
-              color:      MyShopColors.error,
+              color: MyShopColors.error,
               decoration: TextDecoration.underline,
               decorationColor: MyShopColors.error,
             ),
@@ -742,9 +742,9 @@ class _DeactivateLink extends ConsumerWidget {
         title: Text(
           'Deactivate Account?',
           style: TextStyle(
-            fontSize:   w * 0.046,
+            fontSize: w * 0.046,
             fontWeight: FontWeight.w700,
-            color:      MyShopColors.textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
         content: Text(
@@ -752,8 +752,8 @@ class _DeactivateLink extends ConsumerWidget {
           'and you can recover within 24 hours.',
           style: TextStyle(
             fontSize: w * 0.033,
-            color:    MyShopColors.textSecondary,
-            height:   1.4,
+            color: MyShopColors.textSecondary,
+            height: 1.4,
           ),
         ),
         shape: RoundedRectangleBorder(
@@ -762,14 +762,15 @@ class _DeactivateLink extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text('Cancel', style: TextStyle(color: MyShopColors.darkSlate)),
+            child:
+                Text('Cancel', style: TextStyle(color: MyShopColors.darkSlate)),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(
               'Deactivate',
               style: TextStyle(
-                color:      MyShopColors.error,
+                color: MyShopColors.error,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -805,12 +806,12 @@ class _LoadingSkeleton extends StatelessWidget {
       children: [
         // App bar shimmer
         Container(
-          color:   MyShopColors.surfaceWhite,
+          color: MyShopColors.surfaceWhite,
           padding: EdgeInsets.only(
-              top:    topPad + h * 0.012,
+              top: topPad + h * 0.012,
               bottom: h * 0.017,
-              left:   w * 0.041,
-              right:  w * 0.041),
+              left: w * 0.041,
+              right: w * 0.041),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -825,7 +826,7 @@ class _LoadingSkeleton extends StatelessWidget {
               children: [
                 // Profile header skeleton
                 Container(
-                  color:   MyShopColors.surfaceWhite,
+                  color: MyShopColors.surfaceWhite,
                   padding: EdgeInsets.symmetric(vertical: h * 0.028),
                   child: Column(
                     children: [
@@ -843,15 +844,15 @@ class _LoadingSkeleton extends StatelessWidget {
                 ),
                 SizedBox(height: h * 0.022),
                 // Section skeletons
-                _Shimmer(w: w * 0.51,     h: h * 0.014, r: 4),
+                _Shimmer(w: w * 0.51, h: h * 0.014, r: 4),
                 SizedBox(height: h * 0.008),
                 _Shimmer(w: double.infinity, h: h * 0.17, r: 0),
                 SizedBox(height: h * 0.022),
-                _Shimmer(w: w * 0.36,     h: h * 0.014, r: 4),
+                _Shimmer(w: w * 0.36, h: h * 0.014, r: 4),
                 SizedBox(height: h * 0.008),
                 _Shimmer(w: double.infinity, h: h * 0.17, r: 0),
                 SizedBox(height: h * 0.022),
-                _Shimmer(w: w * 0.23,     h: h * 0.014, r: 4),
+                _Shimmer(w: w * 0.23, h: h * 0.014, r: 4),
                 SizedBox(height: h * 0.008),
                 _Shimmer(w: double.infinity, h: h * 0.12, r: 0),
               ],
@@ -872,13 +873,12 @@ class _Shimmer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width:  w,
+      width: w,
       height: h,
       decoration: BoxDecoration(
-        color:        MyShopColors.divider,
+        color: MyShopColors.divider,
         borderRadius: BorderRadius.circular(r),
       ),
     );
   }
 }
-

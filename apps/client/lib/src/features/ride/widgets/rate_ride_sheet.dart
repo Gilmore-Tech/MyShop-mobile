@@ -133,9 +133,8 @@ class _RateRideSheetState extends ConsumerState<RateRideSheet> {
   }
 
   Future<void> _handleSubmit(RideRatingState state) async {
-    final ok = await ref
-        .read(rideRatingProvider.notifier)
-        .submit(widget.rideId);
+    final ok =
+        await ref.read(rideRatingProvider.notifier).submit(widget.rideId);
     if (!mounted) return;
     // Only close on success — failure leaves the sheet open with the
     // inline error so the user can fix the input and retry.
@@ -193,7 +192,7 @@ class _DragHandle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: w * 0.103,  // ~40dp
+      width: w * 0.103, // ~40dp
       height: h * 0.005, // ~4dp
       decoration: BoxDecoration(
         color: MyShopColors.divider,
@@ -219,16 +218,16 @@ class _SheetHeader extends StatelessWidget {
           Text(
             'Rate your Trip',
             style: TextStyle(
-              fontSize: w * 0.051,       // ~20dp
+              fontSize: w * 0.051, // ~20dp
               fontWeight: FontWeight.w700,
               color: MyShopColors.textPrimary,
             ),
           ),
-          SizedBox(height: h * 0.007),   // ~6dp
+          SizedBox(height: h * 0.007), // ~6dp
           Text(
             'Your feedback is anonymous for 24 hours',
             style: TextStyle(
-              fontSize: w * 0.033,       // ~13dp
+              fontSize: w * 0.033, // ~13dp
               fontWeight: FontWeight.w400,
               color: MyShopColors.textSecondary,
             ),
@@ -267,7 +266,7 @@ class _StarRow extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: w * 0.018), // ~7dp gap
             child: Icon(
               filled ? Icons.star_rounded : Icons.star_border_rounded,
-              size: w * 0.092,  // ~36dp
+              size: w * 0.092, // ~36dp
               color: MyShopColors.primaryGold,
             ),
           ),
@@ -360,10 +359,12 @@ class _TagChip extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         curve: Curves.easeInOut,
-        height: h * 0.047,   // ~40dp
+        height: h * 0.047, // ~40dp
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: isSelected ? MyShopColors.primaryGoldLight : MyShopColors.surfaceWhite,
+          color: isSelected
+              ? MyShopColors.primaryGoldLight
+              : MyShopColors.surfaceWhite,
           border: Border.all(
             color: isSelected ? MyShopColors.primaryGold : MyShopColors.divider,
             width: 1.5,
@@ -373,9 +374,11 @@ class _TagChip extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            fontSize: w * 0.033,  // ~13dp
+            fontSize: w * 0.033, // ~13dp
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-            color: isSelected ? MyShopColors.primaryGold : MyShopColors.textPrimary,
+            color: isSelected
+                ? MyShopColors.primaryGold
+                : MyShopColors.textPrimary,
           ),
           textAlign: TextAlign.center,
         ),
@@ -431,7 +434,7 @@ class _NoteInput extends StatelessWidget {
             border: InputBorder.none,
             contentPadding: EdgeInsets.symmetric(
               horizontal: w * 0.038, // ~15dp
-              vertical: h * 0.017,   // ~14dp
+              vertical: h * 0.017, // ~14dp
             ),
           ),
         ),
@@ -463,12 +466,14 @@ class _SubmitButton extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: SizedBox(
         width: double.infinity,
-        height: h * 0.062,   // ~52dp
+        height: h * 0.062, // ~52dp
         child: ElevatedButton(
           onPressed: canSubmit ? onPressed : null,
           style: ElevatedButton.styleFrom(
-            backgroundColor: canSubmit ? MyShopColors.darkSlate : MyShopColors.surfaceGrey,
-            foregroundColor: canSubmit ? MyShopColors.surfaceWhite : MyShopColors.disabled,
+            backgroundColor:
+                canSubmit ? MyShopColors.darkSlate : MyShopColors.surfaceGrey,
+            foregroundColor:
+                canSubmit ? MyShopColors.surfaceWhite : MyShopColors.disabled,
             disabledBackgroundColor: MyShopColors.surfaceGrey,
             disabledForegroundColor: MyShopColors.disabled,
             elevation: 0,
@@ -488,9 +493,11 @@ class _SubmitButton extends StatelessWidget {
               : Text(
                   'Submit Rating',
                   style: TextStyle(
-                    fontSize: w * 0.036,  // ~14dp
+                    fontSize: w * 0.036, // ~14dp
                     fontWeight: FontWeight.w600,
-                    color: canSubmit ? MyShopColors.surfaceWhite : MyShopColors.disabled,
+                    color: canSubmit
+                        ? MyShopColors.surfaceWhite
+                        : MyShopColors.disabled,
                     letterSpacing: 0.3,
                   ),
                 ),
@@ -520,7 +527,7 @@ class _SkipLink extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Padding(
         padding: EdgeInsets.symmetric(
-          vertical: h * 0.009,   // ~8dp touch padding
+          vertical: h * 0.009, // ~8dp touch padding
           horizontal: w * 0.041,
         ),
         child: Text(
@@ -550,14 +557,14 @@ class _SafetyDisclaimer extends StatelessWidget {
       children: [
         Icon(
           Icons.shield_outlined,
-          size: w * 0.036,   // ~14dp
+          size: w * 0.036, // ~14dp
           color: MyShopColors.textSecondary,
         ),
         SizedBox(width: w * 0.015),
         Text(
           'Police-monitored safety check complete',
           style: TextStyle(
-            fontSize: w * 0.028,   // ~11dp
+            fontSize: w * 0.028, // ~11dp
             fontWeight: FontWeight.w400,
             color: MyShopColors.textSecondary,
           ),

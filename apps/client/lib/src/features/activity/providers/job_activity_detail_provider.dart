@@ -56,25 +56,24 @@ class JobActivityDetail {
   });
 
   String get agreedPriceDisplay => _fmt(agreedPricePesewas);
-  String get supplementDisplay  => _fmt(supplementPesewas ?? 0);
-  String get totalDisplay       => _fmt(totalPesewas);
+  String get supplementDisplay => _fmt(supplementPesewas ?? 0);
+  String get totalDisplay => _fmt(totalPesewas);
 
-  bool get hasSupplement  => supplementPesewas != null && supplementPesewas! > 0;
-  bool get hasArtisan     => artisanName != null;
-  bool get isCompleted    => status == 'completed';
-  bool get isCancelled    => status == 'cancelled';
+  bool get hasSupplement => supplementPesewas != null && supplementPesewas! > 0;
+  bool get hasArtisan => artisanName != null;
+  bool get isCompleted => status == 'completed';
+  bool get isCancelled => status == 'cancelled';
 
   String get statusLabel => switch (status) {
-        'completed'              => 'Completed',
-        'cancelled'              => 'Cancelled',
-        'in_progress'            => 'In Progress',
+        'completed' => 'Completed',
+        'cancelled' => 'Cancelled',
+        'in_progress' => 'In Progress',
         'artisan_marked_complete' => 'Awaiting Confirmation',
-        'artisan_en_route' ||
-        'en_route'               => 'En Route',
-        'arrived'                => 'Arrived',
-        'confirmed'              => 'Confirmed',
-        'open'                   => 'Open',
-        _                        => 'Pending',
+        'artisan_en_route' || 'en_route' => 'En Route',
+        'arrived' => 'Arrived',
+        'confirmed' => 'Confirmed',
+        'open' => 'Open',
+        _ => 'Pending',
       };
 }
 
@@ -124,14 +123,12 @@ class _JobActivityDetailNotifier
     if (createdAt != null) {
       final dt = DateTime.tryParse(createdAt);
       if (dt != null) {
-        dateTimeLabel =
-            DateFormat('MMM d, yyyy · h:mm a').format(dt.toLocal());
+        dateTimeLabel = DateFormat('MMM d, yyyy · h:mm a').format(dt.toLocal());
       }
     }
 
     final bids = job['bids'] as List<dynamic>?;
-    final bidCount = bids?.length ??
-        (job['bidCount'] as num?)?.toInt() ?? 0;
+    final bidCount = bids?.length ?? (job['bidCount'] as num?)?.toInt() ?? 0;
 
     final agreed = (job['agreedPrice'] as num?)?.toInt() ?? 0;
     final supplement = (job['supplementAmount'] as num?)?.toInt();
@@ -146,8 +143,8 @@ class _JobActivityDetailNotifier
       location: job['addressText'] as String? ?? '',
       bidCount: bidCount,
       artisanName: artisan['name'] as String?,
-      artisanSpecialty: artisan['specialty'] as String? ??
-          category['name'] as String?,
+      artisanSpecialty:
+          artisan['specialty'] as String? ?? category['name'] as String?,
       artisanRating: (artisan['rating'] as num?)?.toDouble(),
       artisanJobCount: (artisan['completedJobs'] as num?)?.toInt(),
       artisanVerified: artisan['verified'] as bool? ?? false,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:shared_models/shared_models.dart' show ChatBookingType;
+import 'package:shared_models/shared_models.dart'
+    show ChatBookingType, TicketCategory;
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -58,7 +59,8 @@ import '../features/services/screens/job_summary_screen.dart';
 import '../features/services/screens/job_complete_screen.dart';
 import '../features/services/screens/job_dispute_screen.dart';
 import '../features/services/screens/service_receipt_screen.dart';
-import '../features/services/providers/payment_provider.dart' show PaymentMethod;
+import '../features/services/providers/payment_provider.dart'
+    show PaymentMethod;
 import '../features/services/screens/payment_screen.dart';
 
 // ── Activity ───────────────────────────────────────────────────────────────────
@@ -74,7 +76,14 @@ import '../features/profile/screens/edit_profile_screen.dart';
 import '../features/profile/screens/saved_locations_screen.dart';
 import '../features/profile/screens/privacy_security_screen.dart';
 import '../features/profile/screens/app_preferences_screen.dart';
-import '../features/profile/screens/support_legal_screen.dart';
+import '../features/support/screens/support_legal_route_screen.dart';
+import '../features/support/screens/tickets_list_route_screen.dart';
+import '../features/support/screens/ticket_detail_route_screen.dart';
+import '../features/support/screens/new_ticket_route_screen.dart';
+import '../features/support/screens/help_category_route_screen.dart';
+import '../features/support/screens/help_article_route_screen.dart';
+import '../features/support/screens/help_search_route_screen.dart';
+import '../features/support/screens/legal_document_route_screen.dart';
 import '../features/profile/screens/referral_screen.dart';
 import '../features/profile/screens/payment_methods_screen.dart';
 import '../features/profile/screens/emergency_contacts_screen.dart';
@@ -90,105 +99,125 @@ import '../features/notifications/screens/notifications_list_screen.dart';
 
 abstract final class AppRoutes {
   // Onboarding
-  static const splash          = '/';
-  static const onboarding      = '/onboarding';
+  static const splash = '/';
+  static const onboarding = '/onboarding';
   // Auth
-  static const authPhone       = '/auth/phone';
-  static const authSignUp      = '/auth/sign-up';
-  static const authOtp         = '/auth/otp';
+  static const authPhone = '/auth/phone';
+  static const authSignUp = '/auth/sign-up';
+  static const authOtp = '/auth/otp';
 
   // Main tabs
-  static const home            = '/home';
-  static const services        = '/services';
-  static const activity        = '/activity';
-  static const profile         = '/profile';
+  static const home = '/home';
+  static const services = '/services';
+  static const activity = '/activity';
+  static const profile = '/profile';
 
   // Ride sub-flow
-  static const rideSearch      = '/ride/search/:field';
-  static const ridePinPicker   = '/ride/pin-picker/:field';
-  static const rideEstimate    = '/ride/estimate';
-  static const rideStops       = '/ride/stops';
-  static const rideMatching    = '/ride/matching';
+  static const rideSearch = '/ride/search/:field';
+  static const ridePinPicker = '/ride/pin-picker/:field';
+  static const rideEstimate = '/ride/estimate';
+  static const rideStops = '/ride/stops';
+  static const rideMatching = '/ride/matching';
   static const rideDriverFound = '/ride/driver-found';
-  static const rideTracking    = '/ride/tracking';
-  static const rideComplete    = '/ride/complete';
-  static const ridePayment     = '/ride/:rideId/payment';
-  static const rideReceipt     = '/ride/:rideId/receipt';
-  static const rideDispute     = '/ride/:rideId/dispute';
+  static const rideTracking = '/ride/tracking';
+  static const rideComplete = '/ride/complete';
+  static const ridePayment = '/ride/:rideId/payment';
+  static const rideReceipt = '/ride/:rideId/receipt';
+  static const rideDispute = '/ride/:rideId/dispute';
 
-  static String rideSearchPath(String field)      => '/ride/search/$field';
-  static String ridePinPickerPath(String field)   => '/ride/pin-picker/$field';
-  static String ridePaymentPath(String rideId)    => '/ride/$rideId/payment';
-  static String rideReceiptPath(String rideId)    => '/ride/$rideId/receipt';
-  static String rideDisputePath(String rideId)    => '/ride/$rideId/dispute';
+  static String rideSearchPath(String field) => '/ride/search/$field';
+  static String ridePinPickerPath(String field) => '/ride/pin-picker/$field';
+  static String ridePaymentPath(String rideId) => '/ride/$rideId/payment';
+  static String rideReceiptPath(String rideId) => '/ride/$rideId/receipt';
+  static String rideDisputePath(String rideId) => '/ride/$rideId/dispute';
 
   // Services sub-flow
   static const servicesAllCategories = '/services/categories';
-  static const jobNew           = '/services/job/new';
-  static const jobLocation      = '/services/job/location';
-  static const jobLocationMap   = '/services/job/location/map';
-  static const jobDetail        = '/services/job/:jobId';
-  static const jobBids          = '/services/job/:jobId/bids/:bidId';
-  static const jobBidMap        = '/services/job/:jobId/bids/:bidId/map';
-  static const jobBidReview     = '/services/job/:jobId/bid-review';
-  static const jobSupplement    = '/services/job/:jobId/supplement';
-  static const jobActive        = '/services/job/:jobId/active';
-  static const jobTracking      = '/services/job/:jobId/tracking';
-  static const jobSummary       = '/services/job/:jobId/summary';
-  static const jobComplete      = '/services/job/:jobId/complete';
-  static const jobReceipt       = '/services/job/:jobId/receipt';
-  static const jobDispute       = '/services/job/:jobId/dispute';
-  static const jobPayment       = '/services/job/:jobId/payment';
+  static const jobNew = '/services/job/new';
+  static const jobLocation = '/services/job/location';
+  static const jobLocationMap = '/services/job/location/map';
+  static const jobDetail = '/services/job/:jobId';
+  static const jobBids = '/services/job/:jobId/bids/:bidId';
+  static const jobBidMap = '/services/job/:jobId/bids/:bidId/map';
+  static const jobBidReview = '/services/job/:jobId/bid-review';
+  static const jobSupplement = '/services/job/:jobId/supplement';
+  static const jobActive = '/services/job/:jobId/active';
+  static const jobTracking = '/services/job/:jobId/tracking';
+  static const jobSummary = '/services/job/:jobId/summary';
+  static const jobComplete = '/services/job/:jobId/complete';
+  static const jobReceipt = '/services/job/:jobId/receipt';
+  static const jobDispute = '/services/job/:jobId/dispute';
+  static const jobPayment = '/services/job/:jobId/payment';
 
-  static String jobDetailPath(String jobId)     => '/services/job/$jobId';
+  static String jobDetailPath(String jobId) => '/services/job/$jobId';
   static String jobBidsPath(String j, String b) => '/services/job/$j/bids/$b';
-  static String jobBidMapPath(String j, String b) => '/services/job/$j/bids/$b/map';
-  static String jobBidReviewPath(String jobId)  => '/services/job/$jobId/bid-review';
-  static String jobSupplementPath(String jobId) => '/services/job/$jobId/supplement';
-  static String jobActivePath(String jobId)     => '/services/job/$jobId/active';
-  static String jobTrackingPath(String jobId)   => '/services/job/$jobId/tracking';
-  static String jobSummaryPath(String jobId)    => '/services/job/$jobId/summary';
-  static String jobCompletePath(String jobId)   => '/services/job/$jobId/complete';
-  static String jobReceiptPath(String jobId)    => '/services/job/$jobId/receipt';
-  static String jobDisputePath(String jobId)    => '/services/job/$jobId/dispute';
-  static String jobPaymentPath(String jobId)    => '/services/job/$jobId/payment';
+  static String jobBidMapPath(String j, String b) =>
+      '/services/job/$j/bids/$b/map';
+  static String jobBidReviewPath(String jobId) =>
+      '/services/job/$jobId/bid-review';
+  static String jobSupplementPath(String jobId) =>
+      '/services/job/$jobId/supplement';
+  static String jobActivePath(String jobId) => '/services/job/$jobId/active';
+  static String jobTrackingPath(String jobId) =>
+      '/services/job/$jobId/tracking';
+  static String jobSummaryPath(String jobId) => '/services/job/$jobId/summary';
+  static String jobCompletePath(String jobId) =>
+      '/services/job/$jobId/complete';
+  static String jobReceiptPath(String jobId) => '/services/job/$jobId/receipt';
+  static String jobDisputePath(String jobId) => '/services/job/$jobId/dispute';
+  static String jobPaymentPath(String jobId) => '/services/job/$jobId/payment';
 
   // Activity history
-  static const activityRide    = '/activity/ride/:rideId';
-  static const activityJob     = '/activity/job/:jobId';
-  static const activityReport  = '/activity/report';
+  static const activityRide = '/activity/ride/:rideId';
+  static const activityJob = '/activity/job/:jobId';
+  static const activityReport = '/activity/report';
 
   static String activityRidePath(String rideId) => '/activity/ride/$rideId';
-  static String activityJobPath(String jobId)   => '/activity/job/$jobId';
+  static String activityJobPath(String jobId) => '/activity/job/$jobId';
 
   // Profile sub-screens
-  static const profileEdit         = '/profile/edit';
-  static const profileSavedPlaces  = '/profile/saved-places';
-  static const profilePrivacy      = '/profile/privacy';
-  static const profilePreferences  = '/profile/preferences';
-  static const profileSupport      = '/profile/support';
-  static const profileReferral     = '/profile/referral';
-  static const profilePayments     = '/profile/payments';
-  static const profileEmergency    = '/profile/emergency-contacts';
-  static const profileLoyalty      = '/profile/loyalty';
+  static const profileEdit = '/profile/edit';
+  static const profileSavedPlaces = '/profile/saved-places';
+  static const profilePrivacy = '/profile/privacy';
+  static const profilePreferences = '/profile/preferences';
+  static const profileSupport = '/profile/support';
+  static const supportTickets = '/profile/support/tickets';
+  static const supportNewTicket = '/profile/support/tickets/new';
+  static const supportTicketDetail = '/profile/support/tickets/:ticketId';
+  static const supportHelpCategory = '/profile/support/help/:categorySlug';
+  static const supportHelpArticle = '/profile/support/help/article/:slug';
+  static const supportHelpSearch = '/profile/support/search';
+  static const legalDocument = '/legal/:slug';
+
+  static String supportTicketDetailPath(String id) =>
+      '/profile/support/tickets/$id';
+  static String supportHelpCategoryPath(String slug) =>
+      '/profile/support/help/$slug';
+  static String supportHelpArticlePath(String slug) =>
+      '/profile/support/help/article/$slug';
+  static String legalDocumentPath(String slug) => '/legal/$slug';
+  static const profileReferral = '/profile/referral';
+  static const profilePayments = '/profile/payments';
+  static const profileEmergency = '/profile/emergency-contacts';
+  static const profileLoyalty = '/profile/loyalty';
 
   // Overlays
-  static const chat                = '/chat';
-  static const safetyEmergency     = '/safety/emergency';
-  static const safetyShare         = '/safety/share';
-  static const notifications       = '/notifications';
+  static const chat = '/chat';
+  static const safetyEmergency = '/safety/emergency';
+  static const safetyShare = '/safety/share';
+  static const notifications = '/notifications';
 
   // Dev
-  static const dev                 = '/dev';
+  static const dev = '/dev';
 }
 
 // ── Navigator keys ─────────────────────────────────────────────────────────────
 
-final _rootNavigatorKey     = GlobalKey<NavigatorState>();
-final _homeNavKey           = GlobalKey<NavigatorState>(debugLabel: 'home');
-final _servicesNavKey       = GlobalKey<NavigatorState>(debugLabel: 'services');
-final _activityNavKey       = GlobalKey<NavigatorState>(debugLabel: 'activity');
-final _profileNavKey        = GlobalKey<NavigatorState>(debugLabel: 'profile');
+final _rootNavigatorKey = GlobalKey<NavigatorState>();
+final _homeNavKey = GlobalKey<NavigatorState>(debugLabel: 'home');
+final _servicesNavKey = GlobalKey<NavigatorState>(debugLabel: 'services');
+final _activityNavKey = GlobalKey<NavigatorState>(debugLabel: 'activity');
+final _profileNavKey = GlobalKey<NavigatorState>(debugLabel: 'profile');
 
 // ── Router Provider ────────────────────────────────────────────────────────────
 // NOT autoDispose — the router must live for the full app lifetime.
@@ -198,20 +227,20 @@ final _profileNavKey        = GlobalKey<NavigatorState>(debugLabel: 'profile');
 // navigator keys are module-level so navigation state is preserved.
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState     = ref.watch(clientAuthControllerProvider);
-  final hasSeen       = ref.watch(hasSeenOnboardingProvider);
+  final authState = ref.watch(clientAuthControllerProvider);
+  final hasSeen = ref.watch(hasSeenOnboardingProvider);
   final pendingReplay = ref.watch(pendingReplayOnboardingProvider);
   return _buildRouter(
-    authState:     authState,
-    hasSeen:       hasSeen,
+    authState: authState,
+    hasSeen: hasSeen,
     pendingReplay: pendingReplay,
   );
 });
 
 GoRouter _buildRouter({
   required ClientAuthState authState,
-  required bool            hasSeen,
-  required bool            pendingReplay,
+  required bool hasSeen,
+  required bool pendingReplay,
 }) {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
@@ -279,7 +308,6 @@ GoRouter _buildRouter({
       return null;
     },
     routes: [
-
       // ── Dev menu ─────────────────────────────────────────────────────────────
       GoRoute(
         path: AppRoutes.dev,
@@ -455,7 +483,7 @@ GoRouter _buildRouter({
         builder: (_, state) {
           final extra = state.extra as Map<String, String?>?;
           return JobFormScreen(
-            initialCategoryId:   extra?['categoryId'],
+            initialCategoryId: extra?['categoryId'],
             initialCategoryName: extra?['categoryName'],
           );
         },
@@ -605,7 +633,59 @@ GoRouter _buildRouter({
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.profileSupport,
-        builder: (_, __) => const SupportLegalScreen(),
+        builder: (_, __) => const SupportLegalRouteScreen(),
+        routes: [
+          GoRoute(
+            path: 'tickets',
+            parentNavigatorKey: _rootNavigatorKey,
+            builder: (_, __) => const TicketsListRouteScreen(),
+            routes: [
+              GoRoute(
+                path: 'new',
+                parentNavigatorKey: _rootNavigatorKey,
+                builder: (_, state) {
+                  final extra = state.extra is Map<String, Object?>
+                      ? state.extra! as Map<String, Object?>
+                      : const <String, Object?>{};
+                  return NewTicketRouteScreen(
+                    preselectedCategory:
+                        extra['preselectedCategory'] as TicketCategory?,
+                    referenceType: extra['referenceType'] as String?,
+                    referenceId: extra['referenceId'] as String?,
+                  );
+                },
+              ),
+              GoRoute(
+                path: ':ticketId',
+                parentNavigatorKey: _rootNavigatorKey,
+                builder: (_, state) => TicketDetailRouteScreen(
+                  ticketId: state.pathParameters['ticketId']!,
+                ),
+              ),
+            ],
+          ),
+          GoRoute(
+            path: 'search',
+            parentNavigatorKey: _rootNavigatorKey,
+            builder: (_, state) => HelpSearchRouteScreen(
+              initialQuery: state.uri.queryParameters['q'],
+            ),
+          ),
+          GoRoute(
+            path: 'help/:categorySlug',
+            parentNavigatorKey: _rootNavigatorKey,
+            builder: (_, state) => HelpCategoryRouteScreen(
+              categorySlug: state.pathParameters['categorySlug']!,
+            ),
+          ),
+          GoRoute(
+            path: 'help/article/:slug',
+            parentNavigatorKey: _rootNavigatorKey,
+            builder: (_, state) => HelpArticleRouteScreen(
+              slug: state.pathParameters['slug']!,
+            ),
+          ),
+        ],
       ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
@@ -666,6 +746,13 @@ GoRouter _buildRouter({
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.notifications,
         builder: (_, __) => const NotificationsListScreen(),
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: AppRoutes.legalDocument,
+        builder: (_, state) => LegalDocumentRouteScreen(
+          slug: state.pathParameters['slug']!,
+        ),
       ),
     ],
 

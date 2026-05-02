@@ -227,11 +227,15 @@ class _StopIndicator extends StatelessWidget {
     final w = MediaQuery.sizeOf(context).width;
     switch (type) {
       case StopType.pickup:
-        return const _Ring(color: MyShopColors.primaryGold, fillColor: MyShopColors.primaryGold);
+        return const _Ring(
+            color: MyShopColors.primaryGold,
+            fillColor: MyShopColors.primaryGold);
       case StopType.intermediate:
-        return const _Ring(color: MyShopColors.darkSlate, fillColor: Colors.white);
+        return const _Ring(
+            color: MyShopColors.darkSlate, fillColor: Colors.white);
       case StopType.destination:
-        return Icon(Icons.location_on_rounded, color: MyShopColors.primaryGold, size: w * 0.056);
+        return Icon(Icons.location_on_rounded,
+            color: MyShopColors.primaryGold, size: w * 0.056);
     }
   }
 }
@@ -285,7 +289,8 @@ class _AddStopCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: MyShopColors.primaryGoldLight,
           borderRadius: BorderRadius.circular(w * 0.026),
-          border: Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.4)),
+          border: Border.all(
+              color: MyShopColors.primaryGold.withValues(alpha: 0.4)),
         ),
         child: Row(
           children: [

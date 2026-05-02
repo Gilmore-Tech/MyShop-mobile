@@ -40,9 +40,8 @@ class RideTrackingSheet extends StatelessWidget {
     final w = MediaQuery.sizeOf(context).width;
     final h = MediaQuery.sizeOf(context).height;
     final firstName = driver.name.split(' ').first;
-    final isOvertime = !isInProgress &&
-        waitingSeconds != null &&
-        waitingSeconds! <= 0;
+    final isOvertime =
+        !isInProgress && waitingSeconds != null && waitingSeconds! <= 0;
     // Once the trip has started, the waiting timer is no longer relevant.
     final effectiveWaiting = isInProgress ? null : waitingSeconds;
 
@@ -88,7 +87,8 @@ class RideTrackingSheet extends StatelessWidget {
                   if (isInProgress)
                     _AddStopButton(onTap: onAddStop)
                   else ...[
-                    const Divider(height: 1, thickness: 1, color: MyShopColors.divider),
+                    const Divider(
+                        height: 1, thickness: 1, color: MyShopColors.divider),
                     SizedBox(height: h * 0.017),
                     _CancelRequestButton(onTap: onCancel),
                   ],
@@ -116,7 +116,7 @@ class _DragHandle extends StatelessWidget {
       padding: EdgeInsets.only(top: h * 0.012, bottom: h * 0.007),
       child: Center(
         child: Container(
-          width:  w * 0.103,
+          width: w * 0.103,
           height: h * 0.005,
           decoration: BoxDecoration(
             color: MyShopColors.divider,
@@ -184,11 +184,8 @@ class _PaymentMethod extends StatelessWidget {
     // helper that powers the fare-estimate selector and the receipt — one
     // source of truth keeps "Cash trip" / "MTN Mobile Money" consistent.
     final isCash = method.toLowerCase() == 'cash';
-    final label =
-        isCash ? 'Cash trip' : formatRidePaymentMethodLabel(method);
-    final icon = isCash
-        ? Icons.payments_rounded
-        : Icons.phone_android_rounded;
+    final label = isCash ? 'Cash trip' : formatRidePaymentMethodLabel(method);
+    final icon = isCash ? Icons.payments_rounded : Icons.phone_android_rounded;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -265,7 +262,8 @@ class _OvertimeNotice extends StatelessWidget {
       color: const Color(0xFFFDECEC),
       child: Row(
         children: [
-          Icon(Icons.info_outline_rounded, size: w * 0.041, color: MyShopColors.error),
+          Icon(Icons.info_outline_rounded,
+              size: w * 0.041, color: MyShopColors.error),
           SizedBox(width: w * 0.021),
           Expanded(
             child: Text(
@@ -299,7 +297,8 @@ class _TripInProgressNotice extends StatelessWidget {
       color: MyShopColors.successLight,
       child: Row(
         children: [
-          Icon(Icons.navigation_rounded, size: w * 0.041, color: MyShopColors.success),
+          Icon(Icons.navigation_rounded,
+              size: w * 0.041, color: MyShopColors.success),
           SizedBox(width: w * 0.021),
           Expanded(
             child: Text(
@@ -333,8 +332,7 @@ class _DriverRow extends StatelessWidget {
         : driver.vehicle.split(' ').take(2).join(' ');
 
     return InkWell(
-      onTap: () =>
-          context.push(AppRoutes.rideDriverFound, extra: driver),
+      onTap: () => context.push(AppRoutes.rideDriverFound, extra: driver),
       child: Padding(
         padding: EdgeInsets.symmetric(
           horizontal: w * 0.041,
@@ -422,7 +420,8 @@ class _DriverMeta extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.star_rounded, size: w * 0.033, color: MyShopColors.primaryGold),
+            Icon(Icons.star_rounded,
+                size: w * 0.033, color: MyShopColors.primaryGold),
             SizedBox(width: w * 0.008),
             Text(
               driver.rating.toStringAsFixed(1),
@@ -535,7 +534,8 @@ class _PhoneCircleButton extends StatelessWidget {
           color: Colors.white,
           border: Border.all(color: MyShopColors.divider, width: 1.5),
         ),
-        child: const Icon(Icons.phone_rounded, size: 20, color: MyShopColors.textPrimary),
+        child: const Icon(Icons.phone_rounded,
+            size: 20, color: MyShopColors.textPrimary),
       ),
     );
   }
@@ -620,7 +620,8 @@ class _SafetyNotice extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(Icons.shield_outlined, size: w * 0.038, color: MyShopColors.textSecondary),
+        Icon(Icons.shield_outlined,
+            size: w * 0.038, color: MyShopColors.textSecondary),
         SizedBox(width: w * 0.021),
         Expanded(
           child: Text(
@@ -692,12 +693,14 @@ class _CancelRequestButton extends StatelessWidget {
             onPressed: onTap,
             style: OutlinedButton.styleFrom(
               foregroundColor: MyShopColors.error,
-              side: BorderSide(color: MyShopColors.error.withValues(alpha: 0.5), width: 1.5),
+              side: BorderSide(
+                  color: MyShopColors.error.withValues(alpha: 0.5), width: 1.5),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
-            icon: const Icon(Icons.cancel_outlined, size: 18, color: MyShopColors.error),
+            icon: const Icon(Icons.cancel_outlined,
+                size: 18, color: MyShopColors.error),
             label: const Text(
               'Cancel Request',
               style: TextStyle(

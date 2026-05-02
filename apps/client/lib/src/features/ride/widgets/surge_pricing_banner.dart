@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-const _warningBg = MyShopColors.primaryGoldLight;   // primaryGoldLight
+const _warningBg = MyShopColors.primaryGoldLight; // primaryGoldLight
 
 class SurgePricingBanner extends StatelessWidget {
   const SurgePricingBanner({super.key});
@@ -13,12 +13,14 @@ class SurgePricingBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: _warningBg,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.4)),
+        border:
+            Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.4)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.bolt_rounded, color: MyShopColors.primaryGold, size: 20),
+          const Icon(Icons.bolt_rounded,
+              color: MyShopColors.primaryGold, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Column(

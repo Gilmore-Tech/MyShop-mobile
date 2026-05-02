@@ -16,19 +16,19 @@ extension LoyaltyTierX on LoyaltyTier {
   String get label => switch (this) {
         LoyaltyTier.bronze => 'Bronze Member',
         LoyaltyTier.silver => 'Silver Member',
-        LoyaltyTier.gold   => 'Gold Member',
+        LoyaltyTier.gold => 'Gold Member',
       };
 
   int get minPoints => switch (this) {
         LoyaltyTier.bronze => 0,
         LoyaltyTier.silver => 500,
-        LoyaltyTier.gold   => 2000,
+        LoyaltyTier.gold => 2000,
       };
 
   int get maxPoints => switch (this) {
         LoyaltyTier.bronze => 499,
         LoyaltyTier.silver => 1999,
-        LoyaltyTier.gold   => 999999,
+        LoyaltyTier.gold => 999999,
       };
 }
 
@@ -43,8 +43,8 @@ LoyaltyTier _tierFromPoints(int points) {
 class LedgerEntry {
   final String label;
   final String dateLabel;
-  final int    points;
-  final bool   isEarn;
+  final int points;
+  final bool isEarn;
 
   const LedgerEntry({
     required this.label,
@@ -61,29 +61,29 @@ class LedgerEntry {
   ///   description:     free-text from the backend, may be null
   ///   createdAt:       ISO timestamp
   factory LedgerEntry.fromJson(Map<String, dynamic> json) {
-    final pts    = (json['points'] as num?)?.toInt() ?? 0;
+    final pts = (json['points'] as num?)?.toInt() ?? 0;
     final txType = json['transactionType'] as String? ?? '';
-    final desc   = (json['description'] as String?)?.trim();
+    final desc = (json['description'] as String?)?.trim();
 
     return LedgerEntry(
-      label:     desc != null && desc.isNotEmpty
+      label: desc != null && desc.isNotEmpty
           ? desc
           : _labelForTransactionType(txType),
       dateLabel: _formatDate(json['createdAt'] as String?),
-      points:    pts.abs(),
-      isEarn:    pts >= 0,
+      points: pts.abs(),
+      isEarn: pts >= 0,
     );
   }
 }
 
 String _labelForTransactionType(String type) => switch (type) {
-      'earned_ride'     => 'Ride completed',
-      'earned_job'      => 'Job completed',
+      'earned_ride' => 'Ride completed',
+      'earned_job' => 'Job completed',
       'earned_referral' => 'Referral bonus',
-      'redeemed'        => 'Points redeemed',
-      'expired'         => 'Points expired',
-      'adjusted'        => 'Balance adjusted',
-      _                 => 'Transaction',
+      'redeemed' => 'Points redeemed',
+      'expired' => 'Points expired',
+      'adjusted' => 'Balance adjusted',
+      _ => 'Transaction',
     };
 
 String _formatDate(String? iso) {
@@ -94,17 +94,29 @@ String _formatDate(String? iso) {
   final diff = now.difference(dt);
   if (diff.inDays == 0) return 'Today';
   if (diff.inDays == 1) return 'Yesterday';
-  const months = ['Jan','Feb','Mar','Apr','May','Jun',
-                   'Jul','Aug','Sep','Oct','Nov','Dec'];
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec'
+  ];
   return '${months[dt.month - 1]} ${dt.day}';
 }
 
 // ── Loyalty data ──────────────────────────────────────────────────────────────
 
 class LoyaltyData {
-  final int               points;
-  final LoyaltyTier       tier;
-  final int               lifetimePoints;
+  final int points;
+  final LoyaltyTier tier;
+  final int lifetimePoints;
   final List<LedgerEntry> ledger;
 
   const LoyaltyData({
@@ -123,9 +135,8 @@ class LoyaltyData {
 
   int get pointsToNextTier {
     if (tier == LoyaltyTier.gold) return 0;
-    final next = tier == LoyaltyTier.bronze
-        ? LoyaltyTier.silver
-        : LoyaltyTier.gold;
+    final next =
+        tier == LoyaltyTier.bronze ? LoyaltyTier.silver : LoyaltyTier.gold;
     return (next.minPoints - points).clamp(0, 999999);
   }
 
@@ -147,8 +158,7 @@ class LoyaltyData {
 // history is longer than `limit`, the number understates — that's
 // acceptable for an MVP marketing surface.
 
-final loyaltyProvider =
-    FutureProvider.autoDispose<LoyaltyData>((ref) async {
+final loyaltyProvider = FutureProvider.autoDispose<LoyaltyData>((ref) async {
   final authState = ref.watch(clientAuthControllerProvider);
   final balance = authState is AuthAuthenticated
       ? (authState.profile.client?.loyaltyPointsBalance ?? 0)
@@ -160,8 +170,8 @@ final loyaltyProvider =
     final json = await ref
         .read(loyaltyServiceProvider)
         .getTransactions(page: 1, limit: 30);
-    final items = (json['items'] as List<dynamic>? ?? [])
-        .cast<Map<String, dynamic>>();
+    final items =
+        (json['items'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
     ledger = items.map(LedgerEntry.fromJson).toList();
 
     // Lifetime ≈ sum of earned points across the visible window. Better
@@ -179,9 +189,9 @@ final loyaltyProvider =
   }
 
   return LoyaltyData(
-    points:         balance,
-    tier:           _tierFromPoints(balance),
+    points: balance,
+    tier: _tierFromPoints(balance),
     lifetimePoints: lifetime,
-    ledger:         ledger,
+    ledger: ledger,
   );
 });

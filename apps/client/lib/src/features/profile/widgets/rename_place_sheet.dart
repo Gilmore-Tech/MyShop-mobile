@@ -34,7 +34,7 @@ class _RenamePlaceSheet extends ConsumerStatefulWidget {
 
 class _RenamePlaceSheetState extends ConsumerState<_RenamePlaceSheet> {
   late final TextEditingController _labelCtrl;
-  bool   _isSaving = false;
+  bool _isSaving = false;
   String? _errorMessage;
 
   @override
@@ -75,7 +75,7 @@ class _RenamePlaceSheetState extends ConsumerState<_RenamePlaceSheet> {
       _errorMessage = null;
     });
     final error = await ref.read(savedPlacesProvider.notifier).renamePlace(
-          id:    widget.place.id,
+          id: widget.place.id,
           label: newLabel,
         );
     if (!mounted) return;
@@ -92,9 +92,9 @@ class _RenamePlaceSheetState extends ConsumerState<_RenamePlaceSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final size  = MediaQuery.sizeOf(context);
-    final w     = size.width;
-    final h     = size.height;
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
     final inset = MediaQuery.viewInsetsOf(context).bottom;
 
     return Container(
@@ -110,10 +110,10 @@ class _RenamePlaceSheetState extends ConsumerState<_RenamePlaceSheet> {
             SizedBox(height: h * 0.014),
             // Drag handle
             Container(
-              width:  w * 0.103,
+              width: w * 0.103,
               height: h * 0.005,
               decoration: BoxDecoration(
-                color:        MyShopColors.divider,
+                color: MyShopColors.divider,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -127,9 +127,9 @@ class _RenamePlaceSheetState extends ConsumerState<_RenamePlaceSheet> {
                   Text(
                     'Rename place',
                     style: TextStyle(
-                      fontSize:   w * 0.051,
+                      fontSize: w * 0.051,
                       fontWeight: FontWeight.w700,
-                      color:      MyShopColors.textPrimary,
+                      color: MyShopColors.textPrimary,
                     ),
                   ),
                   SizedBox(height: h * 0.007),
@@ -138,8 +138,8 @@ class _RenamePlaceSheetState extends ConsumerState<_RenamePlaceSheet> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: w * 0.031,
-                      color:    MyShopColors.textSecondary,
-                      height:   1.4,
+                      color: MyShopColors.textSecondary,
+                      height: 1.4,
                     ),
                   ),
                 ],
@@ -161,29 +161,29 @@ class _RenamePlaceSheetState extends ConsumerState<_RenamePlaceSheet> {
                 ),
                 child: TextField(
                   controller: _labelCtrl,
-                  autofocus:  true,
-                  onChanged:  (_) => setState(() {}),
+                  autofocus: true,
+                  onChanged: (_) => setState(() {}),
                   style: TextStyle(
                     fontSize: w * 0.036,
-                    color:    MyShopColors.textPrimary,
+                    color: MyShopColors.textPrimary,
                   ),
                   decoration: InputDecoration(
                     hintText: 'Place name',
                     hintStyle: TextStyle(
                       fontSize: w * 0.033,
-                      color:    MyShopColors.textHint,
+                      color: MyShopColors.textHint,
                     ),
                     prefixIcon: Icon(
                       Icons.bookmark_outline_rounded,
-                      size:  w * 0.046,
+                      size: w * 0.046,
                       color: MyShopColors.textSecondary,
                     ),
-                    border:        InputBorder.none,
+                    border: InputBorder.none,
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
                     contentPadding: EdgeInsets.symmetric(
                       horizontal: w * 0.020,
-                      vertical:   h * 0.017,
+                      vertical: h * 0.017,
                     ),
                   ),
                 ),
@@ -199,7 +199,7 @@ class _RenamePlaceSheetState extends ConsumerState<_RenamePlaceSheet> {
                   children: [
                     Icon(
                       Icons.error_outline_rounded,
-                      size:  w * 0.041,
+                      size: w * 0.041,
                       color: MyShopColors.error,
                     ),
                     SizedBox(width: w * 0.020),
@@ -207,10 +207,10 @@ class _RenamePlaceSheetState extends ConsumerState<_RenamePlaceSheet> {
                       child: Text(
                         _errorMessage!,
                         style: TextStyle(
-                          fontSize:   w * 0.031,
+                          fontSize: w * 0.031,
                           fontWeight: FontWeight.w500,
-                          color:      MyShopColors.error,
-                          height:     1.4,
+                          color: MyShopColors.error,
+                          height: 1.4,
                         ),
                       ),
                     ),
@@ -244,7 +244,7 @@ class _RenamePlaceSheetState extends ConsumerState<_RenamePlaceSheet> {
                   ),
                   child: _isSaving
                       ? SizedBox(
-                          width:  w * 0.051,
+                          width: w * 0.051,
                           height: w * 0.051,
                           child: const CircularProgressIndicator(
                             strokeWidth: 2,
@@ -254,8 +254,8 @@ class _RenamePlaceSheetState extends ConsumerState<_RenamePlaceSheet> {
                       : Text(
                           'Save',
                           style: TextStyle(
-                            fontSize:      w * 0.036,
-                            fontWeight:    FontWeight.w600,
+                            fontSize: w * 0.036,
+                            fontWeight: FontWeight.w600,
                             letterSpacing: 0.3,
                           ),
                         ),
@@ -269,15 +269,15 @@ class _RenamePlaceSheetState extends ConsumerState<_RenamePlaceSheet> {
               behavior: HitTestBehavior.opaque,
               child: Padding(
                 padding: EdgeInsets.symmetric(
-                  vertical:   h * 0.009,
+                  vertical: h * 0.009,
                   horizontal: w * 0.041,
                 ),
                 child: Text(
                   'Cancel',
                   style: TextStyle(
-                    fontSize:   w * 0.033,
+                    fontSize: w * 0.033,
                     fontWeight: FontWeight.w500,
-                    color:      MyShopColors.textSecondary,
+                    color: MyShopColors.textSecondary,
                   ),
                   textAlign: TextAlign.center,
                 ),

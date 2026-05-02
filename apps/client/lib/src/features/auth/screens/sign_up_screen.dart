@@ -329,7 +329,8 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 class _FieldLabel extends StatelessWidget {
-  const _FieldLabel({required this.label, required this.w, this.optional = false});
+  const _FieldLabel(
+      {required this.label, required this.w, this.optional = false});
   final String label;
   final double w;
   final bool optional;

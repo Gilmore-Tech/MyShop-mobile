@@ -125,7 +125,8 @@ class _DriverDetails extends StatelessWidget {
         const SizedBox(height: 4),
         Row(
           children: [
-            const Icon(Icons.star_rounded, size: 14, color: MyShopColors.primaryGold),
+            const Icon(Icons.star_rounded,
+                size: 14, color: MyShopColors.primaryGold),
             const SizedBox(width: 3),
             Text(
               driver.rating.toStringAsFixed(1),

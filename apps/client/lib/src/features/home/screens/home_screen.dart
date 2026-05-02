@@ -42,10 +42,10 @@ class HomeScreen extends ConsumerWidget {
                     SizedBox(height: h * 0.05),
                     LocationSearchCard(
                       pickupLabel: pickupName,
-                      onPickupTap: () => context.push(
-                          AppRoutes.rideSearchPath('pickup')),
-                      onPickupPinTap: () => context.push(
-                          AppRoutes.ridePinPickerPath('pickup')),
+                      onPickupTap: () =>
+                          context.push(AppRoutes.rideSearchPath('pickup')),
+                      onPickupPinTap: () =>
+                          context.push(AppRoutes.ridePinPickerPath('pickup')),
                     ),
                     SizedBox(height: h * 0.05),
                     _ServiceCardsRow(),
@@ -202,8 +202,8 @@ class _ServiceCardsRow extends ConsumerWidget {
     if (ref.read(rideSearchProvider).pickup != null) return;
     final pos = ref.read(currentDevicePositionProvider);
     if (pos == null) return;
-    final label =
-        ref.read(currentLocationLabelProvider).valueOrNull ?? 'Current location';
+    final label = ref.read(currentLocationLabelProvider).valueOrNull ??
+        'Current location';
     ref.read(rideSearchProvider.notifier).setLocation(
           RideSearchField.pickup,
           RideLocation(
@@ -244,8 +244,8 @@ class _SpecialOffersSection extends ConsumerWidget {
               padding: EdgeInsets.symmetric(
                   horizontal: MediaQuery.sizeOf(context).width * 0.041),
               itemCount: offers.length,
-              separatorBuilder: (_, __) => SizedBox(
-                  width: MediaQuery.sizeOf(context).width * 0.031),
+              separatorBuilder: (_, __) =>
+                  SizedBox(width: MediaQuery.sizeOf(context).width * 0.031),
               itemBuilder: (_, i) => SpecialOfferCard(offer: offers[i]),
             ),
           ),
@@ -318,11 +318,12 @@ class _RecentPlacesSkeleton extends StatelessWidget {
         3,
         (_) => Container(
           height: h * 0.071,
-          padding: EdgeInsets.symmetric(horizontal: w * 0.041, vertical: h * 0.012),
+          padding:
+              EdgeInsets.symmetric(horizontal: w * 0.041, vertical: h * 0.012),
           child: Row(
             children: [
               Container(
-                width:  w * 0.056,
+                width: w * 0.056,
                 height: w * 0.056,
                 decoration: const BoxDecoration(
                   color: MyShopColors.divider,
@@ -337,7 +338,7 @@ class _RecentPlacesSkeleton extends StatelessWidget {
                   children: [
                     Container(
                       height: h * 0.014,
-                      width:  w * 0.308,
+                      width: w * 0.308,
                       decoration: BoxDecoration(
                         color: MyShopColors.divider,
                         borderRadius: BorderRadius.circular(4),
@@ -346,7 +347,7 @@ class _RecentPlacesSkeleton extends StatelessWidget {
                     SizedBox(height: h * 0.007),
                     Container(
                       height: h * 0.012,
-                      width:  w * 0.462,
+                      width: w * 0.462,
                       decoration: BoxDecoration(
                         color: MyShopColors.divider,
                         borderRadius: BorderRadius.circular(4),
@@ -390,7 +391,8 @@ class _SectionHeader extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (leadingIcon != null) ...[
-                Icon(leadingIcon, size: w * 0.036, color: MyShopColors.primaryGold),
+                Icon(leadingIcon,
+                    size: w * 0.036, color: MyShopColors.primaryGold),
                 SizedBox(width: w * 0.015),
               ],
               Text(
@@ -418,7 +420,8 @@ class _SectionHeader extends StatelessWidget {
                       color: MyShopColors.primaryGold,
                     ),
                   ),
-                  Icon(Icons.chevron_right_rounded, size: w * 0.041, color: MyShopColors.primaryGold),
+                  Icon(Icons.chevron_right_rounded,
+                      size: w * 0.041, color: MyShopColors.primaryGold),
                 ],
               ),
             ),
@@ -427,4 +430,3 @@ class _SectionHeader extends StatelessWidget {
     );
   }
 }
-

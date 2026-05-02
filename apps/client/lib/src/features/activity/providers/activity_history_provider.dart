@@ -18,15 +18,15 @@ enum ActivityFilter { all, rides, jobs }
 
 extension ActivityFilterX on ActivityFilter {
   String get label => switch (this) {
-        ActivityFilter.all   => 'All',
+        ActivityFilter.all => 'All',
         ActivityFilter.rides => 'Rides',
-        ActivityFilter.jobs  => 'Jobs',
+        ActivityFilter.jobs => 'Jobs',
       };
 
   IconData get icon => switch (this) {
-        ActivityFilter.all   => Icons.filter_list_rounded,
+        ActivityFilter.all => Icons.filter_list_rounded,
         ActivityFilter.rides => Icons.directions_car_outlined,
-        ActivityFilter.jobs  => Icons.work_outline_rounded,
+        ActivityFilter.jobs => Icons.work_outline_rounded,
       };
 }
 
@@ -38,31 +38,31 @@ enum TransactionStatus { completed, cancelled, inProgress, pending }
 
 extension TransactionStatusX on TransactionStatus {
   String get label => switch (this) {
-        TransactionStatus.completed  => 'Completed',
-        TransactionStatus.cancelled  => 'Cancelled',
+        TransactionStatus.completed => 'Completed',
+        TransactionStatus.cancelled => 'Cancelled',
         TransactionStatus.inProgress => 'In Progress',
-        TransactionStatus.pending    => 'Pending',
+        TransactionStatus.pending => 'Pending',
       };
 
   Color get badgeBg => switch (this) {
-        TransactionStatus.completed  => MyShopColors.successLight,
-        TransactionStatus.cancelled  => MyShopColors.errorLight,
+        TransactionStatus.completed => MyShopColors.successLight,
+        TransactionStatus.cancelled => MyShopColors.errorLight,
         TransactionStatus.inProgress => MyShopColors.warningLight,
-        TransactionStatus.pending    => MyShopColors.infoLight,
+        TransactionStatus.pending => MyShopColors.infoLight,
       };
 
   Color get badgeFg => switch (this) {
-        TransactionStatus.completed  => MyShopColors.success,
-        TransactionStatus.cancelled  => MyShopColors.error,
+        TransactionStatus.completed => MyShopColors.success,
+        TransactionStatus.cancelled => MyShopColors.error,
         TransactionStatus.inProgress => MyShopColors.warning,
-        TransactionStatus.pending    => MyShopColors.info,
+        TransactionStatus.pending => MyShopColors.info,
       };
 
   IconData get badgeIcon => switch (this) {
-        TransactionStatus.completed  => Icons.check_circle_outline_rounded,
-        TransactionStatus.cancelled  => Icons.cancel_outlined,
+        TransactionStatus.completed => Icons.check_circle_outline_rounded,
+        TransactionStatus.cancelled => Icons.cancel_outlined,
         TransactionStatus.inProgress => Icons.timelapse_rounded,
-        TransactionStatus.pending    => Icons.schedule_rounded,
+        TransactionStatus.pending => Icons.schedule_rounded,
       };
 }
 
@@ -70,23 +70,23 @@ extension TransactionStatusX on TransactionStatus {
 // Unified lightweight model for both rides and artisan jobs.
 
 class TransactionItem {
-  final String            id;
-  final TransactionType   type;
-  final String            title;
+  final String id;
+  final TransactionType type;
+  final String title;
 
   /// For rides: "Pickup → Dropoff". For jobs: single location string.
-  final String            locationLabel;
+  final String locationLabel;
 
   /// Display timestamp, e.g. "08:45 AM" (today) or "Oct 23, 10:00 AM" (past).
-  final String            timeLabel;
+  final String timeLabel;
 
   final TransactionStatus status;
 
   /// Original creation time — used for sorting and date grouping.
-  final DateTime          createdAt;
+  final DateTime createdAt;
 
   /// Amount in pesewas — used for monthly spend summary.
-  final int               amountPesewas;
+  final int amountPesewas;
 
   const TransactionItem({
     required this.id,
@@ -101,14 +101,14 @@ class TransactionItem {
 
   IconData get typeIcon => switch (type) {
         TransactionType.ride => Icons.directions_car_outlined,
-        TransactionType.job  => Icons.work_outline_rounded,
+        TransactionType.job => Icons.work_outline_rounded,
       };
 }
 
 // ── Date Group ────────────────────────────────────────────────────────────────
 
 class TransactionGroup {
-  final String              label; // "TODAY", "YESTERDAY", "LAST WEEK"
+  final String label; // "TODAY", "YESTERDAY", "LAST WEEK"
   final List<TransactionItem> items;
   const TransactionGroup({required this.label, required this.items});
 }
@@ -116,9 +116,9 @@ class TransactionGroup {
 // ── Monthly Summary ───────────────────────────────────────────────────────────
 
 class ActivitySummary {
-  final int    monthlySpendPesewas; // displayed as GH¢ X,XXX.XX
-  final int    tripCount;
-  final String monthLabel;          // "October"
+  final int monthlySpendPesewas; // displayed as GH¢ X,XXX.XX
+  final int tripCount;
+  final String monthLabel; // "October"
 
   const ActivitySummary({
     required this.monthlySpendPesewas,
@@ -142,46 +142,44 @@ class ActivitySummary {
 // ── State ─────────────────────────────────────────────────────────────────────
 
 class ActivityHistoryState {
-  final ActivityFilter           filter;
-  final String                   searchQuery;
-  final bool                     isLoading;
-  final ActivitySummary?         summary;
-  final List<TransactionGroup>   groups;
-  final String?                  errorMessage;
+  final ActivityFilter filter;
+  final String searchQuery;
+  final bool isLoading;
+  final ActivitySummary? summary;
+  final List<TransactionGroup> groups;
+  final String? errorMessage;
 
   const ActivityHistoryState({
-    this.filter      = ActivityFilter.all,
+    this.filter = ActivityFilter.all,
     this.searchQuery = '',
-    this.isLoading   = true,
+    this.isLoading = true,
     this.summary,
-    this.groups      = const [],
+    this.groups = const [],
     this.errorMessage,
   });
 
   ActivityHistoryState copyWith({
-    ActivityFilter?          filter,
-    String?                  searchQuery,
-    bool?                    isLoading,
-    ActivitySummary?         summary,
-    List<TransactionGroup>?  groups,
-    String?                  errorMessage,
-    bool                     clearError = false,
+    ActivityFilter? filter,
+    String? searchQuery,
+    bool? isLoading,
+    ActivitySummary? summary,
+    List<TransactionGroup>? groups,
+    String? errorMessage,
+    bool clearError = false,
   }) =>
       ActivityHistoryState(
-        filter:       filter       ?? this.filter,
-        searchQuery:  searchQuery  ?? this.searchQuery,
-        isLoading:    isLoading    ?? this.isLoading,
-        summary:      summary      ?? this.summary,
-        groups:       groups       ?? this.groups,
-        errorMessage:
-            clearError ? null : (errorMessage ?? this.errorMessage),
+        filter: filter ?? this.filter,
+        searchQuery: searchQuery ?? this.searchQuery,
+        isLoading: isLoading ?? this.isLoading,
+        summary: summary ?? this.summary,
+        groups: groups ?? this.groups,
+        errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       );
 }
 
 // ── Notifier ──────────────────────────────────────────────────────────────────
 
-class ActivityHistoryNotifier
-    extends StateNotifier<ActivityHistoryState> {
+class ActivityHistoryNotifier extends StateNotifier<ActivityHistoryState> {
   final Ref _ref;
   Timer? _pollTimer;
   bool _inFlight = false;
@@ -361,23 +359,24 @@ class ActivityHistoryNotifier
 
   TransactionStatus _rideStatusToTransaction(RideStatus status) {
     return switch (status) {
-      RideStatus.completed  => TransactionStatus.completed,
-      RideStatus.cancelled  => TransactionStatus.cancelled,
+      RideStatus.completed => TransactionStatus.completed,
+      RideStatus.cancelled => TransactionStatus.cancelled,
       RideStatus.inProgress => TransactionStatus.inProgress,
-      _                     => TransactionStatus.pending,
+      _ => TransactionStatus.pending,
     };
   }
 
   TransactionStatus _jobStatusToTransaction(String status) {
     return switch (status) {
-      'completed'               => TransactionStatus.completed,
-      'cancelled'               => TransactionStatus.cancelled,
+      'completed' => TransactionStatus.completed,
+      'cancelled' => TransactionStatus.cancelled,
       'in_progress' ||
       'arrived' ||
       'artisan_en_route' ||
       'en_route' ||
-      'artisan_marked_complete' => TransactionStatus.inProgress,
-      _                         => TransactionStatus.pending,
+      'artisan_marked_complete' =>
+        TransactionStatus.inProgress,
+      _ => TransactionStatus.pending,
     };
   }
 
@@ -440,7 +439,7 @@ final filteredActivityGroupsProvider =
     Provider.autoDispose<List<TransactionGroup>>((ref) {
   final state = ref.watch(activityHistoryProvider);
   final filter = state.filter;
-  final query  = state.searchQuery.trim().toLowerCase();
+  final query = state.searchQuery.trim().toLowerCase();
 
   List<TransactionItem> filterItems(List<TransactionItem> items) {
     var result = items;

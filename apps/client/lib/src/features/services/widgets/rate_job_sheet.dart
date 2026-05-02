@@ -353,7 +353,9 @@ class _TagChip extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.033,
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-            color: isSelected ? MyShopColors.primaryGold : MyShopColors.textPrimary,
+            color: isSelected
+                ? MyShopColors.primaryGold
+                : MyShopColors.textPrimary,
           ),
           textAlign: TextAlign.center,
         ),

@@ -84,8 +84,7 @@ class FareRecalculation {
   int get differencePesewas => newFarePesewas - originalFarePesewas;
   bool get isSurgeIncrease => differencePesewas > 0;
 
-  String _fmt(int pesewas) =>
-      'GH₵ ${(pesewas / 100).toStringAsFixed(2)}';
+  String _fmt(int pesewas) => 'GH₵ ${(pesewas / 100).toStringAsFixed(2)}';
 
   String get originalFareDisplay => _fmt(originalFarePesewas);
   String get newFareDisplay => _fmt(newFarePesewas);
@@ -200,8 +199,7 @@ class TripStopsNotifier extends StateNotifier<List<TripStop>> {
     // Prevent moving pickup or destination outside their bounds
     final stops = List<TripStop>.of(state);
     if (oldIndex == 0 || newIndex == 0) return; // never move pickup
-    if (oldIndex == stops.length - 1 ||
-        newIndex >= stops.length) {
+    if (oldIndex == stops.length - 1 || newIndex >= stops.length) {
       return; // never move destination
     }
 

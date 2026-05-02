@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 // Design tokens — will migrate to MyShopColors once shared_ui is exported here.
-const _goldSoft      = Color(0xFFFDF3E1); // subtle gold background for pin tap target
+const _goldSoft =
+    Color(0xFFFDF3E1); // subtle gold background for pin tap target
 
 /// Home-screen pickup card.
 ///
@@ -156,7 +157,8 @@ class _PinChip extends StatelessWidget {
           child: SizedBox(
             width: w * 0.097,
             height: w * 0.097,
-            child: Icon(Icons.location_on, color: MyShopColors.primaryGold, size: w * 0.051),
+            child: Icon(Icons.location_on,
+                color: MyShopColors.primaryGold, size: w * 0.051),
           ),
         ),
       ),

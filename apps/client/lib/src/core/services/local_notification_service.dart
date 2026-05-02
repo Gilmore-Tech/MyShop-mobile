@@ -86,6 +86,19 @@ class NotificationPayload {
   /// Generic / info — routes to notification inbox.
   static const typeGeneric = 'generic';
 
+  // ── Support tickets ──────────────────────────────────────────────────────
+  /// New message from a support agent on an open ticket. Payload carries
+  /// `ticketId` (+ optional `messageId` for read tracking).
+  static const typeSupportTicketMessage = 'support_ticket_message';
+
+  /// Ticket status flipped server-side (resolved by agent, etc.). Same
+  /// `ticketId` payload — taps deep-link to the same detail screen.
+  static const typeSupportTicketStatusChanged = 'support_ticket_status_changed';
+
+  /// Payload key for support deeplinks.
+  static const keyTicketId = 'ticketId';
+  static const keyMessageId = 'messageId';
+
   /// Types that deserve a heads-up, full-screen-intent style banner.
   static const Set<String> urgentTypes = {
     typeRideDriverAssigned,
@@ -138,8 +151,7 @@ class LocalNotificationService {
       AndroidNotificationChannel(
     'myshop_timeline',
     'Trip & job updates',
-    description:
-        'Progress updates on your active rides, jobs and bids. '
+    description: 'Progress updates on your active rides, jobs and bids. '
         'Leave enabled to stay informed without interruption.',
     importance: Importance.high,
     playSound: true,
@@ -154,8 +166,7 @@ class LocalNotificationService {
       AndroidNotificationChannel(
     'chat_messages',
     'Chat messages',
-    description:
-        'New messages from your driver or artisan during an active '
+    description: 'New messages from your driver or artisan during an active '
         'booking.',
     importance: Importance.high,
     playSound: true,

@@ -72,8 +72,7 @@ class ArtisanBid {
   bool get hasRating => reviewCount > 0 && rating > 0;
 
   /// Display amount e.g. "GHS 240"
-  String get amountDisplay =>
-      'GHS ${(amountPesewas / 100).toStringAsFixed(0)}';
+  String get amountDisplay => 'GHS ${(amountPesewas / 100).toStringAsFixed(0)}';
 
   /// Deterministic fallback avatar color derived from the artisan id, so
   /// the same artisan always renders with the same shade across sessions.
@@ -111,8 +110,7 @@ class ActiveJobSummary {
     required this.budgetPesewas,
   });
 
-  String get budgetDisplay =>
-      'GHS ${(budgetPesewas / 100).toStringAsFixed(0)}';
+  String get budgetDisplay => 'GHS ${(budgetPesewas / 100).toStringAsFixed(0)}';
 }
 
 // ── Bid List State ────────────────────────────────────────────────────────────
@@ -140,8 +138,7 @@ class BidListState {
       BidListState(
         selectingBidId:
             clearSelecting ? null : (selectingBidId ?? this.selectingBidId),
-        errorMessage:
-            clearError ? null : (errorMessage ?? this.errorMessage),
+        errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       );
 }
 
@@ -190,8 +187,8 @@ final bidListNotifierProvider =
 
 /// Fetches bids for a given job ID.
 /// autoDispose.family — each job gets its own cached async state.
-final bidsForJobProvider =
-    AsyncNotifierProvider.autoDispose.family<_BidsNotifier, List<ArtisanBid>, String>(
+final bidsForJobProvider = AsyncNotifierProvider.autoDispose
+    .family<_BidsNotifier, List<ArtisanBid>, String>(
   _BidsNotifier.new,
 );
 
@@ -266,8 +263,8 @@ class _BidsNotifier
     }
 
     String composeTradeTitle() {
-      final specialty = (artisan['specialty'] ?? artisan['tradeTitle'])
-          as String?;
+      final specialty =
+          (artisan['specialty'] ?? artisan['tradeTitle']) as String?;
       if (specialty != null && specialty.trim().isNotEmpty) return specialty;
       // Derive from service_categories[0].name when available.
       final cats = artisan['serviceCategories'] as List<dynamic>?;
@@ -291,8 +288,8 @@ class _BidsNotifier
       tradeTitle: composeTradeTitle(),
       rating: (artisan['rating'] as num?)?.toDouble() ?? 0.0,
       reviewCount: (artisan['reviewCount'] as num?)?.toInt() ?? 0,
-      isVerified: (artisan['isVerified'] ?? artisan['verified']) as bool? ??
-          false,
+      isVerified:
+          (artisan['isVerified'] ?? artisan['verified']) as bool? ?? false,
       profilePhotoUrl: (artisan['profilePhotoUrl'] ??
           artisan['photoUrl'] ??
           artisan['avatarUrl']) as String?,
@@ -308,4 +305,3 @@ class _BidsNotifier
     );
   }
 }
-

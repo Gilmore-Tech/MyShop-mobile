@@ -14,7 +14,7 @@ import '../../../core/di/providers.dart';
 // that happens. The poll is a belt-and-braces fallback that hits
 // /payments/:id/status until we see a terminal state or hit the cap.
 const _kSettlementPollInterval = Duration(seconds: 5);
-const _kSettlementPollMax      = Duration(minutes: 5);
+const _kSettlementPollMax = Duration(minutes: 5);
 
 /// Reads a payment-status response and classifies it into one of three
 /// outcomes — keeps the polling loop tolerant to the variants different
@@ -98,7 +98,12 @@ String? _findChargeStatus(Object? node) {
   if (node is Map) {
     // Look for `chargeStatus` / `nextStep` first (cleaner backend
     // wrappers), then fall back to a nested `data.status`.
-    for (final key in const ['chargeStatus', 'charge_status', 'nextStep', 'next_step']) {
+    for (final key in const [
+      'chargeStatus',
+      'charge_status',
+      'nextStep',
+      'next_step'
+    ]) {
       final v = node[key];
       if (v is String && v.isNotEmpty) return v;
     }
@@ -211,40 +216,39 @@ extension PaymentMethodX on PaymentMethod {
   /// never hits the payment service; the artisan confirms receipt manually
   /// via PATCH /jobs/:id/confirm.
   String? get wireValue => switch (this) {
-        PaymentMethod.momoMtn        => 'momo_mtn',
-        PaymentMethod.momoTelecel    => 'momo_telecel',
+        PaymentMethod.momoMtn => 'momo_mtn',
+        PaymentMethod.momoTelecel => 'momo_telecel',
         PaymentMethod.momoAirteltigo => 'momo_airteltigo',
-        PaymentMethod.visa           => 'visa',
-        PaymentMethod.mastercard     => 'mastercard',
-        PaymentMethod.cash           => null,
+        PaymentMethod.visa => 'visa',
+        PaymentMethod.mastercard => 'mastercard',
+        PaymentMethod.cash => null,
       };
 
   String get label => switch (this) {
-        PaymentMethod.momoMtn        => 'MTN Mobile Money',
-        PaymentMethod.momoTelecel    => 'Telecel Cash',
+        PaymentMethod.momoMtn => 'MTN Mobile Money',
+        PaymentMethod.momoTelecel => 'Telecel Cash',
         PaymentMethod.momoAirteltigo => 'AirtelTigo Money',
-        PaymentMethod.visa           => 'Visa',
-        PaymentMethod.mastercard     => 'Mastercard',
-        PaymentMethod.cash           => 'Cash',
+        PaymentMethod.visa => 'Visa',
+        PaymentMethod.mastercard => 'Mastercard',
+        PaymentMethod.cash => 'Cash',
       };
 
   String get subtitle => switch (this) {
-        PaymentMethod.momoMtn        => 'Approve the prompt on your MTN line',
-        PaymentMethod.momoTelecel    => 'Approve the prompt on your Telecel line',
+        PaymentMethod.momoMtn => 'Approve the prompt on your MTN line',
+        PaymentMethod.momoTelecel => 'Approve the prompt on your Telecel line',
         PaymentMethod.momoAirteltigo => 'Approve the prompt on your AT line',
-        PaymentMethod.visa           => 'Pay by Visa card via Paystack',
-        PaymentMethod.mastercard     => 'Pay by Mastercard via Paystack',
-        PaymentMethod.cash           =>
-          'Settle in cash; the artisan confirms receipt',
+        PaymentMethod.visa => 'Pay by Visa card via Paystack',
+        PaymentMethod.mastercard => 'Pay by Mastercard via Paystack',
+        PaymentMethod.cash => 'Settle in cash; the artisan confirms receipt',
       };
 
   IconData get icon => switch (this) {
-        PaymentMethod.momoMtn        => Icons.sim_card_rounded,
-        PaymentMethod.momoTelecel    => Icons.sim_card_rounded,
+        PaymentMethod.momoMtn => Icons.sim_card_rounded,
+        PaymentMethod.momoTelecel => Icons.sim_card_rounded,
         PaymentMethod.momoAirteltigo => Icons.sim_card_rounded,
-        PaymentMethod.visa           => Icons.credit_card_rounded,
-        PaymentMethod.mastercard     => Icons.credit_card_rounded,
-        PaymentMethod.cash           => Icons.payments_outlined,
+        PaymentMethod.visa => Icons.credit_card_rounded,
+        PaymentMethod.mastercard => Icons.credit_card_rounded,
+        PaymentMethod.cash => Icons.payments_outlined,
       };
 
   /// True when the backend expects a `momoPhone` field on the initiate call.
@@ -322,9 +326,9 @@ class PaymentSummary {
 
   String _fmt(int pesewas) => 'GHS ${(pesewas / 100).toStringAsFixed(2)}';
 
-  String get serviceFeeDisplay   => _fmt(serviceFeePesewas);
+  String get serviceFeeDisplay => _fmt(serviceFeePesewas);
   String get materialsFeeDisplay => _fmt(materialsFeePesewas);
-  String get totalDisplay        => _fmt(totalPesewas);
+  String get totalDisplay => _fmt(totalPesewas);
   String get walletBalanceDisplay => _fmt(walletBalancePesewas);
 }
 
@@ -337,7 +341,7 @@ class PaymentConfirmation {
   /// Provider" button can hand the rating sheet a valid bookingId.
   final String jobId;
 
-  final String transactionRef;  // e.g. "#TXN-2024-8821"
+  final String transactionRef; // e.g. "#TXN-2024-8821"
   final String artisanName;
   final String jobTitle;
   final int amountPesewas;
@@ -356,8 +360,7 @@ class PaymentConfirmation {
     required this.dateTimeLabel,
   });
 
-  String get amountDisplay =>
-      'GHS ${(amountPesewas / 100).toStringAsFixed(2)}';
+  String get amountDisplay => 'GHS ${(amountPesewas / 100).toStringAsFixed(2)}';
 }
 
 // ── Payment State ─────────────────────────────────────────────────────────────
@@ -483,10 +486,10 @@ class PaymentState {
             : (authorizationUrl ?? this.authorizationUrl),
         paymentId: paymentId ?? this.paymentId,
         paystackReference: paystackReference ?? this.paystackReference,
-        displayText: clearDisplayText ? null : (displayText ?? this.displayText),
-        staleAttempt: clearStaleAttempt
-            ? null
-            : (staleAttempt ?? this.staleAttempt),
+        displayText:
+            clearDisplayText ? null : (displayText ?? this.displayText),
+        staleAttempt:
+            clearStaleAttempt ? null : (staleAttempt ?? this.staleAttempt),
       );
 }
 
@@ -572,8 +575,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       );
       if (!mounted) return;
       state = state.copyWith(
-        errorMessage:
-            "We're still waiting on confirmation from the payment "
+        errorMessage: "We're still waiting on confirmation from the payment "
             'provider. Check the Activity tab in a few minutes — your '
             'receipt will show up there once it settles.',
       );
@@ -750,8 +752,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
           );
           state = state.copyWith(
             phase: PaymentPhase.idle,
-            errorMessage:
-                "We couldn't continue the payment. Please try again.",
+            errorMessage: "We couldn't continue the payment. Please try again.",
           );
           return;
         }
@@ -852,8 +853,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
             clearError: true,
             staleAttempt: StalePaymentAttempt(
               paymentId: stalePaymentId,
-              ageSeconds:
-                  (e.details?['ageSeconds'] as num?)?.toInt() ?? 0,
+              ageSeconds: (e.details?['ageSeconds'] as num?)?.toInt() ?? 0,
               retryAfterSeconds:
                   (e.details?['retryAfterSeconds'] as num?)?.toInt() ?? 0,
             ),
@@ -1005,15 +1005,15 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   ///   - 502 OTP_SUBMISSION_FAILED  → wrong/expired OTP — keep sheet open
   ///   - 400 PAYMENT_NOT_AWAITING_OTP → race with webhook, fall through
   ///   - 403 NOT_YOUR_PAYMENT / 404 PAYMENT_NOT_FOUND → generic + log
-  Future<void> submitOtp(String otp, {required String jobId, required PaymentSummary summary}) async {
+  Future<void> submitOtp(String otp,
+      {required String jobId, required PaymentSummary summary}) async {
     // Backend rejects with 404 PAYMENT_NOT_FOUND if we send the local
     // paymentId — Paystack only knows the reference.
     final reference = state.paystackReference;
     if (reference == null) {
       state = state.copyWith(
         phase: PaymentPhase.idle,
-        errorMessage:
-            "We've lost track of this payment. Please start over.",
+        errorMessage: "We've lost track of this payment. Please start over.",
       );
       return;
     }
@@ -1030,8 +1030,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
           // Paystack asked again — typically means the user fat-fingered.
           state = state.copyWith(
             phase: PaymentPhase.awaitingOtp,
-            errorMessage:
-                displayText ?? "That OTP didn't work. Try again.",
+            errorMessage: displayText ?? "That OTP didn't work. Try again.",
             displayText: displayText,
           );
           return;
@@ -1099,8 +1098,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
           return;
       }
     } catch (e, st) {
-      developer.log('submitOtp crashed: $e\n$st',
-          name: 'Payment', level: 1200);
+      developer.log('submitOtp crashed: $e\n$st', name: 'Payment', level: 1200);
       state = state.copyWith(
         phase: PaymentPhase.awaitingOtp,
         errorMessage: "Couldn't submit the OTP. Please try again.",
@@ -1120,8 +1118,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     if (pid != null) {
       try {
         await _paymentService.abandonPayment(pid);
-        developer.log('Abandoned payment $pid (OTP cancel)',
-            name: 'Payment');
+        developer.log('Abandoned payment $pid (OTP cancel)', name: 'Payment');
       } on ApiException catch (e) {
         developer.log(
           'abandonPayment on OTP cancel failed: ${e.errorCode} — ${e.message}',
@@ -1186,14 +1183,14 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     state = state.copyWith(
       phase: PaymentPhase.settled,
       confirmation: PaymentConfirmation(
-        jobId:          summary.jobId,
+        jobId: summary.jobId,
         transactionRef: state.paymentId ??
             '#TXN-${summary.jobId.hashCode.abs() % 9000 + 1000}',
-        artisanName:    summary.artisanName,
-        jobTitle:       summary.jobTitle,
-        amountPesewas:  summary.totalPesewas,
-        method:         state.selectedMethod,
-        dateTimeLabel:  _formatNow(),
+        artisanName: summary.artisanName,
+        jobTitle: summary.jobTitle,
+        amountPesewas: summary.totalPesewas,
+        method: state.selectedMethod,
+        dateTimeLabel: _formatNow(),
       ),
     );
   }
@@ -1201,10 +1198,21 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   static String _formatNow() {
     final now = DateTime.now();
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
-    final hour   = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
+    final hour =
+        now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
     final minute = now.minute.toString().padLeft(2, '0');
     final period = now.hour >= 12 ? 'PM' : 'AM';
     return '${now.day} ${months[now.month - 1]} ${now.year}, $hour:$minute $period';
@@ -1276,9 +1284,10 @@ class _PaymentSummaryNotifier
     ]);
     final categoryData = _firstMap(data, const ['category']);
 
-    final artisanName = '${artisanData['firstName'] ?? artisanData['first_name'] ?? ''} '
-            '${artisanData['lastName'] ?? artisanData['last_name'] ?? ''}'
-        .trim();
+    final artisanName =
+        '${artisanData['firstName'] ?? artisanData['first_name'] ?? ''} '
+                '${artisanData['lastName'] ?? artisanData['last_name'] ?? ''}'
+            .trim();
 
     // Service / labour fee — try every shape we've seen.
     final serviceFeePesewas = _firstInt(costBreakdown, const [
@@ -1345,9 +1354,9 @@ class _PaymentSummaryNotifier
       serviceFeePesewas: serviceFeePesewas,
       materialsFeePesewas: materialsFeePesewas,
       totalPesewas: totalPesewas,
-      walletBalancePesewas:
-          _firstInt(data, const ['walletBalancePesewas', 'wallet_balance_pesewas']) ??
-              0,
+      walletBalancePesewas: _firstInt(
+              data, const ['walletBalancePesewas', 'wallet_balance_pesewas']) ??
+          0,
     );
   }
 
@@ -1390,9 +1399,9 @@ const _defaultMockPayment = PaymentSummary(
   artisanName: 'Kofi Mensah',
   artisanFirstName: 'Kofi',
   artisanAvatarColor: Color(0xFF37474F),
-  serviceFeePesewas: 45000,   // GHS 450.00
+  serviceFeePesewas: 45000, // GHS 450.00
   materialsFeePesewas: 20000, // GHS 200.00
-  totalPesewas: 69825,        // GHS 698.25 (includes 4% transaction VAT)
+  totalPesewas: 69825, // GHS 698.25 (includes 4% transaction VAT)
   walletBalancePesewas: 124000, // GHS 1,240.00
 );
 

@@ -89,6 +89,10 @@ String _fallbackTitle(String type) {
       return 'Payment received';
     case NotificationPayload.typeRatingPrompt:
       return 'Rate your experience';
+    case NotificationPayload.typeSupportTicketMessage:
+      return 'New reply from support';
+    case NotificationPayload.typeSupportTicketStatusChanged:
+      return 'Ticket update';
     default:
       return 'MyShop';
   }
@@ -106,6 +110,10 @@ String _fallbackBody(String type) {
       return 'An artisan has placed a bid on your request.';
     case NotificationPayload.typeRatingPrompt:
       return 'Tap to leave a rating before the 24-hour window closes.';
+    case NotificationPayload.typeSupportTicketMessage:
+      return 'Tap to read and reply.';
+    case NotificationPayload.typeSupportTicketStatusChanged:
+      return 'Tap to see the latest status.';
     default:
       return 'Open MyShop to see the latest update.';
   }
@@ -364,9 +372,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         final bookingId =
             (payload[NotificationPayload.keyBookingId] as String?) ??
                 (bookingType == ChatBookingType.ride ? rideId : jobId);
-        if (bookingType == null ||
-            bookingId == null ||
-            bookingId.isEmpty) {
+        if (bookingType == null || bookingId == null || bookingId.isEmpty) {
           router.go(AppRoutes.activity);
           break;
         }
@@ -388,8 +394,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       case NotificationPayload.typeRatingPrompt:
         final bookingType =
             payload[NotificationPayload.keyBookingType] as String?;
-        final bookingId =
-            payload[NotificationPayload.keyBookingId] as String?;
+        final bookingId = payload[NotificationPayload.keyBookingId] as String?;
         if (bookingType == 'ride') {
           final id = bookingId ?? rideId;
           if (id != null) {
@@ -408,6 +413,17 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           router.go(AppRoutes.activity);
         }
         break;
+      // ── Support tickets ───────────────────────────────────────────────
+      case NotificationPayload.typeSupportTicketMessage:
+      case NotificationPayload.typeSupportTicketStatusChanged:
+        final ticketId = payload[NotificationPayload.keyTicketId] as String?;
+        if (ticketId != null && ticketId.isNotEmpty) {
+          router.push(AppRoutes.supportTicketDetailPath(ticketId));
+        } else {
+          router.go(AppRoutes.supportTickets);
+        }
+        break;
+
       case NotificationPayload.typePaymentConfirmed:
       default:
         router.go(AppRoutes.activity);

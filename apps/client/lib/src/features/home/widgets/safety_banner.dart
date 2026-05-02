@@ -16,7 +16,8 @@ class SafetyBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.verified_rounded, color: MyShopColors.primaryGold, size: 26),
+          const Icon(Icons.verified_rounded,
+              color: MyShopColors.primaryGold, size: 26),
           const SizedBox(width: 12),
           const Expanded(child: _BannerText()),
         ],

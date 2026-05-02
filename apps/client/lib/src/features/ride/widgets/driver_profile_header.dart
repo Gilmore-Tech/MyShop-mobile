@@ -173,7 +173,8 @@ class _RatingRow extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.star_rounded, size: w * 0.038, color: MyShopColors.primaryGold),
+        Icon(Icons.star_rounded,
+            size: w * 0.038, color: MyShopColors.primaryGold),
         SizedBox(width: w * 0.010),
         Text(
           rating.toStringAsFixed(2),
@@ -297,7 +298,8 @@ class _PhoneChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.phone_rounded, size: w * 0.033, color: MyShopColors.textSecondary),
+          Icon(Icons.phone_rounded,
+              size: w * 0.033, color: MyShopColors.textSecondary),
           SizedBox(width: w * 0.015),
           Text(
             maskedPhone,

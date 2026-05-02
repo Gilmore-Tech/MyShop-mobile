@@ -17,8 +17,8 @@ class JobSummaryScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final size = MediaQuery.sizeOf(context);
-    final w    = size.width;
-    final h    = size.height;
+    final w = size.width;
+    final h = size.height;
 
     final summaryAsync = ref.watch(jobSummaryProvider(jobId));
 
@@ -102,10 +102,10 @@ class _AppBar extends StatelessWidget {
     return Container(
       color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.only(
-        top:    topPad + h * 0.010,
+        top: topPad + h * 0.010,
         bottom: h * 0.017,
-        left:   w * 0.041,
-        right:  w * 0.041,
+        left: w * 0.041,
+        right: w * 0.041,
       ),
       child: Row(
         children: [
@@ -121,9 +121,9 @@ class _AppBar extends StatelessWidget {
           Text(
             'Job Summary',
             style: TextStyle(
-              fontSize:   w * 0.051,
+              fontSize: w * 0.051,
               fontWeight: FontWeight.w700,
-              color:      MyShopColors.textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
         ],
@@ -145,38 +145,40 @@ class _HeroSection extends StatelessWidget {
       children: [
         // Gold ring circle with checkmark + small lock badge
         SizedBox(
-          width:  w * 0.205,
+          width: w * 0.205,
           height: w * 0.205,
           child: Stack(
             alignment: Alignment.bottomRight,
             children: [
               // Main circle
               Container(
-                width:  w * 0.205,
+                width: w * 0.205,
                 height: w * 0.205,
                 decoration: BoxDecoration(
-                  color:  MyShopColors.primaryGoldLight,
-                  shape:  BoxShape.circle,
-                  border: Border.all(color: MyShopColors.primaryGold, width: w * 0.008),
+                  color: MyShopColors.primaryGoldLight,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                      color: MyShopColors.primaryGold, width: w * 0.008),
                 ),
                 child: Icon(
                   Icons.check_rounded,
-                  size:  w * 0.103,
+                  size: w * 0.103,
                   color: MyShopColors.primaryGold,
                 ),
               ),
               // Lock badge
               Container(
-                width:  w * 0.067,
+                width: w * 0.067,
                 height: w * 0.067,
                 decoration: BoxDecoration(
-                  color:  MyShopColors.darkSlate,
-                  shape:  BoxShape.circle,
-                  border: Border.all(color: MyShopColors.surfaceWhite, width: 2.5),
+                  color: MyShopColors.darkSlate,
+                  shape: BoxShape.circle,
+                  border:
+                      Border.all(color: MyShopColors.surfaceWhite, width: 2.5),
                 ),
                 child: Icon(
                   Icons.lock_rounded,
-                  size:  w * 0.033,
+                  size: w * 0.033,
                   color: MyShopColors.primaryGold,
                 ),
               ),
@@ -188,9 +190,9 @@ class _HeroSection extends StatelessWidget {
         Text(
           'Job Completed!',
           style: TextStyle(
-            fontSize:   w * 0.056,
+            fontSize: w * 0.056,
             fontWeight: FontWeight.w800,
-            color:      MyShopColors.textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
         SizedBox(height: h * 0.006),
@@ -198,9 +200,9 @@ class _HeroSection extends StatelessWidget {
         Text(
           'Funds have been safely released to the provider',
           style: TextStyle(
-            fontSize:   w * 0.033,
+            fontSize: w * 0.033,
             fontWeight: FontWeight.w400,
-            color:      MyShopColors.textSecondary,
+            color: MyShopColors.textSecondary,
           ),
           textAlign: TextAlign.center,
         ),
@@ -215,8 +217,7 @@ class _ArtisanCard extends StatelessWidget {
   final JobSummaryArtisan artisan;
   final double w;
   final double h;
-  const _ArtisanCard(
-      {required this.artisan, required this.w, required this.h});
+  const _ArtisanCard({required this.artisan, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
@@ -227,7 +228,7 @@ class _ArtisanCard extends StatelessWidget {
         children: [
           // Avatar circle
           Container(
-            width:  w * 0.133,
+            width: w * 0.133,
             height: w * 0.133,
             decoration: BoxDecoration(
               color: artisan.avatarColor,
@@ -235,7 +236,7 @@ class _ArtisanCard extends StatelessWidget {
             ),
             child: Icon(
               Icons.person_rounded,
-              size:  w * 0.072,
+              size: w * 0.072,
               color: MyShopColors.surfaceWhite,
             ),
           ),
@@ -253,9 +254,9 @@ class _ArtisanCard extends StatelessWidget {
                       child: Text(
                         artisan.name,
                         style: TextStyle(
-                          fontSize:   w * 0.041,
+                          fontSize: w * 0.041,
                           fontWeight: FontWeight.w700,
-                          color:      MyShopColors.textPrimary,
+                          color: MyShopColors.textPrimary,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -270,9 +271,9 @@ class _ArtisanCard extends StatelessWidget {
                 Text(
                   '${artisan.role} • ${artisan.experienceLabel}',
                   style: TextStyle(
-                    fontSize:   w * 0.031,
+                    fontSize: w * 0.031,
                     fontWeight: FontWeight.w400,
-                    color:      MyShopColors.textSecondary,
+                    color: MyShopColors.textSecondary,
                   ),
                 ),
                 SizedBox(height: h * 0.008),
@@ -287,9 +288,9 @@ class _ArtisanCard extends StatelessWidget {
                       '${artisan.rating.toStringAsFixed(1)} '
                       '(${artisan.reviewCount} reviews)',
                       style: TextStyle(
-                        fontSize:   w * 0.028,
+                        fontSize: w * 0.028,
                         fontWeight: FontWeight.w500,
-                        color:      MyShopColors.textSecondary,
+                        color: MyShopColors.textSecondary,
                       ),
                     ),
                     SizedBox(width: w * 0.018),
@@ -300,7 +301,7 @@ class _ArtisanCard extends StatelessWidget {
                       artisan.location,
                       style: TextStyle(
                         fontSize: w * 0.028,
-                        color:    MyShopColors.textSecondary,
+                        color: MyShopColors.textSecondary,
                       ),
                     ),
                   ],
@@ -329,9 +330,9 @@ class _VerifiedBadge extends StatelessWidget {
         Text(
           'verified',
           style: TextStyle(
-            fontSize:   w * 0.028,
+            fontSize: w * 0.028,
             fontWeight: FontWeight.w600,
-            color:      MyShopColors.success,
+            color: MyShopColors.success,
           ),
         ),
       ],
@@ -362,18 +363,18 @@ class _TransactionSummaryCard extends StatelessWidget {
               Text(
                 'Transaction Summary',
                 style: TextStyle(
-                  fontSize:   w * 0.041,
+                  fontSize: w * 0.041,
                   fontWeight: FontWeight.w700,
-                  color:      MyShopColors.textPrimary,
+                  color: MyShopColors.textPrimary,
                 ),
               ),
               const Spacer(),
               Text(
                 summary.jobRef,
                 style: TextStyle(
-                  fontSize:   w * 0.028,
+                  fontSize: w * 0.028,
                   fontWeight: FontWeight.w400,
-                  color:      MyShopColors.textSecondary,
+                  color: MyShopColors.textSecondary,
                 ),
               ),
             ],
@@ -408,19 +409,19 @@ class _TransactionSummaryCard extends StatelessWidget {
               Text(
                 'Total Paid',
                 style: TextStyle(
-                  fontSize:   w * 0.041,
+                  fontSize: w * 0.041,
                   fontWeight: FontWeight.w700,
-                  color:      MyShopColors.textPrimary,
+                  color: MyShopColors.textPrimary,
                 ),
               ),
               const Spacer(),
               Text(
                 summary.totalPaidDisplay,
                 style: TextStyle(
-                  fontSize:   w * 0.051,
+                  fontSize: w * 0.051,
                   fontWeight: FontWeight.w800,
-                  color:      MyShopColors.textPrimary,
-                  height:     1.0,
+                  color: MyShopColors.textPrimary,
+                  height: 1.0,
                 ),
               ),
             ],
@@ -431,10 +432,10 @@ class _TransactionSummaryCard extends StatelessWidget {
           Container(
             padding: EdgeInsets.symmetric(
               horizontal: w * 0.031,
-              vertical:   h * 0.014,
+              vertical: h * 0.014,
             ),
             decoration: BoxDecoration(
-              color:        MyShopColors.surfaceGrey,
+              color: MyShopColors.surfaceGrey,
               borderRadius: BorderRadius.circular(w * 0.021),
             ),
             child: Row(
@@ -450,9 +451,9 @@ class _TransactionSummaryCard extends StatelessWidget {
                       Text(
                         'Instant Payout Successful',
                         style: TextStyle(
-                          fontSize:   w * 0.033,
+                          fontSize: w * 0.033,
                           fontWeight: FontWeight.w700,
-                          color:      MyShopColors.textPrimary,
+                          color: MyShopColors.textPrimary,
                         ),
                       ),
                       SizedBox(height: h * 0.004),
@@ -461,10 +462,10 @@ class _TransactionSummaryCard extends StatelessWidget {
                         'instantly.'
                         '${summary.tipIncluded ? ' No commission was charged on the artisan\'s tip.' : ''}',
                         style: TextStyle(
-                          fontSize:   w * 0.028,
+                          fontSize: w * 0.028,
                           fontWeight: FontWeight.w400,
-                          color:      MyShopColors.textSecondary,
-                          height:     1.45,
+                          color: MyShopColors.textSecondary,
+                          height: 1.45,
                         ),
                       ),
                     ],
@@ -499,18 +500,18 @@ class _TxRow extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              fontSize:   w * 0.033,
+              fontSize: w * 0.033,
               fontWeight: FontWeight.w400,
-              color:      MyShopColors.textSecondary,
+              color: MyShopColors.textSecondary,
             ),
           ),
         ),
         Text(
           value,
           style: TextStyle(
-            fontSize:   w * 0.033,
+            fontSize: w * 0.033,
             fontWeight: FontWeight.w600,
-            color:      MyShopColors.textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
       ],
@@ -556,7 +557,7 @@ class _RateExperienceSectionState
   @override
   Widget build(BuildContext context) {
     final ratingState = ref.watch(jobRatingProvider);
-    final firstName   = widget.summary.artisan.firstName;
+    final firstName = widget.summary.artisan.firstName;
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
@@ -567,9 +568,9 @@ class _RateExperienceSectionState
           Text(
             'Rate Your Experience',
             style: TextStyle(
-              fontSize:   w * 0.046,
+              fontSize: w * 0.046,
               fontWeight: FontWeight.w700,
-              color:      MyShopColors.textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
           SizedBox(height: h * 0.014),
@@ -578,12 +579,12 @@ class _RateExperienceSectionState
           Container(
             padding: EdgeInsets.symmetric(
               horizontal: w * 0.031,
-              vertical:   h * 0.012,
+              vertical: h * 0.012,
             ),
             decoration: BoxDecoration(
-              color:        MyShopColors.primaryGoldLight,
+              color: MyShopColors.primaryGoldLight,
               borderRadius: BorderRadius.circular(w * 0.021),
-              border:       Border.all(
+              border: Border.all(
                 color: MyShopColors.primaryGold.withValues(alpha: 0.35),
               ),
             ),
@@ -598,10 +599,10 @@ class _RateExperienceSectionState
                     'Reviews are blind for 24 hours. Your rating will '
                     'only be visible once the artisan also reviews the job.',
                     style: TextStyle(
-                      fontSize:   w * 0.028,
+                      fontSize: w * 0.028,
                       fontWeight: FontWeight.w400,
-                      color:      MyShopColors.darkSlate,
-                      height:     1.45,
+                      color: MyShopColors.darkSlate,
+                      height: 1.45,
                     ),
                   ),
                 ),
@@ -618,40 +619,39 @@ class _RateExperienceSectionState
           Text(
             'Share your thoughts (Optional)',
             style: TextStyle(
-              fontSize:   w * 0.036,
+              fontSize: w * 0.036,
               fontWeight: FontWeight.w600,
-              color:      MyShopColors.textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
           SizedBox(height: h * 0.011),
           Container(
             decoration: BoxDecoration(
-              color:        MyShopColors.surfaceGrey,
+              color: MyShopColors.surfaceGrey,
               borderRadius: BorderRadius.circular(w * 0.026),
             ),
             child: TextField(
-              controller:   _controller,
-              maxLines:     4,
-              minLines:     4,
-              enabled:      !ratingState.isSubmitted,
-              onChanged:    (v) => ref
-                  .read(jobRatingProvider.notifier)
-                  .updateReview(v),
+              controller: _controller,
+              maxLines: 4,
+              minLines: 4,
+              enabled: !ratingState.isSubmitted,
+              onChanged: (v) =>
+                  ref.read(jobRatingProvider.notifier).updateReview(v),
               style: TextStyle(
                 fontSize: w * 0.033,
-                color:    MyShopColors.textPrimary,
-                height:   1.5,
+                color: MyShopColors.textPrimary,
+                height: 1.5,
               ),
               decoration: InputDecoration(
                 hintText: 'How was $firstName\'s work? '
                     'Great communication, punctual...',
                 hintStyle: TextStyle(
                   fontSize: w * 0.033,
-                  color:    MyShopColors.textHint,
-                  height:   1.5,
+                  color: MyShopColors.textHint,
+                  height: 1.5,
                 ),
                 contentPadding: EdgeInsets.all(w * 0.041),
-                border:         InputBorder.none,
+                border: InputBorder.none,
               ),
             ),
           ),
@@ -663,7 +663,7 @@ class _RateExperienceSectionState
               ratingState.errorMessage!,
               style: TextStyle(
                 fontSize: w * 0.031,
-                color:    MyShopColors.error,
+                color: MyShopColors.error,
               ),
             ),
           ],
@@ -679,9 +679,9 @@ class _RateExperienceSectionState
                 Text(
                   'Rating submitted — visible after the 24h window.',
                   style: TextStyle(
-                    fontSize:   w * 0.031,
+                    fontSize: w * 0.031,
                     fontWeight: FontWeight.w500,
-                    color:      MyShopColors.success,
+                    color: MyShopColors.success,
                   ),
                 ),
               ],
@@ -694,7 +694,7 @@ class _RateExperienceSectionState
 }
 
 class _StarRow extends ConsumerWidget {
-  final int    selected;
+  final int selected;
   final double w;
   const _StarRow({required this.selected, required this.w});
 
@@ -708,15 +708,13 @@ class _StarRow extends ConsumerWidget {
         return GestureDetector(
           onTap: isSubmitted
               ? null
-              : () => ref
-                  .read(jobRatingProvider.notifier)
-                  .selectStars(i + 1),
+              : () => ref.read(jobRatingProvider.notifier).selectStars(i + 1),
           behavior: HitTestBehavior.opaque,
           child: Padding(
             padding: EdgeInsets.symmetric(horizontal: w * 0.015),
             child: Icon(
               filled ? Icons.star_rounded : Icons.star_outline_rounded,
-              size:  w * 0.082,
+              size: w * 0.082,
               color: filled ? MyShopColors.primaryGold : MyShopColors.textHint,
             ),
           ),
@@ -732,8 +730,7 @@ class _SubmitButton extends ConsumerWidget {
   final String jobId;
   final double w;
   final double h;
-  const _SubmitButton(
-      {required this.jobId, required this.w, required this.h});
+  const _SubmitButton({required this.jobId, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -742,7 +739,7 @@ class _SubmitButton extends ConsumerWidget {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: SizedBox(
-        width:  double.infinity,
+        width: double.infinity,
         height: h * 0.066,
         child: ElevatedButton(
           onPressed: state.canSubmit
@@ -753,28 +750,28 @@ class _SubmitButton extends ConsumerWidget {
                   ? () => Navigator.of(context).maybePop()
                   : null,
           style: ElevatedButton.styleFrom(
-            backgroundColor:         MyShopColors.darkSlate,
+            backgroundColor: MyShopColors.darkSlate,
             disabledBackgroundColor: MyShopColors.surfaceGrey,
-            elevation:               0,
+            elevation: 0,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(w * 0.031),
             ),
           ),
           child: state.isSubmitting
               ? SizedBox(
-                  width:  w * 0.051,
+                  width: w * 0.051,
                   height: w * 0.051,
                   child: const CircularProgressIndicator(
                     strokeWidth: 2,
-                    color:       MyShopColors.surfaceWhite,
+                    color: MyShopColors.surfaceWhite,
                   ),
                 )
               : Text(
                   state.isSubmitted ? 'Done' : 'Submit & Finish',
                   style: TextStyle(
-                    fontSize:   w * 0.041,
+                    fontSize: w * 0.041,
                     fontWeight: FontWeight.w700,
-                    color:      state.canSubmit || state.isSubmitted
+                    color: state.canSubmit || state.isSubmitted
                         ? MyShopColors.surfaceWhite
                         : MyShopColors.textHint,
                   ),
@@ -800,20 +797,20 @@ class _BetaGuaranteeFooter extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: CustomPaint(
         painter: _DashedBorderPainter(
-          color:  MyShopColors.divider,
+          color: MyShopColors.divider,
           radius: w * 0.026,
         ),
         child: Container(
           padding: EdgeInsets.symmetric(
             horizontal: w * 0.041,
-            vertical:   h * 0.017,
+            vertical: h * 0.017,
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(
                 Icons.shield_outlined,
-                size:  w * 0.041,
+                size: w * 0.041,
                 color: MyShopColors.textHint,
               ),
               SizedBox(width: w * 0.018),
@@ -824,9 +821,9 @@ class _BetaGuaranteeFooter extends StatelessWidget {
                     Text(
                       'BETA GUARANTEE',
                       style: TextStyle(
-                        fontSize:      w * 0.023,
-                        fontWeight:    FontWeight.w900,
-                        color:         MyShopColors.primaryGold,
+                        fontSize: w * 0.023,
+                        fontWeight: FontWeight.w900,
+                        color: MyShopColors.primaryGold,
                         letterSpacing: 0.8,
                       ),
                     ),
@@ -836,10 +833,10 @@ class _BetaGuaranteeFooter extends StatelessWidget {
                       'were reported during the 3-hour safe period. Our '
                       'dispute center remains available for 48 hours.',
                       style: TextStyle(
-                        fontSize:   w * 0.028,
+                        fontSize: w * 0.028,
                         fontWeight: FontWeight.w400,
-                        color:      MyShopColors.textSecondary,
-                        height:     1.45,
+                        color: MyShopColors.textSecondary,
+                        height: 1.45,
                       ),
                     ),
                   ],
@@ -856,25 +853,25 @@ class _BetaGuaranteeFooter extends StatelessWidget {
 // ── Dashed border painter ─────────────────────────────────────────────────────
 
 class _DashedBorderPainter extends CustomPainter {
-  final Color  color;
+  final Color color;
   final double radius;
   const _DashedBorderPainter({required this.color, required this.radius});
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color       = color
+      ..color = color
       ..strokeWidth = 1.2
-      ..style       = PaintingStyle.stroke;
+      ..style = PaintingStyle.stroke;
 
-    const dash  = 5.0;
-    const gap   = 4.0;
+    const dash = 5.0;
+    const gap = 4.0;
     final rRect = RRect.fromRectAndRadius(
       Rect.fromLTWH(0, 0, size.width, size.height),
       Radius.circular(radius),
     );
-    final path       = Path()..addRRect(rRect);
-    final metrics    = path.computeMetrics();
+    final path = Path()..addRRect(rRect);
+    final metrics = path.computeMetrics();
     for (final metric in metrics) {
       double d = 0;
       while (d < metric.length) {
@@ -902,12 +899,12 @@ class _Card extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin:  EdgeInsets.symmetric(horizontal: w * 0.041),
+      margin: EdgeInsets.symmetric(horizontal: w * 0.041),
       padding: EdgeInsets.all(w * 0.041),
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border:       Border.all(color: MyShopColors.divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: child,
     );
@@ -928,16 +925,16 @@ class _LoadingSkeleton extends StatelessWidget {
       children: [
         // App bar
         Container(
-          color:   MyShopColors.surfaceWhite,
+          color: MyShopColors.surfaceWhite,
           padding: EdgeInsets.only(
-            top:    topPad + h * 0.010,
+            top: topPad + h * 0.010,
             bottom: h * 0.017,
-            left:   w * 0.041,
+            left: w * 0.041,
           ),
           child: Row(children: [
             _Shimmer(w: w * 0.056, h: w * 0.056, r: w * 0.056),
             SizedBox(width: w * 0.031),
-            _Shimmer(w: w * 0.33,  h: h * 0.026),
+            _Shimmer(w: w * 0.33, h: h * 0.026),
           ]),
         ),
         Expanded(
@@ -971,13 +968,12 @@ class _Shimmer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width:  w,
+      width: w,
       height: h,
       decoration: BoxDecoration(
-        color:        MyShopColors.divider,
+        color: MyShopColors.divider,
         borderRadius: BorderRadius.circular(r),
       ),
     );
   }
 }
-

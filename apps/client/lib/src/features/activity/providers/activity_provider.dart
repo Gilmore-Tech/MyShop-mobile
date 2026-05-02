@@ -18,8 +18,8 @@ enum RequestFilter {
 
 extension RequestFilterX on RequestFilter {
   String get label => switch (this) {
-        RequestFilter.all       => 'All',
-        RequestFilter.active    => 'Active',
+        RequestFilter.all => 'All',
+        RequestFilter.active => 'Active',
         RequestFilter.completed => 'Completed',
         RequestFilter.cancelled => 'Cancelled',
         RequestFilter.suspended => 'Suspended',
@@ -28,8 +28,8 @@ extension RequestFilterX on RequestFilter {
   /// Statuses that belong to each filter tab.
   /// active tab covers every in-progress state from queued → inProgress.
   Set<JobStatus>? get statuses => switch (this) {
-        RequestFilter.all       => null, // fetch everything
-        RequestFilter.active    => {
+        RequestFilter.all => null, // fetch everything
+        RequestFilter.active => {
             JobStatus.queued,
             JobStatus.open,
             JobStatus.confirmed,
@@ -40,7 +40,8 @@ extension RequestFilterX on RequestFilter {
           },
         RequestFilter.completed => {JobStatus.completed},
         RequestFilter.cancelled => {JobStatus.cancelled},
-        RequestFilter.suspended => {}, // placeholder: no suspended status yet in v1
+        RequestFilter.suspended =>
+          {}, // placeholder: no suspended status yet in v1
       };
 }
 
@@ -80,9 +81,7 @@ class JobListItem {
 
   /// True if the "X Bidders active — View Bids" row should be shown.
   bool get showBidRow =>
-      activeBidCount != null &&
-      activeBidCount! > 0 &&
-      status == JobStatus.open;
+      activeBidCount != null && activeBidCount! > 0 && status == JobStatus.open;
 }
 
 // ── Activity State ────────────────────────────────────────────────────────────
@@ -160,8 +159,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   void setFilter(RequestFilter filter) =>
       state = state.copyWith(activeFilter: filter);
 
-  void setSearch(String query) =>
-      state = state.copyWith(searchQuery: query);
+  void setSearch(String query) => state = state.copyWith(searchQuery: query);
 
   void clearSearch() => state = state.copyWith(searchQuery: '');
 
@@ -188,23 +186,22 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       postedAt: createdAt != null ? _relativeTime(createdAt) : '',
       status: status,
       budgetPesewas: (json['budgetPesewas'] as int?) ?? 0,
-      activeBidCount:
-          status == JobStatus.open ? (bids?.length ?? 0) : null,
+      activeBidCount: status == JobStatus.open ? (bids?.length ?? 0) : null,
     );
   }
 
   static JobStatus _parseJobStatus(String status) {
     return switch (status) {
-      'queued'                  => JobStatus.queued,
-      'open'                    => JobStatus.open,
-      'confirmed'               => JobStatus.confirmed,
+      'queued' => JobStatus.queued,
+      'open' => JobStatus.open,
+      'confirmed' => JobStatus.confirmed,
       'artisan_en_route' || 'en_route' => JobStatus.enRoute,
-      'arrived'                 => JobStatus.arrived,
-      'in_progress'             => JobStatus.inProgress,
+      'arrived' => JobStatus.arrived,
+      'in_progress' => JobStatus.inProgress,
       'artisan_marked_complete' => JobStatus.artisanMarkedComplete,
-      'completed'               => JobStatus.completed,
-      'cancelled'               => JobStatus.cancelled,
-      _                         => JobStatus.open,
+      'completed' => JobStatus.completed,
+      'cancelled' => JobStatus.cancelled,
+      _ => JobStatus.open,
     };
   }
 
@@ -212,11 +209,15 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     final lower = categoryName.toLowerCase();
     if (lower.contains('plumb')) return Icons.plumbing;
     if (lower.contains('electr')) return Icons.electrical_services;
-    if (lower.contains('carpen') || lower.contains('wood')) return Icons.carpenter;
+    if (lower.contains('carpen') || lower.contains('wood')) {
+      return Icons.carpenter;
+    }
     if (lower.contains('paint')) return Icons.format_paint;
     if (lower.contains('clean')) return Icons.cleaning_services;
     if (lower.contains('tow') || lower.contains('car')) return Icons.car_repair;
-    if (lower.contains('delivery') || lower.contains('package')) return Icons.local_shipping;
+    if (lower.contains('delivery') || lower.contains('package')) {
+      return Icons.local_shipping;
+    }
     return Icons.work_outline_rounded;
   }
 
@@ -242,16 +243,14 @@ final activityNotifierProvider =
 final filteredJobsProvider = Provider.autoDispose<List<JobListItem>>((ref) {
   final state = ref.watch(activityNotifierProvider);
   final filter = state.activeFilter;
-  final query  = state.searchQuery.trim().toLowerCase();
+  final query = state.searchQuery.trim().toLowerCase();
 
   var jobs = List<JobListItem>.from(state.jobs);
 
   // Apply status filter
   final allowedStatuses = filter.statuses;
   if (allowedStatuses != null) {
-    jobs = jobs
-        .where((j) => allowedStatuses.contains(j.status))
-        .toList();
+    jobs = jobs.where((j) => allowedStatuses.contains(j.status)).toList();
   }
 
   // Apply search filter
@@ -272,7 +271,6 @@ final filteredJobsProvider = Provider.autoDispose<List<JobListItem>>((ref) {
 final activeJobCountProvider = Provider.autoDispose<int>((ref) {
   final state = ref.watch(activityNotifierProvider);
   return state.jobs
-      .where((j) =>
-          RequestFilter.active.statuses?.contains(j.status) ?? false)
+      .where((j) => RequestFilter.active.statuses?.contains(j.status) ?? false)
       .length;
 });

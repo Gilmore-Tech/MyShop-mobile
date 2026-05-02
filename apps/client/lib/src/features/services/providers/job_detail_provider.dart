@@ -26,28 +26,28 @@ enum JobStatus {
 
 extension JobStatusX on JobStatus {
   String get displayLabel => switch (this) {
-        JobStatus.queued               => 'Queued',
-        JobStatus.open                 => 'Open',
-        JobStatus.confirmed            => 'Confirmed',
-        JobStatus.enRoute              => 'En Route',
-        JobStatus.arrived              => 'Arrived',
-        JobStatus.inProgress           => 'In Progress',
+        JobStatus.queued => 'Queued',
+        JobStatus.open => 'Open',
+        JobStatus.confirmed => 'Confirmed',
+        JobStatus.enRoute => 'En Route',
+        JobStatus.arrived => 'Arrived',
+        JobStatus.inProgress => 'In Progress',
         JobStatus.artisanMarkedComplete => 'Awaiting Confirmation',
-        JobStatus.pendingPayment       => 'Processing Payment',
-        JobStatus.completed            => 'Completed',
-        JobStatus.cancelled            => 'Cancelled',
+        JobStatus.pendingPayment => 'Processing Payment',
+        JobStatus.completed => 'Completed',
+        JobStatus.cancelled => 'Cancelled',
       };
 
   Color get badgeColor => switch (this) {
-        JobStatus.completed            => MyShopColors.success,
-        JobStatus.cancelled            => MyShopColors.error,
-        JobStatus.inProgress           => MyShopColors.primaryGold,
+        JobStatus.completed => MyShopColors.success,
+        JobStatus.cancelled => MyShopColors.error,
+        JobStatus.inProgress => MyShopColors.primaryGold,
         JobStatus.artisanMarkedComplete => MyShopColors.primaryGold,
-        JobStatus.pendingPayment       => MyShopColors.primaryGold,
-        JobStatus.enRoute              => MyShopColors.primaryGold,
-        JobStatus.arrived              => MyShopColors.primaryGold,
-        JobStatus.confirmed            => MyShopColors.success,
-        _                              => MyShopColors.warning,
+        JobStatus.pendingPayment => MyShopColors.primaryGold,
+        JobStatus.enRoute => MyShopColors.primaryGold,
+        JobStatus.arrived => MyShopColors.primaryGold,
+        JobStatus.confirmed => MyShopColors.success,
+        _ => MyShopColors.warning,
       };
 }
 
@@ -153,8 +153,8 @@ class JobDetail {
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
-final jobDetailProvider =
-    AsyncNotifierProvider.autoDispose.family<_JobDetailNotifier, JobDetail, String>(
+final jobDetailProvider = AsyncNotifierProvider.autoDispose
+    .family<_JobDetailNotifier, JobDetail, String>(
   _JobDetailNotifier.new,
 );
 
@@ -253,29 +253,37 @@ class _JobDetailNotifier
     final lower = categoryName.toLowerCase();
     if (lower.contains('plumb')) return Icons.plumbing;
     if (lower.contains('electr')) return Icons.electrical_services;
-    if (lower.contains('carpen') || lower.contains('wood')) return Icons.carpenter;
+    if (lower.contains('carpen') || lower.contains('wood')) {
+      return Icons.carpenter;
+    }
     if (lower.contains('paint')) return Icons.format_paint;
     if (lower.contains('clean')) return Icons.cleaning_services;
     if (lower.contains('tow') || lower.contains('car')) return Icons.car_repair;
     if (lower.contains('repair')) return Icons.build_rounded;
-    if (lower.contains('delivery') || lower.contains('package')) return Icons.local_shipping;
-    if (lower.contains('tailor') || lower.contains('fashion') || lower.contains('dress')) return Icons.checkroom;
+    if (lower.contains('delivery') || lower.contains('package')) {
+      return Icons.local_shipping;
+    }
+    if (lower.contains('tailor') ||
+        lower.contains('fashion') ||
+        lower.contains('dress')) {
+      return Icons.checkroom;
+    }
     return Icons.handyman_rounded;
   }
 
   static JobStatus _parseJobStatus(String status) {
     return switch (status) {
-      'queued'                       => JobStatus.queued,
-      'open'                         => JobStatus.open,
-      'confirmed'                    => JobStatus.confirmed,
+      'queued' => JobStatus.queued,
+      'open' => JobStatus.open,
+      'confirmed' => JobStatus.confirmed,
       'artisan_en_route' || 'en_route' => JobStatus.enRoute,
-      'arrived'                      => JobStatus.arrived,
-      'in_progress'                  => JobStatus.inProgress,
-      'artisan_marked_complete'      => JobStatus.artisanMarkedComplete,
-      'pending_payment'              => JobStatus.pendingPayment,
-      'completed'                    => JobStatus.completed,
-      'cancelled'                    => JobStatus.cancelled,
-      _                              => JobStatus.open,
+      'arrived' => JobStatus.arrived,
+      'in_progress' => JobStatus.inProgress,
+      'artisan_marked_complete' => JobStatus.artisanMarkedComplete,
+      'pending_payment' => JobStatus.pendingPayment,
+      'completed' => JobStatus.completed,
+      'cancelled' => JobStatus.cancelled,
+      _ => JobStatus.open,
     };
   }
 
@@ -296,15 +304,47 @@ class _JobDetailNotifier
     final statusIndex = JobStatus.values.indexOf(status);
 
     final allSteps = [
-      (JobStatus.queued, 'Request Posted', 'Your service request was posted to the marketplace.'),
-      (JobStatus.open, 'Awaiting Bids', 'Artisans in your area are reviewing your request.'),
-      (JobStatus.confirmed, 'Artisan Confirmed', 'An artisan has been assigned to your job.'),
-      (JobStatus.enRoute, 'En Route', 'The artisan is on their way to your location.'),
-      (JobStatus.arrived, 'Arrived', 'The artisan has arrived at your location.'),
+      (
+        JobStatus.queued,
+        'Request Posted',
+        'Your service request was posted to the marketplace.'
+      ),
+      (
+        JobStatus.open,
+        'Awaiting Bids',
+        'Artisans in your area are reviewing your request.'
+      ),
+      (
+        JobStatus.confirmed,
+        'Artisan Confirmed',
+        'An artisan has been assigned to your job.'
+      ),
+      (
+        JobStatus.enRoute,
+        'En Route',
+        'The artisan is on their way to your location.'
+      ),
+      (
+        JobStatus.arrived,
+        'Arrived',
+        'The artisan has arrived at your location.'
+      ),
       (JobStatus.inProgress, 'In Progress', 'Work is underway.'),
-      (JobStatus.artisanMarkedComplete, 'Awaiting Confirmation', 'The artisan has marked the job complete. Please confirm.'),
-      (JobStatus.pendingPayment, 'Processing Payment', 'Your payment is being processed. This usually takes a few seconds.'),
-      (JobStatus.completed, 'Completed', 'The job has been completed successfully.'),
+      (
+        JobStatus.artisanMarkedComplete,
+        'Awaiting Confirmation',
+        'The artisan has marked the job complete. Please confirm.'
+      ),
+      (
+        JobStatus.pendingPayment,
+        'Processing Payment',
+        'Your payment is being processed. This usually takes a few seconds.'
+      ),
+      (
+        JobStatus.completed,
+        'Completed',
+        'The job has been completed successfully.'
+      ),
     ];
 
     for (final (stepStatus, title, desc) in allSteps) {

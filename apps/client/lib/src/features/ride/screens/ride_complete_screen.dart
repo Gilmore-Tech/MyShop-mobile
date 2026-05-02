@@ -114,7 +114,9 @@ class _RideCompleteScreenState extends ConsumerState<RideCompleteScreen> {
                       customController: _customTipController,
                       onPresetSelected: (pesewas) {
                         _customTipController.clear();
-                        ref.read(tipStateProvider.notifier).selectPreset(pesewas);
+                        ref
+                            .read(tipStateProvider.notifier)
+                            .selectPreset(pesewas);
                       },
                       onCustomChanged: (text) =>
                           ref.read(tipStateProvider.notifier).setCustom(text),
@@ -135,7 +137,9 @@ class _RideCompleteScreenState extends ConsumerState<RideCompleteScreen> {
 
   void _submitTip(BuildContext context, RideReceipt receipt, TipState tip) {
     // TODO: POST /v1/payments/:id/tip — wire up once API client is available
-    MyShopToast.show(context, message: 'Tip of ${_fmtGhs(tip.effectivePesewas)} sent to ${receipt.driverFirstName}!');
+    MyShopToast.show(context,
+        message:
+            'Tip of ${_fmtGhs(tip.effectivePesewas)} sent to ${receipt.driverFirstName}!');
     ref.read(tipStateProvider.notifier).reset();
     _customTipController.clear();
   }
@@ -157,7 +161,7 @@ class _Header extends StatelessWidget {
       color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.symmetric(
         horizontal: w * 0.041, // ~16dp
-        vertical: h * 0.018,   // ~15dp
+        vertical: h * 0.018, // ~15dp
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -252,7 +256,8 @@ class _DriverAvatar extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: MyShopColors.avatarPlaceholder,
-        border: Border.all(color: MyShopColors.primaryGold, width: w * 0.005), // ~2dp
+        border: Border.all(
+            color: MyShopColors.primaryGold, width: w * 0.005), // ~2dp
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.08),
@@ -279,7 +284,7 @@ class _VerifiedBadge extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: w * 0.026, // ~10dp
-        vertical: w * 0.010,   // ~4dp
+        vertical: w * 0.010, // ~4dp
       ),
       decoration: BoxDecoration(
         color: MyShopColors.successLight,
@@ -318,7 +323,8 @@ class _RatingPill extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.star_rounded, size: w * 0.041, color: MyShopColors.primaryGold), // ~16dp
+        Icon(Icons.star_rounded,
+            size: w * 0.041, color: MyShopColors.primaryGold), // ~16dp
         SizedBox(width: w * 0.008),
         Text(
           rating.toStringAsFixed(1),
@@ -351,7 +357,7 @@ class _RouteCard extends StatelessWidget {
       color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.symmetric(
         horizontal: w * 0.041, // ~16dp
-        vertical: h * 0.017,   // ~14dp
+        vertical: h * 0.017, // ~14dp
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -404,7 +410,7 @@ class _RouteStop extends StatelessWidget {
     return Row(
       children: [
         Icon(icon, size: w * 0.051, color: iconColor), // ~20dp
-        SizedBox(width: w * 0.031),                    // ~12dp
+        SizedBox(width: w * 0.031), // ~12dp
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -689,7 +695,7 @@ class _PaymentBadge extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: w * 0.026, // ~10dp
-        vertical: w * 0.010,   // ~4dp
+        vertical: w * 0.010, // ~4dp
       ),
       decoration: BoxDecoration(
         color: isSuccess ? MyShopColors.successLight : MyShopColors.errorLight,
@@ -806,10 +812,11 @@ class _TipChip extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(
           horizontal: w * 0.051, // ~20dp
-          vertical: h * 0.012,   // ~10dp
+          vertical: h * 0.012, // ~10dp
         ),
         decoration: BoxDecoration(
-          color: isSelected ? MyShopColors.primaryGold : MyShopColors.surfaceGrey,
+          color:
+              isSelected ? MyShopColors.primaryGold : MyShopColors.surfaceGrey,
           borderRadius: BorderRadius.circular(w * 0.021),
           border: Border.all(
             color: isSelected ? MyShopColors.primaryGold : MyShopColors.divider,
@@ -883,8 +890,7 @@ class _CustomTipInput extends StatelessWidget {
                   color: MyShopColors.disabled,
                 ),
                 border: InputBorder.none,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: w * 0.031),
+                contentPadding: EdgeInsets.symmetric(horizontal: w * 0.031),
                 isDense: true,
               ),
             ),
@@ -945,7 +951,8 @@ class _ConfirmTipButton extends StatelessWidget {
       child: ElevatedButton(
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
-          backgroundColor: enabled ? MyShopColors.primaryGold : MyShopColors.surfaceGrey,
+          backgroundColor:
+              enabled ? MyShopColors.primaryGold : MyShopColors.surfaceGrey,
           foregroundColor: enabled ? Colors.white : MyShopColors.disabled,
           elevation: 0,
           shape: RoundedRectangleBorder(
@@ -965,4 +972,3 @@ class _ConfirmTipButton extends StatelessWidget {
     );
   }
 }
-

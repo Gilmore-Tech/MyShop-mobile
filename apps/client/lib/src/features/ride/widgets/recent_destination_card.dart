@@ -68,7 +68,7 @@ class _DestinationIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
     return Container(
-      width:  w * 0.092,
+      width: w * 0.092,
       height: w * 0.092,
       decoration: const BoxDecoration(
         color: MyShopColors.surfaceGrey,

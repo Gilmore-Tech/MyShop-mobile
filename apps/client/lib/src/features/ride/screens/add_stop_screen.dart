@@ -55,8 +55,7 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
       setState(() => _submitError = _friendlyError(e));
     } catch (e) {
       if (!mounted) return;
-      setState(() =>
-          _submitError = "Couldn't add the stop. Please try again.");
+      setState(() => _submitError = "Couldn't add the stop. Please try again.");
     } finally {
       if (mounted) {
         setState(() => _submitting = false);
@@ -100,13 +99,13 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: RouteStopList(
                     stops: stops,
-                    onReorder: (old, next) => ref
-                        .read(tripStopsProvider.notifier)
-                        .reorder(old, next),
+                    onReorder: (old, next) =>
+                        ref.read(tripStopsProvider.notifier).reorder(old, next),
                     onRemove: (id) =>
                         ref.read(tripStopsProvider.notifier).removeStop(id),
                     onEditStop: (stop) => _openSearch(context, stop: stop),
-                    onAddStop: () => _openSearch(context, addingIntermediate: true),
+                    onAddStop: () =>
+                        _openSearch(context, addingIntermediate: true),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -161,7 +160,8 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
     return AppBar(
       leading: IconButton(
         onPressed: () => context.pop(),
-        icon: const Icon(Icons.arrow_back_rounded, color: MyShopColors.textPrimary),
+        icon: const Icon(Icons.arrow_back_rounded,
+            color: MyShopColors.textPrimary),
       ),
       centerTitle: false,
       title: const Text(
@@ -176,8 +176,7 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
         Padding(
           padding: const EdgeInsets.only(right: 16),
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: BoxDecoration(
               color: MyShopColors.successLight,
               borderRadius: BorderRadius.circular(20),
@@ -339,4 +338,3 @@ class _StickyFooter extends StatelessWidget {
     );
   }
 }
-

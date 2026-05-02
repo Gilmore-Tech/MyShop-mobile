@@ -143,8 +143,7 @@ Future<void> _showStalePaymentDialog(
       ),
       actions: [
         TextButton(
-          onPressed: () =>
-              Navigator.of(context).pop(_StalePaymentAction.wait),
+          onPressed: () => Navigator.of(context).pop(_StalePaymentAction.wait),
           child: Text(
             'Wait',
             style: TextStyle(
@@ -606,8 +605,7 @@ class _CompletedBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.symmetric(
-          horizontal: w * 0.026, vertical: w * 0.010),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.026, vertical: w * 0.010),
       decoration: BoxDecoration(
         color: MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(w * 0.051),
@@ -634,8 +632,7 @@ class _CategoryChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.symmetric(
-          horizontal: w * 0.018, vertical: w * 0.008),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.018, vertical: w * 0.008),
       decoration: BoxDecoration(
         color: MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(w * 0.041),
@@ -909,8 +906,7 @@ class _PaymentMethodCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final selected =
-        ref.watch(paymentNotifierProvider).selectedMethod;
+    final selected = ref.watch(paymentNotifierProvider).selectedMethod;
 
     return _Card(
       w: w,
@@ -1042,11 +1038,13 @@ class _PaymentOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = isSelected ? MyShopColors.primaryGold : MyShopColors.divider;
+    final borderColor =
+        isSelected ? MyShopColors.primaryGold : MyShopColors.divider;
     final iconBgColor = isSelected
         ? MyShopColors.primaryGold.withValues(alpha: 0.12)
         : MyShopColors.surfaceGrey;
-    final iconColor   = isSelected ? MyShopColors.primaryGold : MyShopColors.textSecondary;
+    final iconColor =
+        isSelected ? MyShopColors.primaryGold : MyShopColors.textSecondary;
 
     return GestureDetector(
       onTap: onTap,
@@ -1075,8 +1073,7 @@ class _PaymentOption extends StatelessWidget {
                 color: iconBgColor,
                 shape: BoxShape.circle,
               ),
-              child: Icon(method.icon,
-                  size: w * 0.051, color: iconColor),
+              child: Icon(method.icon, size: w * 0.051, color: iconColor),
             ),
             SizedBox(width: w * 0.031),
             // Labels
@@ -1165,7 +1162,7 @@ class _BottomBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state     = ref.watch(paymentNotifierProvider);
+    final state = ref.watch(paymentNotifierProvider);
     final bottomPad = MediaQuery.paddingOf(context).bottom;
 
     return Container(
@@ -1242,15 +1239,14 @@ class _BottomBar extends ConsumerWidget {
             height: h * 0.066,
             child: ElevatedButton(
               onPressed: switch (state.phase) {
-                PaymentPhase.idle || PaymentPhase.failed => () => ref
-                    .read(paymentNotifierProvider.notifier)
-                    .confirmPayment(
-                      jobId: summary.jobId,
-                      summary: summary,
-                      momoPhone: state.selectedMethod.requiresMomoPhone
-                          ? momoPhoneCtrl.text
-                          : null,
-                    ),
+                PaymentPhase.idle || PaymentPhase.failed => () =>
+                    ref.read(paymentNotifierProvider.notifier).confirmPayment(
+                          jobId: summary.jobId,
+                          summary: summary,
+                          momoPhone: state.selectedMethod.requiresMomoPhone
+                              ? momoPhoneCtrl.text
+                              : null,
+                        ),
                 // Re-launch the checkout if the user dismissed Paystack
                 // without finishing, or if the auto-launch was blocked.
                 PaymentPhase.awaitingSettlement
@@ -1301,9 +1297,9 @@ class _BottomBar extends ConsumerWidget {
                 child: Text(
                   "I've completed the payment",
                   style: TextStyle(
-                    fontSize:   w * 0.036,
+                    fontSize: w * 0.036,
                     fontWeight: FontWeight.w700,
-                    color:      MyShopColors.primaryGold,
+                    color: MyShopColors.primaryGold,
                   ),
                 ),
               ),
@@ -1561,4 +1557,3 @@ class _Shimmer extends StatelessWidget {
     );
   }
 }
-

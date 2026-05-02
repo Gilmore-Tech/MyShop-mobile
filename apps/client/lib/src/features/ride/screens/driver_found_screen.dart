@@ -60,7 +60,8 @@ class DriverFoundScreen extends StatelessWidget {
       scrolledUnderElevation: 0,
       leading: IconButton(
         onPressed: () => context.pop(),
-        icon: const Icon(Icons.arrow_back_rounded, color: MyShopColors.textPrimary),
+        icon: const Icon(Icons.arrow_back_rounded,
+            color: MyShopColors.textPrimary),
       ),
       centerTitle: false,
       title: Column(
@@ -146,12 +147,15 @@ class _BottomActions extends StatelessWidget {
               onPressed: onCancel,
               style: OutlinedButton.styleFrom(
                 foregroundColor: MyShopColors.error,
-                side: BorderSide(color: MyShopColors.error.withValues(alpha: 0.5), width: 1.5),
+                side: BorderSide(
+                    color: MyShopColors.error.withValues(alpha: 0.5),
+                    width: 1.5),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              icon: const Icon(Icons.cancel_outlined, size: 18, color: MyShopColors.error),
+              icon: const Icon(Icons.cancel_outlined,
+                  size: 18, color: MyShopColors.error),
               label: const Text(
                 'Cancel Request',
                 style: TextStyle(

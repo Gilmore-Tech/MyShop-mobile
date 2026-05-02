@@ -204,11 +204,10 @@ void _connectAndListen(Ref ref, SocketService socket) {
       // `latitude` / `lat` aliases as defensive fallbacks in case other
       // emit sites use the per-fix payload shape.
       final dLat =
-          (driver['currentLat'] ?? driver['latitude'] ?? driver['lat'])
-              as num?;
-      final dLng =
-          (driver['currentLng'] ?? driver['longitude'] ?? driver['lng'])
-              as num?;
+          (driver['currentLat'] ?? driver['latitude'] ?? driver['lat']) as num?;
+      final dLng = (driver['currentLng'] ??
+          driver['longitude'] ??
+          driver['lng']) as num?;
       if (dLat != null && dLng != null) {
         final heading = (driver['heading'] ?? driver['bearing']) as num?;
         ref.read(liveDriverPositionProvider.notifier).state =
@@ -251,18 +250,18 @@ void _connectAndListen(Ref ref, SocketService socket) {
                     .toList() ??
                 const <RideStop>[];
             ref.read(tripStopsProvider.notifier).seed(
-                  pickup: (
-                    address: json['pickupAddress'] as String?,
-                    lat: (json['pickupLat'] as num?)?.toDouble(),
-                    lng: (json['pickupLng'] as num?)?.toDouble(),
-                  ),
-                  destination: (
-                    address: json['dropoffAddress'] as String?,
-                    lat: (json['dropoffLat'] as num?)?.toDouble(),
-                    lng: (json['dropoffLng'] as num?)?.toDouble(),
-                  ),
-                  existingStops: stops,
-                );
+              pickup: (
+                address: json['pickupAddress'] as String?,
+                lat: (json['pickupLat'] as num?)?.toDouble(),
+                lng: (json['pickupLng'] as num?)?.toDouble(),
+              ),
+              destination: (
+                address: json['dropoffAddress'] as String?,
+                lat: (json['dropoffLat'] as num?)?.toDouble(),
+                lng: (json['dropoffLng'] as num?)?.toDouble(),
+              ),
+              existingStops: stops,
+            );
           } catch (e) {
             developer.log('route_updated parse failed: $e',
                 name: 'WS', level: 800);
@@ -283,8 +282,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
       if (data is! Map<String, dynamic>) return;
       final activeRideId = ref.read(activeRideIdProvider);
       if (activeRideId == null) return;
-      final eventRideId =
-          data['rideId'] as String? ?? data['id'] as String?;
+      final eventRideId = data['rideId'] as String? ?? data['id'] as String?;
       if (eventRideId != null && eventRideId != activeRideId) return;
       final lat = (data['latitude'] ?? data['lat']) as num?;
       final lng = (data['longitude'] ?? data['lng']) as num?;

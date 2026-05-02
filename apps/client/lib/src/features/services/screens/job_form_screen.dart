@@ -33,20 +33,21 @@ class JobFormScreen extends ConsumerStatefulWidget {
 }
 
 class _JobFormScreenState extends ConsumerState<JobFormScreen> {
-  final _titleController       = TextEditingController();
+  final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _landmarkController    = TextEditingController();
+  final _landmarkController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     // Pre-fill category if navigated from CategoriesScreen
-    if (widget.initialCategoryId != null && widget.initialCategoryName != null) {
+    if (widget.initialCategoryId != null &&
+        widget.initialCategoryName != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ref.read(jobFormProvider.notifier).selectCategory(
-          widget.initialCategoryId!,
-          widget.initialCategoryName!,
-        );
+              widget.initialCategoryId!,
+              widget.initialCategoryName!,
+            );
       });
     }
   }
@@ -62,8 +63,8 @@ class _JobFormScreenState extends ConsumerState<JobFormScreen> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final w    = size.width;
-    final h    = size.height;
+    final w = size.width;
+    final h = size.height;
     final formState = ref.watch(jobFormProvider);
 
     return Scaffold(
@@ -89,46 +90,49 @@ class _JobFormScreenState extends ConsumerState<JobFormScreen> {
                   SizedBox(height: h * 0.022),
                   _TitleField(
                     controller: _titleController,
-                    w: w, h: h,
+                    w: w,
+                    h: h,
                     onChanged: (v) =>
                         ref.read(jobFormProvider.notifier).setTitle(v),
                   ),
                   SizedBox(height: h * 0.022),
                   _DescriptionField(
                     controller: _descriptionController,
-                    w: w, h: h,
+                    w: w,
+                    h: h,
                     onChanged: (v) =>
                         ref.read(jobFormProvider.notifier).setDescription(v),
                   ),
                   SizedBox(height: h * 0.022),
                   _PhotoUploadField(
-                    photos:   formState.photoPaths,
-                    onAdd:    (paths) =>
+                    photos: formState.photoPaths,
+                    onAdd: (paths) =>
                         ref.read(jobFormProvider.notifier).addPhotos(paths),
-                    onRemove: (index) => ref
-                        .read(jobFormProvider.notifier)
-                        .removePhotoAt(index),
-                    w: w, h: h,
+                    onRemove: (index) =>
+                        ref.read(jobFormProvider.notifier).removePhotoAt(index),
+                    w: w,
+                    h: h,
                   ),
                   SizedBox(height: h * 0.022),
                   _DestinationField(w: w, h: h),
                   SizedBox(height: h * 0.014),
                   _LandmarkField(
                     controller: _landmarkController,
-                    w: w, h: h,
-                    onChanged: (v) => ref
-                        .read(jobFormProvider.notifier)
-                        .setLandmarkNote(v),
+                    w: w,
+                    h: h,
+                    onChanged: (v) =>
+                        ref.read(jobFormProvider.notifier).setLandmarkNote(v),
                   ),
                   SizedBox(height: h * 0.022),
                   _TimingCard(
-                    isImmediate:  formState.isImmediate,
+                    isImmediate: formState.isImmediate,
                     scheduledFor: formState.scheduledFor,
                     onToggle: (v) =>
                         ref.read(jobFormProvider.notifier).setImmediate(v),
                     onScheduleChanged: (dt) =>
                         ref.read(jobFormProvider.notifier).setScheduledFor(dt),
-                    w: w, h: h,
+                    w: w,
+                    h: h,
                   ),
                   SizedBox(height: h * 0.019),
                   _BidTimeInfoCard(w: w, h: h),
@@ -138,9 +142,8 @@ class _JobFormScreenState extends ConsumerState<JobFormScreen> {
                   _SubmitButton(
                     formState: formState,
                     onPressed: () async {
-                      final jobId = await ref
-                          .read(jobFormProvider.notifier)
-                          .submit();
+                      final jobId =
+                          await ref.read(jobFormProvider.notifier).submit();
                       if (jobId == null || !context.mounted) return;
 
                       // Drop any stale activity list + job-detail cache so
@@ -154,7 +157,8 @@ class _JobFormScreenState extends ConsumerState<JobFormScreen> {
                         AppRoutes.jobDetailPath(jobId),
                       );
                     },
-                    w: w, h: h,
+                    w: w,
+                    h: h,
                   ),
                   SizedBox(height: h * 0.014),
                   _Disclaimer(w: w, h: h),
@@ -164,7 +168,7 @@ class _JobFormScreenState extends ConsumerState<JobFormScreen> {
             ),
           ),
           AppBottomNav.routing(
-            context:   context,
+            context: context,
             activeTab: AppTab.services,
           ),
         ],
@@ -217,19 +221,19 @@ class _AppBar extends StatelessWidget {
                 Text(
                   'Create Request',
                   style: TextStyle(
-                    fontSize:   w * 0.046,
+                    fontSize: w * 0.046,
                     fontWeight: FontWeight.w700,
-                    color:      MyShopColors.textPrimary,
-                    height:     1.2,
+                    color: MyShopColors.textPrimary,
+                    height: 1.2,
                   ),
                 ),
                 SizedBox(height: h * 0.004),
                 Text(
                   'Find the best local artisans',
                   style: TextStyle(
-                    fontSize:   w * 0.031,
+                    fontSize: w * 0.031,
                     fontWeight: FontWeight.w400,
-                    color:      MyShopColors.textSecondary,
+                    color: MyShopColors.textSecondary,
                   ),
                 ),
               ],
@@ -265,19 +269,19 @@ class _SectionHeading extends StatelessWidget {
           Text(
             title,
             style: TextStyle(
-              fontSize:   w * 0.051, // ~20dp
+              fontSize: w * 0.051, // ~20dp
               fontWeight: FontWeight.w700,
-              color:      MyShopColors.textPrimary,
-              height:     1.2,
+              color: MyShopColors.textPrimary,
+              height: 1.2,
             ),
           ),
           SizedBox(height: h * 0.005),
           Text(
             subtitle,
             style: TextStyle(
-              fontSize:   w * 0.033,
+              fontSize: w * 0.033,
               fontWeight: FontWeight.w400,
-              color:      MyShopColors.textSecondary,
+              color: MyShopColors.textSecondary,
             ),
           ),
         ],
@@ -393,10 +397,13 @@ class _CategorySelector extends StatelessWidget {
         height: h * 0.054, // ~46dp
         padding: EdgeInsets.symmetric(horizontal: w * 0.038),
         decoration: BoxDecoration(
-          color: hasSelection ? MyShopColors.primaryGoldLight : MyShopColors.surfaceWhite,
+          color: hasSelection
+              ? MyShopColors.primaryGoldLight
+              : MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(w * 0.021),
           border: Border.all(
-            color: hasSelection ? MyShopColors.primaryGold : MyShopColors.divider,
+            color:
+                hasSelection ? MyShopColors.primaryGold : MyShopColors.divider,
             width: 1.5,
           ),
         ),
@@ -405,7 +412,9 @@ class _CategorySelector extends StatelessWidget {
             Icon(
               Icons.grid_view_rounded,
               size: w * 0.046,
-              color: hasSelection ? MyShopColors.primaryGold : MyShopColors.textHint,
+              color: hasSelection
+                  ? MyShopColors.primaryGold
+                  : MyShopColors.textHint,
             ),
             SizedBox(width: w * 0.026),
             Expanded(
@@ -414,14 +423,18 @@ class _CategorySelector extends StatelessWidget {
                 style: TextStyle(
                   fontSize: w * 0.038,
                   fontWeight: hasSelection ? FontWeight.w600 : FontWeight.w400,
-                  color: hasSelection ? MyShopColors.textPrimary : MyShopColors.textHint,
+                  color: hasSelection
+                      ? MyShopColors.textPrimary
+                      : MyShopColors.textHint,
                 ),
               ),
             ),
             Icon(
               Icons.keyboard_arrow_down_rounded,
               size: w * 0.056,
-              color: hasSelection ? MyShopColors.primaryGold : MyShopColors.textSecondary,
+              color: hasSelection
+                  ? MyShopColors.primaryGold
+                  : MyShopColors.textSecondary,
             ),
           ],
         ),
@@ -522,13 +535,17 @@ class _CategorySheet extends StatelessWidget {
                         width: w * 0.092,
                         height: w * 0.092,
                         decoration: BoxDecoration(
-                          color: isSelected ? MyShopColors.primaryGoldLight : MyShopColors.surfaceGrey,
+                          color: isSelected
+                              ? MyShopColors.primaryGoldLight
+                              : MyShopColors.surfaceGrey,
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
                           cat.icon,
                           size: w * 0.046,
-                          color: isSelected ? MyShopColors.primaryGold : MyShopColors.textSecondary,
+                          color: isSelected
+                              ? MyShopColors.primaryGold
+                              : MyShopColors.textSecondary,
                         ),
                       ),
                       SizedBox(width: w * 0.038),
@@ -537,10 +554,11 @@ class _CategorySheet extends StatelessWidget {
                           cat.name,
                           style: TextStyle(
                             fontSize: w * 0.038,
-                            fontWeight: isSelected
-                                ? FontWeight.w600
-                                : FontWeight.w400,
-                            color: isSelected ? MyShopColors.textPrimary : MyShopColors.textSecondary,
+                            fontWeight:
+                                isSelected ? FontWeight.w600 : FontWeight.w400,
+                            color: isSelected
+                                ? MyShopColors.textPrimary
+                                : MyShopColors.textSecondary,
                           ),
                         ),
                       ),
@@ -611,7 +629,8 @@ class _TitleField extends StatelessWidget {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(w * 0.021),
-                borderSide: const BorderSide(color: MyShopColors.primaryGold, width: 1.5),
+                borderSide: const BorderSide(
+                    color: MyShopColors.primaryGold, width: 1.5),
               ),
             ),
           ),
@@ -684,7 +703,8 @@ class _DescriptionField extends StatelessWidget {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(w * 0.021),
-                borderSide: const BorderSide(color: MyShopColors.primaryGold, width: 1.5),
+                borderSide: const BorderSide(
+                    color: MyShopColors.primaryGold, width: 1.5),
               ),
             ),
           ),
@@ -697,9 +717,9 @@ class _DescriptionField extends StatelessWidget {
 // ── WORK SITE PHOTOS upload zone ───────────────────────────────────────────────
 
 class _PhotoUploadField extends StatelessWidget {
-  final List<String>            photos;
+  final List<String> photos;
   final void Function(List<String>) onAdd;
-  final void Function(int)      onRemove;
+  final void Function(int) onRemove;
   final double w;
   final double h;
 
@@ -711,8 +731,8 @@ class _PhotoUploadField extends StatelessWidget {
     required this.h,
   });
 
-  int  get _slotsLeft => kMaxJobPhotos - photos.length;
-  bool get _canAdd    => _slotsLeft > 0;
+  int get _slotsLeft => kMaxJobPhotos - photos.length;
+  bool get _canAdd => _slotsLeft > 0;
 
   @override
   Widget build(BuildContext context) {
@@ -728,18 +748,18 @@ class _PhotoUploadField extends StatelessWidget {
               Text(
                 '(Optional)',
                 style: TextStyle(
-                  fontSize:   w * 0.028,
+                  fontSize: w * 0.028,
                   fontWeight: FontWeight.w400,
-                  color:      MyShopColors.textHint,
+                  color: MyShopColors.textHint,
                 ),
               ),
               const Spacer(),
               Text(
                 '${photos.length}/$kMaxJobPhotos',
                 style: TextStyle(
-                  fontSize:   w * 0.028,
+                  fontSize: w * 0.028,
                   fontWeight: FontWeight.w500,
-                  color:      MyShopColors.textSecondary,
+                  color: MyShopColors.textSecondary,
                 ),
               ),
             ],
@@ -748,23 +768,25 @@ class _PhotoUploadField extends StatelessWidget {
           if (photos.isEmpty)
             _EmptyUploadZone(
               onTap: () => _openPickerSheet(context),
-              w: w, h: h,
+              w: w,
+              h: h,
             )
           else
             _PhotoGrid(
-              photos:   photos,
-              canAdd:   _canAdd,
+              photos: photos,
+              canAdd: _canAdd,
               onAddTap: () => _openPickerSheet(context),
               onRemove: onRemove,
-              w: w, h: h,
+              w: w,
+              h: h,
             ),
           SizedBox(height: h * 0.007),
           Text(
             'Upload up to $kMaxJobPhotos photos for a better bid',
             style: TextStyle(
-              fontSize:   w * 0.028,
+              fontSize: w * 0.028,
               fontWeight: FontWeight.w400,
-              color:      MyShopColors.textHint,
+              color: MyShopColors.textHint,
             ),
           ),
         ],
@@ -843,16 +865,16 @@ class _EmptyUploadZone extends StatelessWidget {
             children: [
               Icon(
                 Icons.camera_alt_outlined,
-                size:  w * 0.072,
+                size: w * 0.072,
                 color: MyShopColors.textSecondary,
               ),
               SizedBox(height: h * 0.009),
               Text(
                 'Upload images',
                 style: TextStyle(
-                  fontSize:   w * 0.036,
+                  fontSize: w * 0.036,
                   fontWeight: FontWeight.w500,
-                  color:      MyShopColors.textSecondary,
+                  color: MyShopColors.textSecondary,
                 ),
               ),
             ],
@@ -864,10 +886,10 @@ class _EmptyUploadZone extends StatelessWidget {
 }
 
 class _PhotoGrid extends StatelessWidget {
-  final List<String>        photos;
-  final bool                canAdd;
-  final VoidCallback        onAddTap;
-  final void Function(int)  onRemove;
+  final List<String> photos;
+  final bool canAdd;
+  final VoidCallback onAddTap;
+  final void Function(int) onRemove;
   final double w;
   final double h;
 
@@ -889,21 +911,21 @@ class _PhotoGrid extends StatelessWidget {
       builder: (_, cons) {
         final tile = (cons.maxWidth - spacing * (columns - 1)) / columns;
         return Wrap(
-          spacing:     spacing,
-          runSpacing:  spacing,
+          spacing: spacing,
+          runSpacing: spacing,
           children: [
             for (var i = 0; i < photos.length; i++)
               _PhotoTile(
-                path:  photos[i],
-                size:  tile,
+                path: photos[i],
+                size: tile,
                 onRemove: () => onRemove(i),
                 w: w,
               ),
             if (canAdd)
               _AddMoreTile(
-                size:  tile,
+                size: tile,
                 onTap: onAddTap,
-                w:     w,
+                w: w,
               ),
           ],
         );
@@ -913,10 +935,10 @@ class _PhotoGrid extends StatelessWidget {
 }
 
 class _PhotoTile extends StatelessWidget {
-  final String       path;
-  final double       size;
+  final String path;
+  final double size;
   final VoidCallback onRemove;
-  final double       w;
+  final double w;
 
   const _PhotoTile({
     required this.path,
@@ -929,7 +951,7 @@ class _PhotoTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final radius = w * 0.021;
     return SizedBox(
-      width:  size,
+      width: size,
       height: size,
       child: Stack(
         clipBehavior: Clip.none,
@@ -938,7 +960,7 @@ class _PhotoTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(radius),
             child: Image.file(
               File(path),
-              width:  size,
+              width: size,
               height: size,
               fit: BoxFit.cover,
               errorBuilder: (_, __, ___) => Container(
@@ -946,20 +968,20 @@ class _PhotoTile extends StatelessWidget {
                 alignment: Alignment.center,
                 child: Icon(
                   Icons.broken_image_outlined,
-                  size:  w * 0.056,
+                  size: w * 0.056,
                   color: MyShopColors.textHint,
                 ),
               ),
             ),
           ),
           Positioned(
-            top:   -w * 0.015,
+            top: -w * 0.015,
             right: -w * 0.015,
             child: GestureDetector(
               onTap: onRemove,
               behavior: HitTestBehavior.opaque,
               child: Container(
-                width:  w * 0.056,
+                width: w * 0.056,
                 height: w * 0.056,
                 decoration: const BoxDecoration(
                   color: MyShopColors.textPrimary,
@@ -968,7 +990,7 @@ class _PhotoTile extends StatelessWidget {
                 alignment: Alignment.center,
                 child: Icon(
                   Icons.close_rounded,
-                  size:  w * 0.038,
+                  size: w * 0.038,
                   color: MyShopColors.surfaceWhite,
                 ),
               ),
@@ -981,9 +1003,9 @@ class _PhotoTile extends StatelessWidget {
 }
 
 class _AddMoreTile extends StatelessWidget {
-  final double       size;
+  final double size;
   final VoidCallback onTap;
-  final double       w;
+  final double w;
 
   const _AddMoreTile({
     required this.size,
@@ -997,7 +1019,7 @@ class _AddMoreTile extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: SizedBox(
-        width:  size,
+        width: size,
         height: size,
         child: CustomPaint(
           painter: _DashedBorderPainter(
@@ -1005,17 +1027,17 @@ class _AddMoreTile extends StatelessWidget {
             radius: radius,
             strokeWidth: 1.5,
             dashLength: w * 0.018,
-            gapLength:  w * 0.012,
+            gapLength: w * 0.012,
           ),
           child: Container(
             decoration: BoxDecoration(
-              color:        MyShopColors.surfaceWhite,
+              color: MyShopColors.surfaceWhite,
               borderRadius: BorderRadius.circular(radius),
             ),
             alignment: Alignment.center,
             child: Icon(
               Icons.add_rounded,
-              size:  w * 0.062,
+              size: w * 0.062,
               color: MyShopColors.textSecondary,
             ),
           ),
@@ -1060,9 +1082,9 @@ class _PhotoSourceSheet extends StatelessWidget {
               child: Text(
                 'Add photos',
                 style: TextStyle(
-                  fontSize:   w * 0.046,
+                  fontSize: w * 0.046,
                   fontWeight: FontWeight.w700,
-                  color:      MyShopColors.textPrimary,
+                  color: MyShopColors.textPrimary,
                 ),
               ),
             ),
@@ -1070,17 +1092,19 @@ class _PhotoSourceSheet extends StatelessWidget {
           SizedBox(height: h * 0.014),
           const Divider(height: 1, color: MyShopColors.divider),
           _PhotoSourceTile(
-            icon:  Icons.camera_alt_outlined,
+            icon: Icons.camera_alt_outlined,
             label: 'Take photo',
             onTap: () => Navigator.of(context).pop(_PhotoSource.camera),
-            w: w, h: h,
+            w: w,
+            h: h,
           ),
           const Divider(height: 1, color: MyShopColors.divider),
           _PhotoSourceTile(
-            icon:  Icons.photo_library_outlined,
+            icon: Icons.photo_library_outlined,
             label: 'Choose from gallery',
             onTap: () => Navigator.of(context).pop(_PhotoSource.gallery),
-            w: w, h: h,
+            w: w,
+            h: h,
           ),
         ],
       ),
@@ -1089,11 +1113,11 @@ class _PhotoSourceSheet extends StatelessWidget {
 }
 
 class _PhotoSourceTile extends StatelessWidget {
-  final IconData     icon;
-  final String       label;
+  final IconData icon;
+  final String label;
   final VoidCallback onTap;
-  final double       w;
-  final double       h;
+  final double w;
+  final double h;
 
   const _PhotoSourceTile({
     required this.icon,
@@ -1110,12 +1134,12 @@ class _PhotoSourceTile extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.symmetric(
           horizontal: w * 0.041,
-          vertical:   h * 0.019,
+          vertical: h * 0.019,
         ),
         child: Row(
           children: [
             Container(
-              width:  w * 0.092,
+              width: w * 0.092,
               height: w * 0.092,
               decoration: const BoxDecoration(
                 color: MyShopColors.surfaceGrey,
@@ -1123,7 +1147,7 @@ class _PhotoSourceTile extends StatelessWidget {
               ),
               child: Icon(
                 icon,
-                size:  w * 0.046,
+                size: w * 0.046,
                 color: MyShopColors.textSecondary,
               ),
             ),
@@ -1131,9 +1155,9 @@ class _PhotoSourceTile extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                fontSize:   w * 0.038,
+                fontSize: w * 0.038,
                 fontWeight: FontWeight.w500,
-                color:      MyShopColors.textPrimary,
+                color: MyShopColors.textPrimary,
               ),
             ),
           ],
@@ -1156,8 +1180,8 @@ class _DestinationField extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final formState = ref.watch(jobFormProvider);
-    final hasLocation = formState.destinationAddress.isNotEmpty &&
-        formState.latitude != null;
+    final hasLocation =
+        formState.destinationAddress.isNotEmpty && formState.latitude != null;
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
@@ -1285,7 +1309,8 @@ class _LandmarkField extends StatelessWidget {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(w * 0.021),
-                borderSide: const BorderSide(color: MyShopColors.primaryGold, width: 1.5),
+                borderSide: const BorderSide(
+                    color: MyShopColors.primaryGold, width: 1.5),
               ),
             ),
           ),
@@ -1293,9 +1318,9 @@ class _LandmarkField extends StatelessWidget {
           Text(
             "Add any closest landmark to help artisans (optional)",
             style: TextStyle(
-              fontSize:   w * 0.028,
+              fontSize: w * 0.028,
               fontWeight: FontWeight.w400,
-              color:      MyShopColors.textHint,
+              color: MyShopColors.textHint,
             ),
           ),
         ],
@@ -1307,9 +1332,9 @@ class _LandmarkField extends StatelessWidget {
 // ── SERVICE TIMING card ────────────────────────────────────────────────────────
 
 class _TimingCard extends StatelessWidget {
-  final bool                   isImmediate;
-  final DateTime?              scheduledFor;
-  final void Function(bool)    onToggle;
+  final bool isImmediate;
+  final DateTime? scheduledFor;
+  final void Function(bool) onToggle;
   final void Function(DateTime) onScheduleChanged;
   final double w;
   final double h;
@@ -1328,7 +1353,7 @@ class _TimingCard extends StatelessWidget {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: w * 0.041),
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceGrey,
+        color: MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(w * 0.041),
       ),
       child: Column(
@@ -1338,27 +1363,27 @@ class _TimingCard extends StatelessWidget {
           Padding(
             padding: EdgeInsets.symmetric(
               horizontal: w * 0.031,
-              vertical:   h * 0.014,
+              vertical: h * 0.014,
             ),
             child: Row(
               children: [
                 Container(
-                  width:  w * 0.100,
+                  width: w * 0.100,
                   height: w * 0.100,
                   decoration: BoxDecoration(
-                    color:        MyShopColors.surfaceWhite,
+                    color: MyShopColors.surfaceWhite,
                     borderRadius: BorderRadius.circular(w * 0.026),
                     boxShadow: [
                       BoxShadow(
-                        color:      Colors.black.withValues(alpha: 0.04),
+                        color: Colors.black.withValues(alpha: 0.04),
                         blurRadius: w * 0.010,
-                        offset:     Offset(0, w * 0.002),
+                        offset: Offset(0, w * 0.002),
                       ),
                     ],
                   ),
                   child: Icon(
                     Icons.access_time_rounded,
-                    size:  w * 0.046,
+                    size: w * 0.046,
                     color: MyShopColors.textPrimary,
                   ),
                 ),
@@ -1370,18 +1395,18 @@ class _TimingCard extends StatelessWidget {
                       Text(
                         'Service Timing',
                         style: TextStyle(
-                          fontSize:   w * 0.032,
+                          fontSize: w * 0.032,
                           fontWeight: FontWeight.w700,
-                          color:      MyShopColors.textPrimary,
+                          color: MyShopColors.textPrimary,
                         ),
                       ),
                       SizedBox(height: h * 0.004),
                       Text(
                         'When do you need the help?',
                         style: TextStyle(
-                          fontSize:   w * 0.024,
+                          fontSize: w * 0.024,
                           fontWeight: FontWeight.w400,
-                          color:      MyShopColors.textSecondary,
+                          color: MyShopColors.textSecondary,
                         ),
                       ),
                     ],
@@ -1390,7 +1415,7 @@ class _TimingCard extends StatelessWidget {
                 SizedBox(width: w * 0.026),
                 _TimingToggle(
                   isImmediate: isImmediate,
-                  onToggle:    onToggle,
+                  onToggle: onToggle,
                   w: w,
                   h: h,
                 ),
@@ -1401,22 +1426,23 @@ class _TimingCard extends StatelessWidget {
           // ── Date + time pickers (Later only) ─────────────────────────────────
           AnimatedSize(
             duration: const Duration(milliseconds: 220),
-            curve:    Curves.easeInOut,
+            curve: Curves.easeInOut,
             child: isImmediate
                 ? const SizedBox.shrink()
                 : Column(
                     children: [
-                      Divider(height: 1, thickness: 1, color: MyShopColors.divider),
+                      Divider(
+                          height: 1, thickness: 1, color: MyShopColors.divider),
                       Padding(
                         padding: EdgeInsets.symmetric(
                           horizontal: w * 0.041,
-                          vertical:   h * 0.016,
+                          vertical: h * 0.016,
                         ),
                         child: Row(
                           children: [
                             Expanded(
                               child: _PickerButton(
-                                icon:  Icons.calendar_today_outlined,
+                                icon: Icons.calendar_today_outlined,
                                 label: _formatDate(scheduledFor),
                                 onTap: () => _pickDate(context),
                                 w: w,
@@ -1426,7 +1452,7 @@ class _TimingCard extends StatelessWidget {
                             SizedBox(width: w * 0.031),
                             Expanded(
                               child: _PickerButton(
-                                icon:  Icons.access_time_rounded,
+                                icon: Icons.access_time_rounded,
                                 label: _formatTime(scheduledFor),
                                 onTap: () => _pickTime(context),
                                 w: w,
@@ -1468,30 +1494,46 @@ class _TimingCard extends StatelessWidget {
   }
 
   String _dateLabel(DateTime dt) {
-    const months = ['Jan','Feb','Mar','Apr','May','Jun',
-                    'Jul','Aug','Sep','Oct','Nov','Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
     return '${dt.day} ${months[dt.month - 1]}';
   }
 
   Future<void> _pickDate(BuildContext context) async {
-    final now  = DateTime.now();
+    final now = DateTime.now();
     final base = scheduledFor ?? now;
     final picked = await showDatePicker(
-      context:      context,
-      initialDate:  base,
-      firstDate:    now,
-      lastDate:     now.add(const Duration(days: 30)),
+      context: context,
+      initialDate: base,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 30)),
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.light(primary: MyShopColors.primaryGold),
+          colorScheme:
+              const ColorScheme.light(primary: MyShopColors.primaryGold),
         ),
         child: child!,
       ),
     );
     if (picked == null) return;
     final merged = DateTime(
-      picked.year, picked.month, picked.day,
-      base.hour, base.minute,
+      picked.year,
+      picked.month,
+      picked.day,
+      base.hour,
+      base.minute,
     );
     onScheduleChanged(merged);
   }
@@ -1499,19 +1541,23 @@ class _TimingCard extends StatelessWidget {
   Future<void> _pickTime(BuildContext context) async {
     final base = scheduledFor ?? DateTime.now();
     final picked = await showTimePicker(
-      context:     context,
+      context: context,
       initialTime: TimeOfDay(hour: base.hour, minute: base.minute),
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.light(primary: MyShopColors.primaryGold),
+          colorScheme:
+              const ColorScheme.light(primary: MyShopColors.primaryGold),
         ),
         child: child!,
       ),
     );
     if (picked == null) return;
     final merged = DateTime(
-      base.year, base.month, base.day,
-      picked.hour, picked.minute,
+      base.year,
+      base.month,
+      base.day,
+      picked.hour,
+      picked.minute,
     );
     onScheduleChanged(merged);
   }
@@ -1520,11 +1566,11 @@ class _TimingCard extends StatelessWidget {
 // ── Picker button ──────────────────────────────────────────────────────────────
 
 class _PickerButton extends StatelessWidget {
-  final IconData     icon;
-  final String       label;
+  final IconData icon;
+  final String label;
   final VoidCallback onTap;
-  final double       w;
-  final double       h;
+  final double w;
+  final double h;
 
   const _PickerButton({
     required this.icon,
@@ -1541,12 +1587,12 @@ class _PickerButton extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(
           horizontal: w * 0.036,
-          vertical:   h * 0.014,
+          vertical: h * 0.014,
         ),
         decoration: BoxDecoration(
-          color:        MyShopColors.surfaceGrey,
+          color: MyShopColors.surfaceGrey,
           borderRadius: BorderRadius.circular(w * 0.026),
-          border:       Border.all(color: MyShopColors.divider),
+          border: Border.all(color: MyShopColors.divider),
         ),
         child: Row(
           children: [
@@ -1556,9 +1602,9 @@ class _PickerButton extends StatelessWidget {
               child: Text(
                 label,
                 style: TextStyle(
-                  fontSize:   w * 0.036,
+                  fontSize: w * 0.036,
                   fontWeight: FontWeight.w500,
-                  color:      MyShopColors.textPrimary,
+                  color: MyShopColors.textPrimary,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -1636,7 +1682,7 @@ class _ToggleOption extends StatelessWidget {
         curve: Curves.easeInOut,
         padding: EdgeInsets.symmetric(
           horizontal: w * 0.051,
-          vertical:   h * 0.009,
+          vertical: h * 0.009,
         ),
         decoration: BoxDecoration(
           color: isSelected ? MyShopColors.surfaceWhite : Colors.transparent,
@@ -1644,9 +1690,9 @@ class _ToggleOption extends StatelessWidget {
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color:      Colors.black.withValues(alpha: 0.06),
+                    color: Colors.black.withValues(alpha: 0.06),
                     blurRadius: w * 0.013,
-                    offset:     Offset(0, w * 0.003),
+                    offset: Offset(0, w * 0.003),
                   ),
                 ]
               : null,
@@ -1654,9 +1700,9 @@ class _ToggleOption extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            fontSize:   w * 0.038,
+            fontSize: w * 0.038,
             fontWeight: FontWeight.w700,
-            color:      MyShopColors.textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
       ),
@@ -1677,14 +1723,17 @@ class _BidTimeInfoCard extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: Column(
         children: [
-          _DashedLine(color: MyShopColors.divider, dashLength: w * 0.010, gapLength: w * 0.008),
+          _DashedLine(
+              color: MyShopColors.divider,
+              dashLength: w * 0.010,
+              gapLength: w * 0.008),
           SizedBox(height: h * 0.014),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 Icons.timer_outlined,
-                size:  w * 0.046,
+                size: w * 0.046,
                 color: MyShopColors.textPrimary,
               ),
               SizedBox(width: w * 0.021),
@@ -1694,17 +1743,17 @@ class _BidTimeInfoCard extends StatelessWidget {
                     TextSpan(
                       text: 'Est. time for first bid: ',
                       style: TextStyle(
-                        fontSize:   w * 0.036,
+                        fontSize: w * 0.036,
                         fontWeight: FontWeight.w400,
-                        color:      MyShopColors.textPrimary,
+                        color: MyShopColors.textPrimary,
                       ),
                     ),
                     TextSpan(
                       text: '~5 mins',
                       style: TextStyle(
-                        fontSize:   w * 0.036,
+                        fontSize: w * 0.036,
                         fontWeight: FontWeight.w700,
-                        color:      MyShopColors.textPrimary,
+                        color: MyShopColors.textPrimary,
                       ),
                     ),
                   ],
@@ -1713,7 +1762,10 @@ class _BidTimeInfoCard extends StatelessWidget {
             ],
           ),
           SizedBox(height: h * 0.014),
-          _DashedLine(color: MyShopColors.divider, dashLength: w * 0.010, gapLength: w * 0.008),
+          _DashedLine(
+              color: MyShopColors.divider,
+              dashLength: w * 0.010,
+              gapLength: w * 0.008),
         ],
       ),
     );
@@ -1738,7 +1790,8 @@ class _SafetyInfoCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: MyShopColors.primaryGoldLight,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.4)),
+        border:
+            Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.4)),
       ),
       child: Row(
         children: [
@@ -1796,30 +1849,33 @@ class _SubmitButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final canSubmit = formState.canSubmit;
-    final label     = 'Post Job Post Now';
+    final label = 'Post Job Post Now';
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: SizedBox(
-        width:  double.infinity,
+        width: double.infinity,
         height: h * 0.068,
         child: ElevatedButton(
           onPressed: canSubmit ? onPressed : null,
           style: ElevatedButton.styleFrom(
-            backgroundColor:         canSubmit ? MyShopColors.darkSlate : MyShopColors.surfaceGrey,
+            backgroundColor:
+                canSubmit ? MyShopColors.darkSlate : MyShopColors.surfaceGrey,
             disabledBackgroundColor: MyShopColors.surfaceGrey,
-            elevation:   0,
+            elevation: 0,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(w * 0.036),
             ),
           ),
           child: formState.isSubmitting
               ? SizedBox(
-                  width:  w * 0.051,
+                  width: w * 0.051,
                   height: w * 0.051,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: canSubmit ? MyShopColors.surfaceWhite : MyShopColors.disabled,
+                    color: canSubmit
+                        ? MyShopColors.surfaceWhite
+                        : MyShopColors.disabled,
                   ),
                 )
               : Row(
@@ -1828,17 +1884,21 @@ class _SubmitButton extends StatelessWidget {
                     Text(
                       label,
                       style: TextStyle(
-                        fontSize:   w * 0.044,
+                        fontSize: w * 0.044,
                         fontWeight: FontWeight.w700,
-                        color:      canSubmit ? MyShopColors.surfaceWhite : MyShopColors.disabled,
+                        color: canSubmit
+                            ? MyShopColors.surfaceWhite
+                            : MyShopColors.disabled,
                         letterSpacing: 0.2,
                       ),
                     ),
                     SizedBox(width: w * 0.026),
                     Icon(
                       Icons.add_circle_outline_rounded,
-                      size:  w * 0.051,
-                      color: canSubmit ? MyShopColors.surfaceWhite : MyShopColors.disabled,
+                      size: w * 0.051,
+                      color: canSubmit
+                          ? MyShopColors.surfaceWhite
+                          : MyShopColors.disabled,
                     ),
                   ],
                 ),
@@ -1862,11 +1922,11 @@ class _Disclaimer extends StatelessWidget {
       child: Text(
         'BY POSTING, YOU AGREE TO OUR ESCROW & SAFETY TERMS',
         style: TextStyle(
-          fontSize:      w * 0.026,
-          fontWeight:    FontWeight.w600,
-          color:         MyShopColors.textHint,
+          fontSize: w * 0.026,
+          fontWeight: FontWeight.w600,
+          color: MyShopColors.textHint,
           letterSpacing: 0.8,
-          height:        1.5,
+          height: 1.5,
         ),
         textAlign: TextAlign.center,
       ),
@@ -1877,7 +1937,7 @@ class _Disclaimer extends StatelessWidget {
 // ── Horizontal dashed line (used above/below bid-time row) ─────────────────────
 
 class _DashedLine extends StatelessWidget {
-  final Color  color;
+  final Color color;
   final double dashLength;
   final double gapLength;
 
@@ -1903,7 +1963,7 @@ class _DashedLine extends StatelessWidget {
 }
 
 class _DashedLinePainter extends CustomPainter {
-  final Color  color;
+  final Color color;
   final double dashLength;
   final double gapLength;
 
@@ -1916,9 +1976,9 @@ class _DashedLinePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color       = color
+      ..color = color
       ..strokeWidth = 1
-      ..style       = PaintingStyle.stroke;
+      ..style = PaintingStyle.stroke;
 
     var x = 0.0;
     final y = size.height / 2;
@@ -1931,15 +1991,15 @@ class _DashedLinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _DashedLinePainter old) =>
-      old.color      != color      ||
+      old.color != color ||
       old.dashLength != dashLength ||
-      old.gapLength  != gapLength;
+      old.gapLength != gapLength;
 }
 
 // ── Dashed rounded-rect border painter (used by photo upload zone) ─────────────
 
 class _DashedBorderPainter extends CustomPainter {
-  final Color  color;
+  final Color color;
   final double radius;
   final double strokeWidth;
   final double dashLength;
@@ -1978,9 +2038,9 @@ class _DashedBorderPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _DashedBorderPainter old) =>
-      old.color       != color       ||
-      old.radius      != radius      ||
+      old.color != color ||
+      old.radius != radius ||
       old.strokeWidth != strokeWidth ||
-      old.dashLength  != dashLength  ||
-      old.gapLength   != gapLength;
+      old.dashLength != dashLength ||
+      old.gapLength != gapLength;
 }

@@ -289,15 +289,13 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     final geometry = route['geometry'] as Map<String, dynamic>?;
     final raw = geometry?['coordinates'] as List<dynamic>?;
     if (raw == null || raw.isEmpty) return null;
-    return raw
-        .map((c) {
-          final pair = c as List<dynamic>;
-          return Position(
-            (pair[0] as num).toDouble(),
-            (pair[1] as num).toDouble(),
-          );
-        })
-        .toList(growable: false);
+    return raw.map((c) {
+      final pair = c as List<dynamic>;
+      return Position(
+        (pair[0] as num).toDouble(),
+        (pair[1] as num).toDouble(),
+      );
+    }).toList(growable: false);
   }
 
   /// Great-circle distance in meters between two `Position` coordinates.
@@ -349,7 +347,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     await _annotationManager!.deleteAll();
 
     final pickup = _searchState.pickup;
-    final dest   = _searchState.destination;
+    final dest = _searchState.destination;
 
     if (pickup?.lat != null && pickup?.lng != null) {
       await _annotationManager!.create(
@@ -381,7 +379,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     if (mapboxMap == null) return;
 
     final pickup = _searchState.pickup;
-    final dest   = _searchState.destination;
+    final dest = _searchState.destination;
 
     if (pickup?.lat == null || dest?.lat == null) return;
 
@@ -563,7 +561,8 @@ class _EtaPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.timer_outlined, size: 14, color: MyShopColors.textPrimary),
+          const Icon(Icons.timer_outlined,
+              size: 14, color: MyShopColors.textPrimary),
           const SizedBox(width: 6),
           Text(
             'ARRIVING IN $etaMinutes MINS',
@@ -708,9 +707,9 @@ class _DashedLinePainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     const dash = 2.0;
-    const gap  = 3.0;
-    final cx   = size.width / 2;
-    double y   = 0;
+    const gap = 3.0;
+    final cx = size.width / 2;
+    double y = 0;
     while (y < size.height) {
       canvas.drawLine(Offset(cx, y), Offset(cx, y + dash), paint);
       y += dash + gap;

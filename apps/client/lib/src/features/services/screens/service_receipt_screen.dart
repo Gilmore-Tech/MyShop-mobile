@@ -16,9 +16,9 @@ class ServiceReceiptScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final size         = MediaQuery.sizeOf(context);
-    final w            = size.width;
-    final h            = size.height;
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
     final receiptAsync = ref.watch(serviceReceiptByIdProvider(jobId));
 
     return Scaffold(
@@ -26,7 +26,7 @@ class ServiceReceiptScreen extends ConsumerWidget {
       appBar: _appBar(context, w),
       body: receiptAsync.when(
         loading: () => _LoadingSkeleton(w: w, h: h),
-        error:   (_, __) => MyShopErrorBody(
+        error: (_, __) => MyShopErrorBody(
           message: 'Could not load receipt',
           onRetry: () => ref.invalidate(serviceReceiptByIdProvider(jobId)),
         ),
@@ -45,9 +45,9 @@ class ServiceReceiptScreen extends ConsumerWidget {
         title: Text(
           'Service Receipt',
           style: TextStyle(
-            fontSize:   w * 0.046,   // ~18dp
+            fontSize: w * 0.046, // ~18dp
             fontWeight: FontWeight.w600,
-            color:      MyShopColors.textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
         actions: [
@@ -57,7 +57,7 @@ class ServiceReceiptScreen extends ConsumerWidget {
               icon: Icon(
                 Icons.close_rounded,
                 color: MyShopColors.textPrimary,
-                size:  w * 0.056,   // ~22dp
+                size: w * 0.056, // ~22dp
               ),
               onPressed: () => Navigator.of(context).maybePop(),
             ),
@@ -70,8 +70,8 @@ class ServiceReceiptScreen extends ConsumerWidget {
 
 class _ReceiptBody extends StatelessWidget {
   final ServiceReceiptData receipt;
-  final double             w;
-  final double             h;
+  final double w;
+  final double h;
   const _ReceiptBody({required this.receipt, required this.w, required this.h});
 
   @override
@@ -83,9 +83,9 @@ class _ReceiptBody extends StatelessWidget {
           _AmountHeader(totalDisplay: receipt.totalPaidDisplay, w: w, h: h),
           const Divider(height: 1, thickness: 1, color: MyShopColors.divider),
           _ProviderCard(
-            name:     receipt.artisanName,
+            name: receipt.artisanName,
             subtitle: receipt.artisanSpecialty,
-            rating:   receipt.artisanRating,
+            rating: receipt.artisanRating,
             w: w,
             h: h,
           ),
@@ -130,7 +130,7 @@ class _ReceiptBody extends StatelessWidget {
           const Divider(height: 1, thickness: 1, color: MyShopColors.divider),
           _PaymentMethodSection(
             label: receipt.paymentMethodLabel,
-            type:  receipt.paymentMethodType,
+            type: receipt.paymentMethodType,
             w: w,
             h: h,
           ),
@@ -156,25 +156,25 @@ class _AmountHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: h * 0.033),   // ~28dp
+      padding: EdgeInsets.symmetric(vertical: h * 0.033), // ~28dp
       child: Column(
         children: [
           Text(
             'Total Paid',
             style: TextStyle(
-              fontSize:   w * 0.033,   // ~13dp
+              fontSize: w * 0.033, // ~13dp
               fontWeight: FontWeight.w400,
-              color:      MyShopColors.textSecondary,
+              color: MyShopColors.textSecondary,
             ),
           ),
           SizedBox(height: h * 0.007),
           Text(
             totalDisplay,
             style: TextStyle(
-              fontSize:   w * 0.092,   // ~36dp
+              fontSize: w * 0.092, // ~36dp
               fontWeight: FontWeight.w700,
-              color:      MyShopColors.textPrimary,
-              height:     1.1,
+              color: MyShopColors.textPrimary,
+              height: 1.1,
             ),
           ),
         ],
@@ -201,24 +201,24 @@ class _ProviderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final avatarSize = w * 0.133;   // ~52dp
+    final avatarSize = w * 0.133; // ~52dp
 
     return Container(
       margin: EdgeInsets.symmetric(
-        horizontal: w * 0.041,   // ~16dp
-        vertical:   h * 0.017,   // ~14dp
+        horizontal: w * 0.041, // ~16dp
+        vertical: h * 0.017, // ~14dp
       ),
-      padding: EdgeInsets.all(w * 0.036),   // ~14dp
+      padding: EdgeInsets.all(w * 0.036), // ~14dp
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceGrey,
-        borderRadius: BorderRadius.circular(w * 0.031),   // ~12dp
-        border:       Border.all(color: MyShopColors.divider),
+        color: MyShopColors.surfaceGrey,
+        borderRadius: BorderRadius.circular(w * 0.031), // ~12dp
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Row(
         children: [
           // Avatar
           Container(
-            width:  avatarSize,
+            width: avatarSize,
             height: avatarSize,
             decoration: const BoxDecoration(
               shape: BoxShape.circle,
@@ -226,11 +226,11 @@ class _ProviderCard extends StatelessWidget {
             ),
             child: Icon(
               Icons.person_rounded,
-              size:  w * 0.072,   // ~28dp
+              size: w * 0.072, // ~28dp
               color: MyShopColors.darkSlate,
             ),
           ),
-          SizedBox(width: w * 0.036),   // ~14dp
+          SizedBox(width: w * 0.036), // ~14dp
           // Name + subtitle
           Expanded(
             child: Column(
@@ -239,18 +239,18 @@ class _ProviderCard extends StatelessWidget {
                 Text(
                   name,
                   style: TextStyle(
-                    fontSize:   w * 0.041,   // ~16dp
+                    fontSize: w * 0.041, // ~16dp
                     fontWeight: FontWeight.w700,
-                    color:      MyShopColors.textPrimary,
+                    color: MyShopColors.textPrimary,
                   ),
                 ),
                 SizedBox(height: h * 0.005),
                 Text(
                   subtitle,
                   style: TextStyle(
-                    fontSize:   w * 0.031,   // ~12dp
+                    fontSize: w * 0.031, // ~12dp
                     fontWeight: FontWeight.w400,
-                    color:      MyShopColors.textSecondary,
+                    color: MyShopColors.textSecondary,
                   ),
                 ),
               ],
@@ -261,14 +261,15 @@ class _ProviderCard extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.star_rounded, size: w * 0.041, color: MyShopColors.primaryGold),
+              Icon(Icons.star_rounded,
+                  size: w * 0.041, color: MyShopColors.primaryGold),
               SizedBox(width: w * 0.008),
               Text(
                 rating.toStringAsFixed(1),
                 style: TextStyle(
-                  fontSize:   w * 0.036,   // ~14dp
+                  fontSize: w * 0.036, // ~14dp
                   fontWeight: FontWeight.w700,
-                  color:      MyShopColors.textPrimary,
+                  color: MyShopColors.textPrimary,
                 ),
               ),
             ],
@@ -285,8 +286,8 @@ class _ProviderCard extends StatelessWidget {
 
 class _ServiceDetailsSection extends StatelessWidget {
   final ServiceReceiptData receipt;
-  final double             w;
-  final double             h;
+  final double w;
+  final double h;
   const _ServiceDetailsSection({
     required this.receipt,
     required this.w,
@@ -297,24 +298,24 @@ class _ServiceDetailsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.symmetric(
-        horizontal: w * 0.041,   // ~16dp
-        vertical:   h * 0.019,   // ~16dp
+        horizontal: w * 0.041, // ~16dp
+        vertical: h * 0.019, // ~16dp
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _DetailRow(
-            icon:    Icons.location_on_rounded,
-            label:   'SERVICE LOCATION',
-            value:   receipt.serviceLocation,
+            icon: Icons.location_on_rounded,
+            label: 'SERVICE LOCATION',
+            value: receipt.serviceLocation,
             w: w,
             h: h,
           ),
-          SizedBox(height: h * 0.017),   // ~14dp
+          SizedBox(height: h * 0.017), // ~14dp
           _DetailRow(
-            icon:    Icons.access_time_rounded,
-            label:   'WORK DURATION',
-            value:   receipt.workDurationLabel,
+            icon: Icons.access_time_rounded,
+            label: 'WORK DURATION',
+            value: receipt.workDurationLabel,
             w: w,
             h: h,
           ),
@@ -326,10 +327,10 @@ class _ServiceDetailsSection extends StatelessWidget {
 
 class _DetailRow extends StatelessWidget {
   final IconData icon;
-  final String   label;
-  final String   value;
-  final double   w;
-  final double   h;
+  final String label;
+  final String value;
+  final double w;
+  final double h;
   const _DetailRow({
     required this.icon,
     required this.label,
@@ -343,8 +344,8 @@ class _DetailRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: w * 0.051, color: MyShopColors.primaryGold),   // ~20dp
-        SizedBox(width: w * 0.031),                   // ~12dp
+        Icon(icon, size: w * 0.051, color: MyShopColors.primaryGold), // ~20dp
+        SizedBox(width: w * 0.031), // ~12dp
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -352,9 +353,9 @@ class _DetailRow extends StatelessWidget {
               Text(
                 label,
                 style: TextStyle(
-                  fontSize:    w * 0.026,   // ~10dp
-                  fontWeight:  FontWeight.w900,
-                  color:       MyShopColors.textSecondary,
+                  fontSize: w * 0.026, // ~10dp
+                  fontWeight: FontWeight.w900,
+                  color: MyShopColors.textSecondary,
                   letterSpacing: 1.4,
                 ),
               ),
@@ -362,9 +363,9 @@ class _DetailRow extends StatelessWidget {
               Text(
                 value,
                 style: TextStyle(
-                  fontSize:   w * 0.036,   // ~14dp
+                  fontSize: w * 0.036, // ~14dp
                   fontWeight: FontWeight.w500,
-                  color:      MyShopColors.textPrimary,
+                  color: MyShopColors.textPrimary,
                 ),
               ),
             ],
@@ -379,8 +380,8 @@ class _DetailRow extends StatelessWidget {
 
 class _ServiceBreakdownSection extends StatelessWidget {
   final ServiceReceiptData receipt;
-  final double             w;
-  final double             h;
+  final double w;
+  final double h;
   const _ServiceBreakdownSection({
     required this.receipt,
     required this.w,
@@ -391,8 +392,8 @@ class _ServiceBreakdownSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.symmetric(
-        horizontal: w * 0.041,   // ~16dp
-        vertical:   h * 0.019,   // ~16dp
+        horizontal: w * 0.041, // ~16dp
+        vertical: h * 0.019, // ~16dp
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -400,27 +401,27 @@ class _ServiceBreakdownSection extends StatelessWidget {
           Text(
             'PAYMENT BREAKDOWN',
             style: TextStyle(
-              fontSize:    w * 0.026,   // ~10dp
-              fontWeight:  FontWeight.w900,
-              color:       MyShopColors.textSecondary,
+              fontSize: w * 0.026, // ~10dp
+              fontWeight: FontWeight.w900,
+              color: MyShopColors.textSecondary,
               letterSpacing: 1.4,
             ),
           ),
           SizedBox(height: h * 0.017),
           _LineItem(
-            label:  'Service Call Fee',
+            label: 'Service Call Fee',
             amount: receipt.serviceCallFeeDisplay,
             w: w,
           ),
           SizedBox(height: h * 0.012),
           _LineItem(
-            label:  'Labor (${receipt.laborHoursLabel})',
+            label: 'Labor (${receipt.laborHoursLabel})',
             amount: receipt.laborDisplay,
             w: w,
           ),
           SizedBox(height: h * 0.012),
           _LineItem(
-            label:  'Materials',
+            label: 'Materials',
             amount: receipt.materialsDisplay,
             w: w,
           ),
@@ -432,18 +433,18 @@ class _ServiceBreakdownSection extends StatelessWidget {
               Text(
                 'Total Paid',
                 style: TextStyle(
-                  fontSize:   w * 0.041,   // ~16dp
+                  fontSize: w * 0.041, // ~16dp
                   fontWeight: FontWeight.w700,
-                  color:      MyShopColors.textPrimary,
+                  color: MyShopColors.textPrimary,
                 ),
               ),
               const Spacer(),
               Text(
                 receipt.totalPaidDisplay,
                 style: TextStyle(
-                  fontSize:   w * 0.041,   // ~16dp
+                  fontSize: w * 0.041, // ~16dp
                   fontWeight: FontWeight.w700,
-                  color:      MyShopColors.textPrimary,
+                  color: MyShopColors.textPrimary,
                 ),
               ),
             ],
@@ -469,18 +470,18 @@ class _LineItem extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            fontSize:   w * 0.033,   // ~13dp
+            fontSize: w * 0.033, // ~13dp
             fontWeight: FontWeight.w400,
-            color:      MyShopColors.textSecondary,
+            color: MyShopColors.textSecondary,
           ),
         ),
         const Spacer(),
         Text(
           amount,
           style: TextStyle(
-            fontSize:   w * 0.033,
+            fontSize: w * 0.033,
             fontWeight: FontWeight.w500,
-            color:      MyShopColors.textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
       ],
@@ -507,7 +508,7 @@ class _TransactionInfoRow extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(
         horizontal: w * 0.041,
-        vertical:   h * 0.019,
+        vertical: h * 0.019,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -519,9 +520,9 @@ class _TransactionInfoRow extends StatelessWidget {
                 Text(
                   'TRANSACTION ID',
                   style: TextStyle(
-                    fontSize:    w * 0.026,
-                    fontWeight:  FontWeight.w900,
-                    color:       MyShopColors.textSecondary,
+                    fontSize: w * 0.026,
+                    fontWeight: FontWeight.w900,
+                    color: MyShopColors.textSecondary,
                     letterSpacing: 1.4,
                   ),
                 ),
@@ -529,9 +530,9 @@ class _TransactionInfoRow extends StatelessWidget {
                 Text(
                   transactionId,
                   style: TextStyle(
-                    fontSize:   w * 0.033,   // ~13dp
+                    fontSize: w * 0.033, // ~13dp
                     fontWeight: FontWeight.w600,
-                    color:      MyShopColors.textPrimary,
+                    color: MyShopColors.textPrimary,
                   ),
                 ),
               ],
@@ -545,9 +546,9 @@ class _TransactionInfoRow extends StatelessWidget {
                 Text(
                   'DATE & TIME',
                   style: TextStyle(
-                    fontSize:    w * 0.026,
-                    fontWeight:  FontWeight.w900,
-                    color:       MyShopColors.textSecondary,
+                    fontSize: w * 0.026,
+                    fontWeight: FontWeight.w900,
+                    color: MyShopColors.textSecondary,
                     letterSpacing: 1.4,
                   ),
                 ),
@@ -555,9 +556,9 @@ class _TransactionInfoRow extends StatelessWidget {
                 Text(
                   dateTimeLabel,
                   style: TextStyle(
-                    fontSize:   w * 0.031,   // ~12dp
+                    fontSize: w * 0.031, // ~12dp
                     fontWeight: FontWeight.w400,
-                    color:      MyShopColors.textPrimary,
+                    color: MyShopColors.textPrimary,
                   ),
                   textAlign: TextAlign.end,
                 ),
@@ -573,10 +574,10 @@ class _TransactionInfoRow extends StatelessWidget {
 // ── Payment Method ────────────────────────────────────────────────────────────
 
 class _PaymentMethodSection extends StatelessWidget {
-  final String            label;
+  final String label;
   final PaymentMethodType type;
-  final double            w;
-  final double            h;
+  final double w;
+  final double h;
   const _PaymentMethodSection({
     required this.label,
     required this.type,
@@ -589,7 +590,7 @@ class _PaymentMethodSection extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(
         horizontal: w * 0.041,
-        vertical:   h * 0.019,
+        vertical: h * 0.019,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -597,9 +598,9 @@ class _PaymentMethodSection extends StatelessWidget {
           Text(
             'PAYMENT METHOD',
             style: TextStyle(
-              fontSize:    w * 0.026,
-              fontWeight:  FontWeight.w900,
-              color:       MyShopColors.textSecondary,
+              fontSize: w * 0.026,
+              fontWeight: FontWeight.w900,
+              color: MyShopColors.textSecondary,
               letterSpacing: 1.4,
             ),
           ),
@@ -611,9 +612,9 @@ class _PaymentMethodSection extends StatelessWidget {
               Text(
                 label,
                 style: TextStyle(
-                  fontSize:   w * 0.036,   // ~14dp
+                  fontSize: w * 0.036, // ~14dp
                   fontWeight: FontWeight.w600,
-                  color:      MyShopColors.textPrimary,
+                  color: MyShopColors.textPrimary,
                 ),
               ),
             ],
@@ -626,16 +627,16 @@ class _PaymentMethodSection extends StatelessWidget {
 
 class _PaymentIcon extends StatelessWidget {
   final PaymentMethodType type;
-  final double            w;
+  final double w;
   const _PaymentIcon({required this.type, required this.w});
 
   @override
   Widget build(BuildContext context) {
-    final circleSize = w * 0.082;   // ~32dp
+    final circleSize = w * 0.082; // ~32dp
 
     return switch (type) {
       PaymentMethodType.mtn => Container(
-          width:  circleSize,
+          width: circleSize,
           height: circleSize,
           decoration: const BoxDecoration(
             color: MyShopColors.mtnYellow,
@@ -645,14 +646,14 @@ class _PaymentIcon extends StatelessWidget {
           child: Text(
             'M',
             style: TextStyle(
-              fontSize:   w * 0.033,
+              fontSize: w * 0.033,
               fontWeight: FontWeight.w900,
-              color:      MyShopColors.textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
         ),
       PaymentMethodType.vodafone => Container(
-          width:  circleSize,
+          width: circleSize,
           height: circleSize,
           decoration: const BoxDecoration(
             color: Color(0xFFE60000),
@@ -662,14 +663,14 @@ class _PaymentIcon extends StatelessWidget {
           child: Text(
             'V',
             style: TextStyle(
-              fontSize:   w * 0.033,
+              fontSize: w * 0.033,
               fontWeight: FontWeight.w900,
-              color:      Colors.white,
+              color: Colors.white,
             ),
           ),
         ),
       PaymentMethodType.airtelTigo => Container(
-          width:  circleSize,
+          width: circleSize,
           height: circleSize,
           decoration: const BoxDecoration(
             color: Color(0xFFEE1C25),
@@ -679,49 +680,49 @@ class _PaymentIcon extends StatelessWidget {
           child: Text(
             'AT',
             style: TextStyle(
-              fontSize:   w * 0.026,
+              fontSize: w * 0.026,
               fontWeight: FontWeight.w900,
-              color:      Colors.white,
+              color: Colors.white,
             ),
           ),
         ),
       PaymentMethodType.visa => Container(
-          width:  circleSize * 1.4,
+          width: circleSize * 1.4,
           height: circleSize,
           decoration: BoxDecoration(
-            color:        const Color(0xFF1A1F71),
+            color: const Color(0xFF1A1F71),
             borderRadius: BorderRadius.circular(w * 0.010),
           ),
           alignment: Alignment.center,
           child: Text(
             'VISA',
             style: TextStyle(
-              fontSize:    w * 0.026,
-              fontWeight:  FontWeight.w900,
-              color:       Colors.white,
+              fontSize: w * 0.026,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
               letterSpacing: 1.5,
             ),
           ),
         ),
       PaymentMethodType.mastercard => Container(
-          width:  circleSize * 1.4,
+          width: circleSize * 1.4,
           height: circleSize,
           decoration: BoxDecoration(
-            color:        const Color(0xFFEB001B),
+            color: const Color(0xFFEB001B),
             borderRadius: BorderRadius.circular(w * 0.010),
           ),
           alignment: Alignment.center,
           child: Text(
             'MC',
             style: TextStyle(
-              fontSize:   w * 0.026,
+              fontSize: w * 0.026,
               fontWeight: FontWeight.w900,
-              color:      Colors.white,
+              color: Colors.white,
             ),
           ),
         ),
       PaymentMethodType.cash => Container(
-          width:  circleSize,
+          width: circleSize,
           height: circleSize,
           decoration: const BoxDecoration(
             color: MyShopColors.success,
@@ -730,7 +731,7 @@ class _PaymentIcon extends StatelessWidget {
           alignment: Alignment.center,
           child: Icon(
             Icons.attach_money_rounded,
-            size:  w * 0.041,
+            size: w * 0.041,
             color: Colors.white,
           ),
         ),
@@ -750,13 +751,14 @@ class _ShareBar extends StatelessWidget {
     return SafeArea(
       top: false,
       child: SizedBox(
-        height: h * 0.076,   // ~64dp
+        height: h * 0.076, // ~64dp
         child: Material(
           color: MyShopColors.primaryGold,
           child: InkWell(
             onTap: () {
               // TODO: share_plus — Share.share(receiptText)
-              MyShopToast.show(context, message: 'Receipt sharing coming soon.');
+              MyShopToast.show(context,
+                  message: 'Receipt sharing coming soon.');
             },
             child: Center(
               child: Row(
@@ -765,15 +767,15 @@ class _ShareBar extends StatelessWidget {
                   Icon(
                     Icons.share_rounded,
                     color: Colors.white,
-                    size:  w * 0.051,   // ~20dp
+                    size: w * 0.051, // ~20dp
                   ),
                   SizedBox(width: w * 0.021),
                   Text(
                     'SHARE RECEIPT',
                     style: TextStyle(
-                      fontSize:    w * 0.036,   // ~14dp
-                      fontWeight:  FontWeight.w700,
-                      color:       Colors.white,
+                      fontSize: w * 0.036, // ~14dp
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
                       letterSpacing: 0.8,
                     ),
                   ),
@@ -815,13 +817,14 @@ class _LoadingSkeleton extends StatelessWidget {
           // Provider card
           Container(
             margin: EdgeInsets.symmetric(
-              horizontal: w * 0.041, vertical: h * 0.017,
+              horizontal: w * 0.041,
+              vertical: h * 0.017,
             ),
             padding: EdgeInsets.all(w * 0.036),
             decoration: BoxDecoration(
-              color:        MyShopColors.surfaceGrey,
+              color: MyShopColors.surfaceGrey,
               borderRadius: BorderRadius.circular(w * 0.031),
-              border:       Border.all(color: MyShopColors.divider),
+              border: Border.all(color: MyShopColors.divider),
             ),
             child: Row(
               children: [
@@ -844,7 +847,8 @@ class _LoadingSkeleton extends StatelessWidget {
           // Service details
           Padding(
             padding: EdgeInsets.symmetric(
-              horizontal: w * 0.041, vertical: h * 0.019,
+              horizontal: w * 0.041,
+              vertical: h * 0.019,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -859,19 +863,24 @@ class _LoadingSkeleton extends StatelessWidget {
           // Breakdown
           Padding(
             padding: EdgeInsets.symmetric(
-              horizontal: w * 0.041, vertical: h * 0.019,
+              horizontal: w * 0.041,
+              vertical: h * 0.019,
             ),
             child: Column(
-              children: List.generate(3, (i) => Padding(
-                padding: EdgeInsets.only(bottom: h * 0.012),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _SkeletonBox(width: w * 0.350, height: h * 0.017, w: w),
-                    _SkeletonBox(width: w * 0.200, height: h * 0.017, w: w),
-                  ],
-                ),
-              )),
+              children: List.generate(
+                  3,
+                  (i) => Padding(
+                        padding: EdgeInsets.only(bottom: h * 0.012),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            _SkeletonBox(
+                                width: w * 0.350, height: h * 0.017, w: w),
+                            _SkeletonBox(
+                                width: w * 0.200, height: h * 0.017, w: w),
+                          ],
+                        ),
+                      )),
             ),
           ),
         ],
@@ -893,10 +902,10 @@ class _SkeletonBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width:  width,
+      width: width,
       height: height,
       decoration: BoxDecoration(
-        color:        MyShopColors.divider,
+        color: MyShopColors.divider,
         borderRadius: BorderRadius.circular(w * 0.010),
       ),
     );
@@ -911,7 +920,7 @@ class _SkeletonCircle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width:  size,
+      width: size,
       height: size,
       decoration: const BoxDecoration(
         color: MyShopColors.divider,
@@ -929,10 +938,10 @@ class _SkeletonCircle extends StatelessWidget {
 // historical receipt from the activity list.
 
 class _RateProviderCTA extends StatelessWidget {
-  final String       providerFirstName;
-  final String       providerKind; // 'driver' | 'artisan'
+  final String providerFirstName;
+  final String providerKind; // 'driver' | 'artisan'
   final VoidCallback onTap;
-  final double       w, h;
+  final double w, h;
 
   const _RateProviderCTA({
     required this.providerFirstName,
@@ -949,12 +958,12 @@ class _RateProviderCTA extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.symmetric(
           horizontal: w * 0.041,
-          vertical:   h * 0.022,
+          vertical: h * 0.022,
         ),
         child: Row(
           children: [
             Container(
-              width:  w * 0.108,
+              width: w * 0.108,
               height: w * 0.108,
               decoration: BoxDecoration(
                 color: MyShopColors.primaryGoldLight,
@@ -965,7 +974,7 @@ class _RateProviderCTA extends StatelessWidget {
               ),
               child: Icon(
                 Icons.star_rounded,
-                size:  w * 0.056,
+                size: w * 0.056,
                 color: MyShopColors.primaryGold,
               ),
             ),
@@ -977,18 +986,18 @@ class _RateProviderCTA extends StatelessWidget {
                   Text(
                     'Rate $providerFirstName',
                     style: TextStyle(
-                      fontSize:   w * 0.041,
+                      fontSize: w * 0.041,
                       fontWeight: FontWeight.w700,
-                      color:      MyShopColors.textPrimary,
+                      color: MyShopColors.textPrimary,
                     ),
                   ),
                   SizedBox(height: h * 0.003),
                   Text(
                     'Share your feedback for this $providerKind',
                     style: TextStyle(
-                      fontSize:   w * 0.031,
+                      fontSize: w * 0.031,
                       fontWeight: FontWeight.w400,
-                      color:      MyShopColors.textSecondary,
+                      color: MyShopColors.textSecondary,
                     ),
                   ),
                 ],
@@ -996,7 +1005,7 @@ class _RateProviderCTA extends StatelessWidget {
             ),
             Icon(
               Icons.chevron_right_rounded,
-              size:  w * 0.056,
+              size: w * 0.056,
               color: MyShopColors.textSecondary,
             ),
           ],
@@ -1029,12 +1038,12 @@ class _RatePendingNotice extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(
         horizontal: w * 0.041,
-        vertical:   h * 0.022,
+        vertical: h * 0.022,
       ),
       child: Row(
         children: [
           Container(
-            width:  w * 0.108,
+            width: w * 0.108,
             height: w * 0.108,
             decoration: BoxDecoration(
               color: MyShopColors.surfaceGrey,
@@ -1043,7 +1052,7 @@ class _RatePendingNotice extends StatelessWidget {
             ),
             child: Icon(
               Icons.hourglass_top_rounded,
-              size:  w * 0.056,
+              size: w * 0.056,
               color: MyShopColors.textSecondary,
             ),
           ),
@@ -1055,9 +1064,9 @@ class _RatePendingNotice extends StatelessWidget {
                 Text(
                   'Rating opens once $providerFirstName settles',
                   style: TextStyle(
-                    fontSize:   w * 0.041,
+                    fontSize: w * 0.041,
                     fontWeight: FontWeight.w700,
-                    color:      MyShopColors.textPrimary,
+                    color: MyShopColors.textPrimary,
                   ),
                 ),
                 SizedBox(height: h * 0.003),
@@ -1066,10 +1075,10 @@ class _RatePendingNotice extends StatelessWidget {
                   "You'll be able to leave a rating from your Activity "
                   'as soon as the job is fully completed.',
                   style: TextStyle(
-                    fontSize:   w * 0.031,
+                    fontSize: w * 0.031,
                     fontWeight: FontWeight.w400,
-                    color:      MyShopColors.textSecondary,
-                    height:     1.4,
+                    color: MyShopColors.textSecondary,
+                    height: 1.4,
                   ),
                 ),
               ],
@@ -1080,4 +1089,3 @@ class _RatePendingNotice extends StatelessWidget {
     );
   }
 }
-

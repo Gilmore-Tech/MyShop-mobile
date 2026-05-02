@@ -43,10 +43,9 @@ class _SubmitGhanaCardSheet extends ConsumerStatefulWidget {
       _SubmitGhanaCardSheetState();
 }
 
-class _SubmitGhanaCardSheetState
-    extends ConsumerState<_SubmitGhanaCardSheet> {
+class _SubmitGhanaCardSheetState extends ConsumerState<_SubmitGhanaCardSheet> {
   final _numberCtrl = TextEditingController();
-  File?   _selectedImage;
+  File? _selectedImage;
   String? _errorMessage;
 
   @override
@@ -68,12 +67,12 @@ class _SubmitGhanaCardSheetState
     if (picked == null || !mounted) return;
     setState(() {
       _selectedImage = picked;
-      _errorMessage  = null;
+      _errorMessage = null;
     });
   }
 
   Future<void> _submit() async {
-    final image  = _selectedImage;
+    final image = _selectedImage;
     final number = _numberCtrl.text.trim();
     if (image == null || !_ghanaCardPattern.hasMatch(number)) return;
 
@@ -96,12 +95,11 @@ class _SubmitGhanaCardSheetState
 
   @override
   Widget build(BuildContext context) {
-    final size  = MediaQuery.sizeOf(context);
-    final w     = size.width;
-    final h     = size.height;
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
     final inset = MediaQuery.viewInsetsOf(context).bottom;
-    final isSubmitting =
-        ref.watch(privacySecurityProvider).isSubmittingKyc;
+    final isSubmitting = ref.watch(privacySecurityProvider).isSubmittingKyc;
 
     return Container(
       decoration: BoxDecoration(
@@ -115,7 +113,7 @@ class _SubmitGhanaCardSheetState
           children: [
             SizedBox(height: h * 0.014),
             Container(
-              width:  w * 0.103,
+              width: w * 0.103,
               height: h * 0.005,
               decoration: BoxDecoration(
                 color: MyShopColors.divider,
@@ -143,10 +141,10 @@ class _SubmitGhanaCardSheetState
             SizedBox(height: h * 0.012),
             _NumberField(
               controller: _numberCtrl,
-              onChanged:  (_) => setState(() => _errorMessage = null),
-              isValid:    _isValidNumber,
-              isEmpty:    _numberCtrl.text.isEmpty,
-              enabled:    !isSubmitting,
+              onChanged: (_) => setState(() => _errorMessage = null),
+              isValid: _isValidNumber,
+              isEmpty: _numberCtrl.text.isEmpty,
+              enabled: !isSubmitting,
               w: w,
               h: h,
             ),
@@ -158,8 +156,8 @@ class _SubmitGhanaCardSheetState
                   'Format: GHA-XXXXXXXXX-X (9 digits, dash, 1 check digit).',
                   style: TextStyle(
                     fontSize: w * 0.026,
-                    color:    MyShopColors.textSecondary,
-                    height:   1.4,
+                    color: MyShopColors.textSecondary,
+                    height: 1.4,
                   ),
                 ),
               ),
@@ -188,13 +186,13 @@ class _SubmitGhanaCardSheetState
               behavior: HitTestBehavior.opaque,
               child: Padding(
                 padding: EdgeInsets.symmetric(
-                  vertical:   h * 0.009,
+                  vertical: h * 0.009,
                   horizontal: w * 0.041,
                 ),
                 child: Text(
                   'Cancel',
                   style: TextStyle(
-                    fontSize:   w * 0.033,
+                    fontSize: w * 0.033,
                     fontWeight: FontWeight.w500,
                     color: isSubmitting
                         ? MyShopColors.disabled
@@ -227,9 +225,9 @@ class _Header extends StatelessWidget {
           Text(
             'Verify your Ghana Card',
             style: TextStyle(
-              fontSize:   w * 0.051,
+              fontSize: w * 0.051,
               fontWeight: FontWeight.w700,
-              color:      MyShopColors.textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
           SizedBox(height: h * 0.007),
@@ -239,8 +237,8 @@ class _Header extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: w * 0.031,
-              color:    MyShopColors.textSecondary,
-              height:   1.45,
+              color: MyShopColors.textSecondary,
+              height: 1.45,
             ),
           ),
         ],
@@ -263,9 +261,9 @@ class _SectionLabel extends StatelessWidget {
         child: Text(
           text,
           style: TextStyle(
-            fontSize:      w * 0.026,
-            fontWeight:    FontWeight.w900,
-            color:         MyShopColors.textSecondary,
+            fontSize: w * 0.026,
+            fontWeight: FontWeight.w900,
+            color: MyShopColors.textSecondary,
             letterSpacing: 0.8,
           ),
         ),
@@ -277,9 +275,9 @@ class _SectionLabel extends StatelessWidget {
 // ── Image picker tile ─────────────────────────────────────────────────────────
 
 class _ImagePickerTile extends StatelessWidget {
-  final File?         file;
+  final File? file;
   final VoidCallback? onTap;
-  final double        w, h;
+  final double w, h;
 
   const _ImagePickerTile({
     required this.file,
@@ -299,14 +297,11 @@ class _ImagePickerTile extends StatelessWidget {
         child: Container(
           height: h * 0.205,
           decoration: BoxDecoration(
-            color: hasImage
-                ? MyShopColors.surfaceGrey
-                : MyShopColors.surfaceWhite,
+            color:
+                hasImage ? MyShopColors.surfaceGrey : MyShopColors.surfaceWhite,
             borderRadius: BorderRadius.circular(w * 0.026),
             border: Border.all(
-              color: hasImage
-                  ? MyShopColors.primaryGold
-                  : MyShopColors.divider,
+              color: hasImage ? MyShopColors.primaryGold : MyShopColors.divider,
               width: 1.5,
               style: hasImage ? BorderStyle.solid : BorderStyle.solid,
             ),
@@ -321,11 +316,11 @@ class _ImagePickerTile extends StatelessWidget {
                     ),
                     Positioned(
                       bottom: w * 0.020,
-                      right:  w * 0.020,
+                      right: w * 0.020,
                       child: Container(
                         padding: EdgeInsets.symmetric(
                           horizontal: w * 0.026,
-                          vertical:   w * 0.013,
+                          vertical: w * 0.013,
                         ),
                         decoration: BoxDecoration(
                           color: MyShopColors.darkSlate.withValues(alpha: 0.85),
@@ -336,7 +331,7 @@ class _ImagePickerTile extends StatelessWidget {
                           children: [
                             Icon(
                               Icons.refresh_rounded,
-                              size:  w * 0.036,
+                              size: w * 0.036,
                               color: MyShopColors.surfaceWhite,
                             ),
                             SizedBox(width: w * 0.013),
@@ -344,7 +339,7 @@ class _ImagePickerTile extends StatelessWidget {
                               'Retake',
                               style: TextStyle(
                                 fontSize: w * 0.028,
-                                color:    MyShopColors.surfaceWhite,
+                                color: MyShopColors.surfaceWhite,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -358,7 +353,7 @@ class _ImagePickerTile extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      width:  w * 0.144,
+                      width: w * 0.144,
                       height: w * 0.144,
                       decoration: const BoxDecoration(
                         color: MyShopColors.surfaceGrey,
@@ -366,7 +361,7 @@ class _ImagePickerTile extends StatelessWidget {
                       ),
                       child: Icon(
                         Icons.add_a_photo_outlined,
-                        size:  w * 0.064,
+                        size: w * 0.064,
                         color: MyShopColors.textSecondary,
                       ),
                     ),
@@ -374,9 +369,9 @@ class _ImagePickerTile extends StatelessWidget {
                     Text(
                       'Tap to add front of card',
                       style: TextStyle(
-                        fontSize:   w * 0.036,
+                        fontSize: w * 0.036,
                         fontWeight: FontWeight.w600,
-                        color:      MyShopColors.textPrimary,
+                        color: MyShopColors.textPrimary,
                       ),
                     ),
                     SizedBox(height: h * 0.005),
@@ -384,7 +379,7 @@ class _ImagePickerTile extends StatelessWidget {
                       'JPG or PNG · max 10 MB',
                       style: TextStyle(
                         fontSize: w * 0.028,
-                        color:    MyShopColors.textSecondary,
+                        color: MyShopColors.textSecondary,
                       ),
                     ),
                   ],
@@ -399,11 +394,11 @@ class _ImagePickerTile extends StatelessWidget {
 
 class _NumberField extends StatelessWidget {
   final TextEditingController controller;
-  final ValueChanged<String>  onChanged;
-  final bool                  isValid;
-  final bool                  isEmpty;
-  final bool                  enabled;
-  final double                w, h;
+  final ValueChanged<String> onChanged;
+  final bool isValid;
+  final bool isEmpty;
+  final bool enabled;
+  final double w, h;
 
   const _NumberField({
     required this.controller,
@@ -435,15 +430,15 @@ class _NumberField extends StatelessWidget {
         ),
         child: TextField(
           controller: controller,
-          onChanged:  onChanged,
-          enabled:    enabled,
+          onChanged: onChanged,
+          enabled: enabled,
           keyboardType: TextInputType.text,
           textCapitalization: TextCapitalization.characters,
           inputFormatters: [_GhanaCardFormatter()],
           style: TextStyle(
             fontSize: w * 0.038,
             fontFamily: 'monospace',
-            color:    MyShopColors.textPrimary,
+            color: MyShopColors.textPrimary,
             letterSpacing: 1.2,
           ),
           decoration: InputDecoration(
@@ -451,28 +446,28 @@ class _NumberField extends StatelessWidget {
             hintStyle: TextStyle(
               fontSize: w * 0.036,
               fontFamily: 'monospace',
-              color:    MyShopColors.textHint,
+              color: MyShopColors.textHint,
               letterSpacing: 1.2,
             ),
             prefixIcon: Icon(
               Icons.badge_outlined,
-              size:  w * 0.046,
+              size: w * 0.046,
               color: MyShopColors.textSecondary,
             ),
             suffixIcon: isValid
                 ? Icon(
                     Icons.check_circle_rounded,
-                    size:  w * 0.046,
+                    size: w * 0.046,
                     color: MyShopColors.success,
                   )
                 : null,
-            border:        InputBorder.none,
+            border: InputBorder.none,
             enabledBorder: InputBorder.none,
             focusedBorder: InputBorder.none,
             disabledBorder: InputBorder.none,
             contentPadding: EdgeInsets.symmetric(
               horizontal: w * 0.020,
-              vertical:   h * 0.017,
+              vertical: h * 0.017,
             ),
           ),
         ),
@@ -490,7 +485,8 @@ class _GhanaCardFormatter extends TextInputFormatter {
     TextEditingValue oldValue,
     TextEditingValue newValue,
   ) {
-    final raw = newValue.text.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    final raw =
+        newValue.text.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
 
     final buf = StringBuffer();
     var idx = 0;
@@ -537,7 +533,7 @@ class _Disclaimer extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(
           horizontal: w * 0.031,
-          vertical:   h * 0.012,
+          vertical: h * 0.012,
         ),
         decoration: BoxDecoration(
           color: MyShopColors.surfaceGrey,
@@ -548,7 +544,7 @@ class _Disclaimer extends StatelessWidget {
           children: [
             Icon(
               Icons.lock_outline_rounded,
-              size:  w * 0.038,
+              size: w * 0.038,
               color: MyShopColors.textSecondary,
             ),
             SizedBox(width: w * 0.020),
@@ -558,8 +554,8 @@ class _Disclaimer extends StatelessWidget {
                 'form is shown back in the app.',
                 style: TextStyle(
                   fontSize: w * 0.028,
-                  color:    MyShopColors.textSecondary,
-                  height:   1.45,
+                  color: MyShopColors.textSecondary,
+                  height: 1.45,
                 ),
               ),
             ),
@@ -573,10 +569,10 @@ class _Disclaimer extends StatelessWidget {
 // ── Submit button + inline error ──────────────────────────────────────────────
 
 class _SubmitButton extends StatelessWidget {
-  final bool         isLoading;
-  final bool         canSubmit;
+  final bool isLoading;
+  final bool canSubmit;
   final VoidCallback onPressed;
-  final double       w, h;
+  final double w, h;
 
   const _SubmitButton({
     required this.isLoading,
@@ -596,12 +592,10 @@ class _SubmitButton extends StatelessWidget {
         child: ElevatedButton(
           onPressed: canSubmit ? onPressed : null,
           style: ElevatedButton.styleFrom(
-            backgroundColor: canSubmit
-                ? MyShopColors.darkSlate
-                : MyShopColors.surfaceGrey,
-            foregroundColor: canSubmit
-                ? MyShopColors.surfaceWhite
-                : MyShopColors.disabled,
+            backgroundColor:
+                canSubmit ? MyShopColors.darkSlate : MyShopColors.surfaceGrey,
+            foregroundColor:
+                canSubmit ? MyShopColors.surfaceWhite : MyShopColors.disabled,
             disabledBackgroundColor: MyShopColors.surfaceGrey,
             disabledForegroundColor: MyShopColors.disabled,
             elevation: 0,
@@ -611,7 +605,7 @@ class _SubmitButton extends StatelessWidget {
           ),
           child: isLoading
               ? SizedBox(
-                  width:  w * 0.051,
+                  width: w * 0.051,
                   height: w * 0.051,
                   child: const CircularProgressIndicator(
                     strokeWidth: 2,
@@ -621,7 +615,7 @@ class _SubmitButton extends StatelessWidget {
               : Text(
                   'Submit for review',
                   style: TextStyle(
-                    fontSize:   w * 0.036,
+                    fontSize: w * 0.036,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.3,
                   ),
@@ -646,7 +640,7 @@ class _InlineError extends StatelessWidget {
         children: [
           Icon(
             Icons.error_outline_rounded,
-            size:  w * 0.041,
+            size: w * 0.041,
             color: MyShopColors.error,
           ),
           SizedBox(width: w * 0.020),
@@ -654,10 +648,10 @@ class _InlineError extends StatelessWidget {
             child: Text(
               message,
               style: TextStyle(
-                fontSize:   w * 0.031,
+                fontSize: w * 0.031,
                 fontWeight: FontWeight.w500,
-                color:      MyShopColors.error,
-                height:     1.4,
+                color: MyShopColors.error,
+                height: 1.4,
               ),
             ),
           ),

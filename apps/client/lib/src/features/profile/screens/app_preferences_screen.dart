@@ -14,11 +14,11 @@ class AppPreferencesScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final size   = MediaQuery.sizeOf(context);
-    final w      = size.width;
-    final h      = size.height;
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
     final bottom = MediaQuery.paddingOf(context).bottom;
-    final state  = ref.watch(appPreferencesProvider);
+    final state = ref.watch(appPreferencesProvider);
 
     // Backend saves (only language right now) can fail. Surface the error
     // as a snackbar — every other pref is a SharedPreferences write that
@@ -203,8 +203,7 @@ class _SectionLabel extends StatelessWidget {
   final String label;
   final double w;
   final double h;
-  const _SectionLabel(
-      {required this.label, required this.w, required this.h});
+  const _SectionLabel({required this.label, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
@@ -264,9 +263,9 @@ class _RowDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(
-          left: w * 0.041 + w * 0.092 + w * 0.031),
-      child: const Divider(color: MyShopColors.divider, height: 1, thickness: 1),
+      padding: EdgeInsets.only(left: w * 0.041 + w * 0.092 + w * 0.031),
+      child:
+          const Divider(color: MyShopColors.divider, height: 1, thickness: 1),
     );
   }
 }
@@ -288,8 +287,7 @@ class _MapUnitsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.symmetric(
-          horizontal: w * 0.041, vertical: h * 0.016),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041, vertical: h * 0.016),
       child: Row(
         children: [
           // Icon
@@ -364,8 +362,7 @@ class _InterfaceThemeRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.symmetric(
-          horizontal: w * 0.041, vertical: h * 0.016),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041, vertical: h * 0.016),
       child: Row(
         children: [
           Container(
@@ -427,9 +424,9 @@ class _InterfaceThemeRow extends StatelessWidget {
 
 class _ToggleRow extends StatelessWidget {
   final IconData icon;
-  final String   title;
-  final String   subtitle;
-  final bool     value;
+  final String title;
+  final String subtitle;
+  final bool value;
   final ValueChanged<bool> onChanged;
   final double w;
   final double h;
@@ -446,8 +443,7 @@ class _ToggleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.symmetric(
-          horizontal: w * 0.041, vertical: h * 0.016),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041, vertical: h * 0.016),
       child: Row(
         children: [
           Container(
@@ -455,7 +451,8 @@ class _ToggleRow extends StatelessWidget {
             height: w * 0.092,
             decoration: const BoxDecoration(
                 color: MyShopColors.surfaceGrey, shape: BoxShape.circle),
-            child: Icon(icon, color: MyShopColors.textSecondary, size: w * 0.046),
+            child:
+                Icon(icon, color: MyShopColors.textSecondary, size: w * 0.046),
           ),
           SizedBox(width: w * 0.031),
           Expanded(
@@ -488,13 +485,12 @@ class _ToggleRow extends StatelessWidget {
           ),
           SizedBox(width: w * 0.015),
           Switch(
-            value:              value,
-            activeThumbColor:   Colors.white,
-            activeTrackColor:   MyShopColors.darkSlate,
+            value: value,
+            activeThumbColor: Colors.white,
+            activeTrackColor: MyShopColors.darkSlate,
             inactiveThumbColor: Colors.white,
             inactiveTrackColor: MyShopColors.disabled,
-            trackOutlineColor:
-                const WidgetStatePropertyAll(Colors.transparent),
+            trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
             onChanged: onChanged,
           ),
         ],
@@ -573,8 +569,8 @@ class _ProTipRow extends StatelessWidget {
 // Used for Map Units (KM | Miles). Selected item: white bg + border.
 
 class _TextSegmented<T> extends StatelessWidget {
-  final List<T>    options;
-  final T          selected;
+  final List<T> options;
+  final T selected;
   final String Function(T) labelOf;
   final ValueChanged<T> onSelect;
   final double w;
@@ -609,7 +605,8 @@ class _TextSegmented<T> extends StatelessWidget {
               padding: EdgeInsets.symmetric(
                   horizontal: w * 0.030, vertical: h * 0.009),
               decoration: BoxDecoration(
-                color: isSelected ? MyShopColors.surfaceWhite : Colors.transparent,
+                color:
+                    isSelected ? MyShopColors.surfaceWhite : Colors.transparent,
                 borderRadius: BorderRadius.circular(6),
                 border: isSelected
                     ? Border.all(color: MyShopColors.divider, width: 1)
@@ -629,9 +626,10 @@ class _TextSegmented<T> extends StatelessWidget {
                 style: TextStyle(
                   fontFamily: 'Raleway',
                   fontSize: w * 0.033,
-                  fontWeight:
-                      isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected ? MyShopColors.textPrimary : MyShopColors.textSecondary,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected
+                      ? MyShopColors.textPrimary
+                      : MyShopColors.textSecondary,
                   height: 1.3,
                 ),
               ),
@@ -647,11 +645,11 @@ class _TextSegmented<T> extends StatelessWidget {
 // Used for Interface Theme (☀ Light | 🌙 Dark).
 
 class _IconSegmented<T> extends StatelessWidget {
-  final List<T>       options;
-  final T             selected;
-  final String Function(T)   labelOf;
+  final List<T> options;
+  final T selected;
+  final String Function(T) labelOf;
   final IconData Function(T) iconOf;
-  final ValueChanged<T>      onSelect;
+  final ValueChanged<T> onSelect;
   final double w;
   final double h;
   const _IconSegmented({
@@ -685,7 +683,8 @@ class _IconSegmented<T> extends StatelessWidget {
               padding: EdgeInsets.symmetric(
                   horizontal: w * 0.028, vertical: h * 0.009),
               decoration: BoxDecoration(
-                color: isSelected ? MyShopColors.surfaceWhite : Colors.transparent,
+                color:
+                    isSelected ? MyShopColors.surfaceWhite : Colors.transparent,
                 borderRadius: BorderRadius.circular(6),
                 border: isSelected
                     ? Border.all(color: MyShopColors.divider, width: 1)
@@ -706,8 +705,9 @@ class _IconSegmented<T> extends StatelessWidget {
                   Icon(
                     iconOf(opt),
                     size: w * 0.036,
-                    color:
-                        isSelected ? MyShopColors.textPrimary : MyShopColors.textSecondary,
+                    color: isSelected
+                        ? MyShopColors.textPrimary
+                        : MyShopColors.textSecondary,
                   ),
                   SizedBox(width: w * 0.012),
                   Text(
@@ -715,11 +715,11 @@ class _IconSegmented<T> extends StatelessWidget {
                     style: TextStyle(
                       fontFamily: 'Raleway',
                       fontSize: w * 0.033,
-                      fontWeight: isSelected
-                          ? FontWeight.w700
-                          : FontWeight.w500,
-                      color:
-                          isSelected ? MyShopColors.textPrimary : MyShopColors.textSecondary,
+                      fontWeight:
+                          isSelected ? FontWeight.w700 : FontWeight.w500,
+                      color: isSelected
+                          ? MyShopColors.textPrimary
+                          : MyShopColors.textSecondary,
                       height: 1.3,
                     ),
                   ),

@@ -22,8 +22,8 @@ class DetailedReportScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final size = MediaQuery.sizeOf(context);
-    final w    = size.width;
-    final h    = size.height;
+    final w = size.width;
+    final h = size.height;
 
     final state = ref.watch(activityHistoryProvider);
 
@@ -78,11 +78,11 @@ class DetailedReportScreen extends ConsumerWidget {
 
   PreferredSizeWidget _buildAppBar(BuildContext context, double w) {
     return AppBar(
-      backgroundColor:        MyShopColors.surfaceWhite,
-      surfaceTintColor:       MyShopColors.surfaceWhite,
-      elevation:              0,
+      backgroundColor: MyShopColors.surfaceWhite,
+      surfaceTintColor: MyShopColors.surfaceWhite,
+      elevation: 0,
       scrolledUnderElevation: 0,
-      titleSpacing:           0,
+      titleSpacing: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_rounded,
             color: MyShopColors.textPrimary),
@@ -107,15 +107,15 @@ class DetailedReportScreen extends ConsumerWidget {
 
 class _Report {
   final String monthLabel;
-  final int    totalPesewas;
-  final int    rideTotalPesewas;
-  final int    jobTotalPesewas;
-  final int    rideCount;
-  final int    jobCount;
-  final int    completedCount;
-  final int    cancelledCount;
-  final int    inProgressCount;
-  final int    pendingCount;
+  final int totalPesewas;
+  final int rideTotalPesewas;
+  final int jobTotalPesewas;
+  final int rideCount;
+  final int jobCount;
+  final int completedCount;
+  final int cancelledCount;
+  final int inProgressCount;
+  final int pendingCount;
 
   const _Report({
     required this.monthLabel,
@@ -164,16 +164,16 @@ class _Report {
     }
 
     return _Report(
-      monthLabel:        monthLabel,
-      totalPesewas:      rideTotal + jobTotal,
-      rideTotalPesewas:  rideTotal,
-      jobTotalPesewas:   jobTotal,
-      rideCount:         rideCount,
-      jobCount:          jobCount,
-      completedCount:    completed,
-      cancelledCount:    cancelled,
-      inProgressCount:   inProgress,
-      pendingCount:      pending,
+      monthLabel: monthLabel,
+      totalPesewas: rideTotal + jobTotal,
+      rideTotalPesewas: rideTotal,
+      jobTotalPesewas: jobTotal,
+      rideCount: rideCount,
+      jobCount: jobCount,
+      completedCount: completed,
+      cancelledCount: cancelled,
+      inProgressCount: inProgress,
+      pendingCount: pending,
     );
   }
 
@@ -185,8 +185,7 @@ class _Report {
   double get rideShare =>
       totalPesewas == 0 ? 0 : rideTotalPesewas / totalPesewas;
 
-  double get jobShare =>
-      totalPesewas == 0 ? 0 : jobTotalPesewas / totalPesewas;
+  double get jobShare => totalPesewas == 0 ? 0 : jobTotalPesewas / totalPesewas;
 
   static String formatPesewas(int pesewas) {
     final ghs = pesewas / 100.0;
@@ -204,18 +203,17 @@ class _Report {
 
 class _HeroCard extends StatelessWidget {
   final _Report report;
-  final double  w, h;
+  final double w, h;
   const _HeroCard({required this.report, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.symmetric(
-          horizontal: w * 0.051, vertical: h * 0.026),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.051, vertical: h * 0.026),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
-          end:   Alignment.bottomRight,
+          end: Alignment.bottomRight,
           colors: [MyShopColors.darkSlate, Color(0xFF2C3640)],
         ),
         borderRadius: BorderRadius.circular(12),
@@ -279,7 +277,8 @@ class _HeroCard extends StatelessWidget {
               ),
               _HeroChip(
                 icon: Icons.trending_up_rounded,
-                label: 'Avg ${_Report.formatPesewas(report.averagePerTxnPesewas)}',
+                label:
+                    'Avg ${_Report.formatPesewas(report.averagePerTxnPesewas)}',
                 w: w,
               ),
             ],
@@ -292,15 +291,14 @@ class _HeroCard extends StatelessWidget {
 
 class _HeroChip extends StatelessWidget {
   final IconData icon;
-  final String   label;
-  final double   w;
+  final String label;
+  final double w;
   const _HeroChip({required this.icon, required this.label, required this.w});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.symmetric(
-          horizontal: w * 0.026, vertical: w * 0.013),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.026, vertical: w * 0.013),
       decoration: BoxDecoration(
         color: MyShopColors.surfaceWhite.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(20),
@@ -330,7 +328,7 @@ class _HeroChip extends StatelessWidget {
 
 class _BreakdownCard extends StatelessWidget {
   final _Report report;
-  final double  w, h;
+  final double w, h;
   const _BreakdownCard(
       {required this.report, required this.w, required this.h});
 
@@ -392,7 +390,7 @@ class _BreakdownCard extends StatelessWidget {
 }
 
 class _BreakdownRow extends StatelessWidget {
-  final Color  color;
+  final Color color;
   final String label;
   final String countLabel;
   final String amount;
@@ -467,32 +465,32 @@ class _BreakdownRow extends StatelessWidget {
 
 class _StatsGrid extends StatelessWidget {
   final _Report report;
-  final double  w, h;
+  final double w, h;
   const _StatsGrid({required this.report, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
     final tiles = [
       _StatTileData(
-        icon:  Icons.receipt_long_rounded,
+        icon: Icons.receipt_long_rounded,
         label: 'Transactions',
         value: '${report.totalCount}',
         color: MyShopColors.info,
       ),
       _StatTileData(
-        icon:  Icons.check_circle_outline_rounded,
+        icon: Icons.check_circle_outline_rounded,
         label: 'Completed',
         value: '${report.completedCount}',
         color: MyShopColors.success,
       ),
       _StatTileData(
-        icon:  Icons.cancel_outlined,
+        icon: Icons.cancel_outlined,
         label: 'Cancelled',
         value: '${report.cancelledCount}',
         color: MyShopColors.error,
       ),
       _StatTileData(
-        icon:  Icons.trending_up_rounded,
+        icon: Icons.trending_up_rounded,
         label: 'Avg / txn',
         value: _Report.formatPesewas(report.averagePerTxnPesewas),
         color: MyShopColors.primaryGold,
@@ -516,10 +514,10 @@ class _StatsGrid extends StatelessWidget {
 
 class _StatTileData {
   final IconData icon;
-  final String   label;
-  final String   value;
-  final Color    color;
-  final bool     isLong;
+  final String label;
+  final String value;
+  final Color color;
+  final bool isLong;
   const _StatTileData({
     required this.icon,
     required this.label,
@@ -531,14 +529,13 @@ class _StatTileData {
 
 class _StatTile extends StatelessWidget {
   final _StatTileData data;
-  final double        w, h;
+  final double w, h;
   const _StatTile({required this.data, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.symmetric(
-          horizontal: w * 0.022, vertical: h * 0.014),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.022, vertical: h * 0.014),
       decoration: BoxDecoration(
         color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
@@ -594,7 +591,7 @@ class _StatTile extends StatelessWidget {
 
 class _StatusSplitCard extends StatelessWidget {
   final _Report report;
-  final double  w, h;
+  final double w, h;
   const _StatusSplitCard(
       {required this.report, required this.w, required this.h});
 
@@ -604,22 +601,22 @@ class _StatusSplitCard extends StatelessWidget {
       if (report.completedCount > 0)
         _StatusEntry(
           status: TransactionStatus.completed,
-          count:  report.completedCount,
+          count: report.completedCount,
         ),
       if (report.inProgressCount > 0)
         _StatusEntry(
           status: TransactionStatus.inProgress,
-          count:  report.inProgressCount,
+          count: report.inProgressCount,
         ),
       if (report.pendingCount > 0)
         _StatusEntry(
           status: TransactionStatus.pending,
-          count:  report.pendingCount,
+          count: report.pendingCount,
         ),
       if (report.cancelledCount > 0)
         _StatusEntry(
           status: TransactionStatus.cancelled,
-          count:  report.cancelledCount,
+          count: report.cancelledCount,
         ),
     ];
 
@@ -641,13 +638,13 @@ class _StatusSplitCard extends StatelessWidget {
 
 class _StatusEntry {
   final TransactionStatus status;
-  final int               count;
+  final int count;
   const _StatusEntry({required this.status, required this.count});
 }
 
 class _StatusRow extends StatelessWidget {
   final _StatusEntry entry;
-  final double       w, h;
+  final double w, h;
   const _StatusRow({required this.entry, required this.w, required this.h});
 
   @override
@@ -655,7 +652,7 @@ class _StatusRow extends StatelessWidget {
     return Row(
       children: [
         Container(
-          width:  w * 0.082,
+          width: w * 0.082,
           height: w * 0.082,
           decoration: BoxDecoration(
             color: entry.status.badgeBg,
@@ -663,7 +660,7 @@ class _StatusRow extends StatelessWidget {
           ),
           child: Icon(
             entry.status.badgeIcon,
-            size:  w * 0.041,
+            size: w * 0.041,
             color: entry.status.badgeFg,
           ),
         ),
@@ -711,8 +708,7 @@ class _SectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.symmetric(
-          horizontal: w * 0.044, vertical: h * 0.020),
+      padding: EdgeInsets.symmetric(horizontal: w * 0.044, vertical: h * 0.020),
       decoration: BoxDecoration(
         color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
@@ -766,7 +762,7 @@ class _EmptyReport extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width:  w * 0.205,
+              width: w * 0.205,
               height: w * 0.205,
               decoration: const BoxDecoration(
                 color: MyShopColors.surfaceGrey,
@@ -774,7 +770,7 @@ class _EmptyReport extends StatelessWidget {
               ),
               child: Icon(
                 Icons.bar_chart_rounded,
-                size:  w * 0.092,
+                size: w * 0.092,
                 color: MyShopColors.textSecondary,
               ),
             ),

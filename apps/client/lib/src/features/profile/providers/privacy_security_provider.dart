@@ -16,13 +16,14 @@ enum KycStatus { unverified, pending, verified, rejected }
 
 /// Maps the backend's `client.kycStatus` string to the local enum.
 /// Backend values: 'not_started' | 'pending_review' | 'verified' | 'rejected'.
-KycStatus _kycStatusFromBackend(String? raw, {required bool ghanaCardVerified}) {
+KycStatus _kycStatusFromBackend(String? raw,
+    {required bool ghanaCardVerified}) {
   if (ghanaCardVerified) return KycStatus.verified;
   return switch (raw) {
     'pending_review' => KycStatus.pending,
-    'verified'       => KycStatus.verified,
-    'rejected'       => KycStatus.rejected,
-    _                => KycStatus.unverified,
+    'verified' => KycStatus.verified,
+    'rejected' => KycStatus.rejected,
+    _ => KycStatus.unverified,
   };
 }
 
@@ -76,30 +77,29 @@ class PrivacySecurityState {
 
   const PrivacySecurityState({
     this.data,
-    this.isLoading         = true,
+    this.isLoading = true,
     this.isDeletingAccount = false,
-    this.isSubmittingKyc   = false,
-    this.isAccountDeleted  = false,
+    this.isSubmittingKyc = false,
+    this.isAccountDeleted = false,
     this.errorMessage,
   });
 
   PrivacySecurityState copyWith({
     PrivacySecurityData? data,
-    bool?   isLoading,
-    bool?   isDeletingAccount,
-    bool?   isSubmittingKyc,
-    bool?   isAccountDeleted,
+    bool? isLoading,
+    bool? isDeletingAccount,
+    bool? isSubmittingKyc,
+    bool? isAccountDeleted,
     String? errorMessage,
-    bool    clearError = false,
+    bool clearError = false,
   }) =>
       PrivacySecurityState(
-        data:              data              ?? this.data,
-        isLoading:         isLoading         ?? this.isLoading,
+        data: data ?? this.data,
+        isLoading: isLoading ?? this.isLoading,
         isDeletingAccount: isDeletingAccount ?? this.isDeletingAccount,
-        isSubmittingKyc:   isSubmittingKyc   ?? this.isSubmittingKyc,
-        isAccountDeleted:  isAccountDeleted  ?? this.isAccountDeleted,
-        errorMessage:
-            clearError ? null : (errorMessage ?? this.errorMessage),
+        isSubmittingKyc: isSubmittingKyc ?? this.isSubmittingKyc,
+        isAccountDeleted: isAccountDeleted ?? this.isAccountDeleted,
+        errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       );
 }
 
@@ -128,29 +128,29 @@ class PrivacySecurityNotifier extends StateNotifier<PrivacySecurityState> {
     }
 
     final profile = authState.profile;
-    final client  = profile.client;
+    final client = profile.client;
     final kyc = _kycStatusFromBackend(
       client?.kycStatus,
       ghanaCardVerified: client?.ghanaCardVerified ?? false,
     );
 
     final nationalIdLabel = switch (kyc) {
-      KycStatus.verified   => 'GHA-•••••••••-•',
-      KycStatus.pending    => 'Under review',
-      KycStatus.rejected   => 'Rejected — re-submit',
+      KycStatus.verified => 'GHA-•••••••••-•',
+      KycStatus.pending => 'Under review',
+      KycStatus.rejected => 'Rejected — re-submit',
       KycStatus.unverified => 'Not on file',
     };
 
     state = state.copyWith(
       isLoading: false,
       data: PrivacySecurityData(
-        kycStatus:          kyc,
-        maskedPhone:        _maskPhone(profile.phone),
-        maskedNationalId:   nationalIdLabel,
+        kycStatus: kyc,
+        maskedPhone: _maskPhone(profile.phone),
+        maskedNationalId: nationalIdLabel,
         kycRejectionReason: client?.kycRejectionReason,
         // Real biometric state lives in [biometricSettingProvider] once
         // that screen is built — surface a neutral fallback for now.
-        biometricLabel:     'Tap to set up',
+        biometricLabel: 'Tap to set up',
       ),
       clearError: true,
     );
@@ -168,7 +168,7 @@ class PrivacySecurityNotifier extends StateNotifier<PrivacySecurityState> {
   /// callers should validate before calling. This method does not retry; the
   /// sheet keeps the form open on failure so the user can fix and re-submit.
   Future<String?> submitGhanaCard({
-    required File   imageFile,
+    required File imageFile,
     required String cardNumber,
   }) async {
     if (state.isSubmittingKyc) return null;
@@ -192,7 +192,7 @@ class PrivacySecurityNotifier extends StateNotifier<PrivacySecurityState> {
     try {
       await _ref.read(userServiceProvider).submitClientGhanaCard(
             documentImageUrl: hostedUrl,
-            ghanaCardNumber:  cardNumber,
+            ghanaCardNumber: cardNumber,
           );
     } on ApiException catch (e) {
       state = state.copyWith(isSubmittingKyc: false);
@@ -269,7 +269,7 @@ class PrivacySecurityNotifier extends StateNotifier<PrivacySecurityState> {
     if (!mounted) return;
     state = state.copyWith(
       isDeletingAccount: false,
-      isAccountDeleted:  true,
+      isAccountDeleted: true,
     );
   }
 
@@ -278,13 +278,13 @@ class PrivacySecurityNotifier extends StateNotifier<PrivacySecurityState> {
   static String _maskPhone(String phone) {
     final digits = phone.replaceAll(RegExp(r'[^0-9+]'), '');
     if (digits.length < 4) return phone;
-    final last4   = digits.substring(digits.length - 4);
-    final prefix  = digits.startsWith('+') ? '+233' : '0';
+    final last4 = digits.substring(digits.length - 4);
+    final prefix = digits.startsWith('+') ? '+233' : '0';
     return '$prefix *** *** $last4';
   }
 }
 
-final privacySecurityProvider =
-    StateNotifierProvider.autoDispose<PrivacySecurityNotifier, PrivacySecurityState>(
+final privacySecurityProvider = StateNotifierProvider.autoDispose<
+    PrivacySecurityNotifier, PrivacySecurityState>(
   (ref) => PrivacySecurityNotifier(ref),
 );

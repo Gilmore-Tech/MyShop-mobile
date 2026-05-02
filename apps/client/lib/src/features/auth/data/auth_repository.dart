@@ -44,18 +44,26 @@ class ClientAuthRepository {
     return _service.checkPhone(phone);
   }
 
-  /// Login as an existing client. Sends OTP. [forceLogin] is set to true
-  /// after the user confirms the take-over prompt.
-  Future<void> loginClient(String phone, {bool forceLogin = false}) async {
+  /// Login as an existing client. Sends OTP.
+  Future<void> loginClient(String phone) async {
     final deviceId = await _deviceIdProvider.ensureDeviceId();
     final deviceInfo = await _deviceIdProvider.readDeviceInfo();
     await _service.loginClient(LoginRequest(
       phone: phone,
       deviceId: deviceId,
       deviceInfo: deviceInfo,
-      forceLogin: forceLogin,
     ));
     await _tokenStorage.writePhone(phone);
+  }
+
+  /// Notify support that another device holds the active session and the
+  /// user can't sign out on it. Public endpoint — no auth required.
+  Future<void> requestSessionRecovery(String phone) async {
+    final deviceId = await _deviceIdProvider.ensureDeviceId();
+    await _service.requestSessionRecovery(
+      phone: phone,
+      deviceId: deviceId,
+    );
   }
 
   /// Verify OTP → persist tokens.

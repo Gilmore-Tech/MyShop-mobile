@@ -15,23 +15,23 @@ enum PaymentMethodType { mtn, vodafone, airtelTigo, visa, mastercard, cash }
 // All monetary values in pesewas (int).  100 pesewas = GH¢ 1.
 
 class RideReceiptData {
-  final String            rideId;           // "RID-99283-GH"
-  final String            driverName;       // "Kojo Mensah"
-  final String            vehicleDisplay;   // "Toyota Corolla · GW 1234-21"
-  final double            driverRating;     // 4.9
-  final String            pickupAddress;
-  final String            dropoffAddress;
+  final String rideId; // "RID-99283-GH"
+  final String driverName; // "Kojo Mensah"
+  final String vehicleDisplay; // "Toyota Corolla · GW 1234-21"
+  final double driverRating; // 4.9
+  final String pickupAddress;
+  final String dropoffAddress;
 
   // Fare components (pesewas)
-  final int               baseFarePesewas;
-  final double            distanceKm;
-  final int               distanceFarePesewas;
-  final int               bookingFeePesewas;
-  final int               taxesPesewas;
-  final int               totalPaidPesewas;
+  final int baseFarePesewas;
+  final double distanceKm;
+  final int distanceFarePesewas;
+  final int bookingFeePesewas;
+  final int taxesPesewas;
+  final int totalPaidPesewas;
 
-  final String            dateTimeLabel;       // "24 May 2024, 14:32"
-  final String            paymentMethodLabel;  // "MTN Mobile Money"
+  final String dateTimeLabel; // "24 May 2024, 14:32"
+  final String paymentMethodLabel; // "MTN Mobile Money"
   final PaymentMethodType paymentMethodType;
 
   const RideReceiptData({
@@ -54,11 +54,11 @@ class RideReceiptData {
 
   static String _fmt(int p) => 'GH¢ ${(p / 100.0).toStringAsFixed(2)}';
 
-  String get baseFareDisplay     => _fmt(baseFarePesewas);
+  String get baseFareDisplay => _fmt(baseFarePesewas);
   String get distanceFareDisplay => _fmt(distanceFarePesewas);
-  String get bookingFeeDisplay   => _fmt(bookingFeePesewas);
-  String get taxesDisplay        => _fmt(taxesPesewas);
-  String get totalPaidDisplay    => _fmt(totalPaidPesewas);
+  String get bookingFeeDisplay => _fmt(bookingFeePesewas);
+  String get taxesDisplay => _fmt(taxesPesewas);
+  String get totalPaidDisplay => _fmt(totalPaidPesewas);
 }
 
 // ── Provider ───────────────────────────────────────────────────────────────────
@@ -81,8 +81,7 @@ class _RideReceiptNotifier
           ride['driver'] as Map<String, dynamic>? ?? <String, dynamic>{};
 
       // Parse payment method type from API label
-      final paymentLabel =
-          ride['paymentMethod'] as String? ?? 'Cash';
+      final paymentLabel = ride['paymentMethod'] as String? ?? 'Cash';
       final pmType = _parsePaymentMethodType(paymentLabel);
 
       return RideReceiptData(
@@ -96,18 +95,15 @@ class _RideReceiptNotifier
         // Backend's RideSnapshot serves the field as `dropoffAddress`; the
         // older `destinationAddress` alias never made it into the canonical
         // payload, so reading it returned null and the receipt was blank.
-        dropoffAddress: (ride['dropoffAddress'] ??
-                ride['destinationAddress']) as String? ??
-            '',
+        dropoffAddress:
+            (ride['dropoffAddress'] ?? ride['destinationAddress']) as String? ??
+                '',
         baseFarePesewas: (ride['baseFare'] as num?)?.toInt() ?? 0,
         distanceKm: (ride['distanceKm'] as num?)?.toDouble() ?? 0,
-        distanceFarePesewas:
-            (ride['distanceFare'] as num?)?.toInt() ?? 0,
-        bookingFeePesewas:
-            (ride['bookingFee'] as num?)?.toInt() ?? 0,
+        distanceFarePesewas: (ride['distanceFare'] as num?)?.toInt() ?? 0,
+        bookingFeePesewas: (ride['bookingFee'] as num?)?.toInt() ?? 0,
         taxesPesewas: (ride['taxes'] as num?)?.toInt() ?? 0,
-        totalPaidPesewas:
-            (ride['totalFare'] as num?)?.toInt() ?? 0,
+        totalPaidPesewas: (ride['totalFare'] as num?)?.toInt() ?? 0,
         dateTimeLabel: ride['completedAt'] as String? ?? '',
         paymentMethodLabel: paymentLabel,
         paymentMethodType: pmType,
@@ -146,21 +142,21 @@ class _RideReceiptNotifier
 // ── Mock data ──────────────────────────────────────────────────────────────────
 
 const _defaultMock = RideReceiptData(
-  rideId:              'RID-99283-GH',
-  driverName:          'Kojo Mensah',
-  vehicleDisplay:      'Toyota Corolla · GW 1234-21',
-  driverRating:        4.9,
-  pickupAddress:       'Kotoka International Airport (ACC)',
-  dropoffAddress:      'Oxford Street, Osu, Accra',
-  baseFarePesewas:     1000,  // GH¢ 10.00
-  distanceKm:          12.4,
-  distanceFarePesewas: 2850,  // GH¢ 28.50
-  bookingFeePesewas:   500,   // GH¢  5.00
-  taxesPesewas:        200,   // GH¢  2.00
-  totalPaidPesewas:    4550,  // GH¢ 45.50
-  dateTimeLabel:       '24 May 2024, 14:32',
-  paymentMethodLabel:  'MTN Mobile Money',
-  paymentMethodType:   PaymentMethodType.mtn,
+  rideId: 'RID-99283-GH',
+  driverName: 'Kojo Mensah',
+  vehicleDisplay: 'Toyota Corolla · GW 1234-21',
+  driverRating: 4.9,
+  pickupAddress: 'Kotoka International Airport (ACC)',
+  dropoffAddress: 'Oxford Street, Osu, Accra',
+  baseFarePesewas: 1000, // GH¢ 10.00
+  distanceKm: 12.4,
+  distanceFarePesewas: 2850, // GH¢ 28.50
+  bookingFeePesewas: 500, // GH¢  5.00
+  taxesPesewas: 200, // GH¢  2.00
+  totalPaidPesewas: 4550, // GH¢ 45.50
+  dateTimeLabel: '24 May 2024, 14:32',
+  paymentMethodLabel: 'MTN Mobile Money',
+  paymentMethodType: PaymentMethodType.mtn,
 );
 
 /// Keyed mock receipts — populate when wiring to real API.

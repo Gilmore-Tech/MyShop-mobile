@@ -27,7 +27,8 @@ class FareEstimateScreen extends ConsumerWidget {
     final search = ref.watch(rideSearchProvider);
     final hasPickup = search.pickup != null;
     final hasDestination = search.destination != null;
-    final hasCoords = search.pickup?.lat != null && search.destination?.lat != null;
+    final hasCoords =
+        search.pickup?.lat != null && search.destination?.lat != null;
     final estimate = ref.watch(fareEstimateProvider);
     final estimateReady = estimate.valueOrNull?.isNotEmpty == true;
 
@@ -47,10 +48,10 @@ class FareEstimateScreen extends ConsumerWidget {
                     child: PickupDestinationFields(
                       pickupLabel: search.pickup?.name ?? 'Choose pickup',
                       destinationLabel: search.destination?.name,
-                      onPickupTap: () => context
-                          .push(AppRoutes.rideSearchPath('pickup')),
-                      onDestinationTap: () => context
-                          .push(AppRoutes.rideSearchPath('destination')),
+                      onPickupTap: () =>
+                          context.push(AppRoutes.rideSearchPath('pickup')),
+                      onDestinationTap: () =>
+                          context.push(AppRoutes.rideSearchPath('destination')),
                       onDestinationPinTap: () => context
                           .push(AppRoutes.ridePinPickerPath('destination')),
                     ),
@@ -58,12 +59,11 @@ class FareEstimateScreen extends ConsumerWidget {
                   const SizedBox(height: 20),
                   if (!hasPickup || !hasDestination)
                     _RecentDestinationsSection(
-                      onSelect: (d) => ref
-                          .read(rideSearchProvider.notifier)
-                          .setLocation(
-                            RideSearchField.destination,
-                            RideLocation(name: d.label, address: d.address),
-                          ),
+                      onSelect: (d) =>
+                          ref.read(rideSearchProvider.notifier).setLocation(
+                                RideSearchField.destination,
+                                RideLocation(name: d.label, address: d.address),
+                              ),
                     ),
                   if (hasCoords) ...[
                     const SizedBox(height: 16),
@@ -116,7 +116,8 @@ class FareEstimateScreen extends ConsumerWidget {
       scrolledUnderElevation: 0,
       leading: IconButton(
         onPressed: () => context.pop(),
-        icon: const Icon(Icons.arrow_back_rounded, color: MyShopColors.textPrimary),
+        icon: const Icon(Icons.arrow_back_rounded,
+            color: MyShopColors.textPrimary),
       ),
       title: const Text(
         'Plan Your Trip',
@@ -128,7 +129,6 @@ class FareEstimateScreen extends ConsumerWidget {
       ),
     );
   }
-
 }
 
 // ── Sections ──────────────────────────────────────────────────────────────────
@@ -319,8 +319,7 @@ class _PaymentSection extends ConsumerWidget {
         PaymentMethodRow(
           method: method,
           onChangeTap: () async {
-            final picked =
-                await showRidePaymentMethodSheet(context, method);
+            final picked = await showRidePaymentMethodSheet(context, method);
             if (picked != null) {
               ref.read(selectedRidePaymentMethodProvider.notifier).state =
                   picked;

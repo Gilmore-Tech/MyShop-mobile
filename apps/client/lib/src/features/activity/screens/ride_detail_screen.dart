@@ -15,9 +15,9 @@ class RideDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final size   = MediaQuery.sizeOf(context);
-    final w      = size.width;
-    final h      = size.height;
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
     final rideId = GoRouterState.of(context).pathParameters['rideId'] ?? '';
 
     final asyncDetail = ref.watch(rideDetailByIdProvider(rideId));
@@ -27,24 +27,22 @@ class RideDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         backgroundColor: MyShopColors.surfaceWhite,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back,
-              color: MyShopColors.textPrimary),
+          icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
           onPressed: () => context.pop(),
         ),
         title: Text('Ride Detail',
             style: TextStyle(
-                color:      MyShopColors.textPrimary,
-                fontSize:   w * 0.044,
+                color: MyShopColors.textPrimary,
+                fontSize: w * 0.044,
                 fontWeight: FontWeight.w700)),
         centerTitle: false,
         actions: [
           TextButton(
-            onPressed: () =>
-                context.push(AppRoutes.rideReceiptPath(rideId)),
+            onPressed: () => context.push(AppRoutes.rideReceiptPath(rideId)),
             child: Text('Receipt',
                 style: TextStyle(
-                    color:      MyShopColors.primaryGold,
-                    fontSize:   w * 0.036,
+                    color: MyShopColors.primaryGold,
+                    fontSize: w * 0.036,
                     fontWeight: FontWeight.w600)),
           ),
         ],
@@ -118,23 +116,21 @@ class _StatusCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-              color:      Colors.black.withAlpha(8),
+              color: Colors.black.withAlpha(8),
               blurRadius: 8,
-              offset:     const Offset(0, 2)),
+              offset: const Offset(0, 2)),
         ],
       ),
       child: Row(
         children: [
           Container(
             padding: EdgeInsets.all(w * 0.032),
-            decoration: BoxDecoration(
-                color: badgeBg, shape: BoxShape.circle),
-            child: Icon(Icons.directions_car_rounded,
-                color: badgeFg, size: 24),
+            decoration: BoxDecoration(color: badgeBg, shape: BoxShape.circle),
+            child: Icon(Icons.directions_car_rounded, color: badgeFg, size: 24),
           ),
           SizedBox(width: w * 0.036),
           Expanded(
@@ -145,29 +141,28 @@ class _StatusCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color:      MyShopColors.textPrimary,
-                      fontSize:   w * 0.038,
+                      color: MyShopColors.textPrimary,
+                      fontSize: w * 0.038,
                       fontWeight: FontWeight.w700,
                     )),
                 const SizedBox(height: 4),
                 Text(data.dateTimeLabel,
                     style: TextStyle(
-                        color:    MyShopColors.textSecondary,
+                        color: MyShopColors.textSecondary,
                         fontSize: w * 0.032)),
               ],
             ),
           ),
           Container(
-            padding: EdgeInsets.symmetric(
-                horizontal: w * 0.024, vertical: 5),
+            padding: EdgeInsets.symmetric(horizontal: w * 0.024, vertical: 5),
             decoration: BoxDecoration(
-              color:        badgeBg,
+              color: badgeBg,
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(badgeLabel,
                 style: TextStyle(
-                  color:      badgeFg,
-                  fontSize:   w * 0.028,
+                  color: badgeFg,
+                  fontSize: w * 0.028,
                   fontWeight: FontWeight.w600,
                 )),
           ),
@@ -178,10 +173,18 @@ class _StatusCard extends StatelessWidget {
 
   (Color bg, Color fg, String label) _statusStyle(String status) {
     return switch (status) {
-      'completed'   => (MyShopColors.successLight, MyShopColors.success, 'Completed'),
-      'cancelled'   => (MyShopColors.errorLight, MyShopColors.error, 'Cancelled'),
-      'in_progress' => (MyShopColors.warningLight, MyShopColors.warning, 'In Progress'),
-      _             => (MyShopColors.infoLight, MyShopColors.info, 'Pending'),
+      'completed' => (
+          MyShopColors.successLight,
+          MyShopColors.success,
+          'Completed'
+        ),
+      'cancelled' => (MyShopColors.errorLight, MyShopColors.error, 'Cancelled'),
+      'in_progress' => (
+          MyShopColors.warningLight,
+          MyShopColors.warning,
+          'In Progress'
+        ),
+      _ => (MyShopColors.infoLight, MyShopColors.info, 'Pending'),
     };
   }
 }
@@ -198,19 +201,19 @@ class _RouteCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: MyShopColors.divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         children: [
           _RouteRow(
-            icon:    Icons.radio_button_checked_rounded,
-            color:   MyShopColors.primaryGold,
-            label:   'Pickup',
+            icon: Icons.radio_button_checked_rounded,
+            color: MyShopColors.primaryGold,
+            label: 'Pickup',
             address: data.pickupAddress,
-            time:    data.pickupTime ?? '',
-            w:       w,
+            time: data.pickupTime ?? '',
+            w: w,
           ),
           Padding(
             padding: EdgeInsets.only(left: w * 0.045),
@@ -219,19 +222,19 @@ class _RouteCard extends StatelessWidget {
                   3,
                   (_) => Container(
                         height: 6,
-                        width:  1.5,
+                        width: 1.5,
                         margin: const EdgeInsets.symmetric(vertical: 2),
-                        color:  MyShopColors.divider,
+                        color: MyShopColors.divider,
                       )),
             ),
           ),
           _RouteRow(
-            icon:    Icons.location_on_rounded,
-            color:   MyShopColors.error,
-            label:   'Drop-off',
+            icon: Icons.location_on_rounded,
+            color: MyShopColors.error,
+            label: 'Drop-off',
             address: data.dropoffAddress,
-            time:    data.dropoffTime ?? '',
-            w:       w,
+            time: data.dropoffTime ?? '',
+            w: w,
           ),
         ],
       ),
@@ -241,9 +244,9 @@ class _RouteCard extends StatelessWidget {
 
 class _RouteRow extends StatelessWidget {
   final IconData icon;
-  final Color    color;
-  final String   label, address, time;
-  final double   w;
+  final Color color;
+  final String label, address, time;
+  final double w;
 
   const _RouteRow({
     required this.icon,
@@ -267,13 +270,12 @@ class _RouteRow extends StatelessWidget {
             children: [
               Text(label,
                   style: TextStyle(
-                      color:    MyShopColors.textSecondary,
-                      fontSize: w * 0.028)),
+                      color: MyShopColors.textSecondary, fontSize: w * 0.028)),
               const SizedBox(height: 2),
               Text(address,
                   style: TextStyle(
-                    color:      MyShopColors.textPrimary,
-                    fontSize:   w * 0.036,
+                    color: MyShopColors.textPrimary,
+                    fontSize: w * 0.036,
                     fontWeight: FontWeight.w600,
                   )),
             ],
@@ -282,8 +284,7 @@ class _RouteRow extends StatelessWidget {
         if (time.isNotEmpty)
           Text(time,
               style: TextStyle(
-                  color:    MyShopColors.textSecondary,
-                  fontSize: w * 0.030)),
+                  color: MyShopColors.textSecondary, fontSize: w * 0.030)),
       ],
     );
   }
@@ -301,14 +302,14 @@ class _DriverCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: MyShopColors.divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Row(
         children: [
           Container(
-            width:  w * 0.13,
+            width: w * 0.13,
             height: w * 0.13,
             decoration: const BoxDecoration(
                 color: Color(0xFF2C3E50), shape: BoxShape.circle),
@@ -322,14 +323,14 @@ class _DriverCard extends StatelessWidget {
               children: [
                 Text(data.driverName,
                     style: TextStyle(
-                      color:      MyShopColors.textPrimary,
-                      fontSize:   w * 0.040,
+                      color: MyShopColors.textPrimary,
+                      fontSize: w * 0.040,
                       fontWeight: FontWeight.w700,
                     )),
                 const SizedBox(height: 3),
                 Text(data.vehicleDisplay,
                     style: TextStyle(
-                        color:    MyShopColors.textSecondary,
+                        color: MyShopColors.textSecondary,
                         fontSize: w * 0.032)),
                 if (data.driverRating > 0) ...[
                   const SizedBox(height: 4),
@@ -339,8 +340,8 @@ class _DriverCard extends StatelessWidget {
                     const SizedBox(width: 3),
                     Text(data.driverRating.toStringAsFixed(1),
                         style: TextStyle(
-                          color:      MyShopColors.textPrimary,
-                          fontSize:   w * 0.032,
+                          color: MyShopColors.textPrimary,
+                          fontSize: w * 0.032,
                           fontWeight: FontWeight.w600,
                         )),
                   ]),
@@ -353,15 +354,14 @@ class _DriverCard extends StatelessWidget {
             children: [
               Text(data.durationDisplay,
                   style: TextStyle(
-                    color:      MyShopColors.textPrimary,
-                    fontSize:   w * 0.036,
+                    color: MyShopColors.textPrimary,
+                    fontSize: w * 0.036,
                     fontWeight: FontWeight.w700,
                   )),
               const SizedBox(height: 2),
               Text(data.distanceDisplay,
                   style: TextStyle(
-                      color:    MyShopColors.textSecondary,
-                      fontSize: w * 0.028)),
+                      color: MyShopColors.textSecondary, fontSize: w * 0.028)),
             ],
           ),
         ],
@@ -382,21 +382,27 @@ class _FareCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: MyShopColors.divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         children: [
           if (data.baseFarePesewas > 0)
-            _FareRow(label: 'Base fare', value: data.baseFareDisplay, w: w, h: h),
+            _FareRow(
+                label: 'Base fare', value: data.baseFareDisplay, w: w, h: h),
           if (data.distanceFarePesewas > 0)
             _FareRow(
                 label: 'Distance (${data.distanceDisplay})',
                 value: data.distanceFareDisplay,
-                w: w, h: h),
+                w: w,
+                h: h),
           if (data.bookingFeePesewas > 0)
-            _FareRow(label: 'Booking fee', value: data.bookingFeeDisplay, w: w, h: h),
+            _FareRow(
+                label: 'Booking fee',
+                value: data.bookingFeeDisplay,
+                w: w,
+                h: h),
           Padding(
             padding: EdgeInsets.symmetric(vertical: h * 0.010),
             child: const Divider(height: 1, color: MyShopColors.divider),
@@ -406,14 +412,14 @@ class _FareCard extends StatelessWidget {
             children: [
               Text('Total',
                   style: TextStyle(
-                    color:      MyShopColors.textPrimary,
-                    fontSize:   w * 0.038,
+                    color: MyShopColors.textPrimary,
+                    fontSize: w * 0.038,
                     fontWeight: FontWeight.w700,
                   )),
               Text(data.totalFareDisplay,
                   style: TextStyle(
-                    color:      MyShopColors.textPrimary,
-                    fontSize:   w * 0.044,
+                    color: MyShopColors.textPrimary,
+                    fontSize: w * 0.044,
                     fontWeight: FontWeight.w800,
                   )),
             ],
@@ -426,8 +432,7 @@ class _FareCard extends StatelessWidget {
               SizedBox(width: w * 0.016),
               Text('Paid via ${data.paymentMethod}',
                   style: TextStyle(
-                      color:    MyShopColors.textSecondary,
-                      fontSize: w * 0.030)),
+                      color: MyShopColors.textSecondary, fontSize: w * 0.030)),
             ],
           ),
         ],
@@ -458,8 +463,8 @@ class _FareRow extends StatelessWidget {
                   color: MyShopColors.textSecondary, fontSize: w * 0.034)),
           Text(value,
               style: TextStyle(
-                color:      MyShopColors.textPrimary,
-                fontSize:   w * 0.034,
+                color: MyShopColors.textPrimary,
+                fontSize: w * 0.034,
                 fontWeight: FontWeight.w500,
               )),
         ],
@@ -488,25 +493,22 @@ class _ActionRow extends StatelessWidget {
         if (data.isCompleted)
           Expanded(
             child: OutlinedButton.icon(
-              onPressed: () =>
-                  context.push(AppRoutes.rideDisputePath(rideId)),
+              onPressed: () => context.push(AppRoutes.rideDisputePath(rideId)),
               icon: const Icon(Icons.flag_outlined, size: 18),
               label: const Text('Dispute Fare'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: MyShopColors.error,
-                side:  const BorderSide(color: MyShopColors.error),
+                side: const BorderSide(color: MyShopColors.error),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
-                padding:
-                    EdgeInsets.symmetric(vertical: h * 0.018),
+                padding: EdgeInsets.symmetric(vertical: h * 0.018),
               ),
             ),
           ),
         if (data.isCompleted) SizedBox(width: w * 0.030),
         Expanded(
           child: ElevatedButton.icon(
-            onPressed: () =>
-                context.push(AppRoutes.rideReceiptPath(rideId)),
+            onPressed: () => context.push(AppRoutes.rideReceiptPath(rideId)),
             icon: const Icon(Icons.receipt_long_rounded, size: 18),
             label: const Text('View Receipt'),
             style: ElevatedButton.styleFrom(
@@ -515,8 +517,7 @@ class _ActionRow extends StatelessWidget {
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)),
               elevation: 0,
-              padding:
-                  EdgeInsets.symmetric(vertical: h * 0.018),
+              padding: EdgeInsets.symmetric(vertical: h * 0.018),
             ),
           ),
         ),

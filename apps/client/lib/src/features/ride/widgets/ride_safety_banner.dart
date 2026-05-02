@@ -11,14 +11,16 @@ class RideSafetyBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: MyShopColors.primaryGoldLight,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.4)),
+        border:
+            Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.4)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Padding(
             padding: EdgeInsets.only(top: 1),
-            child: Icon(Icons.shield_outlined, size: 18, color: MyShopColors.primaryGold),
+            child: Icon(Icons.shield_outlined,
+                size: 18, color: MyShopColors.primaryGold),
           ),
           const SizedBox(width: 10),
           const Expanded(child: _SafetyText()),

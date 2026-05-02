@@ -8,9 +8,9 @@ import '../../../app/theme_provider.dart';
 // Theme is owned by [themeNotifierProvider] under its own key — these are
 // for the prefs that don't have a dedicated provider yet.
 
-const _kPrefDistanceUnit     = 'app_pref_distance_unit';      // 'km' | 'miles'
-const _kPrefReplayOnboarding = 'app_pref_replay_onboarding';  // bool
-const _kPrefFeatureUpdates   = 'app_pref_feature_updates';    // bool
+const _kPrefDistanceUnit = 'app_pref_distance_unit'; // 'km' | 'miles'
+const _kPrefReplayOnboarding = 'app_pref_replay_onboarding'; // bool
+const _kPrefFeatureUpdates = 'app_pref_feature_updates'; // bool
 
 // ── Distance Unit ─────────────────────────────────────────────────────────────
 
@@ -18,7 +18,7 @@ enum DistanceUnit { km, miles }
 
 extension DistanceUnitX on DistanceUnit {
   String get label => switch (this) {
-        DistanceUnit.km    => 'KM',
+        DistanceUnit.km => 'KM',
         DistanceUnit.miles => 'Miles',
       };
 }
@@ -30,17 +30,17 @@ enum AppThemeMode { light, dark }
 extension AppThemeModeX on AppThemeMode {
   String get label => switch (this) {
         AppThemeMode.light => 'Light',
-        AppThemeMode.dark  => 'Dark',
+        AppThemeMode.dark => 'Dark',
       };
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
 class AppPreferencesState {
-  final DistanceUnit  distanceUnit;
-  final AppThemeMode  themeMode;
-  final bool          replayOnboarding;
-  final bool          featureUpdates;
+  final DistanceUnit distanceUnit;
+  final AppThemeMode themeMode;
+  final bool replayOnboarding;
+  final bool featureUpdates;
 
   /// Reserved for future failures from auto-save side effects. Currently
   /// every pref is a SharedPreferences write that doesn't 4xx, so this is
@@ -49,28 +49,27 @@ class AppPreferencesState {
   final String? errorMessage;
 
   const AppPreferencesState({
-    this.distanceUnit     = DistanceUnit.km,
-    this.themeMode        = AppThemeMode.light,
+    this.distanceUnit = DistanceUnit.km,
+    this.themeMode = AppThemeMode.light,
     this.replayOnboarding = false,
-    this.featureUpdates   = true,
+    this.featureUpdates = true,
     this.errorMessage,
   });
 
   AppPreferencesState copyWith({
     DistanceUnit? distanceUnit,
     AppThemeMode? themeMode,
-    bool?         replayOnboarding,
-    bool?         featureUpdates,
-    String?       errorMessage,
-    bool          clearError = false,
+    bool? replayOnboarding,
+    bool? featureUpdates,
+    String? errorMessage,
+    bool clearError = false,
   }) =>
       AppPreferencesState(
-        distanceUnit:     distanceUnit     ?? this.distanceUnit,
-        themeMode:        themeMode        ?? this.themeMode,
+        distanceUnit: distanceUnit ?? this.distanceUnit,
+        themeMode: themeMode ?? this.themeMode,
         replayOnboarding: replayOnboarding ?? this.replayOnboarding,
-        featureUpdates:   featureUpdates   ?? this.featureUpdates,
-        errorMessage:
-            clearError ? null : (errorMessage ?? this.errorMessage),
+        featureUpdates: featureUpdates ?? this.featureUpdates,
+        errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       );
 }
 
@@ -102,15 +101,14 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferencesState> {
         : DistanceUnit.km;
     final initialReplayOnboarding =
         prefs.getBool(_kPrefReplayOnboarding) ?? false;
-    final initialFeatureUpdates =
-        prefs.getBool(_kPrefFeatureUpdates) ?? true;
+    final initialFeatureUpdates = prefs.getBool(_kPrefFeatureUpdates) ?? true;
 
     if (!mounted) return;
     state = state.copyWith(
-      themeMode:        initialThemeMode,
-      distanceUnit:     initialDistanceUnit,
+      themeMode: initialThemeMode,
+      distanceUnit: initialDistanceUnit,
       replayOnboarding: initialReplayOnboarding,
-      featureUpdates:   initialFeatureUpdates,
+      featureUpdates: initialFeatureUpdates,
     );
   }
 

@@ -77,25 +77,26 @@ class _AppBar extends ConsumerWidget {
           Text(
             'Artisans',
             style: TextStyle(
-              fontSize:   w * 0.062,
+              fontSize: w * 0.062,
               fontWeight: FontWeight.w700,
-              color:      MyShopColors.textPrimary,
-              height:     1.2,
+              color: MyShopColors.textPrimary,
+              height: 1.2,
             ),
           ),
           SizedBox(height: h * 0.005),
           Row(
             children: [
-              Icon(Icons.location_on_rounded, size: w * 0.036, color: MyShopColors.primaryGold),
+              Icon(Icons.location_on_rounded,
+                  size: w * 0.036, color: MyShopColors.primaryGold),
               SizedBox(width: w * 0.010),
               Expanded(
                 child: Text(
                   ref.watch(currentLocationLabelProvider).value ??
                       'Locating...',
                   style: TextStyle(
-                    fontSize:   w * 0.031,
+                    fontSize: w * 0.031,
                     fontWeight: FontWeight.w400,
-                    color:      MyShopColors.textSecondary,
+                    color: MyShopColors.textSecondary,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -128,20 +129,20 @@ class _HeroSection extends StatelessWidget {
           Text(
             'What do you need done?',
             style: TextStyle(
-              fontSize:   w * 0.051,
+              fontSize: w * 0.051,
               fontWeight: FontWeight.w700,
-              color:      MyShopColors.textPrimary,
-              height:     1.3,
+              color: MyShopColors.textPrimary,
+              height: 1.3,
             ),
           ),
           SizedBox(height: h * 0.007),
           Text(
             'Pick a category to post a request — verified artisans will bid.',
             style: TextStyle(
-              fontSize:   w * 0.033,
+              fontSize: w * 0.033,
               fontWeight: FontWeight.w400,
-              color:      MyShopColors.textSecondary,
-              height:     1.4,
+              color: MyShopColors.textSecondary,
+              height: 1.4,
             ),
           ),
         ],
@@ -165,15 +166,15 @@ class _CategoriesSection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SectionHeader(
-          title:       'Categories',
+          title: 'Categories',
           actionLabel: 'View All',
           onActionTap: () => context.push(AppRoutes.servicesAllCategories),
         ),
         SizedBox(height: h * 0.014),
         categoriesAsync.when(
           loading: () => const _CategoriesSkeletonGrid(),
-          error:   (_, __) => const SizedBox.shrink(),
-          data:    (categories) => _CategoryGrid(categories: categories),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (categories) => _CategoryGrid(categories: categories),
         ),
       ],
     );
@@ -186,10 +187,10 @@ class _CategoryGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final w              = MediaQuery.sizeOf(context).width;
+    final w = MediaQuery.sizeOf(context).width;
     final crossAxisSpacing = w * 0.026;
-    final horizontalPad  = w * 0.041;
-    final itemWidth      = (w - horizontalPad * 2 - crossAxisSpacing * 2) / 3;
+    final horizontalPad = w * 0.041;
+    final itemWidth = (w - horizontalPad * 2 - crossAxisSpacing * 2) / 3;
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPad),
@@ -197,12 +198,12 @@ class _CategoryGrid extends StatelessWidget {
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount:   3,
+          crossAxisCount: 3,
           crossAxisSpacing: crossAxisSpacing,
-          mainAxisSpacing:  w * 0.026,
+          mainAxisSpacing: w * 0.026,
           childAspectRatio: itemWidth / (itemWidth * 1.05),
         ),
-        itemCount:   categories.length,
+        itemCount: categories.length,
         itemBuilder: (context, i) => _CategoryCard(
           category: categories[i],
           onTap: () => _onCategoryTap(context, categories[i]),
@@ -223,7 +224,7 @@ class _CategoryGrid extends StatelessWidget {
     context.push(
       AppRoutes.jobNew,
       extra: {
-        'categoryId':   category.id,
+        'categoryId': category.id,
         'categoryName': category.name,
       },
     );
@@ -287,18 +288,18 @@ class _SubcategorySheet extends StatelessWidget {
                 Text(
                   'Choose ${parent.name.toLowerCase()} type',
                   style: TextStyle(
-                    fontSize:   w * 0.046,
+                    fontSize: w * 0.046,
                     fontWeight: FontWeight.w700,
-                    color:      MyShopColors.textPrimary,
+                    color: MyShopColors.textPrimary,
                   ),
                 ),
                 SizedBox(height: h * 0.005),
                 Text(
                   'Select what you need repaired to post your request.',
                   style: TextStyle(
-                    fontSize:   w * 0.031,
+                    fontSize: w * 0.031,
                     fontWeight: FontWeight.w400,
-                    color:      MyShopColors.textSecondary,
+                    color: MyShopColors.textSecondary,
                   ),
                 ),
               ],
@@ -319,12 +320,12 @@ class _SubcategorySheet extends StatelessWidget {
                 child: Padding(
                   padding: EdgeInsets.symmetric(
                     horizontal: w * 0.041,
-                    vertical:   h * 0.017,
+                    vertical: h * 0.017,
                   ),
                   child: Row(
                     children: [
                       Container(
-                        width:  w * 0.092,
+                        width: w * 0.092,
                         height: w * 0.092,
                         decoration: const BoxDecoration(
                           color: MyShopColors.surfaceGrey,
@@ -332,7 +333,7 @@ class _SubcategorySheet extends StatelessWidget {
                         ),
                         child: Icon(
                           child.icon,
-                          size:  w * 0.046,
+                          size: w * 0.046,
                           color: MyShopColors.darkSlate,
                         ),
                       ),
@@ -341,15 +342,15 @@ class _SubcategorySheet extends StatelessWidget {
                         child: Text(
                           child.name,
                           style: TextStyle(
-                            fontSize:   w * 0.038,
+                            fontSize: w * 0.038,
                             fontWeight: FontWeight.w500,
-                            color:      MyShopColors.textPrimary,
+                            color: MyShopColors.textPrimary,
                           ),
                         ),
                       ),
                       Icon(
                         Icons.chevron_right_rounded,
-                        size:  w * 0.056,
+                        size: w * 0.056,
                         color: MyShopColors.textSecondary,
                       ),
                     ],
@@ -366,7 +367,7 @@ class _SubcategorySheet extends StatelessWidget {
 
 class _CategoryCard extends StatelessWidget {
   final ServiceCategory category;
-  final VoidCallback    onTap;
+  final VoidCallback onTap;
 
   const _CategoryCard({required this.category, required this.onTap});
 
@@ -380,13 +381,13 @@ class _CategoryCard extends StatelessWidget {
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
-          color:        MyShopColors.surfaceWhite,
+          color: MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(w * 0.031),
           boxShadow: [
             BoxShadow(
-              color:      Colors.black.withValues(alpha: 0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: w * 0.015,
-              offset:     Offset(0, w * 0.005),
+              offset: Offset(0, w * 0.005),
             ),
           ],
         ),
@@ -394,13 +395,14 @@ class _CategoryCard extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width:  w * 0.103,
+              width: w * 0.103,
               height: w * 0.103,
               decoration: const BoxDecoration(
                 color: MyShopColors.surfaceGrey,
                 shape: BoxShape.circle,
               ),
-              child: Icon(category.icon, size: w * 0.056, color: MyShopColors.darkSlate),
+              child: Icon(category.icon,
+                  size: w * 0.056, color: MyShopColors.darkSlate),
             ),
             SizedBox(height: h * 0.009),
             Padding(
@@ -408,14 +410,14 @@ class _CategoryCard extends StatelessWidget {
               child: Text(
                 category.name,
                 style: TextStyle(
-                  fontSize:   w * 0.028,
+                  fontSize: w * 0.028,
                   fontWeight: FontWeight.w500,
-                  color:      MyShopColors.textPrimary,
-                  height:     1.3,
+                  color: MyShopColors.textPrimary,
+                  height: 1.3,
                 ),
                 textAlign: TextAlign.center,
-                maxLines:  2,
-                overflow:  TextOverflow.ellipsis,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
@@ -436,16 +438,16 @@ class _CategoriesSkeletonGrid extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: GridView.count(
         shrinkWrap: true,
-        physics:          const NeverScrollableScrollPhysics(),
-        crossAxisCount:   3,
+        physics: const NeverScrollableScrollPhysics(),
+        crossAxisCount: 3,
         crossAxisSpacing: w * 0.026,
-        mainAxisSpacing:  w * 0.026,
+        mainAxisSpacing: w * 0.026,
         childAspectRatio: 1.0,
         children: List.generate(
           9,
           (_) => Container(
             decoration: BoxDecoration(
-              color:        MyShopColors.surfaceGrey,
+              color: MyShopColors.surfaceGrey,
               borderRadius: BorderRadius.circular(w * 0.031),
             ),
           ),
@@ -472,7 +474,7 @@ class _FeaturedPortfolioSection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const _SectionHeader(
-          title:    'Featured Portfolio',
+          title: 'Featured Portfolio',
           subtitle: 'Verified top-tier professionals',
         ),
         SizedBox(height: h * 0.014),
@@ -480,11 +482,11 @@ class _FeaturedPortfolioSection extends ConsumerWidget {
           height: h * 0.250,
           child: featuredAsync.when(
             loading: () => const _FeaturedSkeletonList(),
-            error:   (_, __) => const SizedBox.shrink(),
-            data:    (artisans) => ListView.separated(
+            error: (_, __) => const SizedBox.shrink(),
+            data: (artisans) => ListView.separated(
               scrollDirection: Axis.horizontal,
-              padding:         EdgeInsets.symmetric(horizontal: w * 0.041),
-              itemCount:       artisans.length,
+              padding: EdgeInsets.symmetric(horizontal: w * 0.041),
+              itemCount: artisans.length,
               separatorBuilder: (_, __) => SizedBox(width: w * 0.031),
               itemBuilder: (_, i) => _PortfolioCard(artisan: artisans[i]),
             ),
@@ -501,10 +503,10 @@ class _PortfolioCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final size   = MediaQuery.sizeOf(context);
-    final w      = size.width;
-    final h      = size.height;
-    final cardW  = w * 0.440;
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
+    final cardW = w * 0.440;
     final radius = w * 0.031;
 
     return GestureDetector(
@@ -523,9 +525,9 @@ class _PortfolioCard extends StatelessWidget {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      begin:  Alignment.topCenter,
-                      end:    Alignment.bottomCenter,
-                      stops:  const [0.35, 1.0],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      stops: const [0.35, 1.0],
                       colors: [
                         Colors.transparent,
                         Colors.black.withValues(alpha: 0.78),
@@ -535,15 +537,15 @@ class _PortfolioCard extends StatelessWidget {
                 ),
               ),
               Positioned(
-                top:   h * 0.012,
+                top: h * 0.012,
                 right: w * 0.026,
                 child: _RatingBadge(rating: artisan.rating),
               ),
               Positioned(
-                left:   w * 0.031,
-                right:  w * 0.031,
+                left: w * 0.031,
+                right: w * 0.031,
                 bottom: h * 0.019,
-                child:  _PortfolioCardInfo(artisan: artisan),
+                child: _PortfolioCardInfo(artisan: artisan),
               ),
             ],
           ),
@@ -564,10 +566,10 @@ class _RatingBadge extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: w * 0.021,
-        vertical:   w * 0.010,
+        vertical: w * 0.010,
       ),
       decoration: BoxDecoration(
-        color:        MyShopColors.primaryGold,
+        color: MyShopColors.primaryGold,
         borderRadius: BorderRadius.circular(w * 0.036),
       ),
       child: Row(
@@ -578,9 +580,9 @@ class _RatingBadge extends StatelessWidget {
           Text(
             rating.toStringAsFixed(1),
             style: TextStyle(
-              fontSize:   w * 0.028,
+              fontSize: w * 0.028,
               fontWeight: FontWeight.w700,
-              color:      Colors.white,
+              color: Colors.white,
             ),
           ),
         ],
@@ -606,9 +608,9 @@ class _PortfolioCardInfo extends StatelessWidget {
         Text(
           artisan.tradeTitle,
           style: TextStyle(
-            fontSize:   w * 0.028,
+            fontSize: w * 0.028,
             fontWeight: FontWeight.w400,
-            color:      Colors.white.withValues(alpha: 0.80),
+            color: Colors.white.withValues(alpha: 0.80),
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -617,9 +619,9 @@ class _PortfolioCardInfo extends StatelessWidget {
         Text(
           artisan.name,
           style: TextStyle(
-            fontSize:   w * 0.036,
+            fontSize: w * 0.036,
             fontWeight: FontWeight.w700,
-            color:      Colors.white,
+            color: Colors.white,
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -631,9 +633,9 @@ class _PortfolioCardInfo extends StatelessWidget {
               child: Text(
                 artisan.minPriceDisplay,
                 style: TextStyle(
-                  fontSize:   w * 0.028,
+                  fontSize: w * 0.028,
                   fontWeight: FontWeight.w400,
-                  color:      Colors.white.withValues(alpha: 0.90),
+                  color: Colors.white.withValues(alpha: 0.90),
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -660,23 +662,24 @@ class _VerifiedChip extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: w * 0.015,
-        vertical:   w * 0.005,
+        vertical: w * 0.005,
       ),
       decoration: BoxDecoration(
-        color:        MyShopColors.successLight,
+        color: MyShopColors.successLight,
         borderRadius: BorderRadius.circular(w * 0.015),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.check_rounded, size: w * 0.026, color: MyShopColors.success),
+          Icon(Icons.check_rounded,
+              size: w * 0.026, color: MyShopColors.success),
           SizedBox(width: w * 0.008),
           Text(
             'VERIFIED',
             style: TextStyle(
-              fontSize:      w * 0.023,
-              fontWeight:    FontWeight.w700,
-              color:         MyShopColors.success,
+              fontSize: w * 0.023,
+              fontWeight: FontWeight.w700,
+              color: MyShopColors.success,
               letterSpacing: 0.3,
             ),
           ),
@@ -694,14 +697,14 @@ class _FeaturedSkeletonList extends StatelessWidget {
     final w = MediaQuery.sizeOf(context).width;
 
     return ListView.separated(
-      scrollDirection:  Axis.horizontal,
-      padding:          EdgeInsets.symmetric(horizontal: w * 0.041),
-      itemCount:        3,
+      scrollDirection: Axis.horizontal,
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041),
+      itemCount: 3,
       separatorBuilder: (_, __) => SizedBox(width: w * 0.031),
       itemBuilder: (_, __) => Container(
         width: w * 0.440,
         decoration: BoxDecoration(
-          color:        MyShopColors.surfaceGrey,
+          color: MyShopColors.surfaceGrey,
           borderRadius: BorderRadius.circular(w * 0.031),
         ),
       ),
@@ -727,12 +730,12 @@ class _RecentlyViewedSection extends ConsumerWidget {
         SizedBox(height: h * 0.009),
         recentAsync.when(
           loading: () => const _RecentSkeletonList(),
-          error:   (_, __) => const SizedBox.shrink(),
-          data:    (artisans) => Column(
+          error: (_, __) => const SizedBox.shrink(),
+          data: (artisans) => Column(
             children: artisans
                 .map(
                   (a) => _RecentArtisanRow(
-                    artisan:     a,
+                    artisan: a,
                     showDivider: artisans.last != a,
                     onTap: () {
                       // TODO: Navigate to artisan profile
@@ -749,8 +752,8 @@ class _RecentlyViewedSection extends ConsumerWidget {
 
 class _RecentArtisanRow extends StatelessWidget {
   final RecentArtisan artisan;
-  final bool          showDivider;
-  final VoidCallback  onTap;
+  final bool showDivider;
+  final VoidCallback onTap;
 
   const _RecentArtisanRow({
     required this.artisan,
@@ -769,10 +772,10 @@ class _RecentArtisanRow extends StatelessWidget {
         InkWell(
           onTap: onTap,
           child: Container(
-            color:   MyShopColors.surfaceWhite,
+            color: MyShopColors.surfaceWhite,
             padding: EdgeInsets.symmetric(
               horizontal: w * 0.041,
-              vertical:   h * 0.016,
+              vertical: h * 0.016,
             ),
             child: Row(
               children: [
@@ -785,9 +788,9 @@ class _RecentArtisanRow extends StatelessWidget {
                       Text(
                         artisan.name,
                         style: TextStyle(
-                          fontSize:   w * 0.038,
+                          fontSize: w * 0.038,
                           fontWeight: FontWeight.w600,
-                          color:      MyShopColors.textPrimary,
+                          color: MyShopColors.textPrimary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -796,16 +799,16 @@ class _RecentArtisanRow extends StatelessWidget {
                       Text(
                         artisan.trade,
                         style: TextStyle(
-                          fontSize:   w * 0.031,
+                          fontSize: w * 0.031,
                           fontWeight: FontWeight.w400,
-                          color:      MyShopColors.textSecondary,
+                          color: MyShopColors.textSecondary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       SizedBox(height: h * 0.005),
                       _StarRating(
-                        rating:      artisan.rating,
+                        rating: artisan.rating,
                         reviewCount: artisan.reviewCount,
                       ),
                     ],
@@ -813,7 +816,7 @@ class _RecentArtisanRow extends StatelessWidget {
                 ),
                 Icon(
                   Icons.chevron_right_rounded,
-                  size:  w * 0.056,
+                  size: w * 0.056,
                   color: MyShopColors.textSecondary,
                 ),
               ],
@@ -822,10 +825,10 @@ class _RecentArtisanRow extends StatelessWidget {
         ),
         if (showDivider)
           Divider(
-            height:    1,
+            height: 1,
             thickness: 1,
-            color:     MyShopColors.divider,
-            indent:    w * 0.041 + w * 0.123 + w * 0.036,
+            color: MyShopColors.divider,
+            indent: w * 0.041 + w * 0.123 + w * 0.036,
           ),
       ],
     );
@@ -838,14 +841,14 @@ class _ArtisanAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final w    = MediaQuery.sizeOf(context).width;
+    final w = MediaQuery.sizeOf(context).width;
     final size = w * 0.123;
 
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Container(
-          width:  size,
+          width: size,
           height: size,
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
@@ -853,15 +856,15 @@ class _ArtisanAvatar extends StatelessWidget {
           ),
           child: Icon(
             Icons.person_rounded,
-            size:  size * 0.55,
+            size: size * 0.55,
             color: MyShopColors.darkSlate,
           ),
         ),
         if (artisan.unreadCount != null && artisan.unreadCount! > 0)
           Positioned(
-            top:   -(w * 0.010),
+            top: -(w * 0.010),
             right: -(w * 0.010),
-            child:  _UnreadBadge(count: artisan.unreadCount!),
+            child: _UnreadBadge(count: artisan.unreadCount!),
           ),
       ],
     );
@@ -878,21 +881,21 @@ class _UnreadBadge extends StatelessWidget {
 
     return Container(
       constraints: BoxConstraints(
-        minWidth:  w * 0.046,
+        minWidth: w * 0.046,
         minHeight: w * 0.046,
       ),
       padding: EdgeInsets.symmetric(horizontal: w * 0.008),
       decoration: BoxDecoration(
-        color:        MyShopColors.error,
+        color: MyShopColors.error,
         borderRadius: BorderRadius.circular(w * 0.023),
       ),
       alignment: Alignment.center,
       child: Text(
         count > 99 ? '99+' : count.toString(),
         style: TextStyle(
-          fontSize:   w * 0.026,
+          fontSize: w * 0.026,
           fontWeight: FontWeight.w700,
-          color:      Colors.white,
+          color: Colors.white,
         ),
       ),
     );
@@ -901,7 +904,7 @@ class _UnreadBadge extends StatelessWidget {
 
 class _StarRating extends StatelessWidget {
   final double rating;
-  final int    reviewCount;
+  final int reviewCount;
   const _StarRating({required this.rating, required this.reviewCount});
 
   @override
@@ -910,15 +913,16 @@ class _StarRating extends StatelessWidget {
 
     return Row(
       children: [
-        Icon(Icons.star_rounded, size: w * 0.033, color: MyShopColors.primaryGold),
+        Icon(Icons.star_rounded,
+            size: w * 0.033, color: MyShopColors.primaryGold),
         SizedBox(width: w * 0.008),
         Flexible(
           child: Text(
             '$rating  ($reviewCount reviews)',
             style: TextStyle(
-              fontSize:   w * 0.028,
+              fontSize: w * 0.028,
               fontWeight: FontWeight.w400,
-              color:      MyShopColors.textSecondary,
+              color: MyShopColors.textSecondary,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -942,7 +946,7 @@ class _RecentSkeletonList extends StatelessWidget {
         2,
         (_) => Container(
           height: h * 0.095,
-          color:  MyShopColors.surfaceWhite,
+          color: MyShopColors.surfaceWhite,
           margin: EdgeInsets.only(bottom: h * 0.002),
         ),
       ),
@@ -953,7 +957,7 @@ class _RecentSkeletonList extends StatelessWidget {
 // ── Shared Section Header ──────────────────────────────────────────────────────
 
 class _SectionHeader extends StatelessWidget {
-  final String  title;
+  final String title;
   final String? subtitle;
   final String? actionLabel;
   final VoidCallback? onActionTap;
@@ -983,9 +987,9 @@ class _SectionHeader extends StatelessWidget {
                 child: Text(
                   title,
                   style: TextStyle(
-                    fontSize:   w * 0.046,
+                    fontSize: w * 0.046,
                     fontWeight: FontWeight.w700,
-                    color:      MyShopColors.textPrimary,
+                    color: MyShopColors.textPrimary,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -993,16 +997,16 @@ class _SectionHeader extends StatelessWidget {
               ),
               if (actionLabel != null)
                 GestureDetector(
-                  onTap:     onActionTap,
-                  behavior:  HitTestBehavior.opaque,
+                  onTap: onActionTap,
+                  behavior: HitTestBehavior.opaque,
                   child: Padding(
                     padding: EdgeInsets.only(left: w * 0.021),
                     child: Text(
                       actionLabel!,
                       style: TextStyle(
-                        fontSize:   w * 0.033,
+                        fontSize: w * 0.033,
                         fontWeight: FontWeight.w600,
-                        color:      MyShopColors.primaryGold,
+                        color: MyShopColors.primaryGold,
                       ),
                     ),
                   ),
@@ -1014,9 +1018,9 @@ class _SectionHeader extends StatelessWidget {
             Text(
               subtitle!,
               style: TextStyle(
-                fontSize:   w * 0.031,
+                fontSize: w * 0.031,
                 fontWeight: FontWeight.w400,
-                color:      MyShopColors.textSecondary,
+                color: MyShopColors.textSecondary,
               ),
             ),
           ],

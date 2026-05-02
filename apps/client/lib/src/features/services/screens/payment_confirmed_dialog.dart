@@ -28,8 +28,9 @@ void showPaymentConfirmedDialog(
     pageBuilder: (_, __, ___) =>
         _PaymentConfirmedDialog(confirmation: confirmation),
     transitionBuilder: (_, animation, __, child) {
-      final fade  = CurvedAnimation(parent: animation, curve: Curves.easeIn);
-      final slide = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+      final fade = CurvedAnimation(parent: animation, curve: Curves.easeIn);
+      final slide =
+          CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
       return FadeTransition(
         opacity: fade,
         child: SlideTransition(
@@ -53,14 +54,14 @@ class _PaymentConfirmedDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final w    = size.width;
-    final h    = size.height;
+    final w = size.width;
+    final h = size.height;
 
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: EdgeInsets.symmetric(
         horizontal: w * 0.041,
-        vertical:   h * 0.062,
+        vertical: h * 0.062,
       ),
       child: _DialogSheet(confirmation: confirmation, w: w, h: h),
     );
@@ -87,9 +88,9 @@ class _DialogSheetState extends ConsumerState<_DialogSheet> {
   bool _detailsExpanded = false;
   bool _checkingStatus = false;
 
-  PaymentConfirmation get c   => widget.confirmation;
-  double              get w   => widget.w;
-  double              get h   => widget.h;
+  PaymentConfirmation get c => widget.confirmation;
+  double get w => widget.w;
+  double get h => widget.h;
 
   /// Tap handler for the "Rate & Review Provider" CTA. Re-fetches the job
   /// before opening the rating sheet so we never present a sheet that's
@@ -152,8 +153,8 @@ class _DialogSheetState extends ConsumerState<_DialogSheet> {
     // format with comma thousands separator
     final parts = amount.toStringAsFixed(2).split('.');
     final whole = parts[0];
-    final dec   = parts[1];
-    final buf   = StringBuffer();
+    final dec = parts[1];
+    final buf = StringBuffer();
     for (var i = 0; i < whole.length; i++) {
       if (i > 0 && (whole.length - i) % 3 == 0) buf.write(',');
       buf.write(whole[i]);
@@ -224,7 +225,7 @@ class _DialogSheetState extends ConsumerState<_DialogSheet> {
               Container(
                 padding: EdgeInsets.symmetric(
                   horizontal: w * 0.041,
-                  vertical:   h * 0.005,
+                  vertical: h * 0.005,
                 ),
                 decoration: BoxDecoration(
                   color: MyShopColors.surfaceGrey,
@@ -285,7 +286,7 @@ class _DialogSheetState extends ConsumerState<_DialogSheet> {
                         ),
                         child: _checkingStatus
                             ? SizedBox(
-                                width:  w * 0.051,
+                                width: w * 0.051,
                                 height: w * 0.051,
                                 child: const CircularProgressIndicator(
                                   strokeWidth: 2,
@@ -381,14 +382,14 @@ class _CloseRow extends StatelessWidget {
       alignment: Alignment.topRight,
       child: Padding(
         padding: EdgeInsets.only(
-          top:   h * 0.014,
+          top: h * 0.014,
           right: w * 0.038,
         ),
         child: GestureDetector(
           onTap: () => Navigator.of(context).maybePop(),
           behavior: HitTestBehavior.opaque,
           child: Container(
-            width:  w * 0.082,
+            width: w * 0.082,
             height: w * 0.082,
             decoration: BoxDecoration(
               color: MyShopColors.surfaceGrey,
@@ -396,7 +397,7 @@ class _CloseRow extends StatelessWidget {
             ),
             child: Icon(
               Icons.close_rounded,
-              size:  w * 0.041,
+              size: w * 0.041,
               color: MyShopColors.textSecondary,
             ),
           ),
@@ -415,16 +416,16 @@ class _CheckCircle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width:  w * 0.164,
+      width: w * 0.164,
       height: w * 0.164,
       decoration: BoxDecoration(
-        color:  MyShopColors.successLight,
-        shape:  BoxShape.circle,
+        color: MyShopColors.successLight,
+        shape: BoxShape.circle,
         border: Border.all(color: MyShopColors.success, width: 2.5),
       ),
       child: Icon(
         Icons.check_rounded,
-        size:  w * 0.082,
+        size: w * 0.082,
         color: MyShopColors.success,
       ),
     );
@@ -434,12 +435,12 @@ class _CheckCircle extends StatelessWidget {
 // ── Expandable payment details ────────────────────────────────────────────────
 
 class _ExpandableDetails extends StatelessWidget {
-  final PaymentConfirmation    confirmation;
-  final bool                   expanded;
-  final VoidCallback            onToggle;
-  final double                 w;
-  final double                 h;
-  final String Function(int)   fmt;
+  final PaymentConfirmation confirmation;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final double w;
+  final double h;
+  final String Function(int) fmt;
 
   const _ExpandableDetails({
     required this.confirmation,
@@ -462,25 +463,25 @@ class _ExpandableDetails extends StatelessWidget {
           child: Padding(
             padding: EdgeInsets.symmetric(
               horizontal: w * 0.051,
-              vertical:   h * 0.017,
+              vertical: h * 0.017,
             ),
             child: Row(
               children: [
                 Text(
                   'View Payment Details',
                   style: TextStyle(
-                    fontSize:   w * 0.036,
+                    fontSize: w * 0.036,
                     fontWeight: FontWeight.w600,
-                    color:      MyShopColors.darkSlate,
+                    color: MyShopColors.darkSlate,
                   ),
                 ),
                 const Spacer(),
                 AnimatedRotation(
-                  turns:    expanded ? 0.5 : 0.0,
+                  turns: expanded ? 0.5 : 0.0,
                   duration: const Duration(milliseconds: 220),
                   child: Icon(
                     Icons.keyboard_arrow_down_rounded,
-                    size:  w * 0.056,
+                    size: w * 0.056,
                     color: MyShopColors.textSecondary,
                   ),
                 ),
@@ -491,16 +492,15 @@ class _ExpandableDetails extends StatelessWidget {
 
         // ── Expanded detail rows ──
         AnimatedCrossFade(
-          firstChild:  const SizedBox(width: double.infinity),
+          firstChild: const SizedBox(width: double.infinity),
           secondChild: _DetailRows(
             confirmation: confirmation,
             w: w,
             h: h,
             fmt: fmt,
           ),
-          crossFadeState: expanded
-              ? CrossFadeState.showSecond
-              : CrossFadeState.showFirst,
+          crossFadeState:
+              expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
           duration: const Duration(milliseconds: 220),
         ),
       ],
@@ -509,9 +509,9 @@ class _ExpandableDetails extends StatelessWidget {
 }
 
 class _DetailRows extends StatelessWidget {
-  final PaymentConfirmation  confirmation;
-  final double               w;
-  final double               h;
+  final PaymentConfirmation confirmation;
+  final double w;
+  final double h;
   final String Function(int) fmt;
 
   const _DetailRows({
@@ -526,8 +526,8 @@ class _DetailRows extends StatelessWidget {
     final c = confirmation;
     return Padding(
       padding: EdgeInsets.only(
-        left:   w * 0.051,
-        right:  w * 0.051,
+        left: w * 0.051,
+        right: w * 0.051,
         bottom: h * 0.017,
       ),
       child: Column(
@@ -601,9 +601,9 @@ class _DetailRow extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              fontSize:   w * 0.031,
+              fontSize: w * 0.031,
               fontWeight: FontWeight.w400,
-              color:      MyShopColors.textSecondary,
+              color: MyShopColors.textSecondary,
             ),
           ),
         ),
@@ -611,9 +611,9 @@ class _DetailRow extends StatelessWidget {
           child: Text(
             value,
             style: TextStyle(
-              fontSize:   w * 0.031,
+              fontSize: w * 0.031,
               fontWeight: FontWeight.w600,
-              color:      MyShopColors.textPrimary,
+              color: MyShopColors.textPrimary,
             ),
             textAlign: TextAlign.end,
           ),
@@ -626,11 +626,11 @@ class _DetailRow extends StatelessWidget {
 // ── Outlined action button ────────────────────────────────────────────────────
 
 class _OutlinedActionButton extends StatelessWidget {
-  final IconData     icon;
-  final String       label;
+  final IconData icon;
+  final String label;
   final VoidCallback onTap;
-  final double       w;
-  final double       h;
+  final double w;
+  final double h;
   const _OutlinedActionButton({
     required this.icon,
     required this.label,
@@ -647,9 +647,9 @@ class _OutlinedActionButton extends StatelessWidget {
       child: Container(
         height: h * 0.060,
         decoration: BoxDecoration(
-          color:        MyShopColors.surfaceWhite,
+          color: MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(w * 0.026),
-          border:       Border.all(color: MyShopColors.divider, width: 1.5),
+          border: Border.all(color: MyShopColors.divider, width: 1.5),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -659,9 +659,9 @@ class _OutlinedActionButton extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                fontSize:   w * 0.033,
+                fontSize: w * 0.033,
                 fontWeight: FontWeight.w600,
-                color:      MyShopColors.darkSlate,
+                color: MyShopColors.darkSlate,
               ),
             ),
           ],
@@ -674,11 +674,11 @@ class _OutlinedActionButton extends StatelessWidget {
 // ── Text link button ──────────────────────────────────────────────────────────
 
 class _TextLinkButton extends StatelessWidget {
-  final IconData     icon;
-  final String       label;
+  final IconData icon;
+  final String label;
   final VoidCallback onTap;
-  final double       w;
-  final double       h;
+  final double w;
+  final double h;
   const _TextLinkButton({
     required this.icon,
     required this.label,
@@ -702,9 +702,9 @@ class _TextLinkButton extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                fontSize:   w * 0.036,
+                fontSize: w * 0.036,
                 fontWeight: FontWeight.w500,
-                color:      MyShopColors.textSecondary,
+                color: MyShopColors.textSecondary,
               ),
             ),
           ],

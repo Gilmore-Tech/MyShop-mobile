@@ -13,8 +13,7 @@ import '../../../app/router.dart';
 class BidReviewScreen extends ConsumerStatefulWidget {
   final String jobId;
   final String bidId;
-  const BidReviewScreen(
-      {super.key, required this.jobId, required this.bidId});
+  const BidReviewScreen({super.key, required this.jobId, required this.bidId});
 
   @override
   ConsumerState<BidReviewScreen> createState() => _BidReviewScreenState();
@@ -35,10 +34,10 @@ class _BidReviewScreenState extends ConsumerState<BidReviewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final size  = MediaQuery.sizeOf(context);
-    final w     = size.width;
-    final h     = size.height;
-    final bot   = MediaQuery.paddingOf(context).bottom;
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
+    final bot = MediaQuery.paddingOf(context).bottom;
     final state = ref.watch(bidDetailProvider(
       (jobId: widget.jobId, bidId: widget.bidId),
     ));
@@ -48,14 +47,13 @@ class _BidReviewScreenState extends ConsumerState<BidReviewScreen> {
       appBar: AppBar(
         backgroundColor: MyShopColors.surfaceWhite,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back,
-              color: MyShopColors.textPrimary),
+          icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
           onPressed: () => context.pop(),
         ),
         title: Text('Review Bid',
             style: TextStyle(
-                color:      MyShopColors.textPrimary,
-                fontSize:   w * 0.044,
+                color: MyShopColors.textPrimary,
+                fontSize: w * 0.044,
                 fontWeight: FontWeight.w700)),
         centerTitle: false,
       ),
@@ -81,9 +79,10 @@ class _BidReviewScreenState extends ConsumerState<BidReviewScreen> {
                         bid.artisanNote!.isNotEmpty) ...[
                       SizedBox(height: h * 0.020),
                       _MessageCard(
-                          message:   bid.artisanNote!,
+                          message: bid.artisanNote!,
                           timestamp: bid.noteTimestamp,
-                          w: w, h: h),
+                          w: w,
+                          h: h),
                     ],
                     SizedBox(height: h * 0.020),
                     _GuaranteeNote(w: w),
@@ -92,10 +91,12 @@ class _BidReviewScreenState extends ConsumerState<BidReviewScreen> {
               ),
             ),
             _ActionBar(
-              onAccept:    _accept,
-              onDecline:   () => context.pop(),
+              onAccept: _accept,
+              onDecline: () => context.pop(),
               isAccepting: _isAccepting,
-              w: w, h: h, bot: bot,
+              w: w,
+              h: h,
+              bot: bot,
             ),
           ],
         ),
@@ -108,9 +109,8 @@ class _BidReviewScreenState extends ConsumerState<BidReviewScreen> {
 
 class _ArtisanCard extends StatelessWidget {
   final BidDetail bid;
-  final double    w, h;
-  const _ArtisanCard(
-      {required this.bid, required this.w, required this.h});
+  final double w, h;
+  const _ArtisanCard({required this.bid, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
@@ -122,9 +122,9 @@ class _ArtisanCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-              color:      Colors.black.withAlpha(8),
+              color: Colors.black.withAlpha(8),
               blurRadius: 8,
-              offset:     const Offset(0, 2))
+              offset: const Offset(0, 2))
         ],
       ),
       child: Column(
@@ -132,10 +132,10 @@ class _ArtisanCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                width:  w * 0.14,
+                width: w * 0.14,
                 height: w * 0.14,
-                decoration: BoxDecoration(
-                    color: a.avatarColor, shape: BoxShape.circle),
+                decoration:
+                    BoxDecoration(color: a.avatarColor, shape: BoxShape.circle),
                 child: Icon(Icons.person_rounded,
                     color: Colors.white, size: w * 0.07),
               ),
@@ -146,14 +146,14 @@ class _ArtisanCard extends StatelessWidget {
                   children: [
                     Text(a.name,
                         style: TextStyle(
-                          color:      MyShopColors.textPrimary,
-                          fontSize:   w * 0.042,
+                          color: MyShopColors.textPrimary,
+                          fontSize: w * 0.042,
                           fontWeight: FontWeight.w700,
                         )),
                     const SizedBox(height: 4),
                     Text(a.tradeTitle,
                         style: TextStyle(
-                            color:    MyShopColors.textSecondary,
+                            color: MyShopColors.textSecondary,
                             fontSize: w * 0.033)),
                     const SizedBox(height: 6),
                     Row(children: [
@@ -162,14 +162,14 @@ class _ArtisanCard extends StatelessWidget {
                       const SizedBox(width: 4),
                       Text(a.rating.toStringAsFixed(1),
                           style: TextStyle(
-                            color:      MyShopColors.textPrimary,
-                            fontSize:   w * 0.033,
+                            color: MyShopColors.textPrimary,
+                            fontSize: w * 0.033,
                             fontWeight: FontWeight.w600,
                           )),
                       SizedBox(width: w * 0.016),
                       Text('(${a.reviewCount} reviews)',
                           style: TextStyle(
-                              color:    MyShopColors.textSecondary,
+                              color: MyShopColors.textSecondary,
                               fontSize: w * 0.030)),
                     ]),
                   ],
@@ -177,10 +177,10 @@ class _ArtisanCard extends StatelessWidget {
               ),
               if (a.isKycVerified)
                 Container(
-                  padding: EdgeInsets.symmetric(
-                      horizontal: w * 0.024, vertical: 4),
+                  padding:
+                      EdgeInsets.symmetric(horizontal: w * 0.024, vertical: 4),
                   decoration: BoxDecoration(
-                    color:        MyShopColors.successLight,
+                    color: MyShopColors.successLight,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
@@ -191,8 +191,8 @@ class _ArtisanCard extends StatelessWidget {
                       const SizedBox(width: 4),
                       Text('Verified',
                           style: TextStyle(
-                            color:      MyShopColors.success,
-                            fontSize:   w * 0.028,
+                            color: MyShopColors.success,
+                            fontSize: w * 0.028,
                             fontWeight: FontWeight.w600,
                           )),
                     ],
@@ -206,14 +206,14 @@ class _ArtisanCard extends StatelessWidget {
           Row(
             children: [
               _StatChip(
-                  icon:  Icons.work_history_rounded,
+                  icon: Icons.work_history_rounded,
                   label: '${a.reviewCount} completed',
-                  w:     w),
+                  w: w),
               SizedBox(width: w * 0.030),
               _StatChip(
-                  icon:  Icons.schedule_rounded,
+                  icon: Icons.schedule_rounded,
                   label: '~${a.etaMinutes} min away',
-                  w:     w),
+                  w: w),
             ],
           ),
         ],
@@ -224,10 +224,9 @@ class _ArtisanCard extends StatelessWidget {
 
 class _StatChip extends StatelessWidget {
   final IconData icon;
-  final String   label;
-  final double   w;
-  const _StatChip(
-      {required this.icon, required this.label, required this.w});
+  final String label;
+  final double w;
+  const _StatChip({required this.icon, required this.label, required this.w});
 
   @override
   Widget build(BuildContext context) {
@@ -248,18 +247,17 @@ class _StatChip extends StatelessWidget {
 
 class _BidAmountCard extends StatelessWidget {
   final BidDetail bid;
-  final double    w, h;
-  const _BidAmountCard(
-      {required this.bid, required this.w, required this.h});
+  final double w, h;
+  const _BidAmountCard({required this.bid, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        MyShopColors.primaryGoldLight,
+        color: MyShopColors.primaryGoldLight,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: MyShopColors.primaryGold.withAlpha(60)),
+        border: Border.all(color: MyShopColors.primaryGold.withAlpha(60)),
       ),
       child: Row(
         children: [
@@ -269,31 +267,31 @@ class _BidAmountCard extends StatelessWidget {
               children: [
                 Text('Bid Amount',
                     style: TextStyle(
-                        color:    MyShopColors.textSecondary,
+                        color: MyShopColors.textSecondary,
                         fontSize: w * 0.030)),
                 const SizedBox(height: 4),
                 Text(bid.breakdown.totalDisplay,
                     style: TextStyle(
-                      color:      MyShopColors.textPrimary,
-                      fontSize:   w * 0.060,
+                      color: MyShopColors.textPrimary,
+                      fontSize: w * 0.060,
                       fontWeight: FontWeight.w800,
                     )),
                 const SizedBox(height: 4),
                 Text('Covers labour + estimated materials',
                     style: TextStyle(
-                        color:    MyShopColors.textSecondary,
+                        color: MyShopColors.textSecondary,
                         fontSize: w * 0.030)),
                 const SizedBox(height: 8),
                 Row(children: [
                   _InfoPill(
                       label: bid.durationLabel,
-                      icon:  Icons.access_time_rounded,
-                      w:     w),
+                      icon: Icons.access_time_rounded,
+                      w: w),
                   SizedBox(width: w * 0.020),
                   _InfoPill(
                       label: bid.availabilityLabel,
-                      icon:  Icons.event_available_rounded,
-                      w:     w),
+                      icon: Icons.event_available_rounded,
+                      w: w),
                 ]),
               ],
             ),
@@ -301,7 +299,8 @@ class _BidAmountCard extends StatelessWidget {
           Container(
             padding: EdgeInsets.all(w * 0.032),
             decoration: BoxDecoration(
-                color: MyShopColors.primaryGold.withAlpha(30), shape: BoxShape.circle),
+                color: MyShopColors.primaryGold.withAlpha(30),
+                shape: BoxShape.circle),
             child: Icon(Icons.receipt_long_rounded,
                 color: MyShopColors.primaryGold, size: w * 0.06),
           ),
@@ -312,11 +311,10 @@ class _BidAmountCard extends StatelessWidget {
 }
 
 class _InfoPill extends StatelessWidget {
-  final String   label;
+  final String label;
   final IconData icon;
-  final double   w;
-  const _InfoPill(
-      {required this.label, required this.icon, required this.w});
+  final double w;
+  const _InfoPill({required this.label, required this.icon, required this.w});
 
   @override
   Widget build(BuildContext context) {
@@ -327,8 +325,7 @@ class _InfoPill extends StatelessWidget {
         const SizedBox(width: 4),
         Text(label,
             style: TextStyle(
-                color:    MyShopColors.textSecondary,
-                fontSize: w * 0.030)),
+                color: MyShopColors.textSecondary, fontSize: w * 0.030)),
       ],
     );
   }
@@ -337,9 +334,9 @@ class _InfoPill extends StatelessWidget {
 // ── Message card ───────────────────────────────────────────────────────────────
 
 class _MessageCard extends StatelessWidget {
-  final String  message;
+  final String message;
   final String? timestamp;
-  final double  w, h;
+  final double w, h;
   const _MessageCard(
       {required this.message,
       required this.timestamp,
@@ -351,9 +348,9 @@ class _MessageCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(w * 0.04),
       decoration: BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: MyShopColors.divider),
+        border: Border.all(color: MyShopColors.divider),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -362,15 +359,15 @@ class _MessageCard extends StatelessWidget {
             children: [
               Text('Message from artisan',
                   style: TextStyle(
-                    color:      MyShopColors.textSecondary,
-                    fontSize:   w * 0.030,
+                    color: MyShopColors.textSecondary,
+                    fontSize: w * 0.030,
                     fontWeight: FontWeight.w600,
                   )),
               if (timestamp != null) ...[
                 const Spacer(),
                 Text(timestamp!,
                     style: TextStyle(
-                        color:    MyShopColors.textSecondary,
+                        color: MyShopColors.textSecondary,
                         fontSize: w * 0.028)),
               ],
             ],
@@ -378,9 +375,9 @@ class _MessageCard extends StatelessWidget {
           SizedBox(height: h * 0.010),
           Text(message,
               style: TextStyle(
-                  color:    MyShopColors.textPrimary,
+                  color: MyShopColors.textPrimary,
                   fontSize: w * 0.034,
-                  height:   1.6)),
+                  height: 1.6)),
         ],
       ),
     );
@@ -395,15 +392,16 @@ class _GuaranteeNote extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Icon(Icons.security_rounded, color: MyShopColors.success, size: 16),
+        const Icon(Icons.security_rounded,
+            color: MyShopColors.success, size: 16),
         SizedBox(width: w * 0.020),
         Expanded(
           child: Text(
             'Payment is held in escrow and only released after you confirm the job is complete.',
             style: TextStyle(
-                color:    MyShopColors.textSecondary,
+                color: MyShopColors.textSecondary,
                 fontSize: w * 0.030,
-                height:   1.5),
+                height: 1.5),
           ),
         ),
       ],
@@ -416,8 +414,8 @@ class _GuaranteeNote extends StatelessWidget {
 class _ActionBar extends StatelessWidget {
   final VoidCallback onAccept;
   final VoidCallback onDecline;
-  final bool         isAccepting;
-  final double       w, h, bot;
+  final bool isAccepting;
+  final double w, h, bot;
 
   const _ActionBar({
     required this.onAccept,
@@ -431,9 +429,9 @@ class _ActionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color:   MyShopColors.surfaceWhite,
-      padding: EdgeInsets.fromLTRB(
-          w * 0.05, h * 0.016, w * 0.05, bot + h * 0.020),
+      color: MyShopColors.surfaceWhite,
+      padding:
+          EdgeInsets.fromLTRB(w * 0.05, h * 0.016, w * 0.05, bot + h * 0.020),
       child: Row(
         children: [
           SizedBox(
@@ -442,15 +440,14 @@ class _ActionBar extends StatelessWidget {
               onPressed: onDecline,
               style: OutlinedButton.styleFrom(
                 foregroundColor: MyShopColors.error,
-                side:  const BorderSide(color: MyShopColors.error),
+                side: const BorderSide(color: MyShopColors.error),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
                 padding: EdgeInsets.symmetric(horizontal: w * 0.06),
               ),
               child: Text('Decline',
                   style: TextStyle(
-                      fontSize:   w * 0.038,
-                      fontWeight: FontWeight.w600)),
+                      fontSize: w * 0.038, fontWeight: FontWeight.w600)),
             ),
           ),
           SizedBox(width: w * 0.030),
@@ -460,21 +457,23 @@ class _ActionBar extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: isAccepting ? null : onAccept,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor:        MyShopColors.primaryGold,
-                  foregroundColor:        Colors.white,
-                  disabledBackgroundColor: MyShopColors.primaryGold.withAlpha(120),
+                  backgroundColor: MyShopColors.primaryGold,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor:
+                      MyShopColors.primaryGold.withAlpha(120),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10)),
                   elevation: 0,
                 ),
                 child: isAccepting
                     ? const SizedBox(
-                        width: 20, height: 20,
+                        width: 20,
+                        height: 20,
                         child: CircularProgressIndicator(
                             color: Colors.white, strokeWidth: 2.5))
                     : Text('Accept Bid',
                         style: TextStyle(
-                          fontSize:   w * 0.040,
+                          fontSize: w * 0.040,
                           fontWeight: FontWeight.w700,
                         )),
               ),

@@ -162,7 +162,8 @@ class _DestinationSearchScreenState
         // requires real coords, not just the typed address.
         stops.addIntermediateStop(fullAddress, lat: lat, lng: lng);
       } else {
-        stops.updateStopAddress(widget.stopId!, fullAddress, lat: lat, lng: lng);
+        stops.updateStopAddress(widget.stopId!, fullAddress,
+            lat: lat, lng: lng);
       }
     } else {
       ref.read(rideSearchProvider.notifier).setLocation(
@@ -187,7 +188,8 @@ class _DestinationSearchScreenState
     if (!mounted || _isStopEdit) return;
 
     final newSearch = ref.read(rideSearchProvider);
-    final newLat = _isPickup ? newSearch.pickup?.lat : newSearch.destination?.lat;
+    final newLat =
+        _isPickup ? newSearch.pickup?.lat : newSearch.destination?.lat;
 
     // Map picker confirmed a new location — close the search screen too so the
     // user lands back on the fare estimate screen with the field already filled.
@@ -238,8 +240,7 @@ class _DestinationSearchScreenState
                       // When searching — show autocomplete results
                       if (_hasQuery) ...[
                         if (_suggestions.isEmpty)
-                          _EmptySearch(
-                              query: _controller.text, w: w, h: h)
+                          _EmptySearch(query: _controller.text, w: w, h: h)
                         else
                           ..._suggestions.map((s) => _SuggestionTile(
                                 suggestion: s,
@@ -338,8 +339,7 @@ class _SearchHeader extends StatelessWidget {
                       focusNode: focusNode,
                       onChanged: onChanged,
                       style: TextStyle(
-                          color: MyShopColors.textPrimary,
-                          fontSize: w * 0.038),
+                          color: MyShopColors.textPrimary, fontSize: w * 0.038),
                       decoration: InputDecoration(
                         hintText: hintText,
                         hintStyle: TextStyle(
@@ -417,15 +417,14 @@ class _ActionTile extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: EdgeInsets.symmetric(
-            horizontal: w * 0.05, vertical: h * 0.016),
+        padding:
+            EdgeInsets.symmetric(horizontal: w * 0.05, vertical: h * 0.016),
         child: Row(
           children: [
             Container(
               width: w * 0.10,
               height: w * 0.10,
-              decoration:
-                  BoxDecoration(color: iconBg, shape: BoxShape.circle),
+              decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
               child: Icon(icon, color: Colors.white, size: w * 0.050),
             ),
             SizedBox(width: w * 0.036),
@@ -473,8 +472,8 @@ class _SuggestionTile extends StatelessWidget {
         InkWell(
           onTap: onTap,
           child: Padding(
-            padding: EdgeInsets.symmetric(
-                horizontal: w * 0.05, vertical: h * 0.016),
+            padding:
+                EdgeInsets.symmetric(horizontal: w * 0.05, vertical: h * 0.016),
             child: Row(
               children: [
                 Container(
@@ -553,8 +552,8 @@ class _SavedPlaceTile extends StatelessWidget {
         InkWell(
           onTap: onTap,
           child: Padding(
-            padding: EdgeInsets.symmetric(
-                horizontal: w * 0.05, vertical: h * 0.016),
+            padding:
+                EdgeInsets.symmetric(horizontal: w * 0.05, vertical: h * 0.016),
             child: Row(
               children: [
                 Container(
@@ -564,8 +563,7 @@ class _SavedPlaceTile extends StatelessWidget {
                     color: place.iconBg.withAlpha(24),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(place.icon,
-                      color: place.iconBg, size: w * 0.048),
+                  child: Icon(place.icon, color: place.iconBg, size: w * 0.048),
                 ),
                 SizedBox(width: w * 0.036),
                 Expanded(
@@ -630,8 +628,7 @@ class _LoadingIndicator extends StatelessWidget {
 class _EmptySearch extends StatelessWidget {
   final String query;
   final double w, h;
-  const _EmptySearch(
-      {required this.query, required this.w, required this.h});
+  const _EmptySearch({required this.query, required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
@@ -640,8 +637,7 @@ class _EmptySearch extends StatelessWidget {
       child: Column(
         children: [
           Icon(Icons.search_off_rounded,
-              color: MyShopColors.textSecondary.withAlpha(80),
-              size: w * 0.14),
+              color: MyShopColors.textSecondary.withAlpha(80), size: w * 0.14),
           SizedBox(height: h * 0.016),
           Text(
             'No results for "$query"',

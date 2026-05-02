@@ -11,7 +11,7 @@ class ReferralEntry {
   final String name;
   final String dateLabel;
   final String status;
-  final int    bonusPesewas;
+  final int bonusPesewas;
 
   const ReferralEntry({
     required this.name,
@@ -22,9 +22,9 @@ class ReferralEntry {
 
   factory ReferralEntry.fromJson(Map<String, dynamic> json) {
     return ReferralEntry(
-      name:         json['name'] as String? ?? 'Unknown',
-      dateLabel:    _formatDate(json['createdAt'] as String?),
-      status:       json['status'] as String? ?? 'pending',
+      name: json['name'] as String? ?? 'Unknown',
+      dateLabel: _formatDate(json['createdAt'] as String?),
+      status: json['status'] as String? ?? 'pending',
       bonusPesewas: (json['bonusPesewas'] as num?)?.toInt() ?? 0,
     );
   }
@@ -34,18 +34,30 @@ String _formatDate(String? iso) {
   if (iso == null) return '';
   final dt = DateTime.tryParse(iso);
   if (dt == null) return '';
-  const months = ['Jan','Feb','Mar','Apr','May','Jun',
-                   'Jul','Aug','Sep','Oct','Nov','Dec'];
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec'
+  ];
   return '${months[dt.month - 1]} ${dt.day}';
 }
 
 // ── Referral data ─────────────────────────────────────────────────────────────
 
 class ReferralData {
-  final String            code;
-  final int               totalReferrals;
-  final int               pendingPesewas;
-  final int               earnedPesewas;
+  final String code;
+  final int totalReferrals;
+  final int pendingPesewas;
+  final int earnedPesewas;
   final List<ReferralEntry> recentReferrals;
 
   const ReferralData({
@@ -56,18 +68,17 @@ class ReferralData {
     required this.recentReferrals,
   });
 
-  double get pendingGhs  => pendingPesewas  / 100.0;
-  double get earnedGhs   => earnedPesewas   / 100.0;
+  double get pendingGhs => pendingPesewas / 100.0;
+  double get earnedGhs => earnedPesewas / 100.0;
 
   factory ReferralData.fromJson(Map<String, dynamic> json) {
-    final rawList =
-        (json['recentReferrals'] as List<dynamic>? ?? [])
-            .cast<Map<String, dynamic>>();
+    final rawList = (json['recentReferrals'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
     return ReferralData(
-      code:            json['code'] as String? ?? '',
-      totalReferrals:  (json['totalReferrals'] as num?)?.toInt() ?? 0,
-      pendingPesewas:  (json['pendingPesewas'] as num?)?.toInt() ?? 0,
-      earnedPesewas:   (json['earnedPesewas'] as num?)?.toInt() ?? 0,
+      code: json['code'] as String? ?? '',
+      totalReferrals: (json['totalReferrals'] as num?)?.toInt() ?? 0,
+      pendingPesewas: (json['pendingPesewas'] as num?)?.toInt() ?? 0,
+      earnedPesewas: (json['earnedPesewas'] as num?)?.toInt() ?? 0,
       recentReferrals: rawList.map(ReferralEntry.fromJson).toList(),
     );
   }
@@ -75,8 +86,7 @@ class ReferralData {
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
-final referralProvider =
-    FutureProvider.autoDispose<ReferralData>((ref) async {
+final referralProvider = FutureProvider.autoDispose<ReferralData>((ref) async {
   try {
     final json = await ref.read(userServiceProvider).getReferral();
     return ReferralData.fromJson(json);
@@ -89,10 +99,10 @@ final referralProvider =
       code = authState.profile.client?.referralCode ?? '';
     }
     return ReferralData(
-      code:            code,
-      totalReferrals:  0,
-      pendingPesewas:  0,
-      earnedPesewas:   0,
+      code: code,
+      totalReferrals: 0,
+      pendingPesewas: 0,
+      earnedPesewas: 0,
       recentReferrals: const [],
     );
   }

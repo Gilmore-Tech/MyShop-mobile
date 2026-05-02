@@ -32,27 +32,27 @@ enum ActiveJobPhase {
 
 extension ActiveJobPhaseX on ActiveJobPhase {
   String get statusLabel => switch (this) {
-        ActiveJobPhase.enRoute          => 'En Route',
-        ActiveJobPhase.arrived          => 'In Progress',
-        ActiveJobPhase.inProgress       => 'In Progress',
+        ActiveJobPhase.enRoute => 'En Route',
+        ActiveJobPhase.arrived => 'In Progress',
+        ActiveJobPhase.inProgress => 'In Progress',
         ActiveJobPhase.awaitingApproval => 'Awaiting Confirmation',
-        ActiveJobPhase.pendingPayment   => 'Processing Payment',
-        ActiveJobPhase.completed        => 'Completed',
+        ActiveJobPhase.pendingPayment => 'Processing Payment',
+        ActiveJobPhase.completed => 'Completed',
       };
 
   Color get statusColor => switch (this) {
-        ActiveJobPhase.enRoute          => MyShopColors.primaryGold,
-        ActiveJobPhase.arrived          => MyShopColors.primaryGold,
-        ActiveJobPhase.inProgress       => MyShopColors.primaryGold,
+        ActiveJobPhase.enRoute => MyShopColors.primaryGold,
+        ActiveJobPhase.arrived => MyShopColors.primaryGold,
+        ActiveJobPhase.inProgress => MyShopColors.primaryGold,
         ActiveJobPhase.awaitingApproval => MyShopColors.textSecondary,
-        ActiveJobPhase.pendingPayment   => MyShopColors.warning,
-        ActiveJobPhase.completed        => MyShopColors.success,
+        ActiveJobPhase.pendingPayment => MyShopColors.warning,
+        ActiveJobPhase.completed => MyShopColors.success,
       };
 
   /// Left stat cell label.
   String get statLabel => switch (this) {
         ActiveJobPhase.enRoute => 'ESTIMATED ARRIVAL',
-        _                      => 'EST. COMPLETION',
+        _ => 'EST. COMPLETION',
       };
 }
 
@@ -94,9 +94,9 @@ class ActiveJobCost {
 
   String _fmt(int pesewas) => 'GHS ${(pesewas / 100).toStringAsFixed(2)}';
 
-  String get serviceFeeDisplay   => _fmt(serviceFeePesewas);
+  String get serviceFeeDisplay => _fmt(serviceFeePesewas);
   String get materialsFeeDisplay => _fmt(materialsFeePesewas);
-  String get totalDisplay        => _fmt(totalPesewas);
+  String get totalDisplay => _fmt(totalPesewas);
 
   /// Section header — "Estimated Cost" vs "Cost".
   String get sectionTitle => isFinalized ? 'Cost' : 'Estimated Cost';
@@ -277,20 +277,25 @@ class _ActiveJobNotifier
     final phase = _parsePhase(status);
 
     final artisanData = data['provider'] as Map<String, dynamic>? ?? {};
-    final artisanName = '${artisanData['firstName'] ?? ''} ${artisanData['lastName'] ?? ''}'.trim();
+    final artisanName =
+        '${artisanData['firstName'] ?? ''} ${artisanData['lastName'] ?? ''}'
+            .trim();
     final bidData = data['selectedBid'] as Map<String, dynamic>? ?? {};
     final costBreakdown = data['costBreakdown'] as Map<String, dynamic>? ?? {};
 
-    final serviceFeePesewas = (costBreakdown['laborPesewas'] as num?)?.toInt()
-        ?? (bidData['amountPesewas'] as num?)?.toInt()
-        ?? 0;
-    final materialsFeePesewas = (costBreakdown['materialsPesewas'] as num?)?.toInt() ?? 0;
+    final serviceFeePesewas =
+        (costBreakdown['laborPesewas'] as num?)?.toInt() ??
+            (bidData['amountPesewas'] as num?)?.toInt() ??
+            0;
+    final materialsFeePesewas =
+        (costBreakdown['materialsPesewas'] as num?)?.toInt() ?? 0;
 
     final categoryData = data['category'] as Map<String, dynamic>? ?? {};
 
     return ActiveJobData(
       jobId: data['id'] as String? ?? '',
-      serviceId: '# JJOB-${(data['id'] as String? ?? '').hashCode.abs() % 100000}',
+      serviceId:
+          '# JJOB-${(data['id'] as String? ?? '').hashCode.abs() % 100000}',
       title: data['description'] as String? ?? '',
       categoryName: categoryData['name'] as String? ?? '',
       categoryIcon: Icons.build_rounded,
@@ -318,15 +323,15 @@ class _ActiveJobNotifier
 
   static ActiveJobPhase _parsePhase(String status) {
     return switch (status) {
-      'artisan_en_route' ||
-      'en_route'            => ActiveJobPhase.enRoute,
-      'arrived'             => ActiveJobPhase.arrived,
-      'in_progress'         => ActiveJobPhase.inProgress,
+      'artisan_en_route' || 'en_route' => ActiveJobPhase.enRoute,
+      'arrived' => ActiveJobPhase.arrived,
+      'in_progress' => ActiveJobPhase.inProgress,
       'artisan_marked_complete' ||
-      'awaiting_approval'   => ActiveJobPhase.awaitingApproval,
-      'pending_payment'     => ActiveJobPhase.pendingPayment,
-      'completed'           => ActiveJobPhase.completed,
-      _                     => ActiveJobPhase.enRoute,
+      'awaiting_approval' =>
+        ActiveJobPhase.awaitingApproval,
+      'pending_payment' => ActiveJobPhase.pendingPayment,
+      'completed' => ActiveJobPhase.completed,
+      _ => ActiveJobPhase.enRoute,
     };
   }
 }
@@ -342,7 +347,7 @@ const _artisan = ActiveJobArtisan(
 );
 
 const _cost = ActiveJobCost(
-  serviceFeePesewas: 15000,  // GHS 150.00
+  serviceFeePesewas: 15000, // GHS 150.00
   materialsFeePesewas: 8500, // GHS  85.00
 );
 
@@ -384,7 +389,8 @@ const Map<String, ActiveJobData> _mockJobs = {
     completionLabel: '4hrs',
     scheduleLabel: 'Today, 09:30 AM',
     jobPostedTime: '09:15 AM',
-    jobDescription: 'You requested an Emergency Electrician for circuit repairs.',
+    jobDescription:
+        'You requested an Emergency Electrician for circuit repairs.',
   ),
   'JOB-INPROGRESS': ActiveJobData(
     jobId: 'JOB-INPROGRESS',
@@ -399,7 +405,8 @@ const Map<String, ActiveJobData> _mockJobs = {
     completionLabel: '4hrs',
     scheduleLabel: 'Today, 09:30 AM',
     jobPostedTime: '09:15 AM',
-    jobDescription: 'You requested an Emergency Electrician for circuit repairs.',
+    jobDescription:
+        'You requested an Emergency Electrician for circuit repairs.',
   ),
   'JOB-AWAITING': ActiveJobData(
     jobId: 'JOB-AWAITING',
@@ -414,6 +421,7 @@ const Map<String, ActiveJobData> _mockJobs = {
     completionLabel: '4hrs',
     scheduleLabel: 'Today, 09:30 AM',
     jobPostedTime: '09:15 AM',
-    jobDescription: 'You requested an Emergency Electrician for circuit repairs.',
+    jobDescription:
+        'You requested an Emergency Electrician for circuit repairs.',
   ),
 };

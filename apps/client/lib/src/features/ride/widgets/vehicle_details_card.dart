@@ -22,7 +22,8 @@ class VehicleDetailsCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Padding(
-            padding: EdgeInsets.fromLTRB(w * 0.036, w * 0.036, w * 0.036, w * 0.026),
+            padding:
+                EdgeInsets.fromLTRB(w * 0.036, w * 0.036, w * 0.036, w * 0.026),
             child: _VehicleInfo(driver: driver),
           ),
           _CarImage(tier: driver.vehicleTier),
@@ -117,7 +118,8 @@ class _EtaInfo extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.access_time_rounded, size: w * 0.033, color: MyShopColors.primaryGold),
+            Icon(Icons.access_time_rounded,
+                size: w * 0.033, color: MyShopColors.primaryGold),
             SizedBox(width: w * 0.010),
             Text(
               '$minutesAway mins away',
@@ -172,7 +174,7 @@ class _CarImage extends StatelessWidget {
             child: Container(
               padding: EdgeInsets.symmetric(
                 horizontal: w * 0.026,
-                vertical:   h * 0.005,
+                vertical: h * 0.005,
               ),
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.65),

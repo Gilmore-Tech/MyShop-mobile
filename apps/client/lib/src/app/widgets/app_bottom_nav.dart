@@ -15,7 +15,7 @@ import '../router.dart';
 enum AppTab { home, services, activity, profile }
 
 class AppBottomNav extends StatelessWidget {
-  final AppTab                activeTab;
+  final AppTab activeTab;
   final void Function(AppTab) onTap;
 
   const AppBottomNav({
@@ -40,10 +40,14 @@ class AppBottomNav extends StatelessWidget {
 
   static String _routeFor(AppTab tab) {
     switch (tab) {
-      case AppTab.home:     return AppRoutes.home;
-      case AppTab.services: return AppRoutes.services;
-      case AppTab.activity: return AppRoutes.activity;
-      case AppTab.profile:  return AppRoutes.profile;
+      case AppTab.home:
+        return AppRoutes.home;
+      case AppTab.services:
+        return AppRoutes.services;
+      case AppTab.activity:
+        return AppRoutes.activity;
+      case AppTab.profile:
+        return AppRoutes.profile;
     }
   }
 
@@ -54,9 +58,9 @@ class AppBottomNav extends StatelessWidget {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color:      Colors.black.withValues(alpha: 0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 10,
-            offset:     const Offset(0, -2),
+            offset: const Offset(0, -2),
           ),
         ],
       ),
@@ -67,28 +71,28 @@ class AppBottomNav extends StatelessWidget {
           child: Row(
             children: [
               _NavItem(
-                icon:     Icons.location_on_outlined,
-                label:    'Home',
+                icon: Icons.location_on_outlined,
+                label: 'Home',
                 isActive: activeTab == AppTab.home,
-                onTap:    () => onTap(AppTab.home),
+                onTap: () => onTap(AppTab.home),
               ),
               _NavItem(
-                icon:     Icons.handyman_outlined,
-                label:    'Services',
+                icon: Icons.handyman_outlined,
+                label: 'Services',
                 isActive: activeTab == AppTab.services,
-                onTap:    () => onTap(AppTab.services),
+                onTap: () => onTap(AppTab.services),
               ),
               _NavItem(
-                icon:     Icons.access_time_outlined,
-                label:    'Activity',
+                icon: Icons.access_time_outlined,
+                label: 'Activity',
                 isActive: activeTab == AppTab.activity,
-                onTap:    () => onTap(AppTab.activity),
+                onTap: () => onTap(AppTab.activity),
               ),
               _NavItem(
-                icon:     Icons.person_outline,
-                label:    'Profile',
+                icon: Icons.person_outline,
+                label: 'Profile',
                 isActive: activeTab == AppTab.profile,
-                onTap:    () => onTap(AppTab.profile),
+                onTap: () => onTap(AppTab.profile),
               ),
             ],
           ),
@@ -99,9 +103,9 @@ class AppBottomNav extends StatelessWidget {
 }
 
 class _NavItem extends StatelessWidget {
-  final IconData     icon;
-  final String       label;
-  final bool         isActive;
+  final IconData icon;
+  final String label;
+  final bool isActive;
   final VoidCallback onTap;
 
   const _NavItem({
@@ -125,9 +129,9 @@ class _NavItem extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                fontSize:   10,
+                fontSize: 10,
                 fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
-                color:      color,
+                color: color,
               ),
             ),
           ],

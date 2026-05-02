@@ -15,10 +15,10 @@ class JobTrackingScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final size  = MediaQuery.sizeOf(context);
-    final w     = size.width;
-    final h     = size.height;
-    final bot   = MediaQuery.paddingOf(context).bottom;
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
+    final bot = MediaQuery.paddingOf(context).bottom;
     final jobId = GoRouterState.of(context).pathParameters['jobId'] ?? '';
 
     return Scaffold(
@@ -33,9 +33,14 @@ class JobTrackingScreen extends ConsumerWidget {
 
           // Bottom sheet
           Positioned(
-            left: 0, right: 0, bottom: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
             child: _BottomSheet(
-              w: w, h: h, bot: bot, jobId: jobId,
+              w: w,
+              h: h,
+              bot: bot,
+              jobId: jobId,
             ),
           ),
         ],
@@ -78,20 +83,14 @@ class _GridPainter extends CustomPainter {
     final cx = size.width * 0.45;
     final cy = size.height * 0.42;
     canvas.drawCircle(
-        Offset(cx, cy), 18,
-        Paint()..color = MyShopColors.primaryGold);
-    canvas.drawCircle(
-        Offset(cx, cy), 10,
-        Paint()..color = Colors.white);
+        Offset(cx, cy), 18, Paint()..color = MyShopColors.primaryGold);
+    canvas.drawCircle(Offset(cx, cy), 10, Paint()..color = Colors.white);
     // Destination pin
-    final dx = size.width  * 0.58;
+    final dx = size.width * 0.58;
     final dy = size.height * 0.30;
     canvas.drawCircle(
-        Offset(dx, dy), 16,
-        Paint()..color = MyShopColors.success);
-    canvas.drawCircle(
-        Offset(dx, dy), 8,
-        Paint()..color = Colors.white);
+        Offset(dx, dy), 16, Paint()..color = MyShopColors.success);
+    canvas.drawCircle(Offset(dx, dy), 8, Paint()..color = Colors.white);
   }
 
   @override
@@ -101,7 +100,7 @@ class _GridPainter extends CustomPainter {
 // ── Top bar ────────────────────────────────────────────────────────────────────
 
 class _TopBar extends StatelessWidget {
-  final double     w;
+  final double w;
   final VoidCallback onBack;
   const _TopBar({required this.w, required this.onBack});
 
@@ -109,7 +108,9 @@ class _TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final top = MediaQuery.paddingOf(context).top;
     return Positioned(
-      top: top + 8, left: 16, right: 16,
+      top: top + 8,
+      left: 16,
+      right: 16,
       child: Row(
         children: [
           _CircleBtn(icon: Icons.arrow_back, onTap: onBack),
@@ -129,10 +130,10 @@ class _CircleBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color:        MyShopColors.surfaceWhite,
-      shape:        const CircleBorder(),
-      elevation:    4,
-      shadowColor:  Colors.black26,
+      color: MyShopColors.surfaceWhite,
+      shape: const CircleBorder(),
+      elevation: 4,
+      shadowColor: Colors.black26,
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: onTap,
@@ -160,25 +161,23 @@ class _BottomSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        color:        MyShopColors.surfaceWhite,
+        color: MyShopColors.surfaceWhite,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
           BoxShadow(
-              color:      Colors.black12,
-              blurRadius: 16,
-              offset:     Offset(0, -4)),
+              color: Colors.black12, blurRadius: 16, offset: Offset(0, -4)),
         ],
       ),
-      padding: EdgeInsets.fromLTRB(
-          w * 0.05, h * 0.020, w * 0.05, bot + h * 0.024),
+      padding:
+          EdgeInsets.fromLTRB(w * 0.05, h * 0.020, w * 0.05, bot + h * 0.024),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width:  w * 0.10,
+            width: w * 0.10,
             height: 4,
             decoration: BoxDecoration(
-              color:        MyShopColors.surfaceGrey,
+              color: MyShopColors.surfaceGrey,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -188,22 +187,24 @@ class _BottomSheet extends StatelessWidget {
             padding: EdgeInsets.symmetric(
                 horizontal: w * 0.040, vertical: h * 0.014),
             decoration: BoxDecoration(
-              color:        MyShopColors.primaryGoldLight,
+              color: MyShopColors.primaryGoldLight,
               borderRadius: BorderRadius.circular(12),
-              border:       Border.all(color: MyShopColors.primaryGold.withAlpha(60)),
+              border: Border.all(color: MyShopColors.primaryGold.withAlpha(60)),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.timer_outlined, color: MyShopColors.primaryGold, size: 20),
+                const Icon(Icons.timer_outlined,
+                    color: MyShopColors.primaryGold, size: 20),
                 SizedBox(width: w * 0.024),
                 Text('Artisan arriving in  ',
                     style: TextStyle(
-                        color: MyShopColors.textSecondary, fontSize: w * 0.036)),
+                        color: MyShopColors.textSecondary,
+                        fontSize: w * 0.036)),
                 Text('12 mins',
                     style: TextStyle(
-                      color:      MyShopColors.textPrimary,
-                      fontSize:   w * 0.040,
+                      color: MyShopColors.textPrimary,
+                      fontSize: w * 0.040,
                       fontWeight: FontWeight.w800,
                     )),
               ],
@@ -216,7 +217,7 @@ class _BottomSheet extends StatelessWidget {
           Row(
             children: [
               Container(
-                width:  w * 0.13,
+                width: w * 0.13,
                 height: w * 0.13,
                 decoration: const BoxDecoration(
                     color: Color(0xFF37474F), shape: BoxShape.circle),
@@ -230,8 +231,8 @@ class _BottomSheet extends StatelessWidget {
                   children: [
                     Text('Kofi Mensah',
                         style: TextStyle(
-                          color:      MyShopColors.textPrimary,
-                          fontSize:   w * 0.040,
+                          color: MyShopColors.textPrimary,
+                          fontSize: w * 0.040,
                           fontWeight: FontWeight.w700,
                         )),
                     const SizedBox(height: 3),
@@ -241,7 +242,7 @@ class _BottomSheet extends StatelessWidget {
                       const SizedBox(width: 3),
                       Text('4.9  •  Master Electrician',
                           style: TextStyle(
-                              color:    MyShopColors.textSecondary,
+                              color: MyShopColors.textSecondary,
                               fontSize: w * 0.032)),
                     ]),
                   ],
@@ -249,18 +250,18 @@ class _BottomSheet extends StatelessWidget {
               ),
               // Call button
               _ContactBtn(
-                icon:  Icons.phone_rounded,
+                icon: Icons.phone_rounded,
                 color: MyShopColors.darkSlate,
                 onTap: () {},
-                w:     w,
+                w: w,
               ),
               SizedBox(width: w * 0.020),
               // Chat button
               _ContactBtn(
-                icon:  Icons.chat_bubble_outline_rounded,
+                icon: Icons.chat_bubble_outline_rounded,
                 color: MyShopColors.primaryGold,
                 onTap: () => context.push(AppRoutes.chat),
-                w:     w,
+                w: w,
               ),
             ],
           ),
@@ -274,7 +275,8 @@ class _BottomSheet extends StatelessWidget {
               Expanded(
                 child: Text('Heading to East Legon, Accra',
                     style: TextStyle(
-                        color: MyShopColors.textSecondary, fontSize: w * 0.034)),
+                        color: MyShopColors.textSecondary,
+                        fontSize: w * 0.034)),
               ),
             ],
           ),
@@ -286,9 +288,9 @@ class _BottomSheet extends StatelessWidget {
 
 class _ContactBtn extends StatelessWidget {
   final IconData icon;
-  final Color    color;
+  final Color color;
   final VoidCallback onTap;
-  final double   w;
+  final double w;
 
   const _ContactBtn({
     required this.icon,
@@ -300,7 +302,7 @@ class _ContactBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color:        color.withAlpha(20),
+      color: color.withAlpha(20),
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),

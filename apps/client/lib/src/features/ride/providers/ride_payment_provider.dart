@@ -126,8 +126,7 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
         if (paystackReference == null) {
           state = state.copyWith(
             phase: RidePaymentPhase.failed,
-            errorMessage:
-                "We couldn't continue the payment. Please try again.",
+            errorMessage: "We couldn't continue the payment. Please try again.",
           );
           return;
         }
@@ -198,8 +197,7 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
     if (reference == null) {
       state = state.copyWith(
         phase: RidePaymentPhase.failed,
-        errorMessage:
-            "We've lost track of this payment. Please start over.",
+        errorMessage: "We've lost track of this payment. Please start over.",
       );
       return;
     }
@@ -331,8 +329,7 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
       _stopPolling();
       if (!mounted) return;
       state = state.copyWith(
-        errorMessage:
-            "We're still waiting on confirmation from the payment "
+        errorMessage: "We're still waiting on confirmation from the payment "
             "provider. Check your Activity tab in a few minutes — your "
             'receipt will show up there once it settles.',
       );
@@ -340,8 +337,7 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
     }
     try {
       final result = await _paymentService.getPaymentStatus(paymentId);
-      if (!mounted ||
-          state.phase != RidePaymentPhase.awaitingSettlement) {
+      if (!mounted || state.phase != RidePaymentPhase.awaitingSettlement) {
         return;
       }
       final outcome = _classifyStatus(result);
@@ -500,7 +496,11 @@ String? _findPaymentId(Object? node) {
 
 String? _findPaystackReference(Object? node) {
   if (node is Map) {
-    for (final key in const ['reference', 'transactionRef', 'transaction_ref']) {
+    for (final key in const [
+      'reference',
+      'transactionRef',
+      'transaction_ref'
+    ]) {
       final v = node[key];
       if (v is String && v.isNotEmpty) return v;
     }

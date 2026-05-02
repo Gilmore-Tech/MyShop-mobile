@@ -10,23 +10,29 @@ import 'job_detail_provider.dart';
 
 // ── Bid Status ────────────────────────────────────────────────────────────────
 
-enum BidStatus { pendingReview, awaitingConfirmation, accepted, declined, expired }
+enum BidStatus {
+  pendingReview,
+  awaitingConfirmation,
+  accepted,
+  declined,
+  expired
+}
 
 extension BidStatusX on BidStatus {
   String get label => switch (this) {
-        BidStatus.pendingReview        => 'Pending Review',
+        BidStatus.pendingReview => 'Pending Review',
         BidStatus.awaitingConfirmation => 'Awaiting Confirmation',
-        BidStatus.accepted             => 'Accepted',
-        BidStatus.declined             => 'Declined',
-        BidStatus.expired              => 'Expired',
+        BidStatus.accepted => 'Accepted',
+        BidStatus.declined => 'Declined',
+        BidStatus.expired => 'Expired',
       };
 
   Color get color => switch (this) {
-        BidStatus.pendingReview        => MyShopColors.warning,
+        BidStatus.pendingReview => MyShopColors.warning,
         BidStatus.awaitingConfirmation => MyShopColors.primaryGold,
-        BidStatus.accepted             => MyShopColors.success,
-        BidStatus.declined             => MyShopColors.error,
-        BidStatus.expired              => MyShopColors.error,
+        BidStatus.accepted => MyShopColors.success,
+        BidStatus.declined => MyShopColors.error,
+        BidStatus.expired => MyShopColors.error,
       };
 }
 
@@ -35,8 +41,8 @@ extension BidStatusX on BidStatus {
 BidStatus bidStatusFromRaw(String raw) => switch (raw) {
       'accepted' => BidStatus.accepted,
       'rejected' => BidStatus.declined,
-      'expired'  => BidStatus.expired,
-      _          => BidStatus.pendingReview,
+      'expired' => BidStatus.expired,
+      _ => BidStatus.pendingReview,
     };
 
 // ── Material Line Item ────────────────────────────────────────────────────────
@@ -73,17 +79,15 @@ class BidBreakdown {
   int get vatPesewas =>
       ((serviceFeePesewas + materialsFeePesewas) * vatRate).round();
 
-  int get totalPesewas =>
-      serviceFeePesewas + materialsFeePesewas + vatPesewas;
+  int get totalPesewas => serviceFeePesewas + materialsFeePesewas + vatPesewas;
 
-  String _fmt(int pesewas) =>
-      'GHS ${(pesewas / 100).toStringAsFixed(2)}';
+  String _fmt(int pesewas) => 'GHS ${(pesewas / 100).toStringAsFixed(2)}';
 
-  String get serviceFeeDisplay  => _fmt(serviceFeePesewas);
+  String get serviceFeeDisplay => _fmt(serviceFeePesewas);
   String get materialsFeeDisplay => _fmt(materialsFeePesewas);
-  String get vatDisplay          => _fmt(vatPesewas);
-  String get totalDisplay        => _fmt(totalPesewas);
-  String get vatPercent          => '${(vatRate * 100).toStringAsFixed(0)}%';
+  String get vatDisplay => _fmt(vatPesewas);
+  String get totalDisplay => _fmt(totalPesewas);
+  String get vatPercent => '${(vatRate * 100).toStringAsFixed(0)}%';
 }
 
 // ── Artisan Profile (bid context) ─────────────────────────────────────────────
@@ -302,7 +306,8 @@ class BidDetailNotifier extends StateNotifier<BidDetailActionState> {
 
   /// Declines / ignores the bid — client simply does not call select-bid.
   /// If all 3 bids are declined the job re-enters the admin queue.
-  Future<void> declineBid({required String jobId, required String bidId}) async {
+  Future<void> declineBid(
+      {required String jobId, required String bidId}) async {
     if (state.isBusy) return;
     state = state.copyWith(isDeclining: true, clearError: true);
     // No dedicated decline endpoint — just navigate back.
@@ -351,8 +356,18 @@ class BidDetailNotifier extends StateNotifier<BidDetailActionState> {
 
   static String _formatExpiredDate(DateTime dt) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
   }
@@ -392,7 +407,8 @@ class _BidDetailNotifier
     final job = await ref.read(jobDetailProvider(arg.jobId).future);
     final bid = bids.firstWhere(
       (b) => b.bidId == arg.bidId,
-      orElse: () => throw StateError('Bid ${arg.bidId} not found for job ${arg.jobId}'),
+      orElse: () =>
+          throw StateError('Bid ${arg.bidId} not found for job ${arg.jobId}'),
     );
     return _toBidDetail(bid, job: job);
   }

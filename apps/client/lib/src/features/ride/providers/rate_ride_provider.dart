@@ -64,8 +64,7 @@ class RideRatingState {
       note: note ?? this.note,
       isSubmitting: isSubmitting ?? this.isSubmitting,
       isSubmitted: isSubmitted ?? this.isSubmitted,
-      errorMessage:
-          clearError ? null : (errorMessage ?? this.errorMessage),
+      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
 }

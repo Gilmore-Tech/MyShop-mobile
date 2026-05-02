@@ -144,7 +144,9 @@ class _DestinationField extends StatelessWidget {
                 style: TextStyle(
                   fontSize: w * 0.036,
                   fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
-                  color: hasValue ? MyShopColors.textPrimary : MyShopColors.textHint,
+                  color: hasValue
+                      ? MyShopColors.textPrimary
+                      : MyShopColors.textHint,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),

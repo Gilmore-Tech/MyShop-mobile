@@ -3,7 +3,7 @@ import 'package:shared_ui/shared_ui.dart';
 import '../providers/home_provider.dart';
 
 // Design tokens
-const _saleRed    = Color(0xFFE03131); // stamp red for SALE badge + tag
+const _saleRed = Color(0xFFE03131); // stamp red for SALE badge + tag
 const _tagDeepRed = Color(0xFFB91C1C); // slightly darker for the chip
 
 class SpecialOfferCard extends StatelessWidget {
@@ -144,7 +144,8 @@ class _SaleStamp extends StatelessWidget {
         decoration: BoxDecoration(
           color: _saleRed,
           borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.9), width: 2),
+          border:
+              Border.all(color: Colors.white.withValues(alpha: 0.9), width: 2),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.2),

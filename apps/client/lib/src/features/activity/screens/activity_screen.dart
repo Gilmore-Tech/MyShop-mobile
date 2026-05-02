@@ -49,11 +49,11 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final w    = size.width;
-    final h    = size.height;
+    final w = size.width;
+    final h = size.height;
 
     final activityState = ref.watch(activityNotifierProvider);
-    final jobs          = ref.watch(filteredJobsProvider);
+    final jobs = ref.watch(filteredJobsProvider);
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
@@ -193,10 +193,10 @@ class _FilterTabBar extends StatelessWidget {
                     f.label,
                     style: TextStyle(
                       fontSize: w * 0.036,
-                      fontWeight: isActive
-                          ? FontWeight.w700
-                          : FontWeight.w400,
-                      color: isActive ? MyShopColors.textPrimary : MyShopColors.textSecondary,
+                      fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
+                      color: isActive
+                          ? MyShopColors.textPrimary
+                          : MyShopColors.textSecondary,
                     ),
                   ),
                   SizedBox(height: h * 0.007),
@@ -549,10 +549,11 @@ class _StatusBadge extends StatelessWidget {
   }
 
   (Color bg, Color fg) _colors(JobStatus s) => switch (s) {
-        JobStatus.completed =>
-          (MyShopColors.successLight, MyShopColors.success),
-        JobStatus.cancelled =>
-          (MyShopColors.errorLight, MyShopColors.error),
+        JobStatus.completed => (
+            MyShopColors.successLight,
+            MyShopColors.success
+          ),
+        JobStatus.cancelled => (MyShopColors.errorLight, MyShopColors.error),
         JobStatus.inProgress ||
         JobStatus.open ||
         JobStatus.artisanMarkedComplete ||
@@ -636,7 +637,8 @@ class _CardMenuSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bottomPad = MediaQuery.paddingOf(context).bottom;
-    final isActive = RequestFilter.active.statuses?.contains(job.status) ?? false;
+    final isActive =
+        RequestFilter.active.statuses?.contains(job.status) ?? false;
 
     return Container(
       decoration: BoxDecoration(
@@ -678,7 +680,8 @@ class _CardMenuSheet extends StatelessWidget {
             label: 'View Details',
             color: MyShopColors.textPrimary,
             onTap: () => Navigator.of(context).pop(),
-            w: w, h: h,
+            w: w,
+            h: h,
           ),
           if (isActive) ...[
             const Divider(height: 1, color: MyShopColors.divider),
@@ -687,7 +690,8 @@ class _CardMenuSheet extends StatelessWidget {
               label: 'Cancel Request',
               color: MyShopColors.error,
               onTap: () => Navigator.of(context).pop(),
-              w: w, h: h,
+              w: w,
+              h: h,
             ),
           ],
           const Divider(height: 1, color: MyShopColors.divider),
@@ -696,7 +700,8 @@ class _CardMenuSheet extends StatelessWidget {
             label: 'Share',
             color: MyShopColors.textPrimary,
             onTap: () => Navigator.of(context).pop(),
-            w: w, h: h,
+            w: w,
+            h: h,
           ),
         ],
       ),
@@ -765,7 +770,7 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (icon, title, sub) = switch (filter) {
-      RequestFilter.active    => (
+      RequestFilter.active => (
           Icons.hourglass_empty_rounded,
           'No active requests',
           'Post a new job to get bids from nearby artisans.'
@@ -858,7 +863,7 @@ class _BottomNav extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final bottomPad  = MediaQuery.paddingOf(context).bottom;
+    final bottomPad = MediaQuery.paddingOf(context).bottom;
     final activeCount = ref.watch(activeJobCountProvider);
 
     return Container(
@@ -981,7 +986,8 @@ class _NavItemWithBadge extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: MyShopColors.warning,
                       shape: BoxShape.circle,
-                      border: Border.all(color: MyShopColors.surfaceWhite, width: 1.5),
+                      border: Border.all(
+                          color: MyShopColors.surfaceWhite, width: 1.5),
                     ),
                     child: Center(
                       child: Text(

@@ -19,8 +19,8 @@ class SavedLocationsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final size = MediaQuery.sizeOf(context);
-    final w    = size.width;
-    final h    = size.height;
+    final w = size.width;
+    final h = size.height;
 
     final state = ref.watch(savedPlacesProvider);
 
@@ -69,10 +69,10 @@ class _AppBar extends StatelessWidget {
     return Container(
       color: MyShopColors.surfaceWhite,
       padding: EdgeInsets.only(
-        top:    topPad + h * 0.010,
+        top: topPad + h * 0.010,
         bottom: h * 0.017,
-        left:   w * 0.041,
-        right:  w * 0.041,
+        left: w * 0.041,
+        right: w * 0.041,
       ),
       child: Row(
         children: [
@@ -88,9 +88,9 @@ class _AppBar extends StatelessWidget {
           Text(
             'Saved Places',
             style: TextStyle(
-              fontSize:   w * 0.051,
+              fontSize: w * 0.051,
               fontWeight: FontWeight.w700,
-              color:      MyShopColors.textPrimary,
+              color: MyShopColors.textPrimary,
             ),
           ),
         ],
@@ -116,7 +116,7 @@ class _SearchBar extends StatelessWidget {
         child: Container(
           height: h * 0.058,
           decoration: BoxDecoration(
-            color:        MyShopColors.surfaceGrey,
+            color: MyShopColors.surfaceGrey,
             borderRadius: BorderRadius.circular(w * 0.026),
           ),
           padding: EdgeInsets.symmetric(horizontal: w * 0.038),
@@ -129,7 +129,7 @@ class _SearchBar extends StatelessWidget {
                 'Search for a new place...',
                 style: TextStyle(
                   fontSize: w * 0.036,
-                  color:    MyShopColors.textHint,
+                  color: MyShopColors.textHint,
                 ),
               ),
             ],
@@ -157,9 +157,9 @@ class _QuickCategoriesRow extends StatelessWidget {
           child: Text(
             'QUICK CATEGORIES',
             style: TextStyle(
-              fontSize:      w * 0.023,
-              fontWeight:    FontWeight.w900,
-              color:         MyShopColors.textSecondary,
+              fontSize: w * 0.023,
+              fontWeight: FontWeight.w900,
+              color: MyShopColors.textSecondary,
               letterSpacing: 0.7,
             ),
           ),
@@ -187,8 +187,8 @@ class _QuickCategoriesRow extends StatelessWidget {
 
 class _CategoryChip extends StatelessWidget {
   final QuickCategory category;
-  final double        w;
-  final double        h;
+  final double w;
+  final double h;
   const _CategoryChip(
       {required this.category, required this.w, required this.h});
 
@@ -200,12 +200,12 @@ class _CategoryChip extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(
           horizontal: w * 0.031,
-          vertical:   h * 0.009,
+          vertical: h * 0.009,
         ),
         decoration: BoxDecoration(
-          color:        MyShopColors.surfaceWhite,
+          color: MyShopColors.surfaceWhite,
           borderRadius: BorderRadius.circular(w * 0.051),
-          border:       Border.all(color: MyShopColors.divider),
+          border: Border.all(color: MyShopColors.divider),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -216,9 +216,9 @@ class _CategoryChip extends StatelessWidget {
             Text(
               category.label,
               style: TextStyle(
-                fontSize:   w * 0.031,
+                fontSize: w * 0.031,
                 fontWeight: FontWeight.w500,
-                color:      MyShopColors.textSecondary,
+                color: MyShopColors.textSecondary,
               ),
             ),
           ],
@@ -239,12 +239,12 @@ class _AddCategoryChip extends StatelessWidget {
       onTap: () {},
       behavior: HitTestBehavior.opaque,
       child: Container(
-        width:  w * 0.077,
+        width: w * 0.077,
         height: w * 0.077,
         decoration: BoxDecoration(
-          color:        MyShopColors.surfaceWhite,
-          shape:        BoxShape.circle,
-          border:       Border.all(color: MyShopColors.divider),
+          color: MyShopColors.surfaceWhite,
+          shape: BoxShape.circle,
+          border: Border.all(color: MyShopColors.divider),
         ),
         child: Icon(Icons.add_rounded,
             size: w * 0.041, color: MyShopColors.textSecondary),
@@ -257,8 +257,8 @@ class _AddCategoryChip extends StatelessWidget {
 
 class _AddressesSection extends ConsumerWidget {
   final SavedPlacesState state;
-  final double           w;
-  final double           h;
+  final double w;
+  final double h;
   const _AddressesSection(
       {required this.state, required this.w, required this.h});
 
@@ -275,9 +275,9 @@ class _AddressesSection extends ConsumerWidget {
               Text(
                 'MY ADDRESSES',
                 style: TextStyle(
-                  fontSize:      w * 0.023,
-                  fontWeight:    FontWeight.w900,
-                  color:         MyShopColors.textSecondary,
+                  fontSize: w * 0.023,
+                  fontWeight: FontWeight.w900,
+                  color: MyShopColors.textSecondary,
                   letterSpacing: 0.7,
                 ),
               ),
@@ -285,18 +285,18 @@ class _AddressesSection extends ConsumerWidget {
               Container(
                 padding: EdgeInsets.symmetric(
                   horizontal: w * 0.026,
-                  vertical:   h * 0.005,
+                  vertical: h * 0.005,
                 ),
                 decoration: BoxDecoration(
-                  color:        MyShopColors.primaryGold,
+                  color: MyShopColors.primaryGold,
                   borderRadius: BorderRadius.circular(w * 0.041),
                 ),
                 child: Text(
                   state.countLabel,
                   style: TextStyle(
-                    fontSize:   w * 0.023,
+                    fontSize: w * 0.023,
                     fontWeight: FontWeight.w800,
-                    color:      MyShopColors.surfaceWhite,
+                    color: MyShopColors.surfaceWhite,
                     letterSpacing: 0.5,
                   ),
                 ),
@@ -315,9 +315,8 @@ class _AddressesSection extends ConsumerWidget {
                   children: [
                     for (var i = 0; i < state.places.length; i++) ...[
                       _PlaceCard(
-                        place:       state.places[i],
-                        isDeleting:
-                            state.isDeletingId &&
+                        place: state.places[i],
+                        isDeleting: state.isDeletingId &&
                             state.deletingId == state.places[i].id,
                         w: w,
                         h: h,
@@ -327,7 +326,8 @@ class _AddressesSection extends ConsumerWidget {
                           padding: EdgeInsets.only(
                             left: w * 0.041 + w * 0.185 + w * 0.031,
                           ),
-                          child: const Divider(height: 1, color: MyShopColors.divider),
+                          child: const Divider(
+                              height: 1, color: MyShopColors.divider),
                         ),
                     ],
                   ],
@@ -342,9 +342,9 @@ class _AddressesSection extends ConsumerWidget {
 
 class _PlaceCard extends ConsumerWidget {
   final SavedPlace place;
-  final bool       isDeleting;
-  final double     w;
-  final double     h;
+  final bool isDeleting;
+  final double w;
+  final double h;
   const _PlaceCard({
     required this.place,
     required this.isDeleting,
@@ -357,7 +357,7 @@ class _PlaceCard extends ConsumerWidget {
     return Padding(
       padding: EdgeInsets.symmetric(
         horizontal: w * 0.041,
-        vertical:   h * 0.017,
+        vertical: h * 0.017,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -366,7 +366,7 @@ class _PlaceCard extends ConsumerWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(w * 0.026),
             child: SizedBox(
-              width:  w * 0.185,
+              width: w * 0.185,
               height: w * 0.185,
               child: CustomPaint(
                 painter: _MapThumbnailPainter(place.thumbnailStyle),
@@ -388,9 +388,9 @@ class _PlaceCard extends ConsumerWidget {
                       child: Text(
                         place.name,
                         style: TextStyle(
-                          fontSize:   w * 0.036,
+                          fontSize: w * 0.036,
                           fontWeight: FontWeight.w700,
-                          color:      MyShopColors.textPrimary,
+                          color: MyShopColors.textPrimary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -402,11 +402,10 @@ class _PlaceCard extends ConsumerWidget {
                       behavior: HitTestBehavior.opaque,
                       child: Padding(
                         padding: EdgeInsets.symmetric(
-                            horizontal: w * 0.015,
-                            vertical:   h * 0.005),
+                            horizontal: w * 0.015, vertical: h * 0.005),
                         child: Icon(
                           Icons.edit_outlined,
-                          size:  w * 0.041,
+                          size: w * 0.041,
                           color: MyShopColors.textSecondary,
                         ),
                       ),
@@ -419,20 +418,19 @@ class _PlaceCard extends ConsumerWidget {
                       behavior: HitTestBehavior.opaque,
                       child: Padding(
                         padding: EdgeInsets.symmetric(
-                            horizontal: w * 0.010,
-                            vertical:   h * 0.005),
+                            horizontal: w * 0.010, vertical: h * 0.005),
                         child: isDeleting
                             ? SizedBox(
-                                width:  w * 0.036,
+                                width: w * 0.036,
                                 height: w * 0.036,
                                 child: const CircularProgressIndicator(
                                   strokeWidth: 1.5,
-                                  color:       MyShopColors.error,
+                                  color: MyShopColors.error,
                                 ),
                               )
                             : Icon(
                                 Icons.delete_outline_rounded,
-                                size:  w * 0.041,
+                                size: w * 0.041,
                                 color: MyShopColors.textSecondary,
                               ),
                       ),
@@ -445,10 +443,10 @@ class _PlaceCard extends ConsumerWidget {
                 Text(
                   place.address,
                   style: TextStyle(
-                    fontSize:   w * 0.031,
+                    fontSize: w * 0.031,
                     fontWeight: FontWeight.w400,
-                    color:      MyShopColors.textSecondary,
-                    height:     1.4,
+                    color: MyShopColors.textSecondary,
+                    height: 1.4,
                   ),
                   maxLines: 2,
                 ),
@@ -464,7 +462,7 @@ class _PlaceCard extends ConsumerWidget {
                       'Last visited: ${place.lastVisitedLabel}',
                       style: TextStyle(
                         fontSize: w * 0.026,
-                        color:    MyShopColors.textHint,
+                        color: MyShopColors.textHint,
                       ),
                     ),
                   ],
@@ -485,16 +483,16 @@ class _PlaceCard extends ConsumerWidget {
         title: Text(
           'Remove ${place.name}?',
           style: TextStyle(
-            fontSize:   w * 0.041,
+            fontSize: w * 0.041,
             fontWeight: FontWeight.w700,
-            color:      MyShopColors.textPrimary,
+            color: MyShopColors.textPrimary,
           ),
         ),
         content: Text(
           'This place will be removed from your saved addresses.',
           style: TextStyle(
             fontSize: w * 0.033,
-            color:    MyShopColors.textSecondary,
+            color: MyShopColors.textSecondary,
           ),
         ),
         shape: RoundedRectangleBorder(
@@ -503,20 +501,18 @@ class _PlaceCard extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('Cancel',
-                style: TextStyle(color: MyShopColors.darkSlate)),
+            child:
+                Text('Cancel', style: TextStyle(color: MyShopColors.darkSlate)),
           ),
           TextButton(
             onPressed: () {
               Navigator.of(ctx).pop();
-              ref
-                  .read(savedPlacesProvider.notifier)
-                  .deletePlace(place.id);
+              ref.read(savedPlacesProvider.notifier).deletePlace(place.id);
             },
             child: Text(
               'Remove',
               style: TextStyle(
-                color:      MyShopColors.error,
+                color: MyShopColors.error,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -547,9 +543,9 @@ class _EmptyPlaces extends StatelessWidget {
             Text(
               'No saved places yet',
               style: TextStyle(
-                fontSize:   w * 0.038,
+                fontSize: w * 0.038,
                 fontWeight: FontWeight.w600,
-                color:      MyShopColors.textSecondary,
+                color: MyShopColors.textSecondary,
               ),
             ),
             SizedBox(height: h * 0.006),
@@ -557,7 +553,7 @@ class _EmptyPlaces extends StatelessWidget {
               'Tap + to add your first address.',
               style: TextStyle(
                 fontSize: w * 0.031,
-                color:    MyShopColors.textHint,
+                color: MyShopColors.textHint,
               ),
             ),
           ],
@@ -597,15 +593,15 @@ class _MapThumbnailPainter extends CustomPainter {
     );
     // Park block
     canvas.drawRect(
-      Rect.fromLTWH(s.width * 0.10, s.height * 0.08,
-          s.width * 0.45, s.height * 0.38),
+      Rect.fromLTWH(
+          s.width * 0.10, s.height * 0.08, s.width * 0.45, s.height * 0.38),
       Paint()..color = const Color(0xFFC8E6C9),
     );
     // Roads
     final road = Paint()
-      ..color       = const Color(0xFFF5F5DC)
+      ..color = const Color(0xFFF5F5DC)
       ..strokeWidth = s.width * 0.065
-      ..strokeCap   = StrokeCap.square;
+      ..strokeCap = StrokeCap.square;
     canvas.drawLine(
       Offset(0, s.height * 0.50),
       Offset(s.width, s.height * 0.50),
@@ -618,15 +614,15 @@ class _MapThumbnailPainter extends CustomPainter {
     );
     // Road outlines
     final outline = Paint()
-      ..color       = MyShopColors.disabled
+      ..color = MyShopColors.disabled
       ..strokeWidth = 0.6
-      ..style       = PaintingStyle.stroke;
+      ..style = PaintingStyle.stroke;
     for (final y in [s.height * 0.465, s.height * 0.535]) {
       canvas.drawLine(Offset(0, y), Offset(s.width, y), outline);
     }
     // Pin
-    _drawPin(canvas, s, Offset(s.width * 0.55, s.height * 0.44),
-        MyShopColors.error);
+    _drawPin(
+        canvas, s, Offset(s.width * 0.55, s.height * 0.44), MyShopColors.error);
   }
 
   // ── Urban (WORK) — dense grid, grey streets ──
@@ -639,20 +635,20 @@ class _MapThumbnailPainter extends CustomPainter {
     // Building blocks
     final block = Paint()..color = MyShopColors.divider;
     for (final rect in [
-      Rect.fromLTWH(s.width * 0.05, s.height * 0.06,
-          s.width * 0.35, s.height * 0.38),
-      Rect.fromLTWH(s.width * 0.55, s.height * 0.06,
-          s.width * 0.38, s.height * 0.22),
-      Rect.fromLTWH(s.width * 0.55, s.height * 0.56,
-          s.width * 0.38, s.height * 0.37),
-      Rect.fromLTWH(s.width * 0.05, s.height * 0.58,
-          s.width * 0.35, s.height * 0.35),
+      Rect.fromLTWH(
+          s.width * 0.05, s.height * 0.06, s.width * 0.35, s.height * 0.38),
+      Rect.fromLTWH(
+          s.width * 0.55, s.height * 0.06, s.width * 0.38, s.height * 0.22),
+      Rect.fromLTWH(
+          s.width * 0.55, s.height * 0.56, s.width * 0.38, s.height * 0.37),
+      Rect.fromLTWH(
+          s.width * 0.05, s.height * 0.58, s.width * 0.35, s.height * 0.35),
     ]) {
       canvas.drawRect(rect, block);
     }
     // Roads
     final road = Paint()
-      ..color       = MyShopColors.surfaceWhite
+      ..color = MyShopColors.surfaceWhite
       ..strokeWidth = s.width * 0.055;
     canvas.drawLine(
         Offset(0, s.height * 0.49), Offset(s.width, s.height * 0.49), road);
@@ -672,41 +668,40 @@ class _MapThumbnailPainter extends CustomPainter {
     );
     // Large commercial block
     canvas.drawRect(
-      Rect.fromLTWH(s.width * 0.04, s.height * 0.04,
-          s.width * 0.56, s.height * 0.56),
+      Rect.fromLTWH(
+          s.width * 0.04, s.height * 0.04, s.width * 0.56, s.height * 0.56),
       Paint()..color = const Color(0xFFCFD8DC),
     );
     // Small blocks
     for (final rect in [
-      Rect.fromLTWH(s.width * 0.66, s.height * 0.04,
-          s.width * 0.28, s.height * 0.24),
-      Rect.fromLTWH(s.width * 0.04, s.height * 0.66,
-          s.width * 0.24, s.height * 0.28),
-      Rect.fromLTWH(s.width * 0.34, s.height * 0.66,
-          s.width * 0.59, s.height * 0.28),
+      Rect.fromLTWH(
+          s.width * 0.66, s.height * 0.04, s.width * 0.28, s.height * 0.24),
+      Rect.fromLTWH(
+          s.width * 0.04, s.height * 0.66, s.width * 0.24, s.height * 0.28),
+      Rect.fromLTWH(
+          s.width * 0.34, s.height * 0.66, s.width * 0.59, s.height * 0.28),
     ]) {
-      canvas.drawRect(
-          rect, Paint()..color = const Color(0xFFB0BEC5));
+      canvas.drawRect(rect, Paint()..color = const Color(0xFFB0BEC5));
     }
     // Roads
     final road = Paint()
-      ..color       = MyShopColors.surfaceWhite
+      ..color = MyShopColors.surfaceWhite
       ..strokeWidth = s.width * 0.055;
     canvas.drawLine(
         Offset(0, s.height * 0.62), Offset(s.width, s.height * 0.62), road);
     canvas.drawLine(
         Offset(s.width * 0.62, 0), Offset(s.width * 0.62, s.height), road);
     // Pin
-    _drawPin(canvas, s,
-        Offset(s.width * 0.30, s.height * 0.32), MyShopColors.darkSlate);
+    _drawPin(canvas, s, Offset(s.width * 0.30, s.height * 0.32),
+        MyShopColors.darkSlate);
   }
 
   // ── Pin helper ──
 
   void _drawPin(Canvas canvas, Size s, Offset tip, Color color) {
-    final r    = s.width * 0.095;
-    final cx   = tip.dx;
-    final cy   = tip.dy - r * 1.35;
+    final r = s.width * 0.095;
+    final cx = tip.dx;
+    final cy = tip.dy - r * 1.35;
 
     // Drop shadow
     canvas.drawCircle(
@@ -728,7 +723,7 @@ class _MapThumbnailPainter extends CustomPainter {
     // Tail
     final path = Path()
       ..moveTo(cx - r * 0.45, cy + r * 0.6)
-      ..lineTo(cx,            tip.dy)
+      ..lineTo(cx, tip.dy)
       ..lineTo(cx + r * 0.45, cy + r * 0.6)
       ..close();
     canvas.drawPath(path, Paint()..color = color);
@@ -752,10 +747,10 @@ class _FrequentRoutesCard extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(
           horizontal: w * 0.041,
-          vertical:   h * 0.019,
+          vertical: h * 0.019,
         ),
         decoration: BoxDecoration(
-          color:        MyShopColors.surfaceGrey,
+          color: MyShopColors.surfaceGrey,
           borderRadius: BorderRadius.circular(w * 0.031),
         ),
         child: Row(
@@ -763,7 +758,7 @@ class _FrequentRoutesCard extends StatelessWidget {
           children: [
             // Paper-plane icon
             Container(
-              width:  w * 0.092,
+              width: w * 0.092,
               height: w * 0.092,
               decoration: BoxDecoration(
                 color: MyShopColors.primaryGold.withValues(alpha: 0.12),
@@ -773,7 +768,7 @@ class _FrequentRoutesCard extends StatelessWidget {
                 angle: -math.pi / 6,
                 child: Icon(
                   Icons.send_rounded,
-                  size:  w * 0.046,
+                  size: w * 0.046,
                   color: MyShopColors.primaryGold,
                 ),
               ),
@@ -788,9 +783,9 @@ class _FrequentRoutesCard extends StatelessWidget {
                   Text(
                     'Traveling frequent routes?',
                     style: TextStyle(
-                      fontSize:   w * 0.036,
+                      fontSize: w * 0.036,
                       fontWeight: FontWeight.w700,
-                      color:      MyShopColors.textPrimary,
+                      color: MyShopColors.textPrimary,
                     ),
                   ),
                   SizedBox(height: h * 0.005),
@@ -799,8 +794,8 @@ class _FrequentRoutesCard extends StatelessWidget {
                     'traffic alerts and faster route planning.',
                     style: TextStyle(
                       fontSize: w * 0.031,
-                      color:    MyShopColors.textSecondary,
-                      height:   1.4,
+                      color: MyShopColors.textSecondary,
+                      height: 1.4,
                     ),
                   ),
                 ],
@@ -823,12 +818,13 @@ class _AddFab extends StatelessWidget {
   Widget build(BuildContext context) {
     return FloatingActionButton(
       onPressed: () => showSavePlaceSheet(context),
-      backgroundColor:   MyShopColors.darkSlate,
-      elevation:         4,
+      backgroundColor: MyShopColors.darkSlate,
+      elevation: 4,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(w * 0.041),
       ),
-      child: Icon(Icons.add_rounded, size: w * 0.064, color: MyShopColors.surfaceWhite),
+      child: Icon(Icons.add_rounded,
+          size: w * 0.064, color: MyShopColors.surfaceWhite),
     );
   }
 }

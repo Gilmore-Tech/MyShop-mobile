@@ -215,8 +215,8 @@ class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Widget child = switch (phase) {
-      BookingPhase.accepted =>
-        _DriversAvailablePill(count: matchedCount, key: const ValueKey('found')),
+      BookingPhase.accepted => _DriversAvailablePill(
+          count: matchedCount, key: const ValueKey('found')),
       BookingPhase.driverFound =>
         _NotifyingPill(count: notifiedCount, key: const ValueKey('notifying')),
       _ => _SearchingBar(),
@@ -237,31 +237,32 @@ class _SearchingBar extends StatelessWidget {
     final w = MediaQuery.sizeOf(context).width;
     final h = MediaQuery.sizeOf(context).height;
     return Container(
-      key:    const ValueKey('searching'),
+      key: const ValueKey('searching'),
       height: h * 0.055,
       padding: EdgeInsets.symmetric(horizontal: w * 0.046),
       decoration: BoxDecoration(
-        color:        Colors.white,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(h * 0.027),
         boxShadow: [
           BoxShadow(
-            color:      Colors.black.withValues(alpha: 0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 12,
-            offset:     const Offset(0, 3),
+            offset: const Offset(0, 3),
           ),
         ],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.search_rounded, size: w * 0.044, color: MyShopColors.textSecondary),
+          Icon(Icons.search_rounded,
+              size: w * 0.044, color: MyShopColors.textSecondary),
           SizedBox(width: w * 0.021),
           Text(
             'Finding nearby drivers...',
             style: TextStyle(
-              fontSize:   w * 0.036,
+              fontSize: w * 0.036,
               fontWeight: FontWeight.w500,
-              color:      MyShopColors.textSecondary,
+              color: MyShopColors.textSecondary,
             ),
           ),
         ],
@@ -315,9 +316,8 @@ class _NotifyingPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
     final h = MediaQuery.sizeOf(context).height;
-    final label = count == 1
-        ? 'Notifying 1 driver...'
-        : 'Notifying $count drivers...';
+    final label =
+        count == 1 ? 'Notifying 1 driver...' : 'Notifying $count drivers...';
     return Container(
       padding: EdgeInsets.symmetric(horizontal: w * 0.051, vertical: h * 0.012),
       decoration: BoxDecoration(
