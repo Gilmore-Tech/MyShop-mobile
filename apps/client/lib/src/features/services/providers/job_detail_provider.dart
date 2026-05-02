@@ -124,6 +124,17 @@ class JobDetail {
   /// is still open / queued. Used to resolve the accepted bid for display.
   final String? selectedArtisanId;
 
+  /// ISO timestamp set by the backend when the client picks a payment
+  /// method on the payment screen. For cash, the job stays at
+  /// `artisan_marked_complete` server-side until the artisan taps "Yes,
+  /// I received payment", so the action bar must look at this field —
+  /// not just `status` — to avoid prompting the client to pay again.
+  final String? clientPaymentAcknowledgedAt;
+
+  /// `'cash' | 'momo' | 'card'` — null until acknowledged. Lets the UI
+  /// tell a cash wait apart from a Paystack-in-flight wait.
+  final String? clientPaymentMethod;
+
   const JobDetail({
     required this.id,
     required this.title,
@@ -140,7 +151,17 @@ class JobDetail {
     required this.bids,
     required this.timeline,
     this.selectedArtisanId,
+    this.clientPaymentAcknowledgedAt,
+    this.clientPaymentMethod,
   });
+
+  /// True when the client has acknowledged payment (any method) but the
+  /// job hasn't settled yet. Drives the "waiting for artisan" tile so the
+  /// client isn't re-prompted to pay on back-navigation.
+  bool get isPaymentAcknowledgedPending =>
+      status == JobStatus.artisanMarkedComplete &&
+      clientPaymentAcknowledgedAt != null &&
+      clientPaymentAcknowledgedAt!.isNotEmpty;
 
   bool get hasCoordinates => latitude != 0 && longitude != 0;
 
@@ -218,6 +239,23 @@ class _JobDetailNotifier
           splitIndex > 0 ? rawDescription.substring(splitIndex + 2) : '';
     }
 
+    final clientPaymentAck =
+        data['clientPaymentAcknowledgedAt'] as String?;
+    final clientPaymentMethod = data['clientPaymentMethod'] as String?;
+
+    // When the client has acknowledged payment but the job hasn't been
+    // marked completed yet (cash flow waiting on the artisan, or a
+    // Paystack charge that hasn't webhooked), advance the timeline to
+    // "Processing Payment" so the user sees forward motion instead of
+    // sitting on "Awaiting Confirmation". The action bar still uses the
+    // raw `status` + ack to pick the right tile.
+    final timelineStatus =
+        status == JobStatus.artisanMarkedComplete &&
+                clientPaymentAck != null &&
+                clientPaymentAck.isNotEmpty
+            ? JobStatus.pendingPayment
+            : status;
+
     return JobDetail(
       id: data['id'] as String? ?? data['jobId'] as String? ?? '',
       title: title,
@@ -244,8 +282,10 @@ class _JobDetailNotifier
           Color(0xFF607D8B),
         ],
       ),
-      timeline: _buildTimeline(status),
+      timeline: _buildTimeline(timelineStatus),
       selectedArtisanId: data['artisanId'] as String?,
+      clientPaymentAcknowledgedAt: clientPaymentAck,
+      clientPaymentMethod: clientPaymentMethod,
     );
   }
 

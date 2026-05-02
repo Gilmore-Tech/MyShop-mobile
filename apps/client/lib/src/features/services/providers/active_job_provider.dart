@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -276,6 +278,18 @@ class _ActiveJobNotifier
     final status = data['status'] as String? ?? 'en_route';
     final clientPaymentAck =
         data['clientPaymentAcknowledgedAt'] as String?;
+    final clientPaymentMethod = data['clientPaymentMethod'] as String?;
+    // Diagnostic — confirms whether the backend is including the
+    // payment-acknowledgement fields in the GET /jobs/:id response. If
+    // these come back null after the client picked Cash on the payment
+    // screen, the backend isn't persisting them and the "Proceed to
+    // payment" CTA will keep looping.
+    developer.log(
+      'getJob → status=$status '
+      'clientPaymentAcknowledgedAt=$clientPaymentAck '
+      'clientPaymentMethod=$clientPaymentMethod',
+      name: 'ActiveJob',
+    );
     final phase = _parsePhase(status, clientPaymentAck: clientPaymentAck);
 
     final artisanData = data['provider'] as Map<String, dynamic>? ?? {};

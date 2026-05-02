@@ -122,6 +122,8 @@ class _JobDetailBody extends StatelessWidget {
           jobTitle: job.title,
           selectedArtisanId: job.selectedArtisanId,
           status: job.status,
+          isPaymentAcknowledgedPending: job.isPaymentAcknowledgedPending,
+          clientPaymentMethod: job.clientPaymentMethod,
           w: w,
           h: h,
         ),
@@ -1094,6 +1096,16 @@ class _BottomActionBar extends StatelessWidget {
   final String jobTitle;
   final String? selectedArtisanId;
   final JobStatus status;
+
+  /// Backend has recorded `clientPaymentAcknowledgedAt` but the job is
+  /// still `artisan_marked_complete` (cash flow waiting on the artisan).
+  /// Drives the disabled "Awaiting artisan to confirm receipt" tile so
+  /// we don't loop the client back through the payment screen.
+  final bool isPaymentAcknowledgedPending;
+
+  /// `'cash' | 'momo' | 'card'` — used to tailor the waiting copy.
+  final String? clientPaymentMethod;
+
   final double w;
   final double h;
   const _BottomActionBar({
@@ -1101,6 +1113,8 @@ class _BottomActionBar extends StatelessWidget {
     required this.jobTitle,
     required this.selectedArtisanId,
     required this.status,
+    required this.isPaymentAcknowledgedPending,
+    required this.clientPaymentMethod,
     required this.w,
     required this.h,
   });
@@ -1112,7 +1126,13 @@ class _BottomActionBar extends StatelessWidget {
         selectedArtisanId != null && selectedArtisanId!.isNotEmpty;
 
     final Widget content;
-    if (status == JobStatus.artisanMarkedComplete) {
+    if (isPaymentAcknowledgedPending) {
+      content = _AwaitingPaymentReceiptTile(
+        method: clientPaymentMethod,
+        w: w,
+        h: h,
+      );
+    } else if (status == JobStatus.artisanMarkedComplete) {
       content = _ConfirmCompletionButton(jobId: jobId, w: w, h: h);
     } else if (status == JobStatus.pendingPayment) {
       // Charge is in flight with Paystack. Happy path: webhook lands in
@@ -1197,7 +1217,15 @@ class _ConfirmCompletionButtonState
       // Step 2: hand off to the payment screen, which owns method
       // selection (MTN / Telecel / AirtelTigo / Visa / Mastercard /
       // Cash), the MoMo phone input, and the rest of the flow.
-      context.push(AppRoutes.jobPaymentPath(widget.jobId));
+      //
+      // Refetch on return — the cash flow records
+      // `clientPaymentAcknowledgedAt` server-side without flipping
+      // job.status, so without this pull the action bar would render
+      // "Proceed to Payment" again and loop the client.
+      await context.push(AppRoutes.jobPaymentPath(widget.jobId));
+      if (mounted) {
+        ref.invalidate(jobDetailProvider(widget.jobId));
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -1616,6 +1644,62 @@ class _JobCompletedTile extends StatelessWidget {
               fontSize: w * 0.040,
               fontWeight: FontWeight.w700,
               color: MyShopColors.success,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shown when the client has acknowledged payment (cash or otherwise) but
+/// the job hasn't settled yet — the artisan still needs to confirm cash
+/// receipt, or the Paystack webhook hasn't landed. Disabled by design:
+/// re-prompting the client to "Proceed to Payment" here is what triggered
+/// duplicate-payment loops in the original bug.
+class _AwaitingPaymentReceiptTile extends StatelessWidget {
+  final String? method;
+  final double w;
+  final double h;
+  const _AwaitingPaymentReceiptTile({
+    required this.method,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isCash = method == 'cash';
+    final label = isCash
+        ? 'Awaiting artisan to confirm receipt'
+        : 'Processing payment…';
+    return Container(
+      width: double.infinity,
+      height: h * 0.062,
+      decoration: BoxDecoration(
+        color: MyShopColors.surfaceGrey,
+        borderRadius: BorderRadius.circular(w * 0.021),
+        border: Border.all(color: MyShopColors.divider),
+      ),
+      alignment: Alignment.center,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: w * 0.046,
+            height: w * 0.046,
+            child: const CircularProgressIndicator(
+              strokeWidth: 2,
+              color: MyShopColors.textSecondary,
+            ),
+          ),
+          SizedBox(width: w * 0.026),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: w * 0.038,
+              fontWeight: FontWeight.w600,
+              color: MyShopColors.textSecondary,
             ),
           ),
         ],
