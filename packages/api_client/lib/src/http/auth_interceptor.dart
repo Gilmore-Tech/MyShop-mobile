@@ -46,6 +46,7 @@ class AuthInterceptor extends QueuedInterceptor {
   /// Paths that do not require an Authorization header.
   static const _publicPaths = {
     '/auth/register',
+    '/auth/check-phone',
     '/auth/login/client',
     '/auth/login/driver',
     '/auth/login/artisan',
