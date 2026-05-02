@@ -44,11 +44,17 @@ List<_TLStep> _buildSteps(ActiveJobData job) {
   final isPending = _TLStatus.pending;
 
   _TLStatus s(int stepIndex) {
+    // Order MUST cover every phase the screen can render — otherwise
+    // `indexOf` returns -1 for later phases and every step downstream
+    // collapses to `pending`, leaving the timeline frozen while the
+    // status pill correctly advances.
     const order = [
       ActiveJobPhase.enRoute, // step 2 (0-indexed after posted/assigned)
       ActiveJobPhase.arrived,
       ActiveJobPhase.inProgress,
       ActiveJobPhase.awaitingApproval,
+      ActiveJobPhase.pendingPayment,
+      ActiveJobPhase.completed,
     ];
     final phaseIdx = order.indexOf(phase);
     if (phaseIdx > stepIndex) return isCompleted;
@@ -87,13 +93,29 @@ List<_TLStep> _buildSteps(ActiveJobData job) {
       description: '${job.artisan.firstName} will upload arrival and progress '
           'photos here.',
     ),
-    if (phase == ActiveJobPhase.awaitingApproval)
+    if (phase == ActiveJobPhase.awaitingApproval ||
+        phase == ActiveJobPhase.pendingPayment ||
+        phase == ActiveJobPhase.completed)
       _TLStep(
         title: 'Completed, waiting for approval',
-        status: isActive,
+        status: s(3),
         description: 'Artisan has completed the requested job, please inspect '
             'and confirm.',
-        activeIcon: Icons.camera_alt_rounded,
+        activeIcon: phase == ActiveJobPhase.awaitingApproval
+            ? Icons.camera_alt_rounded
+            : null,
+      ),
+    if (phase == ActiveJobPhase.pendingPayment ||
+        phase == ActiveJobPhase.completed)
+      _TLStep(
+        title: phase == ActiveJobPhase.completed
+            ? 'Job Completed'
+            : 'Processing Payment',
+        status: phase == ActiveJobPhase.completed ? isCompleted : isActive,
+        description: phase == ActiveJobPhase.completed
+            ? 'Payment released to ${job.artisan.firstName}. '
+                'Tap into Activity to leave a rating.'
+            : "We're settling the payment with ${job.artisan.firstName}.",
       ),
   ];
 }
@@ -1445,7 +1467,20 @@ class _BottomBar extends ConsumerWidget {
       // Mastercard / Cash) plus the MoMo phone input. A separate "how
       // would you like to pay" sheet on top of that was a redundant
       // double-pick.
-      context.push(AppRoutes.jobPaymentPath(job.jobId));
+      //
+      // On return, force-refetch the job. Cash acknowledgement updates
+      // `clientPaymentAcknowledgedAt` server-side without flipping
+      // `job.status`, so no `job:status:changed` socket event arrives
+      // to invalidate us. Without this pull the back-button drops the
+      // user onto stale data and the CTA reverts to "Confirm, proceed
+      // to payment", inviting a duplicate payment.
+      context.push(AppRoutes.jobPaymentPath(job.jobId)).then((_) {
+        try {
+          ref.invalidate(activeJobProvider(job.jobId));
+        } catch (_) {
+          // Widget disposed during the pop animation — nothing to do.
+        }
+      });
     }
   }
 

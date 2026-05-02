@@ -339,7 +339,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
       ..on('job:status:changed', handleJobStatus);
 
     // ── Artisan confirmed a bid ──────────────────────────────────────────
-    socket.on('job:artisan_confirmed', (data) {
+    socket
+      ..off('job:artisan_confirmed')
+      ..on('job:artisan_confirmed', (data) {
       developer.log('Received job:artisan_confirmed event', name: 'WS');
       try {
         final etaLabel = data is Map<String, dynamic>
@@ -357,7 +359,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
     });
 
     // ── New bid on a job ─────────────────────────────────────────────────
-    socket.on('job:bid_new', (data) {
+    socket
+      ..off('job:bid_new')
+      ..on('job:bid_new', (data) {
       developer.log('Received job:bid_new event', name: 'WS');
       try {
         // Refresh the live job detail + bids list so the client sees the new
@@ -381,7 +385,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
     });
 
     // ── New notification ─────────────────────────────────────────────────
-    socket.on('notification:new', (data) {
+    socket
+      ..off('notification:new')
+      ..on('notification:new', (data) {
       developer.log('Received notification:new event', name: 'WS');
       try {
         if (ref.exists(notifsProvider)) {
@@ -395,7 +401,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
     });
 
     // ── Profile updated ──────────────────────────────────────────────────
-    socket.on('profile:updated', (data) {
+    socket
+      ..off('profile:updated')
+      ..on('profile:updated', (data) {
       developer.log('Received profile:updated event', name: 'WS');
       try {
         ref.read(clientAuthControllerProvider.notifier).refreshProfile();

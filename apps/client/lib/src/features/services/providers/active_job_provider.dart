@@ -274,7 +274,9 @@ class _ActiveJobNotifier
   /// Parse API response into [ActiveJobData].
   ActiveJobData _parseActiveJob(Map<String, dynamic> data) {
     final status = data['status'] as String? ?? 'en_route';
-    final phase = _parsePhase(status);
+    final clientPaymentAck =
+        data['clientPaymentAcknowledgedAt'] as String?;
+    final phase = _parsePhase(status, clientPaymentAck: clientPaymentAck);
 
     final artisanData = data['provider'] as Map<String, dynamic>? ?? {};
     final artisanName =
@@ -321,7 +323,23 @@ class _ActiveJobNotifier
     );
   }
 
-  static ActiveJobPhase _parsePhase(String status) {
+  /// Resolves the phase from the raw backend status string. When the job is
+  /// `artisan_marked_complete` AND the client has already acknowledged
+  /// payment (cash flow — `acknowledgeCash` succeeded but the artisan
+  /// hasn't tapped "Yes, I received payment" yet), the status server-side
+  /// stays at `artisan_marked_complete`. Without overriding here the
+  /// active-job CTA would render "Confirm, proceed to payment" again on
+  /// back-navigation and prompt the client to pay a second time.
+  static ActiveJobPhase _parsePhase(
+    String status, {
+    String? clientPaymentAck,
+  }) {
+    if ((status == 'artisan_marked_complete' ||
+            status == 'awaiting_approval') &&
+        clientPaymentAck != null &&
+        clientPaymentAck.isNotEmpty) {
+      return ActiveJobPhase.pendingPayment;
+    }
     return switch (status) {
       'artisan_en_route' || 'en_route' => ActiveJobPhase.enRoute,
       'arrived' => ActiveJobPhase.arrived,
