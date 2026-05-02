@@ -401,13 +401,12 @@ class AccountSettingsScreen extends ConsumerWidget {
             Center(
               child: Column(children: [
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Container(
+                  Image.asset(
+                    'assets/images/myshop_logo.png',
                     width: 16,
                     height: 16,
-                    decoration: BoxDecoration(
-                      color: MyShopColors.primaryGold,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.medium,
                   ),
                   const SizedBox(width: 6),
                   const Text('MyShop Provider App',

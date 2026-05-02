@@ -42,20 +42,25 @@ class CommissionCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const Icon(Icons.swap_horiz,
                   size: 18, color: MyShopColors.textPrimary),
               const SizedBox(width: 6),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                  color: MyShopColors.textPrimary,
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: MyShopColors.textPrimary,
+                  ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: MyShopSpacing.sm),
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -105,19 +110,24 @@ class _Row extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontFamily: 'Raleway',
-            fontSize: 14,
-            fontWeight: bold ? FontWeight.w900 : FontWeight.w400,
-            color: bold ? MyShopColors.textPrimary : MyShopColors.textSecondary,
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontFamily: 'Raleway',
+              fontSize: 14,
+              fontWeight: bold ? FontWeight.w900 : FontWeight.w400,
+              color:
+                  bold ? MyShopColors.textPrimary : MyShopColors.textSecondary,
+            ),
           ),
         ),
+        const SizedBox(width: MyShopSpacing.sm),
         Text(
           value,
+          textAlign: TextAlign.end,
           style: TextStyle(
             fontFamily: 'Raleway',
             fontSize: 14,
