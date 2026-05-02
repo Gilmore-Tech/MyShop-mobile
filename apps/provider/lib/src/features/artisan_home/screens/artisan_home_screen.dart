@@ -4,7 +4,6 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../../core/providers/availability_controller.dart';
 import '../../../core/providers/provider_status_provider.dart';
-import '../../../core/widgets/socket_debug_banner.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../../auth/providers/current_user_provider.dart';
 import '../../earnings/providers/earnings_providers.dart';
@@ -13,7 +12,6 @@ import '../../profile/widgets/incomplete_profile_sheet.dart';
 import 'package:shared_models/shared_models.dart' show EarningsRole;
 import '../widgets/artisan_home_header.dart';
 import '../widgets/artisan_online_banner.dart';
-import '../widgets/artisan_quick_actions.dart';
 import '../widgets/performance_summary_section.dart';
 
 /// Artisan Home — card-first dashboard for artisan providers.
@@ -131,9 +129,6 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
-            // Socket debug banner (debug builds only)
-            const SocketDebugBanner(),
-
             // 1. Header — real user data
             ArtisanHomeHeader(
               businessName:
@@ -172,12 +167,7 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
 
             const SizedBox(height: MyShopSpacing.lg),
 
-            // 4. Quick actions
-            const ArtisanQuickActions(),
-
-            const SizedBox(height: MyShopSpacing.lg),
-
-            // 5. Live job feed header
+            // Live job feed header
             Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: MyShopSpacing.md,
