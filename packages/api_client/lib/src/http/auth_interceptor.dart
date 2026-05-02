@@ -105,6 +105,17 @@ class AuthInterceptor extends QueuedInterceptor {
       return;
     }
 
+    // /auth/logout: a 401 here means our access token is already invalid,
+    // which is fine — we're tearing down the session anyway. Don't try
+    // to refresh (it might be hanging behind a slow /auth/refresh in the
+    // queue, and even if it succeeded, we're about to wipe tokens). Just
+    // propagate so the caller can move on.
+    if (path.contains('/auth/logout')) {
+      debugPrint('[Auth] 401 on /auth/logout — propagating (no refresh)');
+      handler.next(err);
+      return;
+    }
+
     final errorCode = _extractErrorCode(response);
 
     // SESSION_TAKEN_OVER: another device claimed the session. Refreshing
