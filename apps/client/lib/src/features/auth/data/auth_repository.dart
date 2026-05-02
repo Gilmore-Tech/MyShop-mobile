@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:api_client/api_client.dart';
+import 'package:flutter/foundation.dart';
 
 /// Wraps [AuthService] with token persistence via [TokenStorage].
 /// Client-specific: uses loginClient instead of loginDriver/loginArtisan.
@@ -108,15 +111,28 @@ class ClientAuthRepository {
   /// Read the stored phone (used for OTP resend).
   Future<String?> readPhone() => _tokenStorage.readPhone();
 
-  /// Sign out: revoke the refresh token server-side (best effort) and wipe
-  /// local identity context. Used by the explicit logout button.
+  /// Sign out: wipe local state immediately and fire the backend revocation
+  /// in the background.
+  ///
+  /// We deliberately do NOT block on `/auth/logout`. The interceptor uses
+  /// a [QueuedInterceptor] which can serialize the logout request behind
+  /// an in-flight `/auth/refresh` (slow during Render free-tier cold
+  /// starts), making the user wait 30–60s for what should be an instant
+  /// "I'm out" action. Backend revocation becomes best-effort — if it
+  /// never lands, the refresh token expires by TTL anyway.
   Future<void> logout() async {
-    try {
-      await _service.logout();
-    } catch (_) {
-      // Best-effort. Even if the backend call fails (network down, token
-      // already expired), proceed to wipe local state — the user wants out.
-    }
+    debugPrint('[ClientAuthRepo] logout — firing backend revocation in background');
+    unawaited(
+      _service
+          .logout()
+          .timeout(const Duration(seconds: 5))
+          .then(
+            (_) => debugPrint('[ClientAuthRepo] background backend logout ok'),
+            onError: (Object e) => debugPrint(
+              '[ClientAuthRepo] background backend logout failed: $e',
+            ),
+          ),
+    );
     await _tokenStorage.clearTokens();
   }
 
