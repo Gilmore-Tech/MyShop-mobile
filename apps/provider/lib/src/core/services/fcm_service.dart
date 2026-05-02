@@ -69,9 +69,28 @@ String _fallbackTitle(String type) {
     case NotificationPayload.typeBidRejected:
       return 'Bid rejected';
     case NotificationPayload.typeJobCancelled:
+    case NotificationPayload.typeJobCancelledByClient:
       return 'Job cancelled';
     case NotificationPayload.typeJobConfirmedComplete:
       return 'Job confirmed';
+    case NotificationPayload.typeJobPaymentReleasing:
+      return 'Payout on the way';
+    case NotificationPayload.typeJobManuallyAssigned:
+      return 'Job assigned to you';
+    case NotificationPayload.typeJobNoBidsEscalated:
+      return 'Open job — your bid is welcome';
+    case NotificationPayload.typeJobReminder24h:
+      return 'Job tomorrow';
+    case NotificationPayload.typeJobReminder2h:
+      return 'Job starts in 2 hours';
+    case NotificationPayload.typeJobCheckin8h:
+      return 'How is the job going?';
+    case NotificationPayload.typeJobStale24h:
+      return 'Job needs an update';
+    case NotificationPayload.typeJobStale48h:
+      return 'Job will auto-cancel soon';
+    case NotificationPayload.typeJobWelfareCheck:
+      return 'Quick welfare check';
     case NotificationPayload.typeSupplementApproved:
       return 'Supplement approved';
     case NotificationPayload.typeSupplementRejected:
@@ -106,9 +125,28 @@ String _fallbackBody(String type) {
     case NotificationPayload.typeJobConfirmedComplete:
       return 'Your payout has been released.';
     case NotificationPayload.typeJobCancelled:
+    case NotificationPayload.typeJobCancelledByClient:
       return 'The client cancelled this job.';
     case NotificationPayload.typeRideCancelled:
       return 'The client cancelled this ride.';
+    case NotificationPayload.typeJobPaymentReleasing:
+      return 'Your earnings are being released to your wallet.';
+    case NotificationPayload.typeJobManuallyAssigned:
+      return 'Tap to review and place your bid.';
+    case NotificationPayload.typeJobNoBidsEscalated:
+      return 'A nearby job needs an artisan. Tap to bid.';
+    case NotificationPayload.typeJobReminder24h:
+      return 'You have a scheduled job tomorrow. Tap to review.';
+    case NotificationPayload.typeJobReminder2h:
+      return 'Time to head to the site. Tap to navigate.';
+    case NotificationPayload.typeJobCheckin8h:
+      return 'Drop a quick update so the client knows progress.';
+    case NotificationPayload.typeJobStale24h:
+      return 'No updates in 24 hours. Tap to advance the job.';
+    case NotificationPayload.typeJobStale48h:
+      return 'The job will auto-cancel without progress.';
+    case NotificationPayload.typeJobWelfareCheck:
+      return 'Tap to confirm everything is on track.';
     case NotificationPayload.typeRatingPrompt:
       return 'Tap to leave a rating before the 24-hour window closes.';
     case NotificationPayload.typeSupportTicketMessage:
@@ -351,7 +389,41 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
 
       case NotificationPayload.typeRideSettled:
       case NotificationPayload.typePaymentReceived:
+      case NotificationPayload.typeJobPaymentReleasing:
         router.go('/earnings');
+        break;
+
+      // Reminders, staleness pings and welfare checks all relate to the
+      // active job — drop the artisan straight onto the active-job
+      // screen so they can advance the timeline or send an update.
+      case NotificationPayload.typeJobReminder24h:
+      case NotificationPayload.typeJobReminder2h:
+      case NotificationPayload.typeJobCheckin8h:
+      case NotificationPayload.typeJobStale24h:
+      case NotificationPayload.typeJobStale48h:
+      case NotificationPayload.typeJobWelfareCheck:
+        router.go('/active-job');
+        break;
+
+      // Admin opened a job up because no bids landed in time, or assigned
+      // this artisan manually. Either way we want them to see the job
+      // request screen so they can review and bid. Fetch the job first
+      // so the screen can render context; bounce to /home on failure.
+      case NotificationPayload.typeJobNoBidsEscalated:
+      case NotificationPayload.typeJobManuallyAssigned:
+        final jobId = payload[NotificationPayload.keyJobId] as String?;
+        if (jobId == null) {
+          router.go('/home');
+          break;
+        }
+        try {
+          final data = await ref.read(jobServiceProvider).getJob(jobId);
+          final job = Job.fromJson(data);
+          router.push('/job-request', extra: job);
+        } catch (e) {
+          debugPrint('[FCM] tap fetch failed for job $jobId: $e');
+          router.go('/home');
+        }
         break;
 
       case NotificationPayload.typeNewMessage:
@@ -458,6 +530,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
 
       case NotificationPayload.typeBidRejected:
       case NotificationPayload.typeJobCancelled:
+      case NotificationPayload.typeJobCancelledByClient:
       case NotificationPayload.typeRideCancelled:
       case NotificationPayload.typeJobConfirmedComplete:
       default:

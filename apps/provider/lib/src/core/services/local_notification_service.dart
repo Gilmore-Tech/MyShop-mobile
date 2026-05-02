@@ -41,11 +41,46 @@ class NotificationPayload {
   /// Client rejected the artisan's bid.
   static const typeBidRejected = 'bid_rejected';
 
-  /// Client cancelled an accepted job after work had started.
+  /// Client cancelled an accepted job after work had started — generic.
+  /// Backend may also emit the more specific [typeJobCancelledByClient].
   static const typeJobCancelled = 'job_cancelled';
+
+  /// Specific variant of [typeJobCancelled] when the backend wants to
+  /// attribute the cancellation in copy.
+  static const typeJobCancelledByClient = 'job_cancelled_by_client';
 
   /// Client confirmed the artisan's "marked complete" — payment released.
   static const typeJobConfirmedComplete = 'job_confirmed_complete';
+
+  /// Backend has flagged this job as ready for payout — funds being
+  /// released to the artisan's wallet.
+  static const typeJobPaymentReleasing = 'job_payment_releasing';
+
+  /// Admin manually assigned this artisan to a job (urgent — needs
+  /// review and bid).
+  static const typeJobManuallyAssigned = 'job_manually_assigned';
+
+  /// 24-hour pre-job reminder (informational).
+  static const typeJobReminder24h = 'job_reminder_24h';
+
+  /// 2-hour pre-job reminder (urgent — leave for the site).
+  static const typeJobReminder2h = 'job_reminder_2h';
+
+  /// 8-hour mid-job check-in nudge.
+  static const typeJobCheckin8h = 'job_checkin_8h';
+
+  /// 24-hour staleness reminder (no progress recorded).
+  static const typeJobStale24h = 'job_stale_24h';
+
+  /// 48-hour staleness escalation (auto-cancellation imminent).
+  static const typeJobStale48h = 'job_stale_48h';
+
+  /// Backend welfare-check ping (long-running job).
+  static const typeJobWelfareCheck = 'job_welfare_check';
+
+  /// No bids on a job after the matching window — admin re-routed it
+  /// for manual assignment, this artisan is being given a chance to bid.
+  static const typeJobNoBidsEscalated = 'job_no_bids_escalated';
 
   /// Client approved the artisan's supplement request.
   static const typeSupplementApproved = 'supplement_approved';
@@ -93,6 +128,8 @@ class NotificationPayload {
     typeJobRequest,
     typeRideRequest,
     typeBidAccepted,
+    typeJobReminder2h,
+    typeJobManuallyAssigned,
   };
 
   /// Types that should render through the dedicated `chat_messages` channel

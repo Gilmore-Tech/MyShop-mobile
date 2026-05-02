@@ -77,10 +77,27 @@ String _fallbackTitle(String type) {
       return 'Job started';
     case NotificationPayload.typeJobMarkedComplete:
       return 'Artisan marked job complete';
+    case NotificationPayload.typeJobConfirmCompletionRequested:
+      return 'Confirm job completion';
     case NotificationPayload.typeJobCompleted:
       return 'Job complete';
     case NotificationPayload.typeJobCancelled:
+    case NotificationPayload.typeJobCancelledByArtisan:
       return 'Job cancelled';
+    case NotificationPayload.typeJobForceCompleted:
+      return 'Job auto-completed';
+    case NotificationPayload.typeJobNoBidsEscalated:
+      return 'Looking for an artisan';
+    case NotificationPayload.typeJobArtisanNoShow:
+      return 'Artisan didn\'t show up';
+    case NotificationPayload.typeJobCheckin8h:
+      return 'How is the job going?';
+    case NotificationPayload.typeJobStale24h:
+      return 'Job needs an update';
+    case NotificationPayload.typeJobStale48h:
+      return 'Job will auto-cancel soon';
+    case NotificationPayload.typeJobReminder2h:
+      return 'Job starts in 2 hours';
     case NotificationPayload.typeJobSupplementRequested:
       return 'Supplement request';
     case NotificationPayload.typeNewMessage:
@@ -105,9 +122,24 @@ String _fallbackBody(String type) {
     case NotificationPayload.typeJobArtisanArrived:
       return 'Your artisan is at the location.';
     case NotificationPayload.typeJobMarkedComplete:
+    case NotificationPayload.typeJobConfirmCompletionRequested:
       return 'Confirm the work to release payment.';
     case NotificationPayload.typeJobBidSubmitted:
       return 'An artisan has placed a bid on your request.';
+    case NotificationPayload.typeJobNoBidsEscalated:
+      return 'No bids yet — our team is finding an artisan for you.';
+    case NotificationPayload.typeJobArtisanNoShow:
+      return 'The artisan didn\'t arrive. Tap to rebook or get help.';
+    case NotificationPayload.typeJobReminder2h:
+      return 'Your scheduled job starts in two hours.';
+    case NotificationPayload.typeJobCheckin8h:
+      return 'Tap to leave a quick update on the job.';
+    case NotificationPayload.typeJobStale24h:
+      return 'No updates in 24 hours. Tap to nudge the artisan.';
+    case NotificationPayload.typeJobStale48h:
+      return 'The job will auto-cancel if there\'s no progress.';
+    case NotificationPayload.typeJobForceCompleted:
+      return 'We auto-completed this job. Tap to review or dispute.';
     case NotificationPayload.typeRatingPrompt:
       return 'Tap to leave a rating before the 24-hour window closes.';
     case NotificationPayload.typeSupportTicketMessage:
@@ -336,6 +368,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         }
         break;
       case NotificationPayload.typeJobMarkedComplete:
+      case NotificationPayload.typeJobConfirmCompletionRequested:
         if (jobId != null) {
           router.go(AppRoutes.jobSummaryPath(jobId));
         } else {
@@ -343,6 +376,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         }
         break;
       case NotificationPayload.typeJobCompleted:
+      case NotificationPayload.typeJobForceCompleted:
         if (jobId != null) {
           router.go(AppRoutes.jobCompletePath(jobId));
         } else {
@@ -356,7 +390,23 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           router.go(AppRoutes.activity);
         }
         break;
+      // Reminders, staleness pings and no-show / no-bid escalations all
+      // land on the job detail so the client can take the next action
+      // (rebook, nudge, leave a check-in note).
+      case NotificationPayload.typeJobReminder2h:
+      case NotificationPayload.typeJobCheckin8h:
+      case NotificationPayload.typeJobStale24h:
+      case NotificationPayload.typeJobStale48h:
+      case NotificationPayload.typeJobNoBidsEscalated:
+      case NotificationPayload.typeJobArtisanNoShow:
+        if (jobId != null) {
+          router.go(AppRoutes.jobDetailPath(jobId));
+        } else {
+          router.go(AppRoutes.activity);
+        }
+        break;
       case NotificationPayload.typeJobCancelled:
+      case NotificationPayload.typeJobCancelledByArtisan:
         router.go(AppRoutes.activity);
         break;
 

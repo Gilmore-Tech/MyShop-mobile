@@ -48,7 +48,8 @@ class NotificationPayload {
 
   // ── Job / artisan timeline (client-targeted) ─────────────────────────────
   /// A new bid was submitted on the rider's open job.
-  static const typeJobBidSubmitted = 'job_bid_submitted';
+  /// Backend emits `job.bid_received`.
+  static const typeJobBidSubmitted = 'job_bid_received';
 
   /// Artisan is en route to the job location.
   static const typeJobArtisanEnRoute = 'job_artisan_en_route';
@@ -56,17 +57,55 @@ class NotificationPayload {
   /// Artisan arrived at the site — urgent.
   static const typeJobArtisanArrived = 'job_artisan_arrived';
 
-  /// Artisan started the job.
-  static const typeJobInProgress = 'job_in_progress';
+  /// Artisan started the job. Backend emits `job.work_started`.
+  static const typeJobInProgress = 'job_work_started';
 
   /// Artisan marked the job complete — waiting on client confirmation (urgent).
-  static const typeJobMarkedComplete = 'job_marked_complete';
+  /// Backend emits `job.artisan_marked_complete`.
+  static const typeJobMarkedComplete = 'job_artisan_marked_complete';
 
-  /// Job fully completed — settled.
+  /// Backend nudges the client to confirm the artisan's "marked complete"
+  /// when the auto-confirm window approaches. Same destination as
+  /// [typeJobMarkedComplete] (urgent).
+  static const typeJobConfirmCompletionRequested =
+      'job_confirm_completion_requested';
+
+  /// Job fully completed — settled. Currently only emitted to the
+  /// provider per backend audit; kept here for forward-compat.
   static const typeJobCompleted = 'job_completed';
 
-  /// Job cancelled.
+  /// Job cancelled — generic. Backend may also send the more specific
+  /// `job.cancelled_by_artisan`; either renders the same way.
   static const typeJobCancelled = 'job_cancelled';
+
+  /// Artisan cancelled an active job — specific variant of
+  /// [typeJobCancelled] preserved when the backend wants to attribute
+  /// blame in copy.
+  static const typeJobCancelledByArtisan = 'job_cancelled_by_artisan';
+
+  /// Backend force-completed a stale job (admin path / payment release
+  /// trigger). Routes to the completed view so the client can dispute.
+  static const typeJobForceCompleted = 'job_force_completed';
+
+  /// No bids on an open job after the matching window — admin will pick
+  /// up assignment. Tap takes the client to the job detail to add notes.
+  static const typeJobNoBidsEscalated = 'job_no_bids_escalated';
+
+  /// Artisan didn't show up for a scheduled job — urgent. Tap routes to
+  /// the job detail so the client can rebook or escalate.
+  static const typeJobArtisanNoShow = 'job_artisan_no_show';
+
+  /// 8-hour check-in nudge during a multi-day job.
+  static const typeJobCheckin8h = 'job_checkin_8h';
+
+  /// 24-hour staleness reminder (no progress recorded).
+  static const typeJobStale24h = 'job_stale_24h';
+
+  /// 48-hour staleness escalation (auto-cancellation imminent).
+  static const typeJobStale48h = 'job_stale_48h';
+
+  /// 2-hour pre-job reminder (urgent — the job starts soon).
+  static const typeJobReminder2h = 'job_reminder_2h';
 
   /// Artisan submitted a supplement (additional cost) request.
   static const typeJobSupplementRequested = 'job_supplement_requested';
@@ -105,6 +144,9 @@ class NotificationPayload {
     typeRideDriverArrived,
     typeJobArtisanArrived,
     typeJobMarkedComplete,
+    typeJobConfirmCompletionRequested,
+    typeJobReminder2h,
+    typeJobArtisanNoShow,
   };
 
   /// Types that should render through the dedicated `chat_messages` channel
