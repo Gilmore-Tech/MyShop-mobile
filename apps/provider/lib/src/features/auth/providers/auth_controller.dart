@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:api_client/api_client.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../profile/providers/provider_type_provider.dart';
@@ -565,8 +566,23 @@ class AuthController extends StateNotifier<AuthState> {
   /// User-initiated logout: revokes the refresh token server-side, then
   /// wipes local state.
   Future<void> logout() async {
-    await _repo.logout();
+    debugPrint('[AuthController] logout() called from ${state.runtimeType}');
+    try {
+      await _repo.logout().timeout(const Duration(seconds: 8));
+      debugPrint('[AuthController] _repo.logout() returned');
+    } on TimeoutException {
+      debugPrint('[AuthController] _repo.logout() timed out — wiping locally');
+      try {
+        await _repo.clear();
+      } catch (_) {}
+    } catch (e) {
+      debugPrint('[AuthController] _repo.logout() threw: $e — wiping locally');
+      try {
+        await _repo.clear();
+      } catch (_) {}
+    }
     state = const AuthUnauthenticated();
+    debugPrint('[AuthController] state → AuthUnauthenticated');
   }
 
   /// User dismisses the "already signed in elsewhere" block dialog.

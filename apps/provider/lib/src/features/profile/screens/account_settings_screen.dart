@@ -73,8 +73,12 @@ class AccountSettingsScreen extends ConsumerWidget {
         ],
       ),
     );
+    debugPrint('[AccountSettings] logout dialog confirmed=$confirmed '
+        'context.mounted=${context.mounted}');
     if (confirmed == true && context.mounted) {
+      debugPrint('[AccountSettings] invoking controller.logout()');
       await ref.read(authControllerProvider.notifier).logout();
+      debugPrint('[AccountSettings] controller.logout() returned');
     }
   }
 

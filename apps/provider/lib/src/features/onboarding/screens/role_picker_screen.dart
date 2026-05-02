@@ -26,9 +26,6 @@ class _RolePickerScreenState extends ConsumerState<RolePickerScreen> {
   static const _animDuration = Duration(milliseconds: 380);
   static const _animCurve = Curves.easeOutCubic;
 
-  // Slate background color used when the driver theme is active.
-  static const _slateBgTop = Color(0xFFE6ECF1);
-
   void _select(ProviderType role) {
     if (_selected == role) return;
     setState(() => _selected = role);
@@ -52,25 +49,13 @@ class _RolePickerScreenState extends ConsumerState<RolePickerScreen> {
         null => MyShopColors.primaryGold,
       };
 
-  LinearGradient get _backgroundGradient => switch (_selected) {
-        ProviderType.driver => const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [_slateBgTop, MyShopColors.surfaceWhite],
-            stops: [0, 0.55],
-          ),
-        ProviderType.artisan => const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [MyShopColors.primaryGoldLight, MyShopColors.surfaceWhite],
-            stops: [0, 0.55],
-          ),
-        null => const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [MyShopColors.offWhite, MyShopColors.surfaceWhite],
-            stops: [0, 0.55],
-          ),
+  static const _driverAsset = 'assets/images/role_driver.png';
+  static const _artisanAsset = 'assets/images/role_artisan.png';
+
+  String? get _bgAssetPath => switch (_selected) {
+        ProviderType.driver => _driverAsset,
+        ProviderType.artisan => _artisanAsset,
+        null => null,
       };
 
   String get _headline => switch (_selected) {
@@ -98,81 +83,145 @@ class _RolePickerScreenState extends ConsumerState<RolePickerScreen> {
   @override
   Widget build(BuildContext context) {
     final hasSelection = _selected != null;
+    final bgPath = _bgAssetPath;
+    final headlineColor =
+        hasSelection ? Colors.white : MyShopColors.textPrimary;
+    final subheadColor = hasSelection
+        ? Colors.white.withValues(alpha: 0.85)
+        : MyShopColors.textSecondary;
 
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
-      body: AnimatedContainer(
-        duration: _animDuration,
-        curve: _animCurve,
-        decoration: BoxDecoration(gradient: _backgroundGradient),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(
-              MyShopSpacing.lg,
-              MyShopSpacing.lg,
-              MyShopSpacing.lg,
-              MyShopSpacing.lg,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Layer 0 — soft gradient (always present, visible when no role
+          // is selected and behind the photo while it crossfades in).
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [MyShopColors.offWhite, MyShopColors.surfaceWhite],
+                stops: [0, 0.55],
+              ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: MyShopSpacing.md),
-                AnimatedSwitcher(
-                  duration: _animDuration,
-                  switchInCurve: _animCurve,
-                  switchOutCurve: _animCurve,
-                  transitionBuilder: (child, animation) {
-                    return FadeTransition(
-                      opacity: animation,
-                      child: SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0, 0.15),
-                          end: Offset.zero,
-                        ).animate(animation),
-                        child: child,
-                      ),
-                    );
-                  },
-                  child: Column(
-                    key: ValueKey('headline-${_selected?.name ?? 'none'}'),
-                    crossAxisAlignment: CrossAxisAlignment.start,
+          ),
+          // Layer 1 — selected role's hero image with a top-darken /
+          // bottom-fade-to-white overlay for legibility.
+          AnimatedSwitcher(
+            duration: _animDuration,
+            switchInCurve: _animCurve,
+            switchOutCurve: _animCurve,
+            child: bgPath == null
+                ? const SizedBox.shrink(key: ValueKey('bg-none'))
+                : Stack(
+                    key: ValueKey('bg-${_selected!.name}'),
+                    fit: StackFit.expand,
                     children: [
-                      Text(_headline, style: MyShopTypography.h1),
-                      const SizedBox(height: MyShopSpacing.sm),
-                      Text(_subhead, style: MyShopTypography.body2),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: MyShopSpacing.xl),
-                IntrinsicHeight(
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _RoleCard(
-                          role: ProviderType.driver,
-                          selectedRole: _selected,
-                          title: 'Driver',
-                          tagline: 'Rides',
-                          icon: Icons.directions_car_filled_rounded,
-                          accent: MyShopColors.darkSlate,
-                          onTap: () => _select(ProviderType.driver),
-                        ),
-                      ),
-                      const SizedBox(width: MyShopSpacing.md),
-                      Expanded(
-                        child: _RoleCard(
-                          role: ProviderType.artisan,
-                          selectedRole: _selected,
-                          title: 'Artisan',
-                          tagline: 'Skilled jobs',
-                          icon: Icons.handyman_rounded,
-                          accent: MyShopColors.primaryGoldDark,
-                          onTap: () => _select(ProviderType.artisan),
+                      Image.asset(bgPath, fit: BoxFit.cover),
+                      const DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Color(0x8C000000),
+                              Color(0x00000000),
+                              Color(0xFFFFFFFF),
+                            ],
+                            stops: [0, 0.40, 0.90],
+                          ),
                         ),
                       ),
                     ],
                   ),
-                ),
+          ),
+          // Layer 2 — content
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                MyShopSpacing.lg,
+                MyShopSpacing.lg,
+                MyShopSpacing.lg,
+                MyShopSpacing.lg,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: MyShopSpacing.md),
+                  AnimatedSwitcher(
+                    duration: _animDuration,
+                    switchInCurve: _animCurve,
+                    switchOutCurve: _animCurve,
+                    transitionBuilder: (child, animation) {
+                      return FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(
+                          position: Tween<Offset>(
+                            begin: const Offset(0, 0.15),
+                            end: Offset.zero,
+                          ).animate(animation),
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: Column(
+                      key: ValueKey('headline-${_selected?.name ?? 'none'}'),
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AnimatedDefaultTextStyle(
+                          duration: _animDuration,
+                          curve: _animCurve,
+                          style: MyShopTypography.h1.copyWith(
+                            color: headlineColor,
+                          ),
+                          child: Text(_headline),
+                        ),
+                        const SizedBox(height: MyShopSpacing.sm),
+                        AnimatedDefaultTextStyle(
+                          duration: _animDuration,
+                          curve: _animCurve,
+                          style: MyShopTypography.body2.copyWith(
+                            color: subheadColor,
+                          ),
+                          child: Text(_subhead),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: MyShopSpacing.xl),
+                  IntrinsicHeight(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _RoleCard(
+                            role: ProviderType.driver,
+                            selectedRole: _selected,
+                            title: 'Driver',
+                            tagline: 'Rides',
+                            icon: Icons.directions_car_filled_rounded,
+                            accent: MyShopColors.darkSlate,
+                            assetPath: _driverAsset,
+                            onTap: () => _select(ProviderType.driver),
+                          ),
+                        ),
+                        const SizedBox(width: MyShopSpacing.md),
+                        Expanded(
+                          child: _RoleCard(
+                            role: ProviderType.artisan,
+                            selectedRole: _selected,
+                            title: 'Artisan',
+                            tagline: 'Skilled jobs',
+                            icon: Icons.handyman_rounded,
+                            accent: MyShopColors.primaryGoldDark,
+                            assetPath: _artisanAsset,
+                            onTap: () => _select(ProviderType.artisan),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 const SizedBox(height: MyShopSpacing.lg),
                 Expanded(
                   child: AnimatedSwitcher(
@@ -217,6 +266,7 @@ class _RolePickerScreenState extends ConsumerState<RolePickerScreen> {
             ),
           ),
         ),
+        ],
       ),
     );
   }
@@ -230,6 +280,7 @@ class _RoleCard extends StatelessWidget {
     required this.tagline,
     required this.icon,
     required this.accent,
+    required this.assetPath,
     required this.onTap,
   });
 
@@ -239,26 +290,24 @@ class _RoleCard extends StatelessWidget {
   final String tagline;
   final IconData icon;
   final Color accent;
+  final String assetPath;
   final VoidCallback onTap;
 
   static const _animDuration = Duration(milliseconds: 380);
   static const _animCurve = Curves.easeOutCubic;
+  static const _radius = 20.0;
 
   @override
   Widget build(BuildContext context) {
     final selected = selectedRole == role;
     final hasOther = selectedRole != null && !selected;
 
-    final bgColor = selected ? accent : MyShopColors.surfaceWhite;
-    final borderColor = selected ? accent : MyShopColors.divider;
-    final iconBg = selected
-        ? Colors.white.withValues(alpha: 0.18)
-        : accent.withValues(alpha: 0.10);
-    final iconColor = selected ? Colors.white : accent;
-    final titleColor = selected ? Colors.white : MyShopColors.textPrimary;
-    final taglineColor = selected
-        ? Colors.white.withValues(alpha: 0.85)
-        : MyShopColors.textSecondary;
+    final overlayColors = selected
+        ? [accent.withValues(alpha: 0.35), accent.withValues(alpha: 0.85)]
+        : [
+            Colors.black.withValues(alpha: 0.20),
+            Colors.black.withValues(alpha: 0.55),
+          ];
 
     return AnimatedScale(
       duration: _animDuration,
@@ -272,18 +321,12 @@ class _RoleCard extends StatelessWidget {
           color: Colors.transparent,
           child: InkWell(
             onTap: onTap,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(_radius),
             child: AnimatedContainer(
               duration: _animDuration,
               curve: _animCurve,
-              padding: const EdgeInsets.symmetric(
-                vertical: MyShopSpacing.lg,
-                horizontal: MyShopSpacing.md,
-              ),
               decoration: BoxDecoration(
-                color: bgColor,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: borderColor, width: selected ? 0 : 1),
+                borderRadius: BorderRadius.circular(_radius),
                 boxShadow: selected
                     ? [
                         BoxShadow(
@@ -300,42 +343,69 @@ class _RoleCard extends StatelessWidget {
                         ),
                       ],
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      AnimatedContainer(
-                        duration: _animDuration,
-                        curve: _animCurve,
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          color: iconBg,
-                          borderRadius: BorderRadius.circular(16),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(_radius),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.asset(assetPath, fit: BoxFit.cover),
+                    AnimatedContainer(
+                      duration: _animDuration,
+                      curve: _animCurve,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: overlayColors,
                         ),
-                        child: Icon(icon, size: 30, color: iconColor),
                       ),
-                      const Spacer(),
-                      _SelectedBadge(visible: selected),
-                    ],
-                  ),
-                  const SizedBox(height: MyShopSpacing.md),
-                  AnimatedDefaultTextStyle(
-                    duration: _animDuration,
-                    curve: _animCurve,
-                    style: MyShopTypography.h2.copyWith(color: titleColor),
-                    child: Text(title),
-                  ),
-                  const SizedBox(height: 2),
-                  AnimatedDefaultTextStyle(
-                    duration: _animDuration,
-                    curve: _animCurve,
-                    style: MyShopTypography.body2.copyWith(color: taglineColor),
-                    child: Text(tagline),
-                  ),
-                ],
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: MyShopSpacing.lg,
+                        horizontal: MyShopSpacing.md,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 56,
+                                height: 56,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.18),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.25),
+                                  ),
+                                ),
+                                child: Icon(icon, size: 30, color: Colors.white),
+                              ),
+                              const Spacer(),
+                              _SelectedBadge(visible: selected),
+                            ],
+                          ),
+                          const SizedBox(height: MyShopSpacing.md),
+                          Text(
+                            title,
+                            style: MyShopTypography.h2.copyWith(
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            tagline,
+                            style: MyShopTypography.body2.copyWith(
+                              color: Colors.white.withValues(alpha: 0.85),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
