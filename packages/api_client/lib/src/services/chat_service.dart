@@ -78,8 +78,7 @@ class ChatService {
   /// message, or [ChatErrorCodes.messageNotFound] if the id doesn't exist.
   Future<DateTime> markRead(String messageId) async {
     try {
-      final response =
-          await _dio.patch('/chat/messages/$messageId/read');
+      final response = await _dio.patch('/chat/messages/$messageId/read');
       final data = _unwrap(response);
       if (data is Map<String, dynamic>) {
         final raw = data['readAt'];

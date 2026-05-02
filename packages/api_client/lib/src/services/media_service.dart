@@ -29,11 +29,14 @@ class MediaService {
     required int fileSize,
   }) async {
     try {
-      final response = await _dio.post('/media/upload-url', data: {
-        'purpose': purpose,
-        'mimeType': mimeType,
-        'fileSize': fileSize,
-      },);
+      final response = await _dio.post(
+        '/media/upload-url',
+        data: {
+          'purpose': purpose,
+          'mimeType': mimeType,
+          'fileSize': fileSize,
+        },
+      );
       final data = _unwrap(response) as Map<String, dynamic>;
       return UploadUrlResult(
         uploadUrl: data['uploadUrl'] as String,
@@ -99,10 +102,13 @@ class MediaService {
     required String remoteUrl,
   }) async {
     try {
-      final response = await _dio.post('/media/confirm', data: {
-        'storageKey': storageKey,
-        'remoteUrl': remoteUrl,
-      },);
+      final response = await _dio.post(
+        '/media/confirm',
+        data: {
+          'storageKey': storageKey,
+          'remoteUrl': remoteUrl,
+        },
+      );
       final data = _unwrap(response) as Map<String, dynamic>;
       return data['url'] as String? ?? remoteUrl;
     } on DioException catch (e) {
@@ -122,15 +128,42 @@ class MediaService {
   Future<String> uploadProfilePhoto(String localPath) =>
       _uploadImage(localPath, purpose: 'profile_photo');
 
+  /// Upload an image attached to a support ticket / reply. Reuses the
+  /// 3-step presigned-URL flow under `purpose: 'support_attachment'`.
+  /// Returns `(remoteUrl, sizeBytes, mimeType)` so the support service
+  /// can build a [TicketAttachment] without re-statting the file.
+  Future<({String url, int sizeBytes, String mimeType})>
+      uploadSupportAttachment(String localPath) async {
+    final file = File(localPath);
+    final fileSize = await file.length();
+    final mimeType =
+        localPath.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+
+    final uploadInfo = await requestUploadUrl(
+      purpose: 'support_attachment',
+      mimeType: mimeType,
+      fileSize: fileSize,
+    );
+    final remoteUrl = await uploadFile(
+      filePath: localPath,
+      uploadInfo: uploadInfo,
+      mimeType: mimeType,
+    );
+    final finalUrl = await confirmUpload(
+      storageKey: uploadInfo.storageKey,
+      remoteUrl: remoteUrl,
+    );
+    return (url: finalUrl, sizeBytes: fileSize, mimeType: mimeType);
+  }
+
   Future<String> _uploadImage(
     String localPath, {
     required String purpose,
   }) async {
     final file = File(localPath);
     final fileSize = await file.length();
-    final mimeType = localPath.toLowerCase().endsWith('.png')
-        ? 'image/png'
-        : 'image/jpeg';
+    final mimeType =
+        localPath.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
 
     final uploadInfo = await requestUploadUrl(
       purpose: purpose,
@@ -151,7 +184,6 @@ class MediaService {
 
 /// Result from POST /media/upload-url.
 class UploadUrlResult {
-
   const UploadUrlResult({
     required this.uploadUrl,
     required this.uploadMethod,

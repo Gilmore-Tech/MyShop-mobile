@@ -26,21 +26,25 @@ void main() {
 
   group('rendering', () {
     testWidgets('renders both peer and own bubbles', (tester) async {
-      await tester.pumpWidget(mount(messages: const [
-        ChatMessage(
-          id: '1',
-          text: 'Hello there',
-          time: '09:00 AM',
-          fromMe: false,
+      await tester.pumpWidget(
+        mount(
+          messages: const [
+            ChatMessage(
+              id: '1',
+              text: 'Hello there',
+              time: '09:00 AM',
+              fromMe: false,
+            ),
+            ChatMessage(
+              id: '2',
+              text: 'Hi back',
+              time: '09:01 AM',
+              fromMe: true,
+              status: ChatMessageStatus.sent,
+            ),
+          ],
         ),
-        ChatMessage(
-          id: '2',
-          text: 'Hi back',
-          time: '09:01 AM',
-          fromMe: true,
-          status: ChatMessageStatus.sent,
-        ),
-      ],),);
+      );
 
       expect(find.text('Hello there'), findsOneWidget);
       expect(find.text('Hi back'), findsOneWidget);
@@ -50,51 +54,60 @@ void main() {
 
     testWidgets('renders the clock icon for a pending own bubble',
         (tester) async {
-      await tester.pumpWidget(mount(messages: const [
-        ChatMessage(
-          id: 'tmp_x',
-          text: 'queued',
-          time: '09:00 AM',
-          fromMe: true,
-          status: ChatMessageStatus.pending,
+      await tester.pumpWidget(
+        mount(
+          messages: const [
+            ChatMessage(
+              id: 'tmp_x',
+              text: 'queued',
+              time: '09:00 AM',
+              fromMe: true,
+              status: ChatMessageStatus.pending,
+            ),
+          ],
         ),
-      ],),);
+      );
 
       expect(find.byIcon(Icons.schedule), findsOneWidget);
     });
 
     testWidgets('renders the double-check tick for a read own bubble',
         (tester) async {
-      await tester.pumpWidget(mount(messages: const [
-        ChatMessage(
-          id: '1',
-          text: 'seen',
-          time: '09:00 AM',
-          fromMe: true,
-          status: ChatMessageStatus.read,
+      await tester.pumpWidget(
+        mount(
+          messages: const [
+            ChatMessage(
+              id: '1',
+              text: 'seen',
+              time: '09:00 AM',
+              fromMe: true,
+              status: ChatMessageStatus.read,
+            ),
+          ],
         ),
-      ],),);
+      );
 
       expect(find.byIcon(Icons.done_all), findsOneWidget);
     });
   });
 
   group('failed + retry', () {
-    testWidgets(
-        'renders the error icon and Retry link for a failed own bubble',
+    testWidgets('renders the error icon and Retry link for a failed own bubble',
         (tester) async {
-      await tester.pumpWidget(mount(
-        onRetry: (_) {},
-        messages: const [
-          ChatMessage(
-            id: 'tmp_failed',
-            text: 'didn’t send',
-            time: '09:00 AM',
-            fromMe: true,
-            status: ChatMessageStatus.failed,
-          ),
-        ],
-      ),);
+      await tester.pumpWidget(
+        mount(
+          onRetry: (_) {},
+          messages: const [
+            ChatMessage(
+              id: 'tmp_failed',
+              text: 'didn’t send',
+              time: '09:00 AM',
+              fromMe: true,
+              status: ChatMessageStatus.failed,
+            ),
+          ],
+        ),
+      );
 
       expect(find.byIcon(Icons.error_outline), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
@@ -103,18 +116,20 @@ void main() {
     testWidgets('tapping Retry forwards the message id to onRetry',
         (tester) async {
       String? tapped;
-      await tester.pumpWidget(mount(
-        onRetry: (id) => tapped = id,
-        messages: const [
-          ChatMessage(
-            id: 'tmp_failed',
-            text: 'didn’t send',
-            time: '09:00 AM',
-            fromMe: true,
-            status: ChatMessageStatus.failed,
-          ),
-        ],
-      ),);
+      await tester.pumpWidget(
+        mount(
+          onRetry: (id) => tapped = id,
+          messages: const [
+            ChatMessage(
+              id: 'tmp_failed',
+              text: 'didn’t send',
+              time: '09:00 AM',
+              fromMe: true,
+              status: ChatMessageStatus.failed,
+            ),
+          ],
+        ),
+      );
 
       await tester.tap(find.text('Retry'));
       await tester.pump();
@@ -122,18 +137,21 @@ void main() {
       expect(tapped, 'tmp_failed');
     });
 
-    testWidgets(
-        'omits the Retry link when no onRetry callback is wired',
+    testWidgets('omits the Retry link when no onRetry callback is wired',
         (tester) async {
-      await tester.pumpWidget(mount(messages: const [
-        ChatMessage(
-          id: 'tmp_failed',
-          text: 'didn’t send',
-          time: '09:00 AM',
-          fromMe: true,
-          status: ChatMessageStatus.failed,
+      await tester.pumpWidget(
+        mount(
+          messages: const [
+            ChatMessage(
+              id: 'tmp_failed',
+              text: 'didn’t send',
+              time: '09:00 AM',
+              fromMe: true,
+              status: ChatMessageStatus.failed,
+            ),
+          ],
         ),
-      ],),);
+      );
 
       // Icon still renders so the user knows it failed; no tap target.
       expect(find.byIcon(Icons.error_outline), findsOneWidget);
@@ -142,19 +160,22 @@ void main() {
   });
 
   group('locked composer', () {
-    testWidgets('hides the composer and shows the locked banner '
+    testWidgets(
+        'hides the composer and shows the locked banner '
         'when isInputLocked is true', (tester) async {
-      await tester.pumpWidget(mount(
-        isInputLocked: true,
-        messages: const [
-          ChatMessage(
-            id: '1',
-            text: 'last word',
-            time: '09:00 AM',
-            fromMe: false,
-          ),
-        ],
-      ),);
+      await tester.pumpWidget(
+        mount(
+          isInputLocked: true,
+          messages: const [
+            ChatMessage(
+              id: '1',
+              text: 'last word',
+              time: '09:00 AM',
+              fromMe: false,
+            ),
+          ],
+        ),
+      );
 
       expect(find.byType(TextField), findsNothing);
       expect(
@@ -165,19 +186,19 @@ void main() {
       expect(find.byIcon(Icons.lock_outline), findsOneWidget);
     });
 
-    testWidgets('renders a custom lockedReason verbatim',
-        (tester) async {
-      await tester.pumpWidget(mount(
-        isInputLocked: true,
-        lockedReason: 'Cancelled by you',
-        messages: const [],
-      ),);
+    testWidgets('renders a custom lockedReason verbatim', (tester) async {
+      await tester.pumpWidget(
+        mount(
+          isInputLocked: true,
+          lockedReason: 'Cancelled by you',
+          messages: const [],
+        ),
+      );
 
       expect(find.text('Cancelled by you'), findsOneWidget);
     });
 
-    testWidgets('keeps the composer visible when not locked',
-        (tester) async {
+    testWidgets('keeps the composer visible when not locked', (tester) async {
       await tester.pumpWidget(mount(messages: const []));
       expect(find.byType(TextField), findsOneWidget);
     });

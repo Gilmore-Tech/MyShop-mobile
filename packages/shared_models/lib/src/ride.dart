@@ -45,18 +45,17 @@ class Ride {
   factory Ride.fromJson(Map<String, dynamic> json) {
     double _num(dynamic v, [double fallback = 0]) =>
         v is num ? v.toDouble() : fallback;
-    int _int(dynamic v, [int fallback = 0]) =>
-        v is num ? v.toInt() : fallback;
-    DateTime? _date(dynamic v) =>
-        v is String ? DateTime.tryParse(v) : null;
+    int _int(dynamic v, [int fallback = 0]) => v is num ? v.toInt() : fallback;
+    DateTime? _date(dynamic v) => v is String ? DateTime.tryParse(v) : null;
 
     // Backend serves the full ride entity with client info under a nested
     // `client` object (REST `GET /rides/:id`, `PATCH /rides/:id/status`),
     // while the slim `ride:new` socket broadcast inlines the same data at
     // top level. Read from whichever is populated so a single Ride model
     // works for both wire shapes.
-    final clientObj =
-        json['client'] is Map<String, dynamic> ? json['client'] as Map<String, dynamic> : const <String, dynamic>{};
+    final clientObj = json['client'] is Map<String, dynamic>
+        ? json['client'] as Map<String, dynamic>
+        : const <String, dynamic>{};
     String? _clientStr(String topKey, [List<String> nestedKeys = const []]) {
       final top = json[topKey];
       if (top is String && top.isNotEmpty) return top;
@@ -110,8 +109,12 @@ class Ride {
       completedAt: _date(json['completedAt']),
       cancelledAt: _date(json['cancelledAt']),
       cancellationReason: json['cancellationReason'] as String?,
-      clientName: _clientStr('clientName', ['name', 'fullName']) ?? assembledName,
-      clientPhotoUrl: _clientStr('clientPhotoUrl', ['photoUrl', 'profilePhotoUrl', 'avatarUrl']),
+      clientName:
+          _clientStr('clientName', ['name', 'fullName']) ?? assembledName,
+      clientPhotoUrl: _clientStr(
+        'clientPhotoUrl',
+        ['photoUrl', 'profilePhotoUrl', 'avatarUrl'],
+      ),
       clientRating: (json['clientRating'] as num?)?.toDouble() ??
           (clientObj['rating'] as num?)?.toDouble(),
       clientTripCount: json['clientTripCount'] as int? ??
@@ -156,8 +159,9 @@ class Ride {
 
   /// Display fare in GHS format
   String get estimatedFareDisplay => _formatGhs(estimatedFarePesewas);
-  String get finalFareDisplay =>
-      finalFarePesewas != null ? _formatGhs(finalFarePesewas!) : estimatedFareDisplay;
+  String get finalFareDisplay => finalFarePesewas != null
+      ? _formatGhs(finalFarePesewas!)
+      : estimatedFareDisplay;
 
   String get distanceDisplay => '${estimatedDistanceKm.toStringAsFixed(1)} km';
   String get durationDisplay => '$estimatedDurationMins mins';
@@ -237,7 +241,10 @@ enum RideStatus {
   cancelled;
 
   bool get isActive =>
-      this == accepted || this == driverEnRoute || this == arrived || this == inProgress;
+      this == accepted ||
+      this == driverEnRoute ||
+      this == arrived ||
+      this == inProgress;
 
   /// Parse a snake_case status string from the backend.
   /// `arrived` is accepted as an alias for `arrived_at_pickup` in case

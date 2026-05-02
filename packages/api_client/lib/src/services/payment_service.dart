@@ -39,14 +39,17 @@ class PaymentService {
     String? promoCode,
   }) async {
     try {
-      final response = await _dio.post('/payments/initiate', data: {
-        'bookingType': bookingType,
-        'bookingId': bookingId,
-        'paymentMethod': paymentMethod,
-        if (momoPhone != null) 'momoPhone': momoPhone,
-        if (cardToken != null) 'cardToken': cardToken,
-        if (promoCode != null) 'promoCode': promoCode,
-      },);
+      final response = await _dio.post(
+        '/payments/initiate',
+        data: {
+          'bookingType': bookingType,
+          'bookingId': bookingId,
+          'paymentMethod': paymentMethod,
+          if (momoPhone != null) 'momoPhone': momoPhone,
+          if (cardToken != null) 'cardToken': cardToken,
+          if (promoCode != null) 'promoCode': promoCode,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -69,10 +72,13 @@ class PaymentService {
     required String bookingId,
   }) async {
     try {
-      final response = await _dio.post('/payments/acknowledge-cash', data: {
-        'bookingType': bookingType,
-        'bookingId': bookingId,
-      },);
+      final response = await _dio.post(
+        '/payments/acknowledge-cash',
+        data: {
+          'bookingType': bookingType,
+          'bookingId': bookingId,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -90,10 +96,13 @@ class PaymentService {
     required String otp,
   }) async {
     try {
-      final response = await _dio.post('/payments/submit-otp', data: {
-        'reference': reference,
-        'otp': otp,
-      },);
+      final response = await _dio.post(
+        '/payments/submit-otp',
+        data: {
+          'reference': reference,
+          'otp': otp,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -152,10 +161,13 @@ class PaymentService {
     required String phone,
   }) async {
     try {
-      final response = await _dio.post('/payment-methods/momo', data: {
-        'provider': provider,
-        'phone': phone,
-      },);
+      final response = await _dio.post(
+        '/payment-methods/momo',
+        data: {
+          'provider': provider,
+          'phone': phone,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -186,9 +198,12 @@ class PaymentService {
     required int amountPesewas,
   }) async {
     try {
-      final response = await _dio.post('/payments/$paymentId/tip', data: {
-        'amountPesewas': amountPesewas,
-      },);
+      final response = await _dio.post(
+        '/payments/$paymentId/tip',
+        data: {
+          'amountPesewas': amountPesewas,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);

@@ -51,8 +51,7 @@ void main() {
         .thenAnswer((_) => connectionCtrl.stream);
     when(() => realtime.typingUpdates).thenAnswer((_) => typingCtrl.stream);
     when(() => realtime.connect()).thenAnswer((_) async {});
-    when(() => realtime.joinChannel(any(), any()))
-        .thenAnswer((_) async {});
+    when(() => realtime.joinChannel(any(), any())).thenAnswer((_) async {});
     when(() => realtime.leaveChannel()).thenReturn(null);
     when(() => realtime.sendTyping(isTyping: any(named: 'isTyping')))
         .thenReturn(null);
@@ -122,25 +121,37 @@ void main() {
         'replaces the tmp_ message', () async {
       await openRideChannel();
       when(() => realtime.sendMessage(message: any(named: 'message')))
-          .thenThrow(const ChatRealtimeException(
-        code: ChatErrorCodes.ackTimeout,
-        message: 'timed out',
-      ),);
+          .thenThrow(
+        const ChatRealtimeException(
+          code: ChatErrorCodes.ackTimeout,
+          message: 'timed out',
+        ),
+      );
       final saved = serverMessage(
         id: 'srv-via-rest',
         senderId: _selfId,
         text: 'hi',
       );
-      when(() => rest.sendMessage(any(), any(),
-          message: any(named: 'message'),),).thenAnswer((_) async => saved);
+      when(
+        () => rest.sendMessage(
+          any(),
+          any(),
+          message: any(named: 'message'),
+        ),
+      ).thenAnswer((_) async => saved);
 
       final result = await controller.send('hi');
 
       expect(result?.id, 'srv-via-rest');
       expect(controller.currentMessages.single.id, 'srv-via-rest');
       expect(await outbox.readForChannel('ride:$_bookingId'), isEmpty);
-      verify(() => rest.sendMessage(ChatBookingType.ride, _bookingId,
-          message: 'hi',),).called(1);
+      verify(
+        () => rest.sendMessage(
+          ChatBookingType.ride,
+          _bookingId,
+          message: 'hi',
+        ),
+      ).called(1);
     });
 
     test(
@@ -148,51 +159,66 @@ void main() {
         'both the socket and REST fail', () async {
       await openRideChannel();
       when(() => realtime.sendMessage(message: any(named: 'message')))
-          .thenThrow(const ChatRealtimeException(
-        code: ChatErrorCodes.ackTimeout,
-        message: 'timed out',
-      ),);
-      when(() => rest.sendMessage(any(), any(),
-              message: any(named: 'message'),),)
-          .thenThrow(Exception('network'));
+          .thenThrow(
+        const ChatRealtimeException(
+          code: ChatErrorCodes.ackTimeout,
+          message: 'timed out',
+        ),
+      );
+      when(
+        () => rest.sendMessage(
+          any(),
+          any(),
+          message: any(named: 'message'),
+        ),
+      ).thenThrow(Exception('network'));
 
       final result = await controller.send('hi');
 
       expect(result, isNull);
       // The optimistic bubble must remain visible so the user can retry.
       expect(controller.currentMessages, hasLength(1));
-      expect(controller.currentMessages.single.id.startsWith('tmp_'),
-          isTrue,);
+      expect(
+        controller.currentMessages.single.id.startsWith('tmp_'),
+        isTrue,
+      );
       // Outbox keeps the failed item with its attempt count bumped.
       final pending = await outbox.readForChannel('ride:$_bookingId');
       expect(pending, hasLength(1));
       expect(pending.single.attemptCount, greaterThanOrEqualTo(1));
     });
 
-    test('treats socket CHAT_CHANNEL_CLOSED as terminal and locks the '
+    test(
+        'treats socket CHAT_CHANNEL_CLOSED as terminal and locks the '
         'channel state', () async {
       await openRideChannel();
       when(() => realtime.sendMessage(message: any(named: 'message')))
-          .thenThrow(const ChatRealtimeException(
-        code: ChatErrorCodes.channelClosed,
-        message: 'closed',
-      ),);
+          .thenThrow(
+        const ChatRealtimeException(
+          code: ChatErrorCodes.channelClosed,
+          message: 'closed',
+        ),
+      );
 
       final result = await controller.send('hi');
 
       expect(result, isNull);
       expect(controller.currentChannel?.isClosed, isTrue);
       // No REST attempt — backend already rejected.
-      verifyNever(() => rest.sendMessage(any(), any(),
-          message: any(named: 'message'),),);
+      verifyNever(
+        () => rest.sendMessage(
+          any(),
+          any(),
+          message: any(named: 'message'),
+        ),
+      );
     });
   });
 
   group('inbound dedupe', () {
     test('ignores a message id that is already in the list', () async {
       await openRideChannel();
-      final m =
-          serverMessage(id: 'srv-1', senderId: _otherId, text: 'hello');
+      final m = serverMessage(id: 'srv-1', senderId: _otherId, text: 'hello');
 
       incomingCtrl.add(m);
       await Future<void>.delayed(Duration.zero);
@@ -213,8 +239,10 @@ void main() {
       final sendFuture = controller.send('hi');
       // The optimistic bubble is in the list now.
       expect(controller.currentMessages, hasLength(1));
-      expect(controller.currentMessages.single.id.startsWith('tmp_'),
-          isTrue,);
+      expect(
+        controller.currentMessages.single.id.startsWith('tmp_'),
+        isTrue,
+      );
 
       // Server broadcasts our own message back to the room before the
       // ack arrives (rare but real — the spec calls it out).
@@ -242,19 +270,23 @@ void main() {
       await openRideChannel();
       // Drop a stub failed item into the outbox so we can assert the
       // close clears it (any further retry would just 410).
-      await outbox.upsert(ChatOutboxItem(
-        tempId: 'tmp_x',
-        channelKey: 'ride:$_bookingId',
-        message: 'stuck',
-        queuedAt: DateTime.now().toUtc(),
-      ),);
+      await outbox.upsert(
+        ChatOutboxItem(
+          tempId: 'tmp_x',
+          channelKey: 'ride:$_bookingId',
+          message: 'stuck',
+          queuedAt: DateTime.now().toUtc(),
+        ),
+      );
       expect(await outbox.readForChannel('ride:$_bookingId'), hasLength(1));
 
-      channelClosedCtrl.add(const ChatChannelClosedEvent(
-        bookingType: ChatBookingType.ride,
-        bookingId: _bookingId,
-        reason: 'completed',
-      ),);
+      channelClosedCtrl.add(
+        const ChatChannelClosedEvent(
+          bookingType: ChatBookingType.ride,
+          bookingId: _bookingId,
+          reason: 'completed',
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
 
       expect(controller.currentChannel?.isClosed, isTrue);
@@ -326,10 +358,12 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       when(() => realtime.markRead(messageId: any(named: 'messageId')))
-          .thenThrow(const ChatRealtimeException(
-        code: ChatErrorCodes.ackTimeout,
-        message: 'timed out',
-      ),);
+          .thenThrow(
+        const ChatRealtimeException(
+          code: ChatErrorCodes.ackTimeout,
+          message: 'timed out',
+        ),
+      );
       final stamp = DateTime.utc(2026, 1, 1, 12, 31);
       when(() => rest.markRead(any())).thenAnswer((_) async => stamp);
 
@@ -341,16 +375,17 @@ void main() {
   });
 
   group('outbox restore', () {
-    test('replays previously-failed sends as ghost bubbles on open',
-        () async {
+    test('replays previously-failed sends as ghost bubbles on open', () async {
       // Pre-seed the outbox as if a prior session crashed mid-send.
-      await outbox.upsert(ChatOutboxItem(
-        tempId: 'tmp_persisted',
-        channelKey: 'ride:$_bookingId',
-        message: 'I will be back',
-        queuedAt: DateTime.utc(2026, 1, 1, 9),
-        attemptCount: 2,
-      ),);
+      await outbox.upsert(
+        ChatOutboxItem(
+          tempId: 'tmp_persisted',
+          channelKey: 'ride:$_bookingId',
+          message: 'I will be back',
+          queuedAt: DateTime.utc(2026, 1, 1, 9),
+          attemptCount: 2,
+        ),
+      );
 
       await openRideChannel();
 
@@ -361,15 +396,13 @@ void main() {
   });
 
   group('typing — outbound notifyTyping', () {
-    test('emits chat:typing(true) on the first call from idle',
-        () async {
+    test('emits chat:typing(true) on the first call from idle', () async {
       await openRideChannel();
       controller.notifyTyping(true);
       verify(() => realtime.sendTyping(isTyping: true)).called(1);
     });
 
-    test('debounces a second true call within the 3 s window',
-        () async {
+    test('debounces a second true call within the 3 s window', () async {
       await openRideChannel();
       controller.notifyTyping(true);
       controller.notifyTyping(true);
@@ -377,9 +410,7 @@ void main() {
       verify(() => realtime.sendTyping(isTyping: true)).called(1);
     });
 
-    test(
-        're-emits chat:typing(true) once the 3 s debounce window elapses',
-        () {
+    test('re-emits chat:typing(true) once the 3 s debounce window elapses', () {
       fakeAsync((async) {
         controller.openChannel(ChatBookingType.ride, _bookingId);
         async.elapse(const Duration(milliseconds: 50));
@@ -396,8 +427,7 @@ void main() {
       verify(() => realtime.sendTyping(isTyping: true)).called(2);
     });
 
-    test('explicit notifyTyping(false) emits chat:typing(false)',
-        () async {
+    test('explicit notifyTyping(false) emits chat:typing(false)', () async {
       await openRideChannel();
       controller.notifyTyping(true);
       controller.notifyTyping(false);
@@ -405,7 +435,8 @@ void main() {
       verify(() => realtime.sendTyping(isTyping: false)).called(1);
     });
 
-    test('idle timer auto-emits chat:typing(false) 3 s after the '
+    test(
+        'idle timer auto-emits chat:typing(false) 3 s after the '
         'last keystroke', () {
       fakeAsync((async) {
         controller.openChannel(ChatBookingType.ride, _bookingId);
@@ -422,7 +453,8 @@ void main() {
       await openRideChannel();
       controller.notifyTyping(false);
       verifyNever(
-          () => realtime.sendTyping(isTyping: any(named: 'isTyping')),);
+        () => realtime.sendTyping(isTyping: any(named: 'isTyping')),
+      );
     });
   });
 
@@ -434,30 +466,33 @@ void main() {
       final sub = controller.peerTypingStream.listen(emissions.add);
       addTearDown(sub.cancel);
 
-      typingCtrl.add(const ChatTypingUpdate(
-        bookingType: ChatBookingType.ride,
-        bookingId: _bookingId,
-        userId: _otherId,
-        isTyping: true,
-      ),);
+      typingCtrl.add(
+        const ChatTypingUpdate(
+          bookingType: ChatBookingType.ride,
+          bookingId: _bookingId,
+          userId: _otherId,
+          isTyping: true,
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
 
       expect(emissions, [true]);
     });
 
-    test('ignores updates whose userId matches the local user',
-        () async {
+    test('ignores updates whose userId matches the local user', () async {
       await openRideChannel();
       final emissions = <bool>[];
       final sub = controller.peerTypingStream.listen(emissions.add);
       addTearDown(sub.cancel);
 
-      typingCtrl.add(const ChatTypingUpdate(
-        bookingType: ChatBookingType.ride,
-        bookingId: _bookingId,
-        userId: _selfId,
-        isTyping: true,
-      ),);
+      typingCtrl.add(
+        const ChatTypingUpdate(
+          bookingType: ChatBookingType.ride,
+          bookingId: _bookingId,
+          userId: _selfId,
+          isTyping: true,
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
 
       expect(emissions, isEmpty);
@@ -471,36 +506,41 @@ void main() {
       final sub = controller.peerTypingStream.listen(emissions.add);
       addTearDown(sub.cancel);
 
-      typingCtrl.add(const ChatTypingUpdate(
-        bookingType: ChatBookingType.artisanJob,
-        bookingId: 'unrelated',
-        userId: _otherId,
-        isTyping: true,
-      ),);
+      typingCtrl.add(
+        const ChatTypingUpdate(
+          bookingType: ChatBookingType.artisanJob,
+          bookingId: 'unrelated',
+          userId: _otherId,
+          isTyping: true,
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
 
       expect(emissions, isEmpty);
     });
 
-    test('emits false when the peer explicitly stops typing',
-        () async {
+    test('emits false when the peer explicitly stops typing', () async {
       await openRideChannel();
       final emissions = <bool>[];
       final sub = controller.peerTypingStream.listen(emissions.add);
       addTearDown(sub.cancel);
 
-      typingCtrl.add(const ChatTypingUpdate(
-        bookingType: ChatBookingType.ride,
-        bookingId: _bookingId,
-        userId: _otherId,
-        isTyping: true,
-      ),);
-      typingCtrl.add(const ChatTypingUpdate(
-        bookingType: ChatBookingType.ride,
-        bookingId: _bookingId,
-        userId: _otherId,
-        isTyping: false,
-      ),);
+      typingCtrl.add(
+        const ChatTypingUpdate(
+          bookingType: ChatBookingType.ride,
+          bookingId: _bookingId,
+          userId: _otherId,
+          isTyping: true,
+        ),
+      );
+      typingCtrl.add(
+        const ChatTypingUpdate(
+          bookingType: ChatBookingType.ride,
+          bookingId: _bookingId,
+          userId: _otherId,
+          isTyping: false,
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
 
       expect(emissions, [true, false]);
@@ -514,19 +554,23 @@ void main() {
       final sub = controller.peerTypingStream.listen(emissions.add);
       addTearDown(sub.cancel);
 
-      typingCtrl.add(const ChatTypingUpdate(
-        bookingType: ChatBookingType.ride,
-        bookingId: _bookingId,
-        userId: _otherId,
-        isTyping: true,
-      ),);
+      typingCtrl.add(
+        const ChatTypingUpdate(
+          bookingType: ChatBookingType.ride,
+          bookingId: _bookingId,
+          userId: _otherId,
+          isTyping: true,
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
 
-      incomingCtrl.add(serverMessage(
-        id: 'srv-final',
-        senderId: _otherId,
-        text: 'sent',
-      ),);
+      incomingCtrl.add(
+        serverMessage(
+          id: 'srv-final',
+          senderId: _otherId,
+          text: 'sent',
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
 
       expect(emissions, [true, false]);

@@ -62,22 +62,22 @@ class RegisterRequest {
 
 /// POST /auth/login/{role} request body.
 ///
-/// [deviceId] is required so the backend can disambiguate concurrent
-/// sessions for the same user. [forceLogin] overrides an existing session
-/// on another device (set to true after the user confirms the take-over
-/// prompt triggered by ALREADY_LOGGED_IN_ELSEWHERE).
+/// [deviceId] is required so the backend can enforce one-active-session-per-
+/// account. When another device already holds the session, the backend
+/// returns 409 ALREADY_LOGGED_IN_ELSEWHERE; the mobile app blocks the user
+/// (see `AuthBlockedByOtherDevice`) and does not offer a force-takeover —
+/// the user must sign out on the other device or request session recovery
+/// from support.
 class LoginRequest {
   const LoginRequest({
     required this.phone,
     required this.deviceId,
     this.deviceInfo,
-    this.forceLogin = false,
   });
 
   final String phone;
   final String deviceId;
   final Map<String, dynamic>? deviceInfo;
-  final bool forceLogin;
 
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{
@@ -85,9 +85,28 @@ class LoginRequest {
       'deviceId': deviceId,
     };
     if (deviceInfo != null) json['deviceInfo'] = deviceInfo;
-    if (forceLogin) json['forceLogin'] = true;
     return json;
   }
+}
+
+/// POST /auth/request-session-recovery request body.
+///
+/// Sent when the user can't reach the device that's currently holding the
+/// session (lost phone, etc.). Backend records the request and notifies
+/// support so the operator can manually revoke the active session.
+class SessionRecoveryRequest {
+  const SessionRecoveryRequest({
+    required this.phone,
+    required this.deviceId,
+  });
+
+  final String phone;
+  final String deviceId;
+
+  Map<String, dynamic> toJson() => {
+        'phone': phone,
+        'deviceId': deviceId,
+      };
 }
 
 /// Body for POST /auth/check-phone. Phone-only — no device context needed.

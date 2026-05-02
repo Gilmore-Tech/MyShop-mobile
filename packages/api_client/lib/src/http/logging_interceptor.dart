@@ -18,9 +18,10 @@ class LoggingInterceptor extends Interceptor {
   void onResponse(Response response, ResponseInterceptorHandler handler) {
     final ms = response.requestOptions.extra['_startTime'] != null
         ? DateTime.now()
-                .difference(
-                    response.requestOptions.extra['_startTime'] as DateTime,)
-                .inMilliseconds
+            .difference(
+              response.requestOptions.extra['_startTime'] as DateTime,
+            )
+            .inMilliseconds
             .toString()
         : '?';
     developer.log(

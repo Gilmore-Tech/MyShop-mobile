@@ -135,6 +135,7 @@ class DocumentInfo {
   final String id;
   final String providerType;
   final String documentType;
+
   /// Document status flow:
   ///   `uploaded` → presigned URL given, file not yet in storage
   ///   `pending_review` → file uploaded successfully, awaiting admin review
@@ -174,7 +175,8 @@ class VerificationStatusResponse {
       artisanData: json['artisan'] as Map<String, dynamic>?,
       documents: (json['documents'] as List<dynamic>?)
               ?.map(
-                  (e) => DocumentInfo.fromJson(e as Map<String, dynamic>),)
+                (e) => DocumentInfo.fromJson(e as Map<String, dynamic>),
+              )
               .toList() ??
           const [],
     );

@@ -52,6 +52,7 @@ class AuthInterceptor extends QueuedInterceptor {
     '/auth/verify-otp',
     '/auth/refresh',
     '/auth/recover',
+    '/auth/request-session-recovery',
     '/config/',
     '/surge/current',
   };
@@ -126,9 +127,10 @@ class AuthInterceptor extends QueuedInterceptor {
     // with the fresh stored token — no need to refresh again.
     final attachedAuth =
         err.requestOptions.headers['Authorization']?.toString();
-    final attachedToken = attachedAuth != null && attachedAuth.startsWith('Bearer ')
-        ? attachedAuth.substring(7)
-        : null;
+    final attachedToken =
+        attachedAuth != null && attachedAuth.startsWith('Bearer ')
+            ? attachedAuth.substring(7)
+            : null;
     final currentStored = await _tokenStorage.readAccessToken();
 
     if (currentStored != null &&
@@ -203,9 +205,9 @@ class AuthInterceptor extends QueuedInterceptor {
           debugPrint('[Auth] refresh body not a map: $body');
           return null;
         }
-        final payload =
-            (body['data'] is Map<String, dynamic> ? body['data'] : body)
-                as Map<String, dynamic>;
+        final payload = (body['data'] is Map<String, dynamic>
+            ? body['data']
+            : body) as Map<String, dynamic>;
 
         final newAccessToken = payload['accessToken'] as String?;
         if (newAccessToken == null) {
@@ -258,7 +260,9 @@ class AuthInterceptor extends QueuedInterceptor {
         };
         if (status == 401) {
           if (code != null && terminalCodes.contains(code)) {
-            debugPrint('[Auth] terminal refresh failure ($code) — clearing tokens');
+            debugPrint(
+              '[Auth] terminal refresh failure ($code) — clearing tokens',
+            );
             await _tokenStorage.clearTokens();
             _onForceLogout?.call();
           } else {
@@ -283,5 +287,4 @@ class AuthInterceptor extends QueuedInterceptor {
       }
     }();
   }
-
 }

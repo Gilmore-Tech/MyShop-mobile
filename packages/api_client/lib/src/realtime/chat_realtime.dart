@@ -71,7 +71,8 @@ class ChatRealtime {
   /// our own (the backend broadcasts to the entire room). Callers must
   /// dedupe by [ChatMessage.id] since they will also receive the ack-side
   /// of their own send.
-  Stream<ChatMessage> get incomingMessages => _incomingMessagesController.stream;
+  Stream<ChatMessage> get incomingMessages =>
+      _incomingMessagesController.stream;
 
   /// Other-side read receipts for our messages.
   Stream<ChatReadReceipt> get readReceipts => _readReceiptsController.stream;
@@ -451,7 +452,9 @@ class ChatRealtime {
 
         final refreshed = await _refreshAccessTokenWithRetry();
         if (refreshed == null) {
-          debugPrint('[CHAT-WS] Refresh after UNAUTHORIZED failed — staying offline');
+          debugPrint(
+            '[CHAT-WS] Refresh after UNAUTHORIZED failed — staying offline',
+          );
           return;
         }
         await connect();
@@ -548,7 +551,8 @@ class ChatRealtime {
     }
     final s = data?.toString().toLowerCase() ?? '';
     return s.contains('unauthorized') ||
-        (s.contains('token') && (s.contains('invalid') || s.contains('expired')));
+        (s.contains('token') &&
+            (s.contains('invalid') || s.contains('expired')));
   }
 }
 

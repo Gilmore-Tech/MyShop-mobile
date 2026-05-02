@@ -65,12 +65,12 @@ class MyShopTextField extends StatelessWidget {
           onChanged: onChanged,
           onSubmitted: onSubmitted,
           maxLength: maxLength,
-          style: MyShopTypography.body1
-              .copyWith(color: MyShopColors.textPrimary),
+          style:
+              MyShopTypography.body1.copyWith(color: MyShopColors.textPrimary),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: MyShopTypography.body1
-                .copyWith(color: MyShopColors.textHint),
+            hintStyle:
+                MyShopTypography.body1.copyWith(color: MyShopColors.textHint),
             prefixIcon: prefix,
             suffixIcon: suffix,
             counterText: '',
@@ -103,8 +103,7 @@ class MyShopTextField extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             errorText!,
-            style: MyShopTypography.caption
-                .copyWith(color: MyShopColors.error),
+            style: MyShopTypography.caption.copyWith(color: MyShopColors.error),
           ),
         ],
       ],

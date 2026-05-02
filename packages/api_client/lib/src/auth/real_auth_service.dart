@@ -106,6 +106,24 @@ class RealAuthService implements AuthService {
   }
 
   @override
+  Future<void> requestSessionRecovery({
+    required String phone,
+    required String deviceId,
+  }) async {
+    try {
+      await _dio.post(
+        '/auth/request-session-recovery',
+        data: SessionRecoveryRequest(
+          phone: phone,
+          deviceId: deviceId,
+        ).toJson(),
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  @override
   Future<TokenResponse> verifyOtp(VerifyOtpRequest request) async {
     try {
       final response = await _dio.post(

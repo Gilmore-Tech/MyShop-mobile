@@ -236,7 +236,9 @@ class SocketService {
 
         final refreshed = await _refreshAccessTokenWithRetry();
         if (refreshed == null) {
-          debugPrint('[WS] Refresh after UNAUTHORIZED failed — staying offline');
+          debugPrint(
+            '[WS] Refresh after UNAUTHORIZED failed — staying offline',
+          );
           return;
         }
         await connect();
@@ -371,6 +373,7 @@ class SocketService {
     }
     final s = data?.toString().toLowerCase() ?? '';
     return s.contains('unauthorized') ||
-        (s.contains('token') && (s.contains('invalid') || s.contains('expired')));
+        (s.contains('token') &&
+            (s.contains('invalid') || s.contains('expired')));
   }
 }

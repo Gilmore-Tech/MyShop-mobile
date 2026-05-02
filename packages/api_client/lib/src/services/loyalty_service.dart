@@ -37,7 +37,7 @@ class LoyaltyService {
   ///
   /// `points` is signed: positive for earn, negative for redeem/expire.
   Future<Map<String, dynamic>> getTransactions({
-    int page  = 1,
+    int page = 1,
     int limit = 20,
   }) async {
     try {
@@ -57,7 +57,7 @@ class LoyaltyService {
   /// during checkout, NOT the loyalty screen. Backend validates that the
   /// booking belongs to the caller and is in a redeemable status.
   Future<Map<String, dynamic>> redeemPoints({
-    required int    points,
+    required int points,
     required String bookingType, // 'ride' | 'job'
     required String bookingId,
   }) async {
@@ -65,9 +65,9 @@ class LoyaltyService {
       final response = await _dio.post(
         '/loyalty/redeem',
         data: {
-          'points':      points,
+          'points': points,
           'bookingType': bookingType,
-          'bookingId':   bookingId,
+          'bookingId': bookingId,
         },
       );
       return _unwrap(response) as Map<String, dynamic>;

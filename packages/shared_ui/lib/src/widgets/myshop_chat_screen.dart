@@ -415,14 +415,18 @@ class _Header extends StatelessWidget {
           ),
           if (onPhoneCall != null)
             IconButton(
-              icon: const Icon(Icons.phone_outlined,
-                  color: MyShopColors.primaryGold,),
+              icon: const Icon(
+                Icons.phone_outlined,
+                color: MyShopColors.primaryGold,
+              ),
               onPressed: onPhoneCall,
             ),
           if (onMoreMenu != null)
             IconButton(
-              icon: const Icon(Icons.more_vert,
-                  color: MyShopColors.textSecondary,),
+              icon: const Icon(
+                Icons.more_vert,
+                color: MyShopColors.textSecondary,
+              ),
               onPressed: onMoreMenu,
             ),
         ],
@@ -501,9 +505,8 @@ class _MessageBubble extends StatelessWidget {
                     // messages stand out against the muted grey of the
                     // other side. Tail-corner radii flip per side so the
                     // bubble points back at the speaker.
-                    color: isMine
-                        ? MyShopColors.error
-                        : MyShopColors.surfaceGrey,
+                    color:
+                        isMine ? MyShopColors.error : MyShopColors.surfaceGrey,
                     borderRadius: BorderRadius.only(
                       topLeft: const Radius.circular(16),
                       topRight: const Radius.circular(16),
@@ -946,8 +949,7 @@ class _AnimatedDots extends StatelessWidget {
                 width: 5,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: MyShopColors.textSecondary
-                      .withValues(alpha: opacity),
+                  color: MyShopColors.textSecondary.withValues(alpha: opacity),
                   shape: BoxShape.circle,
                 ),
               ),

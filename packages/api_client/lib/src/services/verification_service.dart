@@ -144,13 +144,15 @@ class VerificationService {
     final fileSize = await file.length();
 
     // Step 1: Get upload URL from backend
-    final uploadInfo = await requestUpload(PresignedUrlRequest(
-      providerType: providerType,
-      documentType: documentType.value,
-      fileName: fileName,
-      mimeType: mimeType,
-      fileSize: fileSize,
-    ),);
+    final uploadInfo = await requestUpload(
+      PresignedUrlRequest(
+        providerType: providerType,
+        documentType: documentType.value,
+        fileName: fileName,
+        mimeType: mimeType,
+        fileSize: fileSize,
+      ),
+    );
 
     // Step 2: Upload file to cloud storage
     final remoteUrl = await uploadFile(

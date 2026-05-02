@@ -29,12 +29,15 @@ class SafetyService {
     required double lng,
   }) async {
     try {
-      final response = await _dio.post('/emergency', data: {
-        'bookingType': bookingType,
-        'bookingId': bookingId,
-        'lat': lat,
-        'lng': lng,
-      },);
+      final response = await _dio.post(
+        '/emergency',
+        data: {
+          'bookingType': bookingType,
+          'bookingId': bookingId,
+          'lat': lat,
+          'lng': lng,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);

@@ -81,14 +81,18 @@ class SecureTokenStorage implements TokenStorage {
   @override
   Future<String?> readAccessToken() async {
     final value = await _storage.read(key: _kAccessToken);
-    debugPrint('[TokenStorage] read access_token → ${value == null ? 'null' : 'present(${value.length})'}');
+    debugPrint(
+      '[TokenStorage] read access_token → ${value == null ? 'null' : 'present(${value.length})'}',
+    );
     return value;
   }
 
   @override
   Future<String?> readRefreshToken() async {
     final value = await _storage.read(key: _kRefreshToken);
-    debugPrint('[TokenStorage] read refresh_token → ${value == null ? 'null' : 'present(${value.length})'}');
+    debugPrint(
+      '[TokenStorage] read refresh_token → ${value == null ? 'null' : 'present(${value.length})'}',
+    );
     return value;
   }
 
@@ -97,14 +101,18 @@ class SecureTokenStorage implements TokenStorage {
     required String accessToken,
     required String refreshToken,
   }) async {
-    debugPrint('[TokenStorage] writeTokens (access=${accessToken.length} refresh=${refreshToken.length})');
+    debugPrint(
+      '[TokenStorage] writeTokens (access=${accessToken.length} refresh=${refreshToken.length})',
+    );
     await _storage.write(key: _kAccessToken, value: accessToken);
     await _storage.write(key: _kRefreshToken, value: refreshToken);
     // Read back to verify the write actually landed. On iOS simulator
     // keychain can silently swallow writes in some configurations; this
     // turns that into a loud log line instead of a mysterious logout.
     final readback = await _storage.read(key: _kAccessToken);
-    debugPrint('[TokenStorage] writeTokens readback → ${readback == null ? 'NULL (write failed!)' : 'ok'}');
+    debugPrint(
+      '[TokenStorage] writeTokens readback → ${readback == null ? 'NULL (write failed!)' : 'ok'}',
+    );
   }
 
   @override
@@ -115,7 +123,9 @@ class SecureTokenStorage implements TokenStorage {
 
   @override
   Future<void> clearTokens() async {
-    debugPrint('[TokenStorage] clearTokens — called from:\n${StackTrace.current}');
+    debugPrint(
+      '[TokenStorage] clearTokens — called from:\n${StackTrace.current}',
+    );
     await _storage.delete(key: _kAccessToken);
     await _storage.delete(key: _kRefreshToken);
     await _storage.delete(key: _kPhone);

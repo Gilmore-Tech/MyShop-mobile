@@ -33,8 +33,7 @@ class _MyShopOtpInputState extends State<MyShopOtpInput> {
   @override
   void initState() {
     super.initState();
-    _controllers =
-        List.generate(widget.length, (_) => TextEditingController());
+    _controllers = List.generate(widget.length, (_) => TextEditingController());
     _focusNodes = List.generate(widget.length, (_) => FocusNode());
   }
 
@@ -58,7 +57,8 @@ class _MyShopOtpInputState extends State<MyShopOtpInput> {
       for (var i = 0; i < widget.length; i++) {
         _controllers[i].text = i < chars.length ? chars[i] : '';
       }
-      final next = chars.length >= widget.length ? widget.length - 1 : chars.length;
+      final next =
+          chars.length >= widget.length ? widget.length - 1 : chars.length;
       _focusNodes[next].requestFocus();
     } else if (raw.isNotEmpty) {
       if (index < widget.length - 1) {

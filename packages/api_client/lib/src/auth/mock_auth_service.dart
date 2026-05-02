@@ -97,6 +97,14 @@ class MockAuthService implements AuthService {
   }
 
   @override
+  Future<void> requestSessionRecovery({
+    required String phone,
+    required String deviceId,
+  }) async {
+    await _delay();
+  }
+
+  @override
   Future<TokenResponse> verifyOtp(VerifyOtpRequest request) async {
     await _delay();
     if (request.otp != _validCode) {
@@ -214,10 +222,8 @@ class MockAuthService implements AuthService {
               kycStatus: dp.kycStatus,
               policeCheckStatus: dp.policeCheckStatus,
               onlineStatus: dp.onlineStatus,
-              serviceRadiusKm:
-                  request.serviceRadiusKm ?? dp.serviceRadiusKm,
-              payoutPreference:
-                  request.payoutPreference ?? dp.payoutPreference,
+              serviceRadiusKm: request.serviceRadiusKm ?? dp.serviceRadiusKm,
+              payoutPreference: request.payoutPreference ?? dp.payoutPreference,
               payoutMethod: request.payoutMethod ?? dp.payoutMethod,
               payoutAccountNumber:
                   request.payoutAccountNumber ?? dp.payoutAccountNumber,
@@ -256,13 +262,11 @@ class MockAuthService implements AuthService {
               kycStatus: ap.kycStatus,
               policeCheckStatus: ap.policeCheckStatus,
               onlineStatus: ap.onlineStatus,
-              serviceRadiusKm:
-                  request.serviceRadiusKm ?? ap.serviceRadiusKm,
+              serviceRadiusKm: request.serviceRadiusKm ?? ap.serviceRadiusKm,
               shopCapacity: request.shopCapacity ?? ap.shopCapacity,
               maxConcurrentJobs:
                   request.maxConcurrentJobs ?? ap.maxConcurrentJobs,
-              payoutPreference:
-                  request.payoutPreference ?? ap.payoutPreference,
+              payoutPreference: request.payoutPreference ?? ap.payoutPreference,
               payoutMethod: request.payoutMethod ?? ap.payoutMethod,
               payoutAccountNumber:
                   request.payoutAccountNumber ?? ap.payoutAccountNumber,

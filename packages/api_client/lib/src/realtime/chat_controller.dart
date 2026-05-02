@@ -55,10 +55,12 @@ class ChatController {
 
   // ── Per-channel state ─────────────────────────────────────────────────────
   ChatChannel? _channel;
+
   /// Keyed by [ChatMessage.id] (or `tempId` while pending). Insertion order
   /// is preserved by Dart's `LinkedHashMap`, which we lean on for the
   /// chronological message list.
   final Map<String, ChatMessage> _messages = {};
+
   /// Tracks which optimistic temp ids are still in-flight or have failed
   /// outright. UI uses `failedIds.contains(id)` to decide between the
   /// pending tick and the "!" retry overlay.
@@ -125,8 +127,7 @@ class ChatController {
   String get selfUserId => _selfUserId;
 
   /// Snapshot of messages, ordered by `createdAt` ascending.
-  List<ChatMessage> get currentMessages =>
-      List.unmodifiable(_messages.values);
+  List<ChatMessage> get currentMessages => List.unmodifiable(_messages.values);
 
   /// Live list of messages for the open channel. Emits a fresh snapshot on
   /// every change (history fetch, send, ack, receive, dedupe, etc.).

@@ -29,13 +29,16 @@ class RideService {
     List<Map<String, double>>? stops,
   }) async {
     try {
-      final response = await _dio.post('/rides/estimate', data: {
-        'pickupLat': pickupLat,
-        'pickupLng': pickupLng,
-        'dropoffLat': destinationLat,
-        'dropoffLng': destinationLng,
-        if (stops != null) 'stops': stops,
-      },);
+      final response = await _dio.post(
+        '/rides/estimate',
+        data: {
+          'pickupLat': pickupLat,
+          'pickupLng': pickupLng,
+          'dropoffLat': destinationLat,
+          'dropoffLng': destinationLng,
+          if (stops != null) 'stops': stops,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -60,17 +63,20 @@ class RideService {
     String? promoCode,
   }) async {
     try {
-      final response = await _dio.post('/rides', data: {
-        'pickupLat': pickupLat,
-        'pickupLng': pickupLng,
-        'dropoffLat': destinationLat,
-        'dropoffLng': destinationLng,
-        if (pickupAddress != null) 'pickupAddress': pickupAddress,
-        if (destinationAddress != null) 'dropoffAddress': destinationAddress,
-        if (stops != null) 'stops': stops,
-        'paymentMethod': paymentMethod ?? 'cash',
-        if (promoCode != null) 'promoCode': promoCode,
-      },);
+      final response = await _dio.post(
+        '/rides',
+        data: {
+          'pickupLat': pickupLat,
+          'pickupLng': pickupLng,
+          'dropoffLat': destinationLat,
+          'dropoffLng': destinationLng,
+          if (pickupAddress != null) 'pickupAddress': pickupAddress,
+          if (destinationAddress != null) 'dropoffAddress': destinationAddress,
+          if (stops != null) 'stops': stops,
+          'paymentMethod': paymentMethod ?? 'cash',
+          if (promoCode != null) 'promoCode': promoCode,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -85,11 +91,14 @@ class RideService {
     String? status,
   }) async {
     try {
-      final response = await _dio.get('/rides', queryParameters: {
-        'page': page,
-        'limit': limit,
-        if (status != null) 'status': status,
-      },);
+      final response = await _dio.get(
+        '/rides',
+        queryParameters: {
+          'page': page,
+          'limit': limit,
+          if (status != null) 'status': status,
+        },
+      );
       // ignore: avoid_print
       print('[RideService] raw response.data: ${response.data}');
       final body = response.data;
@@ -181,12 +190,17 @@ class RideService {
   }
 
   /// PATCH /rides/:id/cancel — Cancel ride (enforces 3-min free window).
-  Future<Map<String, dynamic>> cancelRide(String rideId,
-      {String? reason,}) async {
+  Future<Map<String, dynamic>> cancelRide(
+    String rideId, {
+    String? reason,
+  }) async {
     try {
-      final response = await _dio.patch('/rides/$rideId/cancel', data: {
-        if (reason != null) 'reason': reason,
-      },);
+      final response = await _dio.patch(
+        '/rides/$rideId/cancel',
+        data: {
+          if (reason != null) 'reason': reason,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -201,11 +215,14 @@ class RideService {
     String? address,
   }) async {
     try {
-      final response = await _dio.patch('/rides/$rideId/stops', data: {
-        'lat': lat,
-        'lng': lng,
-        if (address != null) 'address': address,
-      },);
+      final response = await _dio.patch(
+        '/rides/$rideId/stops',
+        data: {
+          'lat': lat,
+          'lng': lng,
+          if (address != null) 'address': address,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -219,10 +236,13 @@ class RideService {
     String? description,
   }) async {
     try {
-      final response = await _dio.post('/rides/$rideId/dispute', data: {
-        'reason': reason,
-        if (description != null) 'description': description,
-      },);
+      final response = await _dio.post(
+        '/rides/$rideId/dispute',
+        data: {
+          'reason': reason,
+          if (description != null) 'description': description,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);

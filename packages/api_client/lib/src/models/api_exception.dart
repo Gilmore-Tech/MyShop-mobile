@@ -27,7 +27,8 @@ class ApiException implements Exception {
           );
         case DioExceptionType.connectionError:
           return const NetworkException(
-            message: 'No internet connection. Check your network and try again.',
+            message:
+                'No internet connection. Check your network and try again.',
           );
         default:
           return NetworkException(

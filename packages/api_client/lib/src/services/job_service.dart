@@ -29,12 +29,15 @@ class JobService {
     String? search,
   }) async {
     try {
-      final response = await _dio.get('/jobs', queryParameters: {
-        'page': page,
-        'limit': limit,
-        if (status != null) 'status': status,
-        if (search != null && search.isNotEmpty) 'q': search,
-      },);
+      final response = await _dio.get(
+        '/jobs',
+        queryParameters: {
+          'page': page,
+          'limit': limit,
+          if (status != null) 'status': status,
+          if (search != null && search.isNotEmpty) 'q': search,
+        },
+      );
       // ignore: avoid_print
       print('[JobService] raw response.data: ${response.data}');
       final body = response.data;
@@ -72,15 +75,18 @@ class JobService {
     List<String>? photoUrls,
   }) async {
     try {
-      final response = await _dio.post('/jobs', data: {
-        'categoryId': categoryId,
-        'description': description,
-        'latitude': latitude,
-        'longitude': longitude,
-        if (addressText != null) 'addressText': addressText,
-        if (scheduledFor != null) 'scheduledFor': scheduledFor,
-        if (photoUrls != null) 'photos': photoUrls,
-      },);
+      final response = await _dio.post(
+        '/jobs',
+        data: {
+          'categoryId': categoryId,
+          'description': description,
+          'latitude': latitude,
+          'longitude': longitude,
+          if (addressText != null) 'addressText': addressText,
+          if (scheduledFor != null) 'scheduledFor': scheduledFor,
+          if (photoUrls != null) 'photos': photoUrls,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -148,7 +154,9 @@ class JobService {
             : Options(headers: {'Idempotency-Key': clientRequestId}),
       );
       // ignore: avoid_print
-      print('[JobService] submitBid response=${response.statusCode} data=${response.data}');
+      print(
+        '[JobService] submitBid response=${response.statusCode} data=${response.data}',
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       // ignore: avoid_print
@@ -243,9 +251,12 @@ class JobService {
     required String bidId,
   }) async {
     try {
-      final response = await _dio.patch('/jobs/$jobId/select-bid', data: {
-        'bidId': bidId,
-      },);
+      final response = await _dio.patch(
+        '/jobs/$jobId/select-bid',
+        data: {
+          'bidId': bidId,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -258,10 +269,12 @@ class JobService {
     required bool approved,
   }) async {
     try {
-      final response =
-          await _dio.patch('/jobs/$jobId/supplement/respond', data: {
-        'approved': approved,
-      },);
+      final response = await _dio.patch(
+        '/jobs/$jobId/supplement/respond',
+        data: {
+          'approved': approved,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -295,8 +308,7 @@ class JobService {
   /// the job without writing anything.
   Future<Map<String, dynamic>> artisanConfirmCash(String jobId) async {
     try {
-      final response =
-          await _dio.post('/jobs/$jobId/artisan-confirm-cash');
+      final response = await _dio.post('/jobs/$jobId/artisan-confirm-cash');
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -310,10 +322,13 @@ class JobService {
     String? description,
   }) async {
     try {
-      final response = await _dio.post('/jobs/$jobId/dispute', data: {
-        'reason': reason,
-        if (description != null) 'description': description,
-      },);
+      final response = await _dio.post(
+        '/jobs/$jobId/dispute',
+        data: {
+          'reason': reason,
+          if (description != null) 'description': description,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -321,12 +336,17 @@ class JobService {
   }
 
   /// PATCH /jobs/:id/cancel — Cancel job (30-min free, 20% fee after).
-  Future<Map<String, dynamic>> cancelJob(String jobId,
-      {String? reason,}) async {
+  Future<Map<String, dynamic>> cancelJob(
+    String jobId, {
+    String? reason,
+  }) async {
     try {
-      final response = await _dio.patch('/jobs/$jobId/cancel', data: {
-        if (reason != null) 'reason': reason,
-      },);
+      final response = await _dio.patch(
+        '/jobs/$jobId/cancel',
+        data: {
+          if (reason != null) 'reason': reason,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);

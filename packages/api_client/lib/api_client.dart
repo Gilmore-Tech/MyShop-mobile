@@ -14,6 +14,7 @@ export 'src/models/api_exception.dart';
 export 'src/models/api_response.dart';
 export 'src/models/auth_dtos.dart';
 export 'src/models/auth_error_mapper.dart';
+export 'src/models/support_dtos.dart';
 export 'src/models/user_dtos.dart';
 export 'src/models/verification_dtos.dart';
 
@@ -25,7 +26,9 @@ export 'src/realtime/chat_realtime.dart';
 // Services
 export 'src/services/category_service.dart';
 export 'src/services/chat_service.dart';
+export 'src/services/help_service.dart';
 export 'src/services/job_service.dart';
+export 'src/services/legal_service.dart';
 export 'src/services/location_service.dart';
 export 'src/services/loyalty_service.dart';
 export 'src/services/media_service.dart';
@@ -34,6 +37,7 @@ export 'src/services/payment_service.dart';
 export 'src/services/rating_service.dart';
 export 'src/services/ride_service.dart';
 export 'src/services/safety_service.dart';
+export 'src/services/support_service.dart';
 export 'src/services/user_service.dart';
 export 'src/services/socket_service.dart';
 export 'src/services/verification_service.dart';

@@ -258,7 +258,8 @@ class _PickerSheet extends StatelessWidget {
               const SizedBox(height: MyShopSpacing.lg),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: options.map((opt) => _OptionTile(option: opt)).toList(),
+                children:
+                    options.map((opt) => _OptionTile(option: opt)).toList(),
               ),
               const SizedBox(height: MyShopSpacing.md),
             ],

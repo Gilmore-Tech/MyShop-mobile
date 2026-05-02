@@ -39,11 +39,14 @@ class UserService {
     String? languagePref,
   }) async {
     try {
-      final response = await _dio.put('/users/me', data: {
-        if (fullName != null) 'fullName': fullName,
-        if (email != null) 'email': email,
-        if (languagePref != null) 'languagePref': languagePref,
-      },);
+      final response = await _dio.put(
+        '/users/me',
+        data: {
+          if (fullName != null) 'fullName': fullName,
+          if (email != null) 'email': email,
+          if (languagePref != null) 'languagePref': languagePref,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -89,7 +92,7 @@ class UserService {
         '/users/me/ghana-card',
         data: {
           'documentImageUrl': documentImageUrl,
-          'ghanaCardNumber':  ghanaCardNumber,
+          'ghanaCardNumber': ghanaCardNumber,
         },
       );
       return _unwrap(response) as Map<String, dynamic>;
@@ -139,13 +142,16 @@ class UserService {
     String? addressText,
   }) async {
     try {
-      final response = await _dio.post('/users/me/saved-locations', data: {
-        'label': label,
-        'locationType': locationType,
-        'latitude': latitude,
-        'longitude': longitude,
-        if (addressText != null) 'addressText': addressText,
-      },);
+      final response = await _dio.post(
+        '/users/me/saved-locations',
+        data: {
+          'label': label,
+          'locationType': locationType,
+          'latitude': latitude,
+          'longitude': longitude,
+          if (addressText != null) 'addressText': addressText,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -161,12 +167,15 @@ class UserService {
     String? addressText,
   }) async {
     try {
-      final response = await _dio.put('/users/me/saved-locations/$id', data: {
-        if (label != null) 'label': label,
-        if (latitude != null) 'latitude': latitude,
-        if (longitude != null) 'longitude': longitude,
-        if (addressText != null) 'addressText': addressText,
-      },);
+      final response = await _dio.put(
+        '/users/me/saved-locations/$id',
+        data: {
+          if (label != null) 'label': label,
+          if (latitude != null) 'latitude': latitude,
+          if (longitude != null) 'longitude': longitude,
+          if (addressText != null) 'addressText': addressText,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -202,14 +211,16 @@ class UserService {
     bool isPrimary = false,
   }) async {
     try {
-      final response =
-          await _dio.post('/users/me/emergency-contacts', data: {
-        'name': name,
-        'phone': phone,
-        if (relationship != null && relationship.isNotEmpty)
-          'relationship': relationship,
-        'isPrimary': isPrimary,
-      },);
+      final response = await _dio.post(
+        '/users/me/emergency-contacts',
+        data: {
+          'name': name,
+          'phone': phone,
+          if (relationship != null && relationship.isNotEmpty)
+            'relationship': relationship,
+          'isPrimary': isPrimary,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -225,13 +236,15 @@ class UserService {
     bool? isPrimary,
   }) async {
     try {
-      final response =
-          await _dio.put('/users/me/emergency-contacts/$id', data: {
-        if (name != null) 'name': name,
-        if (phone != null) 'phone': phone,
-        if (relationship != null) 'relationship': relationship,
-        if (isPrimary != null) 'isPrimary': isPrimary,
-      },);
+      final response = await _dio.put(
+        '/users/me/emergency-contacts/$id',
+        data: {
+          if (name != null) 'name': name,
+          if (phone != null) 'phone': phone,
+          if (relationship != null) 'relationship': relationship,
+          if (isPrimary != null) 'isPrimary': isPrimary,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -260,5 +273,4 @@ class UserService {
       throw ApiException.fromDioException(e);
     }
   }
-
 }

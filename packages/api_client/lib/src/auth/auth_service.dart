@@ -46,6 +46,16 @@ abstract class AuthService {
   /// POST /v1/auth/logout
   Future<void> logout();
 
+  /// Notify support that the user can't sign out on the device currently
+  /// holding the active session. Backend records the request and alerts
+  /// support so an operator can revoke the active session manually.
+  /// Public endpoint — no auth required.
+  /// POST /auth/request-session-recovery
+  Future<void> requestSessionRecovery({
+    required String phone,
+    required String deviceId,
+  });
+
   /// Get the current user's full profile.
   /// GET /users/me
   Future<UserProfile> getMe();

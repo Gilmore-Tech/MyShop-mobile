@@ -16,5 +16,18 @@ export 'src/widgets/myshop_otp_verification_screen.dart';
 export 'src/widgets/myshop_toast.dart';
 export 'src/widgets/myshop_error_body.dart';
 
+// Support & Legal
+export 'src/widgets/support/myshop_contact_support_sheet.dart';
+export 'src/widgets/support/myshop_help_article_screen.dart';
+export 'src/widgets/support/myshop_help_category_screen.dart';
+export 'src/widgets/support/myshop_help_search_screen.dart';
+export 'src/widgets/support/myshop_legal_document_screen.dart';
+export 'src/widgets/support/myshop_new_ticket_screen.dart';
+export 'src/widgets/support/myshop_support_legal_screen.dart';
+export 'src/widgets/support/myshop_ticket_detail_screen.dart';
+export 'src/widgets/support/myshop_tickets_list_screen.dart';
+export 'src/widgets/support/support_channels.dart';
+export 'src/widgets/support/support_legal_config.dart';
+
 export 'src/utils/media_picker_helper.dart';
 export 'src/utils/validators.dart';

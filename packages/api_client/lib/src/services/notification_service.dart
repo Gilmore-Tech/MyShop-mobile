@@ -26,10 +26,13 @@ class NotificationService {
     int limit = 20,
   }) async {
     try {
-      final response = await _dio.get('/notifications', queryParameters: {
-        'page': page,
-        'limit': limit,
-      },);
+      final response = await _dio.get(
+        '/notifications',
+        queryParameters: {
+          'page': page,
+          'limit': limit,
+        },
+      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
