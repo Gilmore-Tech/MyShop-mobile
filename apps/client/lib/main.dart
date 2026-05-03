@@ -29,6 +29,7 @@ import 'src/features/auth/providers/auth_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  debugPrint('[main] CLIENT app starting — FCM build marker v3');
 
   MapboxOptions.setAccessToken(MapboxConfig.accessToken);
 

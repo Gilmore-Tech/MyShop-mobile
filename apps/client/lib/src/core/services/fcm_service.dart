@@ -172,11 +172,13 @@ class FcmService {
   void Function(Map<String, dynamic> payload)? onTapMessage;
 
   Future<void> init() async {
+    debugPrint('[FCM] init() called (initialised=$_initialised)');
     if (_initialised) return;
     _initialised = true;
 
     // Must be registered before any message can arrive.
     FirebaseMessaging.onBackgroundMessage(fcmBackgroundHandler);
+    debugPrint('[FCM] background handler registered');
 
     await _fcm.requestPermission(
       alert: true,
@@ -255,6 +257,7 @@ class FcmService {
   }
 
   Future<void> syncToken() async {
+    debugPrint('[FCM] syncToken() entered');
     String? token;
     for (int attempt = 1; attempt <= 3; attempt++) {
       token = await _fcm.getToken();
@@ -324,13 +327,16 @@ final fcmServiceProvider = Provider<FcmService>((ref) {
 final fcmAuthBridgeProvider = Provider<void>((ref) {
   final authState = ref.watch(clientAuthControllerProvider);
   final fcm = ref.read(fcmServiceProvider);
+  debugPrint('[FCM-bridge] auth state = ${authState.runtimeType}');
 
   if (authState is AuthAuthenticated) {
+    debugPrint('[FCM-bridge] firing syncToken()');
     fcm.syncToken();
   } else if (authState is AuthUnauthenticated) {
     // Only delete the local token on explicit logout. Other transient
     // states (AuthUnknown on cold start, AuthOtpSent during login) used
     // to call dispose() too, which churned the token and raced syncToken.
+    debugPrint('[FCM-bridge] firing dispose() (logout)');
     fcm.dispose();
   }
 });
