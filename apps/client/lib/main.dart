@@ -88,7 +88,13 @@ Future<void> main() async {
   // Register the FCM token with the backend on login; tears it down on
   // logout. Fire this BEFORE runApp so the subscription survives the
   // full app lifetime.
-  container.read(fcmAuthBridgeProvider);
+  //
+  // Use `listen` (not `read`) so the bridge stays subscribed for the
+  // life of the container — without an active listener, Riverpod
+  // invalidates the provider on auth-state change but never re-runs
+  // the body, which would mean the AuthUnknown → AuthAuthenticated
+  // transition silently drops syncToken.
+  container.listen<void>(fcmAuthBridgeProvider, (_, __) {});
 
   // Wire push taps into GoRouter navigation. Must happen AFTER the router
   // provider is reachable — reading it here creates it lazily through the

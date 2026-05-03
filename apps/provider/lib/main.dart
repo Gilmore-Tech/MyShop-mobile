@@ -65,9 +65,14 @@ Future<void> main() async {
   await loadOnboardingFlag(container);
 
   // Activate the auth-bridge so the FCM token is registered with the
-  // backend once the user signs in. Safe to fire pre-runApp — it's just
-  // a Riverpod watch, not an async op.
-  container.read(fcmAuthBridgeProvider);
+  // backend once the user signs in.
+  //
+  // Use `listen` (not `read`) so the bridge stays subscribed for the
+  // life of the container — without an active listener, Riverpod
+  // invalidates the provider on auth-state change but never re-runs
+  // the body, which would mean the AuthUnknown → AuthAuthenticated
+  // transition silently drops syncToken.
+  container.listen<void>(fcmAuthBridgeProvider, (_, __) {});
 
   // Activate the logout-cleanup bridge so the socket, surfaced-jobs
   // set, and online status are torn down whenever the user logs out.
