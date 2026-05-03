@@ -227,6 +227,16 @@ class FcmService {
         onTapMessage?.call(payload);
       });
     }
+
+    // Defense in depth: the auth bridge fires syncToken when state hits
+    // AuthAuthenticated, but on cold start that can fire BEFORE init()
+    // has requested permission — getToken() then returns null and the
+    // single-shot bridge never re-fires. Kick it again now that perms
+    // are granted; syncToken is idempotent (registerDevice is an upsert).
+    final authState = _ref.read(clientAuthControllerProvider);
+    if (authState is AuthAuthenticated) {
+      unawaited(syncToken());
+    }
   }
 
   /// Fires a best-effort `PATCH /notifications/:id/read` when the push
@@ -245,11 +255,18 @@ class FcmService {
   }
 
   Future<void> syncToken() async {
-    final token = await _fcm.getToken();
+    String? token;
+    for (int attempt = 1; attempt <= 3; attempt++) {
+      token = await _fcm.getToken();
+      if (token != null) break;
+      debugPrint('[FCM] getToken null (attempt $attempt/3) — retrying');
+      await Future<void>.delayed(Duration(seconds: attempt * 2));
+    }
     if (token == null) {
-      debugPrint('[FCM] token unavailable — skipping backend register');
+      debugPrint('[FCM] getToken exhausted retries — token unavailable');
       return;
     }
+    debugPrint('[FCM] obtained token (last 12) …${token.substring(token.length - 12)}');
     await _register(token);
 
     _tokenRefreshSub?.cancel();
@@ -257,15 +274,22 @@ class FcmService {
   }
 
   Future<void> _register(String token) async {
-    try {
-      await _ref.read(notificationServiceProvider).registerDevice(
-            fcmToken: token,
-            platform: _platform,
-          );
-      debugPrint('[FCM] token registered with backend');
-    } catch (e) {
-      debugPrint('[FCM] register failed: $e');
+    for (int attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await _ref.read(notificationServiceProvider).registerDevice(
+              fcmToken: token,
+              platform: _platform,
+            );
+        debugPrint('[FCM] token registered with backend (attempt $attempt)');
+        return;
+      } catch (e) {
+        debugPrint('[FCM] register attempt $attempt/3 failed: $e');
+        if (attempt < 3) {
+          await Future<void>.delayed(Duration(seconds: attempt * 2));
+        }
+      }
     }
+    debugPrint('[FCM] register exhausted retries — token NOT registered');
   }
 
   String get _platform {
@@ -303,7 +327,10 @@ final fcmAuthBridgeProvider = Provider<void>((ref) {
 
   if (authState is AuthAuthenticated) {
     fcm.syncToken();
-  } else {
+  } else if (authState is AuthUnauthenticated) {
+    // Only delete the local token on explicit logout. Other transient
+    // states (AuthUnknown on cold start, AuthOtpSent during login) used
+    // to call dispose() too, which churned the token and raced syncToken.
     fcm.dispose();
   }
 });
