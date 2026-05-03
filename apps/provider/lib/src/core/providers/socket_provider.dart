@@ -146,6 +146,21 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
     }
   }
 
+  // Driver-only: emit `driver:location:update` over the socket for the
+  // matcher's low-latency path. The backend has no artisan equivalent —
+  // every artisan emit returns DRIVER_PROFILE_REQUIRED, which floods the
+  // socket with exception events. Artisans use the REST path exclusively
+  // (postLocation below), and the matcher reads their position from the
+  // PostGIS table the REST writer updates.
+  void emitDriverLocation(Position pos) {
+    if (isArtisan) return;
+    socket.emit('driver:location:update', {
+      'latitude': pos.latitude,
+      'longitude': pos.longitude,
+      'status': 'online',
+    });
+  }
+
   // Heartbeat: backend's Redis driver entry has a 5-second TTL (EDD §5.3),
   // so we re-POST the last-known fix every 4s even when the phone is
   // stationary. Without this, a parked driver gets force-offlined within
@@ -159,11 +174,7 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   final heartbeat = Timer.periodic(const Duration(seconds: 4), (_) {
     final pos = ref.read(lastKnownPositionProvider);
     if (pos == null) return;
-    socket.emit('driver:location:update', {
-      'latitude': pos.latitude,
-      'longitude': pos.longitude,
-      'status': 'online',
-    });
+    emitDriverLocation(pos);
     postLocation(pos);
   });
   ref.onDispose(heartbeat.cancel);
@@ -175,11 +186,7 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   // below intentionally does NOT post REST (heartbeat owns that channel).
   final cached = ref.read(lastKnownPositionProvider);
   if (cached != null) {
-    socket.emit('driver:location:update', {
-      'latitude': cached.latitude,
-      'longitude': cached.longitude,
-      'status': 'online',
-    });
+    emitDriverLocation(cached);
     postLocation(cached);
   } else {
     // No cached fix yet (e.g. recovered into busy on a fresh launch where
@@ -196,11 +203,7 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
           ),
         );
         ref.read(lastKnownPositionProvider.notifier).state = fresh;
-        socket.emit('driver:location:update', {
-          'latitude': fresh.latitude,
-          'longitude': fresh.longitude,
-          'status': 'online',
-        });
+        emitDriverLocation(fresh);
         postLocation(fresh);
       } catch (e) {
         debugPrint('[LOC] bridge: cold-fix fetch failed: $e');
@@ -217,11 +220,7 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
 
         // Socket emit on every fix is cheap and gives the matcher fresh
         // coords between heartbeat ticks while the driver is moving.
-        socket.emit('driver:location:update', {
-          'latitude': position.latitude,
-          'longitude': position.longitude,
-          'status': 'online',
-        });
+        emitDriverLocation(position);
       },
       loading: () => debugPrint('[LOC] bridge: stream loading — no fix yet'),
       error: (e, _) => debugPrint('[LOC] bridge: stream error — $e'),
