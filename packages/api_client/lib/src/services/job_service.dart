@@ -166,6 +166,47 @@ class JobService {
     }
   }
 
+  /// PATCH /jobs/:jobId/bids/:bidId — Artisan: revise own pending bid.
+  /// Backend mirrors the [submitBid] payload (amount/eta/duration/message);
+  /// every field is optional but at least one must change. Rejects with 409
+  /// once the client has already selected the bid (`BID_ALREADY_ACCEPTED`)
+  /// or the job has moved past bidding (`BID_NOT_PENDING`).
+  Future<Map<String, dynamic>> editBid(
+    String jobId,
+    String bidId, {
+    int? amountPesewas,
+    int? etaMinutes,
+    int? durationMinutes,
+    String? notes,
+  }) async {
+    try {
+      final payload = <String, dynamic>{
+        if (amountPesewas != null) 'amountPesewas': amountPesewas,
+        if (etaMinutes != null) 'etaMinutes': etaMinutes,
+        if (durationMinutes != null) 'durationMinutes': durationMinutes,
+        if (notes != null && notes.trim().isNotEmpty) 'message': notes.trim(),
+      };
+      final response = await _dio.patch(
+        '/jobs/$jobId/bids/$bidId',
+        data: payload,
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// DELETE /jobs/:jobId/bids/:bidId — Artisan: withdraw own pending bid.
+  /// Hard-deletes the bid row and emits `job:bid:withdrawn` to the client.
+  /// Disallowed once the client has accepted the bid.
+  Future<void> withdrawBid(String jobId, String bidId) async {
+    try {
+      await _dio.delete('/jobs/$jobId/bids/$bidId');
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   /// GET /jobs/:id/bids — Get bids for a job.
   /// Returns an empty list if the endpoint responds 404.
   Future<List<dynamic>> getBids(String jobId) async {

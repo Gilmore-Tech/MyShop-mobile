@@ -25,19 +25,38 @@ const _kPollInterval = Duration(seconds: 8);
 class ArtisanJobEntry {
   const ArtisanJobEntry({
     required this.job,
+    this.bidId,
     this.bidAmountPesewas,
+    this.bidEtaMinutes,
+    this.bidDurationMinutes,
+    this.bidMessage,
     this.bidStatus,
     this.bidSubmittedAt,
+    this.bidExpiresAt,
   });
 
   final Job job;
 
+  /// The artisan's bid record id — required to address PATCH/DELETE
+  /// `/jobs/:jobId/bids/:bidId` for edit and withdraw flows. Null when
+  /// the entry came back from a path that doesn't carry `myBid` (e.g.
+  /// a locally-tracked draft that hasn't yet been ACKed by the backend).
+  final String? bidId;
+
   /// The artisan's own bid amount on this job, if they bid.
   final int? bidAmountPesewas;
+  final int? bidEtaMinutes;
+  final int? bidDurationMinutes;
+  final String? bidMessage;
 
   /// One of: `submitted`, `accepted`, `rejected`, `expired`, `withdrawn`.
   final String? bidStatus;
   final String? bidSubmittedAt;
+
+  /// Backend-authoritative bid window close time. The provider screen
+  /// uses this to anchor the pending-bid countdown so a screen open
+  /// doesn't reset the clock.
+  final String? bidExpiresAt;
 
   bool get hasBid => bidAmountPesewas != null || bidStatus != null;
   bool get bidAccepted => bidStatus == 'accepted';
@@ -62,15 +81,25 @@ class ArtisanJobEntry {
 
   ArtisanJobEntry copyWith({
     Job? job,
+    String? bidId,
     int? bidAmountPesewas,
+    int? bidEtaMinutes,
+    int? bidDurationMinutes,
+    String? bidMessage,
     String? bidStatus,
     String? bidSubmittedAt,
+    String? bidExpiresAt,
   }) {
     return ArtisanJobEntry(
       job: job ?? this.job,
+      bidId: bidId ?? this.bidId,
       bidAmountPesewas: bidAmountPesewas ?? this.bidAmountPesewas,
+      bidEtaMinutes: bidEtaMinutes ?? this.bidEtaMinutes,
+      bidDurationMinutes: bidDurationMinutes ?? this.bidDurationMinutes,
+      bidMessage: bidMessage ?? this.bidMessage,
       bidStatus: bidStatus ?? this.bidStatus,
       bidSubmittedAt: bidSubmittedAt ?? this.bidSubmittedAt,
+      bidExpiresAt: bidExpiresAt ?? this.bidExpiresAt,
     );
   }
 }
@@ -232,14 +261,21 @@ class ArtisanJobsNotifier extends StateNotifier<ArtisanJobsState> {
 
   ArtisanJobEntry _parse(Map<String, dynamic> json) {
     final job = Job.fromJson(json);
-    // Backend may attach the artisan's bid under `myBid` or `bid`.
+    // Backend may attach the artisan's bid under `myBid` or `bid`. The
+    // bid id is sometimes serialised as `bidId` (the public marketplace
+    // shape) and sometimes as `id` (raw bid record).
     final myBid = json['myBid'] ?? json['bid'];
     if (myBid is Map<String, dynamic>) {
       return ArtisanJobEntry(
         job: job,
+        bidId: (myBid['bidId'] ?? myBid['id']) as String?,
         bidAmountPesewas: (myBid['amountPesewas'] as num?)?.toInt(),
+        bidEtaMinutes: (myBid['etaMinutes'] as num?)?.toInt(),
+        bidDurationMinutes: (myBid['durationMinutes'] as num?)?.toInt(),
+        bidMessage: myBid['message'] as String?,
         bidStatus: myBid['status'] as String?,
         bidSubmittedAt: myBid['createdAt'] as String?,
+        bidExpiresAt: myBid['expiresAt'] as String?,
       );
     }
     return ArtisanJobEntry(job: job);

@@ -32,11 +32,28 @@ class BidSubmissionScreen extends ConsumerStatefulWidget {
     required this.job,
     this.distanceKm = 0,
     this.marketAverage = 180,
+    this.editingBidId,
+    this.initialAmountPesewas,
+    this.initialEtaMinutes,
+    this.initialDurationMinutes,
+    this.initialNotes,
   });
 
   final Job job;
   final double distanceKm;
   final num marketAverage;
+
+  /// When non-null, the sheet operates in **edit** mode: submit becomes a
+  /// `PATCH /jobs/:jobId/bids/:bidId` against the existing bid instead of a
+  /// fresh `POST /jobs/:jobId/bids`. Initial form values are taken from the
+  /// `initial*` props rather than a local draft.
+  final String? editingBidId;
+  final int? initialAmountPesewas;
+  final int? initialEtaMinutes;
+  final int? initialDurationMinutes;
+  final String? initialNotes;
+
+  bool get isEditing => editingBidId != null;
 
   String get clientName => job.clientName ?? 'Client';
   String? get clientPhotoUrl => job.clientPhotoUrl;
@@ -53,6 +70,11 @@ class BidSubmissionScreen extends ConsumerStatefulWidget {
     required Job job,
     double distanceKm = 0,
     num marketAverage = 180,
+    String? editingBidId,
+    int? initialAmountPesewas,
+    int? initialEtaMinutes,
+    int? initialDurationMinutes,
+    String? initialNotes,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -66,6 +88,11 @@ class BidSubmissionScreen extends ConsumerStatefulWidget {
         job: job,
         distanceKm: distanceKm,
         marketAverage: marketAverage,
+        editingBidId: editingBidId,
+        initialAmountPesewas: initialAmountPesewas,
+        initialEtaMinutes: initialEtaMinutes,
+        initialDurationMinutes: initialDurationMinutes,
+        initialNotes: initialNotes,
       ),
     );
   }
@@ -108,10 +135,30 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     final draft = ref.read(bidDraftsProvider)[widget.job.id];
     _clientRequestId = draft?.clientRequestId;
 
-    _labour = TextEditingController(text: _labourInitial(draft));
-    _eta = TextEditingController(text: _etaInitial(draft));
-    _duration = TextEditingController(text: _durationInitial(draft));
-    _notes = TextEditingController(text: draft?.notes ?? '');
+    // In edit mode the live bid is the source of truth — local drafts (which
+    // may belong to an aborted earlier session) must not override it. In
+    // create mode the existing draft-resume behaviour applies.
+    final useEdit = widget.isEditing;
+    _labour = TextEditingController(
+      text: useEdit
+          ? _labourInitialFromPesewas(widget.initialAmountPesewas)
+          : _labourInitial(draft),
+    );
+    _eta = TextEditingController(
+      text: useEdit
+          ? _etaInitialFromMinutes(widget.initialEtaMinutes)
+          : _etaInitial(draft),
+    );
+    _duration = TextEditingController(
+      text: useEdit
+          ? _durationInitialFromMinutes(widget.initialDurationMinutes)
+          : _durationInitial(draft),
+    );
+    _notes = TextEditingController(
+      text: useEdit
+          ? (widget.initialNotes ?? '')
+          : (draft?.notes ?? ''),
+    );
     if (draft != null) {
       for (final path in draft.attachmentPaths) {
         final f = File(path);
@@ -147,18 +194,27 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
 
   /// Pesewas → display GHS. `175` for `17500`. Returns empty when there's
   /// nothing to restore — controllers start blank.
-  static String _labourInitial(BidDraft? draft) {
-    final p = draft?.labourPesewas ?? 0;
+  static String _labourInitial(BidDraft? draft) =>
+      _labourInitialFromPesewas(draft?.labourPesewas);
+
+  static String _etaInitial(BidDraft? draft) =>
+      _etaInitialFromMinutes(draft?.etaMinutes);
+
+  static String _durationInitial(BidDraft? draft) =>
+      _durationInitialFromMinutes(draft?.durationMinutes);
+
+  static String _labourInitialFromPesewas(int? pesewas) {
+    final p = pesewas ?? 0;
     return p > 0 ? (p ~/ 100).toString() : '';
   }
 
-  static String _etaInitial(BidDraft? draft) {
-    final m = draft?.etaMinutes ?? 0;
+  static String _etaInitialFromMinutes(int? minutes) {
+    final m = minutes ?? 0;
     return m > 0 ? '$m' : '';
   }
 
-  static String _durationInitial(BidDraft? draft) {
-    final m = draft?.durationMinutes ?? 0;
+  static String _durationInitialFromMinutes(int? minutes) {
+    final m = minutes ?? 0;
     if (m <= 0) return '';
     final hh = (m ~/ 60).toString().padLeft(2, '0');
     final mm = (m % 60).toString().padLeft(2, '0');
@@ -335,20 +391,33 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     Map<String, dynamic>? bidResponse;
     String? failureMessage;
     try {
-      bidResponse = await ref.read(jobServiceProvider).submitBid(
-            widget.job.id,
-            amountPesewas: amountPesewas,
-            etaMinutes: etaMinutes,
-            durationMinutes: durationMinutes,
-            notes: trimmedNotes,
-            clientRequestId: _clientRequestId,
-          );
+      if (widget.isEditing) {
+        bidResponse = await ref.read(jobServiceProvider).editBid(
+              widget.job.id,
+              widget.editingBidId!,
+              amountPesewas: amountPesewas,
+              etaMinutes: etaMinutes,
+              durationMinutes: durationMinutes,
+              notes: trimmedNotes,
+            );
+      } else {
+        bidResponse = await ref.read(jobServiceProvider).submitBid(
+              widget.job.id,
+              amountPesewas: amountPesewas,
+              etaMinutes: etaMinutes,
+              durationMinutes: durationMinutes,
+              notes: trimmedNotes,
+              clientRequestId: _clientRequestId,
+            );
+      }
     } on ApiException catch (e) {
       failureMessage = _friendlyBidError(e);
     } catch (e) {
       // ignore: avoid_print
       print('[BidSubmissionScreen] unexpected submit error: $e');
-      failureMessage = 'Failed to submit bid. Please try again.';
+      failureMessage = widget.isEditing
+          ? 'Failed to update bid. Please try again.'
+          : 'Failed to submit bid. Please try again.';
     }
 
     if (failureMessage != null) {
@@ -420,6 +489,11 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     final navigator = Navigator.of(context);
     final rootContext = navigator.context;
     navigator.pop();
+
+    // Edit mode: artisan was already on the request screen below this sheet
+    // — just dismiss. The silentReload above will push fresh `myBid` data
+    // into the banner. No confirmation modal, no nav.
+    if (widget.isEditing) return;
 
     if (!rootContext.mounted) return;
     await BidConfirmationModal.show(

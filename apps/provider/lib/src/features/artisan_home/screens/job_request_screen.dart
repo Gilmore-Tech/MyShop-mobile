@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io' show Platform;
 
+import 'package:api_client/api_client.dart' show ApiException;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -180,11 +181,19 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                   if (effectiveBidStatus != BidStatus.none) ...[
                     BidStatusBanner(
                       status: effectiveBidStatus,
-                      // Anchor the countdown to the actual bid expiry so it
-                      // keeps decreasing across screen opens / rebuilds.
+                      // Anchor the countdown to the actual bid expiry. Prefer
+                      // the local SubmittedBid (set the moment we ACK a fresh
+                      // submission), fall back to the live entry's
+                      // bidSubmittedAt + 5-minute window so the timer is
+                      // correct even when the bid came back from the
+                      // backend's /jobs feed without ever passing through
+                      // local state — otherwise the banner would default to
+                      // "now + 5min" and visually reset every time the
+                      // screen opens.
                       expiresAt: ref
-                          .watch(submittedBidsProvider)[effectiveJob.id]
-                          ?.expiresAt,
+                              .watch(submittedBidsProvider)[effectiveJob.id]
+                              ?.expiresAt ??
+                          _bidExpiresFromLive(liveEntry),
                       // Admin-assigned jobs have no bid window — swap the
                       // countdown for a "Quote when ready" hint.
                       showCountdown:
@@ -200,6 +209,27 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                         context.pushReplacement('/active-job');
                       },
                       onMessage: () => context.push('/chat'),
+                      onEdit: effectiveBidStatus == BidStatus.pending &&
+                              liveEntry?.bidId != null
+                          ? () => BidSubmissionScreen.show(
+                                context,
+                                job: effectiveJob,
+                                editingBidId: liveEntry!.bidId,
+                                initialAmountPesewas: liveEntry.bidAmountPesewas,
+                                initialEtaMinutes: liveEntry.bidEtaMinutes,
+                                initialDurationMinutes:
+                                    liveEntry.bidDurationMinutes,
+                                initialNotes: liveEntry.bidMessage,
+                              )
+                          : null,
+                      onWithdraw: effectiveBidStatus == BidStatus.pending &&
+                              liveEntry?.bidId != null
+                          ? () => _confirmAndWithdraw(
+                                context,
+                                jobId: effectiveJob.id,
+                                bidId: liveEntry!.bidId!,
+                              )
+                          : null,
                     ),
                     const SizedBox(height: MyShopSpacing.md),
                   ],
@@ -330,6 +360,116 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
         ),
       ),
     );
+  }
+
+  /// Backend-anchored bid expiry. Prefers the explicit `expiresAt` from
+  /// the live entry's `myBid` payload; falls back to `bidSubmittedAt + 5min`
+  /// (the default bidding window) when only the submission time is known.
+  /// Returns null when neither is available — the banner will then degrade
+  /// to its "now + 5min" default, but only as a last resort.
+  DateTime? _bidExpiresFromLive(ArtisanJobEntry? entry) {
+    if (entry == null) return null;
+    final explicit = entry.bidExpiresAt;
+    if (explicit != null) {
+      final parsed = DateTime.tryParse(explicit);
+      if (parsed != null) return parsed;
+    }
+    final submitted = entry.bidSubmittedAt;
+    if (submitted != null) {
+      final parsed = DateTime.tryParse(submitted);
+      if (parsed != null) return parsed.add(const Duration(minutes: 5));
+    }
+    return null;
+  }
+
+  /// Confirm + DELETE the artisan's pending bid. On success: clear the
+  /// local SubmittedBid record (so the banner's countdown resets), kick a
+  /// silent reload of /jobs (so `myBid` drops off), and pop back to home.
+  Future<void> _confirmAndWithdraw(
+    BuildContext context, {
+    required String jobId,
+    required String bidId,
+  }) async {
+    // Capture context-bound objects up-front so we don't reach into the
+    // BuildContext after async gaps once the screen could be unmounted.
+    final messenger = ScaffoldMessenger.of(context);
+    final router = GoRouter.of(context);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Withdraw bid?'),
+        content: const Text(
+          "Your bid will be removed and the client won't see it anymore. "
+          "You can place a new bid later if the job is still open.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: TextButton.styleFrom(foregroundColor: MyShopColors.error),
+            child: const Text('Withdraw'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+
+    try {
+      await ref.read(jobServiceProvider).withdrawBid(jobId, bidId);
+    } on ApiException catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(_friendlyWithdrawError(e))),
+      );
+      return;
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text("Couldn't withdraw the bid. Please try again."),
+        ),
+      );
+      return;
+    }
+
+    // Success path: drop local persistence so the resume banner / countdown
+    // don't linger, refresh the live feed so `myBid` falls away, then leave
+    // the request details screen — the bid is gone, there's nothing to
+    // monitor here.
+    await ref.read(submittedBidsProvider.notifier).remove(jobId);
+    try {
+      ref.read(artisanJobsProvider.notifier).silentReload();
+    } catch (_) {}
+    if (!mounted) return;
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Bid withdrawn.')),
+    );
+    if (router.canPop()) {
+      router.pop();
+    } else {
+      router.go('/home');
+    }
+  }
+
+  String _friendlyWithdrawError(ApiException e) {
+    switch (e.errorCode) {
+      case 'BID_ALREADY_ACCEPTED':
+        return "The client already accepted this bid — you can't withdraw "
+            'it now. Use the booking-cancel flow instead.';
+      case 'BID_NOT_PENDING':
+        return "This bid isn't pending anymore.";
+      case 'JOB_NOT_IN_BIDDING_PHASE':
+        return "The job has moved past bidding — withdraw isn't available.";
+      case 'NOT_BID_OWNER':
+        return 'Only the bid owner can withdraw it.';
+      default:
+        return e.message.isNotEmpty
+            ? e.message
+            : "Couldn't withdraw the bid. Please try again.";
+    }
   }
 }
 
