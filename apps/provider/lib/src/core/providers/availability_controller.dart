@@ -17,10 +17,12 @@ final lastKnownPositionProvider = StateProvider<Position?>((_) => null);
 
 /// Orchestrates the online/offline transition for the provider:
 ///
-///   - goOnline(): flip local state → location stream starts →
-///     `POST /location/{driver,artisan}/update` fires from the bridge with
-///     status:'online'. This controller just owns the local flip; the bridge
-///     in `socket_provider.dart` does the rest.
+///   - goOnline(): verify location → fetch a fix → POST
+///     `/location/{driver,artisan}/update` with status:'online' → flip
+///     local state. Posting before the flip closes a race where the
+///     socket bridge's first heartbeat lagged the local toggle by a few
+///     seconds, leaving the artisan locally-online but invisible to the
+///     matcher. Jobs created in that window were silently missed.
 ///   - goOffline(): POST `status:'offline'` with last-known coords, then
 ///     flip local state so the UI reflects the intent immediately. Even if
 ///     the POST fails, local state still flips — otherwise the user is
@@ -37,12 +39,63 @@ class AvailabilityController {
 
   /// Flip to online. Verifies location services + permission first because
   /// an online provider without a GPS fix is invisible to the matcher
-  /// (the backend requires `current_location IS NOT NULL`).
+  /// (the backend requires `current_location IS NOT NULL`). POSTs the
+  /// online status to the backend before flipping local state so the
+  /// matcher includes this provider on the very next request.
   ///
   /// Returns `null` on success, or a user-facing error message on failure.
   Future<String?> goOnline() async {
     final gate = await _checkLocationReady();
     if (gate != null) return gate;
+
+    // Need a fix to send with the online POST — backend requires
+    // current_location to be non-null before it'll mark us online.
+    Position position;
+    final cached = _ref.read(lastKnownPositionProvider);
+    if (cached != null) {
+      position = cached;
+    } else {
+      try {
+        position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 8),
+          ),
+        );
+        _ref.read(lastKnownPositionProvider.notifier).state = position;
+      } catch (e) {
+        debugPrint('[Availability] online: position fetch failed — $e');
+        return "Couldn't get your location. Check signal and try again.";
+      }
+    }
+
+    final isArtisan = _ref.read(providerTypeProvider).isArtisan;
+    final locationService = _ref.read(locationServiceProvider);
+    try {
+      if (isArtisan) {
+        await locationService.updateArtisanLocation(
+          latitude: position.latitude,
+          longitude: position.longitude,
+          status: 'online',
+        );
+      } else {
+        await locationService.updateDriverLocation(
+          latitude: position.latitude,
+          longitude: position.longitude,
+          status: 'online',
+        );
+      }
+      debugPrint('[Availability] online POST sent');
+    } on ApiException catch (e) {
+      debugPrint('[Availability] online POST failed: $e');
+      return e.message.isNotEmpty
+          ? e.message
+          : "Couldn't reach the server. Check your connection and try again.";
+    } catch (e) {
+      debugPrint('[Availability] online POST error: $e');
+      return "Couldn't reach the server. Check your connection and try again.";
+    }
+
     _ref.read(providerStatusProvider.notifier).goOnline();
     return null;
   }
