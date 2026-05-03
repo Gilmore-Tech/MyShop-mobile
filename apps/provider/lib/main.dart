@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -29,6 +30,12 @@ Future<void> main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    // Register the background isolate handler synchronously, before
+    // runApp. The plugin commits the handle to the native side here; if
+    // we wait until FcmService.init() (fire-and-forget post-runApp), the
+    // first cold-start push after install can race the registration and
+    // be dropped.
+    FirebaseMessaging.onBackgroundMessage(fcmBackgroundHandler);
   } catch (e) {
     debugPrint('[main] Firebase init failed: $e');
   }
