@@ -297,10 +297,26 @@ class SocketService {
         );
         debugPrint('[WS] POST /auth/refresh ← ${response.statusCode}');
 
-        final data = response.data as Map<String, dynamic>;
-        final newAccessToken = data['data']?['accessToken'] as String? ??
-            data['accessToken'] as String;
-        await _tokenStorage.writeAccessToken(newAccessToken);
+        final body = response.data as Map<String, dynamic>;
+        final payload = (body['data'] is Map<String, dynamic>
+            ? body['data']
+            : body) as Map<String, dynamic>;
+
+        final newAccessToken = payload['accessToken'] as String;
+        // Backend rotation (B4): when the response includes a new
+        // refreshToken we MUST persist it. Otherwise the next refresh
+        // (from either this path or the REST auth interceptor) will reuse
+        // the now-consumed refresh token and the backend will reject it
+        // with REFRESH_TOKEN_REUSED → forced logout 3 minutes after login.
+        final newRefreshToken = payload['refreshToken'] as String?;
+        if (newRefreshToken != null && newRefreshToken != refreshToken) {
+          await _tokenStorage.writeTokens(
+            accessToken: newAccessToken,
+            refreshToken: newRefreshToken,
+          );
+        } else {
+          await _tokenStorage.writeAccessToken(newAccessToken);
+        }
         debugPrint('[WS] Token refresh succeeded — wrote new access token');
         return newAccessToken;
       } on DioException catch (e) {
