@@ -59,6 +59,17 @@
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="job_alerts" />
 
+        <!-- Default FCM small icon. Required for background auto-display
+             on Android 5+; without it FCM tries to use the launcher icon
+             which is colored, gets rejected by the status bar, and the
+             notification silently fails to render on many OEM ROMs.
+             Stopgap uses @mipmap/ic_launcher (renders as a white square);
+             replace with a transparent monochrome PNG at
+             res/drawable/ic_notification.png and update the value. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@mipmap/ic_launcher" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
