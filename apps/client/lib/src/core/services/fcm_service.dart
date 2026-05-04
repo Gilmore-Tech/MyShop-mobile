@@ -387,10 +387,17 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
 
   fcm.onTapMessage = (payload) async {
     final router = ref.read(routerProvider);
-    final type = payload[NotificationPayload.keyType] as String?;
+    final rawType = payload[NotificationPayload.keyType] as String?;
+    // Backend emits dotted types ("job.bid_received") in the FCM data
+    // payload. The local-notification path normalises before re-encoding,
+    // but the direct paths (onMessageOpenedApp + getInitialMessage) hand
+    // us the raw `message.data` map — so we have to normalise here too,
+    // otherwise every background / cold-start tap fell through to the
+    // default case and dumped the user on /activity.
+    final type = rawType == null ? null : NotificationPayload.normaliseType(rawType);
     final jobId = payload[NotificationPayload.keyJobId] as String?;
     final rideId = payload[NotificationPayload.keyRideId] as String?;
-    debugPrint('[FCM-tap] type=$type jobId=$jobId rideId=$rideId');
+    debugPrint('[FCM-tap] type=$type (raw=$rawType) jobId=$jobId rideId=$rideId');
 
     switch (type) {
       // ── Ride timeline ─────────────────────────────────────────────────
