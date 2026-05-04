@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart' show ChatBookingType;
 
 import '../../app/router.dart';
@@ -20,6 +21,13 @@ import 'local_notification_service.dart';
 /// state is NOT shared with the main isolate.
 @pragma('vm:entry-point')
 Future<void> fcmBackgroundHandler(RemoteMessage message) async {
+  // Backend now sends a top-level `notification` field on every push so
+  // FCM auto-displays the system tray banner in background/terminated.
+  // Rendering our local notification on top of that produces 2× banners
+  // (one from FCM SDK, one from flutter_local_notifications) — bail when
+  // FCM has already drawn it. Only render manually for true data-only
+  // pushes (no `notification` field present).
+  if (message.notification != null) return;
   await LocalNotificationService.instance.init();
   await _renderFromRemote(message);
 }
@@ -201,6 +209,12 @@ class FcmService {
     // it. Suppress the OS banner so we don't double-notify.
     FirebaseMessaging.onMessage.listen((message) async {
       debugPrint('[FCM] foreground message: ${message.data}');
+      // FCM does NOT auto-display in foreground (Android & iOS) — the SDK
+      // hands it to onMessage and lets the app decide. So we always render
+      // here, irrespective of whether `notification` is present, to give
+      // the user a heads-up while they're in another tab. The background
+      // handler does the opposite (skips if `notification` is present) to
+      // avoid double-rendering with FCM's auto-display.
       final rawType = message.data[NotificationPayload.keyType] as String?;
       final type = NotificationPayload.normaliseType(rawType ?? '');
       if (type == NotificationPayload.typeNewMessage) {
@@ -356,25 +370,39 @@ final fcmAuthBridgeProvider = Provider<void>((ref) {
 final fcmTapBridgeProvider = Provider<void>((ref) {
   final fcm = ref.read(fcmServiceProvider);
 
+  // Two-step navigation for deep-links: first land on the activity tab so
+  // the navigator has at least one route, then push the detail screen on
+  // top. Without the leading `go`, `router.go(detailPath)` replaces the
+  // entire stack with the detail and tapping back throws
+  // `GoError: There is nothing to pop`. Detail routes here use
+  // `parentNavigatorKey: _rootNavigatorKey` (top-level overlays, not
+  // nested under the shell), so the parent stack isn't reconstructed
+  // automatically — we have to seed it.
+  void pushDeepLink(GoRouter router, String path, {Object? extra}) {
+    router.go(AppRoutes.activity);
+    router.push(path, extra: extra);
+  }
+
   fcm.onTapMessage = (payload) {
     final router = ref.read(routerProvider);
     final type = payload[NotificationPayload.keyType] as String?;
     final jobId = payload[NotificationPayload.keyJobId] as String?;
     final rideId = payload[NotificationPayload.keyRideId] as String?;
+    debugPrint('[FCM-tap] type=$type jobId=$jobId rideId=$rideId');
 
     switch (type) {
       // ── Ride timeline ─────────────────────────────────────────────────
       case NotificationPayload.typeRideDriverAssigned:
-        router.go(AppRoutes.rideDriverFound);
+        pushDeepLink(router, AppRoutes.rideDriverFound);
         break;
       case NotificationPayload.typeRideDriverEnRoute:
       case NotificationPayload.typeRideDriverArrived:
       case NotificationPayload.typeRideInProgress:
-        router.go(AppRoutes.rideTracking);
+        pushDeepLink(router, AppRoutes.rideTracking);
         break;
       case NotificationPayload.typeRideCompleted:
         if (rideId != null) {
-          router.go(AppRoutes.rideReceiptPath(rideId));
+          pushDeepLink(router, AppRoutes.rideReceiptPath(rideId));
         } else {
           router.go(AppRoutes.activity);
         }
@@ -386,7 +414,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       // ── Job / artisan timeline ────────────────────────────────────────
       case NotificationPayload.typeJobBidSubmitted:
         if (jobId != null) {
-          router.go(AppRoutes.jobDetailPath(jobId));
+          pushDeepLink(router, AppRoutes.jobDetailPath(jobId));
         } else {
           router.go(AppRoutes.activity);
         }
@@ -395,7 +423,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       case NotificationPayload.typeJobArtisanArrived:
       case NotificationPayload.typeJobInProgress:
         if (jobId != null) {
-          router.go(AppRoutes.jobTrackingPath(jobId));
+          pushDeepLink(router, AppRoutes.jobTrackingPath(jobId));
         } else {
           router.go(AppRoutes.activity);
         }
@@ -403,7 +431,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       case NotificationPayload.typeJobMarkedComplete:
       case NotificationPayload.typeJobConfirmCompletionRequested:
         if (jobId != null) {
-          router.go(AppRoutes.jobSummaryPath(jobId));
+          pushDeepLink(router, AppRoutes.jobSummaryPath(jobId));
         } else {
           router.go(AppRoutes.activity);
         }
@@ -411,14 +439,14 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       case NotificationPayload.typeJobCompleted:
       case NotificationPayload.typeJobForceCompleted:
         if (jobId != null) {
-          router.go(AppRoutes.jobCompletePath(jobId));
+          pushDeepLink(router, AppRoutes.jobCompletePath(jobId));
         } else {
           router.go(AppRoutes.activity);
         }
         break;
       case NotificationPayload.typeJobSupplementRequested:
         if (jobId != null) {
-          router.go(AppRoutes.jobSupplementPath(jobId));
+          pushDeepLink(router, AppRoutes.jobSupplementPath(jobId));
         } else {
           router.go(AppRoutes.activity);
         }
@@ -433,7 +461,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       case NotificationPayload.typeJobNoBidsEscalated:
       case NotificationPayload.typeJobArtisanNoShow:
         if (jobId != null) {
-          router.go(AppRoutes.jobDetailPath(jobId));
+          pushDeepLink(router, AppRoutes.jobDetailPath(jobId));
         } else {
           router.go(AppRoutes.activity);
         }
@@ -481,14 +509,14 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         if (bookingType == 'ride') {
           final id = bookingId ?? rideId;
           if (id != null) {
-            router.go(AppRoutes.rideReceiptPath(id));
+            pushDeepLink(router, AppRoutes.rideReceiptPath(id));
           } else {
             router.go(AppRoutes.activity);
           }
         } else if (bookingType == 'artisan_job' || bookingType == 'job') {
           final id = bookingId ?? jobId;
           if (id != null) {
-            router.go(AppRoutes.jobCompletePath(id));
+            pushDeepLink(router, AppRoutes.jobCompletePath(id));
           } else {
             router.go(AppRoutes.activity);
           }

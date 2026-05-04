@@ -22,6 +22,13 @@ import 'local_notification_service.dart';
 /// without tap payload).
 @pragma('vm:entry-point')
 Future<void> fcmBackgroundHandler(RemoteMessage message) async {
+  // Backend now sends a top-level `notification` field on every push so
+  // FCM auto-displays the system tray banner in background/terminated.
+  // Rendering our local notification on top of that produces 2× banners
+  // (one from FCM SDK, one from flutter_local_notifications) — bail when
+  // FCM has already drawn it. Only render manually for true data-only
+  // pushes (no `notification` field present).
+  if (message.notification != null) return;
   // Re-initialise the local notification plugin inside this isolate —
   // state from the main isolate is NOT shared.
   await LocalNotificationService.instance.init();
