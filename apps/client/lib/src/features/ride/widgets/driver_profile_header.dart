@@ -163,21 +163,27 @@ class _DriverAvatar extends StatelessWidget {
 }
 
 class _RatingRow extends StatelessWidget {
-  final double rating;
+  final double? rating;
   final int tripCount;
   const _RatingRow({required this.rating, required this.tripCount});
 
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
+    final hasRating = rating != null;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.star_rounded,
-            size: w * 0.038, color: MyShopColors.primaryGold),
+        Icon(
+          Icons.star_rounded,
+          size: w * 0.038,
+          color: hasRating
+              ? MyShopColors.primaryGold
+              : MyShopColors.textSecondary,
+        ),
         SizedBox(width: w * 0.010),
         Text(
-          rating.toStringAsFixed(2),
+          hasRating ? rating!.toStringAsFixed(2) : 'New',
           style: TextStyle(
             fontSize: w * 0.033,
             fontWeight: FontWeight.w700,

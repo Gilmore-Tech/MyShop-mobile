@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../../core/di/providers.dart';
+import '../../earnings/providers/ratings_provider.dart';
 
 /// Driver-facing rating sheet shown on the trip summary. Mirrors the
 /// rider's `RateRideSheet` but cuts the tags (the driver's signal is
@@ -67,7 +68,7 @@ class _RatePassengerSheetState extends ConsumerState<RatePassengerSheet> {
       _errorMessage = null;
     });
     try {
-      await ref.read(ratingServiceProvider).submitRating(
+      final response = await ref.read(ratingServiceProvider).submitRating(
             bookingType: 'ride',
             bookingId: widget.rideId,
             stars: _stars,
@@ -75,6 +76,13 @@ class _RatePassengerSheetState extends ConsumerState<RatePassengerSheet> {
                 ? null
                 : _commentController.text.trim(),
           );
+      // Mutual reveal triggered ⇒ the passenger's rating about us just
+      // became counted in our public average. Invalidate the summary so
+      // the earnings/home rating tile refetches with the new value
+      // instead of staying stale until the next cold launch.
+      if (response['revealed'] == true) {
+        ref.invalidate(providerRatingsProvider);
+      }
       if (!mounted) return;
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(

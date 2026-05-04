@@ -9,6 +9,8 @@ import 'package:shared_models/shared_models.dart' show ChatBookingType;
 
 import '../../app/router.dart';
 import '../../features/auth/providers/auth_controller.dart';
+import '../../features/ride/widgets/rate_ride_sheet.dart';
+import '../../features/services/widgets/rate_job_sheet.dart';
 import '../di/providers.dart';
 import 'local_notification_service.dart';
 
@@ -383,7 +385,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     router.push(path, extra: extra);
   }
 
-  fcm.onTapMessage = (payload) {
+  fcm.onTapMessage = (payload) async {
     final router = ref.read(routerProvider);
     final type = payload[NotificationPayload.keyType] as String?;
     final jobId = payload[NotificationPayload.keyJobId] as String?;
@@ -499,27 +501,76 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         break;
 
       // Backend asks the client to rate the counter-party for a completed
-      // booking. Land on the screen that already hosts the rating sheet
-      // (ride receipt for rides, job complete for jobs); both either
-      // auto-open the sheet or surface a clearly visible Rate CTA.
+      // booking. Land on the screen that hosts the rating context
+      // (ride receipt for rides, job complete for jobs) AND directly
+      // open the rate sheet over it — matching the provider app's UX
+      // where a tap on the push lands on the sheet, not on a screen
+      // that requires another tap to start rating.
       case NotificationPayload.typeRatingPrompt:
         final bookingType =
             payload[NotificationPayload.keyBookingType] as String?;
         final bookingId = payload[NotificationPayload.keyBookingId] as String?;
         if (bookingType == 'ride') {
           final id = bookingId ?? rideId;
-          if (id != null) {
-            pushDeepLink(router, AppRoutes.rideReceiptPath(id));
-          } else {
+          if (id == null) {
             router.go(AppRoutes.activity);
+            break;
           }
+          pushDeepLink(router, AppRoutes.rideReceiptPath(id));
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+          final ctx = router.routerDelegate.navigatorKey.currentContext;
+          if (ctx == null) break;
+          var firstName = 'Driver';
+          try {
+            final raw = await ref.read(rideServiceProvider).getRide(id);
+            final driver = raw['driver'];
+            if (driver is Map<String, dynamic>) {
+              final name = driver['name'] as String?;
+              if (name != null && name.trim().isNotEmpty) {
+                firstName = name.trim().split(RegExp(r'\s+')).first;
+              }
+            }
+          } catch (e) {
+            debugPrint('[FCM] hydrate ride for rating failed: $e');
+          }
+          if (!ctx.mounted) break;
+          await showRateRideSheet(
+            ctx,
+            rideId: id,
+            driverFirstName: firstName,
+          );
         } else if (bookingType == 'artisan_job' || bookingType == 'job') {
           final id = bookingId ?? jobId;
-          if (id != null) {
-            pushDeepLink(router, AppRoutes.jobCompletePath(id));
-          } else {
+          if (id == null) {
             router.go(AppRoutes.activity);
+            break;
           }
+          pushDeepLink(router, AppRoutes.jobCompletePath(id));
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+          final ctx = router.routerDelegate.navigatorKey.currentContext;
+          if (ctx == null) break;
+          var firstName = 'Artisan';
+          try {
+            final raw = await ref.read(jobServiceProvider).getJob(id);
+            final artisan = raw['artisan'];
+            if (artisan is Map<String, dynamic>) {
+              final name = (artisan['displayName'] ??
+                  artisan['businessName'] ??
+                  artisan['fullName'] ??
+                  artisan['name']) as String?;
+              if (name != null && name.trim().isNotEmpty) {
+                firstName = name.trim().split(RegExp(r'\s+')).first;
+              }
+            }
+          } catch (e) {
+            debugPrint('[FCM] hydrate job for rating failed: $e');
+          }
+          if (!ctx.mounted) break;
+          await showRateJobSheet(
+            ctx,
+            jobId: id,
+            artisanFirstName: firstName,
+          );
         } else {
           router.go(AppRoutes.activity);
         }

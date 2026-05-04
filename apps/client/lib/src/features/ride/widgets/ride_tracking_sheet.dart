@@ -420,11 +420,16 @@ class _DriverMeta extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.star_rounded,
-                size: w * 0.033, color: MyShopColors.primaryGold),
+            Icon(
+              Icons.star_rounded,
+              size: w * 0.033,
+              color: driver.rating != null
+                  ? MyShopColors.primaryGold
+                  : MyShopColors.textSecondary,
+            ),
             SizedBox(width: w * 0.008),
             Text(
-              driver.rating.toStringAsFixed(1),
+              driver.rating?.toStringAsFixed(1) ?? 'New',
               style: TextStyle(
                 fontSize: w * 0.031,
                 fontWeight: FontWeight.w600,

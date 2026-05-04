@@ -157,20 +157,28 @@ class _ArtisanCard extends StatelessWidget {
                             fontSize: w * 0.033)),
                     const SizedBox(height: 6),
                     Row(children: [
-                      const Icon(Icons.star_rounded,
-                          color: MyShopColors.primaryGold, size: 16),
+                      Icon(Icons.star_rounded,
+                          color: a.reviewCount > 0
+                              ? MyShopColors.primaryGold
+                              : MyShopColors.textSecondary,
+                          size: 16),
                       const SizedBox(width: 4),
-                      Text(a.rating.toStringAsFixed(1),
+                      Text(
+                          a.reviewCount > 0
+                              ? a.rating.toStringAsFixed(1)
+                              : 'New',
                           style: TextStyle(
                             color: MyShopColors.textPrimary,
                             fontSize: w * 0.033,
                             fontWeight: FontWeight.w600,
                           )),
-                      SizedBox(width: w * 0.016),
-                      Text('(${a.reviewCount} reviews)',
-                          style: TextStyle(
-                              color: MyShopColors.textSecondary,
-                              fontSize: w * 0.030)),
+                      if (a.reviewCount > 0) ...[
+                        SizedBox(width: w * 0.016),
+                        Text('(${a.reviewCount} reviews)',
+                            style: TextStyle(
+                                color: MyShopColors.textSecondary,
+                                fontSize: w * 0.030)),
+                      ],
                     ]),
                   ],
                 ),

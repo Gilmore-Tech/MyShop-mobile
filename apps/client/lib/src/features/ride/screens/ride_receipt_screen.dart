@@ -197,7 +197,11 @@ class _AmountHeader extends StatelessWidget {
 class _ProviderCard extends StatelessWidget {
   final String name;
   final String subtitle;
-  final double rating;
+
+  /// Null when the driver has no revealed ratings yet — renders "New"
+  /// so the receipt is honest about a fresh provider rather than
+  /// printing "0.0★".
+  final double? rating;
   final double w;
   final double h;
   const _ProviderCard({
@@ -270,11 +274,16 @@ class _ProviderCard extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.star_rounded,
-                  size: w * 0.041, color: MyShopColors.primaryGold),
+              Icon(
+                Icons.star_rounded,
+                size: w * 0.041,
+                color: rating != null
+                    ? MyShopColors.primaryGold
+                    : MyShopColors.textSecondary,
+              ),
               SizedBox(width: w * 0.008),
               Text(
-                rating.toStringAsFixed(1),
+                rating?.toStringAsFixed(1) ?? 'New',
                 style: TextStyle(
                   fontSize: w * 0.036, // ~14dp
                   fontWeight: FontWeight.w700,

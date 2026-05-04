@@ -314,7 +314,9 @@ class _VerifiedBadge extends StatelessWidget {
 }
 
 class _RatingPill extends StatelessWidget {
-  final double rating;
+  /// Null when the driver has no revealed ratings yet — rendered as
+  /// "New" rather than a fake numerical score.
+  final double? rating;
   final double w;
   const _RatingPill({required this.rating, required this.w});
 
@@ -323,11 +325,16 @@ class _RatingPill extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.star_rounded,
-            size: w * 0.041, color: MyShopColors.primaryGold), // ~16dp
+        Icon(
+          Icons.star_rounded,
+          size: w * 0.041,
+          color: rating != null
+              ? MyShopColors.primaryGold
+              : MyShopColors.textSecondary,
+        ),
         SizedBox(width: w * 0.008),
         Text(
-          rating.toStringAsFixed(1),
+          rating?.toStringAsFixed(1) ?? 'New',
           style: TextStyle(
             fontSize: w * 0.036, // ~14dp
             fontWeight: FontWeight.w700,

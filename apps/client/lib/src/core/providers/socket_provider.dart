@@ -1,19 +1,23 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart' show RideStop;
 
+import '../../app/router.dart' show routerProvider;
 import '../../features/auth/providers/auth_controller.dart';
 import '../../features/activity/providers/activity_history_provider.dart';
 import '../../features/activity/providers/activity_provider.dart';
 import '../../features/notifications/providers/notifications_provider.dart';
 import '../../features/ride/providers/edit_trip_provider.dart';
 import '../../features/ride/providers/ride_provider.dart';
+import '../../features/ride/widgets/rate_ride_sheet.dart';
 import '../../features/services/providers/active_job_provider.dart';
 import '../../features/services/providers/bid_detail_provider.dart';
 import '../../features/services/providers/bid_list_provider.dart';
 import '../../features/services/providers/job_detail_provider.dart';
+import '../../features/services/widgets/rate_job_sheet.dart';
 import '../di/providers.dart';
 import 'nav_badge_provider.dart';
 
@@ -110,7 +114,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
             'Driver',
         vehicle: driver['vehicle'] as String? ?? '',
         plateNumber: driver['plateNumber'] as String? ?? '',
-        rating: (driver['rating'] as num?)?.toDouble() ?? 4.5,
+        rating: (driver['rating'] as num?)?.toDouble(),
         minutesAway: (driver['eta'] as num?)?.toInt() ?? 3,
         driversAvailable: 1,
         tripCount: (driver['tripCount'] as num?)?.toInt() ?? 0,
@@ -412,5 +416,89 @@ void _connectAndListen(Ref ref, SocketService socket) {
             name: 'WS', level: 900);
       }
     });
+
+    // ── Rating prompt ────────────────────────────────────────────────────
+    // Backend emits `rating:prompt` to the client socket room when a
+    // ride/job finalises, so a foreground user gets the rate sheet live
+    // without depending on the FCM push (which won't deliver while the
+    // app is open and connected).
+    final shownRatingFor = <String>{};
+    void handleRatingPrompt(dynamic data) {
+      developer.log('Received rating:prompt: $data', name: 'WS');
+      if (data is! Map<String, dynamic>) return;
+      final bookingType = data['bookingType'] as String?;
+      final bookingId = (data['bookingId'] ??
+          data['rideId'] ??
+          data['jobId']) as String?;
+      if (bookingType == null || bookingId == null || bookingId.isEmpty) {
+        return;
+      }
+      // Per-process dedup — a reconnect-redelivered emit or an FCM tap
+      // arriving milliseconds later must not stack a second sheet.
+      if (!shownRatingFor.add(bookingId)) return;
+
+      final ctx =
+          ref.read(routerProvider).routerDelegate.navigatorKey.currentContext;
+      if (ctx == null) return;
+
+      Future<void> openSheet() async {
+        if (bookingType == 'ride') {
+          var firstName = 'Driver';
+          try {
+            final raw =
+                await ref.read(rideServiceProvider).getRide(bookingId);
+            final driver = raw['driver'];
+            if (driver is Map<String, dynamic>) {
+              final name = driver['name'] as String?;
+              if (name != null && name.trim().isNotEmpty) {
+                firstName = name.trim().split(RegExp(r'\s+')).first;
+              }
+            }
+          } catch (e) {
+            developer.log('hydrate ride for rating failed: $e',
+                name: 'WS', level: 800);
+          }
+          if (!ctx.mounted) return;
+          await showRateRideSheet(
+            ctx,
+            rideId: bookingId,
+            driverFirstName: firstName,
+          );
+        } else if (bookingType == 'artisan_job' || bookingType == 'job') {
+          var firstName = 'Artisan';
+          try {
+            final raw =
+                await ref.read(jobServiceProvider).getJob(bookingId);
+            final artisan = raw['artisan'];
+            if (artisan is Map<String, dynamic>) {
+              final name = (artisan['displayName'] ??
+                  artisan['businessName'] ??
+                  artisan['fullName'] ??
+                  artisan['name']) as String?;
+              if (name != null && name.trim().isNotEmpty) {
+                firstName = name.trim().split(RegExp(r'\s+')).first;
+              }
+            }
+          } catch (e) {
+            developer.log('hydrate job for rating failed: $e',
+                name: 'WS', level: 800);
+          }
+          if (!ctx.mounted) return;
+          await showRateJobSheet(
+            ctx,
+            jobId: bookingId,
+            artisanFirstName: firstName,
+          );
+        } else {
+          shownRatingFor.remove(bookingId);
+        }
+      }
+
+      unawaited(openSheet());
+    }
+
+    socket
+      ..off('rating:prompt')
+      ..on('rating:prompt', handleRatingPrompt);
   });
 }

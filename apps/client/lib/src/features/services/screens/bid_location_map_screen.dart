@@ -480,24 +480,29 @@ class _ArtisanInfoCard extends StatelessWidget {
                           Icon(
                             Icons.star_rounded,
                             size: w * 0.036,
-                            color: MyShopColors.primaryGold,
+                            color: a.reviewCount > 0
+                                ? MyShopColors.primaryGold
+                                : MyShopColors.textSecondary,
                           ),
                           SizedBox(width: w * 0.010),
                           Text(
-                            a.rating.toStringAsFixed(1),
+                            a.reviewCount > 0
+                                ? a.rating.toStringAsFixed(1)
+                                : 'New',
                             style: TextStyle(
                               fontSize: w * 0.031,
                               fontWeight: FontWeight.w600,
                               color: MyShopColors.textPrimary,
                             ),
                           ),
-                          Text(
-                            ' (${a.reviewCount})',
-                            style: TextStyle(
-                              fontSize: w * 0.028,
-                              color: MyShopColors.textSecondary,
+                          if (a.reviewCount > 0)
+                            Text(
+                              ' (${a.reviewCount})',
+                              style: TextStyle(
+                                fontSize: w * 0.028,
+                                color: MyShopColors.textSecondary,
+                              ),
                             ),
-                          ),
                         ],
                       ),
                   ],

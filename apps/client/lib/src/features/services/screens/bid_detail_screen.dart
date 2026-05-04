@@ -335,24 +335,32 @@ class _ArtisanProfileCard extends StatelessWidget {
                 // Rating
                 Row(
                   children: [
-                    Icon(Icons.star_rounded,
-                        size: w * 0.036, color: MyShopColors.primaryGold),
+                    Icon(
+                      Icons.star_rounded,
+                      size: w * 0.036,
+                      color: artisan.reviewCount > 0
+                          ? MyShopColors.primaryGold
+                          : MyShopColors.textSecondary,
+                    ),
                     SizedBox(width: w * 0.008),
                     Text(
-                      artisan.rating.toStringAsFixed(1),
+                      artisan.reviewCount > 0
+                          ? artisan.rating.toStringAsFixed(1)
+                          : 'New',
                       style: TextStyle(
                         fontSize: w * 0.033,
                         fontWeight: FontWeight.w600,
                         color: MyShopColors.textPrimary,
                       ),
                     ),
-                    Text(
-                      ' (${artisan.reviewCount} reviews)',
-                      style: TextStyle(
-                        fontSize: w * 0.031,
-                        color: MyShopColors.textSecondary,
+                    if (artisan.reviewCount > 0)
+                      Text(
+                        ' (${artisan.reviewCount} reviews)',
+                        style: TextStyle(
+                          fontSize: w * 0.031,
+                          color: MyShopColors.textSecondary,
+                        ),
                       ),
-                    ),
                   ],
                 ),
                 SizedBox(height: h * 0.006),

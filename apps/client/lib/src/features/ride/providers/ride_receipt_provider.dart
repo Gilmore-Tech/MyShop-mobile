@@ -18,7 +18,11 @@ class RideReceiptData {
   final String rideId; // "RID-99283-GH"
   final String driverName; // "Kojo Mensah"
   final String vehicleDisplay; // "Toyota Corolla · GW 1234-21"
-  final double driverRating; // 4.9
+  /// Average revealed rating (0–5). Null when the driver has no
+  /// revealed ratings yet — display widgets render "New" rather than a
+  /// fake number. The earlier code defaulted to 0.0 which printed as
+  /// "0.0★".
+  final double? driverRating;
   final String pickupAddress;
   final String dropoffAddress;
 
@@ -90,7 +94,7 @@ class _RideReceiptNotifier
         vehicleDisplay:
             '${driver['vehicleShortName'] ?? driver['vehicle'] ?? ''}'
             ' · ${driver['plateNumber'] ?? ''}',
-        driverRating: (driver['rating'] as num?)?.toDouble() ?? 0.0,
+        driverRating: (driver['rating'] as num?)?.toDouble(),
         pickupAddress: ride['pickupAddress'] as String? ?? '',
         // Backend's RideSnapshot serves the field as `dropoffAddress`; the
         // older `destinationAddress` alias never made it into the canonical

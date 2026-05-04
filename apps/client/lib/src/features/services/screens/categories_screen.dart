@@ -539,7 +539,10 @@ class _PortfolioCard extends StatelessWidget {
               Positioned(
                 top: h * 0.012,
                 right: w * 0.026,
-                child: _RatingBadge(rating: artisan.rating),
+                child: _RatingBadge(
+                  rating: artisan.rating,
+                  reviewCount: artisan.reviewCount,
+                ),
               ),
               Positioned(
                 left: w * 0.031,
@@ -557,11 +560,13 @@ class _PortfolioCard extends StatelessWidget {
 
 class _RatingBadge extends StatelessWidget {
   final double rating;
-  const _RatingBadge({required this.rating});
+  final int reviewCount;
+  const _RatingBadge({required this.rating, required this.reviewCount});
 
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
+    final hasRating = reviewCount > 0;
 
     return Container(
       padding: EdgeInsets.symmetric(
@@ -569,7 +574,7 @@ class _RatingBadge extends StatelessWidget {
         vertical: w * 0.010,
       ),
       decoration: BoxDecoration(
-        color: MyShopColors.primaryGold,
+        color: hasRating ? MyShopColors.primaryGold : MyShopColors.darkSlate,
         borderRadius: BorderRadius.circular(w * 0.036),
       ),
       child: Row(
@@ -578,7 +583,7 @@ class _RatingBadge extends StatelessWidget {
           Icon(Icons.star_rounded, size: w * 0.028, color: Colors.white),
           SizedBox(width: w * 0.008),
           Text(
-            rating.toStringAsFixed(1),
+            hasRating ? rating.toStringAsFixed(1) : 'New',
             style: TextStyle(
               fontSize: w * 0.028,
               fontWeight: FontWeight.w700,

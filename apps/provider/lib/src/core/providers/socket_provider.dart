@@ -6,8 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_models/shared_models.dart';
 
+import '../../app/router.dart' show goRouterProvider;
 import '../../features/artisan_home/providers/active_job_provider.dart';
 import '../../features/artisan_home/providers/job_poller_provider.dart';
+import '../../features/artisan_home/widgets/rate_client_sheet.dart';
 import '../../features/artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../features/auth/providers/auth_controller.dart';
@@ -15,6 +17,7 @@ import '../../features/auth/providers/current_user_provider.dart';
 import '../../features/earnings/providers/earnings_providers.dart';
 import '../../features/driver_home/providers/driver_location_provider.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
+import '../../features/driver_home/widgets/rate_passenger_sheet.dart';
 import '../../features/trips/providers/driver_trips_provider.dart';
 import 'availability_controller.dart';
 import 'provider_status_provider.dart';
@@ -488,5 +491,89 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('job:client_payment_acknowledged')
       ..on('job:client_payment_acknowledged', handleClientPaymentAck);
+
+    // ── Rating prompt ────────────────────────────────────────────────────
+    // Backend emits `rating:prompt` to the artisan/driver socket room when
+    // a job/ride finalises. Foreground users would otherwise get nothing
+    // until the FCM push fired (which doesn't arrive while the app is
+    // open and connected). The active-screen completion listener still
+    // handles the in-flow case; this handler is the safety net for users
+    // who navigated away before completion landed.
+    final shownRatingFor = <String>{};
+    void handleRatingPrompt(dynamic data) {
+      debugPrint('[WS] Received rating:prompt: $data');
+      if (data is! Map<String, dynamic>) return;
+      final bookingType = data['bookingType'] as String?;
+      final bookingId = (data['bookingId'] ??
+          data['rideId'] ??
+          data['jobId']) as String?;
+      if (bookingType == null || bookingId == null || bookingId.isEmpty) {
+        return;
+      }
+      // Per-process dedup — same emit reconnect-redelivered, or paired
+      // with an FCM tap landing milliseconds later, must not stack a
+      // second sheet on top.
+      if (!shownRatingFor.add(bookingId)) return;
+
+      final ctx =
+          ref.read(goRouterProvider).routerDelegate.navigatorKey.currentContext;
+      if (ctx == null) return;
+
+      // Hydrate the counter-party first name so the sheet reads
+      // "Rate <name>" instead of the generic fallback. Mirror the
+      // FCM-tap rating handler's hydration.
+      Future<void> openSheet() async {
+        if (bookingType == 'ride') {
+          var firstName = 'Passenger';
+          try {
+            final raw = await ref
+                .read(rideServiceProvider)
+                .getRide(bookingId);
+            final ride = Ride.fromJson(raw);
+            final name = ride.clientName;
+            if (name != null && name.trim().isNotEmpty) {
+              firstName = name.trim().split(RegExp(r'\s+')).first;
+            }
+          } catch (e) {
+            debugPrint('[WS] hydrate ride for rating failed: $e');
+          }
+          if (!ctx.mounted) return;
+          await showRatePassengerSheet(
+            ctx,
+            rideId: bookingId,
+            passengerFirstName: firstName,
+          );
+        } else if (bookingType == 'artisan_job' || bookingType == 'job') {
+          var firstName = 'Client';
+          try {
+            final raw =
+                await ref.read(jobServiceProvider).getJob(bookingId);
+            final job = Job.fromJson(raw);
+            final name = job.clientName;
+            if (name != null && name.trim().isNotEmpty) {
+              firstName = name.trim().split(RegExp(r'\s+')).first;
+            }
+          } catch (e) {
+            debugPrint('[WS] hydrate job for rating failed: $e');
+          }
+          if (!ctx.mounted) return;
+          await showRateClientSheet(
+            ctx,
+            jobId: bookingId,
+            clientFirstName: firstName,
+          );
+        } else {
+          // Unknown bookingType — release the dedup so a corrected
+          // re-emit can still surface.
+          shownRatingFor.remove(bookingId);
+        }
+      }
+
+      unawaited(openSheet());
+    }
+
+    socket
+      ..off('rating:prompt')
+      ..on('rating:prompt', handleRatingPrompt);
   });
 }

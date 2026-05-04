@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../../core/di/providers.dart';
+import '../../earnings/providers/ratings_provider.dart';
 
 /// Artisan-facing rating sheet shown after a job settles. Mirrors the
 /// driver's `RatePassengerSheet` — same `POST /v1/ratings` endpoint, same
@@ -63,14 +64,22 @@ class _RateClientSheetState extends ConsumerState<RateClientSheet> {
       _errorMessage = null;
     });
     try {
-      await ref.read(ratingServiceProvider).submitRating(
-            bookingType: 'artisan_job',
-            bookingId: widget.jobId,
-            stars: _stars,
-            comment: _commentController.text.trim().isEmpty
-                ? null
-                : _commentController.text.trim(),
-          );
+      final response =
+          await ref.read(ratingServiceProvider).submitRating(
+                bookingType: 'artisan_job',
+                bookingId: widget.jobId,
+                stars: _stars,
+                comment: _commentController.text.trim().isEmpty
+                    ? null
+                    : _commentController.text.trim(),
+              );
+      // Mutual reveal triggered ⇒ the client's rating about us just became
+      // counted in our public average. Invalidate the summary so the
+      // earnings/home rating tile refetches with the new value instead of
+      // staying stale until the next cold launch.
+      if (response['revealed'] == true) {
+        ref.invalidate(providerRatingsProvider);
+      }
       if (!mounted) return;
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(

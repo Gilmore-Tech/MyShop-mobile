@@ -77,7 +77,12 @@ class MatchedDriver {
   final String name;
   final String vehicle; // Full name e.g. "Midnight Black Toyota Camry Hybrid"
   final String plateNumber;
-  final double rating;
+
+  /// Average revealed rating (0–5). Null when the driver hasn't received
+  /// any revealed ratings yet — display widgets render "New" in that case
+  /// rather than faking a number. Older code defaulted to `4.5` for null,
+  /// which was a misleading "good review" for fresh drivers.
+  final double? rating;
   final int minutesAway;
   final int driversAvailable;
   // Extended fields shown on the driver found screen
@@ -207,7 +212,11 @@ class RideReceipt {
 
   /// Short vehicle name + plate, e.g. "Toyota Vitz · GW-482-22"
   final String vehicleDisplay;
-  final double driverRating;
+
+  /// Average revealed rating (0–5). Null when the driver has no
+  /// revealed ratings yet — display widgets render "New" rather than
+  /// faking 0.0★.
+  final double? driverRating;
   final int driverTripCount;
   final bool isDriverVerified;
 
@@ -355,7 +364,7 @@ RideReceipt buildRideReceiptFromSnapshot(Map<String, dynamic> snapshot) {
     rideId: snapshot['id'] as String? ?? snapshot['rideId'] as String? ?? '',
     driverName: driverName,
     vehicleDisplay: vehicleDisplay,
-    driverRating: (driver['rating'] as num?)?.toDouble() ?? 0,
+    driverRating: (driver['rating'] as num?)?.toDouble(),
     driverTripCount: (driver['tripCount'] as num?)?.toInt() ?? 0,
     isDriverVerified: driver['isVerified'] as bool? ?? false,
     completedAt: completedAt,
@@ -848,7 +857,7 @@ Future<void> _hydrateFromRest(
           'Driver',
       vehicle: driver['vehicle'] as String? ?? '',
       plateNumber: driver['plateNumber'] as String? ?? '',
-      rating: (driver['rating'] as num?)?.toDouble() ?? 4.5,
+      rating: (driver['rating'] as num?)?.toDouble(),
       minutesAway: (driver['eta'] as num?)?.toInt() ?? 3,
       driversAvailable: 1,
       tripCount: (driver['tripCount'] as num?)?.toInt() ?? 0,
