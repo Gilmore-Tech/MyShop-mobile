@@ -263,14 +263,9 @@ class _ActiveJobNotifier
     extends AutoDisposeFamilyAsyncNotifier<ActiveJobData, String> {
   @override
   Future<ActiveJobData> build(String jobId) async {
-    try {
-      final jobService = ref.watch(jobServiceProvider);
-      final data = await jobService.getJob(jobId);
-      return _parseActiveJob(data);
-    } catch (_) {
-      // Fallback to mock during development / if endpoint not ready
-      return _mockJobs[jobId] ?? _defaultMockJob;
-    }
+    final jobService = ref.watch(jobServiceProvider);
+    final data = await jobService.getJob(jobId);
+    return _parseActiveJob(data);
   }
 
   /// Parse API response into [ActiveJobData].
@@ -368,92 +363,3 @@ class _ActiveJobNotifier
   }
 }
 
-// ── Mock data (one entry per phase for preview) ───────────────────────────────
-
-const _artisan = ActiveJobArtisan(
-  artisanId: 'ART-101',
-  name: 'Kofi Mensah',
-  firstName: 'Kofi',
-  avatarColor: Color(0xFF37474F),
-  isVerified: true,
-);
-
-const _cost = ActiveJobCost(
-  serviceFeePesewas: 15000, // GHS 150.00
-  materialsFeePesewas: 8500, // GHS  85.00
-);
-
-const _costFinalized = ActiveJobCost(
-  serviceFeePesewas: 15000,
-  materialsFeePesewas: 8500,
-  isFinalized: true,
-);
-
-const _defaultMockJob = ActiveJobData(
-  jobId: 'JOB-ENROUTE',
-  serviceId: '# JJOB-88219',
-  title: 'Emergency Electrical Repair',
-  categoryName: 'Electrical',
-  categoryIcon: Icons.electrical_services_rounded,
-  location: 'East Legon, Accra',
-  phase: ActiveJobPhase.enRoute,
-  artisan: _artisan,
-  cost: _cost,
-  etaLabel: '12 mins away',
-  completionLabel: '4hrs',
-  scheduleLabel: 'Today, 09:30 AM',
-  jobPostedTime: '09:15 AM',
-  jobDescription: 'You requested an Emergency Electrician for circuit repairs.',
-);
-
-const Map<String, ActiveJobData> _mockJobs = {
-  'JOB-ENROUTE': _defaultMockJob,
-  'JOB-ARRIVED': ActiveJobData(
-    jobId: 'JOB-ARRIVED',
-    serviceId: '# JJOB-88219',
-    title: 'Emergency Electrical Repair',
-    categoryName: 'Electrical',
-    categoryIcon: Icons.electrical_services_rounded,
-    location: 'East Legon, Accra',
-    phase: ActiveJobPhase.arrived,
-    artisan: _artisan,
-    cost: _cost,
-    completionLabel: '4hrs',
-    scheduleLabel: 'Today, 09:30 AM',
-    jobPostedTime: '09:15 AM',
-    jobDescription:
-        'You requested an Emergency Electrician for circuit repairs.',
-  ),
-  'JOB-INPROGRESS': ActiveJobData(
-    jobId: 'JOB-INPROGRESS',
-    serviceId: '# JJOB-88219',
-    title: 'Emergency Electrical Repair',
-    categoryName: 'Electrical',
-    categoryIcon: Icons.electrical_services_rounded,
-    location: 'East Legon, Accra',
-    phase: ActiveJobPhase.inProgress,
-    artisan: _artisan,
-    cost: _cost,
-    completionLabel: '4hrs',
-    scheduleLabel: 'Today, 09:30 AM',
-    jobPostedTime: '09:15 AM',
-    jobDescription:
-        'You requested an Emergency Electrician for circuit repairs.',
-  ),
-  'JOB-AWAITING': ActiveJobData(
-    jobId: 'JOB-AWAITING',
-    serviceId: '# JJOB-88219',
-    title: 'Emergency Electrical Repair',
-    categoryName: 'Electrical',
-    categoryIcon: Icons.electrical_services_rounded,
-    location: 'East Legon, Accra',
-    phase: ActiveJobPhase.awaitingApproval,
-    artisan: _artisan,
-    cost: _costFinalized,
-    completionLabel: '4hrs',
-    scheduleLabel: 'Today, 09:30 AM',
-    jobPostedTime: '09:15 AM',
-    jobDescription:
-        'You requested an Emergency Electrician for circuit repairs.',
-  ),
-};

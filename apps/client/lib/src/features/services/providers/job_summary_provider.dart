@@ -251,14 +251,9 @@ class _JobSummaryNotifier
     extends AutoDisposeFamilyAsyncNotifier<JobSummaryData, String> {
   @override
   Future<JobSummaryData> build(String jobId) async {
-    try {
-      final jobService = ref.watch(jobServiceProvider);
-      final data = await jobService.getJob(jobId);
-      return _parseJobSummary(data);
-    } catch (_) {
-      // Fallback to mock during development / if endpoint not ready
-      return _mockJobs[jobId] ?? _defaultMockJob;
-    }
+    final jobService = ref.watch(jobServiceProvider);
+    final data = await jobService.getJob(jobId);
+    return _parseJobSummary(data);
   }
 
   /// Parse API response into [JobSummaryData].
@@ -302,30 +297,3 @@ class _JobSummaryNotifier
   }
 }
 
-// ── Mock data ─────────────────────────────────────────────────────────────────
-
-const _mockArtisan = JobSummaryArtisan(
-  artisanId: 'ART-101',
-  name: 'Kofi Mensah',
-  firstName: 'Kofi',
-  role: 'Master Electrician',
-  experienceLabel: '8+ Years',
-  avatarColor: MyShopColors.darkSlate,
-  isVerified: true,
-  rating: 4.9,
-  reviewCount: 324,
-  location: 'Bantama',
-);
-
-const _defaultMockJob = JobSummaryData(
-  jobId: 'JOB-29384',
-  jobRef: '#JOB-29384',
-  status: 'completed',
-  artisan: _mockArtisan,
-  laborChargePesewas: 25000, // GHS 250.00
-  materialCostPesewas: 12000, // GHS 120.00
-  totalPaidPesewas: 40000, // GHS 400.00 (includes supplement)
-  tipIncluded: false,
-);
-
-const Map<String, JobSummaryData> _mockJobs = {};

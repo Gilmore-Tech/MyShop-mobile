@@ -1238,24 +1238,14 @@ class _PaymentSummaryNotifier
     extends AutoDisposeFamilyAsyncNotifier<PaymentSummary, String> {
   @override
   Future<PaymentSummary> build(String jobId) async {
-    try {
-      final jobService = ref.watch(jobServiceProvider);
-      final data = await jobService.getJob(jobId);
-      // Log the raw shape so it's visible in the dev console — backends
-      // tend to drift between `selectedBid` / `acceptedBid` / `bid` for
-      // the chosen offer, and the cost field naming has been a moving
-      // target. Keeps debugging "amount is GHS 0.00" trivially fast.
-      developer.log('getJob($jobId) → $data', name: 'PaymentSummary');
-      return _parsePaymentSummary(data);
-    } catch (e, st) {
-      developer.log(
-        'paymentSummaryProvider($jobId) failed to parse: $e\n$st',
-        name: 'PaymentSummary',
-        level: 900,
-      );
-      // Fallback to mock during development / if endpoint not ready
-      return _mockPayments[jobId] ?? _defaultMockPayment;
-    }
+    final jobService = ref.watch(jobServiceProvider);
+    final data = await jobService.getJob(jobId);
+    // Log the raw shape so it's visible in the dev console — backends
+    // tend to drift between `selectedBid` / `acceptedBid` / `bid` for
+    // the chosen offer, and the cost field naming has been a moving
+    // target. Keeps debugging "amount is GHS 0.00" trivially fast.
+    developer.log('getJob($jobId) → $data', name: 'PaymentSummary');
+    return _parsePaymentSummary(data);
   }
 
   /// Parse API response into [PaymentSummary].
@@ -1382,27 +1372,3 @@ class _PaymentSummaryNotifier
   }
 }
 
-// ── Mock data ─────────────────────────────────────────────────────────────────
-
-const _defaultMockPayment = PaymentSummary(
-  jobId: 'JOB-1001',
-  serviceId: 'Service ID: #JOB-88219',
-  paymentRef: 'JOB #GH-8821',
-  jobTitle: 'Emergency Electrical Repair',
-  paymentDescription:
-      'Circuit board inspection + 3 service hours. Funds will be '
-      'held in escrow and released only after your confirmation.',
-  categoryName: 'Electrical',
-  categoryIcon: Icons.electrical_services_rounded,
-  location: 'East Legon, Accra',
-  completionLabel: '4hrs',
-  artisanName: 'Kofi Mensah',
-  artisanFirstName: 'Kofi',
-  artisanAvatarColor: Color(0xFF37474F),
-  serviceFeePesewas: 45000, // GHS 450.00
-  materialsFeePesewas: 20000, // GHS 200.00
-  totalPesewas: 69825, // GHS 698.25 (includes 4% transaction VAT)
-  walletBalancePesewas: 124000, // GHS 1,240.00
-);
-
-const Map<String, PaymentSummary> _mockPayments = {};

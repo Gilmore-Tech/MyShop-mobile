@@ -75,14 +75,9 @@ class _ServiceReceiptNotifier
     extends AutoDisposeFamilyAsyncNotifier<ServiceReceiptData, String> {
   @override
   Future<ServiceReceiptData> build(String jobId) async {
-    try {
-      final jobService = ref.watch(jobServiceProvider);
-      final data = await jobService.getJob(jobId);
-      return _parseReceipt(data);
-    } catch (_) {
-      // Fallback to mock during development / if endpoint not ready
-      return _mockReceipts[jobId] ?? _defaultMock;
-    }
+    final jobService = ref.watch(jobServiceProvider);
+    final data = await jobService.getJob(jobId);
+    return _parseReceipt(data);
   }
 
   Future<void> reload() async {
@@ -138,25 +133,3 @@ class _ServiceReceiptNotifier
   }
 }
 
-// ── Mock data ──────────────────────────────────────────────────────────────────
-
-const _defaultMock = ServiceReceiptData(
-  jobId: 'JOB-44102-GH',
-  status: 'completed',
-  artisanName: 'Ama Serwaa',
-  artisanSpecialty: 'Certified Electrician',
-  artisanRating: 4.8,
-  serviceLocation: 'Plot 14, East Legon Residential Area',
-  workDurationLabel: '2h 15m',
-  serviceCallFeePesewas: 3000, // GH¢ 30.00
-  laborPesewas: 8000, // GH¢ 80.00
-  laborHoursLabel: '2 Hours',
-  materialsPesewas: 1000, // GH¢ 10.00
-  totalPaidPesewas: 12000, // GH¢ 120.00
-  dateTimeLabel: '23 May 2024, 10:15',
-  paymentMethodLabel: 'Visa ****4242',
-  paymentMethodType: PaymentMethodType.visa,
-);
-
-/// Keyed mock receipts — populate when wiring to real API.
-const _mockReceipts = <String, ServiceReceiptData>{};
