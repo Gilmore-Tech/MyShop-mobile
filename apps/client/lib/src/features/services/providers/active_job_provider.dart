@@ -67,12 +67,26 @@ class ActiveJobArtisan {
   final Color avatarColor;
   final bool isVerified;
 
+  /// Specialty label, e.g. "Master Electrician" — empty when the backend
+  /// hasn't set one. Surfaced under the artisan name on tracking screens.
+  final String specialty;
+
+  /// Lifetime rating, 0.0–5.0. Zero when the artisan has no ratings yet
+  /// (don't render a star row in that case).
+  final double rating;
+
+  /// Profile photo URL — empty when the backend hasn't uploaded one.
+  final String photoUrl;
+
   const ActiveJobArtisan({
     required this.artisanId,
     required this.name,
     required this.firstName,
     required this.avatarColor,
     required this.isVerified,
+    this.specialty = '',
+    this.rating = 0.0,
+    this.photoUrl = '',
   });
 }
 
@@ -139,6 +153,12 @@ class ActiveJobData {
   /// Description text for the "Job Posted" timeline step.
   final String jobDescription;
 
+  /// Job-site coordinates from the original POST /jobs payload. Null when
+  /// the backend response is missing them — the tracking screen falls back
+  /// to its default map centre in that case.
+  final double? locationLat;
+  final double? locationLng;
+
   const ActiveJobData({
     required this.jobId,
     required this.serviceId,
@@ -154,6 +174,8 @@ class ActiveJobData {
     required this.scheduleLabel,
     required this.jobPostedTime,
     required this.jobDescription,
+    this.locationLat,
+    this.locationLng,
   });
 
   /// Resolved value for the left stat cell.
@@ -303,6 +325,9 @@ class _ActiveJobNotifier
 
     final categoryData = data['category'] as Map<String, dynamic>? ?? {};
 
+    final lat = (data['latitude'] ?? data['locationLat']) as num?;
+    final lng = (data['longitude'] ?? data['locationLng']) as num?;
+
     return ActiveJobData(
       jobId: data['id'] as String? ?? '',
       serviceId:
@@ -310,7 +335,8 @@ class _ActiveJobNotifier
       title: data['description'] as String? ?? '',
       categoryName: categoryData['name'] as String? ?? '',
       categoryIcon: Icons.build_rounded,
-      location: data['locationAddress'] as String? ?? '',
+      location: (data['locationAddress'] ?? data['addressText']) as String? ??
+          '',
       phase: phase,
       artisan: ActiveJobArtisan(
         artisanId: artisanData['id'] as String? ?? '',
@@ -318,6 +344,12 @@ class _ActiveJobNotifier
         firstName: artisanData['firstName'] as String? ?? 'Artisan',
         avatarColor: const Color(0xFF37474F),
         isVerified: artisanData['isVerified'] as bool? ?? false,
+        specialty: artisanData['specialty'] as String? ?? '',
+        rating: (artisanData['rating'] as num?)?.toDouble() ?? 0.0,
+        photoUrl: (artisanData['photoUrl'] as String?) ??
+            (artisanData['profilePhotoUrl'] as String?) ??
+            (artisanData['avatarUrl'] as String?) ??
+            '',
       ),
       cost: ActiveJobCost(
         serviceFeePesewas: serviceFeePesewas,
@@ -329,6 +361,8 @@ class _ActiveJobNotifier
       scheduleLabel: data['scheduledFor'] as String? ?? 'Today',
       jobPostedTime: data['createdAt'] as String? ?? '',
       jobDescription: data['description'] as String? ?? '',
+      locationLat: lat?.toDouble(),
+      locationLng: lng?.toDouble(),
     );
   }
 

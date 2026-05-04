@@ -4,12 +4,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
+import '../providers/active_job_provider.dart';
+import '../widgets/job_tracking_map.dart';
 
-// ── Screen ─────────────────────────────────────────────────────────────────────
-// PRD § 4.6 — Live artisan location tracking while en route to job site.
-// Real-time updates via WS /v1/jobs/:id/live.
-// Artisan's GPS position is broadcast every 5 s from the Provider app.
-
+/// PRD § 4.6 — Live artisan tracking while en route to job site.
+///
+/// Map + bottom sheet showing the assigned artisan, ETA, and job address.
+/// Data comes from `GET /jobs/:id` via [activeJobProvider]; the live status
+/// flips when the backend pushes `job:status:changed` over the socket
+/// (handled in `core/providers/socket_provider.dart`, which invalidates
+/// this provider — the screen re-fetches and the bottom sheet refreshes).
+///
+/// Live artisan GPS isn't surfaced here yet — see comment in
+/// [JobTrackingMap].
 class JobTrackingScreen extends ConsumerWidget {
   const JobTrackingScreen({super.key});
 
@@ -21,80 +28,182 @@ class JobTrackingScreen extends ConsumerWidget {
     final bot = MediaQuery.paddingOf(context).bottom;
     final jobId = GoRouterState.of(context).pathParameters['jobId'] ?? '';
 
+    final jobAsync = ref.watch(activeJobProvider(jobId));
+
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
-      body: Stack(
-        children: [
-          // Map placeholder
-          _MapPlaceholder(h: h),
-
-          // Top bar
-          _TopBar(w: w, onBack: () => context.pop()),
-
-          // Bottom sheet
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: _BottomSheet(
-              w: w,
-              h: h,
-              bot: bot,
-              jobId: jobId,
+      body: jobAsync.when(
+        loading: () => _LoadingState(
+          h: h,
+          w: w,
+          bot: bot,
+          onBack: () => context.pop(),
+        ),
+        error: (err, _) => _ErrorState(
+          message: _friendlyError(err),
+          onRetry: () => ref.invalidate(activeJobProvider(jobId)),
+          onBack: () => context.pop(),
+        ),
+        data: (job) => Stack(
+          children: [
+            JobTrackingMap(
+              jobLat: job.locationLat,
+              jobLng: job.locationLng,
             ),
-          ),
-        ],
+            _TopBar(w: w, onBack: () => context.pop()),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: _BottomSheet(
+                w: w,
+                h: h,
+                bot: bot,
+                job: job,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+
+  String _friendlyError(Object err) {
+    final msg = err.toString();
+    if (msg.contains('404')) {
+      return "We couldn't find this job. It may have been removed.";
+    }
+    return "We couldn't load the job details. Check your connection and try again.";
+  }
 }
 
-// ── Map placeholder ────────────────────────────────────────────────────────────
+// ── Loading skeleton ──────────────────────────────────────────────────────────
 
-class _MapPlaceholder extends StatelessWidget {
-  final double h;
-  const _MapPlaceholder({required this.h});
+class _LoadingState extends StatelessWidget {
+  final double h, w, bot;
+  final VoidCallback onBack;
+  const _LoadingState(
+      {required this.h,
+      required this.w,
+      required this.bot,
+      required this.onBack});
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox.expand(
-      child: Container(
-        color: const Color(0xFFE8EDF0),
-        child: CustomPaint(painter: _GridPainter()),
-      ),
+    return Stack(
+      children: [
+        Container(color: const Color(0xFFE8EDF0)),
+        _TopBar(w: w, onBack: onBack),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: Container(
+            decoration: const BoxDecoration(
+              color: MyShopColors.surfaceWhite,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            padding: EdgeInsets.fromLTRB(
+                w * 0.05, h * 0.020, w * 0.05, bot + h * 0.024),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _shimmerBar(width: w * 0.5, height: 14),
+                SizedBox(height: h * 0.022),
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: w * 0.065,
+                      backgroundColor: MyShopColors.surfaceGrey,
+                    ),
+                    SizedBox(width: w * 0.030),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _shimmerBar(width: w * 0.45, height: 14),
+                          const SizedBox(height: 6),
+                          _shimmerBar(width: w * 0.30, height: 12),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: h * 0.016),
+                _shimmerBar(width: double.infinity, height: 12),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
+
+  Widget _shimmerBar({required double width, required double height}) =>
+      Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: MyShopColors.surfaceGrey,
+          borderRadius: BorderRadius.circular(6),
+        ),
+      );
 }
 
-class _GridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFFD0D8DC)
-      ..strokeWidth = 1;
-    const step = 40.0;
-    for (double x = 0; x < size.width; x += step) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (double y = 0; y < size.height; y += step) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-    // Artisan dot
-    final cx = size.width * 0.45;
-    final cy = size.height * 0.42;
-    canvas.drawCircle(
-        Offset(cx, cy), 18, Paint()..color = MyShopColors.primaryGold);
-    canvas.drawCircle(Offset(cx, cy), 10, Paint()..color = Colors.white);
-    // Destination pin
-    final dx = size.width * 0.58;
-    final dy = size.height * 0.30;
-    canvas.drawCircle(
-        Offset(dx, dy), 16, Paint()..color = MyShopColors.success);
-    canvas.drawCircle(Offset(dx, dy), 8, Paint()..color = Colors.white);
-  }
+// ── Error state ───────────────────────────────────────────────────────────────
+
+class _ErrorState extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  final VoidCallback onBack;
+  const _ErrorState({
+    required this.message,
+    required this.onRetry,
+    required this.onBack,
+  });
 
   @override
-  bool shouldRepaint(covariant CustomPainter old) => false;
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Container(color: MyShopColors.offWhite),
+        _TopBar(w: MediaQuery.sizeOf(context).width, onBack: onBack),
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline_rounded,
+                    color: MyShopColors.error, size: 48),
+                const SizedBox(height: 12),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: MyShopColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextButton(
+                  onPressed: onRetry,
+                  child: const Text(
+                    'Retry',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: MyShopColors.primaryGold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // ── Top bar ────────────────────────────────────────────────────────────────────
@@ -150,15 +259,19 @@ class _CircleBtn extends StatelessWidget {
 
 class _BottomSheet extends StatelessWidget {
   final double w, h, bot;
-  final String jobId;
-  const _BottomSheet(
-      {required this.w,
-      required this.h,
-      required this.bot,
-      required this.jobId});
+  final ActiveJobData job;
+  const _BottomSheet({
+    required this.w,
+    required this.h,
+    required this.bot,
+    required this.job,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final etaLabel = job.etaLabel ?? job.completionLabel ?? '—';
+    final showEtaPill =
+        job.phase == ActiveJobPhase.enRoute && job.etaLabel != null;
     return Container(
       decoration: const BoxDecoration(
         color: MyShopColors.surfaceWhite,
@@ -182,73 +295,87 @@ class _BottomSheet extends StatelessWidget {
             ),
           ),
           SizedBox(height: h * 0.020),
-          // ETA chip
-          Container(
-            padding: EdgeInsets.symmetric(
-                horizontal: w * 0.040, vertical: h * 0.014),
-            decoration: BoxDecoration(
-              color: MyShopColors.primaryGoldLight,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: MyShopColors.primaryGold.withAlpha(60)),
+          if (showEtaPill) ...[
+            Container(
+              padding: EdgeInsets.symmetric(
+                  horizontal: w * 0.040, vertical: h * 0.014),
+              decoration: BoxDecoration(
+                color: MyShopColors.primaryGoldLight,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: MyShopColors.primaryGold.withAlpha(60)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.timer_outlined,
+                      color: MyShopColors.primaryGold, size: 20),
+                  SizedBox(width: w * 0.024),
+                  Text('Artisan arriving in  ',
+                      style: TextStyle(
+                          color: MyShopColors.textSecondary,
+                          fontSize: w * 0.036)),
+                  Text(etaLabel,
+                      style: TextStyle(
+                        color: MyShopColors.textPrimary,
+                        fontSize: w * 0.040,
+                        fontWeight: FontWeight.w800,
+                      )),
+                ],
+              ),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.timer_outlined,
-                    color: MyShopColors.primaryGold, size: 20),
-                SizedBox(width: w * 0.024),
-                Text('Artisan arriving in  ',
-                    style: TextStyle(
-                        color: MyShopColors.textSecondary,
-                        fontSize: w * 0.036)),
-                Text('12 mins',
-                    style: TextStyle(
-                      color: MyShopColors.textPrimary,
-                      fontSize: w * 0.040,
-                      fontWeight: FontWeight.w800,
-                    )),
-              ],
-            ),
-          ),
-          SizedBox(height: h * 0.020),
-          const Divider(height: 1, color: MyShopColors.divider),
-          SizedBox(height: h * 0.020),
-          // Artisan row
+            SizedBox(height: h * 0.020),
+            const Divider(height: 1, color: MyShopColors.divider),
+            SizedBox(height: h * 0.020),
+          ],
           Row(
             children: [
-              Container(
-                width: w * 0.13,
-                height: w * 0.13,
-                decoration: const BoxDecoration(
-                    color: Color(0xFF37474F), shape: BoxShape.circle),
-                child: Icon(Icons.person_rounded,
-                    color: Colors.white, size: w * 0.065),
-              ),
+              _ArtisanAvatar(w: w, artisan: job.artisan),
               SizedBox(width: w * 0.030),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Kofi Mensah',
+                    Text(job.artisan.name,
                         style: TextStyle(
                           color: MyShopColors.textPrimary,
                           fontSize: w * 0.040,
                           fontWeight: FontWeight.w700,
                         )),
-                    const SizedBox(height: 3),
-                    Row(children: [
-                      const Icon(Icons.star_rounded,
-                          color: MyShopColors.primaryGold, size: 14),
-                      const SizedBox(width: 3),
-                      Text('4.9  •  Master Electrician',
-                          style: TextStyle(
-                              color: MyShopColors.textSecondary,
-                              fontSize: w * 0.032)),
-                    ]),
+                    if (job.artisan.specialty.isNotEmpty ||
+                        job.artisan.rating > 0) ...[
+                      const SizedBox(height: 3),
+                      Row(children: [
+                        if (job.artisan.rating > 0) ...[
+                          const Icon(Icons.star_rounded,
+                              color: MyShopColors.primaryGold, size: 14),
+                          const SizedBox(width: 3),
+                          Text(job.artisan.rating.toStringAsFixed(1),
+                              style: TextStyle(
+                                  color: MyShopColors.textSecondary,
+                                  fontSize: w * 0.032)),
+                        ],
+                        if (job.artisan.specialty.isNotEmpty) ...[
+                          if (job.artisan.rating > 0)
+                            Text('  •  ',
+                                style: TextStyle(
+                                    color: MyShopColors.textSecondary,
+                                    fontSize: w * 0.032)),
+                          Flexible(
+                            child: Text(
+                              job.artisan.specialty,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  color: MyShopColors.textSecondary,
+                                  fontSize: w * 0.032),
+                            ),
+                          ),
+                        ],
+                      ]),
+                    ],
                   ],
                 ),
               ),
-              // Call button
               _ContactBtn(
                 icon: Icons.phone_rounded,
                 color: MyShopColors.darkSlate,
@@ -256,7 +383,6 @@ class _BottomSheet extends StatelessWidget {
                 w: w,
               ),
               SizedBox(width: w * 0.020),
-              // Chat button
               _ContactBtn(
                 icon: Icons.chat_bubble_outline_rounded,
                 color: MyShopColors.primaryGold,
@@ -265,22 +391,71 @@ class _BottomSheet extends StatelessWidget {
               ),
             ],
           ),
-          SizedBox(height: h * 0.016),
-          // Location row
-          Row(
-            children: [
-              const Icon(Icons.location_on_rounded,
-                  color: MyShopColors.textSecondary, size: 16),
-              SizedBox(width: w * 0.016),
-              Expanded(
-                child: Text('Heading to East Legon, Accra',
-                    style: TextStyle(
-                        color: MyShopColors.textSecondary,
-                        fontSize: w * 0.034)),
-              ),
-            ],
-          ),
+          if (job.location.isNotEmpty) ...[
+            SizedBox(height: h * 0.016),
+            Row(
+              children: [
+                const Icon(Icons.location_on_rounded,
+                    color: MyShopColors.textSecondary, size: 16),
+                SizedBox(width: w * 0.016),
+                Expanded(
+                  child: Text(job.location,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          color: MyShopColors.textSecondary,
+                          fontSize: w * 0.034)),
+                ),
+              ],
+            ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _ArtisanAvatar extends StatelessWidget {
+  final double w;
+  final ActiveJobArtisan artisan;
+  const _ArtisanAvatar({required this.w, required this.artisan});
+
+  @override
+  Widget build(BuildContext context) {
+    final size = w * 0.13;
+    if (artisan.photoUrl.isNotEmpty) {
+      return ClipOval(
+        child: Image.network(
+          artisan.photoUrl,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _initialsAvatar(size),
+        ),
+      );
+    }
+    return _initialsAvatar(size);
+  }
+
+  Widget _initialsAvatar(double size) {
+    final initial = artisan.firstName.isNotEmpty
+        ? artisan.firstName.substring(0, 1).toUpperCase()
+        : '?';
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: artisan.avatarColor,
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: size * 0.45,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
