@@ -457,8 +457,26 @@ class _ActiveJobNotifier
 
     final categoryData = data['category'] as Map<String, dynamic>? ?? {};
 
-    final lat = (data['latitude'] ?? data['locationLat']) as num?;
-    final lng = (data['longitude'] ?? data['locationLng']) as num?;
+    // Backend has shipped job coords under at least three shapes during
+    // development — `latitude/longitude` (canonical), `lat/lng` (older),
+    // and a nested `location: { lat, lng }`. Accept any of them so the
+    // tracking-map pin always finds a coord. Without this the marker was
+    // being created with null lat/lng and the map rendered empty.
+    num? lat = (data['latitude'] ??
+        data['lat'] ??
+        data['locationLat']) as num?;
+    num? lng = (data['longitude'] ??
+        data['lng'] ??
+        data['locationLng']) as num?;
+    if ((lat == null || lng == null) && data['location'] is Map) {
+      final loc = data['location'] as Map;
+      lat ??= (loc['latitude'] ?? loc['lat']) as num?;
+      lng ??= (loc['longitude'] ?? loc['lng']) as num?;
+    }
+    developer.log(
+      'getJob coords lat=$lat lng=$lng (topKeys=${data.keys.toList()})',
+      name: 'ActiveJob',
+    );
 
     // Parse a pending supplement when the artisan has one in flight. Backend
     // exposes it under `data['supplement']` keyed by the camelCase shape

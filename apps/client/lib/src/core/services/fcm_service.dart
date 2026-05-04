@@ -428,19 +428,26 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           router.go(AppRoutes.activity);
         }
         break;
+      // En route is the only phase where the live map is the right
+      // landing — the user is checking "is the artisan close yet?".
       case NotificationPayload.typeJobArtisanEnRoute:
-      case NotificationPayload.typeJobArtisanArrived:
-      case NotificationPayload.typeJobInProgress:
         if (jobId != null) {
           pushDeepLink(router, AppRoutes.jobTrackingPath(jobId));
         } else {
           router.go(AppRoutes.activity);
         }
         break;
+      // Once the artisan has arrived / started / marked complete, the
+      // request timeline is what the user wants — it carries the phase-
+      // driven CTAs ("Confirm Arrival", "Confirm, proceed to payment")
+      // that drive the next step. The map-only tracking screen is
+      // useless past the en-route phase.
+      case NotificationPayload.typeJobArtisanArrived:
+      case NotificationPayload.typeJobInProgress:
       case NotificationPayload.typeJobMarkedComplete:
       case NotificationPayload.typeJobConfirmCompletionRequested:
         if (jobId != null) {
-          pushDeepLink(router, AppRoutes.jobSummaryPath(jobId));
+          pushDeepLink(router, AppRoutes.jobActivePath(jobId));
         } else {
           router.go(AppRoutes.activity);
         }
