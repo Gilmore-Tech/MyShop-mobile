@@ -121,6 +121,39 @@ class ActiveJobCost {
   String get totalLabel => isFinalized ? 'Total' : 'Estimated Total';
 }
 
+// ── Supplement request ────────────────────────────────────────────────────────
+// PRD § 4.5.3 — Artisan requests additional materials/cost mid-job. Surfaces
+// to the client through the supplement review screen so they can approve or
+// decline before work resumes.
+//
+// Populated from `data['supplement']` on GET /jobs/:id when the artisan has
+// submitted one. Null when there's no pending supplement.
+
+class SupplementRequest {
+  final int additionalAmountPesewas;
+  final int originalBidPesewas;
+  final String reason;
+
+  /// Submitted-at timestamp from the backend, e.g. "2024-10-23T09:15:00Z".
+  /// Empty when missing.
+  final String submittedAt;
+
+  const SupplementRequest({
+    required this.additionalAmountPesewas,
+    required this.originalBidPesewas,
+    required this.reason,
+    this.submittedAt = '',
+  });
+
+  int get newTotalPesewas => additionalAmountPesewas + originalBidPesewas;
+
+  String _fmt(int pesewas) => 'GHS ${(pesewas / 100).toStringAsFixed(2)}';
+
+  String get additionalDisplay => _fmt(additionalAmountPesewas);
+  String get originalBidDisplay => _fmt(originalBidPesewas);
+  String get newTotalDisplay => _fmt(newTotalPesewas);
+}
+
 // ── Active Job Data ───────────────────────────────────────────────────────────
 // API: GET /v1/jobs/:id  |  WS /v1/jobs/:id/live
 
@@ -159,6 +192,10 @@ class ActiveJobData {
   final double? locationLat;
   final double? locationLng;
 
+  /// Pending supplement the artisan has submitted, awaiting client decision.
+  /// Null when there's no supplement in flight.
+  final SupplementRequest? pendingSupplement;
+
   const ActiveJobData({
     required this.jobId,
     required this.serviceId,
@@ -176,6 +213,7 @@ class ActiveJobData {
     required this.jobDescription,
     this.locationLat,
     this.locationLng,
+    this.pendingSupplement,
   });
 
   /// Resolved value for the left stat cell.
@@ -274,6 +312,100 @@ final activeJobActionProvider =
   (ref) => ActiveJobNotifier(ref.watch(jobServiceProvider)),
 );
 
+// ── Supplement response ───────────────────────────────────────────────────────
+// PATCH /v1/jobs/:id/supplement/respond  { approved: bool }
+//
+// Lives next to the active-job notifier rather than inside the supplement
+// review screen so the action survives a screen rebuild and shares a single
+// loading state with any other surface that might need to respond (e.g. a
+// future inline approval card on the active-job screen itself).
+
+class SupplementResponseState {
+  final bool isApproving;
+  final bool isDeclining;
+  final String? errorMessage;
+  final bool isComplete;
+
+  const SupplementResponseState({
+    this.isApproving = false,
+    this.isDeclining = false,
+    this.errorMessage,
+    this.isComplete = false,
+  });
+
+  bool get isBusy => isApproving || isDeclining;
+
+  SupplementResponseState copyWith({
+    bool? isApproving,
+    bool? isDeclining,
+    String? errorMessage,
+    bool? isComplete,
+    bool clearError = false,
+  }) =>
+      SupplementResponseState(
+        isApproving: isApproving ?? this.isApproving,
+        isDeclining: isDeclining ?? this.isDeclining,
+        errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+        isComplete: isComplete ?? this.isComplete,
+      );
+}
+
+class SupplementResponseNotifier
+    extends StateNotifier<SupplementResponseState> {
+  SupplementResponseNotifier(this._ref)
+      : super(const SupplementResponseState());
+
+  final Ref _ref;
+
+  Future<bool> respond({
+    required String jobId,
+    required bool approve,
+  }) async {
+    if (state.isBusy) return false;
+    state = state.copyWith(
+      isApproving: approve,
+      isDeclining: !approve,
+      clearError: true,
+    );
+    try {
+      await _ref
+          .read(jobServiceProvider)
+          .respondToSupplement(jobId, approved: approve);
+      // Bust the active-job cache so the supplement clears and the cost
+      // breakdown reflects the new agreed price (or the original bid on
+      // decline).
+      _ref.invalidate(activeJobProvider(jobId));
+      state = state.copyWith(
+        isApproving: false,
+        isDeclining: false,
+        isComplete: true,
+      );
+      return true;
+    } on ApiException catch (e) {
+      state = state.copyWith(
+        isApproving: false,
+        isDeclining: false,
+        errorMessage: e.message.isNotEmpty
+            ? e.message
+            : "We couldn't send your response. Please try again.",
+      );
+      return false;
+    } catch (_) {
+      state = state.copyWith(
+        isApproving: false,
+        isDeclining: false,
+        errorMessage: "We couldn't send your response. Please try again.",
+      );
+      return false;
+    }
+  }
+}
+
+final supplementResponseProvider = StateNotifierProvider.autoDispose<
+    SupplementResponseNotifier, SupplementResponseState>(
+  (ref) => SupplementResponseNotifier(ref),
+);
+
 // ── Data Provider ─────────────────────────────────────────────────────────────
 
 final activeJobProvider = AsyncNotifierProvider.autoDispose
@@ -328,6 +460,29 @@ class _ActiveJobNotifier
     final lat = (data['latitude'] ?? data['locationLat']) as num?;
     final lng = (data['longitude'] ?? data['locationLng']) as num?;
 
+    // Parse a pending supplement when the artisan has one in flight. Backend
+    // exposes it under `data['supplement']` keyed by the camelCase shape
+    // we've seen on adjacent endpoints; status `pending` is the only one
+    // the client review screen acts on.
+    SupplementRequest? supplement;
+    final supplementData = data['supplement'] as Map<String, dynamic>?;
+    if (supplementData != null &&
+        (supplementData['status'] as String? ?? 'pending') == 'pending') {
+      final additional =
+          (supplementData['amountPesewas'] as num?)?.toInt() ?? 0;
+      final originalBid = (bidData['amountPesewas'] as num?)?.toInt() ?? 0;
+      supplement = SupplementRequest(
+        additionalAmountPesewas: additional,
+        originalBidPesewas: originalBid,
+        reason: supplementData['reason'] as String? ??
+            supplementData['description'] as String? ??
+            '',
+        submittedAt: supplementData['submittedAt'] as String? ??
+            supplementData['createdAt'] as String? ??
+            '',
+      );
+    }
+
     return ActiveJobData(
       jobId: data['id'] as String? ?? '',
       serviceId:
@@ -363,6 +518,7 @@ class _ActiveJobNotifier
       jobDescription: data['description'] as String? ?? '',
       locationLat: lat?.toDouble(),
       locationLng: lng?.toDouble(),
+      pendingSupplement: supplement,
     );
   }
 
