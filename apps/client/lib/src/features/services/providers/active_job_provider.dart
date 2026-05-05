@@ -441,11 +441,27 @@ class _ActiveJobNotifier
     );
     final phase = _parsePhase(status, clientPaymentAck: clientPaymentAck);
 
-    final artisanData = data['provider'] as Map<String, dynamic>? ?? {};
-    final artisanName =
-        '${artisanData['firstName'] ?? ''} ${artisanData['lastName'] ?? ''}'
-            .trim();
-    final bidData = data['selectedBid'] as Map<String, dynamic>? ?? {};
+    // GET /jobs/:id returns the assigned artisan under `artisan` (post-fix
+    // in marketplace.service.ts) with `name` / `displayName` / `photoUrl`.
+    // Older builds returned only `userId` here; we fall back to `provider`
+    // for any in-flight legacy responses so the screen doesn't blank out
+    // during the deploy gap.
+    final artisanData = (data['artisan'] as Map<String, dynamic>?) ??
+        (data['provider'] as Map<String, dynamic>?) ??
+        {};
+    final artisanName = (artisanData['name'] as String?) ??
+        (artisanData['displayName'] as String?) ??
+        // Legacy first/last shape — keep until the backend deploy lands.
+        ('${artisanData['firstName'] ?? ''} ${artisanData['lastName'] ?? ''}'
+            .trim());
+
+    // Accepted bid carries the canonical price + ETA + duration. Backend
+    // exposes it as `acceptedBid`; tolerate the older `selectedBid` key
+    // during the deploy gap. Falls back to {} so downstream lookups are
+    // null-safe.
+    final bidData = (data['acceptedBid'] as Map<String, dynamic>?) ??
+        (data['selectedBid'] as Map<String, dynamic>?) ??
+        {};
     final costBreakdown = data['costBreakdown'] as Map<String, dynamic>? ?? {};
 
     final serviceFeePesewas =
@@ -454,6 +470,26 @@ class _ActiveJobNotifier
             0;
     final materialsFeePesewas =
         (costBreakdown['materialsPesewas'] as num?)?.toInt() ?? 0;
+
+    // Pull ETA + duration from the accepted bid. Backend stores them as
+    // integer minutes; the screen wants human strings ("12 mins away" /
+    // "2 hours"). Empty bid → empty labels (the screen falls back to "—").
+    final etaMinutes = (bidData['etaMinutes'] as num?)?.toInt();
+    final durationMinutes = (bidData['durationMinutes'] as num?)?.toInt();
+    String? formatMinutes(int? mins) {
+      if (mins == null || mins <= 0) return null;
+      if (mins < 60) return '$mins min${mins == 1 ? '' : 's'}';
+      final hours = mins ~/ 60;
+      final rem = mins % 60;
+      if (rem == 0) return '$hours hr${hours == 1 ? '' : 's'}';
+      return '${hours}h ${rem}m';
+    }
+
+    final etaLabel = etaMinutes != null
+        ? '${formatMinutes(etaMinutes)} away'
+        : (data['eta'] != null ? '${data['eta']} mins away' : null);
+    final completionLabel = formatMinutes(durationMinutes) ??
+        (data['estimatedDuration'] as String? ?? '—');
 
     final categoryData = data['category'] as Map<String, dynamic>? ?? {};
 
@@ -514,9 +550,18 @@ class _ActiveJobNotifier
       artisan: ActiveJobArtisan(
         artisanId: artisanData['id'] as String? ?? '',
         name: artisanName.isNotEmpty ? artisanName : 'Artisan',
-        firstName: artisanData['firstName'] as String? ?? 'Artisan',
+        // Derive firstName from the resolved name. Backend doesn't ship a
+        // separate firstName on this endpoint — splitting on the first
+        // space is a good-enough avatar fallback ("Kofi Mensah" → "Kofi"),
+        // and a single-word displayName ("Kofi") just returns itself.
+        firstName: artisanName.isNotEmpty
+            ? artisanName.split(' ').first
+            : 'Artisan',
         avatarColor: const Color(0xFF37474F),
-        isVerified: artisanData['isVerified'] as bool? ?? false,
+        // verificationStatus comes through as a string ('approved', 'pending',
+        // 'rejected'); treat 'approved' as verified for the badge.
+        isVerified: (artisanData['verificationStatus'] as String?) == 'approved' ||
+            (artisanData['isVerified'] as bool? ?? false),
         specialty: artisanData['specialty'] as String? ?? '',
         rating: (artisanData['rating'] as num?)?.toDouble() ?? 0.0,
         photoUrl: (artisanData['photoUrl'] as String?) ??
@@ -529,8 +574,8 @@ class _ActiveJobNotifier
         materialsFeePesewas: materialsFeePesewas,
         isFinalized: phase == ActiveJobPhase.awaitingApproval,
       ),
-      etaLabel: data['eta'] != null ? '${data['eta']} mins away' : null,
-      completionLabel: data['estimatedDuration'] as String? ?? '—',
+      etaLabel: etaLabel,
+      completionLabel: completionLabel,
       scheduleLabel: data['scheduledFor'] as String? ?? 'Today',
       jobPostedTime: data['createdAt'] as String? ?? '',
       jobDescription: data['description'] as String? ?? '',

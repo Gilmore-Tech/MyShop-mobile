@@ -52,6 +52,15 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
   /// the socket reconciler can also re-emit the same status.
   bool _rateSheetShown = false;
 
+  /// Polls `GET /jobs/:id` while we're sitting on `artisan_marked_complete`
+  /// with no `clientPaymentAcknowledgedAt` yet. The
+  /// `job:client_payment_acknowledged` socket event is the primary signal,
+  /// but battery saver / OS socket reaping / a backgrounded app can drop
+  /// it silently — leaving the artisan stuck on "Waiting for client" even
+  /// after the client picked Cash on the payment screen. The poll is the
+  /// belt-and-braces fallback that closes the gap in 5s instead of never.
+  Timer? _ackPollTimer;
+
   @override
   void initState() {
     super.initState();
@@ -70,8 +79,32 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
 
   @override
   void dispose() {
+    _ackPollTimer?.cancel();
     _liveMetrics.dispose();
     super.dispose();
+  }
+
+  /// Starts/stops the cash-acknowledgement poll based on the current job.
+  /// Called from build() via a `ref.listen`. Idempotent — repeated calls
+  /// with the same conditions don't restart the timer.
+  void _syncAckPolling(Job? job) {
+    final shouldPoll = job != null &&
+        job.status == JobStatus.artisanMarkedComplete &&
+        (job.clientPaymentAcknowledgedAt == null ||
+            job.clientPaymentAcknowledgedAt!.isEmpty);
+    if (shouldPoll) {
+      if (_ackPollTimer != null) return;
+      // Pull once immediately so the moment the screen lands on the
+      // "waiting" state we reconcile with the server, then tick every 5s.
+      ref.read(activeJobProvider.notifier).refreshFromServer();
+      _ackPollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+        if (!mounted) return;
+        ref.read(activeJobProvider.notifier).refreshFromServer();
+      });
+    } else {
+      _ackPollTimer?.cancel();
+      _ackPollTimer = null;
+    }
   }
 
   Future<void> _maybeShowRateClientSheet() async {
@@ -158,7 +191,14 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
       if (justCompleted) {
         _maybeShowRateClientSheet();
       }
+      _syncAckPolling(next.job);
     });
+
+    // Reconcile polling with the current state on first build too — the
+    // listener above only fires on subsequent transitions, so without this
+    // initial call we'd miss starting the poll for a job that was already
+    // sitting in `artisan_marked_complete` when this screen mounted.
+    _syncAckPolling(job);
 
     // Callers reach /active-job via go() or pushReplacement() — by design,
     // because the /job-request "Accept & Start Job" screen must not sit in
