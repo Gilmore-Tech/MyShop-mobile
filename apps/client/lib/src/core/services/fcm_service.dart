@@ -439,9 +439,11 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         break;
       // Once the artisan has arrived / started / marked complete, the
       // request timeline is what the user wants — it carries the phase-
-      // driven CTAs ("Confirm Arrival", "Confirm, proceed to payment")
-      // that drive the next step. The map-only tracking screen is
-      // useless past the en-route phase.
+      // driven CTA ("Confirm, proceed to payment") that drives the next
+      // step. The map-only tracking screen is useless past the en-route
+      // phase. Note: the 'arrived' phase no longer surfaces a
+      // confirm-arrival CTA — `_parsePhase` collapses it into
+      // `inProgress` so the work session starts implicitly.
       case NotificationPayload.typeJobArtisanArrived:
       case NotificationPayload.typeJobInProgress:
       case NotificationPayload.typeJobMarkedComplete:

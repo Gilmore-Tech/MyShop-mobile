@@ -604,8 +604,13 @@ class _ActiveJobNotifier
     }
     return switch (status) {
       'artisan_en_route' || 'en_route' => ActiveJobPhase.enRoute,
-      'arrived' => ActiveJobPhase.arrived,
-      'in_progress' => ActiveJobPhase.inProgress,
+      // Collapse 'arrived' into 'inProgress' so the client-side
+      // "Confirm Arrival" CTA never surfaces. Product decision: once the
+      // artisan flips to arrived/in_progress on their app the work is
+      // considered started — the client doesn't need to acknowledge.
+      // The dedicated 'arrived' enum value is kept for completeness in
+      // case the confirm-arrival step is reintroduced later.
+      'arrived' || 'in_progress' => ActiveJobPhase.inProgress,
       'artisan_marked_complete' ||
       'awaiting_approval' =>
         ActiveJobPhase.awaitingApproval,
