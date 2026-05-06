@@ -137,6 +137,33 @@ class PaymentService {
     }
   }
 
+  /// POST /payments/abandon-by-booking — Abandon any in-flight pending /
+  /// processing payment for a booking when we don't have the paymentId
+  /// locally (typical after an app restart that wiped the OTP-flow state).
+  ///
+  /// Idempotent: returns `{status: 'no_pending_payment'}` when there's
+  /// nothing to clear, so it's safe to call unconditionally before
+  /// /payments/initiate to belt-and-braces guard against the booking-lock
+  /// 409. Refuses escrowed/completed/disputed payments — those need
+  /// /payments/:paymentId/dispute instead.
+  Future<Map<String, dynamic>> abandonByBooking({
+    required String bookingType,
+    required String bookingId,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/payments/abandon-by-booking',
+        data: {
+          'bookingType': bookingType,
+          'bookingId': bookingId,
+        },
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   // ── Payment Methods ───────────────────────────────────────────────────────────
 
   /// GET /payment-methods — List the user's saved payment methods.
