@@ -8,6 +8,78 @@ import '../providers/ride_payment_method_provider.dart';
 import '../providers/ride_payment_provider.dart';
 import '../providers/ride_provider.dart';
 
+/// Pops the timing-aware "Cancel & retry" dialog for a ride 409
+/// PAYMENT_ALREADY_INITIATED. The retry path delegates back to the
+/// notifier's [RidePaymentNotifier.abandonStaleAttemptAndRetry], which
+/// runs /payments/abandon-by-booking first; the wait path just dismisses.
+Future<void> _showRideStaleDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  required RideStalePaymentAttempt stale,
+  required String rideId,
+  required String paymentMethod,
+  required String momoPhone,
+}) async {
+  final waitHint = stale.retryAfterSeconds > 0
+      ? 'Or wait about ${stale.retryAfterSeconds}s for it to clear automatically.'
+      : 'It should clear automatically in a moment.';
+
+  final action = await showDialog<_RideStaleAction>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => AlertDialog(
+      backgroundColor: MyShopColors.surfaceWhite,
+      title: const Text(
+        'Payment in progress',
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          color: MyShopColors.textPrimary,
+        ),
+      ),
+      content: Text(
+        'A payment for this trip started ${stale.ageSeconds}s ago and is '
+        'still pending. If you missed the prompt or closed the app, '
+        'cancel it and try again now. $waitHint',
+        style: const TextStyle(
+          color: MyShopColors.textSecondary,
+          height: 1.4,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(_RideStaleAction.wait),
+          child: const Text('Wait'),
+        ),
+        ElevatedButton(
+          onPressed: () =>
+              Navigator.of(context).pop(_RideStaleAction.cancelAndRetry),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: MyShopColors.warning,
+            foregroundColor: MyShopColors.surfaceWhite,
+            elevation: 0,
+          ),
+          child: const Text('Cancel & retry'),
+        ),
+      ],
+    ),
+  );
+
+  if (!context.mounted) return;
+  final notifier = ref.read(ridePaymentNotifierProvider.notifier);
+  switch (action ?? _RideStaleAction.wait) {
+    case _RideStaleAction.cancelAndRetry:
+      await notifier.abandonStaleAttemptAndRetry(
+        rideId: rideId,
+        paymentMethod: paymentMethod,
+        momoPhone: momoPhone.isEmpty ? null : momoPhone,
+      );
+    case _RideStaleAction.wait:
+      notifier.dismissStaleAttempt();
+  }
+}
+
+enum _RideStaleAction { wait, cancelAndRetry }
+
 /// Inserted between ride completion and the receipt when the rider chose
 /// in-app payment. Drives the existing Paystack `/payments/initiate` flow
 /// against `bookingType: 'ride'`. Cash trips skip this screen entirely.
@@ -54,9 +126,22 @@ class _RidePaymentScreenState extends ConsumerState<RidePaymentScreen> {
   Widget build(BuildContext context) {
     // Auto-advance to the receipt flow once the charge settles.
     ref.listen<RidePaymentState>(ridePaymentNotifierProvider, (prev, next) {
-      if (prev?.phase == next.phase) return;
-      if (next.phase == RidePaymentPhase.settled) {
+      if (next.phase == RidePaymentPhase.settled &&
+          prev?.phase != next.phase) {
         context.go(AppRoutes.rideComplete);
+      }
+      // 409 PAYMENT_ALREADY_INITIATED — pop the timing-aware
+      // "Cancel & retry" dialog. Only fires on the *transition* into
+      // a new staleAttempt so we don't reopen on rebuilds.
+      if (next.staleAttempt != null && prev?.staleAttempt == null) {
+        _showRideStaleDialog(
+          context,
+          ref,
+          stale: next.staleAttempt!,
+          rideId: widget.rideId,
+          paymentMethod: _activeMethod().wireValue,
+          momoPhone: _phoneController.text.trim(),
+        );
       }
     });
 
@@ -114,19 +199,33 @@ class _RidePaymentScreenState extends ConsumerState<RidePaymentScreen> {
                 onSubmitOtp: () {
                   final otp = _otpController.text.trim();
                   if (otp.isEmpty) return;
-                  ref.read(ridePaymentNotifierProvider.notifier).submitOtp(otp);
+                  ref
+                      .read(ridePaymentNotifierProvider.notifier)
+                      .submitOtp(otp, rideId: widget.rideId);
                 },
                 onCancel: () async {
-                  await ref.read(ridePaymentNotifierProvider.notifier).cancel();
+                  await ref
+                      .read(ridePaymentNotifierProvider.notifier)
+                      .cancel(rideId: widget.rideId);
                   if (!context.mounted) return;
                   context.go(AppRoutes.rideComplete);
                 },
-                onRetry: () => ref
-                    .read(ridePaymentNotifierProvider.notifier)
-                    .resetForRetry(),
+                // Retry sweeps any stale charge on the server first via
+                // /payments/abandon-by-booking, then runs a fresh
+                // /initiate. Belt-and-braces against the 409 booking
+                // lock when the previous attempt died mid-OTP.
+                onRetry: () {
+                  final phone = _phoneController.text.trim();
+                  ref.read(ridePaymentNotifierProvider.notifier).initiate(
+                        rideId: widget.rideId,
+                        paymentMethod: method.wireValue,
+                        momoPhone: phone.isEmpty ? null : phone,
+                        isRetry: true,
+                      );
+                },
                 onMarkPaid: () => ref
                     .read(ridePaymentNotifierProvider.notifier)
-                    .markSettledLocally(),
+                    .markSettledLocally(rideId: widget.rideId),
               ),
             ],
           ),

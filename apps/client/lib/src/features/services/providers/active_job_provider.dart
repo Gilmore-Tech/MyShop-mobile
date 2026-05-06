@@ -408,6 +408,41 @@ final supplementResponseProvider = StateNotifierProvider.autoDispose<
 
 // ── Data Provider ─────────────────────────────────────────────────────────────
 
+/// Live artisan coordinates while a job is in flight. Mirrors
+/// [LiveDriverPosition] for rides — updated by the `job:artisan:location`
+/// socket listener (in `core/providers/socket_provider.dart`) every
+/// time the artisan's mobile heartbeats a position to the backend.
+///
+/// Null while no fix has arrived yet. Cleared by the tracking screen
+/// when it unmounts to keep stale data off subsequent jobs.
+class LiveArtisanPosition {
+  const LiveArtisanPosition({
+    required this.jobId,
+    required this.latitude,
+    required this.longitude,
+    this.updatedAt,
+  });
+
+  final String jobId;
+  final double latitude;
+  final double longitude;
+  final DateTime? updatedAt;
+}
+
+/// Holds the most recent artisan-position fix delivered over the
+/// `job:artisan:location` socket event. Consumers gate on `jobId`
+/// matching the screen they're rendering — the listener doesn't pre-
+/// filter so a single subscription covers any job the client is
+/// tracking at the moment.
+final liveArtisanPositionProvider =
+    StateProvider<LiveArtisanPosition?>((_) => null);
+
+/// The jobId the tracking screen has subscribed to via
+/// `client:track:job`. Set on mount, cleared on dispose. The socket
+/// connection bridge (in `core/providers/socket_provider.dart`)
+/// re-emits the join whenever the socket reconnects.
+final trackedJobIdProvider = StateProvider<String?>((_) => null);
+
 final activeJobProvider = AsyncNotifierProvider.autoDispose
     .family<_ActiveJobNotifier, ActiveJobData, String>(
   _ActiveJobNotifier.new,

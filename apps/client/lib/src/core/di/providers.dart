@@ -2,6 +2,7 @@ import 'package:api_client/api_client.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../features/services/data/pending_payment_store.dart';
 import '../providers/current_location_provider.dart';
 import '../services/google_places_service.dart';
 import 'force_logout_handler.dart';
@@ -66,10 +67,18 @@ final mediaServiceProvider = Provider<MediaService>((ref) {
   return MediaService(ref.watch(dioProvider));
 });
 
-/// Payment service for Flutterwave integration.
+/// Payment service for Paystack integration.
 final paymentServiceProvider = Provider<PaymentService>((ref) {
   return PaymentService(ref.watch(dioProvider));
 });
+
+/// SharedPreferences-backed store of in-flight Paystack charges, keyed
+/// on bookingId. Persisted so the OTP/USSD flow can resume across app
+/// restarts and Retry can clear stale rows even when the in-memory
+/// paymentId was lost.
+final pendingPaymentStoreProvider = Provider<PendingPaymentStore>(
+  (_) => PendingPaymentStore(),
+);
 
 /// Notification service.
 final notificationServiceProvider = Provider<NotificationService>((ref) {

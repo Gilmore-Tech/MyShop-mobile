@@ -71,9 +71,19 @@ void _connectAndListen(Ref ref, SocketService socket) {
     ref.read(socketConnectedProvider.notifier).state = connected;
     if (!connected) return;
     final rideId = ref.read(activeRideIdProvider);
-    if (rideId == null || rideId.isEmpty) return;
-    developer.log('Socket connected — joining ride room $rideId', name: 'WS');
-    socket.emit('client:track:ride', {'rideId': rideId});
+    if (rideId != null && rideId.isNotEmpty) {
+      developer.log('Socket connected — joining ride room $rideId', name: 'WS');
+      socket.emit('client:track:ride', {'rideId': rideId});
+    }
+    // Re-join the job-tracking room on reconnect so the live artisan
+    // marker keeps flowing without the screen having to re-mount. The
+    // tracking screen sets `trackedJobIdProvider` on init and clears
+    // it on dispose; this listener mirrors the rider re-track flow.
+    final jobId = ref.read(trackedJobIdProvider);
+    if (jobId != null && jobId.isNotEmpty) {
+      developer.log('Socket connected — joining job room $jobId', name: 'WS');
+      socket.emit('client:track:job', {'jobId': jobId});
+    }
   });
 
   socket.connect().then((_) {
@@ -303,6 +313,36 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('driver:location')
       ..on('driver:location', handleDriverLocation);
+
+    // ── Live artisan tracking ───────────────────────────────────────────
+    // Backend emits `job:artisan:location` every time the artisan posts a
+    // REST location heartbeat (every 4s while online). We push the fix
+    // into [liveArtisanPositionProvider] for the tracking-map widget to
+    // render. Gated on `trackedJobIdProvider` so only the screen actively
+    // showing a job receives marker updates — drops re-broadcasts for any
+    // other in-flight job the same client account might have.
+    void handleArtisanLocation(dynamic data) {
+      if (data is! Map<String, dynamic>) return;
+      final eventJobId = data['jobId'] as String?;
+      final tracked = ref.read(trackedJobIdProvider);
+      if (eventJobId == null || tracked == null || eventJobId != tracked) {
+        return;
+      }
+      final lat = (data['latitude'] ?? data['lat']) as num?;
+      final lng = (data['longitude'] ?? data['lng']) as num?;
+      if (lat == null || lng == null) return;
+      ref.read(liveArtisanPositionProvider.notifier).state =
+          LiveArtisanPosition(
+        jobId: eventJobId,
+        latitude: lat.toDouble(),
+        longitude: lng.toDouble(),
+        updatedAt: DateTime.now(),
+      );
+    }
+
+    socket
+      ..off('job:artisan:location')
+      ..on('job:artisan:location', handleArtisanLocation);
 
     // ── Job status updates ───────────────────────────────────────────────
     // The backend emits `job:status:changed` (new name per the Paystack

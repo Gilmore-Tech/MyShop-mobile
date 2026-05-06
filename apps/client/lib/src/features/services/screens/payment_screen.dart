@@ -23,7 +23,9 @@ Future<void> _promptForOtp(
 }) async {
   final otp = await showOtpEntrySheet(context, errorMessage: errorMessage);
   if (otp == null || !context.mounted) {
-    ref.read(paymentNotifierProvider.notifier).cancelOtp();
+    ref
+        .read(paymentNotifierProvider.notifier)
+        .cancelOtp(bookingId: summary.jobId);
     return;
   }
   ref.read(paymentNotifierProvider.notifier).submitOtp(
@@ -374,9 +376,10 @@ class _PaymentBody extends ConsumerWidget {
                 );
           } else if (job.phase == ActiveJobPhase.awaitingApproval &&
               paymentState.phase == PaymentPhase.awaitingSettlement) {
-            ref
-                .read(paymentNotifierProvider.notifier)
-                .markPaymentFailed('Payment failed — please try again.');
+            ref.read(paymentNotifierProvider.notifier).markPaymentFailed(
+                  'Payment failed — please try again.',
+                  bookingId: summary.jobId,
+                );
           }
         });
       },
@@ -1246,6 +1249,10 @@ class _BottomBar extends ConsumerWidget {
                           momoPhone: state.selectedMethod.requiresMomoPhone
                               ? momoPhoneCtrl.text
                               : null,
+                          // After a failure, sweep any in-flight charge on
+                          // the server before /initiate so a stale row
+                          // can't 409 us into the booking-lock dialog.
+                          isRetry: state.phase == PaymentPhase.failed,
                         ),
                 // Re-launch the checkout if the user dismissed Paystack
                 // without finishing, or if the auto-launch was blocked.

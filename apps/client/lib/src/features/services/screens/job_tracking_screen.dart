@@ -47,6 +47,7 @@ class JobTrackingScreen extends ConsumerWidget {
         data: (job) => Stack(
           children: [
             JobTrackingMap(
+              jobId: jobId,
               jobLat: job.locationLat,
               jobLng: job.locationLng,
             ),

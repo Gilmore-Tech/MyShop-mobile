@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:api_client/api_client.dart';
 
 import '../../../core/di/providers.dart';
+import '../data/pending_payment_store.dart';
 
 // ── Settlement polling ────────────────────────────────────────────────────────
 // Webhooks + sockets are the primary driver, but they're unreliable in real
@@ -496,11 +497,14 @@ class PaymentState {
 // ── Notifier ──────────────────────────────────────────────────────────────────
 
 class PaymentNotifier extends StateNotifier<PaymentState> {
-  PaymentNotifier(this._paymentService, this._jobService)
+  PaymentNotifier(this._paymentService, this._jobService, this._pendingStore)
       : super(const PaymentState());
+
+  static const _kBookingType = 'artisan_job';
 
   final PaymentService _paymentService;
   final JobService _jobService;
+  final PendingPaymentStore _pendingStore;
 
   /// Periodic poll on /payments/:id/status while we're in awaitingSettlement.
   /// Belt-and-braces for missed socket events. Always cleared on terminal
@@ -638,14 +642,63 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   ///   - Cash: skips the payment API entirely (Paystack can't process
   ///     cash). The artisan confirms receipt on their side via the overlay
   ///     Yes/No; PATCH /jobs/:id/confirm then flips the job to completed.
+  /// Belt-and-braces clear of any pending Paystack charge for this
+  /// booking. Always returns; logs but never throws so a network blip
+  /// can't block a fresh /initiate. Called before a retry /initiate
+  /// (the user just tapped "Retry payment" or "Cancel & retry") and
+  /// after we read a persisted in-flight record on resume.
+  Future<void> _bestEffortAbandonByBooking({
+    required String bookingType,
+    required String bookingId,
+  }) async {
+    try {
+      final res = await _paymentService.abandonByBooking(
+        bookingType: bookingType,
+        bookingId: bookingId,
+      );
+      developer.log(
+        'abandonByBooking($bookingType:$bookingId) → $res',
+        name: 'Payment',
+      );
+    } on ApiException catch (e) {
+      developer.log(
+        'abandonByBooking failed: ${e.errorCode} — ${e.message}',
+        name: 'Payment',
+        level: 700,
+      );
+    } catch (e) {
+      developer.log('abandonByBooking crashed: $e',
+          name: 'Payment', level: 700);
+    }
+    await _pendingStore.clear(
+      bookingType: bookingType,
+      bookingId: bookingId,
+    );
+  }
+
   Future<void> confirmPayment({
     required String jobId,
     required PaymentSummary summary,
     String? momoPhone,
     String? cardToken,
+    bool isRetry = false,
   }) async {
     if (state.isProcessing) return;
     final method = state.selectedMethod;
+
+    // ── Retry safety: clear any in-flight charge on the server first.
+    // /payments/abandon-by-booking is idempotent; it returns
+    // {status: 'no_pending_payment'} when there's nothing to clear, so
+    // calling it unconditionally on retry is safe and avoids the 409
+    // booking lock when the previous attempt was killed mid-OTP and we
+    // lost the paymentId. We don't run this on the very first attempt to
+    // avoid an extra round-trip in the happy path.
+    if (isRetry) {
+      await _bestEffortAbandonByBooking(
+        bookingType: _kBookingType,
+        bookingId: jobId,
+      );
+    }
 
     // ── Cash: no backend charge ───────────────────────────────────────
     if (method.isCash) {
@@ -739,6 +792,18 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       final chargeStatus = _findChargeStatus(result);
       final displayText = _findDisplayText(result);
 
+      // Persist the paymentId as soon as we have one — survives an app
+      // kill mid-flow so Retry on next launch can hit /abandon-by-booking
+      // even though we lost the in-memory state. Cleared on terminal
+      // success/failure below.
+      if (paymentId != null) {
+        await _pendingStore.save(PendingPaymentRecord(
+          paymentId: paymentId,
+          bookingType: _kBookingType,
+          bookingId: jobId,
+        ));
+      }
+
       // ── send_otp → pop the OTP sheet ────────────────────────────────
       // The user got an SMS code; we forward it via /payments/submit-otp,
       // which expects the Paystack reference (NOT the local paymentId).
@@ -779,6 +844,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
 
       // ── failed / abandoned → real failure; surface Paystack's text
       if (chargeStatus == 'failed' || chargeStatus == 'abandoned') {
+        await _pendingStore.clear(
+          bookingType: _kBookingType,
+          bookingId: jobId,
+        );
         state = state.copyWith(
           phase: PaymentPhase.failed,
           errorMessage:
@@ -796,6 +865,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
           'Unsupported Paystack next-step: $chargeStatus',
           name: 'Payment',
           level: 1000,
+        );
+        await _pendingStore.clear(
+          bookingType: _kBookingType,
+          bookingId: jobId,
         );
         state = state.copyWith(
           phase: PaymentPhase.failed,
@@ -848,6 +921,15 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       if (e.errorCode == 'PAYMENT_ALREADY_INITIATED') {
         final stalePaymentId = e.details?['paymentId'] as String?;
         if (stalePaymentId != null) {
+          // Persist the stale paymentId so a second restart still has
+          // something to feed into /payments/:id/abandon — and so the
+          // /abandon-by-booking belt-and-braces on the next retry has a
+          // record-of-truth to align with.
+          await _pendingStore.save(PendingPaymentRecord(
+            paymentId: stalePaymentId,
+            bookingType: _kBookingType,
+            bookingId: jobId,
+          ));
           state = state.copyWith(
             phase: PaymentPhase.idle,
             clearError: true,
@@ -879,43 +961,26 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     }
   }
 
-  /// Cancels the in-flight charge (POST /payments/:id/abandon) and then
-  /// re-runs [confirmPayment] with the same args. Wired to the
-  /// "Cancel & retry" action on the stale-payment dialog. The abandon
-  /// is best-effort — even if it fails we still proceed to the retry,
-  /// since the backend's stale-payment cron will eventually clear the
-  /// lock and the next /initiate will go through.
+  /// Cancels the in-flight charge and re-runs [confirmPayment] with the
+  /// same args. Wired to "Cancel & retry" on the stale-payment dialog.
+  ///
+  /// We pass [isRetry: true] so [confirmPayment] runs its own
+  /// /payments/abandon-by-booking sweep first — that handles the case
+  /// where the stale paymentId itself is stale (e.g. backend already
+  /// reaped it via the cron). The dialog dismisses either way.
   Future<void> abandonStaleAttemptAndRetry({
     required String jobId,
     required PaymentSummary summary,
     String? momoPhone,
     String? cardToken,
   }) async {
-    final stale = state.staleAttempt;
-    if (stale != null) {
-      try {
-        await _paymentService.abandonPayment(stale.paymentId);
-        developer.log(
-          'Abandoned stale payment ${stale.paymentId}',
-          name: 'Payment',
-        );
-      } on ApiException catch (e) {
-        developer.log(
-          'abandonPayment failed: ${e.errorCode} — ${e.message}',
-          name: 'Payment',
-          level: 800,
-        );
-      } catch (e) {
-        developer.log('abandonPayment crashed: $e',
-            name: 'Payment', level: 800);
-      }
-    }
     state = state.copyWith(clearStaleAttempt: true, clearError: true);
     await confirmPayment(
       jobId: jobId,
       summary: summary,
       momoPhone: momoPhone,
       cardToken: cardToken,
+      isRetry: true,
     );
   }
 
@@ -976,6 +1041,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       return;
     }
     _stopSettlementPolling();
+    await _pendingStore.clear(
+      bookingType: _kBookingType,
+      bookingId: jobId,
+    );
     state = state.copyWith(
       phase: PaymentPhase.settled,
       confirmation: PaymentConfirmation(
@@ -1041,6 +1110,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         case 'failed':
         case 'abandoned':
           _stopSettlementPolling();
+          await _pendingStore.clear(
+            bookingType: _kBookingType,
+            bookingId: jobId,
+          );
           state = state.copyWith(
             phase: PaymentPhase.failed,
             errorMessage:
@@ -1112,7 +1185,13 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   /// `artisan_marked_complete`), unlocking the booking for an immediate
   /// fresh /initiate. Best-effort — the local state resets either way
   /// so the sheet always closes.
-  Future<void> cancelOtp() async {
+  ///
+  /// Pass [bookingId] when the caller has it (currently the screen does
+  /// — the cancel handler is owned by the payment screen, which knows
+  /// the jobId). When provided, we also clear the persisted record and
+  /// fall back to /payments/abandon-by-booking when the in-memory
+  /// paymentId is missing.
+  Future<void> cancelOtp({String? bookingId}) async {
     _stopSettlementPolling();
     final pid = state.paymentId;
     if (pid != null) {
@@ -1129,6 +1208,19 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         developer.log('abandonPayment on OTP cancel crashed: $e',
             name: 'Payment', level: 800);
       }
+    } else if (bookingId != null) {
+      // No in-memory paymentId (e.g. session resumed from cold start).
+      // Fall back to the booking-keyed sweep so the lock still clears.
+      await _bestEffortAbandonByBooking(
+        bookingType: _kBookingType,
+        bookingId: bookingId,
+      );
+    }
+    if (bookingId != null) {
+      await _pendingStore.clear(
+        bookingType: _kBookingType,
+        bookingId: bookingId,
+      );
     }
     state = state.copyWith(phase: PaymentPhase.idle, clearError: true);
   }
@@ -1136,8 +1228,20 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   /// Called when the socket reports the job bounced back to
   /// `artisan_marked_complete` — Paystack charge failed. The user can tap
   /// "Retry payment" which resets state and re-enters the flow.
-  void markPaymentFailed(String message) {
+  ///
+  /// Also drops the persisted paymentId for [bookingId] (when provided)
+  /// so the next /initiate doesn't try to abandon a payment that the
+  /// backend has already torn down.
+  void markPaymentFailed(String message, {String? bookingId}) {
     _stopSettlementPolling();
+    if (bookingId != null) {
+      // Fire-and-forget — the persisted record is best-effort metadata,
+      // not a blocker on the failed UI flip.
+      unawaited(_pendingStore.clear(
+        bookingType: _kBookingType,
+        bookingId: bookingId,
+      ));
+    }
     state = state.copyWith(
       phase: PaymentPhase.failed,
       errorMessage: message,
@@ -1180,6 +1284,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   void markPaymentSettledLocally({required PaymentSummary summary}) {
     if (state.phase == PaymentPhase.settled) return;
     _stopSettlementPolling();
+    unawaited(_pendingStore.clear(
+      bookingType: _kBookingType,
+      bookingId: summary.jobId,
+    ));
     state = state.copyWith(
       phase: PaymentPhase.settled,
       confirmation: PaymentConfirmation(
@@ -1224,6 +1332,7 @@ final paymentNotifierProvider =
   (ref) => PaymentNotifier(
     ref.watch(paymentServiceProvider),
     ref.watch(jobServiceProvider),
+    ref.watch(pendingPaymentStoreProvider),
   ),
 );
 

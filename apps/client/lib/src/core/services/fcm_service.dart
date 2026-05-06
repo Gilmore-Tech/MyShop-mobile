@@ -217,12 +217,14 @@ class FcmService {
       // the user a heads-up while they're in another tab. The background
       // handler does the opposite (skips if `notification` is present) to
       // avoid double-rendering with FCM's auto-display.
-      final rawType = message.data[NotificationPayload.keyType] as String?;
-      final type = NotificationPayload.normaliseType(rawType ?? '');
-      if (type == NotificationPayload.typeNewMessage) {
-        debugPrint('[FCM] foreground new_message — suppressing OS banner');
-        return;
-      }
+      //
+      // Previously we suppressed `new_message` in foreground because the
+      // open chat screen already surfaces the message via the chat socket.
+      // That made notifications silently disappear when the user was on
+      // any *other* in-app screen, and there was no global feedback that
+      // a new message had arrived. We now render every time and rely on
+      // the de-dupe id (per booking) to replace older banners rather than
+      // stack them.
       await _renderFromRemote(message);
     });
 

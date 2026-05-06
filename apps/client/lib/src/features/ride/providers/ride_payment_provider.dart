@@ -5,6 +5,7 @@ import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
+import '../../services/data/pending_payment_store.dart';
 
 // ── Settlement polling ────────────────────────────────────────────────────────
 // Webhooks + sockets are the primary driver, but they're unreliable in real
@@ -33,6 +34,22 @@ enum RidePaymentPhase {
   failed,
 }
 
+/// Surfaced when /payments/initiate returns 409 PAYMENT_ALREADY_INITIATED
+/// for a ride. Carries the metadata the screen needs to either let the
+/// user wait out [retryAfterSeconds] or trigger a "Cancel & retry" that
+/// invokes /payments/abandon-by-booking before re-running /initiate.
+class RideStalePaymentAttempt {
+  final String paymentId;
+  final int ageSeconds;
+  final int retryAfterSeconds;
+
+  const RideStalePaymentAttempt({
+    required this.paymentId,
+    required this.ageSeconds,
+    required this.retryAfterSeconds,
+  });
+}
+
 class RidePaymentState {
   final RidePaymentPhase phase;
   final String? errorMessage;
@@ -40,6 +57,7 @@ class RidePaymentState {
   final String? paymentId;
   final String? paystackReference;
   final String? displayText;
+  final RideStalePaymentAttempt? staleAttempt;
 
   const RidePaymentState({
     this.phase = RidePaymentPhase.idle,
@@ -48,6 +66,7 @@ class RidePaymentState {
     this.paymentId,
     this.paystackReference,
     this.displayText,
+    this.staleAttempt,
   });
 
   bool get isProcessing => phase == RidePaymentPhase.processing;
@@ -64,6 +83,8 @@ class RidePaymentState {
     String? paystackReference,
     String? displayText,
     bool clearDisplayText = false,
+    RideStalePaymentAttempt? staleAttempt,
+    bool clearStaleAttempt = false,
   }) =>
       RidePaymentState(
         phase: phase ?? this.phase,
@@ -75,6 +96,8 @@ class RidePaymentState {
         paystackReference: paystackReference ?? this.paystackReference,
         displayText:
             clearDisplayText ? null : (displayText ?? this.displayText),
+        staleAttempt:
+            clearStaleAttempt ? null : (staleAttempt ?? this.staleAttempt),
       );
 }
 
@@ -87,28 +110,69 @@ class RidePaymentState {
 /// driver's PATCH /rides/:id/status; the rider only needs the charge to
 /// settle so escrow holds.
 class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
-  RidePaymentNotifier(this._paymentService) : super(const RidePaymentState());
+  RidePaymentNotifier(this._paymentService, this._pendingStore)
+      : super(const RidePaymentState());
+
+  static const _kBookingType = 'ride';
 
   final PaymentService _paymentService;
+  final PendingPaymentStore _pendingStore;
 
   Timer? _pollTimer;
   DateTime? _pollStartedAt;
 
+  /// Belt-and-braces /payments/abandon-by-booking. Idempotent; logs but
+  /// never throws so a network blip can't block /initiate. Run before
+  /// retry-/initiate so a stale processing row from a killed prior
+  /// attempt can't 409 the fresh charge.
+  Future<void> _bestEffortAbandonByBooking(String rideId) async {
+    try {
+      final res = await _paymentService.abandonByBooking(
+        bookingType: _kBookingType,
+        bookingId: rideId,
+      );
+      developer.log('abandonByBooking(ride=$rideId) → $res',
+          name: 'RidePayment');
+    } on ApiException catch (e) {
+      developer.log(
+        'ride abandonByBooking failed: ${e.errorCode} — ${e.message}',
+        name: 'RidePayment',
+        level: 700,
+      );
+    } catch (e) {
+      developer.log('ride abandonByBooking crashed: $e',
+          name: 'RidePayment', level: 700);
+    }
+    await _pendingStore.clear(
+      bookingType: _kBookingType,
+      bookingId: rideId,
+    );
+  }
+
   /// Starts the in-app charge for [rideId]. [paymentMethod] is the wire
   /// value (`momo_mtn` etc.); MoMo methods require [momoPhone].
+  ///
+  /// When [isRetry] is true (the user just tapped "Retry payment" or
+  /// "Cancel & retry") we sweep any stale charge from a previous attempt
+  /// via /payments/abandon-by-booking before /initiate to avoid the
+  /// 409 booking-lock loop.
   Future<void> initiate({
     required String rideId,
     required String paymentMethod,
     String? momoPhone,
+    bool isRetry = false,
   }) async {
     if (state.isProcessing) return;
+    if (isRetry) {
+      await _bestEffortAbandonByBooking(rideId);
+    }
     state = state.copyWith(
       phase: RidePaymentPhase.processing,
       clearError: true,
     );
     try {
       final result = await _paymentService.initiatePayment(
-        bookingType: 'ride',
+        bookingType: _kBookingType,
         bookingId: rideId,
         paymentMethod: paymentMethod,
         momoPhone: _isMomo(paymentMethod) ? momoPhone : null,
@@ -120,6 +184,18 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
       final paystackReference = _findPaystackReference(result);
       final chargeStatus = _findChargeStatus(result);
       final displayText = _findDisplayText(result);
+
+      // Persist the in-flight charge as soon as we know its id — survives
+      // an app kill mid-OTP/-USSD so a Retry on the next launch can
+      // sweep it via /payments/abandon-by-booking. Cleared on terminal
+      // success/failure below.
+      if (paymentId != null) {
+        await _pendingStore.save(PendingPaymentRecord(
+          paymentId: paymentId,
+          bookingType: _kBookingType,
+          bookingId: rideId,
+        ));
+      }
 
       // ── send_otp → pop the OTP sheet ────────────────────────────────
       if (chargeStatus == 'send_otp') {
@@ -141,6 +217,10 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
 
       // ── success → charge settled inline; advance the receipt flow ───
       if (chargeStatus == 'success') {
+        await _pendingStore.clear(
+          bookingType: _kBookingType,
+          bookingId: rideId,
+        );
         state = state.copyWith(
           phase: RidePaymentPhase.settled,
           paymentId: paymentId,
@@ -151,6 +231,10 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
 
       // ── failed / abandoned → real failure
       if (chargeStatus == 'failed' || chargeStatus == 'abandoned') {
+        await _pendingStore.clear(
+          bookingType: _kBookingType,
+          bookingId: rideId,
+        );
         state = state.copyWith(
           phase: RidePaymentPhase.failed,
           errorMessage:
@@ -177,6 +261,34 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
         name: 'RidePayment',
         level: 1000,
       );
+
+      // 409 PAYMENT_ALREADY_INITIATED — the previous charge for this
+      // ride is still in flight (kicked the OTP/USSD prompt but hasn't
+      // settled). Stash a [RideStalePaymentAttempt] so the screen can
+      // pop a "Cancel & retry" dialog with the timing context the
+      // backend supplies.
+      if (e.errorCode == 'PAYMENT_ALREADY_INITIATED') {
+        final stalePaymentId = e.details?['paymentId'] as String?;
+        if (stalePaymentId != null) {
+          await _pendingStore.save(PendingPaymentRecord(
+            paymentId: stalePaymentId,
+            bookingType: _kBookingType,
+            bookingId: rideId,
+          ));
+          state = state.copyWith(
+            phase: RidePaymentPhase.idle,
+            clearError: true,
+            staleAttempt: RideStalePaymentAttempt(
+              paymentId: stalePaymentId,
+              ageSeconds: (e.details?['ageSeconds'] as num?)?.toInt() ?? 0,
+              retryAfterSeconds:
+                  (e.details?['retryAfterSeconds'] as num?)?.toInt() ?? 0,
+            ),
+          );
+          return;
+        }
+      }
+
       state = state.copyWith(
         phase: RidePaymentPhase.failed,
         errorMessage: _friendlyError(e),
@@ -191,8 +303,34 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
     }
   }
 
+  /// "Cancel & retry" handler for the ride 409 dialog. Re-runs
+  /// [initiate] with `isRetry: true` so the abandon-by-booking sweep
+  /// runs first.
+  Future<void> abandonStaleAttemptAndRetry({
+    required String rideId,
+    required String paymentMethod,
+    String? momoPhone,
+  }) async {
+    state = state.copyWith(clearStaleAttempt: true, clearError: true);
+    await initiate(
+      rideId: rideId,
+      paymentMethod: paymentMethod,
+      momoPhone: momoPhone,
+      isRetry: true,
+    );
+  }
+
+  /// Dismisses the stale-payment dialog without retrying. The user can
+  /// tap "Pay now" again after the backend cron clears the lock.
+  void dismissStaleAttempt() {
+    state = state.copyWith(clearStaleAttempt: true);
+  }
+
   /// Submit the OTP that came in via SMS for a `send_otp` flow.
-  Future<void> submitOtp(String otp) async {
+  ///
+  /// Pass [rideId] when known so terminal failures can clear the
+  /// persisted record. Currently the screen always has it.
+  Future<void> submitOtp(String otp, {String? rideId}) async {
     final reference = state.paystackReference;
     if (reference == null) {
       state = state.copyWith(
@@ -220,11 +358,23 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
           return;
         case 'success':
           _stopPolling();
+          if (rideId != null) {
+            await _pendingStore.clear(
+              bookingType: _kBookingType,
+              bookingId: rideId,
+            );
+          }
           state = state.copyWith(phase: RidePaymentPhase.settled);
           return;
         case 'failed':
         case 'abandoned':
           _stopPolling();
+          if (rideId != null) {
+            await _pendingStore.clear(
+              bookingType: _kBookingType,
+              bookingId: rideId,
+            );
+          }
           state = state.copyWith(
             phase: RidePaymentPhase.failed,
             errorMessage:
@@ -272,13 +422,25 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
   /// Cancel the in-flight charge and reset to idle. Best-effort — the
   /// backend's stale-payment cron will clear the lock if the abandon call
   /// fails, so the rider can always retry later.
-  Future<void> cancel() async {
+  ///
+  /// Pass [rideId] so we can fall back to /payments/abandon-by-booking
+  /// when the in-memory paymentId is missing (resumed from a cold start)
+  /// and so we can clear the persisted record.
+  Future<void> cancel({String? rideId}) async {
     _stopPolling();
     final pid = state.paymentId;
     if (pid != null) {
       try {
         await _paymentService.abandonPayment(pid);
       } catch (_) {/* best-effort */}
+    } else if (rideId != null) {
+      await _bestEffortAbandonByBooking(rideId);
+    }
+    if (rideId != null) {
+      await _pendingStore.clear(
+        bookingType: _kBookingType,
+        bookingId: rideId,
+      );
     }
     state = const RidePaymentState();
   }
@@ -288,9 +450,15 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
   /// escape hatch the artisan-side payment notifier provides; the receipt
   /// they see is real (Paystack moved the money), the backend's record
   /// will catch up via the webhook eventually.
-  void markSettledLocally() {
+  void markSettledLocally({String? rideId}) {
     if (state.isSettled) return;
     _stopPolling();
+    if (rideId != null) {
+      unawaited(_pendingStore.clear(
+        bookingType: _kBookingType,
+        bookingId: rideId,
+      ));
+    }
     state = state.copyWith(phase: RidePaymentPhase.settled);
   }
 
@@ -366,6 +534,9 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
     switch (e.errorCode) {
       case 'PAYMENT_ALREADY_SETTLED':
         return 'This trip has already been paid for.';
+      // 409 PAYMENT_ALREADY_INITIATED falls through to the same friendly
+      // string when the response was missing a paymentId; the typical
+      // path is handled above with a [RideStalePaymentAttempt].
       case 'PAYMENT_ALREADY_INITIATED':
         return 'A payment is already in progress for this trip. Check '
             'your phone for an OTP or USSD prompt — if nothing arrives '
@@ -540,5 +711,8 @@ String? _findDisplayText(Object? node) {
 
 final ridePaymentNotifierProvider =
     StateNotifierProvider.autoDispose<RidePaymentNotifier, RidePaymentState>(
-  (ref) => RidePaymentNotifier(ref.watch(paymentServiceProvider)),
+  (ref) => RidePaymentNotifier(
+    ref.watch(paymentServiceProvider),
+    ref.watch(pendingPaymentStoreProvider),
+  ),
 );
