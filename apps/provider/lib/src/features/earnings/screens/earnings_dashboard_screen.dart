@@ -5,11 +5,9 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/current_user_provider.dart';
 import '../../profile/providers/verification_provider.dart';
-import '../data/earnings_service.dart';
 import '../providers/earnings_providers.dart';
 import '../providers/ratings_provider.dart';
 import '../widgets/commission_card.dart';
-import '../widgets/payout_request_flow.dart';
 import '../widgets/payouts_list.dart';
 import '../widgets/weekly_performance_card.dart';
 
@@ -36,6 +34,7 @@ class EarningsDashboardScreen extends ConsumerWidget {
     );
     final summaryAsync = ref.watch(earningsSummaryProvider(summaryKey));
     final reportAsync = ref.watch(earningsReportProvider(reportQuery));
+    final todayCardAsync = ref.watch(todayCardProvider(role));
 
     final photoState = ref.watch(localProfilePhotoProvider);
     final backendPhotoUrl = user?.profilePhotoUrl;
@@ -47,18 +46,32 @@ class EarningsDashboardScreen extends ConsumerWidget {
 
     final summary = summaryAsync.valueOrNull;
     final report = reportAsync.valueOrNull;
+    final todayCard = todayCardAsync.valueOrNull;
 
-    final availableBalance = summary?.availableBalancePesewas ?? 0;
-    final todayAvailable = summary?.todayAvailableBalancePesewas ?? 0;
-    final weeklyAvailable = summary?.weeklyAvailableBalancePesewas ?? 0;
+    // Available balance mirrors the homepage "Earnings" headline so both
+    // surfaces report the same Paystack-settled net for the active role.
+    // Falls back to the summary endpoint while the today-card is still
+    // loading so the balance card never flashes 0 unnecessarily.
+    final availableBalance = todayCard?.netEarningsPesewas ??
+        summary?.availableBalancePesewas ??
+        0;
+    final todayAvailable = todayCard?.netEarningsPesewas ??
+        summary?.todayAvailableBalancePesewas ??
+        0;
+    final weeklyAvailable = report?.netEarningsPesewas ??
+        summary?.weeklyAvailableBalancePesewas ??
+        0;
     final tripsCompleted = report?.bookingsCompleted ?? 0;
     final isVerified = user?.verificationStatus == 'approved';
 
     // Surface a clear failure banner instead of letting "API down" look
     // identical to "driver hasn't earned yet" — the dashboard's all-zeros
-    // state was masking real production failures.
-    final loadError = summaryAsync.hasError;
-    final isLoading = summaryAsync.isLoading && summary == null;
+    // state was masking real production failures. Today-card now drives
+    // the headline number, so its load state gates the banner alongside
+    // the summary's.
+    final loadError = todayCardAsync.hasError && summaryAsync.hasError;
+    final isLoading = (todayCardAsync.isLoading && todayCard == null) &&
+        (summaryAsync.isLoading && summary == null);
 
     // Branch on AsyncValue state explicitly so a real failure (auth lapse,
     // 5xx, parse error) reads as "Couldn't load ratings" instead of being
@@ -83,8 +96,12 @@ class EarningsDashboardScreen extends ConsumerWidget {
           onRefresh: () async {
             ref.invalidate(earningsSummaryProvider);
             ref.invalidate(earningsReportProvider);
+            ref.invalidate(todayCardProvider);
             ref.invalidate(payoutsProvider);
-            await ref.read(earningsSummaryProvider(summaryKey).future);
+            await Future.wait([
+              ref.read(earningsSummaryProvider(summaryKey).future),
+              ref.read(todayCardProvider(role).future),
+            ]);
           },
           child: ListView(
             padding: EdgeInsets.zero,
@@ -166,8 +183,10 @@ class EarningsDashboardScreen extends ConsumerWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
                   child: _EarningsErrorBanner(
-                    onRetry: () =>
-                        ref.invalidate(earningsSummaryProvider(summaryKey)),
+                    onRetry: () {
+                      ref.invalidate(earningsSummaryProvider(summaryKey));
+                      ref.invalidate(todayCardProvider(role));
+                    },
                   ),
                 )
               else if (isLoading)
@@ -419,44 +438,22 @@ class _EarningsLoadingBanner extends StatelessWidget {
 
 // ─── Balance card ───────────────────────────────────────────────────────────
 
-class _BalanceCard extends ConsumerStatefulWidget {
+class _BalanceCard extends StatelessWidget {
   const _BalanceCard({
     required this.availablePesewas,
     required this.todayPesewas,
     required this.weekPesewas,
   });
 
-  /// Authoritative withdrawable balance from the backend (escrow-released,
-  /// not yet paid out). Drives the headline number and the payout-button
-  /// gate so the UI matches what the payout endpoint will accept.
   final int availablePesewas;
   final int todayPesewas;
   final int weekPesewas;
 
   @override
-  ConsumerState<_BalanceCard> createState() => _BalanceCardState();
-}
-
-class _BalanceCardState extends ConsumerState<_BalanceCard> {
-  bool _isRequesting = false;
-
-  Future<void> _onPayoutTap() async {
-    if (_isRequesting) return;
-    setState(() => _isRequesting = true);
-    try {
-      await requestProviderPayout(context, ref);
-    } finally {
-      if (mounted) setState(() => _isRequesting = false);
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final totalDisplay = _fmtGhs(widget.availablePesewas);
-    final todayDisplay = _fmtGhs(widget.todayPesewas);
-    final weekDisplay = _fmtGhs(widget.weekPesewas);
-    final belowThreshold = widget.availablePesewas < kMinPayoutPesewas;
-    final canRequest = !_isRequesting && !belowThreshold;
+    final totalDisplay = _fmtGhs(availablePesewas);
+    final todayDisplay = _fmtGhs(todayPesewas);
+    final weekDisplay = _fmtGhs(weekPesewas);
 
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.lg),
@@ -508,49 +505,6 @@ class _BalanceCardState extends ConsumerState<_BalanceCard> {
               child:
                   _BalanceMiniStat(label: 'WEEKLY', value: 'GHS $weekDisplay')),
         ]),
-        const SizedBox(height: MyShopSpacing.md),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: canRequest ? _onPayoutTap : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: MyShopColors.surfaceWhite,
-              foregroundColor: MyShopColors.textPrimary,
-              disabledBackgroundColor: Colors.white24,
-              disabledForegroundColor: Colors.white70,
-              minimumSize: const Size(0, 48),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              textStyle: const TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700),
-            ),
-            child: _isRequesting
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                          MyShopColors.textPrimary),
-                    ),
-                  )
-                : const Text('Request Instant MoMo Payout'),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Center(
-          child: Text(
-            belowThreshold
-                ? 'Earn at least GHS ${_fmtGhs(kMinPayoutPesewas)} to request a payout'
-                : '*Instant payouts usually arrive in 5 minutes via Flutterwave',
-            style: MyShopTypography.caption.copyWith(
-                fontSize: 10,
-                color: Colors.white54,
-                fontStyle: FontStyle.italic),
-          ),
-        ),
       ]),
     );
   }

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../auth/providers/current_user_provider.dart';
 import '../../trips/widgets/date_range_picker_modal.dart';
+import '../data/earnings_report_pdf.dart';
 import '../providers/earnings_providers.dart';
 import '../widgets/earnings_line_chart.dart';
 import '../widgets/weekly_performance_chart.dart';
@@ -31,6 +34,7 @@ class _EarningsReportsScreenState extends ConsumerState<EarningsReportsScreen> {
   DateTime? _rangeStart;
   DateTime? _rangeEnd;
   EarningsPeriod _preset = EarningsPeriod.week;
+  bool _isExporting = false;
 
   bool get _isCustomRange => _rangeStart != null && _rangeEnd != null;
 
@@ -90,11 +94,60 @@ class _EarningsReportsScreenState extends ConsumerState<EarningsReportsScreen> {
     return EarningsReportQuery.preset(role: role, period: _preset);
   }
 
+  /// Filename slug like `myshop-earnings-driver-2026-04-19.pdf` so multiple
+  /// exports don't collide on the user's device and the role+date is
+  /// recoverable from the filename alone.
+  String _exportFilename(EarningsRole role) {
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    return 'myshop-earnings-${role.wire}-$today.pdf';
+  }
+
+  Future<void> _exportPdf({
+    required EarningsReport report,
+    required EarningsRole role,
+  }) async {
+    if (_isExporting) return;
+    setState(() => _isExporting = true);
+    try {
+      final user = ref.read(currentUserProvider);
+      final bytes = await EarningsReportPdf.build(
+        report: report,
+        role: role,
+        dateLabel: _dateLabel,
+        providerName: user?.displayName,
+        providerPhone: user?.phone,
+      );
+      if (!mounted) return;
+      await Printing.sharePdf(
+        bytes: bytes,
+        filename: _exportFilename(role),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Couldn't export report: $e"),
+          backgroundColor: MyShopColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final role = ref.watch(activeEarningsRoleProvider);
     final query = _buildQuery(role);
     final reportAsync = ref.watch(earningsReportProvider(query));
+
+    // Disable export until the report has actually loaded — sharing a PDF
+    // built from null/loading state would just send an empty document.
+    final report = reportAsync.valueOrNull;
+    final canExport = report != null && !_isExporting;
+    final onExportTap = canExport
+        ? () => _exportPdf(report: report, role: role)
+        : null;
 
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
@@ -117,9 +170,25 @@ class _EarningsReportsScreenState extends ConsumerState<EarningsReportsScreen> {
           Padding(
             padding: const EdgeInsets.only(right: MyShopSpacing.md),
             child: IconButton(
-              icon: const Icon(Icons.file_download_outlined,
-                  size: 22, color: MyShopColors.textPrimary),
-              onPressed: () {},
+              tooltip: 'Export PDF',
+              icon: _isExporting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                            MyShopColors.textPrimary),
+                      ),
+                    )
+                  : Icon(
+                      Icons.file_download_outlined,
+                      size: 22,
+                      color: canExport
+                          ? MyShopColors.textPrimary
+                          : MyShopColors.textSecondary,
+                    ),
+              onPressed: onExportTap,
             ),
           ),
         ],
@@ -215,12 +284,25 @@ class _EarningsReportsScreenState extends ConsumerState<EarningsReportsScreen> {
 
           // ── Export CTA ──
           ElevatedButton.icon(
-            onPressed: () {},
-            icon: const Icon(Icons.file_download_outlined, size: 16),
-            label: const Text('Export PDF Report'),
+            onPressed: onExportTap,
+            icon: _isExporting
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                          MyShopColors.textOnPrimary),
+                    ),
+                  )
+                : const Icon(Icons.file_download_outlined, size: 16),
+            label: Text(_isExporting ? 'Preparing PDF…' : 'Export PDF Report'),
             style: ElevatedButton.styleFrom(
               backgroundColor: MyShopColors.darkSlate,
               foregroundColor: MyShopColors.textOnPrimary,
+              disabledBackgroundColor:
+                  MyShopColors.darkSlate.withValues(alpha: 0.4),
+              disabledForegroundColor: MyShopColors.textOnPrimary,
               minimumSize: const Size(double.infinity, 52),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),

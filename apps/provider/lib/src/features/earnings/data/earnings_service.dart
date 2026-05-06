@@ -1,16 +1,8 @@
 import 'dart:async';
 import 'dart:developer' as developer;
-import 'dart:math';
 
 import 'package:dio/dio.dart';
 import 'package:shared_models/shared_models.dart';
-
-/// Minimum available balance (pesewas) the backend will allow a payout for.
-///
-/// Mirrors `payout.service.ts` `minPayoutPesewas` (default 1000p / GHS 10).
-/// Backend remains authoritative; this is only used to pre-disable the
-/// payout button so users don't tap into a guaranteed 400.
-const int kMinPayoutPesewas = 1000;
 
 /// Hard cap on every earnings GET. Without this the screen sits on a
 /// full-screen spinner for the global Dio timeout (60s) when the backend
@@ -20,14 +12,13 @@ const Duration _kEarningsRequestTimeout = Duration(seconds: 15);
 
 /// Service for fetching provider earnings + payouts from the backend.
 ///
-/// Wraps the three new earnings endpoints:
+/// Wraps the three earnings endpoints:
 ///   - `GET /payments/earnings/today-card?role=…`
 ///   - `GET /payments/earnings/summary?period=…&role=…`
 ///   - `GET /payments/earnings/report?{period|from+to}&granularity=…&role=…`
 ///
-/// Plus the role-agnostic payouts endpoints:
+/// Plus the role-agnostic payouts list endpoint:
 ///   - `GET /payments/payouts`
-///   - `POST /payments/payouts/request`
 ///
 /// All money values are int pesewas (100 pesewas = ₵1).
 class EarningsService {
@@ -95,49 +86,8 @@ class EarningsService {
   }
 
   // ────────────────────────────────────────────────────────────────────────
-  // Payouts (role-agnostic for now — backend ticket pending for dual-role)
+  // Payouts list (history view only — request flow removed)
   // ────────────────────────────────────────────────────────────────────────
-
-  /// Request an instant MoMo payout for the provider's full available
-  /// balance.
-  ///
-  /// Backend (`POST /payments/payouts/request`) constraints:
-  ///   - `method` must equal the provider's stored `payoutMethod` (the user
-  ///     updates that via `PUT /users/me/{driver|artisan}` first).
-  ///   - `amountPesewas` is rejected (`PARTIAL_PAYOUT_NOT_SUPPORTED`); always
-  ///     omit and let the backend disburse the full escrowed balance.
-  ///   - `Idempotency-Key` is required so a tap that retries (e.g. flaky
-  ///     network) doesn't double-disburse. Cached for 24h server-side.
-  Future<PayoutRequestResult> requestPayout({
-    required String method,
-    String? idempotencyKey,
-  }) async {
-    final key = idempotencyKey ?? _generateIdempotencyKey();
-    try {
-      final response = await _dio.post<Map<String, dynamic>>(
-        '/payments/payouts/request',
-        data: {'method': method},
-        options: Options(headers: {'Idempotency-Key': key}),
-      );
-      final body = response.data ?? const <String, dynamic>{};
-      if (body['success'] == true && body['data'] is Map<String, dynamic>) {
-        return PayoutRequestResult._fromBackend(
-          body['data'] as Map<String, dynamic>,
-        );
-      }
-      return const PayoutRequestResult.failure(
-        code: 'UNKNOWN',
-        message: 'Payout failed. Please try again.',
-      );
-    } on DioException catch (e) {
-      return _payoutFailureFromDio(e);
-    } catch (_) {
-      return const PayoutRequestResult.failure(
-        code: 'NETWORK',
-        message: 'Connection lost — please try again.',
-      );
-    }
-  }
 
   /// Fetch the provider's recent payouts (most recent first, capped at 50
   /// rows by the backend). Returns an empty list rather than throwing
@@ -231,46 +181,6 @@ class EarningsService {
     );
   }
 
-  PayoutRequestResult _payoutFailureFromDio(DioException e) {
-    final data = e.response?.data;
-    if (data is Map<String, dynamic>) {
-      // The global filter wraps errors as
-      //   { success: false, error: { code, message, details? } }
-      // (see apps/api/src/common/filters/http-exception.filter.ts). Older
-      // ad-hoc handlers occasionally return a flat shape, so we fall back
-      // to top-level keys if the envelope isn't there.
-      final envelope = data['error'];
-      final source = envelope is Map<String, dynamic> ? envelope : data;
-      final rawCode = source['code'] ?? source['errorCode'];
-      final code = rawCode is String ? rawCode : null;
-      final rawMessage = source['message'];
-      final message = rawMessage is String ? rawMessage : null;
-      if (code != null) {
-        return PayoutRequestResult.failure(
-          code: code,
-          message: message ?? _payoutMessageFor(code),
-        );
-      }
-    }
-    return const PayoutRequestResult.failure(
-      code: 'NETWORK',
-      message: 'Connection lost — please try again.',
-    );
-  }
-
-  /// Generates a key unique-per-tap. The backend caches by key for 24h, so
-  /// uniqueness only needs to hold within that window — micro-time + 64
-  /// bits of entropy is overkill but trivially cheap.
-  String _generateIdempotencyKey() {
-    final ts = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
-    final rng = Random.secure();
-    final tail = List.generate(
-      4,
-      (_) => rng.nextInt(0xFFFFFFFF).toRadixString(36),
-    ).join();
-    return 'mob-$ts-$tail';
-  }
-
   static String _ymd(DateTime d) {
     final utc = d.toUtc();
     return '${utc.year.toString().padLeft(4, '0')}-'
@@ -332,67 +242,3 @@ class DriverPayout {
   }
 }
 
-/// Outcome of a `POST /payments/payouts/request` call.
-class PayoutRequestResult {
-  const PayoutRequestResult({
-    required this.success,
-    this.code,
-    this.message,
-    this.payoutId,
-    this.status,
-    this.amountPesewas,
-    this.reference,
-    this.etaSeconds,
-  });
-
-  const PayoutRequestResult.failure({required String code, String? message})
-      : this(success: false, code: code, message: message);
-
-  factory PayoutRequestResult._fromBackend(Map<String, dynamic> data) {
-    return PayoutRequestResult(
-      success: true,
-      payoutId: data['payoutId'] as String? ?? data['id'] as String?,
-      status: data['status'] as String?,
-      amountPesewas: (data['amountPesewas'] as num?)?.toInt(),
-      reference: data['reference'] as String?,
-      etaSeconds: (data['etaSeconds'] as num?)?.toInt(),
-    );
-  }
-
-  final bool success;
-  final String? code;
-  final String? message;
-  final String? payoutId;
-  final String? status;
-  final int? amountPesewas;
-  final String? reference;
-  final int? etaSeconds;
-
-  bool get isFailure => !success;
-}
-
-/// Default user-facing copy for each backend error code. Centralised here
-/// so both the driver and artisan dashboards render the same wording.
-String _payoutMessageFor(String code) {
-  switch (code) {
-    case 'NO_PAYOUT_METHOD':
-      return 'Add a payout method in Account before requesting a payout.';
-    case 'PAYOUT_METHOD_MISMATCH':
-      return 'Your selected method doesn\'t match the one on file. '
-          'Update it in Account first.';
-    case 'BANK_TRANSFER_NOT_SUPPORTED':
-      return 'Bank transfers aren\'t supported yet — use a MoMo wallet.';
-    case 'PAYOUT_IN_PROGRESS':
-      return 'A payout is already on the way. Try again once it settles.';
-    case 'INSUFFICIENT_BALANCE':
-      return 'Your available balance is below the minimum payout (GHS 10).';
-    case 'PARTIAL_PAYOUT_NOT_SUPPORTED':
-      return 'Partial payouts aren\'t supported — withdraw the full balance.';
-    case 'PROVIDER_NOT_FOUND':
-      return 'We couldn\'t find your provider profile. Please re-sign in.';
-    case 'NETWORK':
-      return 'Connection lost — please try again.';
-    default:
-      return 'Payout failed. Please try again.';
-  }
-}

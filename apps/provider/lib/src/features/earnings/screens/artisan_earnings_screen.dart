@@ -4,12 +4,10 @@ import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/current_user_provider.dart';
-import '../data/earnings_service.dart';
 import '../data/ratings_service.dart';
 import '../providers/earnings_providers.dart';
 import '../providers/ratings_provider.dart';
 import '../widgets/commission_card.dart';
-import '../widgets/payout_request_flow.dart';
 import '../widgets/payouts_list.dart';
 import '../widgets/weekly_performance_card.dart';
 
@@ -83,7 +81,6 @@ class _ArtisanEarningsScreenState extends ConsumerState<ArtisanEarningsScreen> {
                 ),
               ),
             ),
-            _PayoutFooter(period: _period),
           ],
         ),
       ),
@@ -104,12 +101,17 @@ class _EarningsContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Top headline reflects the backend's authoritative withdrawable balance
-    // — what the payout endpoint will actually accept. The selected-period
-    // net earnings + a weekly commission card live below it.
+    // Top headline mirrors the homepage "Earnings" tile so both surfaces
+    // report the same Paystack-settled net for the active role. Falls back
+    // to the summary endpoint while the today-card is still loading so the
+    // balance card never flashes 0 unnecessarily.
     final user = ref.watch(currentUserProvider);
+    final todayCardAsync = ref.watch(todayCardProvider(_kArtisanRole));
+    final todayCard = todayCardAsync.valueOrNull;
     final jobsDone = user?.artisanProfile?.completedJobsCount ?? 0;
-    final available = summary.availableBalancePesewas / 100;
+    final availablePesewas =
+        todayCard?.netEarningsPesewas ?? summary.availableBalancePesewas;
+    final available = availablePesewas / 100;
     final periodNet = summary.netEarningsPesewas / 100;
 
     // Commission, jobs count, and avg-fare follow the segmented control —
@@ -610,117 +612,3 @@ class _MiniStatCard extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Payout footer
-// ---------------------------------------------------------------------------
-
-class _PayoutFooter extends ConsumerStatefulWidget {
-  const _PayoutFooter({required this.period});
-
-  /// The currently-selected period upstream. The footer reads
-  /// `availableBalancePesewas` from this period's summary so it shares the
-  /// cache the parent screen already loaded — `availableBalancePesewas` is
-  /// period-agnostic per the backend contract, so any period yields the
-  /// correct gate value.
-  final EarningsPeriod period;
-
-  @override
-  ConsumerState<_PayoutFooter> createState() => _PayoutFooterState();
-}
-
-class _PayoutFooterState extends ConsumerState<_PayoutFooter> {
-  bool _isRequesting = false;
-
-  Future<void> _onTap() async {
-    if (_isRequesting) return;
-    setState(() => _isRequesting = true);
-    try {
-      await requestProviderPayout(context, ref);
-    } finally {
-      if (mounted) setState(() => _isRequesting = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final summaryKey = EarningsSummaryKey(
-      role: _kArtisanRole,
-      period: widget.period,
-    );
-    final summaryAsync = ref.watch(earningsSummaryProvider(summaryKey));
-    final available =
-        summaryAsync.whenOrNull(data: (s) => s.availableBalancePesewas) ?? 0;
-    final belowThreshold = available < kMinPayoutPesewas;
-    final canRequest = !_isRequesting && !belowThreshold;
-
-    final hint = belowThreshold
-        ? 'Earn at least GHS ${(kMinPayoutPesewas / 100).toStringAsFixed(0)} to request a payout'
-        : 'Settlement usually takes 2-4 hours';
-
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-        MyShopSpacing.md,
-        MyShopSpacing.md,
-        MyShopSpacing.md,
-        MyShopSpacing.md + MediaQuery.of(context).padding.bottom * 0.2,
-      ),
-      decoration: const BoxDecoration(
-        color: MyShopColors.surfaceWhite,
-        border: Border(top: BorderSide(color: MyShopColors.divider)),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.account_balance_wallet_outlined,
-                size: 16,
-                color: MyShopColors.textSecondary,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  hint,
-                  style: MyShopTypography.body2,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: MyShopSpacing.sm),
-          GestureDetector(
-            onTap: canRequest ? _onTap : null,
-            child: Container(
-              height: 56,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: canRequest
-                    ? MyShopColors.darkSlate
-                    : MyShopColors.darkSlate.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(28),
-              ),
-              alignment: Alignment.center,
-              child: _isRequesting
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                            MyShopColors.textOnDarkSlate),
-                      ),
-                    )
-                  : Text(
-                      'Request Payout Now',
-                      style: MyShopTypography.button.copyWith(
-                        color: MyShopColors.textOnDarkSlate,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15,
-                      ),
-                    ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
