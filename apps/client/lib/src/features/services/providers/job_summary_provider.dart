@@ -285,8 +285,14 @@ class _JobSummaryNotifier
         experienceLabel: artisanData['experienceLabel'] as String? ?? '',
         avatarColor: MyShopColors.darkSlate,
         isVerified: artisanData['isVerified'] as bool? ?? false,
-        rating: (artisanData['rating'] as num?)?.toDouble() ?? 0.0,
-        reviewCount: (artisanData['reviewCount'] as num?)?.toInt() ?? 0,
+        rating: ((artisanData['averageRating'] ?? artisanData['rating'])
+                    as num?)
+                ?.toDouble() ??
+            0.0,
+        reviewCount: ((artisanData['ratingCount'] ?? artisanData['reviewCount'])
+                    as num?)
+                ?.toInt() ??
+            0,
         location: artisanData['location'] as String? ?? '',
       ),
       laborChargePesewas: laborPesewas,

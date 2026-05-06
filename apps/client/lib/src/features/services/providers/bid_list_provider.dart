@@ -286,8 +286,16 @@ class _BidsNotifier
           '',
       artisanName: composeName(),
       tradeTitle: composeTradeTitle(),
-      rating: (artisan['rating'] as num?)?.toDouble() ?? 0.0,
-      reviewCount: (artisan['reviewCount'] as num?)?.toInt() ?? 0,
+      // Backend returns `averageRating` + `ratingCount` from the bid list /
+      // bid socket emit; legacy admin endpoints still use `rating` /
+      // `reviewCount`. Read both so the artisan card never silently
+      // defaults to "New" because of a key mismatch.
+      rating: ((artisan['averageRating'] ?? artisan['rating']) as num?)
+              ?.toDouble() ??
+          0.0,
+      reviewCount: ((artisan['ratingCount'] ?? artisan['reviewCount']) as num?)
+              ?.toInt() ??
+          0,
       isVerified:
           (artisan['isVerified'] ?? artisan['verified']) as bool? ?? false,
       profilePhotoUrl: (artisan['profilePhotoUrl'] ??

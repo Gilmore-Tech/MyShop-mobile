@@ -8,6 +8,7 @@ import 'package:shared_ui/shared_ui.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../../auth/providers/current_user_provider.dart';
 import '../../earnings/providers/earnings_providers.dart';
+import '../../earnings/providers/ratings_provider.dart';
 import '../providers/provider_type_provider.dart';
 import '../providers/verification_provider.dart';
 import '../widgets/settings_list_tile.dart';
@@ -88,6 +89,16 @@ class AccountSettingsScreen extends ConsumerWidget {
     final isDriver = providerType.isDriver;
     final user = ref.watch(currentUserProvider);
     final cardAsync = ref.watch(activeTodayCardProvider);
+    // Real rating summary so the Performance card shows the actual
+    // average / count instead of the hardcoded "--" placeholder. The
+    // backend's GET /providers/me/ratings returns 0/empty for fresh
+    // accounts; we render that as "New" rather than a fake number.
+    final ratingsAsync = ref.watch(providerRatingsProvider);
+    final ratingDisplay = ratingsAsync.when(
+      loading: () => '—',
+      error: (_, __) => '!',
+      data: (r) => r.hasRatings ? r.averageDisplay : 'New',
+    );
 
     // Derive verification status from the user's profile
     final driverProfile = user?.driverProfile;
@@ -251,7 +262,7 @@ class AccountSettingsScreen extends ConsumerWidget {
               child: _PerformanceCard(
                 trips: todayTrips,
                 earnings: todayEarnings,
-                rating: '--',
+                rating: ratingDisplay,
               ),
             ),
             const SizedBox(height: MyShopSpacing.lg),

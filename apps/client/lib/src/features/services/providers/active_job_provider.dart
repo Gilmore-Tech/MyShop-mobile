@@ -563,7 +563,10 @@ class _ActiveJobNotifier
         isVerified: (artisanData['verificationStatus'] as String?) == 'approved' ||
             (artisanData['isVerified'] as bool? ?? false),
         specialty: artisanData['specialty'] as String? ?? '',
-        rating: (artisanData['rating'] as num?)?.toDouble() ?? 0.0,
+        rating: ((artisanData['averageRating'] ?? artisanData['rating'])
+                    as num?)
+                ?.toDouble() ??
+            0.0,
         photoUrl: (artisanData['photoUrl'] as String?) ??
             (artisanData['profilePhotoUrl'] as String?) ??
             (artisanData['avatarUrl'] as String?) ??

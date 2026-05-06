@@ -362,31 +362,70 @@ void _connectAndListen(Ref ref, SocketService socket) {
       }
     });
 
-    // ── New bid on a job ─────────────────────────────────────────────────
+    // ── New / updated bid on a job ───────────────────────────────────────
+    // Backend emits `job:bid:received` (new submission) and
+    // `job:bid:updated` (edit). The legacy `job:bid_new` is kept as a
+    // fallback in case any older deploy is still running. All three carry
+    // the same shape now: jobId / bidId / amount / artisanAverageRating /
+    // artisanRatingCount / etc. We invalidate the bid list so the next
+    // read picks up the freshest aggregate from /jobs/:id/bids.
     socket
+      ..off('job:bid:received')
+      ..off('job:bid:updated')
       ..off('job:bid_new')
+      ..on('job:bid:received', (data) {
+        developer.log('Received job:bid:received event', name: 'WS');
+        try {
+          final jobId = data is Map<String, dynamic>
+              ? (data['jobId'] as String? ?? data['id'] as String?)
+              : null;
+          if (jobId != null) {
+            ref.invalidate(jobDetailProvider(jobId));
+            ref.invalidate(bidsForJobProvider(jobId));
+          }
+          if (ref.exists(activityNotifierProvider)) {
+            ref.read(activityNotifierProvider.notifier).reload();
+          }
+          ref.read(navBadgeProvider.notifier).increment('/activity');
+        } catch (e) {
+          developer.log('Failed to handle job:bid:received: $e',
+              name: 'WS', level: 900);
+        }
+      })
+      ..on('job:bid:updated', (data) {
+        developer.log('Received job:bid:updated event', name: 'WS');
+        try {
+          final jobId = data is Map<String, dynamic>
+              ? (data['jobId'] as String? ?? data['id'] as String?)
+              : null;
+          if (jobId != null) {
+            ref.invalidate(jobDetailProvider(jobId));
+            ref.invalidate(bidsForJobProvider(jobId));
+          }
+        } catch (e) {
+          developer.log('Failed to handle job:bid:updated: $e',
+              name: 'WS', level: 900);
+        }
+      })
       ..on('job:bid_new', (data) {
-      developer.log('Received job:bid_new event', name: 'WS');
-      try {
-        // Refresh the live job detail + bids list so the client sees the new
-        // bid (and updated count) without having to pull-to-refresh.
-        final jobId = data is Map<String, dynamic>
-            ? (data['jobId'] as String? ?? data['id'] as String?)
-            : null;
-        if (jobId != null) {
-          ref.invalidate(jobDetailProvider(jobId));
-          ref.invalidate(bidsForJobProvider(jobId));
+        developer.log('Received job:bid_new event (legacy)', name: 'WS');
+        try {
+          final jobId = data is Map<String, dynamic>
+              ? (data['jobId'] as String? ?? data['id'] as String?)
+              : null;
+          if (jobId != null) {
+            ref.invalidate(jobDetailProvider(jobId));
+            ref.invalidate(bidsForJobProvider(jobId));
+          }
+          if (ref.exists(activityNotifierProvider)) {
+            ref.read(activityNotifierProvider.notifier).reload();
+          }
+          ref.read(navBadgeProvider.notifier).increment('/activity');
+        } catch (e) {
+          developer.log('Failed to handle job:bid_new: $e',
+              name: 'WS', level: 900);
         }
-
-        if (ref.exists(activityNotifierProvider)) {
-          ref.read(activityNotifierProvider.notifier).reload();
-        }
-        ref.read(navBadgeProvider.notifier).increment('/activity');
-      } catch (e) {
-        developer.log('Failed to handle job:bid_new: $e',
-            name: 'WS', level: 900);
-      }
-    });
+      });
 
     // ── New notification ─────────────────────────────────────────────────
     socket

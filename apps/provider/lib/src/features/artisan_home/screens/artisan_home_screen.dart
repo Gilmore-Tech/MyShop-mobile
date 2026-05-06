@@ -7,6 +7,7 @@ import '../../../core/providers/provider_status_provider.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../../auth/providers/current_user_provider.dart';
 import '../../earnings/providers/earnings_providers.dart';
+import '../../earnings/providers/ratings_provider.dart';
 import '../../profile/providers/verification_provider.dart';
 import '../../profile/widgets/incomplete_profile_sheet.dart';
 import 'package:shared_models/shared_models.dart' show EarningsRole;
@@ -122,6 +123,22 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
       error: (_, __) => '--',
     );
 
+    // Driver/artisan ratings summary — drives the Rating tile in the
+    // performance row. Distinct branches for loading / error / empty / data
+    // so a brand-new provider, a backend hiccup, and a real value are each
+    // visually distinguishable instead of all collapsing to "--".
+    final ratingsAsync = ref.watch(providerRatingsProvider);
+    final (String ratingDisplay, String ratingSubtitle) = ratingsAsync.when(
+      loading: () => ('—', 'Loading…'),
+      error: (_, __) => ('!', "Couldn't load ratings"),
+      data: (r) => r.hasRatings
+          ? (
+              r.averageDisplay,
+              '${r.count} ${r.count == 1 ? 'review' : 'reviews'}',
+            )
+          : ('--', 'No ratings yet'),
+    );
+
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
       body: SafeArea(
@@ -159,8 +176,8 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
             PerformanceSummarySection(
               earnings: earningsDisplay,
               earningsTrend: earningsTrend,
-              rating: '--',
-              ratingPercentile: 'No ratings yet',
+              rating: ratingDisplay,
+              ratingPercentile: ratingSubtitle,
               jobsDone: user?.artisanProfile?.completedJobsCount ?? 0,
               onDetailsTap: () {},
             ),

@@ -145,7 +145,8 @@ class _JobActivityDetailNotifier
       artisanName: artisan['name'] as String?,
       artisanSpecialty:
           artisan['specialty'] as String? ?? category['name'] as String?,
-      artisanRating: (artisan['rating'] as num?)?.toDouble(),
+      artisanRating:
+          ((artisan['averageRating'] ?? artisan['rating']) as num?)?.toDouble(),
       artisanJobCount: (artisan['completedJobs'] as num?)?.toInt(),
       artisanVerified: artisan['verified'] as bool? ?? false,
       artisanPhotoUrl: artisan['photoUrl'] as String?,
