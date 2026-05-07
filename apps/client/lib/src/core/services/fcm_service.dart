@@ -276,6 +276,12 @@ class FcmService {
 
   Future<void> syncToken() async {
     debugPrint('[FCM] syncToken() entered');
+    // iOS: FCM derives its token from the APNs device token. On cold
+    // start `getToken()` can race the APNs registration and return null
+    // before APNs has handed back a token — silently failing registration.
+    // Wait for the APNs token to arrive first; the retry loop below then
+    // also covers the `requestPermission()` race on first launch.
+    if (Platform.isIOS) await _awaitApnsToken();
     String? token;
     for (int attempt = 1; attempt <= 3; attempt++) {
       token = await _fcm.getToken();
@@ -292,6 +298,19 @@ class FcmService {
 
     _tokenRefreshSub?.cancel();
     _tokenRefreshSub = _fcm.onTokenRefresh.listen(_register);
+  }
+
+  Future<void> _awaitApnsToken() async {
+    for (int attempt = 1; attempt <= 5; attempt++) {
+      final apns = await _fcm.getAPNSToken();
+      if (apns != null) {
+        debugPrint('[FCM] APNs token ready on attempt $attempt');
+        return;
+      }
+      debugPrint('[FCM] APNs token not yet available (attempt $attempt/5)');
+      await Future<void>.delayed(Duration(seconds: attempt));
+    }
+    debugPrint('[FCM] APNs token never arrived — falling through to getToken anyway');
   }
 
   Future<void> _register(String token) async {
