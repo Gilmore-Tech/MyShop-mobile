@@ -48,13 +48,20 @@ class ClientAuthRepository {
   }
 
   /// Login as an existing client. Sends OTP.
-  Future<void> loginClient(String phone) async {
+  ///
+  /// [forceLogin] is set true on the retry that fires from the
+  /// "Sign me in here, sign out the other device" button on the
+  /// ALREADY_LOGGED_IN_ELSEWHERE block dialog. The backend skips the
+  /// single-device check at this step; the verifyOtp step then
+  /// revokes the prior session.
+  Future<void> loginClient(String phone, {bool forceLogin = false}) async {
     final deviceId = await _deviceIdProvider.ensureDeviceId();
     final deviceInfo = await _deviceIdProvider.readDeviceInfo();
     await _service.loginClient(LoginRequest(
       phone: phone,
       deviceId: deviceId,
       deviceInfo: deviceInfo,
+      forceLogin: forceLogin,
     ));
     await _tokenStorage.writePhone(phone);
   }
@@ -111,29 +118,36 @@ class ClientAuthRepository {
   /// Read the stored phone (used for OTP resend).
   Future<String?> readPhone() => _tokenStorage.readPhone();
 
-  /// Sign out: wipe local state immediately and fire the backend revocation
-  /// in the background.
+  /// Sign out: revoke the session server-side, then wipe local state.
   ///
-  /// We deliberately do NOT block on `/auth/logout`. The interceptor uses
-  /// a [QueuedInterceptor] which can serialize the logout request behind
-  /// an in-flight `/auth/refresh` (slow during Render free-tier cold
-  /// starts), making the user wait 30–60s for what should be an instant
-  /// "I'm out" action. Backend revocation becomes best-effort — if it
-  /// never lands, the refresh token expires by TTL anyway.
+  /// We MUST await the backend call before clearing local tokens. The
+  /// previous fire-and-forget pattern raced the interceptor's onRequest
+  /// (which awaits a storage read for the bearer) against the local
+  /// `clearTokens()`. When the clear won, onRequest saw a null token and
+  /// rejected `/auth/logout` with `NOT_AUTHENTICATED` before it ever hit
+  /// the wire — leaving the backend's Redis active-session entry alive
+  /// and blocking the user from signing in on another device under the
+  /// same role until the 7-day refresh-token TTL elapses.
+  ///
+  /// 5s timeout is a UX cap. Even if it fires, the underlying HTTP
+  /// request keeps flying and the backend usually still revokes — but
+  /// we don't promise that. Local tokens are cleared in every path so
+  /// the user is always "signed out" from the device's perspective.
   Future<void> logout() async {
-    debugPrint('[ClientAuthRepo] logout — firing backend revocation in background');
-    unawaited(
-      _service
-          .logout()
-          .timeout(const Duration(seconds: 5))
-          .then(
-            (_) => debugPrint('[ClientAuthRepo] background backend logout ok'),
-            onError: (Object e) => debugPrint(
-              '[ClientAuthRepo] background backend logout failed: $e',
-            ),
-          ),
-    );
+    debugPrint('[ClientAuthRepo] logout — awaiting backend revocation');
+    try {
+      await _service.logout().timeout(const Duration(seconds: 5));
+      debugPrint('[ClientAuthRepo] backend logout ok');
+    } on TimeoutException {
+      debugPrint('[ClientAuthRepo] backend logout timed out — '
+          'session may linger until refresh-token TTL');
+    } catch (e) {
+      debugPrint('[ClientAuthRepo] backend logout failed: $e — '
+          'session may linger until refresh-token TTL');
+    }
+    debugPrint('[ClientAuthRepo] clearing local tokens');
     await _tokenStorage.clearTokens();
+    debugPrint('[ClientAuthRepo] logout() done');
   }
 
   /// Clear all stored tokens and identity context — does NOT call the

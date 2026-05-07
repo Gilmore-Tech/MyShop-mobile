@@ -74,6 +74,8 @@ class AuthBlockedByOtherDevice extends ClientAuthState {
   const AuthBlockedByOtherDevice({
     required this.phone,
     this.recoveryRequestStatus = RecoveryRequestStatus.idle,
+    this.isTakingOver = false,
+    this.takeoverError,
   });
 
   final String phone;
@@ -81,6 +83,13 @@ class AuthBlockedByOtherDevice extends ClientAuthState {
   /// Tracks the in-flight state of the "request session recovery" call so
   /// the dialog can show a spinner / success / failure.
   final RecoveryRequestStatus recoveryRequestStatus;
+
+  /// True while the takeover-via-OTP retry of the login call is in flight,
+  /// so the dialog button can show a spinner.
+  final bool isTakingOver;
+
+  /// Surface for a takeover failure (network error, etc).
+  final String? takeoverError;
 }
 
 /// State of the support-recovery request fired from the block dialog.
@@ -429,6 +438,42 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
       state = AuthBlockedByOtherDevice(
         phone: current.phone,
         recoveryRequestStatus: RecoveryRequestStatus.failed,
+      );
+    }
+  }
+
+  /// User tapped "Sign me in here, sign out the other device" on the block
+  /// dialog. Re-fires `loginClient` with `forceLogin: true` so the backend
+  /// skips the single-device check; the verifyOtp step then revokes the
+  /// prior session as part of the takeover.
+  ///
+  /// On success the state machine transitions to [AuthOtpSent] (the
+  /// router/dialog listener pops the dialog and routes to the OTP screen
+  /// automatically). On failure we stay in [AuthBlockedByOtherDevice]
+  /// with [takeoverError] set so the dialog can surface the message.
+  Future<void> forceTakeover() async {
+    final current = state;
+    if (current is! AuthBlockedByOtherDevice) return;
+    if (current.isTakingOver) return;
+    state = AuthBlockedByOtherDevice(
+      phone: current.phone,
+      recoveryRequestStatus: current.recoveryRequestStatus,
+      isTakingOver: true,
+    );
+    try {
+      await _repo.loginClient(current.phone, forceLogin: true);
+      state = AuthOtpSent(phone: current.phone, isNewUser: false);
+    } on ApiException catch (e) {
+      state = AuthBlockedByOtherDevice(
+        phone: current.phone,
+        recoveryRequestStatus: current.recoveryRequestStatus,
+        takeoverError: e.message,
+      );
+    } catch (_) {
+      state = AuthBlockedByOtherDevice(
+        phone: current.phone,
+        recoveryRequestStatus: current.recoveryRequestStatus,
+        takeoverError: 'Could not sign in. Please try again.',
       );
     }
   }

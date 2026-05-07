@@ -97,6 +97,14 @@ class PendingPaymentStore {
     }
   }
 
+  /// Wipe every pending entry. Called on logout so a second user signing
+  /// in on the same install can't see (or auto-resume) the previous
+  /// user's in-flight charges.
+  Future<void> clearAll() async {
+    final prefs = await _prefs();
+    await prefs.remove(_kKey);
+  }
+
   Map<String, dynamic> _readAll(SharedPreferences prefs) {
     final raw = prefs.getString(_kKey);
     if (raw == null || raw.isEmpty) return <String, dynamic>{};

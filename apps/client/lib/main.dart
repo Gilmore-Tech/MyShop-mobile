@@ -10,6 +10,7 @@ import 'src/core/constants/mapbox_config.dart';
 import 'src/core/di/providers.dart';
 import 'src/core/providers/active_ride_recovery_bridge.dart';
 import 'src/core/providers/current_location_provider.dart';
+import 'src/core/providers/logout_cleanup_bridge.dart';
 import 'src/core/providers/socket_provider.dart';
 import 'src/core/services/fcm_service.dart';
 import 'src/core/services/local_notification_service.dart';
@@ -100,6 +101,12 @@ Future<void> main() async {
   // provider is reachable — reading it here creates it lazily through the
   // provider graph.
   container.read(fcmTapBridgeProvider);
+
+  // Tear down session-scoped Riverpod state (socket, ride/booking flow,
+  // payment notifier, badges, activity feed, pending-payment store) on
+  // every transition out of AuthAuthenticated, so a second user signing
+  // in on the same install starts clean.
+  container.read(logoutCleanupBridgeProvider);
 
   runApp(
     UncontrolledProviderScope(
