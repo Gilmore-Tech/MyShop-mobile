@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../theme/myshop_colors.dart';
-import '../theme/myshop_spacing.dart';
 import '../theme/myshop_typography.dart';
 
 /// Result from a media pick operation.
@@ -223,45 +222,54 @@ class _PickerSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
+
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: MyShopColors.surfaceWhite,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(w * 0.051)),
       ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            MyShopSpacing.lg,
-            MyShopSpacing.md,
-            MyShopSpacing.lg,
-            MyShopSpacing.lg,
+          padding: EdgeInsets.fromLTRB(
+            w * 0.061,
+            h * 0.019,
+            w * 0.061,
+            h * 0.029,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               // Drag handle
               Container(
-                width: 36,
-                height: 4,
+                width: w * 0.092,
+                height: h * 0.005,
                 decoration: BoxDecoration(
                   color: MyShopColors.disabled,
-                  borderRadius: BorderRadius.circular(2),
+                  borderRadius: BorderRadius.circular(w * 0.005),
                 ),
               ),
-              const SizedBox(height: MyShopSpacing.md),
+              SizedBox(height: h * 0.019),
               Text(
                 title,
                 style: MyShopTypography.h3.copyWith(
                   fontWeight: FontWeight.w800,
+                  fontSize: w * 0.046,
                 ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: MyShopSpacing.lg),
+              SizedBox(height: h * 0.029),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children:
-                    options.map((opt) => _OptionTile(option: opt)).toList(),
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: options
+                    .map((opt) => Expanded(child: _OptionTile(option: opt)))
+                    .toList(),
               ),
-              const SizedBox(height: MyShopSpacing.md),
+              SizedBox(height: h * 0.019),
             ],
           ),
         ),
@@ -277,14 +285,20 @@ class _OptionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
+    final iconBox = w * 0.143;
+
     return GestureDetector(
       onTap: option.onTap,
+      behavior: HitTestBehavior.opaque,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 56,
-            height: 56,
+            width: iconBox,
+            height: iconBox,
             decoration: BoxDecoration(
               color: MyShopColors.primaryGoldLight,
               shape: BoxShape.circle,
@@ -294,17 +308,20 @@ class _OptionTile extends StatelessWidget {
             ),
             child: Icon(
               option.icon,
-              size: 24,
+              size: iconBox * 0.43,
               color: MyShopColors.primaryGold,
             ),
           ),
-          const SizedBox(height: MyShopSpacing.sm),
+          SizedBox(height: h * 0.010),
           Text(
             option.label,
             style: MyShopTypography.body1.copyWith(
               fontWeight: FontWeight.w600,
-              fontSize: 13,
+              fontSize: w * 0.033,
             ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:printing/printing.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../../app/router.dart';
 import '../../../core/di/providers.dart';
 import '../providers/payment_provider.dart';
+import '../utils/payment_receipt_pdf.dart';
 import '../widgets/rate_job_sheet.dart';
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -87,6 +89,7 @@ class _DialogSheet extends ConsumerStatefulWidget {
 class _DialogSheetState extends ConsumerState<_DialogSheet> {
   bool _detailsExpanded = false;
   bool _checkingStatus = false;
+  bool _generatingReceipt = false;
 
   PaymentConfirmation get c => widget.confirmation;
   double get w => widget.w;
@@ -145,6 +148,45 @@ class _DialogSheetState extends ConsumerState<_DialogSheet> {
       );
       rootCtx.go(AppRoutes.activity);
     });
+  }
+
+  /// Tap handler for the "Receipt" outlined button. Builds a PDF receipt
+  /// from the [PaymentConfirmation] and opens the OS share sheet so the
+  /// client can either share it (WhatsApp, Email, Drive, …) or save it
+  /// to their device via "Save to Files" / "Save to Phone". Single tap
+  /// covers both flows — no extra confirmation screen needed.
+  Future<void> _onReceiptTapped() async {
+    if (_generatingReceipt) return;
+    setState(() => _generatingReceipt = true);
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final bytes = await buildPaymentReceiptPdf(c);
+      if (!mounted) return;
+
+      // Anchor the share sheet to the button's bounding rect — required
+      // for the popover on iPad and harmless on phones.
+      final box = context.findRenderObject() as RenderBox?;
+      final bounds = box != null && box.hasSize
+          ? box.localToGlobal(Offset.zero) & box.size
+          : null;
+
+      await Printing.sharePdf(
+        bytes: bytes,
+        filename:
+            'MyShop-Receipt-${c.transactionRef.replaceAll(RegExp(r'[^A-Za-z0-9-]'), '')}.pdf',
+        bounds: bounds,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text("Couldn't generate the receipt. Please try again."),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _generatingReceipt = false);
+    }
   }
 
   /// Display format: GH¢ X,XXX.XX  (matches design)
@@ -312,10 +354,10 @@ class _DialogSheetState extends ConsumerState<_DialogSheet> {
                           child: _OutlinedActionButton(
                             icon: Icons.receipt_long_outlined,
                             label: 'Receipt',
-                            onTap: () {
-                              // TODO: navigate to receipt screen
-                              Navigator.of(context).maybePop();
-                            },
+                            onTap: _generatingReceipt
+                                ? null
+                                : _onReceiptTapped,
+                            loading: _generatingReceipt,
                             w: w,
                             h: h,
                           ),
@@ -628,7 +670,8 @@ class _DetailRow extends StatelessWidget {
 class _OutlinedActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final bool loading;
   final double w;
   final double h;
   const _OutlinedActionButton({
@@ -637,6 +680,7 @@ class _OutlinedActionButton extends StatelessWidget {
     required this.onTap,
     required this.w,
     required this.h,
+    this.loading = false,
   });
 
   @override
@@ -651,21 +695,32 @@ class _OutlinedActionButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(w * 0.026),
           border: Border.all(color: MyShopColors.divider, width: 1.5),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: w * 0.041, color: MyShopColors.darkSlate),
-            SizedBox(width: w * 0.015),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: w * 0.033,
-                fontWeight: FontWeight.w600,
-                color: MyShopColors.darkSlate,
+        child: loading
+            ? Center(
+                child: SizedBox(
+                  width: w * 0.041,
+                  height: w * 0.041,
+                  child: const CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: MyShopColors.darkSlate,
+                  ),
+                ),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: w * 0.041, color: MyShopColors.darkSlate),
+                  SizedBox(width: w * 0.015),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: w * 0.033,
+                      fontWeight: FontWeight.w600,
+                      color: MyShopColors.darkSlate,
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
-        ),
       ),
     );
   }
