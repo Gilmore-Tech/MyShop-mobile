@@ -71,15 +71,16 @@ class AuthOtpSent extends AuthState {
 }
 
 /// Backend rejected the login because the same account has an active
-/// session on another device. The UI shows a hard-block dialog (no
-/// "Continue here" / force-takeover option). The user must either sign
-/// out on the other device or tap "Contact support" to request a
-/// session recovery from an admin.
+/// session on another device. The block dialog gives the user three
+/// options: take over the session via OTP (proves phone ownership and
+/// signs the other device out), contact support, or cancel.
 class AuthBlockedByOtherDevice extends AuthState {
   const AuthBlockedByOtherDevice({
     required this.phone,
     required this.role,
     this.recoveryRequestStatus = RecoveryRequestStatus.idle,
+    this.isTakingOver = false,
+    this.takeoverError,
   });
 
   final String phone;
@@ -88,6 +89,14 @@ class AuthBlockedByOtherDevice extends AuthState {
   /// Tracks the in-flight state of the "request session recovery" call so
   /// the dialog can show a spinner / success / failure.
   final RecoveryRequestStatus recoveryRequestStatus;
+
+  /// True while the takeover-via-OTP retry of the login call is in flight,
+  /// so the dialog button can show a spinner.
+  final bool isTakingOver;
+
+  /// Surface for a takeover failure (network error, etc). Cleared when
+  /// the user retries.
+  final String? takeoverError;
 }
 
 /// State of the support-recovery request fired from the block dialog.
@@ -362,14 +371,19 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   /// Calls the role-specific login endpoint and transitions to OTP state.
+  ///
+  /// [forceLogin] tells the backend to bypass the single-device check
+  /// at this step — used by the takeover-via-OTP flow off the
+  /// ALREADY_LOGGED_IN_ELSEWHERE block dialog.
   Future<void> _loginWithRole({
     required String phone,
     required String role,
+    bool forceLogin = false,
   }) async {
     if (role == 'driver') {
-      await _repo.loginDriver(phone);
+      await _repo.loginDriver(phone, forceLogin: forceLogin);
     } else {
-      await _repo.loginArtisan(phone);
+      await _repo.loginArtisan(phone, forceLogin: forceLogin);
     }
     final providerType =
         role == 'artisan' ? ProviderType.artisan : ProviderType.driver;
@@ -619,6 +633,56 @@ class AuthController extends StateNotifier<AuthState> {
         phone: current.phone,
         role: current.role,
         recoveryRequestStatus: RecoveryRequestStatus.failed,
+      );
+    }
+  }
+
+  /// User tapped "Sign me in here, sign out the other device" on the block
+  /// dialog. Re-fires the role-specific login with `forceLogin: true` so
+  /// the backend skips the single-device check; the verifyOtp step then
+  /// revokes the prior session as part of the takeover.
+  ///
+  /// On success the state machine transitions to [AuthOtpSent] (the
+  /// router/dialog listener pops the dialog and routes to the OTP screen
+  /// automatically). On failure we stay in [AuthBlockedByOtherDevice]
+  /// with [takeoverError] set so the dialog can surface the message.
+  Future<void> forceTakeover() async {
+    final current = state;
+    if (current is! AuthBlockedByOtherDevice) return;
+    if (current.isTakingOver) return;
+    state = AuthBlockedByOtherDevice(
+      phone: current.phone,
+      role: current.role,
+      recoveryRequestStatus: current.recoveryRequestStatus,
+      isTakingOver: true,
+    );
+    try {
+      await _loginWithRole(
+        phone: current.phone,
+        role: current.role.name,
+        forceLogin: true,
+      );
+      // _loginWithRole sets state = AuthOtpSent on success.
+    } on ApiException catch (e) {
+      state = AuthBlockedByOtherDevice(
+        phone: current.phone,
+        role: current.role,
+        recoveryRequestStatus: current.recoveryRequestStatus,
+        takeoverError: AuthErrorMapper.message(e),
+      );
+    } on AuthException catch (e) {
+      state = AuthBlockedByOtherDevice(
+        phone: current.phone,
+        role: current.role,
+        recoveryRequestStatus: current.recoveryRequestStatus,
+        takeoverError: e.message,
+      );
+    } catch (_) {
+      state = AuthBlockedByOtherDevice(
+        phone: current.phone,
+        role: current.role,
+        recoveryRequestStatus: current.recoveryRequestStatus,
+        takeoverError: 'Could not sign in. Please try again.',
       );
     }
   }

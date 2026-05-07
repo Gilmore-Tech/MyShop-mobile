@@ -127,21 +127,55 @@ class _SignInRoleSelectionScreenState
         return Consumer(
           builder: (context, ref, _) {
             final state = ref.watch(authControllerProvider);
-            final status = state is AuthBlockedByOtherDevice
-                ? state.recoveryRequestStatus
-                : RecoveryRequestStatus.idle;
-            final sending = status == RecoveryRequestStatus.sending;
+            final blocked =
+                state is AuthBlockedByOtherDevice ? state : null;
+            final recoveryStatus =
+                blocked?.recoveryRequestStatus ?? RecoveryRequestStatus.idle;
+            final sendingRecovery =
+                recoveryStatus == RecoveryRequestStatus.sending;
+            final takingOver = blocked?.isTakingOver ?? false;
+            final takeoverError = blocked?.takeoverError;
+            final anyInFlight = sendingRecovery || takingOver;
             return AlertDialog(
               title: const Text('Already signed in elsewhere'),
-              content: Text(
-                'This account ($phone) is signed in on another device. '
-                'Please log out there first to continue. '
-                'If you no longer have access to that device, '
-                'tap Contact support.',
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'This account ($phone) is signed in on another device. '
+                    'Choose "Sign me in here" to take over the session — '
+                    "we'll send an OTP to confirm it's you and sign out the "
+                    'other device. '
+                    "If you don't recognise the other device, tap "
+                    'Contact support instead.',
+                  ),
+                  if (takeoverError != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      takeoverError,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ],
+                ],
               ),
               actions: [
                 TextButton(
-                  onPressed: sending
+                  onPressed: anyInFlight
+                      ? null
+                      : () => controller.forceTakeover(),
+                  child: takingOver
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Sign me in here'),
+                ),
+                TextButton(
+                  onPressed: anyInFlight
                       ? null
                       : () async {
                           await controller.requestSessionRecovery();
@@ -171,7 +205,7 @@ class _SignInRoleSelectionScreenState
                             }
                           }
                         },
-                  child: sending
+                  child: sendingRecovery
                       ? const SizedBox(
                           width: 16,
                           height: 16,
@@ -180,13 +214,13 @@ class _SignInRoleSelectionScreenState
                       : const Text('Contact support'),
                 ),
                 TextButton(
-                  onPressed: sending
+                  onPressed: anyInFlight
                       ? null
                       : () {
                           Navigator.of(dialogContext).pop();
                           controller.dismissBlockedLogin();
                         },
-                  child: const Text('OK'),
+                  child: const Text('Cancel'),
                 ),
               ],
             );
