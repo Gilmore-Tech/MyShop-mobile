@@ -10,23 +10,28 @@ import 'token_storage.dart';
 /// Interceptor that:
 /// 1. Injects the Bearer token on every authenticated request.
 /// 2. Handles 401 responses by refreshing the token and retrying — with
-///    a dedup that prevents redundant refreshes when multiple concurrent
-///    requests 401 against the same stale token.
+///    a single-flight [_inFlightRefresh] so a burst of concurrent 401s
+///    against the same stale token only fires one `/auth/refresh`. A
+///    second dedup compares the stored token to the one attached when
+///    the request went out, so a request that 401s after another caller
+///    already rotated the token just retries with the new one instead
+///    of triggering another refresh.
 /// 3. Emits a logout signal when the refresh token itself is dead.
 ///
-/// Uses [QueuedInterceptor] so that concurrent 401s serialize through
-/// [onError]. The dedup check inside still matters: when backend rotates
-/// refresh tokens (rollout in progress — see backend B4), a second call
-/// to `/auth/refresh` with an already-consumed refresh token would force
-/// logout even though the first refresh succeeded.
+/// Must extend plain [Interceptor], NOT [QueuedInterceptor]. Dio's
+/// `QueuedInterceptor` serializes onError through a single queue per
+/// instance; awaiting `_dio.post('/auth/refresh', ...)` from inside an
+/// onError handler means the refresh's own onError (when the refresh
+/// itself returns 4xx) gets queued behind the outer handler awaiting
+/// it — deadlocking the chain and stranding the app on whatever screen
+/// the failed request was driving. Concurrency is already handled by
+/// [_inFlightRefresh] + the stored-vs-attached dedup, so the queue was
+/// redundant insurance with a sharp edge.
 ///
-/// Note: we deliberately do NOT pre-refresh expired tokens inside
-/// [onRequest]. Posting to `/auth/refresh` from within an interceptor
-/// handler deadlocks `QueuedInterceptor` (the refresh request's own
-/// handlers get queued behind the outer handler awaiting them). The
-/// socket layer does proactive pre-refresh from outside the interceptor
-/// chain; the REST path relies on the 401 → refresh round-trip.
-class AuthInterceptor extends QueuedInterceptor {
+/// We do not pre-refresh expired tokens in [onRequest]; the socket layer
+/// handles proactive refresh from outside the interceptor chain, and
+/// the REST path relies on the 401 → refresh round-trip.
+class AuthInterceptor extends Interceptor {
   AuthInterceptor({
     required TokenStorage tokenStorage,
     required Dio dio,

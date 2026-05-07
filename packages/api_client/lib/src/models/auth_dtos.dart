@@ -64,20 +64,24 @@ class RegisterRequest {
 ///
 /// [deviceId] is required so the backend can enforce one-active-session-per-
 /// account. When another device already holds the session, the backend
-/// returns 409 ALREADY_LOGGED_IN_ELSEWHERE; the mobile app blocks the user
-/// (see `AuthBlockedByOtherDevice`) and does not offer a force-takeover —
-/// the user must sign out on the other device or request session recovery
-/// from support.
+/// returns 409 ALREADY_LOGGED_IN_ELSEWHERE. The user can either request
+/// session recovery from support or — by tapping "Sign me in here, sign
+/// out the other device" on the block dialog — retry with [forceLogin]
+/// set to true. With force-login the backend skips the single-device
+/// check at this step, sends the OTP, and the verifyOtp step revokes
+/// the prior session as part of the takeover.
 class LoginRequest {
   const LoginRequest({
     required this.phone,
     required this.deviceId,
     this.deviceInfo,
+    this.forceLogin = false,
   });
 
   final String phone;
   final String deviceId;
   final Map<String, dynamic>? deviceInfo;
+  final bool forceLogin;
 
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{
@@ -85,6 +89,7 @@ class LoginRequest {
       'deviceId': deviceId,
     };
     if (deviceInfo != null) json['deviceInfo'] = deviceInfo;
+    if (forceLogin) json['forceLogin'] = true;
     return json;
   }
 }
