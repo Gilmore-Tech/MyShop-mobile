@@ -132,13 +132,14 @@ class LegalSlugs {
   static const cookiePolicy = 'cookie-policy';
 
   /// Order shown in the Legal & Policies list on the support home.
+  /// `cookiePolicy` is intentionally omitted from this list for the pilot —
+  /// the slug constant remains so deep links keep working if it returns.
   static const ordered = <String>[
     terms,
     privacy,
     acceptableUse,
     communityGuidelines,
     thirdPartyLicenses,
-    cookiePolicy,
   ];
 
   /// Display title fallback when the backend hasn't returned one yet
