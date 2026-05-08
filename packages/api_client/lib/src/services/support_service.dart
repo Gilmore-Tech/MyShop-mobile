@@ -19,12 +19,12 @@ class SupportService {
 
   final Dio _dio;
 
-  /// `POST /v1/support/tickets` — file a new ticket. Returns the persisted
+  /// `POST /support/tickets` — file a new ticket. Returns the persisted
   /// [SupportTicket] (server-assigned id, status defaults to `open`).
   Future<SupportTicket> createTicket(CreateTicketRequest request) async {
     try {
       final response = await _dio.post(
-        '/v1/support/tickets',
+        '/support/tickets',
         data: request.toJson(),
       );
       final data = _unwrap(response);
@@ -39,7 +39,7 @@ class SupportService {
     }
   }
 
-  /// `GET /v1/support/tickets` — list tickets owned by the caller.
+  /// `GET /support/tickets` — list tickets owned by the caller.
   ///
   /// Forward-only cursor pagination. Pass [cursor] from the previous
   /// page's [TicketPage.nextCursor]; null on the first call.
@@ -50,7 +50,7 @@ class SupportService {
   }) async {
     try {
       final response = await _dio.get(
-        '/v1/support/tickets',
+        '/support/tickets',
         queryParameters: {
           'limit': limit,
           if (cursor != null) 'cursor': cursor,
@@ -67,12 +67,12 @@ class SupportService {
     }
   }
 
-  /// `GET /v1/support/tickets/:id` — header for the detail screen
+  /// `GET /support/tickets/:id` — header for the detail screen
   /// (subject, status, last message preview, etc.). Use [getMessages] for
   /// the chat thread.
   Future<SupportTicket> getTicket(String ticketId) async {
     try {
-      final response = await _dio.get('/v1/support/tickets/$ticketId');
+      final response = await _dio.get('/support/tickets/$ticketId');
       final data = _unwrap(response);
       if (data is! Map<String, dynamic>) {
         throw const ApiException(
@@ -85,7 +85,7 @@ class SupportService {
     }
   }
 
-  /// `GET /v1/support/tickets/:id/messages` — chat history, ascending by
+  /// `GET /support/tickets/:id/messages` — chat history, ascending by
   /// `createdAt`. Forward-only cursor pagination — older messages page
   /// in as the user scrolls back.
   Future<TicketPage<TicketMessage>> getMessages(
@@ -95,7 +95,7 @@ class SupportService {
   }) async {
     try {
       final response = await _dio.get(
-        '/v1/support/tickets/$ticketId/messages',
+        '/support/tickets/$ticketId/messages',
         queryParameters: {
           'limit': limit,
           if (cursor != null) 'cursor': cursor,
@@ -111,7 +111,7 @@ class SupportService {
     }
   }
 
-  /// `POST /v1/support/tickets/:id/messages` — reply on an open ticket.
+  /// `POST /support/tickets/:id/messages` — reply on an open ticket.
   ///
   /// Validation: `body` 1–4000 UTF-8 chars; backend trims + rejects with
   /// `MESSAGE_EMPTY` / `MESSAGE_TOO_LONG` otherwise. A successful post
@@ -122,7 +122,7 @@ class SupportService {
   ) async {
     try {
       final response = await _dio.post(
-        '/v1/support/tickets/$ticketId/messages',
+        '/support/tickets/$ticketId/messages',
         data: request.toJson(),
       );
       final data = _unwrap(response);
@@ -137,7 +137,7 @@ class SupportService {
     }
   }
 
-  /// `PATCH /v1/support/tickets/:id/status` — user-initiated state change.
+  /// `PATCH /support/tickets/:id/status` — user-initiated state change.
   /// Mobile only sends `resolved` (close my ticket) or `reopened`
   /// (re-open a recently resolved ticket within 7 days).
   Future<SupportTicket> updateStatus(
@@ -146,7 +146,7 @@ class SupportService {
   ) async {
     try {
       final response = await _dio.patch(
-        '/v1/support/tickets/$ticketId/status',
+        '/support/tickets/$ticketId/status',
         data: request.toJson(),
       );
       final data = _unwrap(response);
@@ -161,13 +161,13 @@ class SupportService {
     }
   }
 
-  /// `POST /v1/support/tickets/:id/messages/read` — best-effort, idempotent.
+  /// `POST /support/tickets/:id/messages/read` — best-effort, idempotent.
   /// Marks every agent/system message up to and including [upToMessageId]
   /// as read. Used when the user opens / resumes the ticket detail.
   Future<void> markRead(String ticketId, {String? upToMessageId}) async {
     try {
       await _dio.post(
-        '/v1/support/tickets/$ticketId/messages/read',
+        '/support/tickets/$ticketId/messages/read',
         data: {
           if (upToMessageId != null) 'upToMessageId': upToMessageId,
         },

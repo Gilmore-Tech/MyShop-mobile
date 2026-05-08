@@ -13,14 +13,14 @@ class HelpService {
 
   final Dio _dio;
 
-  /// `GET /v1/support/help/categories?audience=…` — top-level cards on
+  /// `GET /support/help/categories?audience=…` — top-level cards on
   /// the support home.
   Future<List<HelpCategory>> listCategories({
     required SupportAudience audience,
   }) async {
     try {
       final response = await _dio.get(
-        '/v1/support/help/categories',
+        '/support/help/categories',
         queryParameters: {'audience': audience.wire},
       );
       final data = _unwrap(response);
@@ -34,7 +34,7 @@ class HelpService {
     }
   }
 
-  /// `GET /v1/support/help/categories/:slug/articles?audience=…` — article
+  /// `GET /support/help/categories/:slug/articles?audience=…` — article
   /// summaries under a category. The `bodyMarkdown` field is intentionally
   /// omitted on this list — fetch via [getArticle] when the user opens one.
   Future<List<HelpArticle>> listArticles({
@@ -43,7 +43,7 @@ class HelpService {
   }) async {
     try {
       final response = await _dio.get(
-        '/v1/support/help/categories/$categorySlug/articles',
+        '/support/help/categories/$categorySlug/articles',
         queryParameters: {'audience': audience.wire},
       );
       final data = _unwrap(response);
@@ -57,7 +57,7 @@ class HelpService {
     }
   }
 
-  /// `GET /v1/support/help/articles/:slug?audience=…` — full article
+  /// `GET /support/help/articles/:slug?audience=…` — full article
   /// (populates [HelpArticle.bodyMarkdown]).
   Future<HelpArticle> getArticle({
     required String slug,
@@ -65,7 +65,7 @@ class HelpService {
   }) async {
     try {
       final response = await _dio.get(
-        '/v1/support/help/articles/$slug',
+        '/support/help/articles/$slug',
         queryParameters: {'audience': audience.wire},
       );
       final data = _unwrap(response);
@@ -80,7 +80,7 @@ class HelpService {
     }
   }
 
-  /// `GET /v1/support/help/search?q=&audience=` — full-text search.
+  /// `GET /support/help/search?q=&audience=` — full-text search.
   /// Caller is responsible for debouncing and a min-2-char gate.
   Future<List<HelpArticle>> searchArticles({
     required String query,
@@ -90,7 +90,7 @@ class HelpService {
     if (trimmed.length < 2) return const [];
     try {
       final response = await _dio.get(
-        '/v1/support/help/search',
+        '/support/help/search',
         queryParameters: {
           'q': trimmed,
           'audience': audience.wire,

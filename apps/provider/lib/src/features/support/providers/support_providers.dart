@@ -6,8 +6,19 @@ import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart' show SupportLegalAsync;
 
 import '../../../core/di/providers.dart';
+import '../../profile/providers/provider_type_provider.dart';
 
 const SupportAudience kProviderSupportAudience = SupportAudience.provider;
+
+/// Audience used for legal documents only. Drivers and artisans see
+/// role-specific Terms; help articles and tickets keep the broader
+/// [kProviderSupportAudience]. Backend cascades driver→provider→both and
+/// artisan→provider→both, so a combined provider doc is still served when
+/// no role-specific version exists.
+final legalAudienceProvider = Provider<SupportAudience>((ref) {
+  final type = ref.watch(providerTypeProvider);
+  return type.isDriver ? SupportAudience.driver : SupportAudience.artisan;
+});
 
 final supportServiceProvider = Provider<SupportService>((ref) {
   return SupportService(ref.watch(dioProvider));
@@ -63,9 +74,10 @@ final helpArticleProvider =
 final legalDocumentProvider =
     FutureProvider.family<LegalDocument, String>((ref, slug) {
   ref.keepAlive();
+  final audience = ref.watch(legalAudienceProvider);
   return ref.read(legalServiceProvider).getDocument(
         slug: slug,
-        audience: kProviderSupportAudience,
+        audience: audience,
       );
 });
 

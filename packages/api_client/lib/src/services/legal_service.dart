@@ -14,15 +14,16 @@ class LegalService {
 
   final Dio _dio;
 
-  /// `GET /v1/legal/:slug?audience=…` — the document. Slugs are listed
-  /// in [LegalSlugs.ordered].
+  /// `GET /legal/:slug?audience=…` — the document. Slugs are listed
+  /// in [LegalSlugs.ordered]. The Dio base URL already includes the `/v1`
+  /// prefix, so paths here must be unprefixed.
   Future<LegalDocument> getDocument({
     required String slug,
     required SupportAudience audience,
   }) async {
     try {
       final response = await _dio.get(
-        '/v1/legal/$slug',
+        '/legal/$slug',
         queryParameters: {'audience': audience.wire},
       );
       final data = _unwrap(response);

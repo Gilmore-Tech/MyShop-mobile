@@ -10,9 +10,17 @@
 
 /// Audience the ticket is filed under. The backend uses this to filter
 /// help articles + legal documents per app and to scope category enums.
+///
+/// `driver` and `artisan` are legal-only at present — they let the backend
+/// serve role-specific Terms / policies in the provider app, while help
+/// articles and tickets continue to use `provider`. The legal service falls
+/// back driver→provider→both and artisan→provider→both when no role-specific
+/// version is published.
 enum SupportAudience {
   client('client'),
-  provider('provider');
+  provider('provider'),
+  driver('driver'),
+  artisan('artisan');
 
   const SupportAudience(this.wire);
 
@@ -24,6 +32,10 @@ enum SupportAudience {
         return SupportAudience.client;
       case 'provider':
         return SupportAudience.provider;
+      case 'driver':
+        return SupportAudience.driver;
+      case 'artisan':
+        return SupportAudience.artisan;
     }
     return null;
   }
