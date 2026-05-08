@@ -110,6 +110,11 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
   final List<File> _attachments = [];
   bool _submitting = false;
 
+  /// Captured in [initState] so the dispose-time draft flush can persist
+  /// without touching `ref` — `ref.read` throws once the element transitions
+  /// to defunct, which happens before `State.dispose()` is invoked.
+  late final BidDraftsNotifier _draftsNotifier;
+
   /// 600ms debounce so we don't write SharedPreferences on every keystroke.
   Timer? _saveDebounce;
 
@@ -132,6 +137,7 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
   void initState() {
     super.initState();
 
+    _draftsNotifier = ref.read(bidDraftsProvider.notifier);
     final draft = ref.read(bidDraftsProvider)[widget.job.id];
     _clientRequestId = draft?.clientRequestId;
 
@@ -176,11 +182,24 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     _saveDebounce?.cancel();
     _errorTimer?.cancel();
     // Final flush — preserve the last keystroke if the artisan dismissed
-    // (e.g. via the Cancel button) without explicitly submitting. The
-    // future is intentionally not awaited; SharedPreferences writes are
-    // fire-and-forget and the dispose path can't await.
+    // (e.g. via the Cancel button) without explicitly submitting.
+    //
+    // The snapshot is built NOW (controllers are about to be disposed) but
+    // the notifier mutation is deferred to a fresh Future tick: assigning
+    // `notifier.state = ...` synchronously here would notify listeners
+    // mid-unmount, which Riverpod's `_debugCanModifyProviders` blocks
+    // ("Tried to modify a provider while the widget tree was building").
     if (_isDirty) {
-      _writeDraft();
+      final draft = _buildDraftSnapshot();
+      final notifier = _draftsNotifier;
+      final jobId = widget.job.id;
+      Future<void>(() {
+        if (draft.hasContent) {
+          notifier.upsert(draft);
+        } else {
+          notifier.remove(jobId);
+        }
+      });
     }
     for (final c in [_labour, _eta, _duration, _notes]) {
       c.removeListener(_scheduleSave);
@@ -227,13 +246,16 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     _saveDebounce = Timer(const Duration(milliseconds: 600), _writeDraft);
   }
 
-  Future<void> _writeDraft() async {
+  /// Read the controllers + attachment list and build a [BidDraft] for the
+  /// current form state. Pure read — no provider mutations — so it's safe
+  /// to call from `dispose()` while the controllers are still alive.
+  BidDraft _buildDraftSnapshot() {
     final ghs = num.tryParse(_labour.text.trim()) ?? 0;
     final etaMinutes = int.tryParse(_eta.text.trim()) ?? 0;
     final durationMinutes = _parseDurationMinutes(_duration.text);
     final notes = _notes.text.trim();
 
-    final draft = BidDraft(
+    return BidDraft(
       jobId: widget.job.id,
       savedAt: DateTime.now(),
       clientRequestId: _clientRequestId,
@@ -243,15 +265,17 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
       notes: notes.isEmpty ? null : notes,
       attachmentPaths: _attachments.map((f) => f.path).toList(growable: false),
     );
+  }
 
+  Future<void> _writeDraft() async {
+    final draft = _buildDraftSnapshot();
     if (!draft.hasContent) {
       // Empty form — drop any prior draft for this job so the resume banner
       // doesn't keep advertising a draft with nothing in it.
-      await ref.read(bidDraftsProvider.notifier).remove(widget.job.id);
+      await _draftsNotifier.remove(widget.job.id);
       return;
     }
-
-    await ref.read(bidDraftsProvider.notifier).upsert(draft);
+    await _draftsNotifier.upsert(draft);
   }
 
   /// Copy the picked file into a per-job dir under app documents so the OS

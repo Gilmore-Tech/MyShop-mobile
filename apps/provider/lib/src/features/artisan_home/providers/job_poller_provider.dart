@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/providers/app_lifecycle_provider.dart';
 import '../../../core/providers/nav_badge_provider.dart';
 import '../../../core/providers/socket_provider.dart';
 import '../../artisan_jobs/providers/pending_incoming_jobs_provider.dart';
@@ -47,6 +48,7 @@ final jobPollerProvider = Provider<void>((ref) {
 
   final jobService = ref.read(jobServiceProvider);
   final goOnlineAt = DateTime.now().toUtc();
+  Timer? timer;
 
   Future<List<Job>> fetchOpenJobs() async {
     final raw = await jobService.listJobs(
@@ -122,16 +124,43 @@ final jobPollerProvider = Provider<void>((ref) {
     }
   }
 
-  // First poll immediately so a job created in the moments between the
-  // artisan tapping online and the timer's first tick still surfaces.
-  poll();
-  final timer = Timer.periodic(
-    const Duration(seconds: 10),
-    (_) => poll(),
-  );
+  void start() {
+    if (timer != null) return;
+    debugPrint('[JobPoller] starting');
+    // Poll immediately so a job created in the moments between the artisan
+    // tapping online (or the app coming back to foreground) and the
+    // timer's first tick still surfaces.
+    poll();
+    timer = Timer.periodic(const Duration(seconds: 10), (_) => poll());
+  }
+
+  void stop() {
+    if (timer == null) return;
+    debugPrint('[JobPoller] paused');
+    timer!.cancel();
+    timer = null;
+  }
+
+  // Gate the timer on app foreground. Polling while backgrounded is
+  // pointless on Android (Doze blocks DNS/network) and burns battery
+  // for nothing — FCM is the wakeup channel for incoming jobs while
+  // the app is suspended. `goOnlineAt` is captured once at the top so
+  // jobs created during a background interval are flagged "fresh"
+  // (not preExisting) on the next poll after resume.
+  if (ref.read(appForegroundedProvider)) {
+    start();
+  }
+  ref.listen<bool>(appForegroundedProvider, (_, isForegrounded) {
+    if (isForegrounded) {
+      start();
+    } else {
+      stop();
+    }
+  });
+
   ref.onDispose(() {
     debugPrint('[JobPoller] stopped');
-    timer.cancel();
+    timer?.cancel();
   });
 });
 
