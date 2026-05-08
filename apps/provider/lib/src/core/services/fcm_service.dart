@@ -22,17 +22,32 @@ import 'local_notification_service.dart';
 /// without tap payload).
 @pragma('vm:entry-point')
 Future<void> fcmBackgroundHandler(RemoteMessage message) async {
+  // Breadcrumb: confirms the OS actually woke the isolate. Visible via
+  // `adb logcat | grep flutter` even when the app isn't running. If
+  // jobs are being created and this line never appears, the message
+  // never reached the device — investigate FCM token registration,
+  // OEM battery optimisation (Xiaomi/Huawei/Samsung kill apps that
+  // aren't whitelisted), or `notification.send()` failures on the
+  // backend.
+  debugPrint('[FCM-bg] message arrived: '
+      'type=${message.data['type']} '
+      'hasNotificationField=${message.notification != null} '
+      'data=${message.data}');
   // Backend now sends a top-level `notification` field on every push so
   // FCM auto-displays the system tray banner in background/terminated.
   // Rendering our local notification on top of that produces 2× banners
   // (one from FCM SDK, one from flutter_local_notifications) — bail when
   // FCM has already drawn it. Only render manually for true data-only
   // pushes (no `notification` field present).
-  if (message.notification != null) return;
+  if (message.notification != null) {
+    debugPrint('[FCM-bg] FCM SDK will auto-display — skipping local render');
+    return;
+  }
   // Re-initialise the local notification plugin inside this isolate —
   // state from the main isolate is NOT shared.
   await LocalNotificationService.instance.init();
   await _renderFromRemote(message);
+  debugPrint('[FCM-bg] local notification rendered');
 }
 
 Future<void> _renderFromRemote(RemoteMessage message) async {

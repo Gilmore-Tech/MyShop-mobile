@@ -216,6 +216,12 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
 
   // Listen to the existing position stream so the cached fix advances as
   // the phone moves. Socket-only — the heartbeat is the single REST writer.
+  //
+  // No `fireImmediately`: a synchronous fire would mutate
+  // `lastKnownPositionProvider` while this bridge provider is still
+  // initializing, which Riverpod asserts against. The cold-start path
+  // above (cached read + Geolocator fallback) already seeds the first
+  // fix; this listener only needs to handle subsequent stream emissions.
   ref.listen<AsyncValue<Position>>(driverLocationStreamProvider, (_, next) {
     next.when(
       data: (position) {
@@ -228,7 +234,7 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
       loading: () => debugPrint('[LOC] bridge: stream loading — no fix yet'),
       error: (e, _) => debugPrint('[LOC] bridge: stream error — $e'),
     );
-  }, fireImmediately: true);
+  });
 });
 
 void _connectAndListen(Ref ref, SocketService socket) {

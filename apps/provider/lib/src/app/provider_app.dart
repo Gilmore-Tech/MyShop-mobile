@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../core/providers/app_lifecycle_provider.dart';
+import '../core/providers/availability_controller.dart';
 import '../core/providers/provider_status_provider.dart';
 import '../core/providers/socket_provider.dart';
 import '../core/services/fcm_service.dart';
@@ -37,6 +39,10 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
+        // Flip the foreground flag first so any provider listening on
+        // `appForegroundedProvider` (e.g. the open-jobs REST poller)
+        // re-enables itself before the network calls below fire.
+        ref.read(appForegroundedProvider.notifier).state = true;
         // If the session TTL elapsed while the app was backgrounded, boot
         // the user out now rather than waiting for the next 401. The
         // interceptor's proactive expiry check covers access-token expiry
@@ -60,11 +66,24 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
       case AppLifecycleState.detached:
+        // Tell every foreground-only loop (REST pollers, retry timers)
+        // to pause. Without this they keep firing GET /jobs every 10s
+        // into a Doze-suspended network stack — DNS fails, log spam,
+        // wasted battery.
+        ref.read(appForegroundedProvider.notifier).state = false;
         // Stop the 8-second poll so iOS doesn't queue ticks while the
         // process is suspended (which can spike memory on resume).
         if (ref.exists(artisanJobsProvider)) {
           ref.read(artisanJobsProvider.notifier).pausePolling();
         }
+        // Refresh the backend's liveness heartbeat one last time. The
+        // socket bridge's 4s heartbeat is about to stop firing (Doze /
+        // iOS suspend), and the backend's zombie-offline cron flips us
+        // offline as soon as the Redis TTL expires — at which point the
+        // matcher's SQL filter excludes us and inbound jobs fall through
+        // to admin even though FCM could have woken the device. This
+        // resets the TTL to a full 5-min window. Fire-and-forget.
+        ref.read(availabilityControllerProvider).refreshHeartbeat();
         // Drop the socket — it's redundant with FCM while backgrounded
         // and holds a TCP connection + event buffers that count against
         // the iOS jetsam budget.

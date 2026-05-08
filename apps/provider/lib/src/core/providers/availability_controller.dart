@@ -121,6 +121,46 @@ class AvailabilityController {
     return null;
   }
 
+  /// Refresh the backend's liveness heartbeat without flipping local
+  /// state. Called as the app moves to background — once the foreground
+  /// is gone, the socket bridge's 4s heartbeat stops firing (iOS suspend,
+  /// Android Doze), and the backend's 5-min Redis TTL ticks down from
+  /// whatever the last heartbeat was. The matcher's SQL gates on
+  /// `online_status = 'online'`, which the zombie-offline cron flips
+  /// off the moment the heartbeat key expires — so a backgrounded
+  /// provider with a stale heartbeat silently misses inbound jobs even
+  /// though FCM would have woken them. Refreshing here resets the TTL
+  /// to a full window. Fire-and-forget; failures don't roll back local
+  /// state — the user is leaving foreground anyway.
+  Future<void> refreshHeartbeat() async {
+    if (_ref.read(providerStatusProvider).isOffline) return;
+    final pos = _ref.read(lastKnownPositionProvider);
+    if (pos == null) return;
+
+    final isArtisan = _ref.read(providerTypeProvider).isArtisan;
+    final locationService = _ref.read(locationServiceProvider);
+    try {
+      if (isArtisan) {
+        await locationService.updateArtisanLocation(
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          status: 'online',
+        );
+      } else {
+        await locationService.updateDriverLocation(
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          status: 'online',
+        );
+      }
+      debugPrint('[Availability] heartbeat refreshed for backgrounding');
+    } on ApiException catch (e) {
+      debugPrint('[Availability] heartbeat refresh failed: $e');
+    } catch (e) {
+      debugPrint('[Availability] heartbeat refresh error: $e');
+    }
+  }
+
   /// Force the provider offline without a user gesture — used by the
   /// location-permission watcher when the OS revokes permission or
   /// services are disabled mid-session.
