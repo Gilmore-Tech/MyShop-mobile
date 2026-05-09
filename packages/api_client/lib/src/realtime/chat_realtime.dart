@@ -1,14 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../config/api_config.dart';
+import '../http/token_refresher.dart';
 import '../http/token_storage.dart';
-import '../models/auth_dtos.dart';
 
 /// Real-time client for the `/chat` Socket.IO namespace.
 ///
@@ -28,24 +27,23 @@ class ChatRealtime {
   ChatRealtime({
     required ApiConfig config,
     required TokenStorage tokenStorage,
-    required Dio dio,
-    void Function()? onForceLogout,
+    required TokenRefresher tokenRefresher,
   })  : _config = config,
         _tokenStorage = tokenStorage,
-        _dio = dio,
-        _onForceLogout = onForceLogout;
+        _tokenRefresher = tokenRefresher;
 
   final ApiConfig _config;
   final TokenStorage _tokenStorage;
-  final Dio _dio;
-  final void Function()? _onForceLogout;
+  final TokenRefresher _tokenRefresher;
 
   io.Socket? _socket;
   bool _disposed = false;
 
-  // Single-flight guards — same shape as the main socket so an UNAUTHORIZED
-  // storm can't fan out into multiple concurrent refresh + reconnect cycles.
-  Future<String?>? _inFlightRefresh;
+  // Single-flight guard for reconnect — refresh dedup is handled by
+  // [TokenRefresher] (process-wide, shared with REST + main WS). Before
+  // this was wired in, ChatRealtime's private refresh path raced the
+  // shared refresher through the backend's refresh-token rotation and
+  // the loser ate REFRESH_TOKEN_REUSED → forced logout.
   Future<void>? _inFlightReconnect;
 
   ChatChannel? _channel;
@@ -110,7 +108,11 @@ class ChatRealtime {
 
     if (_isTokenExpiringSoon(token)) {
       debugPrint('[CHAT-WS] Token expired/expiring — refreshing pre-connect');
-      final refreshed = await _refreshAccessTokenWithRetry();
+      // Shared TokenRefresher (single-flight across REST + main WS +
+      // chat WS), so a concurrent refresh from any other path just
+      // awaits the same future instead of racing the rotating token
+      // through the backend.
+      final refreshed = await _tokenRefresher.refresh();
       if (refreshed == null) {
         debugPrint('[CHAT-WS] Pre-connect refresh failed — aborting');
         return;
@@ -450,7 +452,7 @@ class ChatRealtime {
         _socket = null;
         if (!_connectionController.isClosed) _connectionController.add(false);
 
-        final refreshed = await _refreshAccessTokenWithRetry();
+        final refreshed = await _tokenRefresher.refresh();
         if (refreshed == null) {
           debugPrint(
             '[CHAT-WS] Refresh after UNAUTHORIZED failed — staying offline',
@@ -460,60 +462,6 @@ class ChatRealtime {
         await connect();
       } finally {
         _inFlightReconnect = null;
-      }
-    }();
-  }
-
-  Future<String?> _refreshAccessTokenWithRetry({int attempts = 3}) async {
-    for (var i = 0; i < attempts; i++) {
-      final token = await _refreshAccessToken();
-      if (token != null) return token;
-      final stillHaveRefreshToken =
-          (await _tokenStorage.readRefreshToken()) != null;
-      if (!stillHaveRefreshToken) return null;
-      if (i < attempts - 1) {
-        final backoff = Duration(seconds: 3 * (i + 1));
-        debugPrint('[CHAT-WS] Refresh attempt ${i + 1} failed — retrying in '
-            '${backoff.inSeconds}s');
-        await Future<void>.delayed(backoff);
-      }
-    }
-    return null;
-  }
-
-  Future<String?> _refreshAccessToken() {
-    return _inFlightRefresh ??= () async {
-      try {
-        final refreshToken = await _tokenStorage.readRefreshToken();
-        if (refreshToken == null) {
-          debugPrint('[CHAT-WS] No refresh token in storage — forcing logout');
-          _onForceLogout?.call();
-          return null;
-        }
-
-        final response = await _dio.post(
-          '/auth/refresh',
-          data: RefreshRequest(refreshToken: refreshToken).toJson(),
-        );
-        final data = response.data as Map<String, dynamic>;
-        final newAccessToken = data['data']?['accessToken'] as String? ??
-            data['accessToken'] as String;
-        await _tokenStorage.writeAccessToken(newAccessToken);
-        return newAccessToken;
-      } on DioException catch (e) {
-        final status = e.response?.statusCode;
-        // Same terminal-on-4xx rule as the main socket.
-        if (status != null && status >= 400 && status < 500) {
-          await _tokenStorage.clearTokens();
-          _onForceLogout?.call();
-        }
-        return null;
-      } on TimeoutException {
-        return null;
-      } catch (_) {
-        return null;
-      } finally {
-        _inFlightRefresh = null;
       }
     }();
   }

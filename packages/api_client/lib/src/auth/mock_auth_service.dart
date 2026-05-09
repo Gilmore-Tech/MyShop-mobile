@@ -118,12 +118,6 @@ class MockAuthService implements AuthService {
   }
 
   @override
-  Future<String> refreshToken(String refreshToken) async {
-    await _delay();
-    return 'mock_refreshed_access_token';
-  }
-
-  @override
   Future<UserProfile> getMe() async {
     await _delay();
     final phone = _lastPhone ?? '+233241234567';

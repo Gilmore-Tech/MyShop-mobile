@@ -36,9 +36,10 @@ abstract class AuthService {
   /// POST /auth/verify-otp
   Future<TokenResponse> verifyOtp(VerifyOtpRequest request);
 
-  /// Refresh an expired access token.
-  /// POST /auth/refresh
-  Future<String> refreshToken(String refreshToken);
+  // Token refresh is owned by [TokenRefresher] (single-flight across
+  // REST + main WS + chat WS). Do NOT add a refreshToken() method here
+  // — any caller-driven refresh racing the shared single-flight will
+  // burn the rotating refresh token and force-logout the user.
 
   /// Revoke the current refresh token server-side. Best-effort: callers
   /// must clear local tokens regardless of whether this succeeds, since

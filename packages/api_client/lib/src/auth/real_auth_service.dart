@@ -138,20 +138,6 @@ class RealAuthService implements AuthService {
   }
 
   @override
-  Future<String> refreshToken(String refreshToken) async {
-    try {
-      final response = await _dio.post(
-        '/auth/refresh',
-        data: RefreshRequest(refreshToken: refreshToken).toJson(),
-      );
-      final data = _unwrap(response) as Map<String, dynamic>;
-      return RefreshResponse.fromJson(data).accessToken;
-    } on DioException catch (e) {
-      throw ApiException.fromDioException(e);
-    }
-  }
-
-  @override
   Future<UserProfile> getMe() async {
     try {
       final response = await _dio.get('/users/me');
