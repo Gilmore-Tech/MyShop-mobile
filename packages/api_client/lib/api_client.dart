@@ -7,6 +7,7 @@ export 'src/config/api_config.dart';
 export 'src/http/auth_interceptor.dart';
 export 'src/http/dio_client.dart';
 export 'src/http/logging_interceptor.dart';
+export 'src/http/token_refresher.dart';
 export 'src/http/token_storage.dart';
 
 // Models

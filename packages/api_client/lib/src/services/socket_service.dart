@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../config/api_config.dart';
+import '../http/token_refresher.dart';
 import '../http/token_storage.dart';
-import '../models/auth_dtos.dart';
 
 /// Callback for when a Socket.IO event is received.
 typedef SocketEventCallback = void Function(dynamic data);
@@ -26,24 +25,22 @@ class SocketService {
   SocketService({
     required ApiConfig config,
     required TokenStorage tokenStorage,
-    required Dio dio,
-    void Function()? onForceLogout,
+    required TokenRefresher tokenRefresher,
   })  : _config = config,
         _tokenStorage = tokenStorage,
-        _dio = dio,
-        _onForceLogout = onForceLogout;
+        _tokenRefresher = tokenRefresher;
 
   final ApiConfig _config;
   final TokenStorage _tokenStorage;
-  final Dio _dio;
-  final void Function()? _onForceLogout;
+  final TokenRefresher _tokenRefresher;
 
   io.Socket? _socket;
   bool _disposed = false;
 
-  // Single-flight guards so a UNAUTHORIZED storm or overlapping connect()
-  // calls don't fan out into multiple concurrent refresh + reconnect cycles.
-  Future<String?>? _inFlightRefresh;
+  // Single-flight guard so back-to-back UNAUTHORIZED events don't fan
+  // out into multiple concurrent reconnect cycles. Refresh dedup is
+  // handled by [TokenRefresher] (process-wide, shared with the REST
+  // auth interceptor).
   Future<void>? _inFlightReconnect;
 
   final _connectionController = StreamController<bool>.broadcast();
@@ -69,12 +66,14 @@ class SocketService {
     // expire within the next 30s. Avoids the round-trip of opening the
     // socket only for the server to immediately reject with UNAUTHORIZED.
     //
-    // The backend runs on Render free tier and can take 30–60s to wake from
-    // a cold start, so we retry the refresh a few times with backoff before
-    // giving up. Once it returns, the socket connects normally.
+    // Refresh delegates to the shared [TokenRefresher] (single-flight
+    // across REST + WS), so a concurrent REST 401 also kicking off
+    // /auth/refresh just awaits the same future instead of racing the
+    // refresh token through the backend and one of them eating
+    // REFRESH_TOKEN_REUSED.
     if (_isTokenExpiringSoon(token)) {
       debugPrint('[WS] Access token expired/expiring — refreshing pre-connect');
-      final refreshed = await _refreshAccessTokenWithRetry();
+      final refreshed = await _refreshWithRetry();
       if (refreshed == null) {
         debugPrint('[WS] Pre-connect refresh failed — aborting connect');
         return;
@@ -234,7 +233,7 @@ class SocketService {
           _connectionController.add(false);
         }
 
-        final refreshed = await _refreshAccessTokenWithRetry();
+        final refreshed = await _refreshWithRetry();
         if (refreshed == null) {
           debugPrint(
             '[WS] Refresh after UNAUTHORIZED failed — staying offline',
@@ -248,18 +247,17 @@ class SocketService {
     }();
   }
 
-  /// Refresh with a few retries — the Render free-tier backend may take
-  /// 30–60s to wake from a cold start, and the very first request after
-  /// app launch can also race with the iOS network stack coming up.
-  /// Backs off between attempts; on a hard auth failure (e.g. refresh
-  /// token revoked), [_refreshAccessToken] short-circuits and there's
-  /// nothing useful to retry.
-  Future<String?> _refreshAccessTokenWithRetry({int attempts = 3}) async {
+  /// Wraps [TokenRefresher.refresh] in a small retry loop to ride out
+  /// Render free-tier cold starts (30–60s on first hit after long idle)
+  /// and transient network blips during app launch. The refresher's
+  /// single-flight already coalesces concurrent callers, so retrying
+  /// here is safe — overlapping callers await the same in-flight future.
+  /// Bails immediately when the refresh token itself is gone (refresher
+  /// has already fired onForceLogout in that case).
+  Future<String?> _refreshWithRetry({int attempts = 3}) async {
     for (var i = 0; i < attempts; i++) {
-      final token = await _refreshAccessToken();
+      final token = await _tokenRefresher.refresh();
       if (token != null) return token;
-      // If the refresh token itself is gone, _refreshAccessToken will have
-      // already fired _onForceLogout — no point retrying.
       final stillHaveRefreshToken =
           (await _tokenStorage.readRefreshToken()) != null;
       if (!stillHaveRefreshToken) return null;
@@ -271,81 +269,6 @@ class SocketService {
       }
     }
     return null;
-  }
-
-  /// Calls `/auth/refresh` and persists the new access token.
-  /// Returns the new token on success, `null` on failure. On a hard auth
-  /// failure (refresh token also dead), clears storage and fires
-  /// [_onForceLogout] so the app routes back to sign-in.
-  Future<String?> _refreshAccessToken() {
-    return _inFlightRefresh ??= () async {
-      try {
-        final refreshToken = await _tokenStorage.readRefreshToken();
-        if (refreshToken == null) {
-          debugPrint('[WS] No refresh token in storage — forcing logout');
-          _onForceLogout?.call();
-          return null;
-        }
-
-        debugPrint('[WS] POST /auth/refresh →');
-        // No explicit timeout override here — Dio's default 60s is needed to
-        // ride out Render free-tier cold starts (30–60s on first hit after
-        // long inactivity).
-        final response = await _dio.post(
-          '/auth/refresh',
-          data: RefreshRequest(refreshToken: refreshToken).toJson(),
-        );
-        debugPrint('[WS] POST /auth/refresh ← ${response.statusCode}');
-
-        final body = response.data as Map<String, dynamic>;
-        final payload = (body['data'] is Map<String, dynamic>
-            ? body['data']
-            : body) as Map<String, dynamic>;
-
-        final newAccessToken = payload['accessToken'] as String;
-        // Backend rotation (B4): when the response includes a new
-        // refreshToken we MUST persist it. Otherwise the next refresh
-        // (from either this path or the REST auth interceptor) will reuse
-        // the now-consumed refresh token and the backend will reject it
-        // with REFRESH_TOKEN_REUSED → forced logout 3 minutes after login.
-        final newRefreshToken = payload['refreshToken'] as String?;
-        if (newRefreshToken != null && newRefreshToken != refreshToken) {
-          await _tokenStorage.writeTokens(
-            accessToken: newAccessToken,
-            refreshToken: newRefreshToken,
-          );
-        } else {
-          await _tokenStorage.writeAccessToken(newAccessToken);
-        }
-        debugPrint('[WS] Token refresh succeeded — wrote new access token');
-        return newAccessToken;
-      } on DioException catch (e) {
-        final status = e.response?.statusCode;
-        final body = e.response?.data;
-        debugPrint(
-          '[WS] Token refresh DioException: type=${e.type} status=$status '
-          'message=${e.message} body=$body',
-        );
-        // Any 4xx on /auth/refresh is terminal — the backend has rejected
-        // the refresh token and the only path forward is sign-in. Don't
-        // gate on specific error codes: we've seen the backend's 401 body
-        // sometimes lack `error.code`, leaving the user in a zombie state
-        // where every subsequent request 401s.
-        if (status != null && status >= 400 && status < 500) {
-          await _tokenStorage.clearTokens();
-          _onForceLogout?.call();
-        }
-        return null;
-      } on TimeoutException catch (e) {
-        debugPrint('[WS] Token refresh timed out: $e');
-        return null;
-      } catch (e, st) {
-        debugPrint('[WS] Token refresh failed: $e\n$st');
-        return null;
-      } finally {
-        _inFlightRefresh = null;
-      }
-    }();
   }
 
   /// True if the JWT is expired or will expire within the next 30 seconds.

@@ -3,50 +3,50 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
-import '../models/auth_dtos.dart';
 import '../models/auth_error_mapper.dart';
+import 'token_refresher.dart';
 import 'token_storage.dart';
 
 /// Interceptor that:
 /// 1. Injects the Bearer token on every authenticated request.
-/// 2. Handles 401 responses by refreshing the token and retrying — with
-///    a single-flight [_inFlightRefresh] so a burst of concurrent 401s
-///    against the same stale token only fires one `/auth/refresh`. A
-///    second dedup compares the stored token to the one attached when
-///    the request went out, so a request that 401s after another caller
-///    already rotated the token just retries with the new one instead
-///    of triggering another refresh.
-/// 3. Emits a logout signal when the refresh token itself is dead.
+/// 2. Handles 401 responses by refreshing via the shared
+///    [TokenRefresher] and retrying. The refresher single-flights
+///    `/auth/refresh` across every caller (REST 401, WS pre-connect,
+///    WS UNAUTHORIZED), so concurrent paths don't race the same
+///    rotating refresh token through the backend and one of them
+///    eat a `REFRESH_TOKEN_REUSED`. A local stored-vs-attached token
+///    check ALSO short-circuits the refresh when another caller has
+///    already written a fresh access token between the request going
+///    out and the 401 coming back.
+/// 3. Emits a logout signal when the refresh token itself is dead —
+///    owned entirely by [TokenRefresher].
 ///
 /// Must extend plain [Interceptor], NOT [QueuedInterceptor]. Dio's
 /// `QueuedInterceptor` serializes onError through a single queue per
-/// instance; awaiting `_dio.post('/auth/refresh', ...)` from inside an
-/// onError handler means the refresh's own onError (when the refresh
-/// itself returns 4xx) gets queued behind the outer handler awaiting
-/// it — deadlocking the chain and stranding the app on whatever screen
-/// the failed request was driving. Concurrency is already handled by
-/// [_inFlightRefresh] + the stored-vs-attached dedup, so the queue was
-/// redundant insurance with a sharp edge.
+/// instance; awaiting `/auth/refresh` from inside an onError handler
+/// means the refresh's own onError (when the refresh itself returns
+/// 4xx) gets queued behind the outer handler awaiting it —
+/// deadlocking the chain. Plain [Interceptor] avoids that and the
+/// concurrency we actually need is provided by [TokenRefresher].
 ///
-/// We do not pre-refresh expired tokens in [onRequest]; the socket layer
-/// handles proactive refresh from outside the interceptor chain, and
+/// We do not pre-refresh expired tokens in [onRequest]; the socket
+/// layer handles proactive refresh (also via [TokenRefresher]), and
 /// the REST path relies on the 401 → refresh round-trip.
 class AuthInterceptor extends Interceptor {
   AuthInterceptor({
     required TokenStorage tokenStorage,
     required Dio dio,
+    required TokenRefresher tokenRefresher,
     void Function()? onForceLogout,
   })  : _tokenStorage = tokenStorage,
         _dio = dio,
+        _tokenRefresher = tokenRefresher,
         _onForceLogout = onForceLogout;
 
   final TokenStorage _tokenStorage;
   final Dio _dio;
+  final TokenRefresher _tokenRefresher;
   final void Function()? _onForceLogout;
-
-  /// Single-flight guard so a burst of requests racing with an expired
-  /// token don't each post `/auth/refresh`.
-  Future<String?>? _inFlightRefresh;
 
   /// Paths that do not require an Authorization header.
   static const _publicPaths = {
@@ -158,8 +158,13 @@ class AuthInterceptor extends Interceptor {
       return;
     }
 
-    // Actually attempt the refresh.
-    final refreshed = await _refreshOnce();
+    // Delegate to the shared [TokenRefresher] — single source of truth
+    // for `/auth/refresh` so concurrent callers (REST 401 + WS pre-
+    // connect / UNAUTHORIZED) coalesce onto one network round-trip and
+    // one storage write. The refresher owns terminal-failure handling
+    // (clearTokens + onForceLogout); we just retry on success or
+    // propagate on null.
+    final refreshed = await _tokenRefresher.refresh();
     if (refreshed == null) {
       debugPrint('[Auth] refresh failed — propagating 401 for $path');
       handler.next(err);
@@ -195,113 +200,5 @@ class AuthInterceptor extends Interceptor {
     } on DioException catch (retryErr) {
       handler.next(retryErr);
     }
-  }
-
-  /// POST `/auth/refresh` with single-flight dedup.
-  /// On success returns the new access token and writes it to storage.
-  /// On hard auth failure clears tokens and fires [_onForceLogout].
-  Future<String?> _refreshOnce() {
-    return _inFlightRefresh ??= () async {
-      try {
-        final refreshToken = await _tokenStorage.readRefreshToken();
-        if (refreshToken == null) {
-          debugPrint('[Auth] no refresh token in storage — forcing logout');
-          _onForceLogout?.call();
-          return null;
-        }
-
-        debugPrint('[Auth] POST /auth/refresh →');
-        final response = await _dio.post(
-          '/auth/refresh',
-          data: RefreshRequest(refreshToken: refreshToken).toJson(),
-        );
-        debugPrint('[Auth] POST /auth/refresh ← ${response.statusCode}');
-
-        final body = response.data;
-        if (body is! Map<String, dynamic>) {
-          debugPrint('[Auth] refresh body not a map: $body');
-          return null;
-        }
-        final payload = (body['data'] is Map<String, dynamic>
-            ? body['data']
-            : body) as Map<String, dynamic>;
-
-        final newAccessToken = payload['accessToken'] as String?;
-        if (newAccessToken == null) {
-          debugPrint('[Auth] refresh response missing accessToken: $payload');
-          return null;
-        }
-        await _tokenStorage.writeAccessToken(newAccessToken);
-
-        // Rotation support: backend is adding rotation (B4). When it
-        // ships, the response will also carry a new refreshToken — we
-        // persist it so the next refresh uses the rotated token. Until
-        // then this key is absent and we keep the old refresh token.
-        final newRefreshToken = payload['refreshToken'] as String?;
-        if (newRefreshToken != null && newRefreshToken != refreshToken) {
-          await _tokenStorage.writeTokens(
-            accessToken: newAccessToken,
-            refreshToken: newRefreshToken,
-          );
-        }
-
-        return newAccessToken;
-      } on DioException catch (e) {
-        debugPrint(
-          '[Auth] refresh DioException: status=${e.response?.statusCode} '
-          'body=${e.response?.data}',
-        );
-        // Refresh-failure policy:
-        //   - 401 with TOKEN_EXPIRED / INVALID_TOKEN / REFRESH_TOKEN_REUSED →
-        //     the entire token chain is dead. Wipe full identity context
-        //     so the user signs in fresh and no stale cached profile
-        //     flashes on the way to /signin.
-        //   - 401 with SESSION_TAKEN_OVER → another device claimed the
-        //     session. Soft-clear only the JWT pair, preserving cached
-        //     identity for one-tap re-login.
-        //   - 401 with anything else (or no code) → still terminal, but
-        //     soft-clear: a 401 on /auth/refresh can only mean "this
-        //     refresh token is rejected" — there's no recovery path, so
-        //     we MUST kick the user out. Backend is migrating to the
-        //     specific codes (rollout in progress); until that's
-        //     consistent we fall back to soft-clear so the app isn't
-        //     stranded with dead tokens.
-        //   - other 4xx (400, 403, 422 etc.) → don't clear. These are
-        //     client errors, not auth-chain death.
-        final status = e.response?.statusCode;
-        final code = _extractErrorCode(e.response);
-        const terminalCodes = {
-          AuthErrorCodes.tokenExpired,
-          AuthErrorCodes.invalidToken,
-          AuthErrorCodes.refreshTokenReused,
-        };
-        if (status == 401) {
-          if (code != null && terminalCodes.contains(code)) {
-            debugPrint(
-              '[Auth] terminal refresh failure ($code) — clearing tokens',
-            );
-            await _tokenStorage.clearTokens();
-            _onForceLogout?.call();
-          } else {
-            debugPrint(
-              '[Auth] refresh 401 (code="$code") — soft logout',
-            );
-            await _tokenStorage.clearAuthTokensOnly();
-            _onForceLogout?.call();
-          }
-        } else if (status != null && status >= 400 && status < 500) {
-          debugPrint(
-            '[Auth] refresh non-401 4xx ($status, code="$code") — '
-            'NOT clearing tokens (likely a client error, not auth death)',
-          );
-        }
-        return null;
-      } catch (e, st) {
-        debugPrint('[Auth] refresh crashed: $e\n$st');
-        return null;
-      } finally {
-        _inFlightRefresh = null;
-      }
-    }();
   }
 }
