@@ -177,9 +177,18 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
 
   /// Pull the latest job from REST and merge payment-acknowledgement
   /// fields into the active slot. Used as a safety net when a socket event
-  /// is missed or when the artisan's `artisan-confirm-cash` returns 409
-  /// `CLIENT_PAYMENT_NOT_ACKNOWLEDGED` — in which case the client may have
-  /// just acknowledged but the event hasn't reached us yet.
+  /// is missed:
+  ///   - `artisan-confirm-cash` 409s with `CLIENT_PAYMENT_NOT_ACKNOWLEDGED`
+  ///     (client may have just acknowledged but the event hasn't landed),
+  ///   - the screen sits in `pending_payment` waiting on the Paystack
+  ///     webhook → `completed` event, which battery saver / OS socket
+  ///     reaping can swallow silently. The poll closes that gap.
+  ///
+  /// Status changes are routed through [applyRemoteStatus] so the same
+  /// side effects (earnings cache bust, online resume, profile refresh)
+  /// fire whether the transition came from the socket or this poll —
+  /// without that, a poll-detected `completed` would leave the dashboard
+  /// staring at stale earnings.
   Future<void> refreshFromServer() async {
     final job = state.job;
     if (job == null) return;
@@ -190,7 +199,6 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
       if (current == null || current.id != job.id) return;
       state = state.copyWith(
         job: current.copyWith(
-          status: fresh.status,
           // Prefer the backend-authoritative job timestamps once they're
           // present — this lets the local "stamp on tap" fallback in
           // [_transitionTo] get reconciled to the real value the next
@@ -201,6 +209,11 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
           clientPaymentMethod: fresh.clientPaymentMethod,
         ),
       );
+      // Apply status via the shared path so [applyRemoteStatus]'s
+      // side effects (earnings cache bust, online resume, profile refresh
+      // when landing as `completed`) run even when the poll — not the
+      // socket — caught the transition.
+      applyRemoteStatus(fresh.status);
     } catch (e) {
       developer.log(
         'refreshFromServer failed: $e',

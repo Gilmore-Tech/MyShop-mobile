@@ -53,13 +53,22 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
   /// the socket reconciler can also re-emit the same status.
   bool _rateSheetShown = false;
 
-  /// Polls `GET /jobs/:id` while we're sitting on `artisan_marked_complete`
-  /// with no `clientPaymentAcknowledgedAt` yet. The
-  /// `job:client_payment_acknowledged` socket event is the primary signal,
-  /// but battery saver / OS socket reaping / a backgrounded app can drop
-  /// it silently — leaving the artisan stuck on "Waiting for client" even
-  /// after the client picked Cash on the payment screen. The poll is the
-  /// belt-and-braces fallback that closes the gap in 5s instead of never.
+  /// Polls `GET /jobs/:id` whenever the screen is parked in a state that
+  /// depends on a backend-driven transition we might miss over the
+  /// socket. Two distinct cases share the timer:
+  ///
+  ///   - `artisan_marked_complete` with no `clientPaymentAcknowledgedAt`
+  ///     yet: waiting on `job:client_payment_acknowledged` so the
+  ///     "Yes, I received payment" CTA enables for Cash.
+  ///   - `pending_payment`: client picked an in-app method and the
+  ///     Paystack webhook will flip the job to `completed` — without
+  ///     this poll, a missed `job:status:changed` leaves the artisan
+  ///     stranded on "Client is paying…" while the client (and FCM
+  ///     notification) say the job is done.
+  ///
+  /// In both cases battery saver / OS socket reaping / a backgrounded app
+  /// can swallow the event silently. The poll closes the gap in 5s
+  /// instead of never.
   Timer? _ackPollTimer;
 
   @override
@@ -85,14 +94,20 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
     super.dispose();
   }
 
-  /// Starts/stops the cash-acknowledgement poll based on the current job.
-  /// Called from build() via a `ref.listen`. Idempotent — repeated calls
-  /// with the same conditions don't restart the timer.
+  /// Starts/stops the completion-poll based on the current job. Called
+  /// from build() via a `ref.listen`. Idempotent — repeated calls with
+  /// the same conditions don't restart the timer.
+  ///
+  /// Polls while we're either (a) waiting on the client to acknowledge
+  /// payment from `artisan_marked_complete`, or (b) waiting on the
+  /// Paystack webhook to settle a `pending_payment` charge. Both phases
+  /// rely on a socket event we can miss; the poll is the safety net.
   void _syncAckPolling(Job? job) {
     final shouldPoll = job != null &&
-        job.status == JobStatus.artisanMarkedComplete &&
-        (job.clientPaymentAcknowledgedAt == null ||
-            job.clientPaymentAcknowledgedAt!.isEmpty);
+        ((job.status == JobStatus.artisanMarkedComplete &&
+                (job.clientPaymentAcknowledgedAt == null ||
+                    job.clientPaymentAcknowledgedAt!.isEmpty)) ||
+            job.status == JobStatus.pendingPayment);
     if (shouldPoll) {
       if (_ackPollTimer != null) return;
       // Pull once immediately so the moment the screen lands on the
