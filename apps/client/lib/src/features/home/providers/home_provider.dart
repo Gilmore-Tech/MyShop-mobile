@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/di/providers.dart';
 import '../../auth/providers/auth_controller.dart';
 
 // ── Models ────────────────────────────────────────────────────────────────────
@@ -21,18 +20,6 @@ class SpecialOffer {
     required this.subtitle,
     this.promoCode,
     required this.backgroundColor,
-  });
-}
-
-class RecentPlace {
-  final String id;
-  final String name;
-  final String address;
-
-  const RecentPlace({
-    required this.id,
-    required this.name,
-    required this.address,
   });
 }
 
@@ -68,33 +55,6 @@ class SpecialOffersNotifier extends AsyncNotifier<List<SpecialOffer>> {
         backgroundColor: Color(0xFF1F4E3D),
       ),
     ];
-  }
-}
-
-/// Recent/saved places — fetched from GET /users/me/saved-locations.
-final recentPlacesProvider =
-    AsyncNotifierProvider<RecentPlacesNotifier, List<RecentPlace>>(
-  RecentPlacesNotifier.new,
-);
-
-class RecentPlacesNotifier extends AsyncNotifier<List<RecentPlace>> {
-  @override
-  Future<List<RecentPlace>> build() async {
-    try {
-      final userService = ref.watch(userServiceProvider);
-      final locations = await userService.getSavedLocations();
-      return locations.map((loc) {
-        final map = loc as Map<String, dynamic>;
-        return RecentPlace(
-          id: map['id']?.toString() ?? '',
-          name: map['label'] as String? ?? 'Saved Place',
-          address: map['address'] as String? ?? '',
-        );
-      }).toList();
-    } catch (_) {
-      // Fallback: return empty list on error (offline-graceful per PRD).
-      return const [];
-    }
   }
 }
 

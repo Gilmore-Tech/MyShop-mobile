@@ -47,10 +47,9 @@ final logoutCleanupBridgeProvider = Provider<void>((ref) {
     // entries flash until refetch.
     ref.invalidate(activityNotifierProvider);
 
-    // Home surfaces (special offers + recent places) — recent places
-    // is per-user; special offers usually aren't but cheap to refetch.
+    // Home surfaces — special offers aren't strictly per-user but cheap
+    // to refetch.
     ref.invalidate(specialOffersProvider);
-    ref.invalidate(recentPlacesProvider);
 
     // Ride booking + tracking state. The ride-flow screens hold a deep
     // graph of in-memory state; reset everything that could carry the

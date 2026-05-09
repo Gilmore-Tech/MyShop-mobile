@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
+import 'package:shared_utils/shared_utils.dart';
 
 /// Slide-up modal that pops when a new `job:new` event arrives — shows a
 /// condensed preview so the artisan can decide at a glance whether to open
@@ -16,15 +17,22 @@ class IncomingJobModal extends StatelessWidget {
     super.key,
     required this.job,
     this.distanceKm,
+    this.etaMinutes,
   });
 
   final Job job;
   final double? distanceKm;
 
+  /// Straight-line ETA from the artisan's last GPS fix to the job
+  /// location, in whole minutes. Computed by the caller (the incoming
+  /// request listener) so the modal doesn't need a Riverpod scope.
+  final int? etaMinutes;
+
   static Future<void> show(
     BuildContext context, {
     required Job job,
     double? distanceKm,
+    int? etaMinutes,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -38,7 +46,11 @@ class IncomingJobModal extends StatelessWidget {
       barrierColor: Colors.black.withValues(alpha: 0.6),
       isDismissible: true,
       enableDrag: true,
-      builder: (_) => IncomingJobModal(job: job, distanceKm: distanceKm),
+      builder: (_) => IncomingJobModal(
+        job: job,
+        distanceKm: distanceKm,
+        etaMinutes: etaMinutes,
+      ),
     );
   }
 
@@ -47,6 +59,20 @@ class IncomingJobModal extends StatelessWidget {
       : 'Service Request';
   String get _clientName => job.clientName ?? 'Client';
   String get _address => job.addressText ?? 'Location pending';
+
+  /// Address with optional distance + ETA suffix, e.g.
+  /// "12 Maple St  •  3.2 km · ~7 min away".
+  String get _locationLine {
+    final parts = <String>[_address];
+    if (distanceKm != null) {
+      final tail = StringBuffer('${distanceKm!.toStringAsFixed(1)} km');
+      if (etaMinutes != null && etaMinutes! > 0) {
+        tail.write(' · ~${formatEtaLabel(etaMinutes!)} away');
+      }
+      parts.add(tail.toString());
+    }
+    return parts.join('  •  ');
+  }
 
   void _viewDetails(BuildContext context) {
     Navigator.of(context).pop();
@@ -151,9 +177,7 @@ class IncomingJobModal extends StatelessWidget {
                         const SizedBox(width: 4),
                         Flexible(
                           child: Text(
-                            distanceKm != null
-                                ? '$_address  •  ${distanceKm!.toStringAsFixed(1)} km'
-                                : _address,
+                            _locationLine,
                             style: MyShopTypography.body2.copyWith(
                               color: MyShopColors.primaryGold,
                               fontWeight: FontWeight.w600,

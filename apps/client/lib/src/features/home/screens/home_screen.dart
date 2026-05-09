@@ -10,7 +10,6 @@ import '../../profile/providers/profile_provider.dart';
 import '../../ride/providers/ride_search_provider.dart';
 import '../providers/home_provider.dart';
 import '../widgets/location_search_card.dart';
-import '../widgets/recent_place_tile.dart';
 import '../widgets/safety_banner.dart';
 import '../widgets/service_card.dart';
 import '../widgets/special_offer_card.dart';
@@ -52,8 +51,6 @@ class HomeScreen extends ConsumerWidget {
                     SizedBox(height: h * 0.028),
                     _SpecialOffersSection(),
                     SizedBox(height: h * 0.028),
-                    _RecentPlacesSection(),
-                    SizedBox(height: h * 0.019),
                     const SafetyBanner(),
                     SizedBox(height: h * 0.028),
                   ],
@@ -265,101 +262,6 @@ class _OffersSkeletonList extends StatelessWidget {
       itemCount: 2,
       separatorBuilder: (_, __) => SizedBox(width: w * 0.031),
       itemBuilder: (_, __) => const SpecialOfferCardSkeleton(),
-    );
-  }
-}
-
-// ── Recent places ─────────────────────────────────────────────────────────────
-
-class _RecentPlacesSection extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final placesAsync = ref.watch(recentPlacesProvider);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _SectionHeader(title: 'RECENT PLACES'),
-        SizedBox(height: MediaQuery.sizeOf(context).height * 0.005),
-        Container(
-          color: Colors.white,
-          child: placesAsync.when(
-            loading: () => const _RecentPlacesSkeleton(),
-            error: (_, __) => const SizedBox.shrink(),
-            data: (places) => Column(
-              mainAxisSize: MainAxisSize.min,
-              children: places
-                  .map((p) => RecentPlaceTile(
-                        place: p,
-                        onTap: () {
-                          // TODO: Navigate to destination with this place
-                        },
-                      ))
-                  .toList(),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _RecentPlacesSkeleton extends StatelessWidget {
-  const _RecentPlacesSkeleton();
-
-  @override
-  Widget build(BuildContext context) {
-    final w = MediaQuery.sizeOf(context).width;
-    final h = MediaQuery.sizeOf(context).height;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(
-        3,
-        (_) => Container(
-          height: h * 0.071,
-          padding:
-              EdgeInsets.symmetric(horizontal: w * 0.041, vertical: h * 0.012),
-          child: Row(
-            children: [
-              Container(
-                width: w * 0.056,
-                height: w * 0.056,
-                decoration: const BoxDecoration(
-                  color: MyShopColors.divider,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              SizedBox(width: w * 0.036),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      height: h * 0.014,
-                      width: w * 0.308,
-                      decoration: BoxDecoration(
-                        color: MyShopColors.divider,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                    SizedBox(height: h * 0.007),
-                    Container(
-                      height: h * 0.012,
-                      width: w * 0.462,
-                      decoration: BoxDecoration(
-                        color: MyShopColors.divider,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

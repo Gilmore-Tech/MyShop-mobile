@@ -31,6 +31,8 @@ class Job {
     this.assignedArtisanId,
     this.assignedByAdmin,
     this.assignedAt,
+    this.startedAt,
+    this.completedAt,
     this.clientPaymentAcknowledgedAt,
     this.clientPaymentMethod,
   });
@@ -102,6 +104,11 @@ class Job {
           (json['assignedArtisanId'] ?? json['artisanId']) as String?,
       assignedByAdmin: json['assignedByAdmin'] as String?,
       assignedAt: json['assignedAt'] as String?,
+      // Backend may serialise either camelCase (startedAt) or snake_case
+      // (started_at) depending on the endpoint — accept both so the
+      // mobile keeps working as the API converges.
+      startedAt: (json['startedAt'] ?? json['started_at']) as String?,
+      completedAt: (json['completedAt'] ?? json['completed_at']) as String?,
       clientPaymentAcknowledgedAt:
           json['clientPaymentAcknowledgedAt'] as String?,
       clientPaymentMethod: json['clientPaymentMethod'] as String?,
@@ -135,6 +142,29 @@ class Job {
 
   /// When the admin / client assigned the artisan.
   final String? assignedAt;
+
+  /// ISO timestamp set by the backend when the artisan flips the job to
+  /// `in_progress`. Used by the active-job screens (provider + client) to
+  /// drive a live elapsed-time ticker. Null until the job has actually
+  /// started — both apps should treat null as "no timer yet."
+  final String? startedAt;
+
+  /// ISO timestamp set by the backend when the artisan flips the job to
+  /// `artisan_marked_complete`. Together with [startedAt] this gives the
+  /// final on-the-job duration shown on the completion summary. Null
+  /// until the work is finished.
+  final String? completedAt;
+
+  /// Parsed [startedAt] in local time, or null if it isn't set / can't be
+  /// parsed. Convenience for the UI elapsed-time widget so callers don't
+  /// have to defend against a malformed timestamp.
+  DateTime? get startedAtDateTime =>
+      startedAt == null ? null : DateTime.tryParse(startedAt!)?.toLocal();
+
+  /// Parsed [completedAt] in local time, or null if it isn't set / can't
+  /// be parsed.
+  DateTime? get completedAtDateTime =>
+      completedAt == null ? null : DateTime.tryParse(completedAt!)?.toLocal();
 
   /// ISO timestamp set by the backend when the client opens the payment
   /// screen and picks a method (any method — cash, momo, card). Null until
@@ -182,6 +212,8 @@ class Job {
     String? assignedArtisanId,
     String? assignedByAdmin,
     String? assignedAt,
+    String? startedAt,
+    String? completedAt,
     String? clientPaymentAcknowledgedAt,
     String? clientPaymentMethod,
   }) {
@@ -206,6 +238,8 @@ class Job {
       assignedArtisanId: assignedArtisanId ?? this.assignedArtisanId,
       assignedByAdmin: assignedByAdmin ?? this.assignedByAdmin,
       assignedAt: assignedAt ?? this.assignedAt,
+      startedAt: startedAt ?? this.startedAt,
+      completedAt: completedAt ?? this.completedAt,
       clientPaymentAcknowledgedAt:
           clientPaymentAcknowledgedAt ?? this.clientPaymentAcknowledgedAt,
       clientPaymentMethod: clientPaymentMethod ?? this.clientPaymentMethod,

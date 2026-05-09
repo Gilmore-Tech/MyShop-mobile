@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_models/shared_models.dart' show ChatBookingType;
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -273,6 +274,17 @@ class _BottomSheet extends StatelessWidget {
     final etaLabel = job.etaLabel ?? job.completionLabel ?? '—';
     final showEtaPill =
         job.phase == ActiveJobPhase.enRoute && job.etaLabel != null;
+    // Show the live "Time on job" pill the moment the artisan starts
+    // work and through to completion. Uses the backend's `startedAt`
+    // timestamp so the client and provider are reading the same clock.
+    // Hidden until `startedAt` lands — the early phases (en route /
+    // arrived) keep the ETA pill above instead.
+    final showElapsedPill = job.startedAt != null &&
+        (job.phase == ActiveJobPhase.inProgress ||
+            job.phase == ActiveJobPhase.arrived ||
+            job.phase == ActiveJobPhase.awaitingApproval ||
+            job.phase == ActiveJobPhase.pendingPayment ||
+            job.phase == ActiveJobPhase.completed);
     return Container(
       decoration: const BoxDecoration(
         color: MyShopColors.surfaceWhite,
@@ -323,6 +335,21 @@ class _BottomSheet extends StatelessWidget {
                       )),
                 ],
               ),
+            ),
+            SizedBox(height: h * 0.020),
+            const Divider(height: 1, color: MyShopColors.divider),
+            SizedBox(height: h * 0.020),
+          ] else if (showElapsedPill) ...[
+            // Live on-the-job duration. Once the artisan has marked the
+            // job complete, [completedAt] freezes the pill at the final
+            // duration and switches the label so the client sees how
+            // long the work took.
+            JobElapsedTime(
+              startedAt: job.startedAt,
+              endedAt: job.completedAt,
+              label: job.completedAt != null
+                  ? 'Final duration'
+                  : 'Time on job',
             ),
             SizedBox(height: h * 0.020),
             const Divider(height: 1, color: MyShopColors.divider),
@@ -387,7 +414,15 @@ class _BottomSheet extends StatelessWidget {
               _ContactBtn(
                 icon: Icons.chat_bubble_outline_rounded,
                 color: MyShopColors.primaryGold,
-                onTap: () => context.push(AppRoutes.chat),
+                onTap: () => context.push(
+                  AppRoutes.chat,
+                  extra: <String, Object?>{
+                    'bookingType': ChatBookingType.artisanJob,
+                    'bookingId': job.jobId,
+                    'peerName': job.artisan.name,
+                    'peerStatus': 'On your job',
+                  },
+                ),
                 w: w,
               ),
             ],

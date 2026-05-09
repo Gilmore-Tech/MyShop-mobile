@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
+import 'package:shared_utils/shared_utils.dart';
 
+import '../providers/driver_location_provider.dart';
 import '../providers/ride_request_provider.dart';
 import 'active_ride_screen.dart';
 
@@ -389,11 +391,27 @@ class _ClientCard extends StatelessWidget {
   }
 }
 
-class _PickupInfo extends StatelessWidget {
+class _PickupInfo extends ConsumerWidget {
   const _PickupInfo({required this.ride});
   final Ride ride;
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Live driver→pickup ETA derived from the most recent GPS fix. Falls
+    // back to null (chip hidden) when the location stream hasn't emitted
+    // yet — the static trip distance/duration below is unaffected.
+    final position = ref.watch(driverLocationStreamProvider).valueOrNull;
+    int? minutesAway;
+    double? metersAway;
+    if (position != null) {
+      metersAway = haversineMeters(
+        position.latitude,
+        position.longitude,
+        ride.pickupLat,
+        ride.pickupLng,
+      );
+      minutesAway = estimatedEtaMinutes(metersAway);
+    }
+
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Container(
           width: 32,
@@ -430,6 +448,31 @@ class _PickupInfo extends StatelessWidget {
               style:
                   MyShopTypography.body2.copyWith(color: MyShopColors.online)),
         ]),
+        if (minutesAway != null) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: MyShopColors.primaryGold.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.near_me,
+                  size: 13, color: MyShopColors.primaryGold),
+              const SizedBox(width: 6),
+              Text(
+                '${(metersAway! / 1000).toStringAsFixed(1)} km · '
+                '~${formatEtaLabel(minutesAway)} away',
+                style: MyShopTypography.body2.copyWith(
+                  color: MyShopColors.primaryGold,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+              ),
+            ]),
+          ),
+        ],
       ])),
     ]);
   }

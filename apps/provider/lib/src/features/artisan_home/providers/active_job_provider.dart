@@ -191,6 +191,12 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
       state = state.copyWith(
         job: current.copyWith(
           status: fresh.status,
+          // Prefer the backend-authoritative job timestamps once they're
+          // present — this lets the local "stamp on tap" fallback in
+          // [_transitionTo] get reconciled to the real value the next
+          // time we hit the server.
+          startedAt: fresh.startedAt ?? current.startedAt,
+          completedAt: fresh.completedAt ?? current.completedAt,
           clientPaymentAcknowledgedAt: fresh.clientPaymentAcknowledgedAt,
           clientPaymentMethod: fresh.clientPaymentMethod,
         ),
@@ -355,11 +361,31 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
       await _ref
           .read(jobServiceProvider)
           .updateJobStatus(job.id, status: next.toJson());
+      // Local fallback for the on-the-job duration ticker. Backend is the
+      // source of truth (`started_at` / `completed_at` come back on the
+      // next GET /jobs/:id and are merged in via [refreshFromServer]),
+      // but until that endpoint ships the new fields the active-job UI
+      // would have nothing to show. Stamping locally here means the
+      // artisan sees the timer the moment they tap "Start job", and the
+      // client sees the same once the backend echoes the timestamps.
+      final nowIso = DateTime.now().toUtc().toIso8601String();
+      String? startedAt = job.startedAt;
+      String? completedAt = job.completedAt;
+      if (next == JobStatus.inProgress && startedAt == null) {
+        startedAt = nowIso;
+      }
+      if (next == JobStatus.artisanMarkedComplete && completedAt == null) {
+        completedAt = nowIso;
+      }
       // Optimistically reflect the new status in-memory so the timeline
       // moves immediately; the backend `job:status` socket event will
       // arrive shortly after and reconcile any drift via a jobs refresh.
       state = state.copyWith(
-        job: job.copyWith(status: next),
+        job: job.copyWith(
+          status: next,
+          startedAt: startedAt,
+          completedAt: completedAt,
+        ),
         isUpdating: false,
       );
       try {

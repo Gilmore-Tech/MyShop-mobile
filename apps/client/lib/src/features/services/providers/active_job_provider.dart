@@ -196,6 +196,17 @@ class ActiveJobData {
   /// Null when there's no supplement in flight.
   final SupplementRequest? pendingSupplement;
 
+  /// When the artisan flipped the job to `in_progress` (set server-side).
+  /// Drives the live "Time on job" pill in the bottom sheet. Null until
+  /// work has actually started — the tracking screen treats null as
+  /// "no timer yet" and hides the pill.
+  final DateTime? startedAt;
+
+  /// When the artisan flipped the job to `artisan_marked_complete`
+  /// (set server-side). Pairs with [startedAt] to freeze the pill at
+  /// the final on-the-job duration.
+  final DateTime? completedAt;
+
   const ActiveJobData({
     required this.jobId,
     required this.serviceId,
@@ -214,6 +225,8 @@ class ActiveJobData {
     this.locationLat,
     this.locationLng,
     this.pendingSupplement,
+    this.startedAt,
+    this.completedAt,
   });
 
   /// Resolved value for the left stat cell.
@@ -620,7 +633,22 @@ class _ActiveJobNotifier
       locationLat: lat?.toDouble(),
       locationLng: lng?.toDouble(),
       pendingSupplement: supplement,
+      // Job-duration timestamps. Backend may serialise either case
+      // depending on the endpoint — accept both. `tryParse` returns null
+      // for missing/malformed values, which the bottom sheet treats as
+      // "no timer to show."
+      startedAt: _parseIsoLocal(data['startedAt'] ?? data['started_at']),
+      completedAt:
+          _parseIsoLocal(data['completedAt'] ?? data['completed_at']),
     );
+  }
+
+  /// Parse a backend ISO timestamp into local time, or null if absent /
+  /// malformed. Kept private to the parser so the parsing convention
+  /// stays consistent across all the timestamp fields below.
+  static DateTime? _parseIsoLocal(Object? raw) {
+    if (raw is! String || raw.isEmpty) return null;
+    return DateTime.tryParse(raw)?.toLocal();
   }
 
   /// Resolves the phase from the raw backend status string. When the job is

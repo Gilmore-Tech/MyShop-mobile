@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart';
+import 'package:shared_utils/shared_utils.dart';
 
 import '../../features/artisan_home/widgets/incoming_job_modal.dart';
 import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dart';
@@ -161,17 +162,21 @@ class _IncomingRequestListenerState
     ref.read(pendingIncomingJobsProvider.notifier).enqueue(job);
     ref.read(navBadgeProvider.notifier).increment('/trips');
 
-    // Compute distance from the artisan's last known GPS fix (best-effort).
+    // Compute distance + straight-line ETA from the artisan's last known
+    // GPS fix (best-effort — both fields stay null when no fix yet).
     final position = ref.read(driverLocationStreamProvider).valueOrNull;
-    final distanceKm = position != null
-        ? Geolocator.distanceBetween(
-              position.latitude,
-              position.longitude,
-              job.latitude,
-              job.longitude,
-            ) /
-            1000
-        : null;
+    double? distanceKm;
+    int? etaMinutes;
+    if (position != null) {
+      final meters = Geolocator.distanceBetween(
+        position.latitude,
+        position.longitude,
+        job.latitude,
+        job.longitude,
+      );
+      distanceKm = meters / 1000;
+      etaMinutes = estimatedEtaMinutes(meters);
+    }
 
     if (!context.mounted) {
       debugPrint('[IncomingRequestListener] context unmounted — skip modal');
@@ -182,6 +187,7 @@ class _IncomingRequestListenerState
       context,
       job: job,
       distanceKm: distanceKm,
+      etaMinutes: etaMinutes,
     ).then((_) {
       debugPrint('[IncomingRequestListener] modal closed id=${job.id}');
     });

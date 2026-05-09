@@ -24,15 +24,26 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(clientAuthControllerProvider);
 
-    ref.listen<ClientAuthState>(clientAuthControllerProvider, (prev, next) {
-      if (next is AuthBlockedByOtherDevice && !_blockedDialogVisible) {
-        _blockedDialogVisible = true;
-        _showBlockedDialog(context, next.phone);
-      } else if (next is! AuthBlockedByOtherDevice && _blockedDialogVisible) {
-        _blockedDialogVisible = false;
+    // Schedule the blocked-device dialog from build (not just ref.listen) so
+    // it fires reliably even when the screen is freshly mounted with the
+    // state already at AuthBlockedByOtherDevice — which happens because
+    // routerProvider watches the auth state and rebuilds the router on the
+    // same transition that should trigger the dialog.
+    if (authState is AuthBlockedByOtherDevice && !_blockedDialogVisible) {
+      _blockedDialogVisible = true;
+      final phone = authState.phone;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _showBlockedDialog(context, phone);
+      });
+    } else if (authState is! AuthBlockedByOtherDevice &&
+        _blockedDialogVisible) {
+      _blockedDialogVisible = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
         if (Navigator.canPop(context)) Navigator.pop(context);
-      }
-    });
+      });
+    }
 
     final isLoading = authState is AuthUnauthenticated && authState.isLoading;
     final error = authState is AuthUnauthenticated ? authState.error : null;

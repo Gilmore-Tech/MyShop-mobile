@@ -291,6 +291,8 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
                           (job.clientName ?? 'Client').split(' ').first,
                       isUpdating: state.isUpdating,
                       clientCashAcknowledged: job.isClientCashAcknowledged,
+                      startedAt: job.startedAtDateTime,
+                      completedAt: job.completedAtDateTime,
                       onGoToEarnings: () {
                         ref.read(activeJobProvider.notifier).clear();
                         context.go('/earnings');
@@ -1029,6 +1031,20 @@ class _BottomPanel extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _JobTimeline(current: job.status),
+          // Show the live "Time on job" pill from the moment the artisan
+          // taps "Start job" and through any later phases. Hidden until
+          // `startedAt` is populated (either by the local stamp in the
+          // notifier or by the backend echoing the value back).
+          if (job.startedAtDateTime != null) ...[
+            const SizedBox(height: MyShopSpacing.md),
+            JobElapsedTime(
+              startedAt: job.startedAtDateTime,
+              endedAt: job.completedAtDateTime,
+              label: job.completedAtDateTime != null
+                  ? 'Final duration'
+                  : 'Time on job',
+            ),
+          ],
           const SizedBox(height: MyShopSpacing.md),
           _PrimaryActionButton(
             status: job.status,
@@ -1368,12 +1384,23 @@ class _CompletionOverlay extends StatelessWidget {
     required this.clientFirstName,
     required this.isUpdating,
     required this.clientCashAcknowledged,
+    required this.startedAt,
+    required this.completedAt,
     required this.onGoToEarnings,
     required this.onConfirmCashReceipt,
   });
 
   final JobStatus status;
   final String clientFirstName;
+
+  /// When work began. Drives the frozen "Final duration" pill at the top
+  /// of the overlay — null hides the pill entirely (e.g. legacy jobs
+  /// that finished before the timestamp shipped).
+  final DateTime? startedAt;
+
+  /// When the artisan flipped the job to `artisan_marked_complete`.
+  /// Pairs with [startedAt] to render the final on-the-job duration.
+  final DateTime? completedAt;
 
   /// True while the PATCH /confirm for cash receipt is in flight — dims
   /// the Yes/No row and swaps the "Yes" label for a spinner.
@@ -1442,6 +1469,19 @@ class _CompletionOverlay extends StatelessWidget {
 
             _CompletionIcon(status: status),
             const SizedBox(height: MyShopSpacing.md),
+
+            // Surface the on-the-job duration on the completion overlay
+            // so the artisan sees how long they spent before they walk
+            // away from the screen. Frozen (no live ticking) once the
+            // job is in any completion phase — `completedAt` is set.
+            if (startedAt != null) ...[
+              JobElapsedTime(
+                startedAt: startedAt,
+                endedAt: completedAt ?? DateTime.now(),
+                label: 'Final duration',
+              ),
+              const SizedBox(height: MyShopSpacing.md),
+            ],
 
             Text(
               _titleFor(status, clientCashAcknowledged),

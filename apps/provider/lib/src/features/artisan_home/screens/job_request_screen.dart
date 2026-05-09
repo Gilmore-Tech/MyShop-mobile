@@ -10,6 +10,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
+import 'package:shared_utils/shared_utils.dart' as geo_utils;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/constants/maps_config.dart';
@@ -216,6 +217,12 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
       ),
       orElse: () => null,
     );
+    // Straight-line ETA from the artisan's current position to the
+    // client. Computed alongside distance so the summary card can show
+    // both without re-watching the location stream.
+    final etaMinutes = distanceKm == null
+        ? null
+        : geo_utils.estimatedEtaMinutes(distanceKm * 1000);
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
@@ -291,6 +298,7 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                     clientLocation:
                         effectiveJob.addressText ?? 'Location pending',
                     distanceKm: distanceKm,
+                    etaMinutes: etaMinutes,
                     title: _title,
                     postedAgo: _formatPostedAgo(effectiveJob.createdAt),
                   ),
@@ -810,6 +818,7 @@ class _ClientSummaryCard extends StatelessWidget {
     required this.clientPhotoUrl,
     required this.clientLocation,
     required this.distanceKm,
+    required this.etaMinutes,
     required this.title,
     required this.postedAgo,
   });
@@ -818,13 +827,21 @@ class _ClientSummaryCard extends StatelessWidget {
   final String? clientPhotoUrl;
   final String clientLocation;
   final double? distanceKm;
+  final int? etaMinutes;
   final String title;
   final String postedAgo;
 
   @override
   Widget build(BuildContext context) {
-    final distanceText =
-        distanceKm != null ? '${distanceKm!.toStringAsFixed(1)} km away' : '—';
+    final String distanceText;
+    if (distanceKm == null) {
+      distanceText = '—';
+    } else {
+      final km = '${distanceKm!.toStringAsFixed(1)} km away';
+      distanceText = (etaMinutes != null && etaMinutes! > 0)
+          ? '$km · ~${geo_utils.formatEtaLabel(etaMinutes!)}'
+          : km;
+    }
 
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),
