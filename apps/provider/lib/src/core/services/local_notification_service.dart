@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -132,6 +133,24 @@ class NotificationPayload {
     typeJobManuallyAssigned,
   };
 
+  /// Subset of [urgentTypes] that get the call-style "incoming request"
+  /// treatment when delivered to a backgrounded Android app: full-screen
+  /// intent, sticky (`ongoing: true`), and a 40-second `setTimeoutAfter`
+  /// so the OS auto-dismisses the banner if the provider doesn't act.
+  /// Backend pairs this with an Android-data-only push so FCM's auto
+  /// banner doesn't fire on top of our local notification (see
+  /// `apps/api/src/modules/notification/push.service.ts FULL_SCREEN_DATA_TYPES`).
+  static const Set<String> fullScreenRequestTypes = {
+    typeJobRequest,
+    typeRideRequest,
+  };
+
+  /// Auto-dismiss window for the Android full-screen banner. Mirrors the
+  /// 40 s foreground modal timer in `incoming_job_modal.dart` and
+  /// `ride_request_screen.dart` so the OS-level alert is silenced at
+  /// the same moment the in-app countdown elapses.
+  static const Duration fullScreenRequestTimeout = Duration(seconds: 40);
+
   /// Types that should render through the dedicated `chat_messages` channel
   /// (Android) / `MESSAGE` category (iOS) so the OS treats them like
   /// conversational pings — time-sensitive but not call-style.
@@ -155,20 +174,45 @@ class LocalNotificationService {
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
-  /// Max importance — full-screen-intent call-style banner. Used for
-  /// incoming requests and the moments we can't let the provider miss
-  /// (bid accepted, new chat message during a live job). Channel id is
-  /// kept as `job_alerts` for backward-compat with the existing Android
-  /// install base.
+  /// Max importance — full-screen-intent call-style banner. Used for the
+  /// non-incoming-request urgent set (bid accepted, 2-hour reminder,
+  /// admin assignment). Channel id is kept as `job_alerts` for
+  /// backward-compat with the existing Android install base — Android
+  /// channel sound is locked at creation time and can't be safely
+  /// retuned for users who already installed the app.
   static const AndroidNotificationChannel _urgentChannel =
       AndroidNotificationChannel(
     'job_alerts',
     'Job & Ride Requests',
     description:
-        'Incoming job and ride requests and other time-sensitive alerts. '
-        'Muting this channel will cause you to miss work.',
+        'Time-sensitive alerts (bid accepted, job assigned, 2-hour '
+        'reminders). Muting this channel will cause you to miss work.',
     importance: Importance.max,
     playSound: true,
+    enableVibration: true,
+  );
+
+  /// Dedicated channel for new incoming job/ride requests. Separate from
+  /// [_urgentChannel] so a long ringtone on this channel doesn't bleed
+  /// into bid-accepted / reminder pings — Android locks channel sound
+  /// at creation time, so the only way to give one type of urgent a
+  /// different sound is its own channel id.
+  ///
+  /// Sound resource: `res/raw/incoming_request.mp3` (or `.ogg`/`.wav`).
+  /// See `res/raw/README.md` for the file the app expects. If the
+  /// resource is missing, Android silently falls back to the default
+  /// notification sound — the channel still rings, just not with the
+  /// custom ringtone.
+  static const AndroidNotificationChannel _incomingRequestChannel =
+      AndroidNotificationChannel(
+    'incoming_requests',
+    'Incoming Job & Ride Requests',
+    description:
+        'New job and ride request alerts. Plays the MyShop ringtone for up '
+        'to 30 seconds so you can hear it across the room.',
+    importance: Importance.max,
+    playSound: true,
+    sound: RawResourceAndroidNotificationSound('incoming_request'),
     enableVibration: true,
   );
 
@@ -235,6 +279,7 @@ class LocalNotificationService {
     final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     await androidPlugin?.createNotificationChannel(_urgentChannel);
+    await androidPlugin?.createNotificationChannel(_incomingRequestChannel);
     await androidPlugin?.createNotificationChannel(_timelineChannel);
     await androidPlugin?.createNotificationChannel(_chatChannel);
     await androidPlugin?.requestNotificationsPermission();
@@ -285,11 +330,20 @@ class LocalNotificationService {
   }) async {
     final isUrgent = NotificationPayload.urgentTypes.contains(type);
     final isChat = NotificationPayload.chatTypes.contains(type);
-    final channel = isUrgent
-        ? _urgentChannel
-        : isChat
-            ? _chatChannel
-            : _timelineChannel;
+    final isFullScreenRequest =
+        NotificationPayload.fullScreenRequestTypes.contains(type);
+    // Order matters: the incoming-request channel is the "most specific"
+    // urgent path (custom ringtone, sticky, 40 s timeout). Falling back
+    // to _urgentChannel for the rest of the urgent set keeps bid_accepted
+    // / reminder pings on the original sound profile users have already
+    // tuned.
+    final channel = isFullScreenRequest
+        ? _incomingRequestChannel
+        : isUrgent
+            ? _urgentChannel
+            : isChat
+                ? _chatChannel
+                : _timelineChannel;
 
     final androidCategory = isUrgent
         ? AndroidNotificationCategory.call
@@ -310,8 +364,16 @@ class LocalNotificationService {
           priority: isUrgent ? Priority.high : Priority.defaultPriority,
           category: androidCategory,
           fullScreenIntent: isUrgent,
+          // Tap dismisses for every type (it's the standard notification
+          // behavior). Incoming-request types additionally stick
+          // (`ongoing: true`) so the user can't accidentally swipe the
+          // call-style banner away mid-pocket; the OS clears it via
+          // `timeoutAfter` after the 40 s window OR when the user taps.
           autoCancel: true,
-          ongoing: false,
+          ongoing: isFullScreenRequest,
+          timeoutAfter: isFullScreenRequest
+              ? NotificationPayload.fullScreenRequestTimeout.inMilliseconds
+              : null,
           styleInformation: BigTextStyleInformation(body),
         ),
         iOS: DarwinNotificationDetails(
@@ -346,6 +408,40 @@ class LocalNotificationService {
     await SystemSound.play(SystemSoundType.alert);
     await Future<void>.delayed(const Duration(milliseconds: 220));
     await HapticFeedback.heavyImpact();
+  }
+
+  // ── Incoming-request ringtone ──────────────────────────────────────────
+  // The ringtone fires `SystemSound.alert` + a heavy haptic on a 1.5 s
+  // interval — feels like a notification ringing repeatedly. No bundled
+  // asset is required so this works on both platforms today.
+  //
+  // TODO(ringtone-asset): when a real ringtone audio file is sourced,
+  // swap this Timer for an `audioplayers` AudioPlayer with
+  // `ReleaseMode.loop` pointing at `assets/audio/incoming_request.mp3`.
+  // The public start/stop API stays the same.
+  Timer? _ringtoneTimer;
+
+  /// Start a continuous "incoming request" ringtone. Idempotent — a second
+  /// call while the ringtone is already playing is a no-op. Used by the
+  /// foreground job/ride request modal/screen to alert the provider.
+  Future<void> startIncomingRingtone() async {
+    if (_ringtoneTimer != null) return;
+    // Fire one chime + haptic immediately so there's no perceptible
+    // delay between the modal appearing and the first ping.
+    await HapticFeedback.heavyImpact();
+    await SystemSound.play(SystemSoundType.alert);
+    _ringtoneTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) {
+      HapticFeedback.heavyImpact();
+      SystemSound.play(SystemSoundType.alert);
+    });
+  }
+
+  /// Stop the incoming-request ringtone. Safe to call when nothing is
+  /// playing. Always called from `dispose` of the corresponding screen
+  /// so dismissing/accepting/declining/timing-out all silence the alert.
+  void stopIncomingRingtone() {
+    _ringtoneTimer?.cancel();
+    _ringtoneTimer = null;
   }
 
   /// Stable non-negative notification id. Dedupes per `{type, primary-id}`

@@ -248,6 +248,17 @@ class FcmService {
         debugPrint('[FCM] foreground new_message — suppressing OS banner');
         return;
       }
+      // Incoming-request types are handled foreground by
+      // IncomingRequestListener (modal for jobs, full-screen for rides)
+      // backed by the socket. Rendering the local heads-up banner on
+      // top would stack a second alert with full-screen intent over
+      // the in-app modal — silencing the looping ringtone gets messy
+      // when two alert paths fire for the same booking.
+      if (NotificationPayload.fullScreenRequestTypes.contains(type)) {
+        debugPrint(
+            '[FCM] foreground $type — handled by in-app modal, skipping banner');
+        return;
+      }
       await _renderFromRemote(message);
     });
 

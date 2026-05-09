@@ -11,7 +11,6 @@ import '../../features/driver_home/providers/driver_location_provider.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
 import '../providers/nav_badge_provider.dart';
 import '../providers/socket_provider.dart';
-import '../services/local_notification_service.dart';
 
 /// A transparent widget that listens for incoming ride/job requests via
 /// Socket.IO and surfaces them to the user.
@@ -96,7 +95,9 @@ class _IncomingRequestListenerState
       // clears the state to null immediately after, so duplicate fires for
       // the same id don't happen in practice.
       if (next != null) {
-        LocalNotificationService.instance.playForegroundAlert();
+        // The ride-request screen now owns the looping ringtone in
+        // its initState/dispose — a one-shot chime here would only
+        // stack on top and feel like an out-of-rhythm extra ping.
         _goToRideRequest(context, next, ref);
       }
     });
@@ -136,7 +137,9 @@ class _IncomingRequestListenerState
         '[IncomingRequestListener] job event: prev=${prev?.id} next=${next?.id}',
       );
       if (next != null) {
-        LocalNotificationService.instance.playForegroundAlert();
+        // IncomingJobModal now starts the looping ringtone in its own
+        // initState — pinging once here on top of that just adds a
+        // stutter to the alert pattern.
         _showJobModal(context, next, ref);
       }
     });

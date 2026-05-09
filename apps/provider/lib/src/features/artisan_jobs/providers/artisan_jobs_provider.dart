@@ -16,6 +16,13 @@ const _kFetchTimeout = Duration(seconds: 15);
 /// `job:status` / `bid:accepted` never lands.
 const _kPollInterval = Duration(seconds: 8);
 
+/// Minimum gap between *silent* reloads. Coalesces bursts where the
+/// 8s poll, a `status:changed` socket event, and an active-job state
+/// transition all want to refresh the list in the same ~100ms window.
+/// User-initiated [ArtisanJobsNotifier.load] is non-silent and exempt
+/// — pull-to-refresh + retry buttons always fire.
+const _kSilentReloadMinGap = Duration(seconds: 2);
+
 /// A condensed job view for the artisan's "My Jobs" list.
 ///
 /// Wraps the raw [Job] with artisan-specific display data — the amount they
@@ -156,6 +163,7 @@ class ArtisanJobsNotifier extends StateNotifier<ArtisanJobsState> {
   final Ref _ref;
   Timer? _pollTimer;
   bool _inFlight = false;
+  DateTime? _lastFetchEndAt;
 
   @override
   void dispose() {
@@ -199,6 +207,18 @@ class ArtisanJobsNotifier extends StateNotifier<ArtisanJobsState> {
     // Coalesce: socket events + poll timer can overlap during an in-flight
     // fetch — drop duplicates instead of queuing redundant requests.
     if (_inFlight) return;
+
+    // Leading-edge gap for silent reloads: when 429s fail fast, the
+    // in-flight flag clears in <100ms and several event-driven reloads
+    // (socket status:changed, active-job state transition, etc.) can
+    // sequence into a burst that re-trips the global IP throttle. The
+    // 8s poll timer keeps data fresh, so dropping bursty silent reloads
+    // is safe. User-initiated `load()` is non-silent and never gated.
+    if (silent && _lastFetchEndAt != null) {
+      final gap = DateTime.now().difference(_lastFetchEndAt!);
+      if (gap < _kSilentReloadMinGap) return;
+    }
+
     _inFlight = true;
 
     if (!silent) {
@@ -256,6 +276,7 @@ class ArtisanJobsNotifier extends StateNotifier<ArtisanJobsState> {
       );
     } finally {
       _inFlight = false;
+      _lastFetchEndAt = DateTime.now();
     }
   }
 

@@ -7,6 +7,7 @@ import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:shared_utils/shared_utils.dart';
 
+import '../../../core/services/local_notification_service.dart';
 import '../providers/driver_location_provider.dart';
 import '../providers/ride_request_provider.dart';
 import 'active_ride_screen.dart';
@@ -25,7 +26,10 @@ class RideRequestScreen extends ConsumerStatefulWidget {
 }
 
 class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
-  static const _acceptanceWindowSecs = 22;
+  // Aligned with the foreground job-modal window — 40 s for both
+  // request types so the ringtone never plays past what the matcher
+  // considers a missed bid.
+  static const _acceptanceWindowSecs = 40;
   late int _secondsRemaining;
   Timer? _timer;
   bool _isAccepting = false;
@@ -34,6 +38,11 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
   void initState() {
     super.initState();
     _secondsRemaining = _acceptanceWindowSecs;
+    // Start the looping ringtone the moment this screen mounts. The
+    // service is a singleton — both ride and job request flows share
+    // it, and we never have both open simultaneously, so a stale
+    // timer from a previous session is impossible.
+    LocalNotificationService.instance.startIncomingRingtone();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_secondsRemaining > 0) {
         setState(() => _secondsRemaining--);
@@ -46,6 +55,11 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    // Both exit paths — accept (pushReplacement) and decline (pop) —
+    // tear this screen down, so dispose is the single place we
+    // silence the ring. Without this, accepting a ride would leave
+    // the alert chiming on top of the active-ride map.
+    LocalNotificationService.instance.stopIncomingRingtone();
     super.dispose();
   }
 

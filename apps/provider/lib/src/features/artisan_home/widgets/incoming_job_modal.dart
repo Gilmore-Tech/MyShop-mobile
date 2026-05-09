@@ -1,9 +1,18 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:shared_utils/shared_utils.dart';
+
+import '../../../core/services/local_notification_service.dart';
+
+/// Auto-decline window for foreground incoming-job modals. Mirrors the
+/// 40 s window the user asked for so the ringtone never plays past
+/// what the matcher considers a missed bid.
+const Duration _kIncomingJobTimeout = Duration(seconds: 40);
 
 /// Slide-up modal that pops when a new `job:new` event arrives — shows a
 /// condensed preview so the artisan can decide at a glance whether to open
@@ -12,7 +21,7 @@ import 'package:shared_utils/shared_utils.dart';
 /// Minimal surface on purpose: the full [JobRequestScreen] is one tap away
 /// via the "View Details" CTA. Dismiss simply closes the sheet — the job
 /// stays in the backend and can still be opened from the jobs list later.
-class IncomingJobModal extends StatelessWidget {
+class IncomingJobModal extends StatefulWidget {
   const IncomingJobModal({
     super.key,
     required this.job,
@@ -54,20 +63,60 @@ class IncomingJobModal extends StatelessWidget {
     );
   }
 
-  String get _title => job.categoryName != null && job.categoryName!.isNotEmpty
-      ? '${job.categoryName} request'
-      : 'Service Request';
-  String get _clientName => job.clientName ?? 'Client';
-  String get _address => job.addressText ?? 'Location pending';
+  @override
+  State<IncomingJobModal> createState() => _IncomingJobModalState();
+}
+
+class _IncomingJobModalState extends State<IncomingJobModal> {
+  Timer? _autoDismissTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Start the looping ringtone the moment the modal mounts. The
+    // [LocalNotificationService] is a singleton so the ride flow shares
+    // the same timer — both call sites are no-ops when one is already
+    // ringing, which is fine because we never have a job and ride
+    // request open at the same time.
+    LocalNotificationService.instance.startIncomingRingtone();
+    // Auto-dismiss after the timeout so a buried phone doesn't keep
+    // ringing forever. Aligns the foreground UX with the 40 s
+    // backend-side bid window.
+    _autoDismissTimer = Timer(_kIncomingJobTimeout, () {
+      if (!mounted) return;
+      Navigator.of(context).maybePop();
+    });
+  }
+
+  @override
+  void dispose() {
+    // Both paths off this modal — accept, dismiss, swipe-down, OR the
+    // auto-dismiss timer above — converge on dispose, so this is the
+    // single place we silence the ring + cancel the timer. Without
+    // this, the ringtone would keep firing from the singleton even
+    // after the sheet was gone.
+    _autoDismissTimer?.cancel();
+    LocalNotificationService.instance.stopIncomingRingtone();
+    super.dispose();
+  }
+
+  String get _title =>
+      widget.job.categoryName != null && widget.job.categoryName!.isNotEmpty
+          ? '${widget.job.categoryName} request'
+          : 'Service Request';
+  String get _clientName => widget.job.clientName ?? 'Client';
+  String get _address => widget.job.addressText ?? 'Location pending';
 
   /// Address with optional distance + ETA suffix, e.g.
   /// "12 Maple St  •  3.2 km · ~7 min away".
   String get _locationLine {
     final parts = <String>[_address];
+    final distanceKm = widget.distanceKm;
+    final etaMinutes = widget.etaMinutes;
     if (distanceKm != null) {
-      final tail = StringBuffer('${distanceKm!.toStringAsFixed(1)} km');
-      if (etaMinutes != null && etaMinutes! > 0) {
-        tail.write(' · ~${formatEtaLabel(etaMinutes!)} away');
+      final tail = StringBuffer('${distanceKm.toStringAsFixed(1)} km');
+      if (etaMinutes != null && etaMinutes > 0) {
+        tail.write(' · ~${formatEtaLabel(etaMinutes)} away');
       }
       parts.add(tail.toString());
     }
@@ -76,11 +125,12 @@ class IncomingJobModal extends StatelessWidget {
 
   void _viewDetails(BuildContext context) {
     Navigator.of(context).pop();
-    context.push('/job-request', extra: job);
+    context.push('/job-request', extra: widget.job);
   }
 
   @override
   Widget build(BuildContext context) {
+    final job = widget.job;
     return Container(
       decoration: const BoxDecoration(
         color: MyShopColors.surfaceWhite,
