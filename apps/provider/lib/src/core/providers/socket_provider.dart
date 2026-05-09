@@ -238,12 +238,30 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
 });
 
 void _connectAndListen(Ref ref, SocketService socket) {
-  // Track connection state so the UI can show an indicator.
-  socket.connectionStream.listen((connected) {
+  // Per-process dedup for foreground rating sheets — survives socket
+  // re-creation so a reconnect-redelivered `rating:prompt` for an
+  // already-shown sheet doesn't pop a second one. Declared at the
+  // provider scope (not inside `attachHandlers`) so the set isn't
+  // wiped every time the lifecycle observer reconnects the socket.
+  final shownRatingFor = <String>{};
+
+  // Mirror connection state for the UI.
+  final sub = socket.connectionStream.listen((connected) {
     ref.read(socketConnectedProvider.notifier).state = connected;
   });
+  ref.onDispose(sub.cancel);
 
-  socket.connect().then((_) {
+  // Attach (and re-attach, on every reconnect) every domain handler.
+  // The lifecycle observer calls `socket.connect()` directly on resume,
+  // which disposes the underlying io.Socket and creates a fresh one —
+  // any handler that was bound only inside the original `connect().then(...)`
+  // chain would silently disappear. Routing attachment through the
+  // service's `onAfterCreate` hook guarantees re-binding on every fresh
+  // socket; the `off+on` pattern below keeps it idempotent if it ever
+  // runs twice against the same socket.
+  void attachHandlers() {
+    debugPrint('[WS] (re-)attaching domain event handlers');
+
     // Mirror every incoming event into a state provider for visual debugging.
     socket.onAnyEvent((event, data) {
       final preview = data.toString();
@@ -505,7 +523,11 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // open and connected). The active-screen completion listener still
     // handles the in-flow case; this handler is the safety net for users
     // who navigated away before completion landed.
-    final shownRatingFor = <String>{};
+    //
+    // `shownRatingFor` is captured from the outer provider scope so the
+    // dedup set survives socket re-creations — without that, every
+    // background→resume cycle would reset the set and pop a duplicate
+    // sheet for any rating event the server re-delivers on reconnect.
     void handleRatingPrompt(dynamic data) {
       debugPrint('[WS] Received rating:prompt: $data');
       if (data is! Map<String, dynamic>) return;
@@ -581,5 +603,13 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('rating:prompt')
       ..on('rating:prompt', handleRatingPrompt);
-  });
+  }
+
+  // Wire the post-create hook BEFORE kicking off the first connect so
+  // the very first io.Socket also gets handlers attached. The hook
+  // fires synchronously inside `SocketService.connect()` right after
+  // the io.Socket is constructed, which is well before the server
+  // emits any room-targeted events to the freshly-joined client.
+  socket.onAfterCreate(attachHandlers);
+  socket.connect();
 }

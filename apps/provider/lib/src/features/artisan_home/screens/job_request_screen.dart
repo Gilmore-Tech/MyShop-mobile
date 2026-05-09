@@ -63,25 +63,58 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
   /// in for the entire screen + downstream active-job + chat handoff.
   Job? _hydratedJob;
 
+  /// True while `GET /jobs/:id` is in flight on first mount. Drives the
+  /// stub-mode loading skeleton — without it, an FCM-tap landing here
+  /// with a placeholder Job would render the screen empty (lat/lng = 0,
+  /// no description, "Location pending") until the fetch comes back.
+  bool _hydrating = false;
+  String? _hydrationError;
+
+  /// True when [widget.job] is a stub (only an id and placeholder
+  /// fields), meaning we have nothing useful to render until
+  /// [_hydrateJob] completes. The FCM-tap handler creates such stubs;
+  /// the modal/socket/poller paths always pass a fully-populated Job.
+  bool get _hasUsableSeedData =>
+      widget.job.description.isNotEmpty ||
+      widget.job.latitude != 0 ||
+      widget.job.longitude != 0;
+
   @override
   void initState() {
     super.initState();
     _hydrateJob();
   }
 
-  /// Fire-and-forget fetch of the full job record. Failure is non-fatal —
-  /// the screen falls back to whatever `widget.job` already had.
+  /// Fetch the full job record. Tracks loading + error state so the
+  /// stub-data path (FCM tap with only a jobId) can render a skeleton
+  /// while in-flight and an error/retry surface if the fetch ultimately
+  /// fails. The non-stub path (modal/socket/poller) treats this as a
+  /// best-effort enrichment — the screen falls back to `widget.job`'s
+  /// already-populated fields.
   Future<void> _hydrateJob() async {
+    setState(() {
+      _hydrating = true;
+      _hydrationError = null;
+    });
     try {
       final raw = await ref.read(jobServiceProvider).getJob(widget.job.id);
       if (!mounted) return;
-      setState(() => _hydratedJob = Job.fromJson(raw));
+      setState(() {
+        _hydratedJob = Job.fromJson(raw);
+        _hydrating = false;
+      });
     } catch (e) {
+      debugPrint('[JobRequest] hydrate failed for ${widget.job.id}: $e');
       developer.log(
         'Job hydration failed for ${widget.job.id}: $e',
         name: 'JobRequest',
         level: 800,
       );
+      if (!mounted) return;
+      setState(() {
+        _hydrating = false;
+        _hydrationError = e.toString();
+      });
     }
   }
 
@@ -101,6 +134,25 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // FCM-tap entry path hands us a stub Job with only an id — show a
+    // loading skeleton (or error/retry) until `_hydrateJob` returns
+    // real data, otherwise the screen renders "Location pending", an
+    // empty description and a 0/0 map until the fetch lands. Skipped
+    // when the constructor copy already has usable fields (modal,
+    // socket, poller, in-app navigation), or once hydration succeeded.
+    if (!_hasUsableSeedData && _hydratedJob == null) {
+      if (_hydrationError != null) {
+        return _JobRequestLoadFailureScreen(
+          jobId: widget.job.id,
+          error: _hydrationError!,
+          onRetry: _hydrateJob,
+        );
+      }
+      if (_hydrating) {
+        return const _JobRequestLoadingScreen();
+      }
+    }
+
     final positionAsync = ref.watch(driverLocationStreamProvider);
     // Watch the jobs list so the banner updates live as the backend pushes
     // `job:status` events (e.g. "your bid was accepted"). Falls back to
@@ -1700,6 +1752,121 @@ class _DeclineButton extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Loading skeleton shown while [JobRequestScreen] hydrates a stub Job
+/// (FCM-tap entry path, where the constructor receives only an id).
+/// A simple centered spinner — the previous "render with empty fields"
+/// fallback was visually indistinguishable from a broken screen.
+class _JobRequestLoadingScreen extends StatelessWidget {
+  const _JobRequestLoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: MyShopColors.offWhite,
+      body: SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(
+                color: MyShopColors.primaryGold,
+                strokeWidth: 2.4,
+              ),
+              SizedBox(height: MyShopSpacing.md),
+              Text(
+                'Loading job…',
+                style: MyShopTypography.body2,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Error + retry surface for the stub-hydration path. Shown when the
+/// FCM-tap pushed `/job-request` with only a jobId and the follow-up
+/// `GET /jobs/:id` failed (Render cold-start timeout, transient
+/// network, etc.). The artisan can retry without leaving the screen
+/// or back out to /home.
+class _JobRequestLoadFailureScreen extends StatelessWidget {
+  const _JobRequestLoadFailureScreen({
+    required this.jobId,
+    required this.error,
+    required this.onRetry,
+  });
+
+  final String jobId;
+  final String error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: MyShopColors.offWhite,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(MyShopSpacing.lg),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Icon(
+                Icons.cloud_off,
+                size: 48,
+                color: MyShopColors.error,
+              ),
+              const SizedBox(height: MyShopSpacing.md),
+              Text(
+                'Could not load job details',
+                style: MyShopTypography.h2,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: MyShopSpacing.sm),
+              Text(
+                'Job ${jobId.length >= 8 ? jobId.substring(0, 8).toUpperCase() : jobId}\n$error',
+                style: MyShopTypography.body2.copyWith(
+                  color: MyShopColors.textSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: MyShopSpacing.lg),
+              ElevatedButton(
+                onPressed: onRetry,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: MyShopColors.primaryGold,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    vertical: MyShopSpacing.md,
+                  ),
+                ),
+                child: Text(
+                  'Retry',
+                  style: MyShopTypography.button.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(height: MyShopSpacing.sm),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(
+                  'Back',
+                  style: MyShopTypography.button.copyWith(
+                    color: MyShopColors.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

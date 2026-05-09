@@ -439,46 +439,50 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
 
     switch (type) {
       case NotificationPayload.typeJobRequest:
-        final jobId = payload[NotificationPayload.keyJobId] as String?;
+        // Backend may send the job id under either `jobId` (camel) or
+        // `job_id` (snake) depending on which emitter wrote the push;
+        // accept both so a casing drift doesn't silently route to /home.
+        final jobId = (payload[NotificationPayload.keyJobId] as String?) ??
+            (payload['job_id'] as String?);
         debugPrint('[FCM-tap] job_request jobId=$jobId payload=$payload');
         if (jobId == null) {
+          debugPrint('[FCM-tap] no jobId in payload — routing to /home');
           router.go('/home');
           break;
         }
-        // Suppress the foreground modal for this job — the user has
-        // already acknowledged the notification by tapping it, so
-        // stacking the in-app sheet on top of the bid details screen
-        // would be redundant. The socket/poller's dedup reads
-        // [surfacedJobIdsProvider]; the listener's post-frame recovery
-        // reads [incomingJobRequestProvider]. Clearing both kills every
-        // path that would otherwise pop the modal.
+        // Suppress the foreground modal for this job — the user already
+        // acknowledged the notification by tapping it, so stacking the
+        // in-app sheet on top of the bid-details screen is redundant.
+        // The socket/poller's dedup reads [surfacedJobIdsProvider]; the
+        // listener's post-frame recovery reads [incomingJobRequestProvider].
+        // Clearing both kills every path that could pop a modal on top.
         ref.read(surfacedJobIdsProvider.notifier).update(
               (s) => {...s, jobId},
             );
         if (ref.read(incomingJobRequestProvider)?.id == jobId) {
           ref.read(incomingJobRequestProvider.notifier).state = null;
         }
-        // Land on /home FIRST so the user always sees something
-        // immediately — the REST fetch can take 30–60s when the Render
-        // backend is cold-starting, and during that wait an awaited
-        // route push leaves the user staring at the previous screen.
-        // The bid-details push below stacks on top once the job loads.
+        // Land on /home so dismissing /job-request returns to a sane
+        // shell, then push the bid details synchronously with a stub
+        // Job carrying only the id. JobRequestScreen.initState() calls
+        // _hydrateJob() which fetches the full record from
+        // GET /jobs/:id and rerenders — so the screen does the network
+        // I/O itself, against its own loading lifecycle, instead of us
+        // holding the FCM callback open while a Render cold-start
+        // refresh runs to 60 seconds and the user sees nothing happen.
         router.go('/home');
-        try {
-          final data = await ref
-              .read(jobServiceProvider)
-              .getJob(jobId)
-              .timeout(const Duration(seconds: 12));
-          final job = Job.fromJson(data);
-          debugPrint('[FCM-tap] pushing /job-request for ${job.id}');
-          router.push('/job-request', extra: job);
-        } catch (e) {
-          // Cold-start timeout or auth-refresh failure — leave the user
-          // on /home rather than blank-screening them. The job is also
-          // available in the My Jobs → New tab via the pending queue
-          // once the socket reconnects.
-          debugPrint('[FCM-tap] job fetch failed for $jobId: $e');
-        }
+        debugPrint('[FCM-tap] pushing /job-request stub for $jobId');
+        router.push(
+          '/job-request',
+          extra: Job(
+            id: jobId,
+            status: JobStatus.open,
+            categoryId: '',
+            description: '',
+            latitude: 0,
+            longitude: 0,
+          ),
+        );
         break;
 
       case NotificationPayload.typeRideRequest:
