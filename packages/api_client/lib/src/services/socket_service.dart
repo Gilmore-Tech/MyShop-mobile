@@ -43,6 +43,23 @@ class SocketService {
   // auth interceptor).
   Future<void>? _inFlightReconnect;
 
+  /// App-level callback invoked synchronously every time a new
+  /// underlying [io.Socket] is created in [connect]. The app uses this
+  /// to (re-)attach domain event handlers (`job:new`, `ride:state`,
+  /// etc.) — without it, the lifecycle observer's reconnect path
+  /// disposes the old socket and the new one comes up with zero
+  /// handlers because `connect()` ran outside the Riverpod provider
+  /// that owned the original `socket.on(...)` calls.
+  void Function()? _afterCreate;
+
+  /// Register a callback that fires on every fresh underlying socket
+  /// (initial connect AND post-dispose reconnects). Call once at
+  /// app/socket bootstrap; the callback persists for the lifetime of
+  /// the service.
+  void onAfterCreate(void Function() callback) {
+    _afterCreate = callback;
+  }
+
   final _connectionController = StreamController<bool>.broadcast();
 
   /// Stream that emits `true` when connected, `false` when disconnected.
@@ -145,6 +162,13 @@ class SocketService {
       ..onAny((event, data) {
         debugPrint('[WS] Event: $event → $data');
       });
+
+    // Re-bind app-level handlers (`job:new`, `ride:state`, etc.) to the
+    // freshly-created io.Socket. Critical for the lifecycle resume path
+    // — without this, every background→resume cycle drops every domain
+    // listener and the artisan stops seeing job requests until they
+    // toggle online/offline.
+    _afterCreate?.call();
   }
 
   /// Disconnect from the server. Can be reconnected later with [connect].
