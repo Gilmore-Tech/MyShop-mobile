@@ -29,17 +29,22 @@ import 'nav_badge_provider.dart';
 final socketConnectedProvider = StateProvider<bool>((_) => false);
 
 /// Provides the [SocketService] singleton for the client app.
+///
+/// Refresh failures are handled by the shared [TokenRefresher]
+/// (constructed inside `createDioClient`), which fires the
+/// app-level `onForceLogout` set in [dioClientProvider] — that
+/// dispatches through [forceLogoutHandlerProvider] to flip the
+/// auth state, and the [logoutCleanupBridgeProvider] picks up
+/// from there. The socket service itself no longer carries an
+/// onForceLogout — kept consistent with the REST path.
 final socketServiceProvider = Provider<SocketService>((ref) {
   final config = ref.watch(apiConfigProvider);
   final tokenStorage = ref.watch(appTokenStorageProvider);
-  final dio = ref.watch(dioProvider);
+  final tokenRefresher = ref.watch(tokenRefresherProvider);
   final service = SocketService(
     config: config,
     tokenStorage: tokenStorage,
-    dio: dio,
-    onForceLogout: () {
-      ref.read(clientAuthControllerProvider.notifier).logout();
-    },
+    tokenRefresher: tokenRefresher,
   );
   ref.onDispose(service.dispose);
   return service;

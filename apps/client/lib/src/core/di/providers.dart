@@ -22,14 +22,19 @@ final deviceIdProvider = Provider<DeviceIdProvider>((ref) {
   return DeviceIdProvider(ref.watch(appTokenStorageProvider));
 });
 
-/// Configured Dio HTTP client with auth + logging interceptors.
+/// Configured Dio HTTP client + the shared [TokenRefresher].
 ///
-/// `onForceLogout` fires when the auth interceptor decides the session is
-/// terminal (TOKEN_EXPIRED / INVALID_TOKEN / REFRESH_TOKEN_REUSED) or has
-/// been invalidated by another device (SESSION_TAKEN_OVER). It dispatches
-/// through [forceLogoutHandlerProvider] so the auth controller can register
-/// itself without creating a Dart import cycle.
-final dioProvider = Provider<Dio>((ref) {
+/// `onForceLogout` fires when the refresher decides the session is
+/// terminal (TOKEN_EXPIRED / INVALID_TOKEN / REFRESH_TOKEN_REUSED) or
+/// has been invalidated by another device (SESSION_TAKEN_OVER). It
+/// dispatches through [forceLogoutHandlerProvider] so the auth
+/// controller can register itself without creating a Dart import cycle.
+///
+/// The [TokenRefresher] is exposed separately so the WS [SocketService]
+/// can reuse the same single-flight as the REST auth interceptor —
+/// without that, the two layers race the same rotating refresh token
+/// and the loser gets REFRESH_TOKEN_REUSED → forced logout.
+final dioClientProvider = Provider<DioClient>((ref) {
   final config = ref.watch(apiConfigProvider);
   final tokenStorage = ref.watch(appTokenStorageProvider);
   final handler = ref.watch(forceLogoutHandlerProvider);
@@ -38,6 +43,14 @@ final dioProvider = Provider<Dio>((ref) {
     tokenStorage: tokenStorage,
     onForceLogout: handler.call,
   );
+});
+
+final dioProvider = Provider<Dio>((ref) {
+  return ref.watch(dioClientProvider).dio;
+});
+
+final tokenRefresherProvider = Provider<TokenRefresher>((ref) {
+  return ref.watch(dioClientProvider).refresher;
 });
 
 /// Real auth service backed by Dio.
