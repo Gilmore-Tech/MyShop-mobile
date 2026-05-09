@@ -12,7 +12,6 @@ import '../../features/artisan_home/providers/job_poller_provider.dart';
 import '../../features/artisan_home/widgets/rate_client_sheet.dart';
 import '../../features/artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dart';
-import '../../features/auth/providers/auth_controller.dart';
 import '../../features/auth/providers/current_user_provider.dart';
 import '../../features/earnings/providers/earnings_providers.dart';
 import '../../features/driver_home/providers/driver_location_provider.dart';
@@ -26,22 +25,23 @@ import 'nav_badge_provider.dart';
 import '../di/providers.dart';
 
 /// Provides the [SocketService] singleton for the app.
+///
+/// Refresh failures are handled by the shared [TokenRefresher]
+/// (constructed inside `createDioClient`), which fires the
+/// app-level `onForceLogout` set in [dioClientProvider] — that
+/// transitions auth state to unauthenticated and the
+/// [logoutCleanupBridgeProvider] picks up from there
+/// (socket dispose, online flag → offline, ride/job state reset).
+/// The socket service itself no longer carries an onForceLogout —
+/// kept consistent with the REST path.
 final socketServiceProvider = Provider<SocketService>((ref) {
   final config = ref.watch(apiConfigProvider);
   final tokenStorage = ref.watch(appTokenStorageProvider);
-  final dio = ref.watch(dioProvider);
+  final tokenRefresher = ref.watch(tokenRefresherProvider);
   final service = SocketService(
     config: config,
     tokenStorage: tokenStorage,
-    dio: dio,
-    onForceLogout: () {
-      // Flip provider status to offline FIRST so the location heartbeat
-      // and any other status-gated side effects tear themselves down
-      // before the auth state is wiped. Otherwise the bridge keeps
-      // firing into an interceptor that has nothing to attach.
-      ref.read(providerStatusProvider.notifier).goOffline();
-      ref.read(authControllerProvider.notifier).logout();
-    },
+    tokenRefresher: tokenRefresher,
   );
   ref.onDispose(service.dispose);
   return service;

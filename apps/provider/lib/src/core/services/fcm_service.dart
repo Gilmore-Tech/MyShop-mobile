@@ -7,10 +7,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 
 import '../../app/router.dart';
+import '../../features/artisan_home/providers/job_poller_provider.dart';
 import '../../features/artisan_home/widgets/rate_client_sheet.dart';
 import '../../features/auth/providers/auth_controller.dart';
 import '../../features/driver_home/widgets/rate_passenger_sheet.dart';
 import '../di/providers.dart';
+import '../providers/socket_provider.dart';
 import 'local_notification_service.dart';
 
 /// Background isolate handler — must be a top-level function annotated with
@@ -438,17 +440,44 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     switch (type) {
       case NotificationPayload.typeJobRequest:
         final jobId = payload[NotificationPayload.keyJobId] as String?;
+        debugPrint('[FCM-tap] job_request jobId=$jobId payload=$payload');
         if (jobId == null) {
           router.go('/home');
-          return;
+          break;
         }
+        // Suppress the foreground modal for this job — the user has
+        // already acknowledged the notification by tapping it, so
+        // stacking the in-app sheet on top of the bid details screen
+        // would be redundant. The socket/poller's dedup reads
+        // [surfacedJobIdsProvider]; the listener's post-frame recovery
+        // reads [incomingJobRequestProvider]. Clearing both kills every
+        // path that would otherwise pop the modal.
+        ref.read(surfacedJobIdsProvider.notifier).update(
+              (s) => {...s, jobId},
+            );
+        if (ref.read(incomingJobRequestProvider)?.id == jobId) {
+          ref.read(incomingJobRequestProvider.notifier).state = null;
+        }
+        // Land on /home FIRST so the user always sees something
+        // immediately — the REST fetch can take 30–60s when the Render
+        // backend is cold-starting, and during that wait an awaited
+        // route push leaves the user staring at the previous screen.
+        // The bid-details push below stacks on top once the job loads.
+        router.go('/home');
         try {
-          final data = await ref.read(jobServiceProvider).getJob(jobId);
+          final data = await ref
+              .read(jobServiceProvider)
+              .getJob(jobId)
+              .timeout(const Duration(seconds: 12));
           final job = Job.fromJson(data);
+          debugPrint('[FCM-tap] pushing /job-request for ${job.id}');
           router.push('/job-request', extra: job);
         } catch (e) {
-          debugPrint('[FCM] tap fetch failed for job $jobId: $e');
-          router.go('/home');
+          // Cold-start timeout or auth-refresh failure — leave the user
+          // on /home rather than blank-screening them. The job is also
+          // available in the My Jobs → New tab via the pending queue
+          // once the socket reconnects.
+          debugPrint('[FCM-tap] job fetch failed for $jobId: $e');
         }
         break;
 

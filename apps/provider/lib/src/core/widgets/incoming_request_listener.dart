@@ -55,6 +55,15 @@ class _IncomingRequestListenerState
       if (ride != null) {
         _maybeRouteToActiveRide(ride);
       }
+      // Same race for jobs: a `job:new` (or poller find) that landed
+      // while the listener was unmounted — e.g. while the artisan was
+      // on /active-job, /job-request, or any non-shell route — leaves
+      // the state populated but `ref.listen` won't fire on the initial
+      // value when the shell remounts. Surface it now.
+      final pendingJob = ref.read(incomingJobRequestProvider);
+      if (pendingJob != null) {
+        _showJobModal(context, pendingJob, ref);
+      }
     });
   }
 
