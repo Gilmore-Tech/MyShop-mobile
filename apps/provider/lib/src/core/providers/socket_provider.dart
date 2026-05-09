@@ -128,6 +128,14 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
       ' — listening for fixes');
 
   Future<void> postLocation(Position position) async {
+    // Dedup against the last successful online POST so bridge re-evals
+    // (status flip, socket reconnect) and the goOnline → status-flip
+    // sequence don't double-post on top of the periodic tick. The
+    // periodic timer fires every 4 s, comfortably outside the 3 s
+    // dedup window, so steady-state heartbeats are never suppressed.
+    if (shouldSkipOnlineLocationPost()) {
+      return;
+    }
     try {
       if (isArtisan) {
         await locationService.updateArtisanLocation(
@@ -140,6 +148,7 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
           longitude: position.longitude,
         );
       }
+      markOnlineLocationPosted();
       debugPrint(
         '[LOC] REST updated ${isArtisan ? 'artisan' : 'driver'} '
         '(${position.latitude}, ${position.longitude})',
@@ -237,13 +246,20 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   });
 });
 
+/// Bookings (job/ride) for which a rating sheet has already been
+/// opened in this app session. Promoted to file-scope so every path
+/// that can pop a rating sheet — the socket `rating:prompt` handler
+/// here, AND the active-screen completion listeners (e.g.
+/// `_ActiveJobScreenState._maybeShowRateClientSheet`) — share one
+/// dedup set. Without this, an artisan still on /active-job when the
+/// job hits `completed` saw two stacked sheets: one from the screen's
+/// status listener, one from the socket event a moment later.
+///
+/// File-scope (not closure-local) is also what kept the original
+/// dedup alive across socket reconnects.
+final ratingSheetShownFor = <String>{};
+
 void _connectAndListen(Ref ref, SocketService socket) {
-  // Per-process dedup for foreground rating sheets — survives socket
-  // re-creation so a reconnect-redelivered `rating:prompt` for an
-  // already-shown sheet doesn't pop a second one. Declared at the
-  // provider scope (not inside `attachHandlers`) so the set isn't
-  // wiped every time the lifecycle observer reconnects the socket.
-  final shownRatingFor = <String>{};
 
   // Mirror connection state for the UI.
   final sub = socket.connectionStream.listen((connected) {
@@ -524,7 +540,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // handles the in-flow case; this handler is the safety net for users
     // who navigated away before completion landed.
     //
-    // `shownRatingFor` is captured from the outer provider scope so the
+    // `ratingSheetShownFor` is captured from the outer provider scope so the
     // dedup set survives socket re-creations — without that, every
     // background→resume cycle would reset the set and pop a duplicate
     // sheet for any rating event the server re-delivers on reconnect.
@@ -538,13 +554,25 @@ void _connectAndListen(Ref ref, SocketService socket) {
       if (bookingType == null || bookingId == null || bookingId.isEmpty) {
         return;
       }
+      // If the artisan is currently on /active-job (or the driver on
+      // /active-ride), defer entirely — the screen's own status
+      // listener will pop the sheet AND handle the post-rating
+      // navigation to /earnings. Without this, both paths fired and
+      // stacked two rating modals on top of each other.
+      final router = ref.read(goRouterProvider);
+      final currentPath =
+          router.routerDelegate.currentConfiguration.uri.path;
+      if (bookingType == 'artisan_job' || bookingType == 'job') {
+        if (currentPath == '/active-job') return;
+      } else if (bookingType == 'ride') {
+        if (currentPath == '/active-ride') return;
+      }
       // Per-process dedup — same emit reconnect-redelivered, or paired
       // with an FCM tap landing milliseconds later, must not stack a
       // second sheet on top.
-      if (!shownRatingFor.add(bookingId)) return;
+      if (!ratingSheetShownFor.add(bookingId)) return;
 
-      final ctx =
-          ref.read(goRouterProvider).routerDelegate.navigatorKey.currentContext;
+      final ctx = router.routerDelegate.navigatorKey.currentContext;
       if (ctx == null) return;
 
       // Hydrate the counter-party first name so the sheet reads
@@ -593,7 +621,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
         } else {
           // Unknown bookingType — release the dedup so a corrected
           // re-emit can still surface.
-          shownRatingFor.remove(bookingId);
+          ratingSheetShownFor.remove(bookingId);
         }
       }
 

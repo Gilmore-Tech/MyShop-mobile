@@ -15,6 +15,38 @@ import 'provider_status_provider.dart';
 /// no longer required and this cache can be retired.
 final lastKnownPositionProvider = StateProvider<Position?>((_) => null);
 
+// Tracks the last successful `status:'online'` POST so the heartbeat,
+// bridge kick-once, refreshHeartbeat, and goOnline don't all pile on
+// top of each other and trip the global IP throttler. File-scope so it
+// survives bridge re-evaluations (status flips, socket reconnects).
+DateTime? _lastOnlineLocationPostAt;
+
+// Window slightly under the 4 s heartbeat: long enough to absorb a
+// kick-once that fires microseconds after a periodic tick, short enough
+// that the next periodic tick is never accidentally suppressed.
+const Duration _kOnlineLocationPostMinGap = Duration(seconds: 3);
+
+/// True when an online location POST should be suppressed because we
+/// just sent one. Offline POSTs (status:'offline') always bypass this.
+bool shouldSkipOnlineLocationPost() {
+  final last = _lastOnlineLocationPostAt;
+  if (last == null) return false;
+  return DateTime.now().difference(last) < _kOnlineLocationPostMinGap;
+}
+
+/// Record a successful online POST. Subsequent online POSTs within the
+/// dedup window are skipped via [shouldSkipOnlineLocationPost].
+void markOnlineLocationPosted() {
+  _lastOnlineLocationPostAt = DateTime.now();
+}
+
+/// Reset the dedup so the very next online POST always goes through.
+/// Called after an offline transition so a rapid offline→online flip
+/// doesn't leave the matcher with a stale "you just posted" guard.
+void clearOnlineLocationPostAt() {
+  _lastOnlineLocationPostAt = null;
+}
+
 /// Orchestrates the online/offline transition for the provider:
 ///
 ///   - goOnline(): verify location → fetch a fix → POST
@@ -85,6 +117,9 @@ class AvailabilityController {
           status: 'online',
         );
       }
+      // Seed the dedup so the bridge's kick-once POST (which fires the
+      // moment we flip providerStatusProvider below) is suppressed.
+      markOnlineLocationPosted();
       debugPrint('[Availability] online POST sent');
     } on ApiException catch (e) {
       debugPrint('[Availability] online POST failed: $e');
@@ -137,6 +172,15 @@ class AvailabilityController {
     final pos = _ref.read(lastKnownPositionProvider);
     if (pos == null) return;
 
+    // The 4 s socket-bridge heartbeat may have just fired; if so the
+    // backend Redis TTL was already extended and posting again here
+    // only spends rate-limit budget. Skip — the periodic tick we just
+    // observed already did this work.
+    if (shouldSkipOnlineLocationPost()) {
+      debugPrint('[Availability] heartbeat refresh skipped — recent POST');
+      return;
+    }
+
     final isArtisan = _ref.read(providerTypeProvider).isArtisan;
     final locationService = _ref.read(locationServiceProvider);
     try {
@@ -153,6 +197,7 @@ class AvailabilityController {
           status: 'online',
         );
       }
+      markOnlineLocationPosted();
       debugPrint('[Availability] heartbeat refreshed for backgrounding');
     } on ApiException catch (e) {
       debugPrint('[Availability] heartbeat refresh failed: $e');
@@ -175,6 +220,10 @@ class AvailabilityController {
   /// best-effort.
   Future<void> goOffline() async {
     _ref.read(providerStatusProvider.notifier).goOffline();
+    // Reset the online-POST dedup so a rapid offline→online flip
+    // always resends. Done here (not in _postOffline) so it runs even
+    // when there's no cached position to POST with.
+    clearOnlineLocationPostAt();
     await _postOffline();
   }
 

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 
 import '../../app/router.dart';
+import '../../features/artisan_home/providers/active_job_provider.dart';
 import '../../features/artisan_home/providers/job_poller_provider.dart';
 import '../../features/artisan_home/widgets/rate_client_sheet.dart';
 import '../../features/auth/providers/auth_controller.dart';
@@ -437,6 +438,50 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     final router = ref.read(goRouterProvider);
     debugPrint('[FCM-tap] type=$type (raw=$rawType)');
 
+    // Backend may send the job id under either `jobId` (camel) or
+    // `job_id` (snake) depending on which emitter wrote the push.
+    String? jobIdFromPayload() =>
+        (payload[NotificationPayload.keyJobId] as String?) ??
+        (payload['job_id'] as String?);
+
+    // Shared landing path for every job-context tap that drops the user
+    // on /active-job (bid accepted, supplement decisions, reminders,
+    // welfare/stale check-ins). The slot is normally seeded when the
+    // artisan taps "Accept & Start Job" on the bid-status banner; if
+    // the trigger fired while the app was backgrounded/terminated, the
+    // tap handler reaches this point with an empty slot and we have to
+    // hydrate from GET /jobs/:id ourselves — otherwise the screen
+    // renders its "No active job" empty state.
+    Future<void> hydrateAndGoToActiveJob(String? jobId) async {
+      if (jobId == null) {
+        debugPrint('[FCM-tap] active-job tap: no jobId in payload');
+        router.go('/active-job');
+        return;
+      }
+      final cached = ref.read(activeJobProvider).job;
+      if (cached?.id == jobId) {
+        // Slot already holds this job (foreground socket path or a
+        // prior tap kept it warm) — straight to the screen.
+        router.go('/active-job');
+        return;
+      }
+      // Land on /home during the fetch so the user isn't staring at
+      // _NoActiveJob for the duration of the round-trip — that's
+      // exactly the regression we're avoiding.
+      router.go('/home');
+      try {
+        final data = await ref.read(jobServiceProvider).getJob(jobId);
+        final job = Job.fromJson(data);
+        ref.read(activeJobProvider.notifier).setJob(job);
+        router.go('/active-job');
+      } catch (e) {
+        debugPrint('[FCM-tap] active-job hydrate failed for $jobId: $e');
+        // Drop on My Jobs so the affected job is at least visible in
+        // the list. Better than dumping the user on a blank screen.
+        router.go('/trips');
+      }
+    }
+
     switch (type) {
       case NotificationPayload.typeJobRequest:
         // Backend may send the job id under either `jobId` (camel) or
@@ -495,27 +540,41 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       case NotificationPayload.typeBidAccepted:
       case NotificationPayload.typeSupplementApproved:
       case NotificationPayload.typeSupplementRejected:
-        // Artisan has an active job waiting — go to the active-job screen
-        // so they can advance the timeline.
-        router.go('/active-job');
+        await hydrateAndGoToActiveJob(jobIdFromPayload());
         break;
 
       case NotificationPayload.typeRideSettled:
       case NotificationPayload.typePaymentReceived:
       case NotificationPayload.typeJobPaymentReleasing:
+      // Client confirmed the work and the payout has been released —
+      // earnings is where the artisan wants to land.
+      case NotificationPayload.typeJobConfirmedComplete:
         router.go('/earnings');
+        break;
+
+      // Cancellations (client- or platform-initiated) — drop the user
+      // on My Jobs / My Trips so they see the cancelled booking in
+      // their list with the cancelled status, instead of a generic
+      // home tab that gives no context.
+      case NotificationPayload.typeJobCancelled:
+      case NotificationPayload.typeJobCancelledByClient:
+      case NotificationPayload.typeRideCancelled:
+        router.go('/trips');
         break;
 
       // Reminders, staleness pings and welfare checks all relate to the
       // active job — drop the artisan straight onto the active-job
       // screen so they can advance the timeline or send an update.
+      // Same hydration path as bid-accepted: without it the screen
+      // would render _NoActiveJob whenever the slot wasn't pre-warmed
+      // by the foreground socket flow.
       case NotificationPayload.typeJobReminder24h:
       case NotificationPayload.typeJobReminder2h:
       case NotificationPayload.typeJobCheckin8h:
       case NotificationPayload.typeJobStale24h:
       case NotificationPayload.typeJobStale48h:
       case NotificationPayload.typeJobWelfareCheck:
-        router.go('/active-job');
+        await hydrateAndGoToActiveJob(jobIdFromPayload());
         break;
 
       // Admin opened a job up because no bids landed in time, or assigned
@@ -627,6 +686,13 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             jobId: bookingId,
             clientFirstName: firstName,
           );
+          // After the artisan rates the client, drop them on /earnings
+          // — payout is released, the job is done, and there's nothing
+          // left to do on /home. Mirrors the post-rating navigation in
+          // active_job_screen.
+          if (ctx.mounted) {
+            router.go('/earnings');
+          }
         }
         break;
 
@@ -642,10 +708,6 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         break;
 
       case NotificationPayload.typeBidRejected:
-      case NotificationPayload.typeJobCancelled:
-      case NotificationPayload.typeJobCancelledByClient:
-      case NotificationPayload.typeRideCancelled:
-      case NotificationPayload.typeJobConfirmedComplete:
       default:
         router.go('/home');
     }

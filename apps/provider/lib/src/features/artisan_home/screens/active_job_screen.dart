@@ -12,6 +12,7 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/chat/chat_entry_button.dart';
+import '../../../core/providers/socket_provider.dart' show ratingSheetShownFor;
 import '../../../core/services/directions_service.dart';
 import '../../driver_home/providers/driver_location_provider.dart';
 import '../providers/active_job_provider.dart';
@@ -111,6 +112,15 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
     if (_rateSheetShown || !mounted) return;
     final job = ref.read(activeJobProvider).job;
     if (job == null || job.id.isEmpty) return;
+    // Share the dedup set with the socket `rating:prompt` handler. The
+    // backend fires status:changed AND rating:prompt back-to-back when
+    // a job finalises; without coordination both paths would each pop
+    // a sheet — the artisan would see two stacked rating modals. The
+    // first to claim the booking wins; the other becomes a no-op.
+    if (!ratingSheetShownFor.add(job.id)) {
+      _rateSheetShown = true;
+      return;
+    }
     _rateSheetShown = true;
     final firstName = (job.clientName ?? 'Client').trim().split(' ').first;
     await showRateClientSheet(
@@ -118,6 +128,14 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
       jobId: job.id,
       clientFirstName: firstName.isEmpty ? 'Client' : firstName,
     );
+    // After the rating sheet closes, take the artisan to earnings —
+    // the job is done, payout is released, and there's nothing else
+    // for them to do on /active-job. Mirrors the manual "Go to
+    // Earnings" CTA on the completion overlay.
+    if (!mounted) return;
+    ref.read(activeJobProvider.notifier).clear();
+    if (!mounted) return;
+    context.go('/earnings');
   }
 
   Future<void> _launchExternalNavigation(LatLng destination) async {
