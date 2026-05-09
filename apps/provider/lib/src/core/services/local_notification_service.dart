@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -282,7 +283,22 @@ class LocalNotificationService {
     await androidPlugin?.createNotificationChannel(_incomingRequestChannel);
     await androidPlugin?.createNotificationChannel(_timelineChannel);
     await androidPlugin?.createNotificationChannel(_chatChannel);
-    await androidPlugin?.requestNotificationsPermission();
+    // requestNotificationsPermission() ultimately calls
+    // ContextCompat.checkSelfPermission, which needs an Activity-tier
+    // Context — non-existent inside the FCM background isolate. The
+    // resulting NullPointerException used to bubble out of init() and
+    // abort _renderFromRemote, which is exactly why background
+    // job_request pushes silently dropped instead of rendering the
+    // call-style local notification. Foreground init still grants the
+    // permission as before; background init is now a no-op for the
+    // permission prompt and reuses whatever was granted in foreground.
+    try {
+      await androidPlugin?.requestNotificationsPermission();
+    } catch (e) {
+      debugPrint(
+          '[LocalNotificationService] requestNotificationsPermission '
+          'skipped (likely background isolate): $e');
+    }
   }
 
   /// Show a persistent banner for an incoming job. Used by FCM background
@@ -411,37 +427,86 @@ class LocalNotificationService {
   }
 
   // ── Incoming-request ringtone ──────────────────────────────────────────
-  // The ringtone fires `SystemSound.alert` + a heavy haptic on a 1.5 s
-  // interval — feels like a notification ringing repeatedly. No bundled
-  // asset is required so this works on both platforms today.
+  // Loops `assets/audio/incoming_request.mp3` via [AudioPlayer] for the
+  // duration of the foreground job/ride modal. A heavy haptic also
+  // pulses every 1.5 s so a phone in a pocket gets felt even when audio
+  // routes to a low-volume sink (Bluetooth headset, silent mode, etc.).
   //
-  // TODO(ringtone-asset): when a real ringtone audio file is sourced,
-  // swap this Timer for an `audioplayers` AudioPlayer with
-  // `ReleaseMode.loop` pointing at `assets/audio/incoming_request.mp3`.
-  // The public start/stop API stays the same.
+  // If the asset is missing — the placeholder file isn't dropped yet —
+  // the player throws on `play()` and we silently fall back to
+  // haptic-only. See `assets/audio/README.md` for the file the app
+  // expects.
+  AudioPlayer? _ringtonePlayer;
   Timer? _ringtoneTimer;
+  bool _ringtoneActive = false;
 
   /// Start a continuous "incoming request" ringtone. Idempotent — a second
   /// call while the ringtone is already playing is a no-op. Used by the
   /// foreground job/ride request modal/screen to alert the provider.
   Future<void> startIncomingRingtone() async {
-    if (_ringtoneTimer != null) return;
-    // Fire one chime + haptic immediately so there's no perceptible
-    // delay between the modal appearing and the first ping.
+    if (_ringtoneActive) return;
+    _ringtoneActive = true;
+
+    // Haptic loop fires regardless of audio outcome — it's the
+    // single signal we know works on every device the asset path
+    // doesn't (Samsung silent mode, missing asset, etc.).
     await HapticFeedback.heavyImpact();
-    await SystemSound.play(SystemSoundType.alert);
     _ringtoneTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) {
       HapticFeedback.heavyImpact();
-      SystemSound.play(SystemSoundType.alert);
     });
+
+    // Audio loop is best-effort. Until the MP3 is dropped into
+    // assets/audio/, AssetSource throws and we end up haptic-only.
+    try {
+      final player = _ringtonePlayer ??= AudioPlayer();
+      await player.setReleaseMode(ReleaseMode.loop);
+      // Notification stream so the OS volume keys / silent switch
+      // behave the way users expect for a ringtone-class alert.
+      // (audioplayers picks a sensible default if this fails on iOS.)
+      try {
+        await player.setAudioContext(
+          AudioContext(
+            android: const AudioContextAndroid(
+              isSpeakerphoneOn: false,
+              stayAwake: false,
+              contentType: AndroidContentType.sonification,
+              usageType: AndroidUsageType.notificationRingtone,
+              audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+            ),
+            iOS: AudioContextIOS(
+              category: AVAudioSessionCategory.playback,
+              options: const {
+                AVAudioSessionOptions.mixWithOthers,
+                AVAudioSessionOptions.duckOthers,
+              },
+            ),
+          ),
+        );
+      } catch (e) {
+        debugPrint('[LocalNotificationService] audio context setup failed: $e');
+      }
+      await player.play(AssetSource('audio/incoming_request.mp3'));
+      debugPrint('[LocalNotificationService] ringtone playing');
+    } catch (e) {
+      debugPrint(
+          '[LocalNotificationService] ringtone asset unavailable, '
+          'falling back to haptic-only: $e');
+    }
   }
 
   /// Stop the incoming-request ringtone. Safe to call when nothing is
   /// playing. Always called from `dispose` of the corresponding screen
   /// so dismissing/accepting/declining/timing-out all silence the alert.
-  void stopIncomingRingtone() {
+  Future<void> stopIncomingRingtone() async {
+    if (!_ringtoneActive) return;
+    _ringtoneActive = false;
     _ringtoneTimer?.cancel();
     _ringtoneTimer = null;
+    try {
+      await _ringtonePlayer?.stop();
+    } catch (e) {
+      debugPrint('[LocalNotificationService] ringtone stop failed: $e');
+    }
   }
 
   /// Stable non-negative notification id. Dedupes per `{type, primary-id}`
