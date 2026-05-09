@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../../../app/router.dart';
 import '../../../core/di/providers.dart';
 import '../../../core/services/google_places_service.dart';
+import '../../../core/providers/recent_locations_provider.dart';
 import '../providers/edit_trip_provider.dart';
 import '../providers/ride_search_provider.dart';
 
@@ -171,6 +172,15 @@ class _DestinationSearchScreenState
             RideLocation(name: name, address: address, lat: lat, lng: lng),
           );
     }
+    if (lat != null && lng != null) {
+      // Fire-and-forget — recents persistence shouldn't block navigation.
+      ref.read(recentLocationsProvider.notifier).add(
+            name: name,
+            address: address,
+            lat: lat,
+            lng: lng,
+          );
+    }
     if (context.canPop()) context.pop();
   }
 
@@ -193,9 +203,29 @@ class _DestinationSearchScreenState
 
     // Map picker confirmed a new location — close the search screen too so the
     // user lands back on the fare estimate screen with the field already filled.
-    if (newLat != null && newLat != prevLat && context.canPop()) {
-      context.pop();
+    if (newLat != null && newLat != prevLat) {
+      final picked = _isPickup ? newSearch.pickup : newSearch.destination;
+      final pickedLat = picked?.lat;
+      final pickedLng = picked?.lng;
+      if (picked != null && pickedLat != null && pickedLng != null) {
+        ref.read(recentLocationsProvider.notifier).add(
+              name: picked.name,
+              address: picked.address,
+              lat: pickedLat,
+              lng: pickedLng,
+            );
+      }
+      if (context.canPop()) context.pop();
     }
+  }
+
+  void _selectRecent(RecentLocation r) {
+    _applyLocation(
+      name: r.name,
+      address: r.address,
+      lat: r.lat,
+      lng: r.lng,
+    );
   }
 
   @override
@@ -250,8 +280,19 @@ class _DestinationSearchScreenState
                               )),
                       ],
 
-                      // When idle — show saved + recent
+                      // When idle — show recent + saved
                       if (!_hasQuery) ...[
+                        if (ref.watch(recentLocationsProvider).isNotEmpty) ...[
+                          _SectionLabel(label: 'RECENT', w: w),
+                          ...ref.watch(recentLocationsProvider).map(
+                                (r) => _RecentLocationTile(
+                                  recent: r,
+                                  onTap: () => _selectRecent(r),
+                                  w: w,
+                                  h: h,
+                                ),
+                              ),
+                        ],
                         _SectionLabel(label: 'SAVED PLACES', w: w),
                         ..._savedPlaces.map((p) => _SavedPlaceTile(
                               place: p,
@@ -513,6 +554,84 @@ class _SuggestionTile extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
+                    ],
+                  ),
+                ),
+                const Icon(Icons.north_west_rounded,
+                    color: MyShopColors.textSecondary, size: 16),
+              ],
+            ),
+          ),
+        ),
+        Divider(
+          height: 1,
+          color: MyShopColors.divider,
+          indent: w * 0.05 + w * 0.10 + w * 0.036,
+        ),
+      ],
+    );
+  }
+}
+
+/// Tile for a recently picked location.
+class _RecentLocationTile extends StatelessWidget {
+  final RecentLocation recent;
+  final VoidCallback onTap;
+  final double w, h;
+
+  const _RecentLocationTile({
+    required this.recent,
+    required this.onTap,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding:
+                EdgeInsets.symmetric(horizontal: w * 0.05, vertical: h * 0.016),
+            child: Row(
+              children: [
+                Container(
+                  width: w * 0.10,
+                  height: w * 0.10,
+                  decoration: BoxDecoration(
+                    color: MyShopColors.textSecondary.withAlpha(24),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.history_rounded,
+                      color: MyShopColors.textSecondary, size: w * 0.048),
+                ),
+                SizedBox(width: w * 0.036),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        recent.name,
+                        style: TextStyle(
+                          color: MyShopColors.textPrimary,
+                          fontSize: w * 0.038,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        recent.address,
+                        style: TextStyle(
+                          color: MyShopColors.textSecondary,
+                          fontSize: w * 0.032,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ],
                   ),
                 ),

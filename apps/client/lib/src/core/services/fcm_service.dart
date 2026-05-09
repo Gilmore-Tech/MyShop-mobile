@@ -608,6 +608,13 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             jobId: id,
             artisanFirstName: firstName,
           );
+          // After the client rates, drop them on the request details
+          // page so they can review the booking, message the artisan,
+          // or download the receipt — same final destination as the
+          // post-payment dialog and the socket-driven prompt.
+          if (ctx.mounted) {
+            router.go(AppRoutes.jobDetailPath(id));
+          }
         } else {
           router.go(AppRoutes.activity);
         }

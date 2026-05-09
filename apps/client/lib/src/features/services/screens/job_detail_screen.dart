@@ -154,7 +154,18 @@ class _AppBar extends StatelessWidget {
       child: Row(
         children: [
           GestureDetector(
-            onTap: () => Navigator.of(context).maybePop(),
+            onTap: () {
+              // After paying + rating we land here via `context.go(...)`
+              // which clears the back stack — `maybePop()` then no-ops
+              // and the back arrow looks dead. Fall through to the
+              // Activity tab so the user always has somewhere to go.
+              final nav = Navigator.of(context);
+              if (nav.canPop()) {
+                nav.pop();
+              } else {
+                context.go(AppRoutes.activity);
+              }
+            },
             behavior: HitTestBehavior.opaque,
             child: Padding(
               padding: EdgeInsets.only(right: w * 0.031),

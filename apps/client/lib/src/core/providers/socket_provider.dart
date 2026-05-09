@@ -5,7 +5,7 @@ import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart' show RideStop;
 
-import '../../app/router.dart' show routerProvider;
+import '../../app/router.dart' show AppRoutes, routerProvider;
 import '../../features/auth/providers/auth_controller.dart';
 import '../../features/activity/providers/activity_history_provider.dart';
 import '../../features/activity/providers/activity_provider.dart';
@@ -573,6 +573,15 @@ void _connectAndListen(Ref ref, SocketService socket) {
             jobId: bookingId,
             artisanFirstName: firstName,
           );
+          // After the client rates, land them on the request details
+          // page — the natural place to review the booking, message
+          // the artisan, or download the receipt. Mirrors the post-
+          // payment dialog's flow.
+          if (ctx.mounted) {
+            ref
+                .read(routerProvider)
+                .go(AppRoutes.jobDetailPath(bookingId));
+          }
         } else {
           shownRatingFor.remove(bookingId);
         }

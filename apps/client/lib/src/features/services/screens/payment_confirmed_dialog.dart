@@ -120,13 +120,20 @@ class _DialogSheetState extends ConsumerState<_DialogSheet> {
 
     if (status == 'completed') {
       navigator.maybePop();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!rootCtx.mounted) return;
-        showRateJobSheet(
+        await showRateJobSheet(
           rootCtx,
           jobId: c.jobId,
           artisanFirstName: firstName,
         );
+        // Once the client has paid AND rated, drop them on the request
+        // details page so they can review the booking, contact the
+        // artisan, download the receipt, or open a dispute. Anywhere
+        // else (home / activity tab) feels like the flow ended
+        // abruptly.
+        if (!rootCtx.mounted) return;
+        rootCtx.go(AppRoutes.jobDetailPath(c.jobId));
       });
       return;
     }
@@ -368,8 +375,13 @@ class _DialogSheetState extends ConsumerState<_DialogSheet> {
                             icon: Icons.work_outline_rounded,
                             label: 'Job Details',
                             onTap: () {
-                              // TODO: navigate to job detail screen
+                              // Capture the router before popping — once
+                              // the dialog tears down, `context` is no
+                              // longer mounted and `context.go(...)`
+                              // would no-op silently.
+                              final router = GoRouter.of(context);
                               Navigator.of(context).maybePop();
+                              router.go(AppRoutes.jobDetailPath(c.jobId));
                             },
                             w: w,
                             h: h,

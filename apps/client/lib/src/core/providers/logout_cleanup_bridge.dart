@@ -9,6 +9,7 @@ import '../../features/ride/providers/ride_provider.dart';
 import '../../features/ride/providers/ride_search_provider.dart';
 import '../di/providers.dart';
 import 'nav_badge_provider.dart';
+import 'recent_locations_provider.dart';
 import 'socket_provider.dart';
 
 /// Bridge that watches auth state and tears down session-scoped state on
@@ -80,6 +81,12 @@ final logoutCleanupBridgeProvider = Provider<void>((ref) {
     // safe place to drop them.
     ref.read(pendingPaymentStoreProvider).clearAll().catchError((Object e) {
       debugPrint('[Logout] pendingPaymentStore.clearAll failed: $e');
+    });
+
+    // Recent location inputs are also persisted to SharedPreferences
+    // and per-user — same reasoning as pendingPaymentStore above.
+    ref.read(recentLocationsProvider.notifier).clear().catchError((Object e) {
+      debugPrint('[Logout] recentLocations.clear failed: $e');
     });
   });
 });

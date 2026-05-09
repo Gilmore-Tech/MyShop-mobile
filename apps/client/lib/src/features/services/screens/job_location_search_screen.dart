@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/providers/recent_locations_provider.dart';
 import '../../../core/services/google_places_service.dart';
 import '../providers/job_form_provider.dart';
 
@@ -89,14 +90,98 @@ class _JobLocationSearchScreenState
             latitude: detail.latitude,
             longitude: detail.longitude,
           );
+      // Fire-and-forget — recents persistence shouldn't block the pop.
+      ref.read(recentLocationsProvider.notifier).add(
+            name: suggestion.mainText,
+            address: detail.address,
+            lat: detail.latitude,
+            lng: detail.longitude,
+          );
       if (context.mounted && context.canPop()) context.pop();
     } else {
       setState(() => _isLoading = false);
     }
   }
 
+  void _selectRecent(RecentLocation r) {
+    ref.read(jobFormProvider.notifier).setLocation(
+          address: r.address,
+          latitude: r.lat,
+          longitude: r.lng,
+        );
+    // Bump it to the top of the list.
+    ref.read(recentLocationsProvider.notifier).add(
+          name: r.name,
+          address: r.address,
+          lat: r.lat,
+          lng: r.lng,
+        );
+    if (context.canPop()) context.pop();
+  }
+
   void _openMapPicker() {
     context.push('/services/job/location/map');
+  }
+
+  Widget _buildResults(double w, double h) {
+    final hasQuery = _searchController.text.trim().isNotEmpty;
+
+    // Searching: show autocomplete results, or "no results" empty state.
+    if (hasQuery) {
+      if (_suggestions.isEmpty) {
+        return _EmptyState(hasQuery: true, w: w, h: h);
+      }
+      return ListView.separated(
+        padding: EdgeInsets.only(top: h * 0.007),
+        itemCount: _suggestions.length,
+        separatorBuilder: (_, __) => const Divider(
+          height: 1,
+          color: MyShopColors.divider,
+        ),
+        itemBuilder: (_, i) {
+          final s = _suggestions[i];
+          return _SuggestionTile(
+            suggestion: s,
+            onTap: () => _selectSuggestion(s),
+            w: w,
+            h: h,
+          );
+        },
+      );
+    }
+
+    // Idle: show recents (if any) above the prompt-style empty state.
+    final recents = ref.watch(recentLocationsProvider);
+    if (recents.isEmpty) {
+      return _EmptyState(hasQuery: false, w: w, h: h);
+    }
+    return ListView(
+      padding: EdgeInsets.only(top: h * 0.007),
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(w * 0.041, h * 0.012, w * 0.041, h * 0.006),
+          child: Text(
+            'RECENT',
+            style: TextStyle(
+              color: MyShopColors.textSecondary,
+              fontSize: w * 0.028,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.4,
+            ),
+          ),
+        ),
+        for (var i = 0; i < recents.length; i++) ...[
+          _RecentLocationTile(
+            recent: recents[i],
+            onTap: () => _selectRecent(recents[i]),
+            w: w,
+            h: h,
+          ),
+          if (i < recents.length - 1)
+            const Divider(height: 1, color: MyShopColors.divider),
+        ],
+      ],
+    );
   }
 
   @override
@@ -256,29 +341,7 @@ class _JobLocationSearchScreenState
           Expanded(
             child: _isLoading
                 ? _LoadingIndicator(w: w, h: h)
-                : _suggestions.isEmpty
-                    ? _EmptyState(
-                        hasQuery: _searchController.text.trim().isNotEmpty,
-                        w: w,
-                        h: h,
-                      )
-                    : ListView.separated(
-                        padding: EdgeInsets.only(top: h * 0.007),
-                        itemCount: _suggestions.length,
-                        separatorBuilder: (_, __) => const Divider(
-                          height: 1,
-                          color: MyShopColors.divider,
-                        ),
-                        itemBuilder: (_, i) {
-                          final s = _suggestions[i];
-                          return _SuggestionTile(
-                            suggestion: s,
-                            onTap: () => _selectSuggestion(s),
-                            w: w,
-                            h: h,
-                          );
-                        },
-                      ),
+                : _buildResults(w, h),
           ),
         ],
       ),
@@ -344,6 +407,84 @@ class _SuggestionTile extends StatelessWidget {
                     SizedBox(height: h * 0.003),
                     Text(
                       suggestion.secondaryText,
+                      style: TextStyle(
+                        fontSize: w * 0.030,
+                        fontWeight: FontWeight.w400,
+                        color: MyShopColors.textSecondary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Recent location tile ─────────────────────────────────────────────────────
+
+class _RecentLocationTile extends StatelessWidget {
+  final RecentLocation recent;
+  final VoidCallback onTap;
+  final double w;
+  final double h;
+
+  const _RecentLocationTile({
+    required this.recent,
+    required this.onTap,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: w * 0.041,
+          vertical: h * 0.015,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: w * 0.092,
+              height: w * 0.092,
+              decoration: const BoxDecoration(
+                color: MyShopColors.surfaceGrey,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.history_rounded,
+                size: w * 0.046,
+                color: MyShopColors.textSecondary,
+              ),
+            ),
+            SizedBox(width: w * 0.031),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    recent.name,
+                    style: TextStyle(
+                      fontSize: w * 0.038,
+                      fontWeight: FontWeight.w600,
+                      color: MyShopColors.textPrimary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (recent.address.isNotEmpty &&
+                      recent.address != recent.name) ...[
+                    SizedBox(height: h * 0.003),
+                    Text(
+                      recent.address,
                       style: TextStyle(
                         fontSize: w * 0.030,
                         fontWeight: FontWeight.w400,

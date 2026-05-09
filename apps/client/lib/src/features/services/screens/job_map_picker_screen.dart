@@ -7,6 +7,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../core/constants/mapbox_config.dart';
 import '../../../core/di/providers.dart';
 import '../../../core/providers/current_location_provider.dart';
+import '../../../core/providers/recent_locations_provider.dart';
 import '../providers/job_form_provider.dart';
 
 /// Full-screen Google Map with a center crosshair for pin-dropping.
@@ -88,6 +89,16 @@ class _JobMapPickerScreenState extends ConsumerState<JobMapPickerScreen> {
           address: _address,
           latitude: _currentCenter.latitude,
           longitude: _currentCenter.longitude,
+        );
+    // Reverse-geocoded address has no main/secondary split, so use the
+    // first comma-segment as the headline and the full string as the
+    // sub-line — matches how autocomplete picks render.
+    final firstSegment = _address.split(',').first.trim();
+    ref.read(recentLocationsProvider.notifier).add(
+          name: firstSegment.isEmpty ? _address : firstSegment,
+          address: _address,
+          lat: _currentCenter.latitude,
+          lng: _currentCenter.longitude,
         );
     // Pop both map picker and search screen back to the form.
     if (context.canPop()) context.pop();
