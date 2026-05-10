@@ -145,9 +145,26 @@ class ChatRealtime {
         // If we had a channel before the disconnect, automatically re-join
         // so server-side delivery resumes without the orchestrator having
         // to remember/re-issue it.
+        //
+        // Longer timeout than user-initiated joins: auto-rejoin often
+        // fires right after a backend cold-start (Render free tier) where
+        // 5s is too tight. Catch the throw — this is fire-and-forget, so
+        // an uncaught ChatRealtimeException would surface as a top-level
+        // async error. On failure, live delivery for this booking is
+        // paused until the next reconnect cycle or until the user re-opens
+        // chat (which calls openChannel → fresh join); REST fallbacks keep
+        // send/read working in the meantime.
         final pending = _channel;
         if (pending != null) {
-          unawaited(_emitJoin(pending.bookingType, pending.bookingId));
+          unawaited(
+            _emitJoin(
+              pending.bookingType,
+              pending.bookingId,
+              timeout: const Duration(seconds: 15),
+            ).catchError((Object e) {
+              debugPrint('[CHAT-WS] Auto-rejoin failed: $e');
+            }),
+          );
         }
       })
       ..onDisconnect((reason) {

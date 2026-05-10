@@ -21,6 +21,7 @@ class AuthUser {
     required this.fullName,
     required this.role,
     this.email,
+    this.languagePref = 'en',
     this.status = 'active',
     this.driverProfile,
     this.artisanProfile,
@@ -32,6 +33,13 @@ class AuthUser {
   /// [activeRole] overrides role detection for dual-role accounts.
   /// When null, falls back to checking which sub-profiles exist
   /// (driver takes priority over artisan for backwards compatibility).
+  ///
+  /// Phase 3 strict separation (CLAUDE.md §1, §8): when the per-role
+  /// profile carries its own `legalName`/`email`/`languagePref`, they
+  /// take precedence over the root `User.*` fields. The root values
+  /// are kept as a fallback during the transition release; once the
+  /// follow-up migration drops `users.full_name`/`email`/`language_pref`,
+  /// the per-role fields are the only source.
   factory AuthUser.fromProfile(UserProfile profile, {AuthRole? activeRole}) {
     final role = activeRole ??
         (profile.driver != null
@@ -40,11 +48,36 @@ class AuthUser {
                 ? AuthRole.artisan
                 : AuthRole.client);
 
+    // Route the visible profile fields through the active role's
+    // sub-profile when populated. Editing the Driver app's name must
+    // never bleed into the Client app — that's the bug Phase 3 fixed.
+    String? roleLegalName;
+    String? roleEmail;
+    String? roleLanguagePref;
+    switch (role) {
+      case AuthRole.driver:
+        roleLegalName = profile.driver?.legalName;
+        roleEmail = profile.driver?.email;
+        roleLanguagePref = profile.driver?.languagePref;
+        break;
+      case AuthRole.artisan:
+        roleLegalName = profile.artisan?.legalName;
+        roleEmail = profile.artisan?.email;
+        roleLanguagePref = profile.artisan?.languagePref;
+        break;
+      case AuthRole.client:
+        roleLegalName = profile.client?.legalName;
+        roleEmail = profile.client?.email;
+        roleLanguagePref = profile.client?.languagePref;
+        break;
+    }
+
     return AuthUser(
       id: profile.id,
       phone: profile.phone,
-      fullName: profile.fullName,
-      email: profile.email,
+      fullName: roleLegalName ?? profile.fullName,
+      email: roleEmail ?? profile.email,
+      languagePref: roleLanguagePref ?? profile.languagePref,
       role: role,
       status: profile.status,
       driverProfile: profile.driver,
@@ -55,8 +88,17 @@ class AuthUser {
 
   final String id;
   final String phone;
+
+  /// Legal name for the active role. During the Phase 3 transition,
+  /// resolved from the role profile's `legalName` when present, falling
+  /// back to the root `User.fullName`.
   final String fullName;
+
+  /// Email for the active role.
   final String? email;
+
+  /// Language preference for the active role (Twi/English).
+  final String languagePref;
   final AuthRole role;
   final String status;
   final DriverProfile? driverProfile;

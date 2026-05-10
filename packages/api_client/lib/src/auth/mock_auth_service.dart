@@ -134,6 +134,7 @@ class MockAuthService implements AuthService {
       driver: isDriver
           ? const DriverProfile(
               id: 'mock_driver_id',
+              languagePref: 'en',
               ghanaCardVerified: false,
               verificationStatus: 'pending',
               kycStatus: 'not_started',
@@ -147,6 +148,7 @@ class MockAuthService implements AuthService {
       artisan: !isDriver
           ? const ArtisanProfile(
               id: 'mock_artisan_id',
+              languagePref: 'en',
               ghanaCardVerified: false,
               verificationStatus: 'pending',
               kycStatus: 'not_started',
@@ -205,6 +207,10 @@ class MockAuthService implements AuthService {
       driver: dp != null
           ? DriverProfile(
               id: dp.id,
+              legalName: dp.legalName,
+              email: dp.email,
+              languagePref: dp.languagePref,
+              privacyPolicyAcceptedAt: dp.privacyPolicyAcceptedAt,
               ghanaCardVerified: dp.ghanaCardVerified,
               profilePhotoUrl: dp.profilePhotoUrl,
               vehicleMake: request.vehicleMake ?? dp.vehicleMake,
@@ -248,6 +254,10 @@ class MockAuthService implements AuthService {
       artisan: ap != null
           ? ArtisanProfile(
               id: ap.id,
+              legalName: ap.legalName,
+              email: ap.email,
+              languagePref: ap.languagePref,
+              privacyPolicyAcceptedAt: ap.privacyPolicyAcceptedAt,
               displayName: request.displayName ?? ap.displayName,
               businessName: request.businessName ?? ap.businessName,
               ghanaCardVerified: ap.ghanaCardVerified,

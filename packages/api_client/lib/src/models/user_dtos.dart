@@ -76,6 +76,10 @@ class ClientProfile {
     required this.loyaltyPointsBalance,
     required this.ghanaCardVerified,
     required this.kycStatus,
+    required this.languagePref,
+    this.legalName,
+    this.email,
+    this.privacyPolicyAcceptedAt,
     this.kycRejectionReason,
     this.displayName,
     this.profilePhotoUrl,
@@ -86,6 +90,10 @@ class ClientProfile {
   factory ClientProfile.fromJson(Map<String, dynamic> json) {
     return ClientProfile(
       id: json['id'] as String,
+      legalName: _asString(json['legalName']),
+      email: _asString(json['email']),
+      languagePref: _asString(json['languagePref']) ?? 'en',
+      privacyPolicyAcceptedAt: _asString(json['privacyPolicyAcceptedAt']),
       displayName: _asString(json['displayName']),
       profilePhotoUrl: _asString(json['profilePhotoUrl']),
       loyaltyPointsBalance: json['loyaltyPointsBalance'] as int? ?? 0,
@@ -102,7 +110,23 @@ class ClientProfile {
 
   final String id;
 
-  /// Public-facing name for this role. Falls back to [UserProfile.fullName].
+  /// Per-role legal name (Phase 3 strict separation, CLAUDE.md §1, §8).
+  /// A phone holding multiple role accounts edits each profile
+  /// independently — this name only ever applies on the Client app.
+  /// Falls back to [UserProfile.fullName] during the Phase 3 grace period.
+  final String? legalName;
+
+  /// Per-role email (unique within role, not across roles).
+  final String? email;
+
+  /// Per-role language preference. The Driver app for the same human can
+  /// run in Twi while this Client profile stays in English.
+  final String languagePref;
+
+  /// Per-role privacy-policy acceptance timestamp (Ghana DPA).
+  final String? privacyPolicyAcceptedAt;
+
+  /// Public-facing name for this role. Falls back to [legalName].
   final String? displayName;
 
   /// Profile photo specific to the client role.
@@ -137,6 +161,10 @@ class DriverProfile {
     required this.payoutPreference,
     required this.cancellationCount30d,
     required this.ghanaCardVerified,
+    required this.languagePref,
+    this.legalName,
+    this.email,
+    this.privacyPolicyAcceptedAt,
     this.displayName,
     this.profilePhotoUrl,
     this.vehicleMake,
@@ -154,6 +182,10 @@ class DriverProfile {
   factory DriverProfile.fromJson(Map<String, dynamic> json) {
     return DriverProfile(
       id: json['id'] as String,
+      legalName: _asString(json['legalName']),
+      email: _asString(json['email']),
+      languagePref: _asString(json['languagePref']) ?? 'en',
+      privacyPolicyAcceptedAt: _asString(json['privacyPolicyAcceptedAt']),
       displayName: _asString(json['displayName']),
       ghanaCardVerified: json['ghanaCardVerified'] as bool? ?? false,
       profilePhotoUrl: _asString(json['profilePhotoUrl']),
@@ -179,7 +211,19 @@ class DriverProfile {
 
   final String id;
 
-  /// Public-facing name for this role. Falls back to [UserProfile.fullName].
+  /// Per-role legal name (Phase 3 strict separation, CLAUDE.md §1, §8).
+  final String? legalName;
+
+  /// Per-role email (unique within role).
+  final String? email;
+
+  /// Per-role language preference.
+  final String languagePref;
+
+  /// Per-role privacy-policy acceptance timestamp.
+  final String? privacyPolicyAcceptedAt;
+
+  /// Public-facing name for this role. Falls back to [legalName].
   final String? displayName;
 
   final bool ghanaCardVerified;
@@ -222,6 +266,10 @@ class ArtisanProfile {
     required this.completedJobsCount,
     required this.cancellationCount30d,
     required this.ghanaCardVerified,
+    required this.languagePref,
+    this.legalName,
+    this.email,
+    this.privacyPolicyAcceptedAt,
     this.displayName,
     this.businessName,
     this.profilePhotoUrl,
@@ -236,6 +284,10 @@ class ArtisanProfile {
   factory ArtisanProfile.fromJson(Map<String, dynamic> json) {
     return ArtisanProfile(
       id: json['id'] as String,
+      legalName: _asString(json['legalName']),
+      email: _asString(json['email']),
+      languagePref: _asString(json['languagePref']) ?? 'en',
+      privacyPolicyAcceptedAt: _asString(json['privacyPolicyAcceptedAt']),
       displayName: _asString(json['displayName']),
       businessName: _asString(json['businessName']),
       ghanaCardVerified: json['ghanaCardVerified'] as bool? ?? false,
@@ -263,7 +315,19 @@ class ArtisanProfile {
 
   final String id;
 
-  /// Public-facing name for this role. Falls back to [UserProfile.fullName].
+  /// Per-role legal name (Phase 3 strict separation, CLAUDE.md §1, §8).
+  final String? legalName;
+
+  /// Per-role email (unique within role).
+  final String? email;
+
+  /// Per-role language preference.
+  final String languagePref;
+
+  /// Per-role privacy-policy acceptance timestamp.
+  final String? privacyPolicyAcceptedAt;
+
+  /// Public-facing name for this role. Falls back to [legalName].
   final String? displayName;
 
   /// The artisan's trade/business name (e.g. "Bright Spark Electrical").

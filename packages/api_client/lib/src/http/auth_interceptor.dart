@@ -137,6 +137,29 @@ class AuthInterceptor extends Interceptor {
       return;
     }
 
+    // REFRESH_IN_FLIGHT: backend's per-(userId, role) refresh lock saw a
+    // concurrent /auth/refresh and rejected this one. The winning refresh
+    // is racing to rotate tokens RIGHT NOW. Wait briefly, then retry the
+    // ORIGINAL request — by then the stored access token has been
+    // updated by the [TokenRefresher] callback and we just need to
+    // re-attach it. Do NOT call _tokenRefresher.refresh() again; that
+    // would just hit the lock a second time.
+    if (errorCode == AuthErrorCodes.refreshInFlight) {
+      debugPrint('[Auth] REFRESH_IN_FLIGHT on $path — backing off 250ms');
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      final freshToken = await _tokenStorage.readAccessToken();
+      if (freshToken != null) {
+        debugPrint('[Auth] retrying $path with refreshed token');
+        await _retryWithToken(err.requestOptions, freshToken, handler);
+        return;
+      }
+      // No fresh token after the backoff — propagate so the caller can
+      // either surface the failure or trigger its own logout.
+      debugPrint('[Auth] no fresh token after REFRESH_IN_FLIGHT backoff');
+      handler.next(err);
+      return;
+    }
+
     debugPrint('[Auth] 401 on $path (code=$errorCode) — attempting refresh');
 
     // Dedup: if another concurrent 401 already refreshed the token, the

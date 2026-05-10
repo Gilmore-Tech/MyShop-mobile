@@ -29,6 +29,14 @@ class AuthErrorCodes {
   /// already been consumed (rotation reuse detection). Always terminal —
   /// the entire token chain is suspect.
   static const refreshTokenReused = 'REFRESH_TOKEN_REUSED';
+
+  /// Returned by /auth/refresh (401) when another concurrent refresh is
+  /// in flight for the same (userId, role) pair. The backend lock admits
+  /// one refresh at a time — losing parallel calls receive this code.
+  /// NOT terminal: the caller should briefly back off and retry, by which
+  /// point the winning refresh has rotated the token pair and the
+  /// stored access token is fresh.
+  static const refreshInFlight = 'REFRESH_IN_FLIGHT';
 }
 
 /// Maps [ApiException] instances to user-friendly, actionable error messages
@@ -118,6 +126,11 @@ class AuthErrorMapper {
 
       case AuthErrorCodes.refreshTokenReused:
         return 'Your session was reset for security. Please sign in again.';
+
+      case AuthErrorCodes.refreshInFlight:
+        // Transient — interceptor retries automatically. Surfaced only if
+        // the retry also failed.
+        return 'Reconnecting... please try again in a moment.';
 
       // ── OTP ─────────────────────────────────────────────────────────
       case 'INVALID_OTP':

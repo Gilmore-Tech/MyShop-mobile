@@ -49,13 +49,22 @@ class NotificationService {
   }
 
   /// POST /notifications/register-device — Store the FCM token for the
-  /// authenticated user so the backend can send push notifications for
-  /// incoming jobs/rides when the app is backgrounded or terminated.
+  /// authenticated (user, role) identity so the backend can route push
+  /// notifications correctly when the app is backgrounded or terminated.
   ///
-  /// Call on login and whenever the FCM token refreshes.
+  /// `role` MUST match the active role from the JWT — passing the wrong
+  /// value silently routes another role's pushes to this device. Backend
+  /// upserts on the composite key (userId, role, platform), so calling
+  /// this on every role login keeps each role's FCM token alive in
+  /// parallel on the same handset.
+  ///
+  /// Call on login and whenever the FCM token refreshes (and after a
+  /// role-switch, since role-switch in the Provider app is technically
+  /// a fresh login under a different /auth/login/{role} endpoint).
   Future<void> registerDevice({
     required String fcmToken,
     required String platform,
+    required String role,
   }) async {
     try {
       await _dio.post(
@@ -63,6 +72,11 @@ class NotificationService {
         data: {
           'fcmToken': fcmToken,
           'platform': platform,
+          // role omitted from the body — backend reads it from the
+          // bearer JWT (`@CurrentUser('role')`). Including it here would
+          // be a noop server-side and risk drift if the JWT and body
+          // disagreed. Kept on the method signature so callers must
+          // think about which role they're registering.
         },
       );
     } on DioException catch (e) {
