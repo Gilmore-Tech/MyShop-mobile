@@ -4,6 +4,9 @@ import 'package:api_client/api_client.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../artisan_home/providers/bid_drafts_provider.dart';
+import '../../artisan_jobs/providers/pending_incoming_jobs_provider.dart';
+import '../../artisan_jobs/providers/submitted_bids_provider.dart';
 import '../../profile/providers/provider_type_provider.dart';
 import '../data/auth_repository.dart';
 
@@ -157,6 +160,18 @@ final authControllerProvider =
         storage.writeRole(intendedRole.name);
       }
     },
+    onLocalStateClear: () async {
+      // Wipe per-account artisan caches that live outside TokenStorage.
+      // Without this, "BID SENT" entries (artisan_submitted_bids) and
+      // in-progress drafts (artisan_bid_drafts_v1) leak across logouts and
+      // across backend DB resets. Awaited so SharedPreferences writes
+      // flush before the router redirects away from the screen.
+      await Future.wait([
+        ref.read(submittedBidsProvider.notifier).clear(),
+        ref.read(bidDraftsProvider.notifier).clear(),
+      ]);
+      ref.read(pendingIncomingJobsProvider.notifier).clear();
+    },
   );
   controller.bootstrap();
   return controller;
@@ -185,6 +200,7 @@ class AuthController extends StateNotifier<AuthState> {
   AuthController(
     this._repo, {
     this.onAuthenticated,
+    this.onLocalStateClear,
     required TokenStorage tokenStorage,
   })  : _tokenStorage = tokenStorage,
         super(const AuthUnknown());
@@ -197,6 +213,17 @@ class AuthController extends StateNotifier<AuthState> {
   /// a session via [bootstrap], it is null — derive from the profile instead.
   final void Function(AuthUser user, ProviderType? intendedRole)?
       onAuthenticated;
+
+  /// Called when the session ends (explicit logout or force-logout from the
+  /// 401 interceptor). Wires per-account local caches that live outside
+  /// [TokenStorage] — submitted bids, bid drafts, in-memory job queues —
+  /// so they don't leak across accounts or across a backend DB reset.
+  ///
+  /// Awaited by [logout] before flipping state so the SharedPreferences
+  /// writes flush before the user navigates away. The interceptor path is
+  /// sync and fires-and-forgets — safe because the next app start re-runs
+  /// the same wipe via [bootstrap]'s 401 path.
+  final Future<void> Function()? onLocalStateClear;
   bool _requesting = false;
 
   /// Try to restore session from stored tokens.
@@ -595,6 +622,11 @@ class AuthController extends StateNotifier<AuthState> {
         await _repo.clear();
       } catch (_) {}
     }
+    try {
+      await onLocalStateClear?.call();
+    } catch (_) {
+      // Cache wipe is best-effort — never block logout on storage errors.
+    }
     state = const AuthUnauthenticated();
     debugPrint('[AuthController] state → AuthUnauthenticated');
   }
@@ -698,6 +730,8 @@ class AuthController extends StateNotifier<AuthState> {
   /// interceptor wipes tokens, but the UI stays stuck on splash.
   void onForceLogoutFromInterceptor() {
     if (state is AuthUnauthenticated) return;
+    final clear = onLocalStateClear?.call();
+    if (clear != null) unawaited(clear);
     state = const AuthUnauthenticated(
       error: 'Your session ended. Please sign in again.',
     );

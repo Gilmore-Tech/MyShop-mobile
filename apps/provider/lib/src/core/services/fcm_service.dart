@@ -352,13 +352,24 @@ class FcmService {
   }
 
   Future<void> _register(String token) async {
+    // Pull active role from secure storage. The backend keys
+    // device_tokens on (userId, role, platform) — passing the wrong
+    // role here silently routes another role's pushes to this device.
+    // No role stored = no authenticated session, so skip registration.
+    final role = await _ref.read(appTokenStorageProvider).readRole();
+    if (role == null || role.isEmpty) {
+      debugPrint('[FCM] no active role — skipping device registration');
+      return;
+    }
     for (int attempt = 1; attempt <= 3; attempt++) {
       try {
         await _ref.read(apiNotificationServiceProvider).registerDevice(
               fcmToken: token,
               platform: _platform,
+              role: role,
             );
-        debugPrint('[FCM] token registered with backend (attempt $attempt)');
+        debugPrint(
+            '[FCM] token registered (role=$role, attempt $attempt)');
         return;
       } catch (e) {
         debugPrint('[FCM] register attempt $attempt/3 failed: $e');
