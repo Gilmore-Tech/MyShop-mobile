@@ -138,12 +138,27 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
         jobs.add(_parseJobListItem(j));
       }
 
+      // Guard against the autoDispose race: the screen can unmount (and
+      // this notifier dispose) while `listJobs` is in flight. Without
+      // this check, `state =` after dispose throws StateError and crashes
+      // the activity screen on logout.
+      if (!mounted) return;
       state = state.copyWith(
         isLoading: false,
         jobs: jobs,
         clearError: true,
       );
     } catch (e) {
+      // The auth interceptor rejects authed requests with this error
+      // string the moment the access token is cleared (logout). Treat
+      // that as an expected post-logout no-op rather than surfacing
+      // "Failed to load jobs" to a user who's leaving the screen.
+      if (!mounted) return;
+      final msg = e.toString();
+      if (msg.contains('NOT_AUTHENTICATED') ||
+          msg.contains('session is over')) {
+        return;
+      }
       state = state.copyWith(
         isLoading: false,
         errorMessage: 'Failed to load jobs. Pull to retry.',

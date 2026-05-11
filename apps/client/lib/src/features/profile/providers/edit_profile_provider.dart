@@ -77,13 +77,21 @@ class EditProfileNotifier extends StateNotifier<EditProfileState> {
     final authState = _authController.state;
     if (authState is AuthAuthenticated) {
       final profile = authState.profile;
+      // Phase 3 strict separation (CLAUDE.md §1, §8): the Client app
+      // shows the Client role's profile, NOT the human's shared one.
+      // Reading the root `users.email` is the cross-role bleed bug — a
+      // user who registered Driver with email then Client without one
+      // used to see the Driver's email here. We deliberately do NOT
+      // fall back to root values. Null = user has not set an email
+      // for the Client role; the field stays empty.
+      final client = profile.client;
       state = state.copyWith(
-        fullName: profile.fullName,
-        email: profile.email ?? '',
+        fullName: client?.legalName ?? profile.fullName,
+        email: client?.email ?? '',
         phoneNumber: profile.phone,
-        ghanaCardVerified: profile.client?.ghanaCardVerified ?? false,
-        avatarUrl: profile.client?.profilePhotoUrl,
-        originalEmail: profile.email ?? '',
+        ghanaCardVerified: client?.ghanaCardVerified ?? false,
+        avatarUrl: client?.profilePhotoUrl,
+        originalEmail: client?.email ?? '',
       );
     }
   }

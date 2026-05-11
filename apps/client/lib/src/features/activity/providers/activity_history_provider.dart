@@ -264,6 +264,18 @@ class ActivityHistoryNotifier extends StateNotifier<ActivityHistoryState> {
         clearError: true,
       );
     } catch (e) {
+      // The auth interceptor rejects authed requests with this error
+      // string the moment the token is cleared (logout). The poll timer
+      // outlives the auth state by a frame or two — kill it so the loop
+      // self-extinguishes instead of pegging the main thread with 401s.
+      final msg = e.toString();
+      if (msg.contains('NOT_AUTHENTICATED') ||
+          msg.contains('session is over')) {
+        debugPrint('[Activity] session ended — stopping poll timer');
+        _pollTimer?.cancel();
+        _pollTimer = null;
+        return;
+      }
       // Swallow transient failures on silent refreshes so the UI keeps
       // showing the last known data instead of flipping to an error state.
       if (silent || !mounted) return;

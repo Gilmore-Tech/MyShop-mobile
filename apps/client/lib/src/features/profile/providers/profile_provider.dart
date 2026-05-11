@@ -29,11 +29,17 @@ class AccountProfile {
   });
 
   /// Build from the authenticated user's profile.
+  ///
+  /// Phase 3 strict separation (CLAUDE.md §1, §8): every visible field is
+  /// read from the Client role's sub-profile, NEVER the shared `users.*`
+  /// columns. Previously this read root `profile.email`, which leaked the
+  /// Driver's email into the Client account page when a user held both
+  /// roles on one phone but only set an email on Driver registration.
   factory AccountProfile.fromUserProfile(UserProfile profile) {
     final client = profile.client;
-    final displayName = client?.displayName ?? profile.fullName;
+    final displayName = client?.displayName ?? client?.legalName ?? profile.fullName;
     final phone = profile.phone;
-    final email = profile.email ?? '';
+    final email = client?.email ?? '';
 
     return AccountProfile(
       userId: profile.id,
