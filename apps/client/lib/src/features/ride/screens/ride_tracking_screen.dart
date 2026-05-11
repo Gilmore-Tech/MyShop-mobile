@@ -1,10 +1,13 @@
 import 'dart:async';
+
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_ui/shared_ui.dart';
 
 import '../../../app/router.dart';
+import '../../../core/di/providers.dart';
 import '../providers/ride_payment_method_provider.dart';
 import '../providers/ride_provider.dart';
 import '../providers/ride_search_provider.dart';
@@ -95,8 +98,63 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
     setState(() => _sheetSize = _sheetController.size);
   }
 
-  void _onCancel() {
-    // TODO: send cancel to backend, then return to home.
+  Future<void> _onCancel() async {
+    final rideId = ref.read(activeRideIdProvider);
+    if (rideId == null || rideId.isEmpty) {
+      // No active ride to cancel — just bail out to home.
+      if (mounted) context.go(AppRoutes.home);
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel ride?'),
+        content: const Text(
+          'Cancelling within 3 minutes of the driver accepting is free. '
+          'After that a small cancellation fee applies.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Keep ride'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: MyShopColors.error),
+            child: const Text('Cancel ride'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    String message = 'Ride cancelled.';
+    try {
+      final result = await ref.read(rideServiceProvider).cancelRide(
+            rideId,
+            reason: 'rider_cancelled',
+          );
+      final feePesewas = (result['cancellationFeePesewas'] as num?)?.toInt() ?? 0;
+      if (feePesewas > 0) {
+        final fee = (feePesewas / 100).toStringAsFixed(2);
+        message = 'Ride cancelled. Cancellation fee: GHS $fee';
+      }
+    } on ApiException catch (e) {
+      message = e.message;
+    } catch (_) {
+      message = 'Could not cancel the ride. Please try again.';
+    }
+
+    // Reset local state regardless of the outcome — the rider's intent is
+    // to abandon, and the backend (if it succeeded) has already broadcast.
+    ref.read(activeRideIdProvider.notifier).state = null;
+    ref.read(matchedDriverProvider.notifier).state = null;
+    ref.read(bookingPhaseProvider.notifier).reset();
+
+    if (!mounted) return;
+    messenger.showSnackBar(SnackBar(content: Text(message)));
     context.go(AppRoutes.home);
   }
 

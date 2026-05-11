@@ -1,8 +1,11 @@
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_ui/shared_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_ui/shared_ui.dart';
 
 import '../../../app/router.dart';
+import '../../../core/di/providers.dart';
 import '../providers/ride_provider.dart';
 import '../widgets/driver_profile_header.dart';
 import '../widgets/fare_breakdown_card.dart';
@@ -14,13 +17,13 @@ import '../widgets/vehicle_details_card.dart';
 /// Reached from the tracking screen (tap the driver row in the bottom sheet).
 /// Shows full driver profile, vehicle details, fare breakdown, and a cancel
 /// request action. Back arrow returns to the map.
-class DriverFoundScreen extends StatelessWidget {
+class DriverFoundScreen extends ConsumerWidget {
   final MatchedDriver driver;
 
   const DriverFoundScreen({super.key, required this.driver});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
       appBar: _buildAppBar(context),
@@ -46,11 +49,68 @@ class DriverFoundScreen extends StatelessWidget {
             ),
           ),
           _BottomActions(
-            onCancel: () => context.go(AppRoutes.home),
+            onCancel: () => _confirmAndCancelRide(context, ref),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _confirmAndCancelRide(BuildContext context, WidgetRef ref) async {
+    final rideId = ref.read(activeRideIdProvider);
+    if (rideId == null || rideId.isEmpty) {
+      context.go(AppRoutes.home);
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel ride?'),
+        content: const Text(
+          'Cancelling within 3 minutes of the driver accepting is free. '
+          'After that a small cancellation fee applies.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Keep ride'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: MyShopColors.error),
+            child: const Text('Cancel ride'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    String message = 'Ride cancelled.';
+    try {
+      final result = await ref.read(rideServiceProvider).cancelRide(
+            rideId,
+            reason: 'rider_cancelled',
+          );
+      final feePesewas = (result['cancellationFeePesewas'] as num?)?.toInt() ?? 0;
+      if (feePesewas > 0) {
+        final fee = (feePesewas / 100).toStringAsFixed(2);
+        message = 'Ride cancelled. Cancellation fee: GHS $fee';
+      }
+    } on ApiException catch (e) {
+      message = e.message;
+    } catch (_) {
+      message = 'Could not cancel the ride. Please try again.';
+    }
+
+    ref.read(activeRideIdProvider.notifier).state = null;
+    ref.read(matchedDriverProvider.notifier).state = null;
+    ref.read(bookingPhaseProvider.notifier).reset();
+
+    if (!context.mounted) return;
+    messenger.showSnackBar(SnackBar(content: Text(message)));
+    context.go(AppRoutes.home);
   }
 
   PreferredSizeWidget _buildAppBar(BuildContext context) {
