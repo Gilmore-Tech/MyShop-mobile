@@ -42,6 +42,22 @@ class ActiveRideState {
   }
 }
 
+/// Outcome of a driver-side ride cancellation. The backend returns the
+/// fee deducted from the driver's earnings and a flag that flips to `true`
+/// when this cancellation just tripped the suspension threshold for the
+/// rolling 30-day window — the UI should call out both clearly.
+class RideCancelOutcome {
+  const RideCancelOutcome({
+    this.feePesewas = 0,
+    this.driverSuspended = false,
+  });
+
+  final int feePesewas;
+  final bool driverSuspended;
+
+  bool get hasFee => feePesewas > 0;
+}
+
 /// Drives the driver-side ride lifecycle.
 ///
 /// Acceptance is a WebSocket call (`ride:accept`) — the backend atomically
@@ -119,6 +135,24 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
         errorMessage: "Couldn't accept the ride. Please try again.",
       );
       return false;
+    }
+  }
+
+  /// Decline an incoming ride. Fires `ride:decline` to the backend so the
+  /// matcher immediately moves on to the next driver instead of waiting
+  /// for the acceptance window to expire. Fire-and-forget — the request
+  /// screen pops regardless of network state, and the 30 s matcher timeout
+  /// is the safety net if the emit never lands.
+  void declineRide(String rideId, {String? reason}) {
+    try {
+      final socket = _ref.read(socketServiceProvider);
+      socket.emit('ride:decline', {
+        'rideId': rideId,
+        if (reason != null) 'reason': reason,
+      });
+    } catch (e) {
+      developer.log('declineRide emit failed: $e',
+          name: 'ActiveRide', level: 900);
     }
   }
 
@@ -217,20 +251,33 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   /// backend refuses (data corruption, network drop) the driver should
   /// still be able to escape the screen rather than be permanently stuck
   /// on a ride they can't progress.
-  Future<void> cancelRide({String? reason}) async {
+  ///
+  /// Returns a [RideCancelOutcome] describing the fee charged to the driver
+  /// and whether the backend just suspended the account for excessive
+  /// cancellations — so the screen can show a dedicated dialog instead of
+  /// silently kicking the driver back to the home map.
+  Future<RideCancelOutcome> cancelRide({String? reason}) async {
     final ride = state.ride;
     if (ride == null) {
       clearRide();
-      return;
+      return const RideCancelOutcome();
     }
     state = state.copyWith(isUpdating: true, clearError: true);
+    var outcome = const RideCancelOutcome();
     try {
-      await _ref.read(rideServiceProvider).cancelRide(
+      final result = await _ref.read(rideServiceProvider).cancelRide(
             ride.id,
             reason: reason ?? 'driver_cancelled',
           );
-      developer.log('cancelRide PATCH succeeded for ${ride.id}',
-          name: 'ActiveRide');
+      outcome = RideCancelOutcome(
+        feePesewas: (result['cancellationFeePesewas'] as num?)?.toInt() ?? 0,
+        driverSuspended: result['driverSuspended'] == true,
+      );
+      developer.log(
+        'cancelRide PATCH succeeded for ${ride.id} '
+        '(fee=${outcome.feePesewas} suspended=${outcome.driverSuspended})',
+        name: 'ActiveRide',
+      );
     } on ApiException catch (e) {
       developer.log(
         'cancelRide PATCH failed: ${e.errorCode} — ${e.message} '
@@ -246,6 +293,7 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       );
     }
     clearRide();
+    return outcome;
   }
 
   /// Apply a full ride snapshot from a `ride:state` socket event (or any

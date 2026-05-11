@@ -26,10 +26,10 @@ class RideRequestScreen extends ConsumerStatefulWidget {
 }
 
 class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
-  // Aligned with the foreground job-modal window — 40 s for both
-  // request types so the ringtone never plays past what the matcher
-  // considers a missed bid.
-  static const _acceptanceWindowSecs = 40;
+  // Aligned with backend `ride_driver_acceptance_window_secs` (30 s).
+  // Keep these in lockstep — if the UI counts past the backend window,
+  // an Accept tap will fail with ACCEPTANCE_TIMEOUT.
+  static const _acceptanceWindowSecs = 30;
   late int _secondsRemaining;
   Timer? _timer;
   bool _isAccepting = false;
@@ -89,8 +89,14 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     );
   }
 
-  void _decline() {
+  void _decline({String reason = 'driver_declined'}) {
     _timer?.cancel();
+    // Tell the matcher to move on immediately — without this, the next
+    // driver in the queue doesn't get the request until the 30 s window
+    // expires and the matcher times us out.
+    ref
+        .read(activeRideProvider.notifier)
+        .declineRide(widget.ride.id, reason: reason);
     if (mounted) Navigator.of(context).pop('declined');
   }
 

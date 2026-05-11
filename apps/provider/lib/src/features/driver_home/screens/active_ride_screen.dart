@@ -173,8 +173,9 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
       builder: (dialogCtx) => AlertDialog(
         title: const Text('Cancel this ride?'),
         content: const Text(
-          'The rider will be notified. Frequent cancellations affect your '
-          'driver rating.',
+          'The rider will be notified. A cancellation fee may be deducted '
+          'from your next payout, and frequent cancellations can suspend '
+          'your account.',
         ),
         actions: [
           TextButton(
@@ -190,7 +191,36 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    await ref.read(activeRideProvider.notifier).cancelRide();
+    final outcome = await ref.read(activeRideProvider.notifier).cancelRide();
+    if (!mounted) return;
+
+    // Surface the outcome before popping. Suspension takes priority — the
+    // driver must understand why they can no longer receive requests.
+    if (outcome.driverSuspended) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Account suspended'),
+          content: const Text(
+            'You have been suspended from receiving new ride requests due '
+            'to frequent cancellations in the last 30 days. Please contact '
+            'support to restore your account.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } else if (outcome.hasFee) {
+      final fee = (outcome.feePesewas / 100).toStringAsFixed(2);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ride cancelled. Fee: GHS $fee')),
+      );
+    }
     if (!mounted) return;
     // Active ride state is now cleared; pop back to whatever was below us.
     Navigator.of(context).pop('cancelled');
