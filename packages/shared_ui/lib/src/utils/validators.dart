@@ -51,16 +51,30 @@ class Validators {
 
   // ── Phone ─────────────────────────────────────────────────────────────
 
-  /// Validates a 9-digit Ghana phone number (without the +233 prefix).
+  /// Validates a Ghana mobile number. Accepts either the 9-digit form
+  /// (`24XXXXXXX`) or the 10-digit local form with a leading `0`
+  /// (`024XXXXXXX`); the latter is what most users type by habit.
   static String? ghanaPhone(String value) {
-    final digits = value.replaceAll(RegExp(r'\D'), '');
+    final digits = normalizeGhanaPhoneDigits(value);
     if (digits.isEmpty) return 'Phone number is required.';
     if (digits.length != 9) return 'Enter a 9-digit Ghana phone number.';
-    // First digit should be 2, 5, or 0 (valid Ghana mobile prefixes)
-    if (!RegExp(r'^[250]').hasMatch(digits)) {
+    // After stripping any leading 0, the first digit must be a valid
+    // Ghana mobile prefix (2 = MTN/AirtelTigo, 5 = Telecel/others).
+    if (!RegExp(r'^[25]').hasMatch(digits)) {
       return 'Enter a valid Ghana mobile number.';
     }
     return null;
+  }
+
+  /// Strip a leading `0` from a 10-digit local Ghana mobile number, returning
+  /// the 9-digit form expected by the `+233` prefix. Returns digits-only for
+  /// any other input so [ghanaPhone] can report the right error message.
+  static String normalizeGhanaPhoneDigits(String value) {
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    if (digits.length == 10 && digits.startsWith('0')) {
+      return digits.substring(1);
+    }
+    return digits;
   }
 
   // ── Vehicle ───────────────────────────────────────────────────────────

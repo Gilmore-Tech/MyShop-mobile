@@ -58,7 +58,9 @@ class _MyShopPhoneInputScreenState extends State<MyShopPhoneInputScreen> {
       return;
     }
     setState(() => _localError = null);
-    final phone = '+233${raw.replaceAll(RegExp(r'\D'), '')}';
+    // Validator already accepted both "24XXXXXXX" and "024XXXXXXX";
+    // strip the leading 0 so the wire form is always +233 + 9 digits.
+    final phone = '+233${Validators.normalizeGhanaPhoneDigits(raw)}';
     widget.onSubmit(phone);
   }
 
@@ -93,7 +95,9 @@ class _MyShopPhoneInputScreenState extends State<MyShopPhoneInputScreen> {
                 enabled: !widget.isLoading,
                 inputFormatters: [
                   FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(9),
+                  // Accept either 9 digits (24XXXXXXX) or 10 with leading 0
+                  // (024XXXXXXX) — Validators.ghanaPhone normalises both.
+                  LengthLimitingTextInputFormatter(10),
                 ],
                 prefix: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 12),

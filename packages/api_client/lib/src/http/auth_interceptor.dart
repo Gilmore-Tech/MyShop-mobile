@@ -48,7 +48,10 @@ class AuthInterceptor extends Interceptor {
   final TokenRefresher _tokenRefresher;
   final void Function()? _onForceLogout;
 
-  /// Paths that do not require an Authorization header.
+  /// Paths that do not require an Authorization header. These mirror the
+  /// `@Public()` decorator on the backend controllers — keep in sync.
+  /// Anything missing here causes the registration / pre-login flows to
+  /// fail with a spurious "session is over" local rejection.
   static const _publicPaths = {
     '/auth/register',
     '/auth/check-phone',
@@ -61,6 +64,10 @@ class AuthInterceptor extends Interceptor {
     '/auth/request-session-recovery',
     '/config/',
     '/surge/current',
+    // Categories are read during artisan registration (category picker)
+    // before the user has authenticated. Marked @Public() on the backend
+    // — keep this list aligned.
+    '/categories',
   };
 
   bool _isPublic(String path) {
