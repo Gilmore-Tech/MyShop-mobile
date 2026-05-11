@@ -67,15 +67,24 @@ final socketConnectionProvider = Provider<void>((ref) {
 });
 
 void _connectAndListen(Ref ref, SocketService socket) {
+  // Reads inside socket listener closures go through `ref.container.read`
+  // rather than `ref.read`. The socket outlives any single rebuild of
+  // `socketConnectionProvider`, and an inbound event firing during the
+  // transition window between dependency-change + rebuild trips Riverpod's
+  // `_didChangeDependency` assertion (seen 11 May 2026 on driver accept).
+  // Container reads sidestep that tracking. Keep `ref.onDispose`,
+  // `ref.listen`, and `ref.watch` as-is — those belong to the synchronous
+  // provider body.
+
   // Whenever the socket finishes connecting (initial or after a reconnect),
   // (re-)join the active ride's tracking room so the rider receives
   // `ride:state` snapshots. Without this, an emit issued before the
   // handshake completes is dropped silently and the rider is stuck on the
   // matching screen indefinitely.
   socket.connectionStream.listen((connected) {
-    ref.read(socketConnectedProvider.notifier).state = connected;
+    ref.container.read(socketConnectedProvider.notifier).state = connected;
     if (!connected) return;
-    final rideId = ref.read(activeRideIdProvider);
+    final rideId = ref.container.read(activeRideIdProvider);
     if (rideId != null && rideId.isNotEmpty) {
       developer.log('Socket connected — joining ride room $rideId', name: 'WS');
       socket.emit('client:track:ride', {'rideId': rideId});
@@ -84,7 +93,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // marker keeps flowing without the screen having to re-mount. The
     // tracking screen sets `trackedJobIdProvider` on init and clears
     // it on dispose; this listener mirrors the rider re-track flow.
-    final jobId = ref.read(trackedJobIdProvider);
+    final jobId = ref.container.read(trackedJobIdProvider);
     if (jobId != null && jobId.isNotEmpty) {
       developer.log('Socket connected — joining job room $jobId', name: 'WS');
       socket.emit('client:track:job', {'jobId': jobId});
@@ -164,13 +173,13 @@ void _connectAndListen(Ref ref, SocketService socket) {
               'in_progress':
           // Only push the matched-driver model once the driver is real
           // (avoid clobbering with a half-built model on `requested`).
-          ref.read(matchedDriverProvider.notifier).state = matched;
-          ref.read(bookingPhaseProvider.notifier).accepted();
-          ref.read(rideMatchedViaSocketProvider.notifier).state = true;
+          ref.container.read(matchedDriverProvider.notifier).state = matched;
+          ref.container.read(bookingPhaseProvider.notifier).accepted();
+          ref.container.read(rideMatchedViaSocketProvider.notifier).state = true;
         case 'completed':
           // Final snapshot — keep the matched driver around for the
           // receipt screen but flip tracking phase to navigate away.
-          ref.read(matchedDriverProvider.notifier).state = matched;
+          ref.container.read(matchedDriverProvider.notifier).state = matched;
         case 'cancelled' || 'no_drivers':
           // Failed states: clear out so the matching screen can render
           // its failure card and the activity list refreshes.
@@ -182,34 +191,34 @@ void _connectAndListen(Ref ref, SocketService socket) {
       // Tracking phase (only when the ride is past `accepted`).
       switch (status) {
         case 'driver_en_route':
-          ref.read(rideTrackingPhaseProvider.notifier).state =
+          ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.enRoute;
         case 'arrived_at_pickup' || 'arrived':
-          ref.read(rideTrackingPhaseProvider.notifier).state =
+          ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.arrived;
         case 'in_progress':
-          ref.read(rideTrackingPhaseProvider.notifier).state =
+          ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.inProgress;
         case 'completed':
-          ref.read(rideTrackingPhaseProvider.notifier).state =
+          ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.completed;
           // Build the receipt from the same snapshot before the tracking
           // screen navigates to /ride-complete — without this the rider
           // lands on the receipt screen with a null provider and an
           // empty fallback.
-          ref.read(rideReceiptProvider.notifier).state =
+          ref.container.read(rideReceiptProvider.notifier).state =
               buildRideReceiptFromSnapshot(data);
-          if (ref.exists(activityNotifierProvider)) {
-            ref.read(activityNotifierProvider.notifier).reload();
+          if (ref.container.exists(activityNotifierProvider)) {
+            ref.container.read(activityNotifierProvider.notifier).reload();
           }
-          if (ref.exists(activityHistoryProvider)) {
-            ref.read(activityHistoryProvider.notifier).silentReload();
+          if (ref.container.exists(activityHistoryProvider)) {
+            ref.container.read(activityHistoryProvider.notifier).silentReload();
           }
-          ref.read(navBadgeProvider.notifier).increment('/activity');
+          ref.container.read(navBadgeProvider.notifier).increment('/activity');
         case 'cancelled' || 'no_drivers':
-          ref.read(bookingPhaseProvider.notifier).reset();
-          if (ref.exists(activityHistoryProvider)) {
-            ref.read(activityHistoryProvider.notifier).silentReload();
+          ref.container.read(bookingPhaseProvider.notifier).reset();
+          if (ref.container.exists(activityHistoryProvider)) {
+            ref.container.read(activityHistoryProvider.notifier).silentReload();
           }
       }
 
@@ -229,7 +238,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
           driver['lng']) as num?;
       if (dLat != null && dLng != null) {
         final heading = (driver['heading'] ?? driver['bearing']) as num?;
-        ref.read(liveDriverPositionProvider.notifier).state =
+        ref.container.read(liveDriverPositionProvider.notifier).state =
             LiveDriverPosition(
           latitude: dLat.toDouble(),
           longitude: dLng.toDouble(),
@@ -259,16 +268,16 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('ride:route_updated')
       ..on('ride:route_updated', (data) {
-        final rideId = ref.read(activeRideIdProvider);
+        final rideId = ref.container.read(activeRideIdProvider);
         if (rideId == null || rideId.isEmpty) return;
-        ref.read(rideServiceProvider).getRide(rideId).then((json) {
+        ref.container.read(rideServiceProvider).getRide(rideId).then((json) {
           try {
             final stops = (json['stops'] as List<dynamic>?)
                     ?.whereType<Map<String, dynamic>>()
                     .map(RideStop.fromJson)
                     .toList() ??
                 const <RideStop>[];
-            ref.read(tripStopsProvider.notifier).seed(
+            ref.container.read(tripStopsProvider.notifier).seed(
               pickup: (
                 address: json['pickupAddress'] as String?,
                 lat: (json['pickupLat'] as num?)?.toDouble(),
@@ -299,7 +308,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // doesn't jitter from unrelated ride traffic.
     void handleDriverLocation(dynamic data) {
       if (data is! Map<String, dynamic>) return;
-      final activeRideId = ref.read(activeRideIdProvider);
+      final activeRideId = ref.container.read(activeRideIdProvider);
       if (activeRideId == null) return;
       final eventRideId = data['rideId'] as String? ?? data['id'] as String?;
       if (eventRideId != null && eventRideId != activeRideId) return;
@@ -307,7 +316,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
       final lng = (data['longitude'] ?? data['lng']) as num?;
       if (lat == null || lng == null) return;
       final heading = (data['heading'] ?? data['bearing']) as num?;
-      ref.read(liveDriverPositionProvider.notifier).state = LiveDriverPosition(
+      ref.container.read(liveDriverPositionProvider.notifier).state = LiveDriverPosition(
         latitude: lat.toDouble(),
         longitude: lng.toDouble(),
         heading: heading?.toDouble(),
@@ -329,14 +338,14 @@ void _connectAndListen(Ref ref, SocketService socket) {
     void handleArtisanLocation(dynamic data) {
       if (data is! Map<String, dynamic>) return;
       final eventJobId = data['jobId'] as String?;
-      final tracked = ref.read(trackedJobIdProvider);
+      final tracked = ref.container.read(trackedJobIdProvider);
       if (eventJobId == null || tracked == null || eventJobId != tracked) {
         return;
       }
       final lat = (data['latitude'] ?? data['lat']) as num?;
       final lng = (data['longitude'] ?? data['lng']) as num?;
       if (lat == null || lng == null) return;
-      ref.read(liveArtisanPositionProvider.notifier).state =
+      ref.container.read(liveArtisanPositionProvider.notifier).state =
           LiveArtisanPosition(
         jobId: eventJobId,
         latitude: lat.toDouble(),
@@ -363,18 +372,18 @@ void _connectAndListen(Ref ref, SocketService socket) {
             ? (data['jobId'] as String? ?? data['id'] as String?)
             : null;
         if (jobId != null) {
-          ref.invalidate(jobDetailProvider(jobId));
-          ref.invalidate(bidsForJobProvider(jobId));
-          ref.invalidate(activeJobProvider(jobId));
+          ref.container.invalidate(jobDetailProvider(jobId));
+          ref.container.invalidate(bidsForJobProvider(jobId));
+          ref.container.invalidate(activeJobProvider(jobId));
         }
 
-        if (ref.exists(activityNotifierProvider)) {
-          ref.read(activityNotifierProvider.notifier).reload();
+        if (ref.container.exists(activityNotifierProvider)) {
+          ref.container.read(activityNotifierProvider.notifier).reload();
         }
-        if (ref.exists(activityHistoryProvider)) {
-          ref.read(activityHistoryProvider.notifier).silentReload();
+        if (ref.container.exists(activityHistoryProvider)) {
+          ref.container.read(activityHistoryProvider.notifier).silentReload();
         }
-        ref.read(navBadgeProvider.notifier).increment('/activity');
+        ref.container.read(navBadgeProvider.notifier).increment('/activity');
       } catch (e) {
         developer.log('Failed to handle job:status: $e',
             name: 'WS', level: 900);
@@ -396,7 +405,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
         final etaLabel = data is Map<String, dynamic>
             ? data['etaLabel'] as String? ?? ''
             : '';
-        if (ref.exists(bidDetailActionProvider)) {
+        if (ref.container.exists(bidDetailActionProvider)) {
           ref
               .read(bidDetailActionProvider.notifier)
               .onArtisanConfirmed(etaLabel: etaLabel);
@@ -425,13 +434,13 @@ void _connectAndListen(Ref ref, SocketService socket) {
               ? (data['jobId'] as String? ?? data['id'] as String?)
               : null;
           if (jobId != null) {
-            ref.invalidate(jobDetailProvider(jobId));
-            ref.invalidate(bidsForJobProvider(jobId));
+            ref.container.invalidate(jobDetailProvider(jobId));
+            ref.container.invalidate(bidsForJobProvider(jobId));
           }
-          if (ref.exists(activityNotifierProvider)) {
-            ref.read(activityNotifierProvider.notifier).reload();
+          if (ref.container.exists(activityNotifierProvider)) {
+            ref.container.read(activityNotifierProvider.notifier).reload();
           }
-          ref.read(navBadgeProvider.notifier).increment('/activity');
+          ref.container.read(navBadgeProvider.notifier).increment('/activity');
         } catch (e) {
           developer.log('Failed to handle job:bid:received: $e',
               name: 'WS', level: 900);
@@ -444,8 +453,8 @@ void _connectAndListen(Ref ref, SocketService socket) {
               ? (data['jobId'] as String? ?? data['id'] as String?)
               : null;
           if (jobId != null) {
-            ref.invalidate(jobDetailProvider(jobId));
-            ref.invalidate(bidsForJobProvider(jobId));
+            ref.container.invalidate(jobDetailProvider(jobId));
+            ref.container.invalidate(bidsForJobProvider(jobId));
           }
         } catch (e) {
           developer.log('Failed to handle job:bid:updated: $e',
@@ -459,13 +468,13 @@ void _connectAndListen(Ref ref, SocketService socket) {
               ? (data['jobId'] as String? ?? data['id'] as String?)
               : null;
           if (jobId != null) {
-            ref.invalidate(jobDetailProvider(jobId));
-            ref.invalidate(bidsForJobProvider(jobId));
+            ref.container.invalidate(jobDetailProvider(jobId));
+            ref.container.invalidate(bidsForJobProvider(jobId));
           }
-          if (ref.exists(activityNotifierProvider)) {
-            ref.read(activityNotifierProvider.notifier).reload();
+          if (ref.container.exists(activityNotifierProvider)) {
+            ref.container.read(activityNotifierProvider.notifier).reload();
           }
-          ref.read(navBadgeProvider.notifier).increment('/activity');
+          ref.container.read(navBadgeProvider.notifier).increment('/activity');
         } catch (e) {
           developer.log('Failed to handle job:bid_new: $e',
               name: 'WS', level: 900);
@@ -478,10 +487,10 @@ void _connectAndListen(Ref ref, SocketService socket) {
       ..on('notification:new', (data) {
       developer.log('Received notification:new event', name: 'WS');
       try {
-        if (ref.exists(notifsProvider)) {
-          ref.read(notifsProvider.notifier).reload();
+        if (ref.container.exists(notifsProvider)) {
+          ref.container.read(notifsProvider.notifier).reload();
         }
-        ref.read(navBadgeProvider.notifier).increment('/profile');
+        ref.container.read(navBadgeProvider.notifier).increment('/profile');
       } catch (e) {
         developer.log('Failed to handle notification:new: $e',
             name: 'WS', level: 900);
@@ -494,7 +503,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
       ..on('profile:updated', (data) {
       developer.log('Received profile:updated event', name: 'WS');
       try {
-        ref.read(clientAuthControllerProvider.notifier).refreshProfile();
+        ref.container.read(clientAuthControllerProvider.notifier).refreshProfile();
       } catch (e) {
         developer.log('Failed to handle profile:updated: $e',
             name: 'WS', level: 900);
@@ -522,7 +531,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
       if (!shownRatingFor.add(bookingId)) return;
 
       final ctx =
-          ref.read(routerProvider).routerDelegate.navigatorKey.currentContext;
+          ref.container.read(routerProvider).routerDelegate.navigatorKey.currentContext;
       if (ctx == null) return;
 
       Future<void> openSheet() async {
@@ -530,7 +539,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
           var firstName = 'Driver';
           try {
             final raw =
-                await ref.read(rideServiceProvider).getRide(bookingId);
+                await ref.container.read(rideServiceProvider).getRide(bookingId);
             final driver = raw['driver'];
             if (driver is Map<String, dynamic>) {
               final name = driver['name'] as String?;
@@ -552,7 +561,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
           var firstName = 'Artisan';
           try {
             final raw =
-                await ref.read(jobServiceProvider).getJob(bookingId);
+                await ref.container.read(jobServiceProvider).getJob(bookingId);
             final artisan = raw['artisan'];
             if (artisan is Map<String, dynamic>) {
               final name = (artisan['displayName'] ??
