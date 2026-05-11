@@ -180,6 +180,10 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
 
     if (position == null) return;
 
+    // Geolocator can park us here for up to 8 s — if the user navigated
+    // away during the wait, `ref` is dead and any read throws StateError.
+    if (!mounted) return;
+
     // Cache the fix so other screens (edit business info, etc.) can centre
     // their maps on the driver without re-prompting for permission.
     ref.read(lastKnownPositionProvider.notifier).state = position;
