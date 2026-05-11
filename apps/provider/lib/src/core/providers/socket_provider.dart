@@ -260,10 +260,20 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
 final ratingSheetShownFor = <String>{};
 
 void _connectAndListen(Ref ref, SocketService socket) {
+  // Long-lived socket listeners outlive any single `socketConnectionProvider`
+  // rebuild — when `providerStatusProvider` flips (online → busy on accept,
+  // for example) Riverpod invalidates this provider, but the socket keeps
+  // firing into the OLD listener until `attachHandlers` reruns. Using
+  // `ref.read` inside those callbacks during the transition window throws
+  // `_didChangeDependency` assertions. Reads via `ref.container` skip that
+  // tracking and always hit the live state, which is what we want for
+  // event-driven mutations like "ride accepted → set incomingRideRequest".
+  // Keep `ref.onDispose` / `ref.listen` / `ref.watch` as-is — those belong
+  // to the synchronous provider body, not the async listener closures.
 
   // Mirror connection state for the UI.
   final sub = socket.connectionStream.listen((connected) {
-    ref.read(socketConnectedProvider.notifier).state = connected;
+    ref.container.read(socketConnectedProvider.notifier).state = connected;
   });
   ref.onDispose(sub.cancel);
 
@@ -283,7 +293,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
       final preview = data.toString();
       final trimmed =
           preview.length > 200 ? '${preview.substring(0, 200)}…' : preview;
-      ref.read(lastSocketEventProvider.notifier).state = '$event: $trimmed';
+      ref.container.read(lastSocketEventProvider.notifier).state = '$event: $trimmed';
     });
 
     // Listen for incoming ride requests (driver) — new + legacy event names
@@ -297,7 +307,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
           // re-fires `ride:request` / `ride:new` to all notified drivers until
           // one acks; once we've accepted, those re-fires would otherwise pop
           // the request screen back over the active-ride screen.
-          final active = ref.read(activeRideProvider).ride;
+          final active = ref.container.read(activeRideProvider).ride;
           if (active != null && active.id == ride.id) {
             debugPrint('[WS] Skipping re-broadcast for active ride ${ride.id}');
             return;
@@ -308,18 +318,18 @@ void _connectAndListen(Ref ref, SocketService socket) {
           // driver every few seconds until they ack). Once we've surfaced the
           // request screen for this ride id, subsequent emits should not push
           // a new screen on top.
-          final surfaced = ref.read(surfacedRideIdsProvider);
+          final surfaced = ref.container.read(surfacedRideIdsProvider);
           if (surfaced.contains(ride.id)) {
             debugPrint('[WS] Ride ${ride.id} already surfaced — skipping');
             return;
           }
-          ref.read(surfacedRideIdsProvider.notifier).update(
+          ref.container.read(surfacedRideIdsProvider.notifier).update(
                 (s) => {...s, ride.id},
               );
 
-          ref.read(incomingRideRequestProvider.notifier).state = null;
-          ref.read(incomingRideRequestProvider.notifier).state = ride;
-          ref.read(navBadgeProvider.notifier).increment('/home');
+          ref.container.read(incomingRideRequestProvider.notifier).state = null;
+          ref.container.read(incomingRideRequestProvider.notifier).state = ride;
+          ref.container.read(navBadgeProvider.notifier).increment('/home');
         } catch (e) {
           debugPrint('[WS] Failed to parse ride: $e');
         }
@@ -345,21 +355,21 @@ void _connectAndListen(Ref ref, SocketService socket) {
           final job = Job.fromJson(data);
           // Dedupe against the poller — if the REST fallback already
           // surfaced this job, skip the duplicate modal.
-          final surfaced = ref.read(surfacedJobIdsProvider);
+          final surfaced = ref.container.read(surfacedJobIdsProvider);
           if (surfaced.contains(job.id)) {
             debugPrint('[WS] Job ${job.id} already surfaced — skipping');
             return;
           }
-          ref.read(surfacedJobIdsProvider.notifier).update(
+          ref.container.read(surfacedJobIdsProvider.notifier).update(
                 (s) => {...s, job.id},
               );
           // Force a state transition even if an identical Job instance is
           // somehow already in the provider (defensive — Job doesn't
           // override ==, but the clear-then-set guarantees the listener
           // fires for every inbound event).
-          ref.read(incomingJobRequestProvider.notifier).state = null;
-          ref.read(incomingJobRequestProvider.notifier).state = job;
-          ref.read(navBadgeProvider.notifier).increment('/home');
+          ref.container.read(incomingJobRequestProvider.notifier).state = null;
+          ref.container.read(incomingJobRequestProvider.notifier).state = job;
+          ref.container.read(navBadgeProvider.notifier).increment('/home');
           debugPrint('[WS] Job ${job.id} pushed to incomingJobRequestProvider');
         } catch (e, st) {
           debugPrint('[WS] Failed to parse job: $e\n$st');
@@ -385,12 +395,12 @@ void _connectAndListen(Ref ref, SocketService socket) {
       if (data is! Map<String, dynamic>) return;
       try {
         final ride = Ride.fromJson(data);
-        final active = ref.read(activeRideProvider).ride;
+        final active = ref.container.read(activeRideProvider).ride;
         // Only apply snapshots for the ride we're tracking. The driver
         // socket shouldn't see snapshots for unrelated rides, but guard
         // anyway in case the backend rooms ever cross-talk.
         if (active != null && active.id != ride.id) return;
-        ref.read(activeRideProvider.notifier).applySnapshot(ride);
+        ref.container.read(activeRideProvider.notifier).applySnapshot(ride);
 
         // Refresh every earnings surface + payouts when the ride completes
         // — backend's `recordRideCompletion()` writes a `Payment` row
@@ -401,11 +411,11 @@ void _connectAndListen(Ref ref, SocketService socket) {
         // their next watch without the driver pulling-to-refresh.
         if (ride.status == RideStatus.completed) {
           try {
-            ref.invalidate(todayCardProvider);
-            ref.invalidate(earningsSummaryProvider);
-            ref.invalidate(earningsReportProvider);
-            ref.invalidate(payoutsProvider);
-            ref.invalidate(driverTripsProvider);
+            ref.container.invalidate(todayCardProvider);
+            ref.container.invalidate(earningsSummaryProvider);
+            ref.container.invalidate(earningsReportProvider);
+            ref.container.invalidate(payoutsProvider);
+            ref.container.invalidate(driverTripsProvider);
           } catch (_) {/* providers may not be mounted in tests */}
         }
       } catch (e) {
@@ -427,13 +437,13 @@ void _connectAndListen(Ref ref, SocketService socket) {
       if (data is Map<String, dynamic>) {
         rideId = data['rideId'] as String? ?? data['id'] as String?;
       }
-      rideId ??= ref.read(activeRideProvider).ride?.id;
+      rideId ??= ref.container.read(activeRideProvider).ride?.id;
       if (rideId == null) return;
-      final svc = ref.read(rideServiceProvider);
+      final svc = ref.container.read(rideServiceProvider);
       svc.getRide(rideId).then((json) {
         try {
           final ride = Ride.fromJson(json);
-          ref.read(activeRideProvider.notifier).applySnapshot(ride);
+          ref.container.read(activeRideProvider.notifier).applySnapshot(ride);
         } catch (e) {
           debugPrint('[WS] route_updated parse failed: $e');
         }
@@ -457,8 +467,8 @@ void _connectAndListen(Ref ref, SocketService socket) {
       // to true, which flashes the spinner on the My Jobs screen. A silent
       // reload swaps the data in place so the banner and list update live.
       try {
-        if (ref.exists(artisanJobsProvider)) {
-          ref.read(artisanJobsProvider.notifier).silentReload();
+        if (ref.container.exists(artisanJobsProvider)) {
+          ref.container.read(artisanJobsProvider.notifier).silentReload();
         }
       } catch (_) {}
       if (data is Map<String, dynamic>) {
@@ -467,7 +477,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
           // Once a job moves past `open`, it can't be picked up from the
           // in-session "New" list any more — drop it so stale entries
           // don't linger after a decision has been made.
-          ref.read(pendingIncomingJobsProvider.notifier).remove(jobId);
+          ref.container.read(pendingIncomingJobsProvider.notifier).remove(jobId);
         }
 
         // If the event is for the currently-active job, push the new
@@ -477,7 +487,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
         final statusStr = data['status'] as String?;
         if (jobId != null && statusStr != null) {
           try {
-            final active = ref.read(activeJobProvider);
+            final active = ref.container.read(activeJobProvider);
             if (active.job?.id == jobId) {
               final nextStatus = JobStatus.fromString(statusStr);
               ref
@@ -520,7 +530,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
       final ackAt = data['acknowledgedAt'] as String?;
       if (jobId == null || method == null || ackAt == null) return;
       try {
-        ref.read(activeJobProvider.notifier).applyClientPaymentAck(
+        ref.container.read(activeJobProvider.notifier).applyClientPaymentAck(
               jobId: jobId,
               paymentMethod: method,
               acknowledgedAt: ackAt,
@@ -559,7 +569,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
       // listener will pop the sheet AND handle the post-rating
       // navigation to /earnings. Without this, both paths fired and
       // stacked two rating modals on top of each other.
-      final router = ref.read(goRouterProvider);
+      final router = ref.container.read(goRouterProvider);
       final currentPath =
           router.routerDelegate.currentConfiguration.uri.path;
       if (bookingType == 'artisan_job' || bookingType == 'job') {
@@ -603,7 +613,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
           var firstName = 'Client';
           try {
             final raw =
-                await ref.read(jobServiceProvider).getJob(bookingId);
+                await ref.container.read(jobServiceProvider).getJob(bookingId);
             final job = Job.fromJson(raw);
             final name = job.clientName;
             if (name != null && name.trim().isNotEmpty) {

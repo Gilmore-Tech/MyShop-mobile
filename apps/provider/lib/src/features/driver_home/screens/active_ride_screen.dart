@@ -596,7 +596,14 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
       if (driver != null) {
         _refreshRouteIfNeeded(driver, force: true);
       }
-      _publishMetrics();
+      // `didUpdateWidget` runs inside the build pipeline; publishing metrics
+      // here would synchronously notify a `ValueListenableBuilder` higher
+      // up the tree and trip "setState called during build". Defer to the
+      // next frame so the rebuild happens cleanly.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _publishMetrics();
+      });
     }
   }
 
