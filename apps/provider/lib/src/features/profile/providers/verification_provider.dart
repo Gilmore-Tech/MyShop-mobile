@@ -124,9 +124,23 @@ final documentUploadProvider =
 });
 
 // ─── Local Profile Photo ────────────────────────────────────────────────────
+//
+// Per-role profile photo cache. Driver and Artisan profiles on the same
+// phone each store their own photo to its own SharedPreferences keys —
+// `local_profile_photo_path_driver` / `profile_photo_url_artisan` etc.
+// Previously the cache was role-agnostic and the moment the user uploaded
+// a photo for Artisan the same image flashed onto the Driver dashboard
+// from the local cache (the backend column was per-role but the mobile
+// cache read it ahead of the per-role profile object).
+//
+// The notifier reads the active role via [providerTypeProvider]. When the
+// active role changes (login as the other role on the same device, or a
+// post-logout role reset), the provider is invalidated by the logout
+// cleanup bridge so a fresh notifier reads from the new role's keys.
 
-const _kLocalPhotoPath = 'local_profile_photo_path';
-const _kProfilePhotoUrl = 'profile_photo_url';
+String _photoPathKey(ProviderType role) =>
+    'local_profile_photo_path_${role.name}';
+String _photoUrlKey(ProviderType role) => 'profile_photo_url_${role.name}';
 
 /// Holds both:
 /// - A local [File] for instant preview while uploading
@@ -141,14 +155,16 @@ class ProfilePhotoState {
 }
 
 class LocalProfilePhotoNotifier extends StateNotifier<ProfilePhotoState> {
-  LocalProfilePhotoNotifier() : super(const ProfilePhotoState()) {
+  LocalProfilePhotoNotifier(this._role) : super(const ProfilePhotoState()) {
     _restore();
   }
 
+  final ProviderType _role;
+
   Future<void> _restore() async {
     final prefs = await SharedPreferences.getInstance();
-    final url = prefs.getString(_kProfilePhotoUrl);
-    final path = prefs.getString(_kLocalPhotoPath);
+    final url = prefs.getString(_photoUrlKey(_role));
+    final path = prefs.getString(_photoPathKey(_role));
 
     File? file;
     if (path != null) {
@@ -156,7 +172,7 @@ class LocalProfilePhotoNotifier extends StateNotifier<ProfilePhotoState> {
       if (await f.exists()) {
         file = f;
       } else {
-        await prefs.remove(_kLocalPhotoPath);
+        await prefs.remove(_photoPathKey(_role));
       }
     }
 
@@ -173,9 +189,9 @@ class LocalProfilePhotoNotifier extends StateNotifier<ProfilePhotoState> {
     );
     final prefs = await SharedPreferences.getInstance();
     if (file != null) {
-      await prefs.setString(_kLocalPhotoPath, file.path);
+      await prefs.setString(_photoPathKey(_role), file.path);
     } else {
-      await prefs.remove(_kLocalPhotoPath);
+      await prefs.remove(_photoPathKey(_role));
     }
   }
 
@@ -187,21 +203,38 @@ class LocalProfilePhotoNotifier extends StateNotifier<ProfilePhotoState> {
       cloudinaryUrl: url,
     );
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kProfilePhotoUrl, url);
+    await prefs.setString(_photoUrlKey(_role), url);
   }
 
-  /// Clear everything (e.g. on upload failure or logout).
+  /// Clear THIS ROLE's cache only (upload failure or per-role wipe).
+  /// Use [clearAllRoles] to nuke every role's cache on logout.
   Future<void> clear() async {
     state = const ProfilePhotoState();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_kLocalPhotoPath);
-    await prefs.remove(_kProfilePhotoUrl);
+    await prefs.remove(_photoPathKey(_role));
+    await prefs.remove(_photoUrlKey(_role));
+  }
+
+  /// Clear every role's cache (logout path — the next account on this
+  /// device must not see the previous account's photo).
+  static Future<void> clearAllRoles() async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final role in ProviderType.values) {
+      await prefs.remove(_photoPathKey(role));
+      await prefs.remove(_photoUrlKey(role));
+    }
+    // Legacy un-namespaced keys from before the per-role split — strip
+    // them so they don't leak when the user opens the app for the first
+    // time after the upgrade.
+    await prefs.remove('local_profile_photo_path');
+    await prefs.remove('profile_photo_url');
   }
 }
 
 final localProfilePhotoProvider =
     StateNotifierProvider<LocalProfilePhotoNotifier, ProfilePhotoState>((ref) {
-  return LocalProfilePhotoNotifier();
+  final role = ref.watch(providerTypeProvider);
+  return LocalProfilePhotoNotifier(role);
 });
 
 // ─── Profile Completion ─────────────────────────────────────────────────────

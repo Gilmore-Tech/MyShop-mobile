@@ -265,6 +265,21 @@ class ArtisanJobsNotifier extends StateNotifier<ArtisanJobsState> {
             'Taking too long to load. Check your connection and retry.',
       );
     } catch (e, st) {
+      // The auth interceptor rejects authed requests with this error
+      // string the moment the access token is cleared (logout). The
+      // notifier outlives the auth state by a frame or two and the
+      // poll timer keeps firing — kill the timer here so the loop
+      // self-extinguishes instead of spamming the log.
+      final msg = e.toString();
+      if (msg.contains('NOT_AUTHENTICATED') ||
+          msg.contains('session is over')) {
+        developer.log(
+            '[ArtisanJobs] session ended — stopping poll timer',
+            name: 'ArtisanJobs');
+        _pollTimer?.cancel();
+        _pollTimer = null;
+        return;
+      }
       developer.log('Failed to load artisan jobs: $e\n$st',
           name: 'ArtisanJobs', level: 900);
       // Silent refreshes must never clobber the last-good list with an

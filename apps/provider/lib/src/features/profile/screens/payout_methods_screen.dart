@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/current_user_provider.dart';
+import '../providers/provider_type_provider.dart';
 import '../widgets/payout_method_sheet.dart';
 
 /// Payout Methods screen — MoMo + bank accounts, payout history, schedule.
@@ -15,15 +16,23 @@ class PayoutMethodsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
+    // Payout fields are per-role at the schema level (Driver.payoutMethod
+    // vs Artisan.payoutMethod). Cross-role fallback bled the Artisan's
+    // number onto the Driver dashboard — read ONLY the active role.
+    final providerType = ref.watch(providerTypeProvider);
     final dp = user?.driverProfile;
     final ap = user?.artisanProfile;
-    final payoutMethod = dp?.payoutMethod ?? ap?.payoutMethod;
-    final payoutAccount = dp?.payoutAccountNumber ?? ap?.payoutAccountNumber;
+    final payoutMethod =
+        providerType.isDriver ? dp?.payoutMethod : ap?.payoutMethod;
+    final payoutAccount = providerType.isDriver
+        ? dp?.payoutAccountNumber
+        : ap?.payoutAccountNumber;
     final hasPayoutMethod = payoutMethod != null && payoutAccount != null;
     // The backend flips this to true once the user verifies their MoMo
     // number via OTP. After that, only an admin can change it.
-    final payoutLocked =
-        (dp?.payoutLocked ?? false) || (ap?.payoutLocked ?? false);
+    final payoutLocked = providerType.isDriver
+        ? (dp?.payoutLocked ?? false)
+        : (ap?.payoutLocked ?? false);
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
       appBar: AppBar(

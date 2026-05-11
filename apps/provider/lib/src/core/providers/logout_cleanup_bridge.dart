@@ -6,6 +6,7 @@ import '../../features/artisan_home/providers/job_poller_provider.dart';
 import '../../features/auth/providers/auth_controller.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
 import '../../features/profile/providers/provider_type_provider.dart';
+import '../../features/profile/providers/verification_provider.dart';
 import 'provider_status_provider.dart';
 import 'socket_provider.dart';
 
@@ -55,5 +56,14 @@ final logoutCleanupBridgeProvider = Provider<void>((ref) {
     // (e.g. user backs out at OTP) doesn't leave the previous user's
     // role selection lying around.
     ref.read(providerTypeProvider.notifier).state = ProviderType.artisan;
+
+    // Wipe BOTH role's local photo caches so the next account on this
+    // device starts blank. Without this, registering Artisan after
+    // logging out as Driver shows the Driver's selfie on the Artisan
+    // home — the cached file path / Cloudinary URL outlive the auth
+    // state. Invalidate the provider too so the next read rebuilds
+    // with an empty state (and the new role's prefs keys).
+    LocalProfilePhotoNotifier.clearAllRoles();
+    ref.invalidate(localProfilePhotoProvider);
   });
 });
