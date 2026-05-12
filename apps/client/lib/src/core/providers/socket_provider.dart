@@ -281,12 +281,26 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('ride:matcher_progress')
       ..on('ride:matcher_progress', (data) {
-        if (data is! Map<String, dynamic>) return;
-        final attempt = (data['attempt'] as num?)?.toInt() ?? 0;
-        final driversTried = (data['driversTried'] as num?)?.toInt() ?? 0;
+        // Accept any Map shape — Socket.IO occasionally hands us
+        // Map<dynamic, dynamic> instead of Map<String, dynamic>, which the
+        // narrower type guard silently drops. The guard was masking
+        // matcher_progress events on real-device tests; cast through Map
+        // and read keys defensively instead.
+        if (data is! Map) {
+          developer.log('matcher_progress: non-map payload $data', name: 'WS');
+          return;
+        }
+        final map = Map<String, dynamic>.from(data);
+        final attempt = (map['attempt'] as num?)?.toInt() ?? 0;
+        final driversTried = (map['driversTried'] as num?)?.toInt() ?? 0;
         final driversRemaining =
-            (data['driversRemaining'] as num?)?.toInt() ?? 0;
-        final radiusKm = (data['radiusKm'] as num?)?.toDouble() ?? 0;
+            (map['driversRemaining'] as num?)?.toInt() ?? 0;
+        final radiusKm = (map['radiusKm'] as num?)?.toDouble() ?? 0;
+        developer.log(
+          'matcher_progress: attempt=$attempt tried=$driversTried '
+          'remaining=$driversRemaining radiusKm=$radiusKm',
+          name: 'WS',
+        );
         ref.container.read(matcherProgressProvider.notifier).state =
             MatcherProgress(
           attempt: attempt,

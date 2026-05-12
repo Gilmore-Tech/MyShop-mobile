@@ -278,23 +278,25 @@ class _SearchingBar extends ConsumerWidget {
 
   /// Copy is driven by `ride:matcher_progress` from the backend so the rider
   /// sees what the matcher is actually doing instead of a frozen spinner.
-  /// First attempt: "Finding nearby drivers". Later attempts: either
-  /// "Expanding search to N km" (matcher just widened the radius) or
-  /// "Trying another driver" (decline-triggered retry at same radius).
+  /// Every progress event surfaces the current radius so the rider sees the
+  /// label change after each decline/expansion — including the very first
+  /// retry, which sits at the same radius the matcher started at.
   static String _searchLabel(MatcherProgress? progress) {
-    if (progress == null || progress.attempt <= 1) {
-      return 'Finding nearby drivers…';
+    if (progress == null) return 'Finding nearby drivers…';
+    final radius = progress.radiusKm;
+    final fresh = progress.driversRemaining;
+    if (radius <= 0) {
+      return fresh > 0
+          ? 'Trying another driver…'
+          : 'Still searching nearby…';
     }
-    if (progress.driversRemaining == 0) {
-      return 'Still searching nearby…';
+    final km = radius.toStringAsFixed(
+      radius == radius.roundToDouble() ? 0 : 1,
+    );
+    if (fresh > 0) {
+      return 'Trying another driver — $km km radius';
     }
-    if (progress.radiusKm > 0) {
-      final km = progress.radiusKm.toStringAsFixed(
-        progress.radiusKm == progress.radiusKm.roundToDouble() ? 0 : 1,
-      );
-      return 'Expanding search to $km km…';
-    }
-    return 'Trying another driver…';
+    return 'Expanding search to $km km…';
   }
 }
 
@@ -392,8 +394,10 @@ class _SearchStatusBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final seconds = ref.watch(searchCountdownProvider);
+    final progress = ref.watch(matcherProgressProvider);
     final mm = (seconds ~/ 60).toString().padLeft(2, '0');
     final ss = (seconds % 60).toString().padLeft(2, '0');
+    final subtitle = _statusSubtitle(progress);
 
     return Container(
       color: Colors.white,
@@ -403,29 +407,33 @@ class _SearchStatusBar extends ConsumerWidget {
           const Icon(Icons.access_time_rounded,
               size: 20, color: MyShopColors.textSecondary),
           const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Search expires in',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: MyShopColors.textPrimary,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Search expires in',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: MyShopColors.textPrimary,
+                  ),
                 ),
-              ),
-              const Text(
-                'Looking in 2km radius',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w400,
-                  color: MyShopColors.textSecondary,
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w400,
+                    color: MyShopColors.textSecondary,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-          const Spacer(),
+          const SizedBox(width: 12),
           Text(
             '$mm:$ss',
             style: const TextStyle(
@@ -438,5 +446,24 @@ class _SearchStatusBar extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// Mirrors `_SearchingBar._searchLabel` but renders below the radar so the
+  /// rider sees the matcher's current radius without scrolling their eyes
+  /// up to the top bar.
+  static String _statusSubtitle(MatcherProgress? progress) {
+    if (progress == null) return 'Looking for drivers nearby…';
+    final radius = progress.radiusKm;
+    final fresh = progress.driversRemaining;
+    if (radius <= 0) {
+      return fresh > 0 ? 'Trying another driver…' : 'Still searching nearby…';
+    }
+    final km = radius.toStringAsFixed(
+      radius == radius.roundToDouble() ? 0 : 1,
+    );
+    if (fresh > 0) {
+      return 'Notifying drivers within $km km';
+    }
+    return 'Expanding to $km km radius';
   }
 }
