@@ -219,10 +219,14 @@ void _connectAndListen(Ref ref, SocketService socket) {
           // Flip to `failed` (not `idle`) so the matching screen renders
           // the failure card. Previously `reset()` sent the rider back to
           // an empty idle state and they were stranded on the spinner.
-          final reason = data['cancellationReason'] as String?;
-          final friendlyMessage = status == 'no_drivers'
+          final reason = (data['cancellationReason'] as String?) ?? '';
+          final cancelledBy = (data['cancelledBy'] as String?) ?? '';
+          final isNoDrivers = status == 'no_drivers' ||
+              reason == 'no_drivers_available' ||
+              cancelledBy == 'system';
+          final friendlyMessage = isNoDrivers
               ? "We couldn't find a driver nearby. Please try again in a moment."
-              : (reason ?? 'This ride was cancelled.');
+              : (reason.isNotEmpty ? reason : 'This ride was cancelled.');
           ref.container.read(bookingFailureMessageProvider.notifier).state =
               friendlyMessage;
           ref.container.read(bookingPhaseProvider.notifier).fail();
