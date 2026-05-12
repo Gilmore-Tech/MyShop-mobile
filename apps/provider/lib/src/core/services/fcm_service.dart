@@ -553,10 +553,40 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         break;
 
       case NotificationPayload.typeRideRequest:
-        // Rides: open the shell to home — the active-ride screen is
-        // driven by separate state and the driver will see it immediately
-        // via the socket listener once the app is foreground.
+        // Backend may send the ride id under `rideId` (camel) or `ride_id`
+        // (snake) depending on which emitter wrote the push.
+        final rideId = (payload[NotificationPayload.keyRideId] as String?) ??
+            (payload['ride_id'] as String?);
+        debugPrint('[FCM-tap] ride_request rideId=$rideId payload=$payload');
+        if (rideId == null) {
+          debugPrint('[FCM-tap] no rideId in payload — routing to /home');
+          router.go('/home');
+          break;
+        }
+        // Suppress the foreground re-broadcast modal for this ride — the
+        // user already acknowledged by tapping the notification, so the
+        // in-app sheet on top of /ride-request would be redundant.
+        ref.read(surfacedRideIdsProvider.notifier).update(
+              (s) => {...s, rideId},
+            );
+        if (ref.read(incomingRideRequestProvider)?.id == rideId) {
+          ref.read(incomingRideRequestProvider.notifier).state = null;
+        }
+        // Land on /home as a holding view while we hydrate, then push the
+        // ride-request screen with the real Ride. Driving the same screen
+        // the socket listener uses keeps the accept / decline flow on a
+        // single code path.
         router.go('/home');
+        try {
+          final data = await ref.read(rideServiceProvider).getRide(rideId);
+          final ride = Ride.fromJson(data);
+          debugPrint('[FCM-tap] pushing /ride-request for $rideId');
+          router.push('/ride-request', extra: ride);
+        } catch (e) {
+          debugPrint('[FCM-tap] ride-request hydrate failed for $rideId: $e');
+          // Stay on /home — the socket listener will surface the request
+          // modal as soon as the app reconnects and the matcher re-emits.
+        }
         break;
 
       case NotificationPayload.typeBidAccepted:
