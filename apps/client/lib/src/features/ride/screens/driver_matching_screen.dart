@@ -231,11 +231,13 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-class _SearchingBar extends StatelessWidget {
+class _SearchingBar extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final w = MediaQuery.sizeOf(context).width;
     final h = MediaQuery.sizeOf(context).height;
+    final progress = ref.watch(matcherProgressProvider);
+    final label = _searchLabel(progress);
     return Container(
       key: const ValueKey('searching'),
       height: h * 0.055,
@@ -257,17 +259,42 @@ class _SearchingBar extends StatelessWidget {
           Icon(Icons.search_rounded,
               size: w * 0.044, color: MyShopColors.textSecondary),
           SizedBox(width: w * 0.021),
-          Text(
-            'Finding nearby drivers...',
-            style: TextStyle(
-              fontSize: w * 0.036,
-              fontWeight: FontWeight.w500,
-              color: MyShopColors.textSecondary,
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: w * 0.036,
+                fontWeight: FontWeight.w500,
+                color: MyShopColors.textSecondary,
+              ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  /// Copy is driven by `ride:matcher_progress` from the backend so the rider
+  /// sees what the matcher is actually doing instead of a frozen spinner.
+  /// First attempt: "Finding nearby drivers". Later attempts: either
+  /// "Expanding search to N km" (matcher just widened the radius) or
+  /// "Trying another driver" (decline-triggered retry at same radius).
+  static String _searchLabel(MatcherProgress? progress) {
+    if (progress == null || progress.attempt <= 1) {
+      return 'Finding nearby drivers…';
+    }
+    if (progress.driversRemaining == 0) {
+      return 'Still searching nearby…';
+    }
+    if (progress.radiusKm > 0) {
+      final km = progress.radiusKm.toStringAsFixed(
+        progress.radiusKm == progress.radiusKm.roundToDouble() ? 0 : 1,
+      );
+      return 'Expanding search to $km km…';
+    }
+    return 'Trying another driver…';
   }
 }
 

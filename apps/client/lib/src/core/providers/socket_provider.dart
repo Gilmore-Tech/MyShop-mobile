@@ -216,7 +216,16 @@ void _connectAndListen(Ref ref, SocketService socket) {
           }
           ref.container.read(navBadgeProvider.notifier).increment('/activity');
         case 'cancelled' || 'no_drivers':
-          ref.container.read(bookingPhaseProvider.notifier).reset();
+          // Flip to `failed` (not `idle`) so the matching screen renders
+          // the failure card. Previously `reset()` sent the rider back to
+          // an empty idle state and they were stranded on the spinner.
+          final reason = data['cancellationReason'] as String?;
+          final friendlyMessage = status == 'no_drivers'
+              ? "We couldn't find a driver nearby. Please try again in a moment."
+              : (reason ?? 'This ride was cancelled.');
+          ref.container.read(bookingFailureMessageProvider.notifier).state =
+              friendlyMessage;
+          ref.container.read(bookingPhaseProvider.notifier).fail();
           if (ref.container.exists(activityHistoryProvider)) {
             ref.container.read(activityHistoryProvider.notifier).silentReload();
           }
@@ -258,6 +267,31 @@ void _connectAndListen(Ref ref, SocketService socket) {
           developer.log('Failed to apply ride:state snapshot: $e',
               name: 'WS', level: 900);
         }
+      });
+
+    // Backend pushes `ride:matcher_progress` on every dispatch attempt —
+    // initial broadcast, decline-triggered fast-path, radius expansion.
+    // Without surfacing it the rider sees a frozen spinner while the
+    // matcher cycles through 3+ drivers; with it, the matching screen
+    // can say "Expanding to 5 km" / "Trying another driver".
+    socket
+      ..off('ride:matcher_progress')
+      ..on('ride:matcher_progress', (data) {
+        if (data is! Map<String, dynamic>) return;
+        final attempt = (data['attempt'] as num?)?.toInt() ?? 0;
+        final driversTried = (data['driversTried'] as num?)?.toInt() ?? 0;
+        final driversRemaining =
+            (data['driversRemaining'] as num?)?.toInt() ?? 0;
+        final radiusKm = (data['radiusKm'] as num?)?.toDouble() ?? 0;
+        ref.container.read(matcherProgressProvider.notifier).state =
+            MatcherProgress(
+          attempt: attempt,
+          driversTried: driversTried,
+          driversRemaining: driversRemaining,
+          radiusKm: radiusKm,
+        );
+        ref.container.read(driversNotifiedProvider.notifier).state =
+            driversTried;
       });
 
     // ── Route changes (rider added / cancelled a stop) ──────────────────

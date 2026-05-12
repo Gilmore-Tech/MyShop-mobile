@@ -449,6 +449,33 @@ final bookingPhaseProvider =
 /// driver-matching screen so the rider sees what went wrong.
 final bookingFailureMessageProvider = StateProvider<String?>((_) => null);
 
+/// Backend matcher progress snapshot pushed by the `ride:matcher_progress`
+/// socket event on every dispatch/expansion attempt. Drives the rider's
+/// matching screen copy ("Expanding to 5 km…", "Trying another driver…")
+/// so a sequence of declines isn't a silent spinner.
+class MatcherProgress {
+  const MatcherProgress({
+    required this.attempt,
+    required this.driversTried,
+    required this.driversRemaining,
+    required this.radiusKm,
+  });
+
+  /// Re-dispatch attempt counter (1-indexed). Increments on every expansion.
+  final int attempt;
+
+  /// Cumulative count of distinct drivers we've notified so far.
+  final int driversTried;
+
+  /// Drivers in the just-broadcast batch (the ones currently deciding).
+  final int driversRemaining;
+
+  /// Radius the matcher just searched at, in kilometres.
+  final double radiusKm;
+}
+
+final matcherProgressProvider = StateProvider<MatcherProgress?>((_) => null);
+
 class BookingPhaseNotifier extends StateNotifier<BookingPhase> {
   BookingPhaseNotifier() : super(BookingPhase.idle);
 
@@ -639,6 +666,7 @@ Future<void> requestRideAndMatchDriver(ProviderContainer ref) async {
   ref.read(rideMatchedViaSocketProvider.notifier).state = false;
   ref.read(bookingFailureMessageProvider.notifier).state = null;
   ref.read(driversNotifiedProvider.notifier).state = 0;
+  ref.read(matcherProgressProvider.notifier).state = null;
   ref.read(liveDriverPositionProvider.notifier).state = null;
 
   void failWith(String message) {
@@ -977,6 +1005,7 @@ Future<void> cancelInFlightRideRequest(ProviderContainer ref) async {
   ref.read(matchedDriverProvider.notifier).state = null;
   ref.read(bookingFailureMessageProvider.notifier).state = null;
   ref.read(driversNotifiedProvider.notifier).state = 0;
+  ref.read(matcherProgressProvider.notifier).state = null;
   ref.read(liveDriverPositionProvider.notifier).state = null;
   ref.read(bookingPhaseProvider.notifier).reset();
 }
