@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:api_client/api_client.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart' show RideStop;
 
@@ -100,7 +101,16 @@ void _connectAndListen(Ref ref, SocketService socket) {
     }
   });
 
-  socket.connect().then((_) {
+  // Attach all domain handlers via `onAfterCreate` so they re-bind on every
+  // post-dispose reconnect (server restart, lifecycle observer kicking the
+  // socket on resume, auth-refresh re-create). The previous version used
+  // `socket.connect().then(...)` which fires exactly once — after a Render
+  // redeploy mid-session, the client reconnected but `ride:state`,
+  // `ride:matcher_progress` etc. were no longer registered, so the rider
+  // saw the connection succeed and the matching UI silently froze.
+  void attachHandlers() {
+    debugPrint('[WS] (re-)attaching client domain handlers');
+
     // Diagnostic: log every event the rider's socket sees so we can tell
     // a "no events arriving" problem (room-join race, auth issue) apart
     // from a "wrong event name" problem (backend renamed something) at a
@@ -654,5 +664,12 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('rating:prompt')
       ..on('rating:prompt', handleRatingPrompt);
-  });
+  }
+
+  // Wire BEFORE the first connect so the very first io.Socket also picks
+  // up handlers; the hook then fires synchronously on every subsequent
+  // re-create. Matches the provider-side pattern in
+  // apps/provider/lib/src/core/providers/socket_provider.dart.
+  socket.onAfterCreate(attachHandlers);
+  socket.connect();
 }
