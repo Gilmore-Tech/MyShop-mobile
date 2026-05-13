@@ -86,19 +86,29 @@ class EarningsTodayCard {
     required this.bookingsCount,
     required this.hoursWorkedMinutes,
     required this.tipsEarnedPesewas,
+    required this.grossEarningsPesewas,
+    required this.commissionPesewas,
     required this.netEarningsPesewas,
   });
 
   factory EarningsTodayCard.fromJson(Map<String, dynamic> json) {
     final role = EarningsRole.parse(json['role'] as String?);
     final count = (json['tripsCount'] ?? json['jobsCount'] ?? 0) as num;
+    final net = (json['netEarningsPesewas'] as num?)?.toInt() ?? 0;
+    final commission = (json['commissionPesewas'] as num?)?.toInt() ?? 0;
+    // Older builds didn't return gross — back-compute from net + commission
+    // so an in-flight backend rollout doesn't blank the headline.
+    final gross =
+        (json['grossEarningsPesewas'] as num?)?.toInt() ?? (net + commission);
     return EarningsTodayCard(
       role: role,
       date: (json['date'] as String?) ?? '',
       bookingsCount: count.toInt(),
       hoursWorkedMinutes: (json['hoursWorkedMinutes'] as num?)?.toInt() ?? 0,
       tipsEarnedPesewas: (json['tipsEarnedPesewas'] as num?)?.toInt() ?? 0,
-      netEarningsPesewas: (json['netEarningsPesewas'] as num?)?.toInt() ?? 0,
+      grossEarningsPesewas: gross,
+      commissionPesewas: commission,
+      netEarningsPesewas: net,
     );
   }
 
@@ -108,6 +118,8 @@ class EarningsTodayCard {
         bookingsCount: 0,
         hoursWorkedMinutes: 0,
         tipsEarnedPesewas: 0,
+        grossEarningsPesewas: 0,
+        commissionPesewas: 0,
         netEarningsPesewas: 0,
       );
 
@@ -124,7 +136,15 @@ class EarningsTodayCard {
 
   final int tipsEarnedPesewas;
 
-  /// Net of commission. Drives the homepage headline number.
+  /// Total fare across cash + in-app rides today, before commission.
+  /// Drives the headline figure on the home dashboard card.
+  final int grossEarningsPesewas;
+
+  /// Platform's 20% take across today's bookings — for the breakdown row
+  /// next to gross.
+  final int commissionPesewas;
+
+  /// Net of commission. Shown inside the earnings module breakdown.
   final int netEarningsPesewas;
 }
 
@@ -165,6 +185,8 @@ class EarningsSummary {
     required this.weeklyAvailableBalancePesewas,
     required this.netEarningsPesewas,
     required this.paidOutPesewas,
+    required this.cashCommissionOwedPesewas,
+    required this.pendingPayoutsPesewas,
     required this.series,
     required this.granularity,
   });
@@ -183,6 +205,10 @@ class EarningsSummary {
           (json['weeklyAvailableBalancePesewas'] as num?)?.toInt() ?? 0,
       netEarningsPesewas: (json['netEarningsPesewas'] as num?)?.toInt() ?? 0,
       paidOutPesewas: (json['paidOutPesewas'] as num?)?.toInt() ?? 0,
+      cashCommissionOwedPesewas:
+          (json['cashCommissionOwedPesewas'] as num?)?.toInt() ?? 0,
+      pendingPayoutsPesewas:
+          (json['pendingPayoutsPesewas'] as num?)?.toInt() ?? 0,
       series: (json['series'] as List<dynamic>?)
               ?.whereType<Map<String, dynamic>>()
               .map(EarningsSummaryPoint.fromJson)
@@ -203,6 +229,8 @@ class EarningsSummary {
         weeklyAvailableBalancePesewas: 0,
         netEarningsPesewas: 0,
         paidOutPesewas: 0,
+        cashCommissionOwedPesewas: 0,
+        pendingPayoutsPesewas: 0,
         series: const [],
         granularity: EarningsGranularity.day,
       );
@@ -227,10 +255,31 @@ class EarningsSummary {
   /// Money already disbursed in the selected period. Excludes cash trips.
   final int paidOutPesewas;
 
+  /// Sum of pending CASH_COMMISSION clawbacks the driver owes the platform.
+  /// Netted against [availableBalancePesewas] when computing what's actually
+  /// payable — once it exceeds the available balance, the driver is in net
+  /// debt and the dashboard flips the label to "Owings".
+  final int cashCommissionOwedPesewas;
+
+  /// In-flight payouts (Paystack transfer queued / processing). Shown
+  /// inline so the driver knows the money is on its way.
+  final int pendingPayoutsPesewas;
+
   /// Gap-filled time series — every bucket present even with `netPesewas: 0`.
   final List<EarningsSummaryPoint> series;
 
   final EarningsGranularity granularity;
+
+  /// Available balance NET of pending cash-commission debt. Can be
+  /// negative — when it is, the driver owes the platform that absolute
+  /// value, and the dashboard should render the headline as "Owings"
+  /// instead of "Available balance".
+  int get effectiveBalancePesewas =>
+      availableBalancePesewas - cashCommissionOwedPesewas;
+
+  /// True when the driver is in net debt — clawbacks exceed available
+  /// balance. UI uses this to swap the headline label and colour.
+  bool get isInArrears => effectiveBalancePesewas < 0;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
