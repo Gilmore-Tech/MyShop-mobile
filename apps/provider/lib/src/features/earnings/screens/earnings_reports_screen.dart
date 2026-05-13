@@ -357,18 +357,15 @@ class _ReportBody extends StatelessWidget {
                   highlight: true)),
         ]),
         const SizedBox(height: MyShopSpacing.sm),
+        // TIPS card dropped 2026-05-13 — no tip surface exists in the
+        // rider app today, so the value was always GHS 0.00 and undermined
+        // trust in the rest of the dashboard.
         Row(children: [
           Expanded(
               child: _SummaryCard(
                   label: 'COMMISSION',
                   value: 'GHS ${_fmtGhs(report.commissionChargedPesewas)}',
                   delta: '20% rate')),
-          const SizedBox(width: MyShopSpacing.sm),
-          Expanded(
-              child: _SummaryCard(
-                  label: 'TIPS',
-                  value: 'GHS ${_fmtGhs(report.tipsEarnedPesewas)}',
-                  delta: 'Received this window')),
         ]),
         const SizedBox(height: MyShopSpacing.sm),
         Row(children: [

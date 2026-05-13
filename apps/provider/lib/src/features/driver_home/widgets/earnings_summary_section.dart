@@ -80,6 +80,10 @@ class EarningsSummarySection extends ConsumerWidget {
               ),
               padding: const EdgeInsets.symmetric(vertical: 17),
               child: IntrinsicHeight(
+                // TIPS column dropped 2026-05-13 — the client app has no
+                // tip surface for ride bookings, so the value was always
+                // GH₵ 0.00 and confused drivers who thought they were
+                // missing earnings.
                 child: Row(
                   children: [
                     _StatColumn(
@@ -90,11 +94,6 @@ class EarningsSummarySection extends ConsumerWidget {
                     _StatColumn(
                       label: 'HOURS',
                       value: _formatMinutes(card.hoursWorkedMinutes),
-                    ),
-                    const _VerticalDivider(),
-                    _StatColumn(
-                      label: 'TIPS',
-                      value: 'GH₵ ${_formatAmount(card.tipsEarnedPesewas)}',
                     ),
                   ],
                 ),

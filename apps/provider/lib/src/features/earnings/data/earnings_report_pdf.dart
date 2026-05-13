@@ -203,11 +203,8 @@ class EarningsReportPdf {
         value: 'GHS ${_fmtGhs(report.commissionChargedPesewas)}',
         sub: '20% rate',
       ),
-      _SummaryCellData(
-        label: 'Tips',
-        value: 'GHS ${_fmtGhs(report.tipsEarnedPesewas)}',
-        sub: 'This window',
-      ),
+      // Tips cell removed — no tip surface in the rider app yet, so the
+      // backend's `tipsEarnedPesewas` is always 0 for rides.
       _SummaryCellData(
         label: bookingsLabel,
         value: '${report.bookingsCompleted}',
@@ -325,7 +322,7 @@ class EarningsReportPdf {
             _tableCell('Net', headerStyle, align: pw.Alignment.centerRight),
             _tableCell('Commission', headerStyle,
                 align: pw.Alignment.centerRight),
-            _tableCell('Tips', headerStyle, align: pw.Alignment.centerRight),
+            // Tips column removed (see note on summary section above).
           ],
         ),
         for (final p in series)
@@ -339,8 +336,6 @@ class EarningsReportPdf {
               _tableCell('GHS ${_fmtGhs(p.netPesewas)}', cellStyle,
                   align: pw.Alignment.centerRight),
               _tableCell('GHS ${_fmtGhs(p.commissionPesewas)}', cellStyle,
-                  align: pw.Alignment.centerRight),
-              _tableCell('GHS ${_fmtGhs(p.tipsPesewas)}', cellStyle,
                   align: pw.Alignment.centerRight),
             ],
           ),

@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -63,6 +64,12 @@ class _DriverRideCompleteScreenState
     final total = ride.finalFarePesewas ?? ride.estimatedFarePesewas;
     final commission = (total * _commissionRate).round();
     final net = total - commission;
+    // Backend overwrites the estimated distance/duration columns with the
+    // ACTUAL values (computed from the GPS trail + start→complete time)
+    // when the ride flips to `completed`, so reading them directly here
+    // surfaces the real numbers. The dual `actualDistanceKm` /
+    // `actualDurationMins` model fields are unused — kept as null on the
+    // wire until the schema gets dedicated columns.
     final distanceKm = ride.actualDistanceKm ?? ride.estimatedDistanceKm;
     final durationMins = ride.actualDurationMins ?? ride.estimatedDurationMins;
     return TripSummary(
@@ -199,11 +206,7 @@ class _DriverRideCompleteScreenState
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                const CircleAvatar(
-                    radius: 20,
-                    backgroundColor: MyShopColors.avatarPlaceholder,
-                    child: Icon(Icons.person,
-                        size: 20, color: MyShopColors.textSecondary)),
+                _ClientAvatar(photoUrl: s.clientPhotoUrl),
                 const SizedBox(width: 12),
                 Expanded(
                     child: Column(
@@ -218,9 +221,16 @@ class _DriverRideCompleteScreenState
                       Row(children: [
                         const Icon(Icons.star,
                             size: 12, color: MyShopColors.ratingStar),
-                        Text(' ${s.clientRating}',
-                            style: MyShopTypography.body2
-                                .copyWith(fontWeight: FontWeight.w600)),
+                        Text(
+                          // Backend can return null for a brand-new rider
+                          // with no revealed ratings yet — show "—" rather
+                          // than "0.0" so they don't look one-starred.
+                          s.clientRating > 0
+                              ? ' ${s.clientRating.toStringAsFixed(1)}'
+                              : ' —',
+                          style: MyShopTypography.body2
+                              .copyWith(fontWeight: FontWeight.w600),
+                        ),
                         Text(' · ${s.paymentMethod}',
                             style: MyShopTypography.body2),
                       ]),
@@ -469,9 +479,15 @@ class _DriverRideCompleteScreenState
           ),
           const SizedBox(height: MyShopSpacing.sm),
 
-          // Go to wallet CTA
+          // Go to wallet CTA → the earnings tab is the driver's wallet
+          // surface (today's earnings, summary, payout requests). Tapping
+          // here clears the active-ride slot so the driver doesn't bounce
+          // back to this screen on the next state read.
           OutlinedButton.icon(
-            onPressed: () {},
+            onPressed: () {
+              ref.read(activeRideProvider.notifier).clearRide();
+              context.go('/earnings');
+            },
             icon: const Icon(Icons.account_balance_wallet_outlined, size: 18),
             label: const Text('GO TO WALLET'),
             style: OutlinedButton.styleFrom(
@@ -557,3 +573,39 @@ class _FareRow extends StatelessWidget {
     );
   }
 }
+
+class _ClientAvatar extends StatelessWidget {
+  const _ClientAvatar({this.photoUrl});
+
+  final String? photoUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = photoUrl;
+    if (url == null || url.isEmpty) {
+      return const CircleAvatar(
+        radius: 20,
+        backgroundColor: MyShopColors.avatarPlaceholder,
+        child: Icon(Icons.person,
+            size: 20, color: MyShopColors.textSecondary),
+      );
+    }
+    return CircleAvatar(
+      radius: 20,
+      backgroundColor: MyShopColors.avatarPlaceholder,
+      child: ClipOval(
+        child: CachedNetworkImage(
+          imageUrl: url,
+          width: 40,
+          height: 40,
+          fit: BoxFit.cover,
+          placeholder: (_, __) => const Icon(Icons.person,
+              size: 20, color: MyShopColors.textSecondary),
+          errorWidget: (_, __, ___) => const Icon(Icons.person,
+              size: 20, color: MyShopColors.textSecondary),
+        ),
+      ),
+    );
+  }
+}
+
