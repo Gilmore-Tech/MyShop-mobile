@@ -237,7 +237,7 @@ class _SearchingBar extends ConsumerWidget {
     final w = MediaQuery.sizeOf(context).width;
     final h = MediaQuery.sizeOf(context).height;
     final progress = ref.watch(matcherProgressProvider);
-    final label = _searchLabel(progress);
+    final label = matcherStatusLabel(progress);
     return Container(
       key: const ValueKey('searching'),
       height: h * 0.055,
@@ -275,28 +275,53 @@ class _SearchingBar extends ConsumerWidget {
       ),
     );
   }
+}
 
-  /// Copy is driven by `ride:matcher_progress` from the backend so the rider
-  /// sees what the matcher is actually doing instead of a frozen spinner.
-  /// Every progress event surfaces the current radius so the rider sees the
-  /// label change after each decline/expansion — including the very first
-  /// retry, which sits at the same radius the matcher started at.
-  static String _searchLabel(MatcherProgress? progress) {
-    if (progress == null) return 'Finding nearby drivers…';
-    final radius = progress.radiusKm;
-    final fresh = progress.driversRemaining;
-    if (radius <= 0) {
-      return fresh > 0
-          ? 'Trying another driver…'
-          : 'Still searching nearby…';
-    }
-    final km = radius.toStringAsFixed(
-      radius == radius.roundToDouble() ? 0 : 1,
-    );
-    if (fresh > 0) {
-      return 'Trying another driver — $km km radius';
-    }
-    return 'Expanding search to $km km…';
+/// Single source of truth for the matching-screen status copy, used by both
+/// the top pill and the bottom status bar so the rider gets a consistent
+/// message. Copy maps directly to the backend's `reason` field:
+///
+///   initial → "Notifying N driver(s)…"
+///   decline → "Driver declined — searching for another driver"  (fresh > 0)
+///           → "Driver declined — expanding search to N km"      (fresh == 0)
+///   timeout → "No response — expanding search to N km"
+///
+/// When fresh drivers were dispatched at the current radius, the radius
+/// gets a "within N km" suffix so the rider sees the matcher actually
+/// reaching further out.
+String matcherStatusLabel(MatcherProgress? progress) {
+  if (progress == null) return 'Looking for a driver nearby…';
+  final radius = progress.radiusKm;
+  final fresh = progress.driversRemaining;
+  final km = radius > 0
+      ? radius.toStringAsFixed(radius == radius.roundToDouble() ? 0 : 1)
+      : null;
+
+  switch (progress.reason) {
+    case MatcherReason.initial:
+      final n = fresh > 0 ? fresh : progress.driversTried;
+      final pluralised = n == 1 ? '1 driver' : '$n drivers';
+      return km != null
+          ? 'Notifying $pluralised within $km km'
+          : 'Notifying $pluralised nearby';
+    case MatcherReason.decline:
+      if (fresh > 0) {
+        return km != null
+            ? 'Driver declined — searching within $km km'
+            : 'Driver declined — searching for another driver';
+      }
+      return km != null
+          ? 'Driver declined — expanding search to $km km'
+          : 'Driver declined — expanding search';
+    case MatcherReason.timeout:
+      if (fresh > 0) {
+        return km != null
+            ? 'No response — trying another driver within $km km'
+            : 'No response — trying another driver';
+      }
+      return km != null
+          ? 'Expanding search to $km km radius'
+          : 'Expanding search to find a driver';
   }
 }
 
@@ -388,59 +413,61 @@ class _NotifyingPill extends StatelessWidget {
 
 // ── Search status bar ─────────────────────────────────────────────────────────
 
+/// Bottom-of-screen status panel. The countdown was removed on 2026-05-13 —
+/// it implied a hard deadline that didn't match the backend's actual budget
+/// and made the screen feel frozen between status events. The panel now
+/// shows the live matcher status driven by `ride:matcher_progress`, plus a
+/// gentle animation so the rider still has a sense of activity.
 class _SearchStatusBar extends ConsumerWidget {
   const _SearchStatusBar();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final seconds = ref.watch(searchCountdownProvider);
     final progress = ref.watch(matcherProgressProvider);
-    final mm = (seconds ~/ 60).toString().padLeft(2, '0');
-    final ss = (seconds % 60).toString().padLeft(2, '0');
-    final subtitle = _statusSubtitle(progress);
+    final headline = _headline(progress);
+    final sub = matcherStatusLabel(progress);
 
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Row(
         children: [
-          const Icon(Icons.access_time_rounded,
-              size: 20, color: MyShopColors.textSecondary),
-          const SizedBox(width: 10),
+          const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.2,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                MyShopColors.primaryGold,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'Search expires in',
-                  style: TextStyle(
+                Text(
+                  headline,
+                  style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: MyShopColors.textPrimary,
                   ),
                 ),
                 Text(
-                  subtitle,
-                  maxLines: 1,
+                  sub,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w400,
                     color: MyShopColors.textSecondary,
+                    height: 1.3,
                   ),
                 ),
               ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            '$mm:$ss',
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: MyShopColors.primaryGold,
-              fontFeatures: [FontFeature.tabularFigures()],
             ),
           ),
         ],
@@ -448,22 +475,20 @@ class _SearchStatusBar extends ConsumerWidget {
     );
   }
 
-  /// Mirrors `_SearchingBar._searchLabel` but renders below the radar so the
-  /// rider sees the matcher's current radius without scrolling their eyes
-  /// up to the top bar.
-  static String _statusSubtitle(MatcherProgress? progress) {
-    if (progress == null) return 'Looking for drivers nearby…';
-    final radius = progress.radiusKm;
-    final fresh = progress.driversRemaining;
-    if (radius <= 0) {
-      return fresh > 0 ? 'Trying another driver…' : 'Still searching nearby…';
+  /// Short, stable headline that doesn't churn on every event. The actual
+  /// "what's happening right now" detail lives in the subtitle, which is
+  /// `matcherStatusLabel(progress)`.
+  static String _headline(MatcherProgress? progress) {
+    if (progress == null) return 'Looking for a driver';
+    switch (progress.reason) {
+      case MatcherReason.initial:
+        return 'Notifying drivers';
+      case MatcherReason.decline:
+        return 'Driver declined';
+      case MatcherReason.timeout:
+        return progress.driversRemaining > 0
+            ? 'Trying another driver'
+            : 'Expanding search';
     }
-    final km = radius.toStringAsFixed(
-      radius == radius.roundToDouble() ? 0 : 1,
-    );
-    if (fresh > 0) {
-      return 'Notifying drivers within $km km';
-    }
-    return 'Expanding to $km km radius';
   }
 }

@@ -449,16 +449,33 @@ final bookingPhaseProvider =
 /// driver-matching screen so the rider sees what went wrong.
 final bookingFailureMessageProvider = StateProvider<String?>((_) => null);
 
+/// Why the backend just (re-)dispatched. Drives the rider's matching screen
+/// copy: 'initial' → "Notifying N driver(s)…"; 'decline' → "Driver declined,
+/// searching again"; 'timeout' → "Driver didn't respond, expanding search".
+enum MatcherReason { initial, decline, timeout }
+
+MatcherReason parseMatcherReason(String? raw) {
+  switch (raw) {
+    case 'initial':
+      return MatcherReason.initial;
+    case 'decline':
+      return MatcherReason.decline;
+    case 'timeout':
+    default:
+      return MatcherReason.timeout;
+  }
+}
+
 /// Backend matcher progress snapshot pushed by the `ride:matcher_progress`
 /// socket event on every dispatch/expansion attempt. Drives the rider's
-/// matching screen copy ("Expanding to 5 km…", "Trying another driver…")
-/// so a sequence of declines isn't a silent spinner.
+/// matching screen copy so a sequence of declines isn't a silent spinner.
 class MatcherProgress {
   const MatcherProgress({
     required this.attempt,
     required this.driversTried,
     required this.driversRemaining,
     required this.radiusKm,
+    required this.reason,
   });
 
   /// Re-dispatch attempt counter (1-indexed). Increments on every expansion.
@@ -472,6 +489,9 @@ class MatcherProgress {
 
   /// Radius the matcher just searched at, in kilometres.
   final double radiusKm;
+
+  /// What triggered this event — set by the backend.
+  final MatcherReason reason;
 }
 
 final matcherProgressProvider = StateProvider<MatcherProgress?>((_) => null);
@@ -813,11 +833,19 @@ Future<void> requestRideAndMatchDriver(ProviderContainer ref) async {
     }
   }
 
-  // Timeout — no driver accepted within the search window.
-  if (ref.read(bookingPhaseProvider) != BookingPhase.accepted) {
-    developer.log('Driver matching timed out', name: 'RideProvider');
-    failWith("We couldn't find a driver in time. Please try again.");
-  }
+  // Loop ceiling reached. The backend is the source of truth for "no
+  // drivers" / "cancelled" / "accepted" — it emits `ride:state` and a
+  // matching `ride.cancelled` push. Don't synthesize a failure here:
+  // earlier versions did, and the rider got a misleading "couldn't find
+  // a driver in time" card while the matcher was still searching. If
+  // the backend really went silent (network partition, server crash),
+  // the REST hydrate at the 10 s cadence above will catch the final
+  // state on its next tick.
+  developer.log(
+    'Matching loop ceiling reached (180 s) — deferring final state to '
+    'backend snapshot. phase=${ref.read(bookingPhaseProvider)}',
+    name: 'RideProvider',
+  );
 }
 
 /// One-shot REST hydrate when socket-based snapshot delivery has been
