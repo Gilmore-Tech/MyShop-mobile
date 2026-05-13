@@ -395,20 +395,15 @@ void _connectAndListen(Ref ref, SocketService socket) {
       if (data is! Map<String, dynamic>) return;
       try {
         final ride = Ride.fromJson(data);
-        final active = ref.container.read(activeRideProvider).ride;
-        // Only apply snapshots for the ride we're tracking. The driver
-        // socket shouldn't see snapshots for unrelated rides, but guard
-        // anyway in case the backend rooms ever cross-talk.
-        if (active != null && active.id != ride.id) return;
-        ref.container.read(activeRideProvider.notifier).applySnapshot(ride);
 
-        // Refresh every earnings surface + payouts when the ride completes
+        // Refresh every earnings surface + payouts when ANY ride completes
         // — backend's `recordRideCompletion()` writes a `Payment` row
-        // fire-and-forget right after the status transition, so the new
-        // earnings figures land within a tick or two of this snapshot.
-        // Invalidating each family provider invalidates all its instances,
-        // so the homepage card, summary, and any open report refetch on
-        // their next watch without the driver pulling-to-refresh.
+        // fire-and-forget right after the status transition. The
+        // invalidate is unconditional on `completed` (not gated on the
+        // active-ride match) so a driver who has already navigated off
+        // /active-ride still sees the dashboard refresh. Without that,
+        // their earnings sat at the cached pre-trip value until they
+        // pull-to-refreshed or cold-started.
         if (ride.status == RideStatus.completed) {
           try {
             ref.container.invalidate(todayCardProvider);
@@ -418,6 +413,13 @@ void _connectAndListen(Ref ref, SocketService socket) {
             ref.container.invalidate(driverTripsProvider);
           } catch (_) {/* providers may not be mounted in tests */}
         }
+
+        // Only apply snapshots for the ride we're tracking. The driver
+        // socket shouldn't see snapshots for unrelated rides, but guard
+        // anyway in case the backend rooms ever cross-talk.
+        final active = ref.container.read(activeRideProvider).ride;
+        if (active != null && active.id != ride.id) return;
+        ref.container.read(activeRideProvider.notifier).applySnapshot(ride);
       } catch (e) {
         debugPrint('[WS] Failed to apply ride:state snapshot: $e');
       }
