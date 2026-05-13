@@ -644,7 +644,9 @@ final activeRideTrackingMaintainerProvider =
 ///   arrived     — driver has reached the pickup; waiting countdown running
 ///   inProgress  — trip has started; ETA counts down toward destination
 ///   completed   — trip finished; tracking screen routes to /ride-complete
-enum RideTrackingPhase { enRoute, arrived, inProgress, completed }
+///   cancelled   — driver or system aborted mid-trip; tracking screen
+///                 shows a snackbar and routes back to home
+enum RideTrackingPhase { enRoute, arrived, inProgress, completed, cancelled }
 
 final rideTrackingPhaseProvider = StateProvider<RideTrackingPhase>(
   (_) => RideTrackingPhase.enRoute,

@@ -196,6 +196,25 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
           } else {
             context.go(AppRoutes.rideComplete);
           }
+        case RideTrackingPhase.cancelled:
+          // Driver (or system) cancelled mid-trip. Tell the rider, wipe
+          // local ride state so the next booking starts fresh, and route
+          // back to home. The bookingFailureMessageProvider was set by
+          // socket_provider with the role-aware reason ("The driver
+          // cancelled this ride." / "We couldn't find a driver…").
+          _waitingTimer?.cancel();
+          if (!mounted) return;
+          final reason = ref.read(bookingFailureMessageProvider) ??
+              'This ride was cancelled.';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(reason)),
+          );
+          ref.read(activeRideIdProvider.notifier).state = null;
+          ref.read(matchedDriverProvider.notifier).state = null;
+          ref.read(rideTrackingPhaseProvider.notifier).state =
+              RideTrackingPhase.enRoute; // reset for next ride
+          ref.read(bookingPhaseProvider.notifier).reset();
+          context.go(AppRoutes.home);
       }
     });
 

@@ -226,9 +226,15 @@ void _connectAndListen(Ref ref, SocketService socket) {
           }
           ref.container.read(navBadgeProvider.notifier).increment('/activity');
         case 'cancelled' || 'no_drivers':
-          // Flip to `failed` (not `idle`) so the matching screen renders
-          // the failure card. Previously `reset()` sent the rider back to
-          // an empty idle state and they were stranded on the spinner.
+          // Flip BOTH provider tracks so wherever the rider is sitting —
+          // matching screen (bookingPhase=searching) or tracking screen
+          // (rideTrackingPhase=enRoute/arrived/inProgress) — they get
+          // routed away. Previously only bookingPhase moved, so a
+          // mid-trip driver-cancel left the rider stuck on the live map
+          // because the tracking screen watches rideTrackingPhase.
+          ref.container.read(rideTrackingPhaseProvider.notifier).state =
+              RideTrackingPhase.cancelled;
+
           final reason = (data['cancellationReason'] as String?) ?? '';
           final cancelledBy = (data['cancelledBy'] as String?) ?? '';
           final isNoDrivers = status == 'no_drivers' ||
@@ -236,7 +242,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
               cancelledBy == 'system';
           final friendlyMessage = isNoDrivers
               ? "We couldn't find a driver nearby. Please try again in a moment."
-              : (reason.isNotEmpty ? reason : 'This ride was cancelled.');
+              : cancelledBy == 'driver'
+                  ? 'The driver cancelled this ride.'
+                  : (reason.isNotEmpty ? reason : 'This ride was cancelled.');
           ref.container.read(bookingFailureMessageProvider.notifier).state =
               friendlyMessage;
           ref.container.read(bookingPhaseProvider.notifier).fail();
