@@ -48,13 +48,13 @@ class EarningsDashboardScreen extends ConsumerWidget {
     final report = reportAsync.valueOrNull;
     final todayCard = todayCardAsync.valueOrNull;
 
-    // Available balance mirrors the homepage "Earnings" headline so both
-    // surfaces report the same Paystack-settled net for the active role.
-    // Falls back to the summary endpoint while the today-card is still
-    // loading so the balance card never flashes 0 unnecessarily.
-    final availableBalance = todayCard?.netEarningsPesewas ??
-        summary?.availableBalancePesewas ??
-        0;
+    // The headline balance is the driver's actual payable cash — in-app
+    // net MINUS pending cash-commission clawbacks. Goes negative when the
+    // driver owes more commission than they've earned in-app; the card
+    // below flips its label from "Available balance" to "Owings" and
+    // shows the absolute value so the rider doesn't see "-GHS 1.80".
+    final effectiveBalance = summary?.effectiveBalancePesewas ?? 0;
+    final isInArrears = summary?.isInArrears ?? false;
     final todayAvailable = todayCard?.netEarningsPesewas ??
         summary?.todayAvailableBalancePesewas ??
         0;
@@ -202,9 +202,10 @@ class EarningsDashboardScreen extends ConsumerWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
                 child: _BalanceCard(
-                  availablePesewas: availableBalance,
+                  availablePesewas: effectiveBalance,
                   todayPesewas: todayAvailable,
                   weekPesewas: weeklyAvailable,
+                  isInArrears: isInArrears,
                 ),
               ),
               const SizedBox(height: MyShopSpacing.md),
@@ -443,17 +444,27 @@ class _BalanceCard extends StatelessWidget {
     required this.availablePesewas,
     required this.todayPesewas,
     required this.weekPesewas,
+    required this.isInArrears,
   });
 
+  /// Effective balance — positive when payable, negative when the driver
+  /// owes pending cash-commission clawbacks. UI renders the absolute value
+  /// when [isInArrears] is true.
   final int availablePesewas;
   final int todayPesewas;
   final int weekPesewas;
+  final bool isInArrears;
 
   @override
   Widget build(BuildContext context) {
-    final totalDisplay = _fmtGhs(availablePesewas);
+    final totalDisplay = _fmtGhs(availablePesewas.abs());
     final todayDisplay = _fmtGhs(todayPesewas);
     final weekDisplay = _fmtGhs(weekPesewas);
+    final headline = isInArrears ? 'Owings' : 'Available Balance';
+    final badgeText = isInArrears ? 'Owes platform' : 'Active';
+    final amountColor = isInArrears
+        ? MyShopColors.error.withValues(alpha: 0.95)
+        : Colors.white;
 
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.lg),
@@ -464,10 +475,15 @@ class _BalanceCard extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Row(children: [
-            const Icon(Icons.account_balance_wallet_outlined,
-                size: 16, color: Colors.white70),
+            Icon(
+              isInArrears
+                  ? Icons.warning_amber_rounded
+                  : Icons.account_balance_wallet_outlined,
+              size: 16,
+              color: isInArrears ? MyShopColors.error : Colors.white70,
+            ),
             const SizedBox(width: 6),
-            Text('Available Balance',
+            Text(headline,
                 style: MyShopTypography.body2.copyWith(
                     color: Colors.white70,
                     fontSize: 13,
@@ -476,25 +492,39 @@ class _BalanceCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: BoxDecoration(
-              color: Colors.white24,
+              color: isInArrears
+                  ? MyShopColors.error.withValues(alpha: 0.15)
+                  : Colors.white24,
               borderRadius: BorderRadius.circular(12),
+              border: isInArrears
+                  ? Border.all(color: MyShopColors.error, width: 1)
+                  : null,
             ),
-            child: const Text('Active',
+            child: Text(badgeText,
                 style: TextStyle(
                     fontFamily: 'Raleway',
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: Colors.white)),
+                    color: isInArrears ? MyShopColors.error : Colors.white)),
           ),
         ]),
         const SizedBox(height: 4),
-        Text('GHS $totalDisplay',
-            style: const TextStyle(
+        Text(
+            // Prepend "-" when in arrears so the driver reads it as
+            // "−GHS 3.60 owed" — the abs() above gives the magnitude.
+            isInArrears ? '−GHS $totalDisplay' : 'GHS $totalDisplay',
+            style: TextStyle(
                 fontFamily: 'Raleway',
                 fontSize: 36,
                 fontWeight: FontWeight.w900,
-                color: Colors.white,
+                color: amountColor,
                 letterSpacing: -0.8)),
+        if (isInArrears) ...[
+          const SizedBox(height: 4),
+          Text('Will be netted from your next in-app earnings',
+              style: MyShopTypography.caption.copyWith(
+                  color: Colors.white70, fontStyle: FontStyle.italic)),
+        ],
         const SizedBox(height: MyShopSpacing.md),
         Row(children: [
           Expanded(

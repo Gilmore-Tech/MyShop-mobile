@@ -56,9 +56,12 @@ class EarningsSummarySection extends ConsumerWidget {
             ),
             const SizedBox(height: MyShopSpacing.sm),
 
-            // Amount
+            // Amount — show GROSS for the day so the driver sees the full
+            // fare they collected (cash + in-app). The per-component
+            // breakdown (gross / commission / net) lives in the earnings
+            // module, not on this top-level dashboard card.
             Text(
-              'GH₵ ${_formatAmount(card.netEarningsPesewas)}',
+              'GH₵ ${_formatAmount(card.grossEarningsPesewas)}',
               style: const TextStyle(
                 fontFamily: 'Raleway',
                 fontSize: 36,
