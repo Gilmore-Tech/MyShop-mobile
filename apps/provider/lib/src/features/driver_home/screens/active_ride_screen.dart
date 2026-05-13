@@ -222,8 +222,11 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
       );
     }
     if (!mounted) return;
-    // Active ride state is now cleared; pop back to whatever was below us.
-    Navigator.of(context).pop('cancelled');
+    // Active ride state is now cleared. Route via GoRouter so the
+    // matchList stays consistent — `Navigator.pop` would clash with the
+    // ride:state listener above (which already navigates on the cancelled
+    // snapshot) and trip the "no pages left to show" assertion.
+    context.go('/home');
   }
 
   /// Where the driver is currently navigating to. Pickup until they have
@@ -282,7 +285,11 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
           const SnackBar(content: Text('This ride was cancelled.')),
         );
         ref.read(activeRideProvider.notifier).clearRide();
-        Navigator.of(context).pop('cancelled');
+        // GoRouter (idempotent) — `Navigator.pop` here previously raced
+        // with `_confirmAndCancel`'s own pop and crashed with "popped the
+        // last page off of the stack" because the active-ride screen was
+        // pushed via a raw MaterialPageRoute outside GoRouter's matchList.
+        context.go('/home');
       }
     });
 

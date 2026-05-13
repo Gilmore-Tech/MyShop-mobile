@@ -60,6 +60,15 @@ class RoadSnapService {
 
       return LatLng(lat, lng);
     } catch (error, stack) {
+      // Android tears down the process's outbound sockets when the app
+      // backgrounds — any snap call that happened to be mid-flight aborts
+      // with "Software caused connection abort" or a `connectionError`
+      // DioException type. The caller already falls back to the raw GPS
+      // fix, so this isn't a real failure — don't pollute the log with
+      // it. Only the API-misconfiguration cases (key missing, billing
+      // disabled, badResponse) deserve the loud one-time warning.
+      if (_isBackgroundAbort(error)) return null;
+
       if (!_hasLoggedFailure) {
         _hasLoggedFailure = true;
         developer.log(
@@ -73,6 +82,25 @@ class RoadSnapService {
       }
       return null;
     }
+  }
+
+  /// Heuristic to detect the OS-killed-our-socket case so we don't shout
+  /// about a transient backgrounding event the user already handled.
+  bool _isBackgroundAbort(Object error) {
+    if (error is! DioException) return false;
+    if (error.type == DioExceptionType.connectionError ||
+        error.type == DioExceptionType.cancel) {
+      return true;
+    }
+    if (error.type == DioExceptionType.unknown) {
+      final msg = error.error?.toString().toLowerCase() ?? '';
+      return msg.contains('connection abort') ||
+          msg.contains('software caused') ||
+          msg.contains('connection closed') ||
+          msg.contains('socket') ||
+          msg.contains('network is unreachable');
+    }
+    return false;
   }
 }
 
