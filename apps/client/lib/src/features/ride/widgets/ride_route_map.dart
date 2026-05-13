@@ -163,6 +163,12 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
       case RideTrackingPhase.arrived:
         if (pickup?.lat == null || pickup?.lng == null) return null;
         return Position(pickup!.lng!, pickup.lat!);
+      case RideTrackingPhase.cancelled:
+        // Tracking screen routes away the moment phase flips to cancelled,
+        // so there's no useful target — null skips the route fetch and
+        // we render whatever is already on the map for the single frame
+        // before the navigation lands.
+        return null;
     }
   }
 
@@ -465,8 +471,10 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
       case RideTrackingPhase.inProgress:
         return _InProgressPill(minutes: widget.etaMinutes);
       case RideTrackingPhase.completed:
-        // Tracking screen navigates away on `completed`; render the trip
-        // pill in the brief frame before that happens so we don't flash.
+      case RideTrackingPhase.cancelled:
+        // Tracking screen navigates away on both terminal phases; render
+        // the trip pill in the brief frame before that happens so we
+        // don't flash an empty area.
         return _InProgressPill(minutes: widget.etaMinutes);
     }
   }
