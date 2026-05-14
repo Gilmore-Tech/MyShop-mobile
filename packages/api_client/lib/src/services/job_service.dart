@@ -304,6 +304,34 @@ class JobService {
     }
   }
 
+  /// POST /jobs/:id/supplement — Artisan: request a material cost supplement
+  /// after starting work but before completion. One supplement per job;
+  /// backend returns 409 SUPPLEMENT_ALREADY_REQUESTED on a second call.
+  /// The client receives an FCM `type=supplement_request` and approves or
+  /// rejects via [respondToSupplement] below.
+  ///
+  /// [amountPesewas] is the EXTRA amount on top of the bid, not the new
+  /// total. [reason] is required by the backend and surfaced to the client
+  /// in the approve/reject sheet — be specific.
+  Future<Map<String, dynamic>> requestSupplement(
+    String jobId, {
+    required int amountPesewas,
+    required String reason,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/jobs/$jobId/supplement',
+        data: {
+          'amountPesewas': amountPesewas,
+          'reason': reason,
+        },
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   /// PATCH /jobs/:id/supplement/respond — Client: approve or reject supplement.
   Future<Map<String, dynamic>> respondToSupplement(
     String jobId, {

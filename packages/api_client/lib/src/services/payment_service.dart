@@ -236,4 +236,96 @@ class PaymentService {
       throw ApiException.fromDioException(e);
     }
   }
+
+  /// POST /payments/payout-method/request-otp — provider sends OTP to a
+  /// candidate MoMo number before locking it in as the payout destination.
+  ///
+  /// `method` is one of `momo_mtn`, `momo_telecel`, `momo_airteltigo`.
+  /// `accountNumber` accepts either `0XXXXXXXXX` or `+233XXXXXXXXX`;
+  /// backend normalises before storage.
+  ///
+  /// Returns `{ expiresAt, retryAfterSeconds }`. Once a provider has
+  /// verified a payout method, this endpoint returns 409
+  /// `PAYOUT_METHOD_LOCKED` until an admin unlocks it.
+  Future<Map<String, dynamic>> requestPayoutMethodOtp({
+    required String method,
+    required String accountNumber,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/payments/payout-method/request-otp',
+        data: {
+          'method': method,
+          'accountNumber': accountNumber,
+        },
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// POST /payments/payout-method/verify-otp — consume the SMS code and
+  /// commit the payout method atomically. Returns
+  /// `{ payoutMethod, payoutAccountNumber, payoutLocked }`. Wrong codes
+  /// decrement attemptsLeft (starts at 5); exhausting them is fatal and
+  /// the candidate is destroyed — the provider must request a new OTP.
+  Future<Map<String, dynamic>> verifyPayoutMethodOtp({
+    required String code,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/payments/payout-method/verify-otp',
+        data: {'code': code},
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// POST /payments/payouts/request — disburse the provider's available
+  /// balance to their stored MoMo. `method` must match the provider's
+  /// `payoutMethod` (set via the OTP-verified bind flow above).
+  /// `amountPesewas` is optional — omit for full available balance.
+  ///
+  /// `idempotencyKey` is passed in the `Idempotency-Key` header. Subsequent
+  /// calls with the same key replay the first response verbatim for 24 h —
+  /// safe to retry on network error without double-disbursing.
+  Future<Map<String, dynamic>> requestPayout({
+    required String method,
+    int? amountPesewas,
+    String? idempotencyKey,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/payments/payouts/request',
+        data: {
+          'method': method,
+          if (amountPesewas != null) 'amountPesewas': amountPesewas,
+        },
+        options: idempotencyKey == null
+            ? null
+            : Options(headers: {'Idempotency-Key': idempotencyKey}),
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// POST /payments/:id/retry — re-initiate a failed MoMo payment after
+  /// the client tops up their wallet (PRD edge case #22). Returns the
+  /// new payment-initiation envelope, same shape as `initiatePayment`.
+  ///
+  /// 400 `PAYMENT_NOT_RETRYABLE` means the payment is in a terminal state
+  /// (completed, refunded) or the retry window expired.
+  Future<Map<String, dynamic>> retryPayment(String paymentId) async {
+    try {
+      final response = await _dio.post('/payments/$paymentId/retry');
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
 }
