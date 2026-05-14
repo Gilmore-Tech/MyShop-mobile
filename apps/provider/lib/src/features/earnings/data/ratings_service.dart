@@ -1,8 +1,13 @@
 import 'package:dio/dio.dart';
 
-/// Wraps `GET /providers/me/ratings` — the role-agnostic ratings summary
-/// for the authenticated provider, aggregated across ride and artisan-job
-/// ratings where the caller is the ratee.
+/// Wraps `GET /providers/me/ratings` — ratings summary for the
+/// authenticated provider.
+///
+/// Pass `role: 'driver'` or `role: 'artisan'` to scope the aggregate to
+/// just that role's bookings. A phone holding both profiles MUST pass
+/// the active role — without it the backend returns the combined
+/// average across rides AND artisan jobs, which surfaces the same
+/// number on both dashboards (the bug reported 14 May).
 class RatingsService {
   RatingsService(this._dio);
 
@@ -17,9 +22,10 @@ class RatingsService {
   /// hide real failures (auth lapse, 5xx, parsing bug) behind the same
   /// silent placeholder as a brand-new provider with zero revealed
   /// ratings.
-  Future<ProviderRatingsSummary> getProviderRatings() async {
+  Future<ProviderRatingsSummary> getProviderRatings({String? role}) async {
     final response = await _dio.get<Map<String, dynamic>>(
       '/providers/me/ratings',
+      queryParameters: role == null ? null : {'role': role},
     );
     final body = response.data;
     if (body == null ||
