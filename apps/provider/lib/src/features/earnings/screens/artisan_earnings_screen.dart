@@ -9,6 +9,7 @@ import '../providers/earnings_providers.dart';
 import '../providers/ratings_provider.dart';
 import '../widgets/commission_card.dart';
 import '../widgets/payouts_list.dart';
+import '../widgets/request_payout_sheet.dart';
 import '../widgets/weekly_performance_card.dart';
 
 /// Artisan-side earnings details screen.
@@ -146,6 +147,33 @@ class _EarningsContent extends ConsumerWidget {
           periodNet: periodNet,
           jobsDone: jobsDone,
           ratingsAsync: ratingsAsync,
+        ),
+        const SizedBox(height: MyShopSpacing.sm),
+        // Request Payout — disabled until the artisan has cleared the
+        // GHS 0 threshold. The sheet itself handles first-time MoMo bind
+        // via the OTP flow; thereafter it just confirms and disburses.
+        ElevatedButton.icon(
+          onPressed: availablePesewas > 0
+              ? () => showRequestPayoutSheet(context)
+              : null,
+          icon: const Icon(Icons.send_rounded, size: 18),
+          label: const Text('REQUEST PAYOUT'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: MyShopColors.primaryGold,
+            foregroundColor: MyShopColors.textOnPrimary,
+            disabledBackgroundColor:
+                MyShopColors.primaryGold.withValues(alpha: 0.4),
+            minimumSize: const Size(double.infinity, 48),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(28),
+            ),
+            textStyle: const TextStyle(
+              fontFamily: 'Raleway',
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.5,
+            ),
+          ),
         ),
         const SizedBox(height: MyShopSpacing.md),
         Row(

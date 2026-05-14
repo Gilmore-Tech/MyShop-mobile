@@ -9,6 +9,7 @@ import '../providers/earnings_providers.dart';
 import '../providers/ratings_provider.dart';
 import '../widgets/commission_card.dart';
 import '../widgets/payouts_list.dart';
+import '../widgets/request_payout_sheet.dart';
 import '../widgets/weekly_performance_card.dart';
 
 /// Earnings dashboard — balance card, stats, performance chart, commission, payouts.
@@ -206,6 +207,39 @@ class EarningsDashboardScreen extends ConsumerWidget {
                   todayPesewas: todayAvailable,
                   weekPesewas: weeklyAvailable,
                   isInArrears: isInArrears,
+                ),
+              ),
+              const SizedBox(height: MyShopSpacing.sm),
+
+              // ── Request Payout CTA ──
+              // Disabled in arrears (driver owes the platform — backend
+              // would 400 with INSUFFICIENT_BALANCE anyway) and when the
+              // effective balance is 0 / negative.
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                child: ElevatedButton.icon(
+                  onPressed: effectiveBalance > 0 && !isInArrears
+                      ? () => showRequestPayoutSheet(context)
+                      : null,
+                  icon: const Icon(Icons.send_rounded, size: 18),
+                  label: const Text('REQUEST PAYOUT'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: MyShopColors.primaryGold,
+                    foregroundColor: MyShopColors.textOnPrimary,
+                    disabledBackgroundColor:
+                        MyShopColors.primaryGold.withValues(alpha: 0.4),
+                    minimumSize: const Size(double.infinity, 48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                    textStyle: const TextStyle(
+                      fontFamily: 'Raleway',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: MyShopSpacing.md),

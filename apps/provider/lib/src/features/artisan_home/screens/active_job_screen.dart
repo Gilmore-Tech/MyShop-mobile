@@ -322,6 +322,8 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
                       onAdvance: () =>
                           ref.read(activeJobProvider.notifier).advance(),
                       onCall: () {},
+                      onRequestSupplement: () =>
+                          context.push('/supplement-request'),
                     ),
             ),
           ],
@@ -1014,12 +1016,18 @@ class _BottomPanel extends StatelessWidget {
     required this.isUpdating,
     required this.onAdvance,
     required this.onCall,
+    required this.onRequestSupplement,
   });
 
   final Job job;
   final bool isUpdating;
   final VoidCallback onAdvance;
   final VoidCallback onCall;
+
+  /// Push the supplement-request screen. Only surfaces while the backend
+  /// allows a supplement — before `inProgress` per the marketplace
+  /// controller's "before work starts" rule.
+  final VoidCallback onRequestSupplement;
 
   @override
   Widget build(BuildContext context) {
@@ -1090,9 +1098,43 @@ class _BottomPanel extends StatelessWidget {
               ),
             ],
           ),
+          if (_supplementAllowed) ...[
+            const SizedBox(height: MyShopSpacing.sm),
+            TextButton.icon(
+              onPressed: onRequestSupplement,
+              icon: const Icon(Icons.add_card_outlined, size: 18),
+              label: const Text(
+                'Request material supplement',
+                style: TextStyle(
+                  fontFamily: 'Raleway',
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              style: TextButton.styleFrom(
+                foregroundColor: MyShopColors.primaryGoldDark,
+                minimumSize: const Size(double.infinity, 40),
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  /// Surface the supplement entry point ONLY while the backend will
+  /// accept a `POST /jobs/:id/supplement` call — i.e. before the artisan
+  /// starts work. Hiding it afterwards keeps the UI honest with the
+  /// "before work starts" rule on the controller, and prevents the
+  /// artisan racking up disputes by trying to add charges late.
+  bool get _supplementAllowed {
+    switch (job.status) {
+      case JobStatus.confirmed:
+      case JobStatus.artisanEnRoute:
+      case JobStatus.arrived:
+        return true;
+      default:
+        return false;
+    }
   }
 }
 

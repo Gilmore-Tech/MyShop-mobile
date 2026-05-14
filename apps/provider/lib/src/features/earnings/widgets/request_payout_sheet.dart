@@ -1,0 +1,498 @@
+import 'dart:math';
+
+import 'package:api_client/api_client.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_ui/shared_ui.dart';
+
+import '../../../core/di/providers.dart';
+import '../../auth/providers/auth_controller.dart';
+import '../../auth/providers/current_user_provider.dart';
+import '../../profile/providers/provider_type_provider.dart';
+import '../providers/earnings_providers.dart';
+
+/// Driver / artisan tap "Request Payout" → this sheet handles the whole
+/// flow:
+///
+///   * Already bound (user.payoutMethod + payoutAccountNumber set):
+///     confirm + fire `requestPayout` → success screen.
+///
+///   * Not yet bound: show MoMo network picker + account-number field →
+///     request OTP → SMS code entry → verify → kick straight into the
+///     payout call. Single-session UX.
+///
+/// On success the relevant earnings providers (today card, summary,
+/// payouts list) are invalidated so the dashboard reflects the new
+/// pending payout within one frame.
+Future<void> showRequestPayoutSheet(BuildContext context) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: MyShopColors.surfaceWhite,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (_) => const _RequestPayoutSheet(),
+  );
+}
+
+class _RequestPayoutSheet extends ConsumerStatefulWidget {
+  const _RequestPayoutSheet();
+
+  @override
+  ConsumerState<_RequestPayoutSheet> createState() =>
+      _RequestPayoutSheetState();
+}
+
+enum _Step { confirm, bindEnter, bindOtp, working, done, error }
+
+class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
+  late _Step _step;
+  String _selectedMethod = 'momo_mtn';
+  final _accountCtl = TextEditingController();
+  final _otpCtl = TextEditingController();
+  String? _errorMessage;
+  String? _successMessage;
+  String? _idempotencyKey;
+
+  @override
+  void initState() {
+    super.initState();
+    _step = _hasBoundPayoutMethod() ? _Step.confirm : _Step.bindEnter;
+  }
+
+  @override
+  void dispose() {
+    _accountCtl.dispose();
+    _otpCtl.dispose();
+    super.dispose();
+  }
+
+  bool _hasBoundPayoutMethod() {
+    final user = ref.read(currentUserProvider);
+    if (user == null) return false;
+    final role = ref.read(providerTypeProvider);
+    final method = role.isDriver
+        ? user.driverProfile?.payoutMethod
+        : user.artisanProfile?.payoutMethod;
+    final account = role.isDriver
+        ? user.driverProfile?.payoutAccountNumber
+        : user.artisanProfile?.payoutAccountNumber;
+    return (method ?? '').isNotEmpty && (account ?? '').isNotEmpty;
+  }
+
+  String? _boundAccountMasked() {
+    final user = ref.read(currentUserProvider);
+    if (user == null) return null;
+    final role = ref.read(providerTypeProvider);
+    final account = role.isDriver
+        ? user.driverProfile?.payoutAccountNumber
+        : user.artisanProfile?.payoutAccountNumber;
+    if (account == null || account.length < 4) return account;
+    return '••• ${account.substring(account.length - 3)}';
+  }
+
+  String _boundMethodLabel() {
+    final user = ref.read(currentUserProvider);
+    final role = ref.read(providerTypeProvider);
+    final method = (role.isDriver
+            ? user?.driverProfile?.payoutMethod
+            : user?.artisanProfile?.payoutMethod) ??
+        '';
+    return _methodLabel(method);
+  }
+
+  String _methodLabel(String code) {
+    switch (code) {
+      case 'momo_mtn':
+        return 'MTN MoMo';
+      case 'momo_telecel':
+        return 'Telecel Cash';
+      case 'momo_airteltigo':
+        return 'AirtelTigo Money';
+      default:
+        return code;
+    }
+  }
+
+  // ── Step transitions ───────────────────────────────────────────────
+
+  Future<void> _onRequestOtp() async {
+    if (_accountCtl.text.trim().isEmpty) {
+      setState(() => _errorMessage = 'Enter the MoMo number.');
+      return;
+    }
+    setState(() {
+      _errorMessage = null;
+      _step = _Step.working;
+    });
+    try {
+      await ref.read(paymentServiceProvider).requestPayoutMethodOtp(
+            method: _selectedMethod,
+            accountNumber: _accountCtl.text.trim(),
+          );
+      if (!mounted) return;
+      setState(() => _step = _Step.bindOtp);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = e.message;
+        _step = _Step.bindEnter;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = 'Could not send the verification code. Try again.';
+        _step = _Step.bindEnter;
+      });
+    }
+  }
+
+  Future<void> _onVerifyOtp() async {
+    if (_otpCtl.text.trim().length != 6) {
+      setState(() => _errorMessage = 'Enter the 6-digit code.');
+      return;
+    }
+    setState(() {
+      _errorMessage = null;
+      _step = _Step.working;
+    });
+    try {
+      await ref
+          .read(paymentServiceProvider)
+          .verifyPayoutMethodOtp(code: _otpCtl.text.trim());
+      // Refresh the user so the dashboard reads the newly-bound payoutMethod.
+      await ref
+          .read(authControllerProvider.notifier)
+          .refreshProfile();
+      if (!mounted) return;
+      await _firePayoutRequest();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = e.message;
+        _step = _Step.bindOtp;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = 'Verification failed. Try again.';
+        _step = _Step.bindOtp;
+      });
+    }
+  }
+
+  Future<void> _firePayoutRequest() async {
+    setState(() {
+      _errorMessage = null;
+      _step = _Step.working;
+    });
+    final user = ref.read(currentUserProvider);
+    final role = ref.read(providerTypeProvider);
+    final method = (role.isDriver
+            ? user?.driverProfile?.payoutMethod
+            : user?.artisanProfile?.payoutMethod) ??
+        _selectedMethod;
+    // Per-attempt idempotency key — replayed if the user backs out and
+    // taps Confirm again on the same session, so we never double-disburse.
+    _idempotencyKey ??=
+        'payout-${DateTime.now().millisecondsSinceEpoch}-${Random().nextInt(1 << 30)}';
+    try {
+      await ref.read(paymentServiceProvider).requestPayout(
+            method: method,
+            idempotencyKey: _idempotencyKey,
+          );
+      ref.invalidate(todayCardProvider);
+      ref.invalidate(earningsSummaryProvider);
+      ref.invalidate(payoutsProvider);
+      if (!mounted) return;
+      setState(() {
+        _successMessage =
+            'Payout queued. Funds usually arrive in 2–5 minutes.';
+        _step = _Step.done;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = e.message;
+        _step = _Step.error;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = 'Could not request payout. Try again in a moment.';
+        _step = _Step.error;
+      });
+    }
+  }
+
+  // ── Render ────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + bottomInset),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: MyShopColors.divider,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          ..._buildStep(),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildStep() {
+    switch (_step) {
+      case _Step.confirm:
+        return _confirmStep();
+      case _Step.bindEnter:
+        return _bindEnterStep();
+      case _Step.bindOtp:
+        return _bindOtpStep();
+      case _Step.working:
+        return _workingStep();
+      case _Step.done:
+        return _doneStep();
+      case _Step.error:
+        return _errorStep();
+    }
+  }
+
+  List<Widget> _confirmStep() {
+    final masked = _boundAccountMasked() ?? '—';
+    final method = _boundMethodLabel();
+    return [
+      const Text('Request Payout',
+          style: TextStyle(
+              fontFamily: 'Raleway',
+              fontSize: 18,
+              fontWeight: FontWeight.w800)),
+      const SizedBox(height: 8),
+      Text(
+        'We\'ll send your available balance to your registered MoMo account.',
+        style: MyShopTypography.body2,
+      ),
+      const SizedBox(height: 20),
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: MyShopColors.surfaceGrey,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(children: [
+          const Icon(Icons.account_balance_wallet_outlined,
+              color: MyShopColors.primaryGold),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(method,
+                    style: const TextStyle(
+                        fontFamily: 'Raleway',
+                        fontWeight: FontWeight.w700)),
+                Text(masked, style: MyShopTypography.body2),
+              ],
+            ),
+          ),
+        ]),
+      ),
+      if (_errorMessage != null) ...[
+        const SizedBox(height: 12),
+        Text(_errorMessage!,
+            style: TextStyle(color: MyShopColors.error, fontSize: 12)),
+      ],
+      const SizedBox(height: 20),
+      MyShopPrimaryButton(
+        label: 'CONFIRM PAYOUT',
+        onPressed: _firePayoutRequest,
+      ),
+      const SizedBox(height: 8),
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Cancel'),
+      ),
+    ];
+  }
+
+  List<Widget> _bindEnterStep() {
+    return [
+      const Text('Link your MoMo for payouts',
+          style: TextStyle(
+              fontFamily: 'Raleway',
+              fontSize: 18,
+              fontWeight: FontWeight.w800)),
+      const SizedBox(height: 8),
+      Text(
+        'We\'ll send a verification code to confirm the number before locking it in. Once verified, only support can change it.',
+        style: MyShopTypography.body2,
+      ),
+      const SizedBox(height: 20),
+      DropdownButtonFormField<String>(
+        initialValue: _selectedMethod,
+        decoration: const InputDecoration(
+          labelText: 'MoMo network',
+          border: OutlineInputBorder(),
+        ),
+        items: const [
+          DropdownMenuItem(value: 'momo_mtn', child: Text('MTN MoMo')),
+          DropdownMenuItem(value: 'momo_telecel', child: Text('Telecel Cash')),
+          DropdownMenuItem(
+              value: 'momo_airteltigo', child: Text('AirtelTigo Money')),
+        ],
+        onChanged: (v) =>
+            setState(() => _selectedMethod = v ?? _selectedMethod),
+      ),
+      const SizedBox(height: 12),
+      TextField(
+        controller: _accountCtl,
+        keyboardType: TextInputType.phone,
+        decoration: const InputDecoration(
+          labelText: 'MoMo number',
+          hintText: '0241234567',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      if (_errorMessage != null) ...[
+        const SizedBox(height: 12),
+        Text(_errorMessage!,
+            style: TextStyle(color: MyShopColors.error, fontSize: 12)),
+      ],
+      const SizedBox(height: 20),
+      MyShopPrimaryButton(
+        label: 'SEND CODE',
+        onPressed: _onRequestOtp,
+      ),
+      const SizedBox(height: 8),
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Cancel'),
+      ),
+    ];
+  }
+
+  List<Widget> _bindOtpStep() {
+    return [
+      const Text('Enter verification code',
+          style: TextStyle(
+              fontFamily: 'Raleway',
+              fontSize: 18,
+              fontWeight: FontWeight.w800)),
+      const SizedBox(height: 8),
+      Text('6-digit code sent to ${_accountCtl.text}',
+          style: MyShopTypography.body2),
+      const SizedBox(height: 20),
+      TextField(
+        controller: _otpCtl,
+        keyboardType: TextInputType.number,
+        maxLength: 6,
+        decoration: const InputDecoration(
+          labelText: 'OTP',
+          counterText: '',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      if (_errorMessage != null) ...[
+        const SizedBox(height: 12),
+        Text(_errorMessage!,
+            style: TextStyle(color: MyShopColors.error, fontSize: 12)),
+      ],
+      const SizedBox(height: 20),
+      MyShopPrimaryButton(
+        label: 'VERIFY & REQUEST PAYOUT',
+        onPressed: _onVerifyOtp,
+      ),
+      const SizedBox(height: 8),
+      TextButton(
+        onPressed: () => setState(() {
+          _otpCtl.clear();
+          _errorMessage = null;
+          _step = _Step.bindEnter;
+        }),
+        child: const Text('Change number'),
+      ),
+    ];
+  }
+
+  List<Widget> _workingStep() {
+    return const [
+      Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Column(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 12),
+            Text('Working…'),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _doneStep() {
+    return [
+      const Icon(Icons.check_circle, size: 56, color: MyShopColors.success),
+      const SizedBox(height: 12),
+      const Text('Payout queued',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+              fontFamily: 'Raleway',
+              fontSize: 18,
+              fontWeight: FontWeight.w800)),
+      const SizedBox(height: 8),
+      Text(_successMessage ?? '',
+          textAlign: TextAlign.center, style: MyShopTypography.body2),
+      const SizedBox(height: 20),
+      MyShopPrimaryButton(
+        label: 'DONE',
+        onPressed: () => Navigator.of(context).pop(),
+      ),
+    ];
+  }
+
+  List<Widget> _errorStep() {
+    return [
+      const Icon(Icons.error_outline, size: 56, color: MyShopColors.error),
+      const SizedBox(height: 12),
+      const Text('Payout failed',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+              fontFamily: 'Raleway',
+              fontSize: 18,
+              fontWeight: FontWeight.w800)),
+      const SizedBox(height: 8),
+      Text(_errorMessage ?? 'Unknown error',
+          textAlign: TextAlign.center, style: MyShopTypography.body2),
+      const SizedBox(height: 20),
+      MyShopPrimaryButton(
+        label: 'TRY AGAIN',
+        onPressed: () {
+          setState(() {
+            // Fresh idempotency key for the retry — the previous attempt
+            // is locked to its own key for 24h.
+            _idempotencyKey = null;
+          });
+          _firePayoutRequest();
+        },
+      ),
+      const SizedBox(height: 8),
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Close'),
+      ),
+    ];
+  }
+}

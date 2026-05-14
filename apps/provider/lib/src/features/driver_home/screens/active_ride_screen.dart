@@ -739,7 +739,11 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
         _lastRouteOrigin = origin;
         _polylines = _buildPolylines();
       });
-      _fitCamera(origin: origin, route: route);
+      // Deliberately NO `_fitCamera` here. The polyline draws itself on
+      // top of the map; the camera is owned exclusively by the nav-
+      // follow path in `_onPositionFix`. The earlier re-fit-on-every-
+      // route-refresh was what kept yanking the camera back to a wide
+      // two-pin bounds view and breaking nav mode.
       _publishMetrics();
     } finally {
       _routeLoading = false;
@@ -774,8 +778,10 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
     // Turn-by-turn behaviour: as long as the driver hasn't grabbed the
     // map themselves, the camera follows them with a 3-D tilted view
     // pointing in the direction of travel. Same UX as Google Maps' nav
-    // mode — but inline, no app switch needed.
-    if (_followCamera && _hasFittedCamera) {
+    // mode — but inline, no app switch needed. No `_hasFittedCamera`
+    // gate — we want the nav pose engaged from the very first GPS fix,
+    // not after a slow route-fetch round trip.
+    if (_followCamera) {
       _animateCameraToDriver(next, bearing);
     }
 

@@ -94,3 +94,11 @@ final chatServiceProvider = Provider<ChatService>((ref) {
 final mediaServiceProvider = Provider<MediaService>((ref) {
   return MediaService(ref.watch(dioProvider));
 });
+
+/// Payment service — payout-method OTP bind, payout request, retry
+/// payment. Driver + artisan earnings dashboards consume this to let
+/// providers cash out their available balance to MoMo without leaving
+/// the app.
+final paymentServiceProvider = Provider<PaymentService>((ref) {
+  return PaymentService(ref.watch(dioProvider));
+});
