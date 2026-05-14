@@ -13,6 +13,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/providers/chat_controller_provider.dart';
 import '../../../core/services/directions_service.dart';
+import '../data/external_nav_service.dart';
 import '../providers/driver_location_provider.dart';
 import '../providers/ride_request_provider.dart';
 
@@ -84,6 +85,19 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
     // stage-timeout service auto-cancels rides stuck in `accepted` after
     // ~2 minutes, so we can't risk the transition being delayed by widget
     // lifecycle quirks.
+  }
+
+  /// Manual launch from the Navigate button. Routes to pickup before the
+  /// trip starts and dropoff after. The in-app map handles turn-by-turn
+  /// natively (camera follows driver, tilts, rotates) so external nav is
+  /// purely an opt-in for drivers who prefer Google Maps' voice guidance.
+  Future<void> _onNavigatePressed(Ride ride) async {
+    final isPostStart = ride.status == RideStatus.inProgress;
+    await externalNavService.openDrivingNav(
+      lat: isPostStart ? ride.dropoffLat : ride.pickupLat,
+      lng: isPostStart ? ride.dropoffLng : ride.pickupLng,
+      label: isPostStart ? ride.dropoffAddress : ride.pickupAddress,
+    );
   }
 
   @override
@@ -381,6 +395,7 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
                 scrollController: scrollController,
                 isUpdating: isUpdating,
                 onPrimaryAction: () => _handlePrimaryAction(ride),
+                onNavigate: () => _onNavigatePressed(ride),
               );
             },
           ),
@@ -573,11 +588,36 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   /// GoogleMap only rebuilds when this widget calls setState.
   LatLng? _driver;
 
+  /// Turn-by-turn nav mode. When true, the camera follows the driver on
+  /// every GPS fix — tilted 3-D view, rotated to match the driver's
+  /// heading, zoomed in close. Drivers get the same UX they'd see in
+  /// Google Maps' "Start" mode without leaving the app.
+  ///
+  /// Flips to false the moment the driver drags or pinches the map (so
+  /// we don't fight their gesture). The recenter button restores it.
+  bool _followCamera = true;
+
+  /// Last heading we used for the camera bearing. GPS `heading` is NaN
+  /// when stationary and noisy at very low speeds, so we keep the
+  /// previous good value rather than spin the camera wildly.
+  double _lastBearing = 0;
+
+  /// True while the camera is mid-animation triggered by THIS widget —
+  /// `onCameraMoveStarted` fires for our own animateCamera calls too, so
+  /// without this flag the very animation that follows the driver would
+  /// flip `_followCamera` off and break the next fix.
+  bool _programmaticCameraMove = false;
+
   Set<Marker> _markers = const <Marker>{};
   Set<Polyline> _polylines = const <Polyline>{};
 
   static const _routeRefreshMeters = 80.0;
   static const _routeRefreshThrottle = Duration(seconds: 30);
+
+  /// Camera params for nav mode. Tilt 50° gives a 3-D forward-looking
+  /// view; zoom 17.5 is the same level Google Maps' "Start" mode opens at.
+  static const _navZoom = 17.5;
+  static const _navTilt = 50.0;
 
   @override
   void initState() {
@@ -626,9 +666,40 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   void _handleRecenter() {
     final driver = _driver;
     if (driver == null) return;
-    _hasFittedCamera = false;
-    _fitCamera(origin: driver, route: _route);
+    // Restore nav-mode follow: snap back to the driver with the same
+    // 3-D tilted camera the position-fix loop uses, and refresh the
+    // route in case the user drifted off-screen long enough that the
+    // cached polyline is stale.
+    _followCamera = true;
+    _animateCameraToDriver(driver, _lastBearing);
     _refreshRouteIfNeeded(driver, force: true);
+  }
+
+  /// Animate the camera into nav-mode pose (tilted + rotated + zoomed).
+  /// Wrapped in the `_programmaticCameraMove` guard so `onCameraMoveStarted`
+  /// doesn't mistake our own animation for a user gesture and flip
+  /// `_followCamera` off mid-flight.
+  void _animateCameraToDriver(LatLng position, double bearing) {
+    final controller = _mapController;
+    if (controller == null) return;
+    _programmaticCameraMove = true;
+    controller.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: position,
+          zoom: _navZoom,
+          tilt: _navTilt,
+          bearing: bearing,
+        ),
+      ),
+    );
+    // The Google Maps SDK doesn't expose an "animation finished" callback,
+    // so we drop the guard on the next frame. By then `onCameraMoveStarted`
+    // has fired (it's synchronous-ish with the animation start) and a
+    // genuine user gesture later won't be misattributed.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _programmaticCameraMove = false;
+    });
   }
 
   Future<void> _refreshRouteIfNeeded(
@@ -686,10 +757,28 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
       return;
     }
 
+    // Heading is NaN when the GPS doesn't have a directional fix (e.g.
+    // stationary) and noisy below ~1 m/s. Keep the previous bearing in
+    // those cases so the camera doesn't spin while the driver waits at
+    // a red light.
+    final bearing = (pos.heading.isFinite && pos.speed >= 1.0)
+        ? pos.heading
+        : _lastBearing;
+    _lastBearing = bearing;
+
     setState(() {
       _driver = next;
       _markers = _buildMarkers();
     });
+
+    // Turn-by-turn behaviour: as long as the driver hasn't grabbed the
+    // map themselves, the camera follows them with a 3-D tilted view
+    // pointing in the direction of travel. Same UX as Google Maps' nav
+    // mode — but inline, no app switch needed.
+    if (_followCamera && _hasFittedCamera) {
+      _animateCameraToDriver(next, bearing);
+    }
+
     _publishMetrics();
     _refreshRouteIfNeeded(next);
   }
@@ -802,6 +891,16 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
         final driver = _driver;
         if (driver != null) {
           _fitCamera(origin: driver, route: _route);
+        }
+      },
+      // User-initiated pan / pinch → pause nav-mode follow so we don't
+      // fight their gesture. The recenter button restores it. Programmatic
+      // camera moves (our own animateCamera) carry the guard so we don't
+      // accidentally pause ourselves mid-animation.
+      onCameraMoveStarted: () {
+        if (_programmaticCameraMove) return;
+        if (_followCamera) {
+          setState(() => _followCamera = false);
         }
       },
       myLocationEnabled: false,
@@ -929,12 +1028,19 @@ class _PassengerPanel extends StatelessWidget {
     required this.scrollController,
     required this.isUpdating,
     required this.onPrimaryAction,
+    required this.onNavigate,
   });
 
   final Ride ride;
   final ScrollController scrollController;
   final bool isUpdating;
   final VoidCallback onPrimaryAction;
+
+  /// Re-launches Google Maps with directions to the current target
+  /// (pickup before in_progress, dropoff after). Kept as an explicit
+  /// button so the driver isn't stranded if they kill the maps app and
+  /// return to the MyShop screen.
+  final VoidCallback onNavigate;
 
   @override
   Widget build(BuildContext context) {
@@ -1135,6 +1241,35 @@ class _PassengerPanel extends StatelessWidget {
               ),
             ),
             const SizedBox(height: MyShopSpacing.md),
+
+            // Navigate (re-)launcher — auto-fired on accept / start trip,
+            // but kept here as an explicit button so the driver can re-
+            // launch Google Maps if it crashes or they swipe it away.
+            // Labels the current target so it's clear where it'll route.
+            OutlinedButton.icon(
+              onPressed: onNavigate,
+              icon: const Icon(Icons.navigation_rounded, size: 18),
+              label: Text(
+                ride.status == RideStatus.inProgress
+                    ? 'NAVIGATE TO DROPOFF'
+                    : 'NAVIGATE TO PICKUP',
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: MyShopColors.darkSlate,
+                side: const BorderSide(color: MyShopColors.divider),
+                minimumSize: const Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(40),
+                ),
+                textStyle: const TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+            const SizedBox(height: MyShopSpacing.sm),
 
             // Primary action button
             ElevatedButton(
