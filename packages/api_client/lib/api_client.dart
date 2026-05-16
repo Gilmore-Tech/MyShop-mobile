@@ -35,6 +35,7 @@ export 'src/services/loyalty_service.dart';
 export 'src/services/media_service.dart';
 export 'src/services/notification_service.dart';
 export 'src/services/payment_service.dart';
+export 'src/services/platform_config_service.dart';
 export 'src/services/rating_service.dart';
 export 'src/services/ride_service.dart';
 export 'src/services/safety_service.dart';

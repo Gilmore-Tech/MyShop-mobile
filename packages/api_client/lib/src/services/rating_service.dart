@@ -43,4 +43,22 @@ class RatingService {
       throw ApiException.fromDioException(e);
     }
   }
+
+  /// GET /ratings/me — Authenticated user's ratings summary as a ratee.
+  ///
+  /// Role-agnostic: works for clients (ratings drivers/artisans gave them)
+  /// and providers (combined view across booking types). Providers who
+  /// want role-scoped numbers should hit `/providers/me/ratings?role=...`
+  /// — that endpoint stays gated to driver/artisan and powers the
+  /// per-role dashboard tiles.
+  ///
+  /// Returns `{ average, count, last30dAverage, distribution }`.
+  Future<Map<String, dynamic>> getMyRatings() async {
+    try {
+      final response = await _dio.get('/ratings/me');
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
 }
