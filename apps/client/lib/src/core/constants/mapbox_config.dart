@@ -1,15 +1,24 @@
+/// Mapbox configuration for the client app — used by the artisan
+/// pin-drop / job-location flow. Tokens MUST be supplied at build time:
+///
+///   flutter build apk \
+///     --dart-define=MAPBOX_ACCESS_TOKEN=pk.eyJ... \
+///     --dart-define=MAPBOX_STYLE_URL=mapbox://styles/gilmore/cmnl0...
+///
+/// Empty `defaultValue` so a missing define fails visibly (map renders
+/// the Mapbox watermark + "access token required" error) instead of
+/// silently shipping with a checked-in token.
 class MapboxConfig {
   const MapboxConfig._();
 
   static const String accessToken = String.fromEnvironment(
     'MAPBOX_ACCESS_TOKEN',
-    defaultValue:
-        'pk.eyJ1IjoiZ2lsbW9yZSIsImEiOiJjbW5sMGx3dXcweXU5MnBxdHdodW5maDBwIn0.Lke90nHHdkavw3XOTENjQg',
+    defaultValue: '',
   );
 
   static const String styleUrl = String.fromEnvironment(
     'MAPBOX_STYLE_URL',
-    defaultValue: 'mapbox://styles/gilmore/cmnl0y49000br01s7f9cd95jy',
+    defaultValue: '',
   );
 
   /// Default map center — Kumasi, Ashanti Region.
