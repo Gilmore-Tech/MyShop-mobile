@@ -40,8 +40,6 @@ class SavedLocationsScreen extends ConsumerWidget {
                 children: [
                   SizedBox(height: h * 0.014),
                   _SearchBar(w: w, h: h),
-                  SizedBox(height: h * 0.019),
-                  _QuickCategoriesRow(w: w, h: h),
                   SizedBox(height: h * 0.022),
                   _AddressesSection(state: state, w: w, h: h),
                   SizedBox(height: h * 0.014),
@@ -135,119 +133,6 @@ class _SearchBar extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ── Quick Categories ──────────────────────────────────────────────────────────
-
-class _QuickCategoriesRow extends StatelessWidget {
-  final double w;
-  final double h;
-  const _QuickCategoriesRow({required this.w, required this.h});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: EdgeInsets.only(left: w * 0.041),
-          child: Text(
-            'QUICK CATEGORIES',
-            style: TextStyle(
-              fontSize: w * 0.023,
-              fontWeight: FontWeight.w900,
-              color: MyShopColors.textSecondary,
-              letterSpacing: 0.7,
-            ),
-          ),
-        ),
-        SizedBox(height: h * 0.010),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: EdgeInsets.symmetric(horizontal: w * 0.041),
-          child: Row(
-            children: [
-              ...kQuickCategories.map(
-                (cat) => Padding(
-                  padding: EdgeInsets.only(right: w * 0.021),
-                  child: _CategoryChip(category: cat, w: w, h: h),
-                ),
-              ),
-              _AddCategoryChip(w: w, h: h),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _CategoryChip extends StatelessWidget {
-  final QuickCategory category;
-  final double w;
-  final double h;
-  const _CategoryChip(
-      {required this.category, required this.w, required this.h});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {},
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: w * 0.031,
-          vertical: h * 0.009,
-        ),
-        decoration: BoxDecoration(
-          color: MyShopColors.surfaceWhite,
-          borderRadius: BorderRadius.circular(w * 0.051),
-          border: Border.all(color: MyShopColors.divider),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(category.icon,
-                size: w * 0.036, color: MyShopColors.textSecondary),
-            SizedBox(width: w * 0.015),
-            Text(
-              category.label,
-              style: TextStyle(
-                fontSize: w * 0.031,
-                fontWeight: FontWeight.w500,
-                color: MyShopColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AddCategoryChip extends StatelessWidget {
-  final double w;
-  final double h;
-  const _AddCategoryChip({required this.w, required this.h});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {},
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        width: w * 0.077,
-        height: w * 0.077,
-        decoration: BoxDecoration(
-          color: MyShopColors.surfaceWhite,
-          shape: BoxShape.circle,
-          border: Border.all(color: MyShopColors.divider),
-        ),
-        child: Icon(Icons.add_rounded,
-            size: w * 0.041, color: MyShopColors.textSecondary),
       ),
     );
   }

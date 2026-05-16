@@ -22,20 +22,6 @@ extension PlaceTypeX on PlaceType {
 
 enum ThumbnailStyle { residential, urban, commercial }
 
-// ── Quick Category ────────────────────────────────────────────────────────────
-
-class QuickCategory {
-  final String label;
-  final IconData icon;
-  const QuickCategory({required this.label, required this.icon});
-}
-
-const kQuickCategories = <QuickCategory>[
-  QuickCategory(label: 'Gym', icon: Icons.fitness_center_outlined),
-  QuickCategory(label: 'School', icon: Icons.school_outlined),
-  QuickCategory(label: 'Parents', icon: Icons.favorite_border_rounded),
-];
-
 // ── Saved Place ───────────────────────────────────────────────────────────────
 
 class SavedPlace {

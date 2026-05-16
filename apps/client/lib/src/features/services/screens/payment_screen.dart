@@ -1,6 +1,7 @@
 import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -895,7 +896,7 @@ class _LineItem extends StatelessWidget {
 
 // ── Payment Method Card ───────────────────────────────────────────────────────
 
-class _PaymentMethodCard extends ConsumerWidget {
+class _PaymentMethodCard extends ConsumerStatefulWidget {
   final PaymentSummary summary;
   final double w;
   final double h;
@@ -908,8 +909,34 @@ class _PaymentMethodCard extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_PaymentMethodCard> createState() => _PaymentMethodCardState();
+}
+
+class _PaymentMethodCardState extends ConsumerState<_PaymentMethodCard> {
+  @override
+  void initState() {
+    super.initState();
+    widget.momoPhoneCtrl.addListener(_onChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.momoPhoneCtrl.removeListener(_onChanged);
+    super.dispose();
+  }
+
+  void _onChanged() => setState(() {});
+
+  @override
+  Widget build(BuildContext context) {
     final selected = ref.watch(paymentNotifierProvider).selectedMethod;
+    final w = widget.w;
+    final h = widget.h;
+    final momoPhoneCtrl = widget.momoPhoneCtrl;
+    final phoneError = selected.requiresMomoPhone &&
+            momoPhoneCtrl.text.isNotEmpty
+        ? Validators.ghanaPhone(momoPhoneCtrl.text)
+        : null;
 
     return _Card(
       w: w,
@@ -970,6 +997,10 @@ class _PaymentMethodCard extends ConsumerWidget {
             TextField(
               controller: momoPhoneCtrl,
               keyboardType: TextInputType.phone,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9 +\-]')),
+                LengthLimitingTextInputFormatter(20),
+              ],
               style: TextStyle(
                 fontSize: w * 0.038,
                 color: MyShopColors.textPrimary,
@@ -1009,10 +1040,13 @@ class _PaymentMethodCard extends ConsumerWidget {
             ),
             SizedBox(height: h * 0.006),
             Text(
-              "You'll receive a prompt on this number to approve the charge.",
+              phoneError ??
+                  "You'll receive a prompt on this number to approve the charge.",
               style: TextStyle(
                 fontSize: w * 0.026,
-                color: MyShopColors.textSecondary,
+                color: phoneError != null
+                    ? MyShopColors.error
+                    : MyShopColors.textSecondary,
                 height: 1.4,
               ),
             ),
@@ -1151,7 +1185,7 @@ class _RadioDot extends StatelessWidget {
 
 // ── Bottom Bar ────────────────────────────────────────────────────────────────
 
-class _BottomBar extends ConsumerWidget {
+class _BottomBar extends ConsumerStatefulWidget {
   final PaymentSummary summary;
   final double w;
   final double h;
@@ -1164,9 +1198,35 @@ class _BottomBar extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_BottomBar> createState() => _BottomBarState();
+}
+
+class _BottomBarState extends ConsumerState<_BottomBar> {
+  @override
+  void initState() {
+    super.initState();
+    widget.momoPhoneCtrl.addListener(_onChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.momoPhoneCtrl.removeListener(_onChanged);
+    super.dispose();
+  }
+
+  void _onChanged() => setState(() {});
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(paymentNotifierProvider);
     final bottomPad = MediaQuery.paddingOf(context).bottom;
+    final summary = widget.summary;
+    final w = widget.w;
+    final h = widget.h;
+    final momoPhoneCtrl = widget.momoPhoneCtrl;
+    final requiresMomo = state.selectedMethod.requiresMomoPhone;
+    final isMomoValid = !requiresMomo ||
+        Validators.ghanaPhone(momoPhoneCtrl.text) == null;
 
     return Container(
       decoration: const BoxDecoration(
@@ -1248,7 +1308,7 @@ class _BottomBar extends ConsumerWidget {
                 // notifier falls back to abandon-by-booking + fresh
                 // /initiate when the window expired or the row is no
                 // longer retryable.
-                PaymentPhase.failed => () =>
+                PaymentPhase.failed when isMomoValid => () =>
                     ref.read(paymentNotifierProvider.notifier).retryAfterFailure(
                           jobId: summary.jobId,
                           summary: summary,
@@ -1256,7 +1316,7 @@ class _BottomBar extends ConsumerWidget {
                               ? momoPhoneCtrl.text
                               : null,
                         ),
-                PaymentPhase.idle => () =>
+                PaymentPhase.idle when isMomoValid => () =>
                     ref.read(paymentNotifierProvider.notifier).confirmPayment(
                           jobId: summary.jobId,
                           summary: summary,

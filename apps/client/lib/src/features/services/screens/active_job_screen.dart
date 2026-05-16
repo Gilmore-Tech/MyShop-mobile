@@ -235,20 +235,6 @@ class _AppBar extends StatelessWidget {
               ),
             ),
           ),
-          GestureDetector(
-            onTap: () {}, // TODO: show job info sheet
-            behavior: HitTestBehavior.opaque,
-            child: Container(
-              width: w * 0.092,
-              height: w * 0.092,
-              decoration: BoxDecoration(
-                color: MyShopColors.surfaceGrey,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.info_outline_rounded,
-                  size: w * 0.046, color: MyShopColors.textSecondary),
-            ),
-          ),
         ],
       ),
     );
@@ -554,46 +540,6 @@ class _MapSection extends StatelessWidget {
                 ),
               ),
             ),
-            // "Expand Map >" button
-            Positioned(
-              bottom: h * 0.012,
-              right: w * 0.031,
-              child: GestureDetector(
-                onTap: () {}, // TODO: open Mapbox full-screen tracking
-                behavior: HitTestBehavior.opaque,
-                child: Container(
-                  padding: EdgeInsets.symmetric(
-                      horizontal: w * 0.031, vertical: h * 0.007),
-                  decoration: BoxDecoration(
-                    color: MyShopColors.surfaceWhite,
-                    borderRadius: BorderRadius.circular(w * 0.041),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.10),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Expand Map',
-                        style: TextStyle(
-                          fontSize: w * 0.028,
-                          fontWeight: FontWeight.w600,
-                          color: MyShopColors.textPrimary,
-                        ),
-                      ),
-                      SizedBox(width: w * 0.010),
-                      Icon(Icons.chevron_right_rounded,
-                          size: w * 0.036, color: MyShopColors.textSecondary),
-                    ],
-                  ),
-                ),
-              ),
-            ),
           ],
         ),
       ),
@@ -724,77 +670,17 @@ class _ActionButtonsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
-      child: Row(
-        children: [
-          Expanded(
-            child: ChatEntryButton(
-              bookingType: ChatBookingType.artisanJob,
-              bookingId: jobId,
-              label: 'Message',
-              peerName: artisanName,
-              peerStatus: 'On your job',
-              background: MyShopColors.surfaceWhite,
-              foreground: MyShopColors.textPrimary,
-            ),
-          ),
-          SizedBox(width: w * 0.026),
-          Expanded(
-            child: _OutlinedActionButton(
-              icon: Icons.phone_outlined,
-              label: 'Call Artisan',
-              onTap: () {}, // TODO: initiate masked call
-              w: w,
-              h: h,
-            ),
-          ),
-        ],
+      child: ChatEntryButton(
+        bookingType: ChatBookingType.artisanJob,
+        bookingId: jobId,
+        label: 'Message Artisan',
+        peerName: artisanName,
+        peerStatus: 'On your job',
+        background: MyShopColors.surfaceWhite,
+        foreground: MyShopColors.textPrimary,
       ),
-    );
-  }
-}
-
-class _OutlinedActionButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final double w;
-  final double h;
-  const _OutlinedActionButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    required this.w,
-    required this.h,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        height: h * 0.054,
-        decoration: BoxDecoration(
-          color: MyShopColors.surfaceWhite,
-          borderRadius: BorderRadius.circular(w * 0.021),
-          border: Border.all(color: MyShopColors.divider),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: w * 0.038, color: MyShopColors.textPrimary),
-            SizedBox(width: w * 0.015),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: w * 0.033,
-                fontWeight: FontWeight.w600,
-                color: MyShopColors.textPrimary,
-              ),
-            ),
-          ],
-        ),
-      ),
+      // "Call Artisan" button removed in v1.0 — masked calls deferred
+      // to v1.2. Chat is the only peer comms channel for the pilot.
     );
   }
 }
@@ -837,20 +723,6 @@ class _ProgressSection extends StatelessWidget {
                   fontWeight: FontWeight.w900,
                   color: MyShopColors.textPrimary,
                   letterSpacing: 0.8,
-                ),
-              ),
-              const Spacer(),
-              GestureDetector(
-                onTap: () {}, // TODO: navigate to live tracking map
-                behavior: HitTestBehavior.opaque,
-                child: Text(
-                  'LIVE TRACKING',
-                  style: TextStyle(
-                    fontSize: w * 0.028,
-                    fontWeight: FontWeight.w700,
-                    color: MyShopColors.primaryGold,
-                    letterSpacing: 0.5,
-                  ),
                 ),
               ),
             ],
@@ -1380,23 +1252,6 @@ class _BottomBar extends ConsumerWidget {
                   ),
                 ),
               ),
-              if (phase == ActiveJobPhase.enRoute ||
-                  phase == ActiveJobPhase.arrived)
-                GestureDetector(
-                  onTap: () {}, // TODO: navigate to report issue screen
-                  behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: EdgeInsets.only(left: w * 0.026),
-                    child: Text(
-                      'Report Issue',
-                      style: TextStyle(
-                        fontSize: w * 0.028,
-                        fontWeight: FontWeight.w500,
-                        color: MyShopColors.textHint,
-                      ),
-                    ),
-                  ),
-                ),
             ],
           ),
           SizedBox(height: h * 0.010),

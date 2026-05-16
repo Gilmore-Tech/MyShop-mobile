@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -363,10 +364,22 @@ class _AddMethodSheetState extends ConsumerState<_AddMethodSheet> {
   bool _loading = false;
 
   @override
+  void initState() {
+    super.initState();
+    _phoneController.addListener(_onChanged);
+  }
+
+  @override
   void dispose() {
+    _phoneController.removeListener(_onChanged);
     _phoneController.dispose();
     super.dispose();
   }
+
+  void _onChanged() => setState(() {});
+
+  bool get _isPhoneValid =>
+      Validators.ghanaPhone(_phoneController.text) == null;
 
   Future<void> _saveMomo() async {
     if (_selectedMomo == null || _phoneController.text.trim().isEmpty) return;
@@ -489,6 +502,10 @@ class _AddMethodSheetState extends ConsumerState<_AddMethodSheet> {
           TextField(
             controller: _phoneController,
             keyboardType: TextInputType.phone,
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9 +\-]')),
+              LengthLimitingTextInputFormatter(20),
+            ],
             decoration: InputDecoration(
               hintText: '+233 XX XXX XXXX',
               prefixIcon: const Icon(Icons.phone_outlined),
@@ -498,6 +515,17 @@ class _AddMethodSheetState extends ConsumerState<_AddMethodSheet> {
                   EdgeInsets.symmetric(horizontal: w * 0.038, vertical: 14),
             ),
           ),
+          if (_phoneController.text.isNotEmpty && !_isPhoneValid) ...[
+            SizedBox(height: h * 0.006),
+            Text(
+              Validators.ghanaPhone(_phoneController.text) ?? '',
+              style: TextStyle(
+                color: MyShopColors.error,
+                fontSize: w * 0.028,
+                height: 1.4,
+              ),
+            ),
+          ],
 
           SizedBox(height: h * 0.024),
 
@@ -506,7 +534,9 @@ class _AddMethodSheetState extends ConsumerState<_AddMethodSheet> {
             height: h * 0.062,
             child: ElevatedButton(
               onPressed:
-                  (_selectedMomo != null && !_loading) ? _saveMomo : null,
+                  (_selectedMomo != null && _isPhoneValid && !_loading)
+                      ? _saveMomo
+                      : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: MyShopColors.primaryGold,
                 foregroundColor: Colors.white,

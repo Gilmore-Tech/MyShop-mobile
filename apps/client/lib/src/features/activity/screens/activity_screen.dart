@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -378,14 +379,11 @@ class _JobCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(w * 0.031),
         border: Border.all(color: MyShopColors.divider),
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(w * 0.031),
-        onTap: () {}, // TODO: navigate to JobDetailScreen(jobId: job.id)
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: w * 0.041,
-            vertical: h * 0.017,
-          ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: w * 0.041,
+          vertical: h * 0.017,
+        ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -489,7 +487,6 @@ class _JobCard extends StatelessWidget {
               ],
             ],
           ),
-        ),
       ),
     );
   }
@@ -826,23 +823,25 @@ class _EmptyState extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             SizedBox(height: h * 0.033),
-            GestureDetector(
-              onTap: () {}, // TODO: navigate to JobFormScreen
-              child: Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: w * 0.077,
-                  vertical: h * 0.017,
-                ),
-                decoration: BoxDecoration(
-                  color: MyShopColors.darkSlate,
-                  borderRadius: BorderRadius.circular(w * 0.021),
-                ),
-                child: Text(
-                  'Post a Job',
-                  style: TextStyle(
-                    fontSize: w * 0.038,
-                    fontWeight: FontWeight.w600,
-                    color: MyShopColors.surfaceWhite,
+            Builder(
+              builder: (context) => GestureDetector(
+                onTap: () => context.go('/services'),
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: w * 0.077,
+                    vertical: h * 0.017,
+                  ),
+                  decoration: BoxDecoration(
+                    color: MyShopColors.darkSlate,
+                    borderRadius: BorderRadius.circular(w * 0.021),
+                  ),
+                  child: Text(
+                    'Post a Job',
+                    style: TextStyle(
+                      fontSize: w * 0.038,
+                      fontWeight: FontWeight.w600,
+                      color: MyShopColors.surfaceWhite,
+                    ),
                   ),
                 ),
               ),

@@ -225,8 +225,6 @@ class _TopBar extends StatelessWidget {
       child: Row(
         children: [
           _CircleBtn(icon: Icons.arrow_back, onTap: onBack),
-          const Spacer(),
-          _CircleBtn(icon: Icons.my_location_rounded, onTap: () {}),
         ],
       ),
     );
@@ -404,13 +402,8 @@ class _BottomSheet extends StatelessWidget {
                   ],
                 ),
               ),
-              _ContactBtn(
-                icon: Icons.phone_rounded,
-                color: MyShopColors.darkSlate,
-                onTap: () {},
-                w: w,
-              ),
-              SizedBox(width: w * 0.020),
+              // Phone _ContactBtn removed in v1.0 — masked calls deferred
+              // to v1.2. Only the chat tile remains as the peer comms channel.
               _ContactBtn(
                 icon: Icons.chat_bubble_outline_rounded,
                 color: MyShopColors.primaryGold,

@@ -301,21 +301,16 @@ class _PhoneChip extends StatelessWidget {
         color: MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(w * 0.051),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.phone_rounded,
-              size: w * 0.033, color: MyShopColors.textSecondary),
-          SizedBox(width: w * 0.015),
-          Text(
-            maskedPhone,
-            style: TextStyle(
-              fontSize: w * 0.031,
-              fontWeight: FontWeight.w500,
-              color: MyShopColors.textSecondary,
-            ),
-          ),
-        ],
+      child: Text(
+        // Phone icon dropped in v1.0 to avoid implying a tappable call
+        // affordance — masked calls land in v1.2. The masked digits
+        // stay so the rider can identify the driver if support asks.
+        maskedPhone,
+        style: TextStyle(
+          fontSize: w * 0.031,
+          fontWeight: FontWeight.w500,
+          color: MyShopColors.textSecondary,
+        ),
       ),
     );
   }

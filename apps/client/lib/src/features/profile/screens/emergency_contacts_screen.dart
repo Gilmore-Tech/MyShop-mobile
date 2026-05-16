@@ -394,8 +394,13 @@ class _AddContactSheetState extends State<_AddContactSheet> {
   }
 
   bool get _valid =>
-      _nameCtrl.text.trim().isNotEmpty &&
-      _phoneCtrl.text.replaceAll(RegExp(r'\D'), '').length >= 9;
+      _nameCtrl.text.trim().length >= 2 &&
+      Validators.ghanaPhone(_phoneCtrl.text) == null;
+
+  String? get _phoneError {
+    if (_phoneCtrl.text.isEmpty) return null;
+    return Validators.ghanaPhone(_phoneCtrl.text);
+  }
 
   Future<void> _save() async {
     if (!_valid || _saving) return;
@@ -461,12 +466,27 @@ class _AddContactSheetState extends State<_AddContactSheet> {
             icon: Icons.phone_outlined,
             keyboard: TextInputType.phone,
             formatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[\d\s\+]'))
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9 +\-]')),
+              LengthLimitingTextInputFormatter(20),
             ],
             onChanged: (_) => setState(() {}),
             w: w,
             h: h,
           ),
+          if (_phoneError != null) ...[
+            SizedBox(height: h * 0.006),
+            Padding(
+              padding: EdgeInsets.only(left: w * 0.012),
+              child: Text(
+                _phoneError!,
+                style: TextStyle(
+                  color: MyShopColors.error,
+                  fontSize: w * 0.028,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
           SizedBox(height: h * 0.014),
           _SheetField(
             controller: _relationCtrl,

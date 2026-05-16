@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
@@ -349,7 +350,7 @@ class _PhaseBody extends StatelessWidget {
   }
 }
 
-class _PhoneForm extends StatelessWidget {
+class _PhoneForm extends StatefulWidget {
   const _PhoneForm({
     required this.controller,
     required this.isProcessing,
@@ -363,7 +364,45 @@ class _PhoneForm extends StatelessWidget {
   final VoidCallback onPay;
 
   @override
+  State<_PhoneForm> createState() => _PhoneFormState();
+}
+
+class _PhoneFormState extends State<_PhoneForm> {
+  String? _localError;
+
+  bool get _isPhoneValid =>
+      Validators.ghanaPhone(widget.controller.text) == null;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onChanged);
+    super.dispose();
+  }
+
+  void _onChanged() {
+    if (_localError != null) setState(() => _localError = null);
+  }
+
+  void _submit() {
+    final err = Validators.ghanaPhone(widget.controller.text);
+    if (err != null) {
+      setState(() => _localError = err);
+      return;
+    }
+    widget.onPay();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final displayError = _localError ?? widget.errorMessage;
+    final canSubmit =
+        _isPhoneValid && !widget.isProcessing && _localError == null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -377,9 +416,13 @@ class _PhoneForm extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         TextField(
-          controller: controller,
+          controller: widget.controller,
           keyboardType: TextInputType.phone,
-          enabled: !isProcessing,
+          enabled: !widget.isProcessing,
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[0-9 +\-]')),
+            LengthLimitingTextInputFormatter(20),
+          ],
           decoration: InputDecoration(
             hintText: '0244 123 4567',
             filled: true,
@@ -394,10 +437,10 @@ class _PhoneForm extends StatelessWidget {
             ),
           ),
         ),
-        if (errorMessage != null) ...[
+        if (displayError != null) ...[
           const SizedBox(height: 10),
           Text(
-            errorMessage!,
+            displayError,
             style: const TextStyle(
               fontSize: 12,
               color: MyShopColors.error,
@@ -409,16 +452,19 @@ class _PhoneForm extends StatelessWidget {
           width: double.infinity,
           height: 52,
           child: ElevatedButton(
-            onPressed: isProcessing ? null : onPay,
+            onPressed: canSubmit ? _submit : null,
             style: ElevatedButton.styleFrom(
               backgroundColor: MyShopColors.darkSlate,
               foregroundColor: Colors.white,
+              disabledBackgroundColor:
+                  MyShopColors.darkSlate.withValues(alpha: 0.4),
+              disabledForegroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
               elevation: 0,
             ),
-            child: isProcessing
+            child: widget.isProcessing
                 ? const SizedBox(
                     width: 20,
                     height: 20,
@@ -442,7 +488,7 @@ class _PhoneForm extends StatelessWidget {
   }
 }
 
-class _OtpForm extends StatelessWidget {
+class _OtpForm extends StatefulWidget {
   const _OtpForm({
     required this.controller,
     required this.displayText,
@@ -458,12 +504,36 @@ class _OtpForm extends StatelessWidget {
   final VoidCallback onCancel;
 
   @override
+  State<_OtpForm> createState() => _OtpFormState();
+}
+
+class _OtpFormState extends State<_OtpForm> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onChanged);
+    super.dispose();
+  }
+
+  void _onChanged() => setState(() {});
+
+  bool get _isValid {
+    final v = widget.controller.text.trim();
+    return v.length >= 4 && v.length <= 8;
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          displayText ??
+          widget.displayText ??
               "We sent an OTP to your phone. Enter it to confirm the payment.",
           style: const TextStyle(
             fontSize: 13,
@@ -472,8 +542,12 @@ class _OtpForm extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         TextField(
-          controller: controller,
+          controller: widget.controller,
           keyboardType: TextInputType.number,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(8),
+          ],
           decoration: InputDecoration(
             hintText: 'OTP',
             filled: true,
@@ -488,10 +562,10 @@ class _OtpForm extends StatelessWidget {
             ),
           ),
         ),
-        if (errorMessage != null) ...[
+        if (widget.errorMessage != null) ...[
           const SizedBox(height: 10),
           Text(
-            errorMessage!,
+            widget.errorMessage!,
             style: const TextStyle(fontSize: 12, color: MyShopColors.error),
           ),
         ],
@@ -500,10 +574,13 @@ class _OtpForm extends StatelessWidget {
           width: double.infinity,
           height: 52,
           child: ElevatedButton(
-            onPressed: onSubmit,
+            onPressed: _isValid ? widget.onSubmit : null,
             style: ElevatedButton.styleFrom(
               backgroundColor: MyShopColors.darkSlate,
               foregroundColor: Colors.white,
+              disabledBackgroundColor:
+                  MyShopColors.darkSlate.withValues(alpha: 0.4),
+              disabledForegroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -521,7 +598,7 @@ class _OtpForm extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         TextButton(
-          onPressed: onCancel,
+          onPressed: widget.onCancel,
           child: const Text(
             'Cancel and pay later',
             style: TextStyle(

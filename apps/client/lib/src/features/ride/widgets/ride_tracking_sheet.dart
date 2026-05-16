@@ -78,8 +78,6 @@ class RideTrackingSheet extends StatelessWidget {
                     driverFirstName: firstName,
                     driverFullName: driver.name,
                   ),
-                  SizedBox(height: h * 0.012),
-                  const _SecondaryActions(),
                   SizedBox(height: h * 0.017),
                   const _SafetyNotice(),
                   SizedBox(height: h * 0.021),
@@ -507,114 +505,13 @@ class _ChatRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final w = MediaQuery.sizeOf(context).width;
     final rideId = ref.watch(activeRideIdProvider) ?? '';
-    return Row(
-      children: [
-        Expanded(
-          child: ChatEntryButton(
-            bookingType: ChatBookingType.ride,
-            bookingId: rideId,
-            label: 'Chat with $driverFirstName',
-            peerName: driverFullName,
-            peerStatus: 'On your trip',
-          ),
-        ),
-        SizedBox(width: w * 0.026),
-        _PhoneCircleButton(onTap: () {}),
-      ],
-    );
-  }
-}
-
-class _PhoneCircleButton extends StatelessWidget {
-  final VoidCallback onTap;
-  const _PhoneCircleButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      customBorder: const CircleBorder(),
-      child: Container(
-        width: 50,
-        height: 50,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white,
-          border: Border.all(color: MyShopColors.divider, width: 1.5),
-        ),
-        child: const Icon(Icons.phone_rounded,
-            size: 20, color: MyShopColors.textPrimary),
-      ),
-    );
-  }
-}
-
-// ── Secondary actions ─────────────────────────────────────────────────────────
-
-class _SecondaryActions extends StatelessWidget {
-  const _SecondaryActions();
-
-  @override
-  Widget build(BuildContext context) {
-    final w = MediaQuery.sizeOf(context).width;
-    return Row(
-      children: [
-        Expanded(
-          child: _OutlinedActionButton(
-            icon: Icons.share_rounded,
-            label: 'Share Trip',
-            onTap: () {},
-          ),
-        ),
-        SizedBox(width: w * 0.026),
-        Expanded(
-          child: _OutlinedActionButton(
-            icon: Icons.schedule_rounded,
-            label: 'Send ETA',
-            onTap: () {},
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _OutlinedActionButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _OutlinedActionButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final w = MediaQuery.sizeOf(context).width;
-    final h = MediaQuery.sizeOf(context).height;
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      style: OutlinedButton.styleFrom(
-        foregroundColor: MyShopColors.textPrimary,
-        side: const BorderSide(color: MyShopColors.divider, width: 1.5),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(w * 0.026),
-        ),
-        padding: EdgeInsets.symmetric(vertical: h * 0.014),
-      ),
-      icon: Icon(icon, size: w * 0.041, color: MyShopColors.textPrimary),
-      label: Text(
-        label,
-        style: TextStyle(
-          fontSize: w * 0.033,
-          fontWeight: FontWeight.w600,
-          color: MyShopColors.textPrimary,
-        ),
-      ),
+    return ChatEntryButton(
+      bookingType: ChatBookingType.ride,
+      bookingId: rideId,
+      label: 'Chat with $driverFirstName',
+      peerName: driverFullName,
+      peerStatus: 'On your trip',
     );
   }
 }

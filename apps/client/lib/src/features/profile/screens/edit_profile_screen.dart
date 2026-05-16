@@ -380,6 +380,20 @@ class _FormCard extends ConsumerWidget {
             w: w,
             h: h,
           ),
+          if (state.nameError != null) ...[
+            SizedBox(height: h * 0.006),
+            Padding(
+              padding: EdgeInsets.only(left: w * 0.012),
+              child: Text(
+                state.nameError!,
+                style: TextStyle(
+                  color: MyShopColors.error,
+                  fontSize: w * 0.028,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
           SizedBox(height: h * 0.019),
 
           // ── Email ──────────────────────────────────────────────────────────
@@ -419,6 +433,20 @@ class _FormCard extends ConsumerWidget {
             w: w,
             h: h,
           ),
+          if (state.emailError != null) ...[
+            SizedBox(height: h * 0.006),
+            Padding(
+              padding: EdgeInsets.only(left: w * 0.012),
+              child: Text(
+                state.emailError!,
+                style: TextStyle(
+                  color: MyShopColors.error,
+                  fontSize: w * 0.028,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
           SizedBox(height: h * 0.019),
 
           // ── Phone Number (read-only) ───────────────────────────────────────

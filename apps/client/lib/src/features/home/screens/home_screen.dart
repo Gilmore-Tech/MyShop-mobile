@@ -224,11 +224,9 @@ class _SpecialOffersSection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _SectionHeader(
+        const _SectionHeader(
           title: 'SPECIAL OFFERS',
           leadingIcon: Icons.local_offer_rounded,
-          actionLabel: 'View All',
-          onActionTap: () {},
         ),
         SizedBox(height: MediaQuery.sizeOf(context).height * 0.014),
         SizedBox(
@@ -271,14 +269,10 @@ class _OffersSkeletonList extends StatelessWidget {
 class _SectionHeader extends StatelessWidget {
   final String title;
   final IconData? leadingIcon;
-  final String? actionLabel;
-  final VoidCallback? onActionTap;
 
   const _SectionHeader({
     required this.title,
     this.leadingIcon,
-    this.actionLabel,
-    this.onActionTap,
   });
 
   @override
@@ -287,46 +281,22 @@ class _SectionHeader extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (leadingIcon != null) ...[
-                Icon(leadingIcon,
-                    size: w * 0.036, color: MyShopColors.primaryGold),
-                SizedBox(width: w * 0.015),
-              ],
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: w * 0.026,
-                  fontWeight: FontWeight.w900,
-                  color: MyShopColors.textSecondary,
-                  letterSpacing: 1.4,
-                ),
-              ),
-            ],
-          ),
-          if (actionLabel != null)
-            GestureDetector(
-              onTap: onActionTap,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    actionLabel!,
-                    style: TextStyle(
-                      fontSize: w * 0.031,
-                      fontWeight: FontWeight.w600,
-                      color: MyShopColors.primaryGold,
-                    ),
-                  ),
-                  Icon(Icons.chevron_right_rounded,
-                      size: w * 0.041, color: MyShopColors.primaryGold),
-                ],
-              ),
+          if (leadingIcon != null) ...[
+            Icon(leadingIcon,
+                size: w * 0.036, color: MyShopColors.primaryGold),
+            SizedBox(width: w * 0.015),
+          ],
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: w * 0.026,
+              fontWeight: FontWeight.w900,
+              color: MyShopColors.textSecondary,
+              letterSpacing: 1.4,
             ),
+          ),
         ],
       ),
     );

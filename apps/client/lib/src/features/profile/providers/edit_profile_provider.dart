@@ -1,5 +1,6 @@
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_ui/shared_ui.dart' show Validators;
 
 import '../../auth/providers/auth_controller.dart';
 
@@ -37,7 +38,26 @@ class EditProfileState {
   bool get emailChanged =>
       email.isNotEmpty && email.trim() != originalEmail.trim();
 
-  bool get canSave => !isSaving && !isSaved;
+  /// Inline validation errors surfaced under each field. Both are optional
+  /// from the API's perspective, so an empty field is fine — only a NON-
+  /// empty value with a bad shape blocks save.
+  String? get nameError {
+    final trimmed = fullName.trim();
+    if (trimmed.isEmpty) return null;
+    return Validators.fullName(trimmed);
+  }
+
+  String? get emailError {
+    final trimmed = email.trim();
+    if (trimmed.isEmpty) return null;
+    return Validators.email(trimmed);
+  }
+
+  bool get canSave =>
+      !isSaving &&
+      !isSaved &&
+      nameError == null &&
+      emailError == null;
 
   EditProfileState copyWith({
     String? fullName,

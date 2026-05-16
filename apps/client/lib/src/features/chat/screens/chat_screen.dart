@@ -233,7 +233,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           onTypingChanged: controller.notifyTyping,
           isPeerTyping: _peerTyping,
           peerTypingLabel: '${widget.peerName} is typing…',
-          onPhoneCall: () {},
         );
       },
     );

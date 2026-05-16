@@ -1610,25 +1610,6 @@ class _PendingActionContent extends StatelessWidget {
                 ),
               ),
             ),
-            SizedBox(width: w * 0.041),
-            GestureDetector(
-              onTap: () {}, // TODO: navigate to report issue screen
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: w * 0.026,
-                  vertical: h * 0.005,
-                ),
-                child: Text(
-                  'Report Issue',
-                  style: TextStyle(
-                    fontSize: w * 0.033,
-                    fontWeight: FontWeight.w400,
-                    color: MyShopColors.textSecondary,
-                  ),
-                ),
-              ),
-            ),
           ],
         ),
       ],
@@ -1722,40 +1703,10 @@ class _AwaitingActionContent extends StatelessWidget {
   }
 }
 
-class _IconCircleButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  final double w;
-  final double h;
-  const _IconCircleButton({
-    required this.icon,
-    required this.onTap,
-    required this.w,
-    required this.h,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: h * 0.062,
-        height: h * 0.062,
-        decoration: BoxDecoration(
-          color: MyShopColors.surfaceWhite,
-          shape: BoxShape.circle,
-          border: Border.all(color: MyShopColors.divider, width: 1.5),
-        ),
-        child: Icon(icon, size: w * 0.051, color: MyShopColors.textPrimary),
-      ),
-    );
-  }
-}
-
-/// Same circular silhouette as [_IconCircleButton] but wired to the chat
-/// orchestrator. Auto-opens the channel for `(artisanJob, jobId)` so the
-/// unread badge is live the moment the bid lands on the confirmed state,
-/// and pushes `/chat` with the artisan's name + a status hint on tap.
+/// Circular chat-entry button wired to the chat orchestrator. Auto-opens
+/// the channel for `(artisanJob, jobId)` so the unread badge is live the
+/// moment the bid lands on the confirmed state, and pushes `/chat` with
+/// the artisan's name + a status hint on tap.
 class _ChatCircleButton extends ConsumerStatefulWidget {
   const _ChatCircleButton({
     required this.jobId,
@@ -2266,13 +2217,8 @@ class _ConfirmedActionContent extends StatelessWidget {
               w: w,
               h: h,
             ),
-            SizedBox(width: w * 0.026),
-            _IconCircleButton(
-              icon: Icons.phone_outlined,
-              onTap: () {}, // TODO: initiate masked call
-              w: w,
-              h: h,
-            ),
+            // Phone-call circle button removed in v1.0 — masked calls
+            // deferred to v1.2. Chat covers client↔artisan comms.
             SizedBox(width: w * 0.026),
             Expanded(
               child: SizedBox(
@@ -2336,7 +2282,7 @@ class _ExpiredActionContent extends StatelessWidget {
           width: double.infinity,
           height: h * 0.062,
           child: ElevatedButton(
-            onPressed: () {}, // TODO: navigate to job_form_screen (re-post)
+            onPressed: () => context.go('/services'),
             style: ElevatedButton.styleFrom(
               backgroundColor: MyShopColors.darkSlate,
               foregroundColor: MyShopColors.surfaceWhite,
