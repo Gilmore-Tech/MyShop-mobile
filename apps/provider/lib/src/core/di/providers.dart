@@ -102,3 +102,10 @@ final mediaServiceProvider = Provider<MediaService>((ref) {
 final paymentServiceProvider = Provider<PaymentService>((ref) {
   return PaymentService(ref.watch(dioProvider));
 });
+
+/// Safety service — POST /emergency for the SOS screen. Used by both
+/// driver and artisan emergency surfaces with `bookingType: 'ride' | 'job'`
+/// derived from the active role + active booking id.
+final safetyServiceProvider = Provider<SafetyService>((ref) {
+  return SafetyService(ref.watch(dioProvider));
+});

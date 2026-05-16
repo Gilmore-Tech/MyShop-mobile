@@ -111,9 +111,15 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
     if (shouldPoll) {
       if (_ackPollTimer != null) return;
       // Pull once immediately so the moment the screen lands on the
-      // "waiting" state we reconcile with the server, then tick every 5s.
+      // "waiting" state we reconcile with the server, then tick at the
+      // poll cadence below. Socket events (`job:client_payment_ack`,
+      // `job:status:changed`) are the primary path; this is just a
+      // cold-reconnect / missed-emit safety net. 5 s was triggering
+      // 429 ThrottlerExceptions when combined with the jobs-list poll
+      // and the location-update cadence — 12 s comfortably fits inside
+      // the global limit without making the wait state feel laggy.
       ref.read(activeJobProvider.notifier).refreshFromServer();
-      _ackPollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _ackPollTimer = Timer.periodic(const Duration(seconds: 12), (_) {
         if (!mounted) return;
         ref.read(activeJobProvider.notifier).refreshFromServer();
       });

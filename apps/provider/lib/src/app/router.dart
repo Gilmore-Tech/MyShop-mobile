@@ -20,6 +20,7 @@ import '../features/artisan_home/screens/active_job_screen.dart';
 import '../features/artisan_home/screens/supplement_request_screen.dart';
 import '../features/chat/screens/chat_screen.dart';
 import '../features/chat/screens/messages_list_screen.dart';
+import '../features/notifications/screens/notifications_list_screen.dart';
 import '../features/artisan_home/screens/artisan_home_screen.dart';
 import '../features/artisan_home/screens/job_request_screen.dart';
 import '../features/artisan_jobs/screens/artisan_jobs_screen.dart';
@@ -352,6 +353,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/messages',
         builder: (context, state) => const MessagesListScreen(),
+      ),
+      GoRoute(
+        path: '/notifications',
+        builder: (context, state) => const ProviderNotificationsScreen(),
       ),
       GoRoute(
         path: '/job-request',

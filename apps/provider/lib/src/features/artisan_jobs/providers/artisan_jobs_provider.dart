@@ -14,7 +14,14 @@ const _kFetchTimeout = Duration(seconds: 15);
 /// Background refresh cadence. Safety net for missed socket events —
 /// keeps the bid banner, status pill, and list in sync even when
 /// `job:status` / `bid:accepted` never lands.
-const _kPollInterval = Duration(seconds: 8);
+///
+/// Bumped 8 s → 20 s on 14 May. The 8 s cadence + the active-job
+/// individual fetch (5 s) + location updates (every 5 s) + chat
+/// heartbeat were pushing the per-minute request count past the 100/min
+/// throttle ceiling, blocking legitimate users with 429s mid-test.
+/// Socket events still drive instant state changes; this just catches
+/// the cold-reconnect window.
+const _kPollInterval = Duration(seconds: 20);
 
 /// Minimum gap between *silent* reloads. Coalesces bursts where the
 /// 8s poll, a `status:changed` socket event, and an active-job state
