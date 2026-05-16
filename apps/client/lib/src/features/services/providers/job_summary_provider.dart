@@ -167,17 +167,22 @@ class RatingNotifier extends StateNotifier<RatingState> {
     if (!state.canSubmit) return false;
     state = state.copyWith(isSubmitting: true, clearError: true);
     try {
-      await _ref.read(ratingServiceProvider).submitRating(
+      final result = await _ref.read(ratingServiceProvider).submitRating(
             bookingType: 'artisan_job',
             bookingId: jobId,
             stars: state.selectedStars,
             comment: state.reviewText.isNotEmpty ? state.reviewText : null,
           );
-      // Bust the cached job/receipt views so the next visit reflects the
-      // submission. Blind 24-hour window means the average won't move for
-      // the rater, but anything else on the page should refresh.
-      _ref.invalidate(jobSummaryProvider(jobId));
-      _ref.invalidate(serviceReceiptByIdProvider(jobId));
+      // Only bust the cached job/receipt views when the backend confirms
+      // mutual reveal — `revealed=true` means the artisan already rated
+      // (or the 24h window elapsed) and the rating average now reflects
+      // both sides. When `revealed=false` the receipt's rating fields
+      // are unchanged so an extra fetch is wasted I/O.
+      final revealed = result['revealed'] == true;
+      if (revealed) {
+        _ref.invalidate(jobSummaryProvider(jobId));
+        _ref.invalidate(serviceReceiptByIdProvider(jobId));
+      }
       state = state.copyWith(isSubmitting: false, isSubmitted: true);
       return true;
     } on ApiException catch (e) {

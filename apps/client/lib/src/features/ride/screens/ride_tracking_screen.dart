@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../app/router.dart';
 import '../../../core/di/providers.dart';
@@ -270,13 +271,13 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
 
 // ── SOS button ────────────────────────────────────────────────────────────────
 
-class _SosButton extends StatelessWidget {
+class _SosButton extends ConsumerWidget {
   const _SosButton();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
-      onTap: () => _showSosDialog(context),
+      onTap: () => _showSosDialog(context, ref),
       child: Container(
         width: 52,
         height: 52,
@@ -306,7 +307,7 @@ class _SosButton extends StatelessWidget {
     );
   }
 
-  void _showSosDialog(BuildContext context) {
+  void _showSosDialog(BuildContext context, WidgetRef ref) {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -318,7 +319,7 @@ class _SosButton extends StatelessWidget {
           ),
         ),
         content: const Text(
-          'Are you in danger? We will call Ghana Police Service (191) and share your location.',
+          'Are you in danger? We will call Ghana Police Service (191) and alert MyShop support with your live location.',
           style: TextStyle(color: MyShopColors.textSecondary),
         ),
         actions: [
@@ -330,10 +331,7 @@ class _SosButton extends StatelessWidget {
             ),
           ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              // TODO: url_launcher → tel:191 + send location to backend
-            },
+            onPressed: () => _triggerSos(ctx, ref),
             style: ElevatedButton.styleFrom(
               backgroundColor: MyShopColors.error,
               foregroundColor: Colors.white,
@@ -347,5 +345,57 @@ class _SosButton extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Two-stage emergency trigger: POST the alert to the backend (so the
+  /// admin dashboard + safety team see it AND can listen to live audio
+  /// upload later), then dial 191 via `tel:` URL. We post first because
+  /// the OS may freeze the app while the phone dialer takes over — losing
+  /// the network alert at that moment defeats the whole feature.
+  Future<void> _triggerSos(BuildContext dialogCtx, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(dialogCtx);
+    Navigator.of(dialogCtx).pop();
+
+    final rideId = ref.read(activeRideIdProvider);
+    final position = ref.read(liveDriverPositionProvider);
+    if (rideId == null || position == null) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+              'We need an active ride and a recent GPS fix before raising SOS. '
+              'Try again in a few seconds.'),
+        ),
+      );
+      return;
+    }
+
+    try {
+      await ref.read(safetyServiceProvider).triggerEmergency(
+            bookingType: 'ride',
+            bookingId: rideId,
+            latitude: position.latitude,
+            longitude: position.longitude,
+          );
+    } on ApiException catch (e) {
+      // Don't swallow — but don't BLOCK the police dial on a network
+      // failure either. Surface the message so the rider knows the
+      // platform alert didn't land, then proceed to dial 191 anyway.
+      messenger.showSnackBar(
+        SnackBar(content: Text('Platform alert failed: ${e.message}')),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text("Couldn't send platform alert.")),
+      );
+    }
+
+    final dialUri = Uri.parse('tel:191');
+    if (await canLaunchUrl(dialUri)) {
+      await launchUrl(dialUri, mode: LaunchMode.externalApplication);
+    } else {
+      messenger.showSnackBar(
+        const SnackBar(content: Text("Couldn't open the phone dialer.")),
+      );
+    }
   }
 }

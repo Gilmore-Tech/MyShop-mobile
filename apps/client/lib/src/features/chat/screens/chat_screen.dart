@@ -160,6 +160,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       time: _formatTime(m.createdAt),
       fromMe: isMine,
       status: status,
+      // Only label incoming bubbles. The local user already knows their
+      // own role and the label would just be visual noise.
+      senderRoleLabel: isMine ? null : m.senderRole?.label,
     );
   }
 

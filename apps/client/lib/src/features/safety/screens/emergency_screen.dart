@@ -1,7 +1,12 @@
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_ui/shared_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../../core/di/providers.dart';
+import '../../ride/providers/ride_provider.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD § 4.10 — Two-step SOS confirmation to prevent accidental triggers.
@@ -62,9 +67,55 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen>
     setState(() {
       _isSending = true;
     });
-    // TODO: POST /v1/safety/sos { location }
-    // TODO: url_launcher → tel:191
-    await Future.delayed(const Duration(milliseconds: 800));
+
+    final messenger = ScaffoldMessenger.of(context);
+    final rideId = ref.read(activeRideIdProvider);
+    final position = ref.read(liveDriverPositionProvider);
+
+    // POST the alert FIRST so the platform safety dashboard logs it
+    // before we hand the phone over to the dialer (which can freeze the
+    // app). Failure to alert doesn't block the police call — surface a
+    // toast but proceed to dial 191 anyway.
+    if (rideId != null && position != null) {
+      try {
+        await ref.read(safetyServiceProvider).triggerEmergency(
+              bookingType: 'ride',
+              bookingId: rideId,
+              latitude: position.latitude,
+              longitude: position.longitude,
+            );
+      } on ApiException catch (e) {
+        if (mounted) {
+          messenger.showSnackBar(
+            SnackBar(content: Text('Platform alert failed: ${e.message}')),
+          );
+        }
+      } catch (_) {
+        if (mounted) {
+          messenger.showSnackBar(
+            const SnackBar(content: Text("Couldn't send platform alert.")),
+          );
+        }
+      }
+    } else if (mounted) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No active ride or GPS fix — sending dial only, no platform alert.',
+          ),
+        ),
+      );
+    }
+
+    final dialUri = Uri.parse('tel:191');
+    if (await canLaunchUrl(dialUri)) {
+      await launchUrl(dialUri, mode: LaunchMode.externalApplication);
+    } else if (mounted) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text("Couldn't open the phone dialer.")),
+      );
+    }
+
     if (!mounted) return;
     setState(() {
       _isSending = false;

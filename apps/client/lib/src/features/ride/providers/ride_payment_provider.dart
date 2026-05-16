@@ -471,6 +471,84 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
     );
   }
 
+  /// Failed-phase retry. Tries `POST /payments/:id/retry` first so the
+  /// backend's 24-hour insufficient-balance window (Redis-tracked) stays
+  /// alive on the same paymentId — that's the path PRD edge case #22
+  /// expects when the user tops up MoMo and comes back. If the backend
+  /// says the window expired or the payment is not retryable, we fall
+  /// back to abandon-by-booking + fresh /initiate so the rider isn't
+  /// stuck.
+  ///
+  /// Caller passes the current [paymentMethod] + [momoPhone] (read from
+  /// the screen's selection) so the fallback path can fire /initiate
+  /// without re-prompting.
+  Future<void> retryAfterFailure({
+    required String rideId,
+    required String paymentMethod,
+    String? momoPhone,
+  }) async {
+    final pid = state.paymentId;
+    if (pid == null) {
+      // No payment id known (e.g. the original /initiate never returned
+      // one) — straight to fresh /initiate.
+      await initiate(
+        rideId: rideId,
+        paymentMethod: paymentMethod,
+        momoPhone: momoPhone,
+        isRetry: true,
+      );
+      return;
+    }
+
+    state = state.copyWith(
+      phase: RidePaymentPhase.processing,
+      clearError: true,
+    );
+    try {
+      final result = await _paymentService.retryPayment(pid);
+      developer.log('retryPayment(ride=$rideId pid=$pid) → $result',
+          name: 'RidePayment');
+      // Backend flips the payment to processing and re-sends the MoMo
+      // prompt — same downstream state as a fresh /initiate that landed
+      // on `pay_offline`. Poll for settlement.
+      state = state.copyWith(
+        phase: RidePaymentPhase.awaitingSettlement,
+        paymentId: pid,
+      );
+      _startPolling(pid);
+    } on ApiException catch (e) {
+      developer.log(
+        'ride retryPayment failed: ${e.errorCode} — ${e.message}',
+        name: 'RidePayment',
+        level: 800,
+      );
+      // 24h window expired or backend rejects retry on this row — fall
+      // through to the abandon-by-booking + /initiate path.
+      if (e.errorCode == 'RETRY_WINDOW_EXPIRED' ||
+          e.errorCode == 'PAYMENT_NOT_RETRYABLE' ||
+          e.errorCode == 'CARD_RETRY_NOT_SUPPORTED') {
+        await initiate(
+          rideId: rideId,
+          paymentMethod: paymentMethod,
+          momoPhone: momoPhone,
+          isRetry: true,
+        );
+        return;
+      }
+      state = state.copyWith(
+        phase: RidePaymentPhase.failed,
+        errorMessage: _friendlyError(e),
+      );
+    } catch (e) {
+      developer.log('ride retryPayment crashed: $e',
+          name: 'RidePayment', level: 1200);
+      state = state.copyWith(
+        phase: RidePaymentPhase.failed,
+        errorMessage: 'Could not retry the payment. Please try again.',
+      );
+    }
+  }
+
   void _startPolling(String? paymentId) {
     _stopPolling();
     if (paymentId == null) return;

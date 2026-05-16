@@ -210,17 +210,20 @@ class _RidePaymentScreenState extends ConsumerState<RidePaymentScreen> {
                   if (!context.mounted) return;
                   context.go(AppRoutes.rideComplete);
                 },
-                // Retry sweeps any stale charge on the server first via
-                // /payments/abandon-by-booking, then runs a fresh
-                // /initiate. Belt-and-braces against the 409 booking
-                // lock when the previous attempt died mid-OTP.
+                // Failed-phase retry. Goes via /payments/:id/retry first
+                // so the backend's 24-hour insufficient-balance window
+                // (PRD edge case #22) stays alive on the same paymentId.
+                // The notifier auto-falls-back to abandon-by-booking +
+                // fresh /initiate when the window expired or the row is
+                // no longer retryable — so the rider can always recover.
                 onRetry: () {
                   final phone = _phoneController.text.trim();
-                  ref.read(ridePaymentNotifierProvider.notifier).initiate(
+                  ref
+                      .read(ridePaymentNotifierProvider.notifier)
+                      .retryAfterFailure(
                         rideId: widget.rideId,
                         paymentMethod: method.wireValue,
                         momoPhone: phone.isEmpty ? null : phone,
-                        isRetry: true,
                       );
                 },
                 onMarkPaid: () => ref

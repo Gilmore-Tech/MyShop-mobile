@@ -1264,6 +1264,83 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     );
   }
 
+  /// Failed-phase retry for an artisan-job payment. Tries
+  /// `POST /payments/:id/retry` first so the backend's 24-hour
+  /// insufficient-balance window (Redis-tracked) stays alive on the same
+  /// paymentId — that's the path PRD edge case #22 expects when the user
+  /// tops up MoMo and comes back. Falls back to abandon-by-booking +
+  /// fresh /initiate via [confirmPayment] when the window expired or the
+  /// row is no longer retryable.
+  Future<void> retryAfterFailure({
+    required String jobId,
+    required PaymentSummary summary,
+    String? momoPhone,
+    String? cardToken,
+  }) async {
+    final pid = state.paymentId;
+    if (pid == null) {
+      await confirmPayment(
+        jobId: jobId,
+        summary: summary,
+        momoPhone: momoPhone,
+        cardToken: cardToken,
+        isRetry: true,
+      );
+      return;
+    }
+
+    state = state.copyWith(
+      phase: PaymentPhase.processing,
+      clearError: true,
+    );
+    try {
+      final result = await _paymentService.retryPayment(pid);
+      developer.log('retryPayment(job=$jobId pid=$pid) → $result',
+          name: 'Payment');
+      // Backend flips the payment to processing and re-sends the MoMo
+      // prompt — same downstream state as a fresh /initiate that landed
+      // on `pay_offline`. Poll for settlement.
+      state = state.copyWith(
+        phase: PaymentPhase.awaitingSettlement,
+        paymentId: pid,
+      );
+      _startSettlementPolling(
+        paymentId: pid,
+        jobId: jobId,
+        summary: summary,
+      );
+    } on ApiException catch (e) {
+      developer.log(
+        'job retryPayment failed: ${e.errorCode} — ${e.message}',
+        name: 'Payment',
+        level: 800,
+      );
+      if (e.errorCode == 'RETRY_WINDOW_EXPIRED' ||
+          e.errorCode == 'PAYMENT_NOT_RETRYABLE' ||
+          e.errorCode == 'CARD_RETRY_NOT_SUPPORTED') {
+        await confirmPayment(
+          jobId: jobId,
+          summary: summary,
+          momoPhone: momoPhone,
+          cardToken: cardToken,
+          isRetry: true,
+        );
+        return;
+      }
+      state = state.copyWith(
+        phase: PaymentPhase.failed,
+        errorMessage: e.message,
+      );
+    } catch (e) {
+      developer.log('job retryPayment crashed: $e',
+          name: 'Payment', level: 1200);
+      state = state.copyWith(
+        phase: PaymentPhase.failed,
+        errorMessage: 'Could not retry the payment. Please try again.',
+      );
+    }
+  }
+
   /// Manual "I've completed the payment" tap from the awaiting-settlement
   /// screen. Bypasses the backend confirmation step and flips straight to
   /// `settled` with a [PaymentConfirmation] so the success dialog fires —

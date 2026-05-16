@@ -103,18 +103,22 @@ class RideRatingNotifier extends StateNotifier<RideRatingState> {
 
     try {
       final ratingService = _ref.read(ratingServiceProvider);
-      await ratingService.submitRating(
+      final result = await ratingService.submitRating(
         bookingType: 'ride',
         bookingId: rideId,
         stars: state.selectedStars,
         comment: state.note.isNotEmpty ? state.note : null,
       );
-      developer.log('Rating submitted for ride $rideId', name: 'RideRating');
-      // Bust the cached ride receipt so any backend rollups that ride on
-      // the same fetch land on the next visit. Blind 24-hour window means
-      // the rating average won't move for the rater, but anything else on
-      // the page should refresh.
-      _ref.invalidate(rideReceiptByIdProvider(rideId));
+      developer.log('Rating submitted for ride $rideId — $result',
+          name: 'RideRating');
+      // Only bust the cached ride receipt when the backend confirms
+      // mutual reveal — `revealed=true` means the driver already rated
+      // (or the 24h window elapsed) and the rating average now reflects
+      // both sides. When `revealed=false` the receipt's rating fields
+      // are unchanged so an extra fetch is wasted I/O.
+      if (result['revealed'] == true) {
+        _ref.invalidate(rideReceiptByIdProvider(rideId));
+      }
       state = state.copyWith(isSubmitting: false, isSubmitted: true);
       return true;
     } on ApiException catch (e) {

@@ -1242,17 +1242,27 @@ class _BottomBar extends ConsumerWidget {
             height: h * 0.066,
             child: ElevatedButton(
               onPressed: switch (state.phase) {
-                PaymentPhase.idle || PaymentPhase.failed => () =>
+                // Failed-phase: try /payments/:id/retry first so the
+                // backend's 24h insufficient-balance window (PRD edge
+                // case #22) stays alive on the same paymentId. The
+                // notifier falls back to abandon-by-booking + fresh
+                // /initiate when the window expired or the row is no
+                // longer retryable.
+                PaymentPhase.failed => () =>
+                    ref.read(paymentNotifierProvider.notifier).retryAfterFailure(
+                          jobId: summary.jobId,
+                          summary: summary,
+                          momoPhone: state.selectedMethod.requiresMomoPhone
+                              ? momoPhoneCtrl.text
+                              : null,
+                        ),
+                PaymentPhase.idle => () =>
                     ref.read(paymentNotifierProvider.notifier).confirmPayment(
                           jobId: summary.jobId,
                           summary: summary,
                           momoPhone: state.selectedMethod.requiresMomoPhone
                               ? momoPhoneCtrl.text
                               : null,
-                          // After a failure, sweep any in-flight charge on
-                          // the server before /initiate so a stale row
-                          // can't 409 us into the booking-lock dialog.
-                          isRetry: state.phase == PaymentPhase.failed,
                         ),
                 // Re-launch the checkout if the user dismissed Paystack
                 // without finishing, or if the auto-launch was blocked.
