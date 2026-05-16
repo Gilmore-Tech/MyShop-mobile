@@ -109,3 +109,26 @@ final paymentServiceProvider = Provider<PaymentService>((ref) {
 final safetyServiceProvider = Provider<SafetyService>((ref) {
   return SafetyService(ref.watch(dioProvider));
 });
+
+/// Platform config — public `GET /config/:key` reader. Admins flip
+/// commission rate, payout windows, surge ceilings via the dashboard;
+/// mobile reads them on demand so changes don't require a release.
+final platformConfigServiceProvider = Provider<PlatformConfigService>((ref) {
+  return PlatformConfigService(ref.watch(dioProvider));
+});
+
+/// Cached commission rate (percent — e.g. `20` for 20%). Renders the
+/// platform-fee row on the bid/incoming-request screens. Falls back to
+/// `20` when the config endpoint is unreachable — that's the PRD default
+/// and matches `commission.service.ts` server-side fallback. Cached for
+/// the lifetime of the provider because admins change this rarely.
+final commissionRatePercentProvider = FutureProvider<num>((ref) async {
+  try {
+    final value = await ref
+        .watch(platformConfigServiceProvider)
+        .getNumber('commission_rate_percent');
+    return value ?? 20;
+  } catch (_) {
+    return 20;
+  }
+});

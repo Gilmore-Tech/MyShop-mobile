@@ -37,13 +37,11 @@ class JobRequestScreen extends ConsumerStatefulWidget {
     required this.job,
     this.bidStatus = BidStatus.none,
     this.submittedBidAmount = 0,
-    this.platformFeePercent = 10,
   });
 
   final Job job;
   final BidStatus bidStatus;
   final num submittedBidAmount;
-  final num platformFeePercent;
 
   @override
   ConsumerState<JobRequestScreen> createState() => _JobRequestScreenState();
@@ -409,7 +407,14 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                     const SizedBox(height: MyShopSpacing.sm),
                     _SubmittedBidCard(
                       total: effectiveBidAmount,
-                      feePercent: widget.platformFeePercent,
+                      // Commission rate sourced from platform_config so an
+                      // admin tweak (e.g. promo rate during pilot) lands
+                      // in the bid-summary card without a release. Falls
+                      // back to the PRD-default 20% inside the provider
+                      // when the config endpoint is unreachable.
+                      feePercent:
+                          ref.watch(commissionRatePercentProvider).valueOrNull ??
+                              20,
                     ),
                   ],
                   const SizedBox(height: MyShopSpacing.lg),

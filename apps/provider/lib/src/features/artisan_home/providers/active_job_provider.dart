@@ -10,6 +10,7 @@ import '../../artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../../core/providers/provider_status_provider.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../../earnings/providers/earnings_providers.dart';
+import '../../earnings/providers/ratings_provider.dart';
 
 /// Snapshot of the artisan's currently-active job — populated when the
 /// artisan taps "Accept & Start Job" on an accepted bid, cleared when the
@@ -300,6 +301,12 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
       _ref.invalidate(todayCardProvider);
       _ref.invalidate(activeTodayCardProvider);
       _ref.invalidate(payoutsProvider);
+      // Rating average rolls forward only when both sides have submitted
+      // (blind 24h window) — but the count still bumps the moment a new
+      // rating lands, and the home-screen Performance Summary surfaces
+      // that count. Without this invalidate the tile stayed frozen at
+      // "0 reviews" until app relaunch.
+      _ref.invalidate(providerRatingsProvider);
     } catch (_) {
       // Providers may not be mounted yet (tests, fresh-launch); harmless
       // if they aren't, we just lose the eager refetch.

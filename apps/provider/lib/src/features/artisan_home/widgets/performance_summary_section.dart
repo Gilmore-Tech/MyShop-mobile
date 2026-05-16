@@ -33,7 +33,7 @@ class PerformanceSummarySection extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'PERFORMANCE SUMMARY',
+                  "TODAY'S PERFORMANCE",
                   style: MyShopTypography.overline.copyWith(
                     color: MyShopColors.textSecondary,
                     fontWeight: FontWeight.w800,
@@ -87,7 +87,7 @@ class PerformanceSummarySection extends StatelessWidget {
               Expanded(
                 child: _StatCard(
                   icon: Icons.check_circle_outline,
-                  label: 'JOB DONE',
+                  label: "JOBS TODAY",
                   value: '$jobsDone',
                 ),
               ),

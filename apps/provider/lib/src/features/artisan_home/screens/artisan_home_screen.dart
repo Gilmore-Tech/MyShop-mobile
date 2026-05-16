@@ -171,13 +171,22 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
 
             const SizedBox(height: MyShopSpacing.lg),
 
-            // 3. Performance summary — real data where available
+            // 3. Today's performance — all three tiles scoped to today
+            // (UTC), refreshed live by `_bustEarningsCaches` whenever a
+            // job lands as `completed`. The Rating tile carries an
+            // all-time count because that's the only number the backend
+            // surfaces for ratings — relabelling avoids implying it
+            // resets at midnight.
             PerformanceSummarySection(
               earnings: earningsDisplay,
               earningsTrend: earningsTrend,
               rating: ratingDisplay,
               ratingPercentile: ratingSubtitle,
-              jobsDone: user?.artisanProfile?.completedJobsCount ?? 0,
+              jobsDone: cardAsync.when(
+                data: (c) => c.bookingsCount,
+                loading: () => 0,
+                error: (_, __) => 0,
+              ),
               onDetailsTap: () {},
             ),
 
