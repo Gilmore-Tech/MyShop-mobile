@@ -9,6 +9,7 @@ import '../../profile/providers/verification_provider.dart';
 import '../providers/earnings_providers.dart';
 import '../providers/ratings_provider.dart';
 import '../widgets/commission_card.dart';
+import '../widgets/pay_commission_sheet.dart';
 import '../widgets/payouts_list.dart';
 import '../widgets/request_payout_sheet.dart';
 import '../widgets/weekly_performance_card.dart';
@@ -62,12 +63,19 @@ class EarningsDashboardScreen extends ConsumerWidget {
     // dashboard doesn't appear to "lose" the funds during the brief
     // window between escrow release and transfer.success.
     final pendingPayouts = summary?.pendingPayoutsPesewas ?? 0;
-    final todayAvailable = todayCard?.netEarningsPesewas ??
-        summary?.todayAvailableBalancePesewas ??
-        0;
-    final weeklyAvailable = report?.netEarningsPesewas ??
-        summary?.weeklyAvailableBalancePesewas ??
-        0;
+    // Use gross-minus-commission for the TODAY/WEEKLY tiles instead of
+    // `netPayoutPesewas` aggregates. The latter ride on payment status
+    // (escrowed/completed) and on stale rows where cash-rides were
+    // stored with `netPayout=0` under earlier code paths — both make
+    // the tiles read 0 or negative even when the provider actually
+    // earned money. The headline (Owings / Available) still uses the
+    // payable balance because that one IS about cash-in-hand vs debt.
+    final todayAvailable = todayCard != null
+        ? todayCard.effectiveEarningsPesewas
+        : (summary?.todayAvailableBalancePesewas ?? 0);
+    final weeklyAvailable = report != null
+        ? report.effectiveEarningsPesewas
+        : (summary?.weeklyAvailableBalancePesewas ?? 0);
     final tripsCompleted = report?.bookingsCompleted ?? 0;
     final isVerified = user?.verificationStatus == 'approved';
 
@@ -254,44 +262,69 @@ class EarningsDashboardScreen extends ConsumerWidget {
               ],
               const SizedBox(height: MyShopSpacing.sm),
 
-              // ── Request Payout CTA ──
-              // Disabled when:
-              //   * driver is in arrears (owes more than has earned),
-              //   * effective balance is 0 / negative,
-              //   * a prior payout is in flight (would 400 PAYOUT_IN_PROGRESS).
-              // Label flips to "PAYOUT IN PROGRESS" so the driver knows why
-              // the action is locked out, not just that it's disabled.
+              // ── Action CTA: Pay Commission OR Request Payout ──
+              // In arrears (owes platform > earned in-app): Pay Commission.
+              //   Charges the provider's MoMo to settle outstanding
+              //   cash-commission debt. Any amount allowed; surplus rolls
+              //   into a credit. Always enabled while owed > 0.
+              // Otherwise: Request Payout.
+              //   Disabled when balance is 0 or a payout is already in
+              //   flight. Label flips to "PAYOUT IN PROGRESS" so the
+              //   driver sees why it's locked out.
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-                child: ElevatedButton.icon(
-                  onPressed:
-                      effectiveBalance > 0 && !isInArrears && pendingPayouts == 0
-                          ? () => showRequestPayoutSheet(context)
-                          : null,
-                  icon: const Icon(Icons.send_rounded, size: 18),
-                  label: Text(
-                    pendingPayouts > 0
-                        ? 'PAYOUT IN PROGRESS'
-                        : 'REQUEST PAYOUT',
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: MyShopColors.primaryGold,
-                    foregroundColor: MyShopColors.textOnPrimary,
-                    disabledBackgroundColor:
-                        MyShopColors.primaryGold.withValues(alpha: 0.4),
-                    minimumSize: const Size(double.infinity, 48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    textStyle: const TextStyle(
-                      fontFamily: 'Raleway',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
+                child: isInArrears
+                    ? ElevatedButton.icon(
+                        onPressed: () => showPayCommissionSheet(
+                          context,
+                          owedPesewas:
+                              summary?.cashCommissionOwedPesewas ?? 0,
+                        ),
+                        icon: const Icon(Icons.payments_rounded, size: 18),
+                        label: const Text('PAY COMMISSION'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: MyShopColors.error,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(double.infinity, 48),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(28),
+                          ),
+                          textStyle: const TextStyle(
+                            fontFamily: 'Raleway',
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      )
+                    : ElevatedButton.icon(
+                        onPressed: effectiveBalance > 0 && pendingPayouts == 0
+                            ? () => showRequestPayoutSheet(context)
+                            : null,
+                        icon: const Icon(Icons.send_rounded, size: 18),
+                        label: Text(
+                          pendingPayouts > 0
+                              ? 'PAYOUT IN PROGRESS'
+                              : 'REQUEST PAYOUT',
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: MyShopColors.primaryGold,
+                          foregroundColor: MyShopColors.textOnPrimary,
+                          disabledBackgroundColor:
+                              MyShopColors.primaryGold.withValues(alpha: 0.4),
+                          minimumSize: const Size(double.infinity, 48),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(28),
+                          ),
+                          textStyle: const TextStyle(
+                            fontFamily: 'Raleway',
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
               ),
               const SizedBox(height: MyShopSpacing.md),
 
