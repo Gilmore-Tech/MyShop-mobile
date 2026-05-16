@@ -368,12 +368,25 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
                   onTap: () => _mapHandle.recenter?.call(),
                 ),
                 const SizedBox(height: MyShopSpacing.sm),
-                _MapControlButton(
-                  icon: Icons.more_vert,
-                  onTap: () => _showOverflowMenu(ride),
+                // Cancel-ride lives in the overflow menu, but it's the
+                // wrong escape hatch once the rider is on board —
+                // they'd be left stranded mid-trip. Hide the kebab
+                // during `in_progress`; emergencies route through SOS,
+                // genuine in-trip terminations go through support.
+                if (ride.status != RideStatus.inProgress) ...[
+                  _MapControlButton(
+                    icon: Icons.more_vert,
+                    onTap: () => _showOverflowMenu(ride),
+                  ),
+                  const SizedBox(height: MyShopSpacing.sm),
+                ],
+                _SosButton(
+                  // Routes to the shared driver/artisan emergency screen.
+                  // That screen reads the active role + active booking
+                  // and POSTs /emergency before dialing 191 — same flow
+                  // the floating SOS button on the artisan side uses.
+                  onTap: () => context.push('/safety/emergency'),
                 ),
-                const SizedBox(height: MyShopSpacing.sm),
-                _SosButton(onTap: () {}),
               ],
             ),
           ),
@@ -469,7 +482,6 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   GoogleMapController? _mapController;
   DirectionsRoute? _route;
   bool _routeLoading = false;
-  bool _hasFittedCamera = false;
 
   /// Origin (driver GPS) used when the last route was fetched — lets us skip
   /// a refetch if the GPS fix has barely moved.
@@ -514,10 +526,12 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   /// position.
   static const _offRouteThresholdMeters = 65.0;
 
-  /// Camera params for nav mode. Tilt 50° gives a 3-D forward-looking
-  /// view; zoom 17.5 is the same level Google Maps' "Start" mode opens at.
+  /// Camera params for nav mode. Top-down 2D pose with the camera
+  /// rotated to match the direction of travel — same look as Google
+  /// Maps' "Start" mode when the driver toggles off the 3D tilt. Zoom
+  /// 17.5 keeps the next turn comfortably in view at city speeds.
   static const _navZoom = 17.5;
-  static const _navTilt = 50.0;
+  static const _navTilt = 0.0;
 
   /// Spoken turn-by-turn coach — fires "in 200m, turn left" prompts at
   /// the same thresholds Google Maps uses. Owned per-map-state so it
@@ -542,7 +556,6 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
       _route = null;
       _lastRouteOrigin = null;
       _lastRouteFetchAt = null;
-      _hasFittedCamera = false;
       _markers = _buildMarkers();
       _polylines = const <Polyline>{};
       // New leg → new set of maneuvers. Wipe the spoken-step memory so
@@ -551,6 +564,11 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
       final driver = _driver;
       if (driver != null) {
         _refreshRouteIfNeeded(driver, force: true);
+        // Snap the camera onto the driver with nav pose so the new
+        // leg starts in follow-mode rather than a static frame from
+        // the previous leg.
+        _followCamera = true;
+        _animateCameraToDriver(driver, _lastBearing);
       }
       // `didUpdateWidget` runs inside the build pipeline; publishing metrics
       // here would synchronously notify a `ValueListenableBuilder` higher
@@ -771,44 +789,14 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
     };
   }
 
-  void _fitCamera({required LatLng origin, required DirectionsRoute? route}) {
-    final controller = _mapController;
-    if (controller == null) return;
-    if (_hasFittedCamera && route == null) return;
-
-    // Guard against absurd bounds (bad GPS, bad ride coords) — same reason
-    // as the artisan screen: a continent-wide bound triggers iOS jetsam.
-    final straightLineMeters = _haversineMeters(origin, widget.target);
-    if (straightLineMeters > 100000) {
-      controller.animateCamera(CameraUpdate.newLatLngZoom(origin, 14));
-      _hasFittedCamera = true;
-      return;
-    }
-
-    final points = (route != null && route.polyline.isNotEmpty)
-        ? route.polyline
-        : <LatLng>[origin, widget.target];
-    double south = points.first.latitude;
-    double north = points.first.latitude;
-    double west = points.first.longitude;
-    double east = points.first.longitude;
-    for (final p in points) {
-      if (p.latitude < south) south = p.latitude;
-      if (p.latitude > north) north = p.latitude;
-      if (p.longitude < west) west = p.longitude;
-      if (p.longitude > east) east = p.longitude;
-    }
-    controller.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(south, west),
-          northeast: LatLng(north, east),
-        ),
-        80,
-      ),
-    );
-    _hasFittedCamera = true;
-  }
+  // Removed `_fitCamera` (bounds-fit of [driver, target]). It used to
+  // run on map creation and on phase change, and its animation fired
+  // `onCameraMoveStarted` without the programmatic guard — which
+  // silently flipped `_followCamera` off and stranded the camera in a
+  // static two-pin overview. Nav mode now owns the camera from the
+  // very first GPS fix; the driver sees themselves in the centre with
+  // the polyline pointing forward, the way Google Maps' "Start" mode
+  // opens.
 
   @override
   Widget build(BuildContext context) {
@@ -826,7 +814,14 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
         _mapController = controller;
         final driver = _driver;
         if (driver != null) {
-          _fitCamera(origin: driver, route: _route);
+          // Jump straight to nav-mode pose (follow + bearing + 2D
+          // top-down) instead of a wide bounds fit of [driver, target].
+          // The bounds fit fired `onCameraMoveStarted` without the
+          // programmatic guard, which silently flipped `_followCamera`
+          // off and left the user staring at the static two-pin view
+          // — that's the bug the driver reported as "just shows the
+          // two points, no live navigation".
+          _animateCameraToDriver(driver, _lastBearing);
         }
       },
       // User-initiated pan / pinch → pause nav-mode follow so we don't
@@ -1063,7 +1058,7 @@ class _PassengerPanel extends StatelessWidget {
                                 size: 12, color: MyShopColors.ratingStar),
                             const SizedBox(width: 3),
                             Text(
-                              '${ride.clientRating ?? 4.9}',
+                              (ride.clientRating ?? 4.9).toStringAsFixed(1),
                               style: const TextStyle(
                                 fontFamily: 'Raleway',
                                 fontSize: 12,

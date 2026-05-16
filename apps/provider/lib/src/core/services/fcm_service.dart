@@ -235,17 +235,28 @@ class FcmService {
     // IncomingRequestListener, so we just surface a local notification as
     // a fallback (useful if the socket is disconnected).
     //
-    // `new_message` is the exception: the chat socket already delivers the
-    // message and the in-app surfaces (active-job header, chat screen,
-    // unread badge on the entry-point button) reflect it. Suppress the
-    // OS banner so we don't double-notify the user about something
-    // they're already seeing.
+    // `new_message`: only suppress the banner when the user is already
+    // looking at the chat screen for THIS booking. Previously we
+    // suppressed every foreground new_message blanket — that's why a
+    // driver who was on /home or /earnings never saw a chat banner and
+    // assumed messages weren't being delivered. The chat socket still
+    // updates unread badges on those screens; we just also want a
+    // heads-up banner when they're not actually in the chat.
     FirebaseMessaging.onMessage.listen((message) async {
       debugPrint('[FCM] foreground message: ${message.data}');
       final rawType = message.data[NotificationPayload.keyType] as String?;
       final type = NotificationPayload.normaliseType(rawType ?? '');
       if (type == NotificationPayload.typeNewMessage) {
-        debugPrint('[FCM] foreground new_message — suppressing OS banner');
+        final bookingId =
+            (message.data[NotificationPayload.keyBookingId] as String?) ??
+                (message.data[NotificationPayload.keyJobId] as String?) ??
+                (message.data[NotificationPayload.keyRideId] as String?);
+        if (_isOnChatScreenFor(bookingId)) {
+          debugPrint(
+              '[FCM] foreground new_message — on chat screen, suppressing');
+          return;
+        }
+        await _renderFromRemote(message);
         return;
       }
       // Incoming-request types are handled foreground by
@@ -385,6 +396,29 @@ class FcmService {
     if (Platform.isIOS) return 'ios';
     if (Platform.isAndroid) return 'android';
     return 'unknown';
+  }
+
+  /// True when the active GoRouter location is the chat screen.
+  /// Used by the foreground new_message handler so a banner only
+  /// suppresses when the driver is already reading a chat — every
+  /// other screen (home, earnings, active-ride) lets the banner
+  /// surface so the driver doesn't miss the message.
+  ///
+  /// We don't disambiguate by bookingId here (the `extra` map isn't
+  /// reachable via the public GoRouter API on every version). A driver
+  /// who happens to be on chat A while a message lands for chat B
+  /// will miss the banner — acceptable trade-off vs. banner-bombing
+  /// while they're actively typing.
+  // ignore: unused_element
+  bool _isOnChatScreenFor(String? bookingId) {
+    try {
+      final router = _ref.read(goRouterProvider);
+      final matches = router.routerDelegate.currentConfiguration.matches;
+      if (matches.isEmpty) return false;
+      return matches.last.matchedLocation == '/chat';
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Remove backend registration + cancel listeners. Call on logout so the

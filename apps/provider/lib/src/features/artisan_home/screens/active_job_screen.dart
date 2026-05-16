@@ -407,7 +407,6 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   GoogleMapController? _mapController;
   DirectionsRoute? _route;
   bool _routeLoading = false;
-  bool _hasFittedCamera = false;
 
   /// Origin (artisan GPS) used when the last route was fetched — lets us
   /// skip a refetch if the GPS fix has barely moved.
@@ -420,6 +419,22 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   /// Most recent GPS fix. Stored in a field rather than via ref.watch so
   /// the GoogleMap only rebuilds when this widget calls setState.
   LatLng? _artisan;
+
+  /// Turn-by-turn nav follow. While true the camera tracks the artisan
+  /// on every GPS fix with a 2D top-down rotated-to-heading pose — same
+  /// behaviour as Google Maps "Start" mode. Flips to false the moment
+  /// the user drags or pinches the map; the recenter button restores it.
+  bool _followCamera = true;
+
+  /// Last heading we used for the camera bearing. GPS `heading` is NaN
+  /// when stationary and noisy below ~1 m/s; we keep the previous good
+  /// value so the camera doesn't spin while the artisan is parked.
+  double _lastBearing = 0;
+
+  /// True while we're mid-animation — `onCameraMoveStarted` fires for
+  /// our own programmatic moves too, which would otherwise flip
+  /// `_followCamera` off and break the next fix.
+  bool _programmaticCameraMove = false;
 
   /// Cached marker + polyline sets. Identity is stable across rebuilds
   /// unless their inputs change, which avoids needless platform-view
@@ -434,6 +449,12 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   /// nearest point on the route polyline — triggers a forced re-fetch
   /// so the maneuver banner doesn't stale-instruct.
   static const _offRouteThresholdMeters = 65.0;
+
+  /// Top-down 2D nav pose with the camera rotated to match the
+  /// artisan's heading. Zoom 17.5 mirrors Google Maps' "Start" mode at
+  /// city speeds.
+  static const _navZoom = 17.5;
+  static const _navTilt = 0.0;
 
   /// Spoken turn-by-turn coach. Owned per-state so it disposes with
   /// the screen — no orphan TTS sessions surviving navigation away
@@ -460,11 +481,35 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   void _handleRecenter() {
     final artisan = _artisan;
     if (artisan == null) return;
-    _hasFittedCamera = false;
-    _fitCamera(origin: artisan, route: _route);
-    // Force a fresh route fetch on explicit recenter — bypasses throttles
-    // so the user sees an up-to-date polyline immediately.
+    // Restore nav follow: snap to the artisan with the 2D rotated pose
+    // and re-fetch the route so the polyline reflects their current
+    // position right away.
+    _followCamera = true;
+    _animateCameraToArtisan(artisan, _lastBearing);
     _refreshRouteIfNeeded(artisan, force: true);
+  }
+
+  /// Animate the camera into nav-mode pose (top-down + rotated +
+  /// zoomed). Wrapped in [_programmaticCameraMove] so the
+  /// onCameraMoveStarted hook doesn't mistake our own animation for a
+  /// user gesture and flip [_followCamera] off mid-flight.
+  void _animateCameraToArtisan(LatLng position, double bearing) {
+    final controller = _mapController;
+    if (controller == null) return;
+    _programmaticCameraMove = true;
+    controller.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: position,
+          zoom: _navZoom,
+          tilt: _navTilt,
+          bearing: bearing,
+        ),
+      ),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _programmaticCameraMove = false;
+    });
   }
 
   Future<void> _refreshRouteIfNeeded(
@@ -504,7 +549,11 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
         _lastRouteOrigin = origin;
         _polylines = _buildPolylines();
       });
-      _fitCamera(origin: origin, route: route);
+      // Deliberately NO bounds-fit here — the camera is owned by the
+      // nav-follow path in `_onPositionFix`. The earlier fit-on-route-
+      // refresh would yank the camera back to a wide two-pin overview
+      // and break live navigation; same fix applied to the driver
+      // active-ride screen.
       _publishMetrics();
     } finally {
       _routeLoading = false;
@@ -524,10 +573,23 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
       return;
     }
 
+    // Bearing tracking — same noise-suppression as the driver screen:
+    // ignore NaN/slow-speed values so the rotated camera doesn't spin
+    // while the artisan is parked.
+    final bearing = (pos.heading.isFinite && pos.speed >= 1.0)
+        ? pos.heading
+        : _lastBearing;
+    _lastBearing = bearing;
+
     setState(() {
       _artisan = next;
       _markers = _buildMarkers();
     });
+
+    if (_followCamera) {
+      _animateCameraToArtisan(next, bearing);
+    }
+
     _publishMetrics();
     _refreshRouteIfNeeded(next);
   }
@@ -599,47 +661,12 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
     };
   }
 
-  void _fitCamera({required LatLng origin, required DirectionsRoute? route}) {
-    final controller = _mapController;
-    if (controller == null) return;
-    if (_hasFittedCamera && route == null) return;
-
-    // If the artisan is absurdly far from the destination (bad GPS, bad
-    // job coords), don't fit a continent-wide bound — that pre-fetches
-    // tiles across the whole region and trips iOS's memory watermark.
-    // Service jobs are local; cap at 100 km and just zoom to the artisan
-    // when they're further out than that.
-    final straightLineMeters = _haversineMeters(origin, widget.destination);
-    if (straightLineMeters > 100000) {
-      controller.animateCamera(CameraUpdate.newLatLngZoom(origin, 14));
-      _hasFittedCamera = true;
-      return;
-    }
-
-    final points = (route != null && route.polyline.isNotEmpty)
-        ? route.polyline
-        : <LatLng>[origin, widget.destination];
-    double south = points.first.latitude;
-    double north = points.first.latitude;
-    double west = points.first.longitude;
-    double east = points.first.longitude;
-    for (final p in points) {
-      if (p.latitude < south) south = p.latitude;
-      if (p.latitude > north) north = p.latitude;
-      if (p.longitude < west) west = p.longitude;
-      if (p.longitude > east) east = p.longitude;
-    }
-    controller.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(south, west),
-          northeast: LatLng(north, east),
-        ),
-        80,
-      ),
-    );
-    _hasFittedCamera = true;
-  }
+  // Removed `_fitCamera` (bounds-fit of [artisan, destination]). It
+  // ran on map creation and on every route refresh, and the animation
+  // fired `onCameraMoveStarted` without the programmatic guard — which
+  // silently flipped `_followCamera` off (once we added it) and
+  // stranded the camera in a static two-pin overview. Nav mode now
+  // owns the camera from the very first GPS fix.
 
   @override
   Widget build(BuildContext context) {
@@ -660,7 +687,17 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
         _mapController = controller;
         final artisan = _artisan;
         if (artisan != null) {
-          _fitCamera(origin: artisan, route: _route);
+          _animateCameraToArtisan(artisan, _lastBearing);
+        }
+      },
+      // User drag/pinch → pause follow so we don't fight their gesture.
+      // The recenter button on the header restores it. Programmatic
+      // moves carry [_programmaticCameraMove] so they don't trip the
+      // pause path themselves.
+      onCameraMoveStarted: () {
+        if (_programmaticCameraMove) return;
+        if (_followCamera) {
+          setState(() => _followCamera = false);
         }
       },
       myLocationEnabled: false,

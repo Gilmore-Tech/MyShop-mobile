@@ -401,7 +401,7 @@ class _ClientCard extends StatelessWidget {
                 const Icon(Icons.star,
                     size: 14, color: MyShopColors.ratingStar),
                 const SizedBox(width: 2),
-                Text('${ride.clientRating ?? 0}',
+                Text((ride.clientRating ?? 0).toStringAsFixed(1),
                     style: MyShopTypography.body2.copyWith(
                         fontWeight: FontWeight.w600,
                         color: MyShopColors.textPrimary)),
