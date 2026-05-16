@@ -109,15 +109,16 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
           );
       if (!mounted) return;
 
-      // Invalidate the dashboard caches so the "Owings" tile updates
-      // the moment the user lands back on the dashboard — even though
-      // the webhook hasn't settled yet, the owed-balance shows the
-      // optimistic post-remit figure from the response. The webhook
-      // landing later will trigger another invalidation via the cache
-      // bust in PaymentService.recordRideCompletion's earnings purge.
-      ref.invalidate(todayCardProvider);
-      ref.invalidate(earningsSummaryProvider);
-      ref.invalidate(earningsReportProvider);
+      // Deliberately NOT invalidating earnings providers here. The
+      // Paystack webhook that actually reduces the owed-balance
+      // doesn't fire until the user authorises the MoMo prompt on
+      // their phone — which happens AFTER this success state shows.
+      // Invalidating now would force a refetch that re-caches the
+      // pre-webhook (stale) value, and the dashboard would still
+      // show the unchanged owed amount. Instead we invalidate when
+      // the user dismisses this sheet via DONE, by which time the
+      // webhook has typically landed (and the backend has busted
+      // its own Redis cache).
 
       setState(() {
         _step = _Step.done;
@@ -374,7 +375,18 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
         ],
         const SizedBox(height: 18),
         ElevatedButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () {
+            // Invalidate the earnings caches NOW so the dashboard
+            // refetches when the user lands back on it. By the time
+            // they've authorised the MoMo prompt on their phone +
+            // tapped DONE here, the Paystack webhook has typically
+            // landed and the backend Redis cache has been busted —
+            // the fresh fetch will show the reduced owed balance.
+            ref.invalidate(todayCardProvider);
+            ref.invalidate(earningsSummaryProvider);
+            ref.invalidate(earningsReportProvider);
+            Navigator.of(context).pop();
+          },
           style: ElevatedButton.styleFrom(
             backgroundColor: MyShopColors.darkSlate,
             foregroundColor: Colors.white,
