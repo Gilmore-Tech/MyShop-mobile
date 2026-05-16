@@ -328,4 +328,48 @@ class PaymentService {
       throw ApiException.fromDioException(e);
     }
   }
+
+  /// GET /payments/cash-commission/owed — provider's outstanding
+  /// commission debt (sum of pending CASH_COMMISSION clawbacks minus
+  /// any partial remits, net of unused provider credits). Drives the
+  /// dashboard button swap: when `owedPesewas > 0` the CTA flips to
+  /// "Pay Commission" instead of "Request Payout".
+  Future<Map<String, dynamic>> getCashCommissionOwed() async {
+    try {
+      final response = await _dio.get('/payments/cash-commission/owed');
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// POST /payments/cash-commission/remit — provider charges their own
+  /// MoMo to pay back commission debt. Allowed to over- or under-pay:
+  /// underpayments chip away at the oldest clawbacks; overpayments are
+  /// captured as a ProviderCredit that auto-nets the next cash ride's
+  /// commission. The Paystack flow mirrors a normal MoMo collection —
+  /// the provider receives a USSD push to authorise the charge.
+  ///
+  /// 400 codes:
+  ///   - `NO_CASH_COMMISSION_OWED` — debt is already zero
+  ///   - `INVALID_AMOUNT` — amount ≤ 0
+  Future<Map<String, dynamic>> remitCashCommission({
+    required int amountPesewas,
+    required String paymentMethod,
+    required String momoPhone,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/payments/cash-commission/remit',
+        data: {
+          'amountPesewas': amountPesewas,
+          'paymentMethod': paymentMethod,
+          'momoPhone': momoPhone,
+        },
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
 }

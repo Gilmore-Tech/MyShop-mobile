@@ -422,6 +422,16 @@ class EarningsReport {
   final double? trendPct;
 
   final List<EarningsReportPoint> series;
+
+  /// What the provider effectively earned across this window — gross minus
+  /// commission. Use this for the headline figure on dashboard mini-stats
+  /// instead of [netEarningsPesewas], which depends on whether the Payment
+  /// rows landed as escrowed/completed and goes to zero (or worse, stale
+  /// negatives from old code paths) when cash and in-app rides mix.
+  int get effectiveEarningsPesewas {
+    final v = grossEarningsPesewas - commissionChargedPesewas;
+    return v < 0 ? 0 : v;
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
