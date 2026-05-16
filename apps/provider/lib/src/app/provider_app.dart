@@ -10,6 +10,9 @@ import '../core/providers/socket_provider.dart';
 import '../core/services/fcm_service.dart';
 import '../features/artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../features/auth/providers/auth_controller.dart';
+import '../features/earnings/providers/earnings_providers.dart';
+import '../features/earnings/providers/ratings_provider.dart';
+import '../features/trips/providers/driver_trips_provider.dart';
 import 'router.dart';
 
 /// Root widget for the MyShop Provider App.
@@ -60,6 +63,26 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
         final status = ref.read(providerStatusProvider);
         if (status != DriverStatus.offline) {
           ref.read(socketServiceProvider).connect();
+        }
+        // Bust the earnings-flavoured caches. Catches every "socket
+        // missed a `ride:state`/`job:state` completion while we were
+        // backgrounded" scenario — SOS dialer handoff, incoming phone
+        // call, screen lock past iOS's WS suspend threshold, app
+        // switcher trip, mobile-data cell handoff. The backend has
+        // already written the Payment row by the time we get here;
+        // we just need the dashboard providers to refetch instead of
+        // serving the pre-completion cache.
+        try {
+          ref.invalidate(todayCardProvider);
+          ref.invalidate(earningsSummaryProvider);
+          ref.invalidate(earningsReportProvider);
+          ref.invalidate(activeTodayCardProvider);
+          ref.invalidate(payoutsProvider);
+          ref.invalidate(providerRatingsProvider);
+          ref.invalidate(driverTripsProvider);
+        } catch (_) {
+          // Providers may not be mounted on a cold-start resume —
+          // harmless, the next subscription will fetch fresh anyway.
         }
         break;
       case AppLifecycleState.paused:

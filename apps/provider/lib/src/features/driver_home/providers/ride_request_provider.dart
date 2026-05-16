@@ -8,6 +8,9 @@ import 'package:shared_models/shared_models.dart';
 import '../../../core/di/providers.dart';
 import '../../../core/providers/provider_status_provider.dart';
 import '../../../core/providers/socket_provider.dart';
+import '../../earnings/providers/earnings_providers.dart';
+import '../../earnings/providers/ratings_provider.dart';
+import '../../trips/providers/driver_trips_provider.dart';
 
 // The incoming ride/job request providers are in
 // core/providers/socket_provider.dart — driven by Socket.IO events.
@@ -208,6 +211,15 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       if (updated.status == RideStatus.completed ||
           updated.status == RideStatus.cancelled) {
         _resumeOnline();
+        // Backend's `recordRideCompletion()` writes the Payment row
+        // fire-and-forget right after the status flip; bust the driver
+        // dashboard caches synchronously here so the home tile reflects
+        // it on the next read. The socket `ride:state` listener does
+        // the same invalidation, but a driver who drops WS at the
+        // moment of completion (mid-ride disconnect grace period) wouldn't
+        // get that event — they'd open the home screen and see stale
+        // earnings.
+        _bustEarningsCaches();
       }
       return true;
     } on ApiException catch (e) {
@@ -360,6 +372,29 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
     try {
       _ref.read(providerStatusProvider.notifier).resumeAfterJob();
     } catch (_) {}
+  }
+
+  /// Invalidates every earnings-flavoured cache so the next read returns
+  /// fresh server data. Called whenever a ride flips to `completed`,
+  /// since the backend's `recordRideCompletion` inserts a Payment row
+  /// (or marks an existing one terminal) — the dashboard's
+  /// `FutureProvider`s would otherwise keep serving stale figures.
+  /// Mirrors the artisan-side `_bustEarningsCaches` in
+  /// `active_job_provider.dart`. Wrapped in try/catch so a missing
+  /// provider in tests doesn't crash the transition.
+  void _bustEarningsCaches() {
+    try {
+      _ref.invalidate(todayCardProvider);
+      _ref.invalidate(earningsSummaryProvider);
+      _ref.invalidate(earningsReportProvider);
+      _ref.invalidate(activeTodayCardProvider);
+      _ref.invalidate(payoutsProvider);
+      _ref.invalidate(providerRatingsProvider);
+      _ref.invalidate(driverTripsProvider);
+    } catch (_) {
+      // Providers may not be mounted yet (tests, fresh-launch); harmless
+      // if they aren't, we just lose the eager refetch.
+    }
   }
 
   /// Pull the authoritative ride state from REST and apply it via
