@@ -15,6 +15,7 @@ import '../../../core/chat/chat_entry_button.dart';
 import '../../../core/providers/socket_provider.dart' show ratingSheetShownFor;
 import '../../../core/services/directions_service.dart';
 import '../../../core/services/nav_guidance.dart';
+import '../../../core/widgets/nav_arrow_icon.dart';
 import '../../driver_home/providers/driver_location_provider.dart';
 import '../providers/active_job_provider.dart';
 import '../widgets/rate_client_sheet.dart';
@@ -287,15 +288,22 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
               child: ValueListenableBuilder<_LiveMetrics>(
                 valueListenable: _liveMetrics,
                 builder: (context, metrics, _) {
-                  return _NavHeader(
-                    clientName: job.clientName ?? 'Client',
-                    address: job.addressText ?? 'Destination',
-                    liveDistanceMeters: metrics.distanceMeters,
-                    liveEtaMinutes: metrics.etaMinutes,
-                    progress: metrics.progress,
-                    onBack: goBackToJobs,
-                    onRecenter: () => _mapHandle.recenter?.call(),
-                    onOpenInMaps: () => _launchExternalNavigation(destination),
+                  return ValueListenableBuilder<bool>(
+                    valueListenable: _mapHandle.voiceMuted,
+                    builder: (_, muted, __) => _NavHeader(
+                      clientName: job.clientName ?? 'Client',
+                      address: job.addressText ?? 'Destination',
+                      liveDistanceMeters: metrics.distanceMeters,
+                      liveEtaMinutes: metrics.etaMinutes,
+                      progress: metrics.progress,
+                      voiceMuted: muted,
+                      onBack: goBackToJobs,
+                      onRecenter: () => _mapHandle.recenter?.call(),
+                      onOpenInMaps: () =>
+                          _launchExternalNavigation(destination),
+                      onToggleVoice: () => _mapHandle.voiceMuted.value =
+                          !_mapHandle.voiceMuted.value,
+                    ),
                   );
                 },
               ),
@@ -372,6 +380,10 @@ class _LiveMetrics {
 /// controller itself.
 class _MapHandle {
   VoidCallback? recenter;
+
+  /// Voice prompts mute toggle — owned by the parent so the icon and
+  /// the actual `NavVoiceCoach.muted` flag inside the map stay in sync.
+  final ValueNotifier<bool> voiceMuted = ValueNotifier<bool>(false);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -461,11 +473,29 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   /// from the active job.
   final NavVoiceCoach _voice = NavVoiceCoach();
 
+  /// Triangular blue chevron used for the artisan marker — same Google
+  /// Maps-style nav arrow the driver screen uses. Null until the
+  /// bitmap renders; first frame falls back to the default pin.
+  BitmapDescriptor? _artisanArrowIcon;
+
   @override
   void initState() {
     super.initState();
     widget.handle.recenter = _handleRecenter;
+    widget.handle.voiceMuted.addListener(_onVoiceMuteChanged);
+    _voice.muted = widget.handle.voiceMuted.value;
     _markers = _buildMarkers();
+    NavArrowIcon.load().then((icon) {
+      if (!mounted) return;
+      setState(() {
+        _artisanArrowIcon = icon;
+        _markers = _buildMarkers();
+      });
+    });
+  }
+
+  void _onVoiceMuteChanged() {
+    _voice.muted = widget.handle.voiceMuted.value;
   }
 
   @override
@@ -473,6 +503,7 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
     if (widget.handle.recenter == _handleRecenter) {
       widget.handle.recenter = null;
     }
+    widget.handle.voiceMuted.removeListener(_onVoiceMuteChanged);
     _voice.dispose();
     _mapController?.dispose();
     super.dispose();
@@ -624,6 +655,7 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
 
   Set<Marker> _buildMarkers() {
     final artisan = _artisan;
+    final arrow = _artisanArrowIcon;
     return <Marker>{
       Marker(
         markerId: const MarkerId('client'),
@@ -634,8 +666,14 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
         Marker(
           markerId: const MarkerId('artisan'),
           position: artisan,
-          icon:
+          icon: arrow ??
               BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+          // Rotate to heading once the chevron is in place; flat:true
+          // keeps it pinned to the map plane so the camera bearing
+          // doesn't double-rotate it.
+          rotation: arrow != null ? _lastBearing : 0,
+          anchor: const Offset(0.5, 0.5),
+          flat: true,
         ),
     };
   }
@@ -892,9 +930,11 @@ class _NavHeader extends StatelessWidget {
     required this.liveDistanceMeters,
     required this.liveEtaMinutes,
     required this.progress,
+    required this.voiceMuted,
     required this.onBack,
     required this.onRecenter,
     required this.onOpenInMaps,
+    required this.onToggleVoice,
   });
 
   final String clientName;
@@ -913,9 +953,14 @@ class _NavHeader extends StatelessWidget {
   /// [NavProgress.currentStep], the header swaps the chip row for a
   /// maneuver instruction.
   final NavProgress? progress;
+
+  /// True when the spoken turn-by-turn coach has been muted. Drives
+  /// the volume icon in the header.
+  final bool voiceMuted;
   final VoidCallback onBack;
   final VoidCallback onRecenter;
   final VoidCallback onOpenInMaps;
+  final VoidCallback onToggleVoice;
 
   @override
   Widget build(BuildContext context) {
@@ -979,6 +1024,11 @@ class _NavHeader extends StatelessWidget {
               _CircleIconButton(
                 icon: Icons.my_location,
                 onTap: onRecenter,
+              ),
+              const SizedBox(width: MyShopSpacing.xs),
+              _CircleIconButton(
+                icon: voiceMuted ? Icons.volume_off : Icons.volume_up,
+                onTap: onToggleVoice,
               ),
               const SizedBox(width: MyShopSpacing.xs),
               _CircleIconButton(

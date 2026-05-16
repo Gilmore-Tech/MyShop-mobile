@@ -62,40 +62,14 @@ class _ProviderEmergencyScreenState
   void _onHoldStart() => _holdCtrl.forward();
   void _onHoldCancel() => _holdCtrl.reverse();
 
+  /// Completing the 3-second hold IS the confirmation — no follow-up
+  /// dialog. The hold itself is the deliberate gesture that filters out
+  /// pocket-taps; making the user tap a second "Send SOS" button before
+  /// anything actually fires is a real risk in a real emergency. Fire
+  /// the platform alert + 191 dial immediately.
   void _onHoldComplete() {
     _holdCtrl.reset();
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text(
-          'Confirm emergency',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-        content: const Text(
-          'We will alert MyShop support with your live location and dial '
-          'Ghana Police Service (191). Continue only if you are in real '
-          'danger.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              _triggerSos();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: MyShopColors.error,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Send SOS'),
-          ),
-        ],
-      ),
-    );
+    _triggerSos();
   }
 
   Future<void> _triggerSos() async {

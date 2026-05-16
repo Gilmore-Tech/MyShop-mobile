@@ -15,6 +15,7 @@ import '../../../core/providers/chat_controller_provider.dart';
 import '../../../core/services/directions_service.dart';
 import '../../../core/services/nav_guidance.dart';
 import '../../../core/widgets/maneuver_banner.dart';
+import '../../../core/widgets/nav_arrow_icon.dart';
 import '../data/external_nav_service.dart';
 import '../providers/driver_location_provider.dart';
 import '../providers/ride_request_provider.dart';
@@ -357,7 +358,7 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
             ),
           ),
 
-          // ── Map controls: recenter + overflow + SOS ──
+          // ── Map controls: recenter + voice mute + overflow + SOS ──
           Positioned(
             right: MyShopSpacing.md,
             top: MediaQuery.of(context).padding.top + 130,
@@ -366,6 +367,20 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
                 _MapControlButton(
                   icon: Icons.my_location,
                   onTap: () => _mapHandle.recenter?.call(),
+                ),
+                const SizedBox(height: MyShopSpacing.sm),
+                // Voice mute toggle — drivers asked for an off switch so
+                // they can stop the spoken turn-by-turn coach without
+                // killing it system-wide. State lives on the map handle
+                // so the icon and the actual `NavVoiceCoach.muted` flag
+                // stay in lockstep.
+                ValueListenableBuilder<bool>(
+                  valueListenable: _mapHandle.voiceMuted,
+                  builder: (_, muted, __) => _MapControlButton(
+                    icon: muted ? Icons.volume_off : Icons.volume_up,
+                    onTap: () =>
+                        _mapHandle.voiceMuted.value = !_mapHandle.voiceMuted.value,
+                  ),
                 ),
                 const SizedBox(height: MyShopSpacing.sm),
                 // Cancel-ride lives in the overflow menu, but it's the
@@ -451,6 +466,12 @@ class _LiveMetrics {
 /// the parent can fire without holding the native controller itself.
 class _MapHandle {
   VoidCallback? recenter;
+
+  /// True when the driver has muted voice prompts. The map widget
+  /// watches this and flips its `NavVoiceCoach.muted` flag in sync.
+  /// Owned by the parent screen so the control-button icon stays
+  /// in lockstep with the actual mute state.
+  final ValueNotifier<bool> voiceMuted = ValueNotifier<bool>(false);
 }
 
 // ─── Navigation map ─────────────────────────────────────────────────────────
@@ -539,11 +560,35 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   /// the active ride.
   final NavVoiceCoach _voice = NavVoiceCoach();
 
+  /// Triangular blue chevron used for the driver marker — same shape
+  /// Google Maps uses in nav mode. Loaded async on init so the first
+  /// frame can fall back to the default azure pin while the bitmap
+  /// renders; once loaded, every subsequent `_buildMarkers` uses it
+  /// with `rotation` set to the live bearing.
+  BitmapDescriptor? _driverArrowIcon;
+
   @override
   void initState() {
     super.initState();
     widget.handle.recenter = _handleRecenter;
+    widget.handle.voiceMuted.addListener(_onVoiceMuteChanged);
+    _voice.muted = widget.handle.voiceMuted.value;
     _markers = _buildMarkers();
+    // Render the navigation chevron in the background. The first map
+    // frame uses the default azure pin; the moment the bitmap lands we
+    // rebuild markers with the rotating chevron. Cached across screens
+    // via NavArrowIcon._cached, so a second open is instant.
+    NavArrowIcon.load().then((icon) {
+      if (!mounted) return;
+      setState(() {
+        _driverArrowIcon = icon;
+        _markers = _buildMarkers();
+      });
+    });
+  }
+
+  void _onVoiceMuteChanged() {
+    _voice.muted = widget.handle.voiceMuted.value;
   }
 
   @override
@@ -586,6 +631,7 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
     if (widget.handle.recenter == _handleRecenter) {
       widget.handle.recenter = null;
     }
+    widget.handle.voiceMuted.removeListener(_onVoiceMuteChanged);
     _voice.dispose();
     _mapController?.dispose();
     super.dispose();
@@ -752,6 +798,7 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
 
   Set<Marker> _buildMarkers() {
     final driver = _driver;
+    final arrow = _driverArrowIcon;
     return <Marker>{
       Marker(
         markerId: const MarkerId('target'),
@@ -762,8 +809,20 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
         Marker(
           markerId: const MarkerId('driver'),
           position: driver,
-          icon:
+          // Custom chevron once it's loaded, default azure pin until
+          // then so the first frame isn't empty.
+          icon: arrow ??
               BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+          // Rotate the chevron to match the direction of travel. Marker
+          // rotation is independent of the camera bearing, so this
+          // works in 2D top-down: the arrow always points where the
+          // driver is heading on the map, while the camera spins to
+          // keep "up = ahead". Anchor at center so rotation pivots
+          // around the chevron's middle rather than the default
+          // bottom-center used by drop pins.
+          rotation: arrow != null ? _lastBearing : 0,
+          anchor: const Offset(0.5, 0.5),
+          flat: true,
         ),
     };
   }

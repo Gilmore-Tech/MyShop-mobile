@@ -67,10 +67,17 @@ final driverLocationStreamProvider =
         'continuing to position stream');
   }
 
+  // 1m distance filter — fine enough that the driver marker + camera
+  // follow appear continuous during a live ride, the way Google Maps
+  // "Start" mode does. 5m felt choppy on slower urban segments (the
+  // marker would freeze for several seconds at a time). Battery cost
+  // is bounded by `LocationAccuracy.high` already issuing a single
+  // hardware request — the filter is a software gate on emission rate,
+  // not the GPS duty cycle.
   yield* Geolocator.getPositionStream(
     locationSettings: const LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 5,
+      distanceFilter: 1,
     ),
   );
 });
