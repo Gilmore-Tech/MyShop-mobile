@@ -107,11 +107,16 @@ class _EarningsContent extends ConsumerWidget {
     // to the summary endpoint while the today-card is still loading so the
     // balance card never flashes 0 unnecessarily.
     final user = ref.watch(currentUserProvider);
-    final todayCardAsync = ref.watch(todayCardProvider(_kArtisanRole));
-    final todayCard = todayCardAsync.valueOrNull;
     final jobsDone = user?.artisanProfile?.completedJobsCount ?? 0;
-    final availablePesewas =
-        todayCard?.netEarningsPesewas ?? summary.availableBalancePesewas;
+    // "Available" must be the *withdrawable* balance — the sum of net
+    // payments where the escrow is released and no transfer is in flight.
+    // Previously this read `todayCard.netEarningsPesewas` which is just
+    // today's earnings (includes money already paid out OR currently in
+    // a retrying transfer), so the figure was misleading and the
+    // Request Payout button gated on the wrong number.
+    final availablePesewas = summary.effectiveBalancePesewas;
+    final pendingPesewas = summary.pendingPayoutsPesewas;
+    final isInArrears = summary.isInArrears;
     final available = availablePesewas / 100;
     final periodNet = summary.netEarningsPesewas / 100;
 
@@ -148,16 +153,55 @@ class _EarningsContent extends ConsumerWidget {
           jobsDone: jobsDone,
           ratingsAsync: ratingsAsync,
         ),
+        if (pendingPesewas > 0) ...[
+          const SizedBox(height: MyShopSpacing.sm),
+          // "Pending settlement" line — money the platform owes and is
+          // currently trying to disburse. Includes payouts in `pending`,
+          // `processing`, and `retrying` states. Without this surface
+          // the artisan saw GHS 0 on the dashboard even though the
+          // platform was actively retrying their MoMo transfer.
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: MyShopSpacing.md,
+              vertical: 10,
+            ),
+            decoration: BoxDecoration(
+              color: MyShopColors.primaryGoldLight,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(children: [
+              const Icon(Icons.schedule,
+                  size: 16, color: MyShopColors.primaryGoldDark),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Pending settlement: GH₵ ${(pendingPesewas / 100).toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: MyShopColors.textPrimary,
+                  ),
+                ),
+              ),
+            ]),
+          ),
+        ],
         const SizedBox(height: MyShopSpacing.sm),
-        // Request Payout — disabled until the artisan has cleared the
-        // GHS 0 threshold. The sheet itself handles first-time MoMo bind
-        // via the OTP flow; thereafter it just confirms and disburses.
+        // Request Payout — surfaces the right state across three cases:
+        //   * Available > 0, nothing in flight → enabled, primary CTA.
+        //   * In flight (retrying / pending) → disabled with a hint.
+        //   * Available 0 and nothing in flight → disabled, no hint.
         ElevatedButton.icon(
-          onPressed: availablePesewas > 0
+          onPressed: availablePesewas > 0 && !isInArrears && pendingPesewas == 0
               ? () => showRequestPayoutSheet(context)
               : null,
           icon: const Icon(Icons.send_rounded, size: 18),
-          label: const Text('REQUEST PAYOUT'),
+          label: Text(
+            pendingPesewas > 0
+                ? 'PAYOUT IN PROGRESS'
+                : 'REQUEST PAYOUT',
+          ),
           style: ElevatedButton.styleFrom(
             backgroundColor: MyShopColors.primaryGold,
             foregroundColor: MyShopColors.textOnPrimary,

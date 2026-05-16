@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
@@ -56,6 +57,11 @@ class EarningsDashboardScreen extends ConsumerWidget {
     // shows the absolute value so the rider doesn't see "-GHS 1.80".
     final effectiveBalance = summary?.effectiveBalancePesewas ?? 0;
     final isInArrears = summary?.isInArrears ?? false;
+    // Money owed to the driver that's already in a Paystack transfer
+    // (pending / processing / retrying). Surfaced separately so the
+    // dashboard doesn't appear to "lose" the funds during the brief
+    // window between escrow release and transfer.success.
+    final pendingPayouts = summary?.pendingPayoutsPesewas ?? 0;
     final todayAvailable = todayCard?.netEarningsPesewas ??
         summary?.todayAvailableBalancePesewas ??
         0;
@@ -143,21 +149,25 @@ class EarningsDashboardScreen extends ConsumerWidget {
                           ]),
                         ]),
                     Row(children: [
-                      Stack(children: [
-                        const Icon(Icons.notifications_outlined,
-                            size: 24, color: MyShopColors.textPrimary),
-                        Positioned(
-                          right: 0,
-                          top: 0,
-                          child: Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                                color: MyShopColors.error,
-                                shape: BoxShape.circle),
+                      GestureDetector(
+                        onTap: () => context.push('/notifications'),
+                        behavior: HitTestBehavior.opaque,
+                        child: Stack(children: [
+                          const Icon(Icons.notifications_outlined,
+                              size: 24, color: MyShopColors.textPrimary),
+                          Positioned(
+                            right: 0,
+                            top: 0,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                  color: MyShopColors.error,
+                                  shape: BoxShape.circle),
+                            ),
                           ),
-                        ),
-                      ]),
+                        ]),
+                      ),
                       const SizedBox(width: MyShopSpacing.md),
                       CircleAvatar(
                         radius: 18,
@@ -209,21 +219,62 @@ class EarningsDashboardScreen extends ConsumerWidget {
                   isInArrears: isInArrears,
                 ),
               ),
+              if (pendingPayouts > 0) ...[
+                const SizedBox(height: MyShopSpacing.sm),
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: MyShopSpacing.md,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: MyShopColors.primaryGoldLight,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.schedule,
+                          size: 16, color: MyShopColors.primaryGoldDark),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Pending settlement: GH₵ ${(pendingPayouts / 100).toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontFamily: 'Raleway',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: MyShopColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ),
+              ],
               const SizedBox(height: MyShopSpacing.sm),
 
               // ── Request Payout CTA ──
-              // Disabled in arrears (driver owes the platform — backend
-              // would 400 with INSUFFICIENT_BALANCE anyway) and when the
-              // effective balance is 0 / negative.
+              // Disabled when:
+              //   * driver is in arrears (owes more than has earned),
+              //   * effective balance is 0 / negative,
+              //   * a prior payout is in flight (would 400 PAYOUT_IN_PROGRESS).
+              // Label flips to "PAYOUT IN PROGRESS" so the driver knows why
+              // the action is locked out, not just that it's disabled.
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
                 child: ElevatedButton.icon(
-                  onPressed: effectiveBalance > 0 && !isInArrears
-                      ? () => showRequestPayoutSheet(context)
-                      : null,
+                  onPressed:
+                      effectiveBalance > 0 && !isInArrears && pendingPayouts == 0
+                          ? () => showRequestPayoutSheet(context)
+                          : null,
                   icon: const Icon(Icons.send_rounded, size: 18),
-                  label: const Text('REQUEST PAYOUT'),
+                  label: Text(
+                    pendingPayouts > 0
+                        ? 'PAYOUT IN PROGRESS'
+                        : 'REQUEST PAYOUT',
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: MyShopColors.primaryGold,
                     foregroundColor: MyShopColors.textOnPrimary,
