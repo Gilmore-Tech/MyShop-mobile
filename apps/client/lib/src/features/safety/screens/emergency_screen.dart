@@ -47,23 +47,17 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen>
 
   void _onHoldStart() => _holdCtrl.forward();
   void _onHoldCancel() => _holdCtrl.reverse();
-  void _onHoldComplete() => _showConfirmDialog();
 
-  void _showConfirmDialog() {
+  /// Completing the 3-second hold IS the confirmation. No follow-up
+  /// dialog — in a real emergency the user shouldn't have to tap a
+  /// second "Send SOS" button before anything fires. The hold itself
+  /// is the deliberate gesture that filters out pocket-taps.
+  void _onHoldComplete() {
     _holdCtrl.reset();
-    showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => _ConfirmDialog(
-        w: MediaQuery.sizeOf(context).width,
-        onConfirm: _triggerSos,
-        onCancel: () => Navigator.pop(context),
-      ),
-    );
+    _triggerSos();
   }
 
   Future<void> _triggerSos() async {
-    Navigator.pop(context); // close dialog
     setState(() {
       _isSending = true;
     });
@@ -308,81 +302,9 @@ class _HoldState extends StatelessWidget {
   }
 }
 
-// ── Confirm dialog ─────────────────────────────────────────────────────────────
-
-class _ConfirmDialog extends StatelessWidget {
-  final double w;
-  final VoidCallback onConfirm;
-  final VoidCallback onCancel;
-
-  const _ConfirmDialog({
-    required this.w,
-    required this.onConfirm,
-    required this.onCancel,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      contentPadding: EdgeInsets.all(w * 0.05),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: EdgeInsets.all(w * 0.04),
-            decoration: const BoxDecoration(
-                color: MyShopColors.errorLight, shape: BoxShape.circle),
-            child: const Icon(Icons.sos_rounded,
-                color: MyShopColors.error, size: 40),
-          ),
-          SizedBox(height: w * 0.040),
-          Text('Trigger SOS?',
-              style: TextStyle(
-                color: MyShopColors.textPrimary,
-                fontSize: w * 0.048,
-                fontWeight: FontWeight.w800,
-              )),
-          SizedBox(height: w * 0.020),
-          Text(
-            'This will immediately call 191 and alert your emergency contacts '
-            'with your live location.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                color: MyShopColors.textSecondary,
-                fontSize: w * 0.034,
-                height: 1.5),
-          ),
-          SizedBox(height: w * 0.040),
-          SizedBox(
-            width: double.infinity,
-            height: w * 0.130,
-            child: ElevatedButton(
-              onPressed: onConfirm,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: MyShopColors.error,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-                elevation: 0,
-              ),
-              child: Text('Yes, call 191 now',
-                  style: TextStyle(
-                      fontSize: w * 0.040, fontWeight: FontWeight.w700)),
-            ),
-          ),
-          SizedBox(height: w * 0.020),
-          TextButton(
-            onPressed: onCancel,
-            child: Text('Cancel',
-                style: TextStyle(
-                    color: MyShopColors.textSecondary, fontSize: w * 0.036)),
-          ),
-        ],
-      ),
-    );
-  }
-}
+// Old `_ConfirmDialog` removed — the 3-second hold itself IS the
+// confirmation. Asking the user to tap a second "Send SOS" button in
+// a panic moment was bad UX.
 
 // ── Quick dial row ─────────────────────────────────────────────────────────────
 
