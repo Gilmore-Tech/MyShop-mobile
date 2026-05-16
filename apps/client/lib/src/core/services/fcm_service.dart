@@ -537,13 +537,43 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           router.go(AppRoutes.activity);
           break;
         }
+        // Hydrate the peer (driver/artisan) details from the booking so
+        // the chat screen header renders the same way it does when
+        // opened from the active-ride / job-tracking surfaces. The FCM
+        // payload only carries the notification title (usually "New
+        // message"), which would otherwise blank out the peer card.
+        String peerName = 'Chat';
+        String peerStatus = '';
+        try {
+          if (bookingType == ChatBookingType.ride) {
+            final raw =
+                await ref.read(rideServiceProvider).getRide(bookingId);
+            final driver = raw['driver'] as Map<String, dynamic>? ??
+                <String, dynamic>{};
+            final name = (driver['name'] as String?)?.trim();
+            if (name != null && name.isNotEmpty) peerName = name;
+            peerStatus = _ridePeerStatusFor(raw['status'] as String?);
+          } else {
+            final raw = await ref.read(jobServiceProvider).getJob(bookingId);
+            final artisan = raw['artisan'] as Map<String, dynamic>? ??
+                <String, dynamic>{};
+            final name = ((artisan['businessName'] ??
+                    artisan['fullName'] ??
+                    artisan['name']) as String?)
+                ?.trim();
+            if (name != null && name.isNotEmpty) peerName = name;
+            peerStatus = _jobPeerStatusFor(raw['status'] as String?);
+          }
+        } catch (e) {
+          debugPrint('[FCM] hydrate booking for chat failed: $e');
+        }
         router.push(
           AppRoutes.chat,
           extra: <String, Object?>{
             'bookingType': bookingType,
             'bookingId': bookingId,
-            'peerName': payload['title'] as String? ?? 'Chat',
-            'peerStatus': '',
+            'peerName': peerName,
+            'peerStatus': peerStatus,
           },
         );
         break;
@@ -647,3 +677,51 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     }
   };
 });
+
+/// Renders a friendly "what is the driver up to right now" string for
+/// the chat header. Mirrors the labels the active-ride screen passes
+/// when it opens the chat, so a notification-tap and an in-app tap
+/// land on the same UI.
+String _ridePeerStatusFor(String? rideStatus) {
+  switch (rideStatus) {
+    case 'accepted':
+    case 'driver_en_route':
+      return 'On the way';
+    case 'arrived':
+      return 'At pickup';
+    case 'in_progress':
+      return 'On your trip';
+    case 'completed':
+      return 'Trip completed';
+    case 'cancelled':
+      return 'Trip cancelled';
+    default:
+      return '';
+  }
+}
+
+String _jobPeerStatusFor(String? jobStatus) {
+  switch (jobStatus) {
+    case 'pending':
+    case 'open':
+    case 'bidding':
+      return 'Reviewing your bids';
+    case 'awarded':
+    case 'accepted':
+    case 'en_route':
+    case 'driver_en_route':
+      return 'On the way';
+    case 'arrived':
+      return 'On site';
+    case 'in_progress':
+      return 'On your job';
+    case 'artisan_marked_complete':
+      return 'Awaiting your confirmation';
+    case 'completed':
+      return 'Job completed';
+    case 'cancelled':
+      return 'Job cancelled';
+    default:
+      return '';
+  }
+}

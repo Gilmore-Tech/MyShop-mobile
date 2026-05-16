@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../providers/profile_provider.dart';
 import '../providers/privacy_security_provider.dart';
+import '../providers/my_ratings_provider.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../../../app/router.dart' show AppRoutes;
 
@@ -263,7 +264,7 @@ class _AppBar extends StatelessWidget {
 
 // ── Profile Header ────────────────────────────────────────────────────────────
 
-class _ProfileHeader extends StatelessWidget {
+class _ProfileHeader extends ConsumerWidget {
   final AccountProfile profile;
   final double w;
   final double h;
@@ -271,7 +272,7 @@ class _ProfileHeader extends StatelessWidget {
       {required this.profile, required this.w, required this.h});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Container(
       color: MyShopColors.surfaceWhite,
       width: double.infinity,
@@ -365,8 +366,80 @@ class _ProfileHeader extends StatelessWidget {
 
           // ── KYC badge ──
           if (profile.isKycVerified) _KycBadge(w: w, h: h),
+
+          // ── Rating chip — drivers/artisans rate clients after every
+          // booking. The blind 24h reveal window means a brand-new
+          // client (or one whose first ratings haven't revealed yet)
+          // sees the "New rider" pill instead of "0.0", which would
+          // misleadingly look like a bad score. Tap-target stays
+          // passive — this is read-only on the profile.
+          SizedBox(height: h * 0.012),
+          _RatingChip(ref: ref, w: w, h: h),
         ],
       ),
+    );
+  }
+}
+
+class _RatingChip extends StatelessWidget {
+  const _RatingChip({required this.ref, required this.w, required this.h});
+
+  final WidgetRef ref;
+  final double w;
+  final double h;
+
+  @override
+  Widget build(BuildContext context) {
+    final ratingsAsync = ref.watch(myRatingsProvider);
+
+    return ratingsAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (r) {
+        final hasRatings = r.hasRatings;
+        return Container(
+          padding:
+              EdgeInsets.symmetric(horizontal: w * 0.041, vertical: h * 0.008),
+          decoration: BoxDecoration(
+            color: hasRatings
+                ? MyShopColors.primaryGoldLight
+                : MyShopColors.surfaceGrey,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.star_rounded,
+                size: w * 0.046,
+                color: hasRatings
+                    ? MyShopColors.primaryGold
+                    : MyShopColors.textSecondary,
+              ),
+              SizedBox(width: w * 0.013),
+              Text(
+                hasRatings ? r.averageDisplay : 'New rider',
+                style: TextStyle(
+                  fontSize: w * 0.034,
+                  fontWeight: FontWeight.w800,
+                  color: MyShopColors.textPrimary,
+                ),
+              ),
+              if (hasRatings) ...[
+                SizedBox(width: w * 0.013),
+                Text(
+                  '· ${r.count} ${r.count == 1 ? 'rating' : 'ratings'}',
+                  style: TextStyle(
+                    fontSize: w * 0.030,
+                    fontWeight: FontWeight.w500,
+                    color: MyShopColors.textSecondary,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }
