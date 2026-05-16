@@ -96,7 +96,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             !loc.startsWith('/ride') &&
             !loc.startsWith('/job') &&
             !loc.startsWith('/legal') &&
-            !loc.startsWith('/chat')) {
+            !loc.startsWith('/chat') &&
+            !loc.startsWith('/messages') &&
+            !loc.startsWith('/notifications') &&
+            !loc.startsWith('/supplement-request') &&
+            !loc.startsWith('/safety')) {
           return '/home';
         }
         return null;

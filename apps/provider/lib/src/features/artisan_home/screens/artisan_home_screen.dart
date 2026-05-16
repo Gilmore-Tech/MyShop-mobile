@@ -108,11 +108,15 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
         ?.map((c) => c.category.name)
         .join(', ');
 
-    // Today's net earnings drives the headline; the weekly trend stat below
-    // it now shows tips earned today (today-card doesn't carry weekly data,
-    // and the Earnings tab is a tap away for the full weekly view).
+    // Today's effective earnings drives the headline. We use the
+    // gross-minus-commission helper rather than `netEarningsPesewas`
+    // because the latter is 0 for cash bookings (the artisan already
+    // pocketed the gross; the commission lives in a Clawback row, not
+    // a payout). Without the swap a cash-only day reads "GHS 0" even
+    // though the artisan earned money — which is exactly the bug the
+    // user reported.
     final earningsDisplay = cardAsync.when(
-      data: (c) => _formatGhs(c.netEarningsPesewas),
+      data: (c) => _formatGhs(c.effectiveEarningsPesewas),
       loading: () => '...',
       error: (_, __) => '0',
     );

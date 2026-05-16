@@ -140,9 +140,12 @@ class AccountSettingsScreen extends ConsumerWidget {
         : MyShopColors.warningLight;
 
     // Today's earnings for performance card — sourced from the homepage
-    // today-card endpoint, scoped to the active role.
+    // today-card endpoint, scoped to the active role. Uses the
+    // gross-minus-commission helper rather than `netEarningsPesewas`
+    // because the latter is 0 for cash bookings (artisan keeps the cash;
+    // commission becomes a Clawback row).
     final todayEarnings = cardAsync.when(
-      data: (c) => _formatGhs(c.netEarningsPesewas),
+      data: (c) => _formatGhs(c.effectiveEarningsPesewas),
       loading: () => '...',
       error: (_, __) => '0',
     );
