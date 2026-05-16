@@ -39,6 +39,33 @@ enum ChatBookingType {
 /// keep the channel readable but lock the composer.
 enum ChatChannelStatus { open, closed }
 
+/// Role the sender of a chat message had on the booking. Used to render
+/// "Kofi (Driver)" / "Abena (Client)" style labels in the chat bubble so
+/// a multi-role user (one phone holding Client + Driver + Artisan) can
+/// tell which side of the booking they were on when they sent it.
+enum ChatSenderRole {
+  client('client', 'Client'),
+  driver('driver', 'Driver'),
+  artisan('artisan', 'Artisan');
+
+  const ChatSenderRole(this.wire, this.label);
+
+  final String wire;
+  final String label;
+
+  static ChatSenderRole? fromWire(String? raw) {
+    switch (raw) {
+      case 'client':
+        return ChatSenderRole.client;
+      case 'driver':
+        return ChatSenderRole.driver;
+      case 'artisan':
+        return ChatSenderRole.artisan;
+    }
+    return null;
+  }
+}
+
 /// A single chat message — both REST `messages[]` rows and `chat:message:*`
 /// socket payloads land here.
 class ChatMessage {
@@ -47,6 +74,7 @@ class ChatMessage {
     required this.senderId,
     required this.message,
     required this.createdAt,
+    this.senderRole,
     this.readAt,
   });
 
@@ -64,6 +92,9 @@ class ChatMessage {
     return ChatMessage(
       id: json['id'] as String,
       senderId: sender,
+      senderRole: ChatSenderRole.fromWire(
+        (json['senderRole'] ?? json['sender_role']) as String?,
+      ),
       message: json['message'] as String? ?? json['content'] as String? ?? '',
       readAt: _parseDate(json['readAt']),
       createdAt: _parseDate(json['createdAt']) ?? DateTime.now().toUtc(),
@@ -78,6 +109,12 @@ class ChatMessage {
   /// User id of the sender. The recipient is implicit (the other party on
   /// the booking) — the backend addresses it by participant lookup.
   final String senderId;
+
+  /// Role the sender held on this booking. Null on optimistic mobile-side
+  /// rows (we don't know our own role at that layer); the server ack will
+  /// fill it in on the way back. Used to render "Kofi (Driver)" labels
+  /// when a multi-role user needs to disambiguate which side sent.
+  final ChatSenderRole? senderRole;
 
   /// Body. 1–2000 chars, UTF-8. The backend trims and validates length;
   /// the composer should mirror that cap.
@@ -95,6 +132,7 @@ class ChatMessage {
   ChatMessage copyWith({
     String? id,
     String? senderId,
+    ChatSenderRole? senderRole,
     String? message,
     DateTime? readAt,
     DateTime? createdAt,
@@ -103,6 +141,7 @@ class ChatMessage {
     return ChatMessage(
       id: id ?? this.id,
       senderId: senderId ?? this.senderId,
+      senderRole: senderRole ?? this.senderRole,
       message: message ?? this.message,
       readAt: clearReadAt ? null : (readAt ?? this.readAt),
       createdAt: createdAt ?? this.createdAt,

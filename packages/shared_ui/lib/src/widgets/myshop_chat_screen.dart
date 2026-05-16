@@ -27,6 +27,7 @@ class ChatMessage {
     required this.time,
     required this.fromMe,
     this.status = ChatMessageStatus.sent,
+    this.senderRoleLabel,
   });
 
   final String id;
@@ -34,6 +35,13 @@ class ChatMessage {
   final String time;
   final bool fromMe;
   final ChatMessageStatus status;
+
+  /// Human-readable role of the sender on this booking — "Driver",
+  /// "Artisan", or "Client". Rendered as a tiny label next to the time
+  /// on incoming bubbles so a multi-role user can tell which side of
+  /// the conversation they're on (a single phone may hold Client +
+  /// Driver + Artisan, each a separate identity). Null hides the label.
+  final String? senderRoleLabel;
 }
 
 // ── Shared chat screen ────────────────────────────────────────────────────────
@@ -531,6 +539,22 @@ class _MessageBubble extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Show "Driver"/"Artisan"/"Client" on the peer's side
+                      // so a multi-role user can disambiguate which identity
+                      // sent. Suppressed on our own bubbles — the speaker
+                      // already knows which role they're on.
+                      if (!isMine && message.senderRoleLabel != null) ...[
+                        Text(
+                          message.senderRoleLabel!,
+                          style: MyShopTypography.caption.copyWith(
+                            color: MyShopColors.primaryGoldDark,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
                       Text(
                         message.time,
                         style: MyShopTypography.caption.copyWith(

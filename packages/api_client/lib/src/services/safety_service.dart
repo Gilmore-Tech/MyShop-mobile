@@ -22,11 +22,15 @@ class SafetyService {
 
   /// POST /emergency — Trigger emergency event.
   /// PRD § 9.1 — Two-step confirmation, GPS + admin alert + police call.
+  ///
+  /// Wire keys are `latitude` / `longitude` (full names). The earlier
+  /// `lat` / `lng` shorthand was rejected with a 400 from the backend's
+  /// class-validator DTO, which silently broke every emergency tap.
   Future<Map<String, dynamic>> triggerEmergency({
     required String bookingType,
     required String bookingId,
-    required double lat,
-    required double lng,
+    required double latitude,
+    required double longitude,
   }) async {
     try {
       final response = await _dio.post(
@@ -34,8 +38,8 @@ class SafetyService {
         data: {
           'bookingType': bookingType,
           'bookingId': bookingId,
-          'lat': lat,
-          'lng': lng,
+          'latitude': latitude,
+          'longitude': longitude,
         },
       );
       return _unwrap(response) as Map<String, dynamic>;
