@@ -106,7 +106,7 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
   late final TextEditingController _labour;
   late final TextEditingController _eta;
   late final TextEditingController _notes;
-  late final TextEditingController _duration;
+  int _durationMinutes = 0;
   final List<File> _attachments = [];
   bool _submitting = false;
 
@@ -155,11 +155,9 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
           ? _etaInitialFromMinutes(widget.initialEtaMinutes)
           : _etaInitial(draft),
     );
-    _duration = TextEditingController(
-      text: useEdit
-          ? _durationInitialFromMinutes(widget.initialDurationMinutes)
-          : _durationInitial(draft),
-    );
+    _durationMinutes = useEdit
+        ? (widget.initialDurationMinutes ?? 0)
+        : (draft?.durationMinutes ?? 0);
     _notes = TextEditingController(
       text: useEdit
           ? (widget.initialNotes ?? '')
@@ -172,7 +170,7 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
       }
     }
 
-    for (final c in [_labour, _eta, _duration, _notes]) {
+    for (final c in [_labour, _eta, _notes]) {
       c.addListener(_scheduleSave);
     }
   }
@@ -201,13 +199,12 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
         }
       });
     }
-    for (final c in [_labour, _eta, _duration, _notes]) {
+    for (final c in [_labour, _eta, _notes]) {
       c.removeListener(_scheduleSave);
     }
     _labour.dispose();
     _eta.dispose();
     _notes.dispose();
-    _duration.dispose();
     super.dispose();
   }
 
@@ -219,9 +216,6 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
   static String _etaInitial(BidDraft? draft) =>
       _etaInitialFromMinutes(draft?.etaMinutes);
 
-  static String _durationInitial(BidDraft? draft) =>
-      _durationInitialFromMinutes(draft?.durationMinutes);
-
   static String _labourInitialFromPesewas(int? pesewas) {
     final p = pesewas ?? 0;
     return p > 0 ? (p ~/ 100).toString() : '';
@@ -232,12 +226,15 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     return m > 0 ? '$m' : '';
   }
 
-  static String _durationInitialFromMinutes(int? minutes) {
-    final m = minutes ?? 0;
-    if (m <= 0) return '';
-    final hh = (m ~/ 60).toString().padLeft(2, '0');
-    final mm = (m % 60).toString().padLeft(2, '0');
-    return '$hh:$mm';
+  /// Formats a duration as "Xh Ym" / "Xh" / "Ym" for the field label.
+  /// Returns the empty string when nothing is set so the hint text shows.
+  static String _formatDuration(int minutes) {
+    if (minutes <= 0) return '';
+    final hh = minutes ~/ 60;
+    final mm = minutes % 60;
+    if (hh == 0) return '${mm}m';
+    if (mm == 0) return '${hh}h';
+    return '${hh}h ${mm}m';
   }
 
   void _scheduleSave() {
@@ -252,7 +249,7 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
   BidDraft _buildDraftSnapshot() {
     final ghs = num.tryParse(_labour.text.trim()) ?? 0;
     final etaMinutes = int.tryParse(_eta.text.trim()) ?? 0;
-    final durationMinutes = _parseDurationMinutes(_duration.text);
+    final durationMinutes = _durationMinutes;
     final notes = _notes.text.trim();
 
     return BidDraft(
@@ -353,29 +350,26 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     setState(() => _inlineError = null);
   }
 
-  /// Parse "HH:MM" → total minutes. Falls back to a single integer treated
-  /// as minutes. Returns 0 if unparseable.
-  int _parseDurationMinutes(String raw) {
-    final trimmed = raw.trim();
-    if (trimmed.isEmpty) return 0;
-    if (trimmed.contains(':')) {
-      final parts = trimmed.split(':');
-      final hours = int.tryParse(parts[0]) ?? 0;
-      final minutes = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
-      return hours * 60 + minutes;
-    }
-    return int.tryParse(trimmed) ?? 0;
-  }
-
   Future<void> _handleSubmit() async {
     if (_submitting) return;
 
     final ghs = num.tryParse(_labour.text.trim()) ?? 0;
     final etaMinutes = int.tryParse(_eta.text.trim()) ?? 0;
-    final durationMinutes = _parseDurationMinutes(_duration.text);
+    final durationMinutes = _durationMinutes;
 
     if (ghs <= 0 || etaMinutes <= 0 || durationMinutes <= 0) {
       _notifyError('Fill in labour, ETA, and duration first.');
+      return;
+    }
+    // Caps: labour 10k GHS, ETA 120 min. Higher numbers are almost always
+    // typos — clients can still post follow-up jobs for genuinely larger
+    // work without the artisan locking themselves into a four-digit bid.
+    if (ghs > 10000) {
+      _notifyError('Labour amount cannot exceed GHS 10,000.');
+      return;
+    }
+    if (etaMinutes > 120) {
+      _notifyError('ETA cannot exceed 120 minutes (2 hours).');
       return;
     }
 
@@ -644,6 +638,7 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
                       child: _NumberField(
                         controller: _eta,
                         hintText: 'e.g. 20',
+                        maxDigits: 3,
                         prefix: const Icon(
                           Icons.access_time,
                           color: MyShopColors.textPrimary,
@@ -674,17 +669,16 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
               ),
               const SizedBox(height: MyShopSpacing.lg),
 
-              // Job duration
+              // Job duration — wheel-picker prevents free-form HH:MM input,
+              // bounded to 0h–8h in 5-minute steps.
               _FieldWithLabel(
-                label: 'JOB DURATION (HH:MM)',
-                child: _NumberField(
-                  controller: _duration,
-                  hintText: 'HH:MM',
-                  prefix: const Icon(
-                    Icons.timer_outlined,
-                    color: MyShopColors.textPrimary,
-                    size: 22,
-                  ),
+                label: 'JOB DURATION',
+                child: _DurationPickerField(
+                  minutes: _durationMinutes,
+                  onChanged: (m) {
+                    setState(() => _durationMinutes = m);
+                    _scheduleSave();
+                  },
                 ),
               ),
               const SizedBox(height: MyShopSpacing.xl),
@@ -990,11 +984,17 @@ class _NumberField extends StatelessWidget {
     required this.controller,
     required this.prefix,
     this.hintText,
+    this.maxDigits = 5,
   });
 
   final TextEditingController controller;
   final Widget prefix;
   final String? hintText;
+
+  /// Hard cap on input length — labour is bounded at 10k GHS (5 digits),
+  /// ETA at 120 minutes (3 digits). Prevents the artisan from accidentally
+  /// pasting a phone number into the labour field.
+  final int maxDigits;
 
   @override
   Widget build(BuildContext context) {
@@ -1013,9 +1013,10 @@ class _NumberField extends StatelessWidget {
           Expanded(
             child: TextField(
               controller: controller,
-              keyboardType: TextInputType.text,
+              keyboardType: TextInputType.number,
               inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(maxDigits),
               ],
               style: MyShopTypography.h2.copyWith(
                 fontWeight: FontWeight.w800,
@@ -1035,6 +1036,273 @@ class _NumberField extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Read-only duration field. Tapping opens a bottom-sheet with two wheel
+/// pickers (hours 0–8, minutes 0/5/…/55). Wheels eliminate free-form HH:MM
+/// typos and put the legal range in front of the artisan, so a 30-minute
+/// quote can't be entered as "30:00" by mistake.
+class _DurationPickerField extends StatelessWidget {
+  const _DurationPickerField({
+    required this.minutes,
+    required this.onChanged,
+  });
+
+  final int minutes;
+  final ValueChanged<int> onChanged;
+
+  static const _maxHours = 8;
+  static const _minuteStep = 5;
+
+  String get _display => _BidSubmissionScreenState._formatDuration(minutes);
+
+  Future<void> _open(BuildContext context) async {
+    final picked = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: MyShopColors.surfaceWhite,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => _DurationPickerSheet(
+        initialMinutes: minutes,
+        maxHours: _maxHours,
+        minuteStep: _minuteStep,
+      ),
+    );
+    if (picked != null) onChanged(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasValue = minutes > 0;
+    return GestureDetector(
+      onTap: () => _open(context),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        height: 56,
+        padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+        decoration: BoxDecoration(
+          color: MyShopColors.offWhite,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: MyShopColors.divider),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.timer_outlined,
+              color: MyShopColors.textPrimary,
+              size: 22,
+            ),
+            const SizedBox(width: MyShopSpacing.sm),
+            Expanded(
+              child: Text(
+                hasValue ? _display : 'Tap to set',
+                style: MyShopTypography.h2.copyWith(
+                  fontWeight: hasValue ? FontWeight.w800 : FontWeight.w600,
+                  fontSize: 22,
+                  color: hasValue
+                      ? MyShopColors.textPrimary
+                      : MyShopColors.textSecondary.withValues(alpha: 0.5),
+                ),
+              ),
+            ),
+            const Icon(
+              Icons.expand_more_rounded,
+              color: MyShopColors.textSecondary,
+              size: 22,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DurationPickerSheet extends StatefulWidget {
+  const _DurationPickerSheet({
+    required this.initialMinutes,
+    required this.maxHours,
+    required this.minuteStep,
+  });
+
+  final int initialMinutes;
+  final int maxHours;
+  final int minuteStep;
+
+  @override
+  State<_DurationPickerSheet> createState() => _DurationPickerSheetState();
+}
+
+class _DurationPickerSheetState extends State<_DurationPickerSheet> {
+  late int _hours;
+  late int _minuteIndex;
+  late final FixedExtentScrollController _hourCtrl;
+  late final FixedExtentScrollController _minuteCtrl;
+
+  List<int> get _minuteValues => List.generate(
+        60 ~/ widget.minuteStep,
+        (i) => i * widget.minuteStep,
+      );
+
+  @override
+  void initState() {
+    super.initState();
+    final init = widget.initialMinutes.clamp(0, widget.maxHours * 60);
+    _hours = (init ~/ 60).clamp(0, widget.maxHours);
+    final remainder = init % 60;
+    _minuteIndex = _minuteValues
+        .indexOf((remainder ~/ widget.minuteStep) * widget.minuteStep);
+    if (_minuteIndex < 0) _minuteIndex = 0;
+    _hourCtrl = FixedExtentScrollController(initialItem: _hours);
+    _minuteCtrl = FixedExtentScrollController(initialItem: _minuteIndex);
+  }
+
+  @override
+  void dispose() {
+    _hourCtrl.dispose();
+    _minuteCtrl.dispose();
+    super.dispose();
+  }
+
+  int get _selectedMinutes => _hours * 60 + _minuteValues[_minuteIndex];
+
+  @override
+  Widget build(BuildContext context) {
+    final canConfirm = _selectedMinutes > 0;
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          MyShopSpacing.md,
+          MyShopSpacing.md,
+          MyShopSpacing.md,
+          MyShopSpacing.md,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: MyShopColors.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: MyShopSpacing.md),
+            Text(
+              'Job duration',
+              style: MyShopTypography.h2.copyWith(fontSize: 18),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Hours and minutes you expect to work. '
+              'Range: 5 minutes to ${widget.maxHours} hours.',
+              style: MyShopTypography.body2,
+            ),
+            const SizedBox(height: MyShopSpacing.md),
+            SizedBox(
+              height: 180,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _WheelColumn(
+                      controller: _hourCtrl,
+                      itemCount: widget.maxHours + 1,
+                      label: 'h',
+                      formatter: (i) => i.toString(),
+                      onChanged: (i) => setState(() => _hours = i),
+                    ),
+                  ),
+                  Expanded(
+                    child: _WheelColumn(
+                      controller: _minuteCtrl,
+                      itemCount: _minuteValues.length,
+                      label: 'm',
+                      formatter: (i) =>
+                          _minuteValues[i].toString().padLeft(2, '0'),
+                      onChanged: (i) => setState(() => _minuteIndex = i),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: MyShopSpacing.md),
+            ElevatedButton(
+              onPressed: canConfirm
+                  ? () => Navigator.of(context).pop(_selectedMinutes)
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: MyShopColors.primaryGold,
+                foregroundColor: MyShopColors.textOnPrimary,
+                disabledBackgroundColor: MyShopColors.disabled,
+                minimumSize: const Size.fromHeight(48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(
+                canConfirm
+                    ? 'Set ${_BidSubmissionScreenState._formatDuration(_selectedMinutes)}'
+                    : 'Pick at least 5 minutes',
+                style: MyShopTypography.button.copyWith(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WheelColumn extends StatelessWidget {
+  const _WheelColumn({
+    required this.controller,
+    required this.itemCount,
+    required this.label,
+    required this.formatter,
+    required this.onChanged,
+  });
+
+  final FixedExtentScrollController controller;
+  final int itemCount;
+  final String label;
+  final String Function(int) formatter;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListWheelScrollView.useDelegate(
+      controller: controller,
+      physics: const FixedExtentScrollPhysics(),
+      itemExtent: 44,
+      perspective: 0.003,
+      diameterRatio: 1.4,
+      onSelectedItemChanged: onChanged,
+      childDelegate: ListWheelChildBuilderDelegate(
+        childCount: itemCount,
+        builder: (context, index) {
+          return Center(
+            child: Text(
+              '${formatter(index)}$label',
+              style: MyShopTypography.h2.copyWith(
+                fontWeight: FontWeight.w800,
+                fontSize: 22,
+                color: MyShopColors.textPrimary,
+              ),
+            ),
+          );
+        },
       ),
     );
   }

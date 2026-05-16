@@ -131,33 +131,6 @@ class TripDetailModal extends StatelessWidget {
                 const Divider(height: 1, color: MyShopColors.divider),
                 _FareBreakdownCard(trip: trip),
 
-                // ── 7. Report link ──
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: MyShopSpacing.md),
-                  child: Center(
-                    child: GestureDetector(
-                      onTap: () {},
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.error_outline,
-                              size: 14, color: MyShopColors.error),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Report an Incident or Item Lost',
-                            style: TextStyle(
-                              fontFamily: 'Raleway',
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: MyShopColors.error,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),

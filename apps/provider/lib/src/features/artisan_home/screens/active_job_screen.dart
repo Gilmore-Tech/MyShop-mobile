@@ -343,7 +343,6 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
                       isUpdating: state.isUpdating,
                       onAdvance: () =>
                           ref.read(activeJobProvider.notifier).advance(),
-                      onCall: () {},
                       onRequestSupplement: () =>
                           context.push('/supplement-request'),
                     ),
@@ -1261,7 +1260,7 @@ class _MetricChip extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Bottom panel — timeline + primary action + message/call.
+// Bottom panel — timeline + primary action + message.
 // ─────────────────────────────────────────────────────────────────────────
 
 class _BottomPanel extends StatelessWidget {
@@ -1269,14 +1268,12 @@ class _BottomPanel extends StatelessWidget {
     required this.job,
     required this.isUpdating,
     required this.onAdvance,
-    required this.onCall,
     required this.onRequestSupplement,
   });
 
   final Job job;
   final bool isUpdating;
   final VoidCallback onAdvance;
-  final VoidCallback onCall;
 
   /// Push the supplement-request screen. Only surfaces while the backend
   /// allows a supplement — before `inProgress` per the marketplace
@@ -1329,28 +1326,17 @@ class _BottomPanel extends StatelessWidget {
             onTap: onAdvance,
           ),
           const SizedBox(height: MyShopSpacing.sm),
-          Row(
-            children: [
-              Expanded(
-                child: ChatEntryButton(
-                  bookingType: ChatBookingType.artisanJob,
-                  bookingId: job.id,
-                  label: 'Message',
-                  peerName: job.clientName ?? 'Client',
-                  peerStatus: 'On the job',
-                  background: MyShopColors.surfaceWhite,
-                  foreground: MyShopColors.textPrimary,
-                ),
-              ),
-              const SizedBox(width: MyShopSpacing.sm),
-              Expanded(
-                child: _SecondaryButton(
-                  icon: Icons.phone_outlined,
-                  label: 'Call',
-                  onTap: onCall,
-                ),
-              ),
-            ],
+          SizedBox(
+            width: double.infinity,
+            child: ChatEntryButton(
+              bookingType: ChatBookingType.artisanJob,
+              bookingId: job.id,
+              label: 'Message',
+              peerName: job.clientName ?? 'Client',
+              peerStatus: 'On the job',
+              background: MyShopColors.surfaceWhite,
+              foreground: MyShopColors.textPrimary,
+            ),
           ),
           if (_supplementAllowed) ...[
             const SizedBox(height: MyShopSpacing.sm),
@@ -1619,49 +1605,6 @@ class _PrimaryActionButton extends StatelessWidget {
                   ),
                 ],
               ),
-      ),
-    );
-  }
-}
-
-class _SecondaryButton extends StatelessWidget {
-  const _SecondaryButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 44,
-        decoration: BoxDecoration(
-          color: MyShopColors.surfaceWhite,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: MyShopColors.divider),
-        ),
-        alignment: Alignment.center,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 18, color: MyShopColors.textPrimary),
-            const SizedBox(width: MyShopSpacing.sm),
-            Text(
-              label,
-              style: MyShopTypography.button.copyWith(
-                color: MyShopColors.textPrimary,
-                fontWeight: FontWeight.w800,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

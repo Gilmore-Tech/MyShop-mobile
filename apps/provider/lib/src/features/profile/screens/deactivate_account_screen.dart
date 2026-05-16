@@ -1,13 +1,109 @@
+import 'package:api_client/api_client.dart' show ApiException;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-/// Deactivate Account confirmation screen — explains consequences, surfaces
-/// blocking status checks, and offers Continue / Keep My Account actions.
+import '../../../core/di/providers.dart';
+import '../../auth/providers/auth_controller.dart';
+
+/// Deactivate Account confirmation screen — explains consequences,
+/// surfaces blocking status checks, and offers Continue / Keep My
+/// Account actions. Continue fires `DELETE /v1/users/me` (soft-delete
+/// with 90-day retention per the backend's UserService) and logs the
+/// provider out so the GoRouter redirect drops them on the auth
+/// screen.
+///
+/// Mandatory for Apple Guideline 5.1.1(v): every app with a sign-up
+/// flow must offer in-app account deletion. The button was previously
+/// a no-op (`onContinue: () {}`), which would have triggered an
+/// automatic rejection at App Review.
 ///
 /// PRD Reference: PRD 5.5 — provider account closure flow.
-class DeactivateAccountScreen extends StatelessWidget {
+class DeactivateAccountScreen extends ConsumerStatefulWidget {
   const DeactivateAccountScreen({super.key});
+
+  @override
+  ConsumerState<DeactivateAccountScreen> createState() =>
+      _DeactivateAccountScreenState();
+}
+
+class _DeactivateAccountScreenState
+    extends ConsumerState<DeactivateAccountScreen> {
+  bool _isDeleting = false;
+  String? _errorMessage;
+
+  Future<void> _confirmAndDelete() async {
+    if (_isDeleting) return;
+
+    // Two-step confirmation — the dialog is the second deliberate
+    // tap. Without it, an accidental brush against the red "Continue"
+    // button would wipe the account. Apple doesn't require the dialog
+    // but every other ride-hailing/marketplace app uses one and
+    // App Review's reviewers expect it.
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete account?'),
+        content: const Text(
+          'This permanently disables your provider profile and '
+          'removes your access. The action cannot be undone. '
+          'Type-DEL identity records are retained for 90 days for '
+          'dispute resolution, then purged.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style:
+                TextButton.styleFrom(foregroundColor: MyShopColors.error),
+            child: const Text('Delete account'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _isDeleting = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await ref.read(userServiceProvider).deleteAccount();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isDeleting = false;
+        _errorMessage = e.message.isNotEmpty
+            ? e.message
+            : "Couldn't delete your account. Please try again.";
+      });
+      return;
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isDeleting = false;
+        _errorMessage = "Couldn't delete your account. Please try again.";
+      });
+      return;
+    }
+
+    // Server confirms account is gone. Clear local auth state so the
+    // router redirect drops us at the auth screen.
+    try {
+      await ref.read(authControllerProvider.notifier).logout();
+    } catch (_) {/* best-effort; tokens are stale either way */}
+    if (!mounted) return;
+    // The router redirect handles navigation once auth flips to
+    // unauthenticated. Just pop the screen so the user doesn't see a
+    // momentary flash of the deactivate UI on the way out.
+    context.go('/signin/phone');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,21 +128,54 @@ class DeactivateAccountScreen extends StatelessWidget {
                   const SizedBox(height: MyShopSpacing.sm),
                   _ConsequencesCard(),
                   const SizedBox(height: MyShopSpacing.lg),
-                  const _SectionLabel(text: 'STATUS CHECKS'),
-                  const SizedBox(height: MyShopSpacing.sm),
-                  const _PendingPayoutsCard(amount: 'GHS 420.50'),
-                  const SizedBox(height: MyShopSpacing.md),
                   const _DataRetentionNote(),
+                  if (_errorMessage != null) ...[
+                    const SizedBox(height: MyShopSpacing.md),
+                    _ErrorBanner(message: _errorMessage!),
+                  ],
                   const SizedBox(height: MyShopSpacing.lg),
                 ],
               ),
             ),
             _Footer(
-              onContinue: () {},
+              isDeleting: _isDeleting,
+              onContinue: _confirmAndDelete,
               onKeep: () => context.pop(),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      decoration: BoxDecoration(
+        color: MyShopColors.errorLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: MyShopColors.error.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline,
+              size: 18, color: MyShopColors.error),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(
+            child: Text(
+              message,
+              style: MyShopTypography.body2.copyWith(
+                  color: MyShopColors.error, height: 1.4),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -282,101 +411,12 @@ class _ConsequenceRow extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Pending payouts card
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _PendingPayoutsCard extends StatelessWidget {
-  const _PendingPayoutsCard({required this.amount});
-
-  final String amount;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: MyShopColors.primaryGoldLight,
-        borderRadius: BorderRadius.circular(12),
-        border: const Border(
-          top: BorderSide(color: MyShopColors.primaryGold, width: 3),
-        ),
-      ),
-      padding: const EdgeInsets.all(MyShopSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.error_outline,
-                size: 18,
-                color: MyShopColors.primaryGold,
-              ),
-              const SizedBox(width: MyShopSpacing.sm),
-              Text(
-                'Action Required: Pending Payouts',
-                style: MyShopTypography.h3.copyWith(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: MyShopSpacing.sm),
-          Padding(
-            padding: const EdgeInsets.only(left: 26),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                RichText(
-                  text: TextSpan(
-                    style: MyShopTypography.body2.copyWith(height: 1.5),
-                    children: [
-                      const TextSpan(text: 'You have '),
-                      TextSpan(
-                        text: amount,
-                        style: const TextStyle(
-                          color: MyShopColors.textPrimary,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const TextSpan(
-                        text:
-                            ' in your wallet. Deactivating now will freeze these funds. Please withdraw first.',
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: MyShopSpacing.sm),
-                GestureDetector(
-                  onTap: () {},
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Go to Payouts',
-                        style: MyShopTypography.body1.copyWith(
-                          color: MyShopColors.textPrimary,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      const Icon(
-                        Icons.arrow_forward,
-                        size: 16,
-                        color: MyShopColors.textPrimary,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+// `_PendingPayoutsCard` removed — it carried hardcoded fake data
+// ("GHS 420.50") and a "Go to Payouts" link bound to `() {}` that
+// Apple would flag as either misleading content or a non-functional
+// CTA. When pending-payouts gating becomes a real check, wire it back
+// against `paymentServiceProvider.getCashCommissionOwed` / the
+// payouts summary.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Data retention note
@@ -420,8 +460,13 @@ class _DataRetentionNote extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Footer extends StatelessWidget {
-  const _Footer({required this.onContinue, required this.onKeep});
+  const _Footer({
+    required this.isDeleting,
+    required this.onContinue,
+    required this.onKeep,
+  });
 
+  final bool isDeleting;
   final VoidCallback onContinue;
   final VoidCallback onKeep;
 
@@ -441,28 +486,40 @@ class _Footer extends StatelessWidget {
       child: Column(
         children: [
           GestureDetector(
-            onTap: onContinue,
+            onTap: isDeleting ? null : onContinue,
             child: Container(
               height: 56,
               width: double.infinity,
               decoration: BoxDecoration(
-                color: MyShopColors.error,
+                color: isDeleting
+                    ? MyShopColors.error.withValues(alpha: 0.6)
+                    : MyShopColors.error,
                 borderRadius: BorderRadius.circular(12),
               ),
               alignment: Alignment.center,
-              child: Text(
-                'Understand & Continue',
-                style: MyShopTypography.button.copyWith(
-                  color: MyShopColors.textOnPrimary,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
-                ),
-              ),
+              child: isDeleting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                            MyShopColors.textOnPrimary),
+                      ),
+                    )
+                  : Text(
+                      'Delete my account',
+                      style: MyShopTypography.button.copyWith(
+                        color: MyShopColors.textOnPrimary,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
             ),
           ),
           const SizedBox(height: MyShopSpacing.sm),
           GestureDetector(
-            onTap: onKeep,
+            onTap: isDeleting ? null : onKeep,
             child: Container(
               height: 56,
               width: double.infinity,
@@ -473,7 +530,7 @@ class _Footer extends StatelessWidget {
               ),
               alignment: Alignment.center,
               child: Text(
-                'Keep My Account',
+                'Keep my account',
                 style: MyShopTypography.button.copyWith(
                   color: MyShopColors.textPrimary,
                   fontWeight: FontWeight.w800,

@@ -468,17 +468,6 @@ class _DriverRideCompleteScreenState
           ),
           const SizedBox(height: MyShopSpacing.md),
 
-          // Dispute link
-          Center(
-            child: TextButton(
-              onPressed: () {},
-              child: Text('Dispute this trip or report an issue',
-                  style: MyShopTypography.body2.copyWith(
-                      color: MyShopColors.error, fontWeight: FontWeight.w600)),
-            ),
-          ),
-          const SizedBox(height: MyShopSpacing.sm),
-
           // Go to wallet CTA → the earnings tab is the driver's wallet
           // surface (today's earnings, summary, payout requests). Tapping
           // here clears the active-ride slot so the driver doesn't bounce

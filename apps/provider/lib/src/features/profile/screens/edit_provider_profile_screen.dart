@@ -47,8 +47,30 @@ class _EditProviderProfileScreenState
         _emailController.text.trim() != (user?.email ?? '');
     if (changed != _hasChanges) {
       setState(() => _hasChanges = changed);
+    } else {
+      // Errors recompute on every keystroke; rebuild even when the
+      // "dirty" flag doesn't flip so the inline error text shows live.
+      setState(() {});
     }
   }
+
+  String? get _nameError {
+    final v = _nameController.text.trim();
+    if (v.isEmpty) return 'Name is required';
+    return Validators.fullName(v);
+  }
+
+  String? get _emailError {
+    final v = _emailController.text.trim();
+    if (v.isEmpty) return null;
+    return Validators.email(v);
+  }
+
+  bool get _canSave =>
+      _hasChanges &&
+      !_isSaving &&
+      _nameError == null &&
+      _emailError == null;
 
   @override
   void dispose() {
@@ -245,12 +267,14 @@ class _EditProviderProfileScreenState
             nameController: _nameController,
             emailController: _emailController,
             phone: user?.phone ?? '',
+            nameError: _hasChanges ? _nameError : null,
+            emailError: _emailError,
           ),
           const SizedBox(height: MyShopSpacing.md),
 
           // ── Save button ──
           ElevatedButton(
-            onPressed: _hasChanges && !_isSaving ? _saveProfile : null,
+            onPressed: _canSave ? _saveProfile : null,
             style: ElevatedButton.styleFrom(
               backgroundColor: MyShopColors.primaryGold,
               foregroundColor: MyShopColors.textOnPrimary,
@@ -473,6 +497,8 @@ class _IdentityCard extends StatelessWidget {
     this.photoUrl,
     this.localPhoto,
     this.isUploadingPhoto = false,
+    this.nameError,
+    this.emailError,
   });
 
   final TextEditingController nameController;
@@ -482,6 +508,8 @@ class _IdentityCard extends StatelessWidget {
   final File? localPhoto;
   final bool isUploadingPhoto;
   final VoidCallback onPhotoTap;
+  final String? nameError;
+  final String? emailError;
 
   @override
   Widget build(BuildContext context) {
@@ -567,6 +595,7 @@ class _IdentityCard extends StatelessWidget {
                   label: 'Full Name',
                   controller: nameController,
                   icon: Icons.person_outline,
+                  errorText: nameError,
                 ),
                 const SizedBox(height: MyShopSpacing.md),
 
@@ -576,6 +605,7 @@ class _IdentityCard extends StatelessWidget {
                   controller: emailController,
                   icon: Icons.email_outlined,
                   keyboardType: TextInputType.emailAddress,
+                  errorText: emailError,
                 ),
                 const SizedBox(height: MyShopSpacing.md),
 
@@ -630,12 +660,14 @@ class _ProfileField extends StatelessWidget {
     required this.controller,
     required this.icon,
     this.keyboardType,
+    this.errorText,
   });
 
   final String label;
   final TextEditingController controller;
   final IconData icon;
   final TextInputType? keyboardType;
+  final String? errorText;
 
   @override
   Widget build(BuildContext context) {
@@ -655,6 +687,12 @@ class _ProfileField extends StatelessWidget {
         prefixIcon: Icon(icon, size: 18, color: MyShopColors.textSecondary),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        errorText: errorText,
+        errorStyle: const TextStyle(
+          fontFamily: 'Roboto',
+          fontSize: 11,
+          color: MyShopColors.error,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: MyShopColors.divider),
@@ -667,6 +705,15 @@ class _ProfileField extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           borderSide:
               const BorderSide(color: MyShopColors.primaryGold, width: 1.5),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: MyShopColors.error),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide:
+              const BorderSide(color: MyShopColors.error, width: 1.5),
         ),
       ),
     );

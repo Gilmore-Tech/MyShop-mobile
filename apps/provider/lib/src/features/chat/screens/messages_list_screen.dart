@@ -152,35 +152,12 @@ class _Header extends StatelessWidget {
         MyShopSpacing.md,
         MyShopSpacing.sm,
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              'Messages',
-              style: MyShopTypography.h1.copyWith(
-                fontWeight: FontWeight.w700,
-                fontSize: 18,
-              ),
-            ),
-          ),
-          GestureDetector(
-            onTap: () {},
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: MyShopColors.surfaceWhite,
-                shape: BoxShape.circle,
-                border: Border.all(color: MyShopColors.divider),
-              ),
-              child: const Icon(
-                Icons.edit_outlined,
-                size: 18,
-                color: MyShopColors.textPrimary,
-              ),
-            ),
-          ),
-        ],
+      child: Text(
+        'Messages',
+        style: MyShopTypography.h1.copyWith(
+          fontWeight: FontWeight.w700,
+          fontSize: 18,
+        ),
       ),
     );
   }

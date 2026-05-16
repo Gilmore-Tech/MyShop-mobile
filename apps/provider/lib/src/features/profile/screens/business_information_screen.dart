@@ -663,55 +663,24 @@ class _Footer extends StatelessWidget {
         color: MyShopColors.surfaceWhite,
         border: Border(top: BorderSide(color: MyShopColors.divider)),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 4,
-            child: GestureDetector(
-              onTap: () {},
-              child: Container(
-                height: 52,
-                decoration: BoxDecoration(
-                  color: MyShopColors.surfaceWhite,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: MyShopColors.divider),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  'View History',
-                  style: MyShopTypography.button.copyWith(
-                    color: MyShopColors.textPrimary,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
-                  ),
-                ),
-              ),
+      child: GestureDetector(
+        onTap: () => context.push('/account/documents'),
+        child: Container(
+          height: 52,
+          decoration: BoxDecoration(
+            color: MyShopColors.darkSlate,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            'Manage Documents',
+            style: MyShopTypography.button.copyWith(
+              color: MyShopColors.textOnDarkSlate,
+              fontWeight: FontWeight.w800,
+              fontSize: 15,
             ),
           ),
-          const SizedBox(width: MyShopSpacing.sm),
-          Expanded(
-            flex: 6,
-            child: GestureDetector(
-              onTap: () => context.push('/account/documents'),
-              child: Container(
-                height: 52,
-                decoration: BoxDecoration(
-                  color: MyShopColors.darkSlate,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  'Manage Documents',
-                  style: MyShopTypography.button.copyWith(
-                    color: MyShopColors.textOnDarkSlate,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

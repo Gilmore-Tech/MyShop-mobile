@@ -18,7 +18,6 @@ import '../widgets/auto_accept_card.dart';
 import '../widgets/driver_car_marker.dart';
 import '../widgets/driver_home_header.dart';
 import '../widgets/earnings_summary_section.dart';
-import '../widgets/quick_operations_grid.dart';
 import '../widgets/recent_activity_section.dart';
 import '../widgets/online_offline_toggle.dart';
 
@@ -459,15 +458,6 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
                       padding:
                           EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
                       child: AutoAcceptCard(),
-                    ),
-
-                    const SizedBox(height: MyShopSpacing.lg),
-
-                    // Quick Operations
-                    const Padding(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-                      child: QuickOperationsGrid(),
                     ),
 
                     const SizedBox(height: MyShopSpacing.lg),

@@ -1135,12 +1135,8 @@ class _PassengerPanel extends StatelessWidget {
                   rideId: ride.id,
                   riderName: ride.clientName ?? 'Passenger',
                 ),
-                const SizedBox(width: 8),
-                _ContactButton(
-                  icon: Icons.phone,
-                  filled: false,
-                  onTap: () {},
-                ),
+                // Phone `_ContactButton` removed in v1.0 — masked calls
+                // deferred to v1.2. Chat is the peer comms channel.
               ],
             ),
             const SizedBox(height: MyShopSpacing.lg),
@@ -1343,45 +1339,12 @@ class _PassengerPanel extends StatelessWidget {
   }
 }
 
-// ─── Contact buttons (chat / phone) ─────────────────────────────────────────
+// ─── Contact buttons (chat) ─────────────────────────────────────────────────
 
-class _ContactButton extends StatelessWidget {
-  const _ContactButton({
-    required this.icon,
-    required this.filled,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final bool filled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: filled ? MyShopColors.darkSlate : MyShopColors.surfaceWhite,
-          borderRadius: BorderRadius.circular(12),
-          border: filled ? null : Border.all(color: MyShopColors.divider),
-        ),
-        child: Icon(
-          icon,
-          size: 20,
-          color: filled ? MyShopColors.textOnPrimary : MyShopColors.darkSlate,
-        ),
-      ),
-    );
-  }
-}
-
-/// Icon-sized chat affordance used in the passenger panel header. Same
-/// 44×44 silhouette as [_ContactButton] but auto-opens the chat channel
-/// on the orchestrator (so the unread badge is live without the user
-/// visiting `/chat` first) and routes to the chat screen on tap.
+/// Icon-sized chat affordance used in the passenger panel header. Auto-
+/// opens the chat channel on the orchestrator (so the unread badge is live
+/// without the user visiting `/chat` first) and routes to the chat screen
+/// on tap.
 class _ChatContactButton extends ConsumerStatefulWidget {
   const _ChatContactButton({
     required this.rideId,

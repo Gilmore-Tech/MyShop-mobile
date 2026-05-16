@@ -297,7 +297,7 @@ class PayoutMethodsScreen extends ConsumerWidget {
           const SizedBox(height: 6),
           Center(
             child: Text(
-              'Version 2.4.1 (Stable)  •  © 2026 MyShop Provider App',
+              'Version 1.0.0  •  © 2026 MyShop Provider App',
               style: MyShopTypography.caption
                   .copyWith(fontSize: 10, color: MyShopColors.textSecondary),
             ),

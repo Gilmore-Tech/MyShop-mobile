@@ -209,8 +209,6 @@ class _ProviderChatScreenState extends ConsumerState<ProviderChatScreen> {
           onTypingChanged: controller.notifyTyping,
           isPeerTyping: _peerTyping,
           peerTypingLabel: '$peerName is typing…',
-          onPhoneCall: () {},
-          onMoreMenu: () {},
         );
       },
     );
