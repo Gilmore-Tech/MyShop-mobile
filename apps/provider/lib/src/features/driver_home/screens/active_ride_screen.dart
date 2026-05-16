@@ -13,6 +13,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/providers/chat_controller_provider.dart';
 import '../../../core/services/directions_service.dart';
+import '../../../core/services/nav_guidance.dart';
+import '../../../core/widgets/maneuver_banner.dart';
 import '../data/external_nav_service.dart';
 import '../providers/driver_location_provider.dart';
 import '../providers/ride_request_provider.dart';
@@ -344,11 +346,12 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
             child: ValueListenableBuilder<_LiveMetrics>(
               valueListenable: _liveMetrics,
               builder: (context, metrics, _) {
-                return _NavigationHeader(
+                return ManeuverBanner(
+                  progress: metrics.progress,
+                  fallbackDistanceMeters: metrics.distanceMeters,
+                  fallbackEtaMinutes: metrics.etaMinutes,
+                  fallbackAddress: targetAddress,
                   phaseLabel: targetLabel,
-                  address: targetAddress,
-                  liveDistanceMeters: metrics.distanceMeters,
-                  liveEtaMinutes: metrics.etaMinutes,
                 );
               },
             ),
@@ -405,133 +408,16 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
   }
 }
 
-// ─── Navigation header ──────────────────────────────────────────────────────
-
-class _NavigationHeader extends StatelessWidget {
-  const _NavigationHeader({
-    required this.phaseLabel,
-    required this.address,
-    required this.liveDistanceMeters,
-    required this.liveEtaMinutes,
-  });
-
-  /// e.g. "TO PICKUP" / "TO DESTINATION" — drives the small label above the
-  /// distance reading.
-  final String phaseLabel;
-
-  /// The address the driver is currently navigating to. Pickup until the
-  /// trip starts, drop-off afterwards.
-  final String address;
-
-  /// Straight-line distance from current GPS to [address], in meters.
-  /// Recomputed on every GPS fix so the label ticks down live.
-  final double? liveDistanceMeters;
-
-  /// Estimated minutes remaining, derived from the Directions route's
-  /// average road speed applied to [liveDistanceMeters]. Null until we have
-  /// both a GPS fix and a successful Directions response.
-  final int? liveEtaMinutes;
-
-  @override
-  Widget build(BuildContext context) {
-    final topPadding = MediaQuery.of(context).padding.top;
-    final distanceLabel = liveDistanceMeters != null
-        ? (liveDistanceMeters! < 1000
-            ? '${liveDistanceMeters!.round()} m'
-            : '${(liveDistanceMeters! / 1000).toStringAsFixed(1)} km')
-        : '— km';
-    final etaLabel = (liveEtaMinutes != null && liveEtaMinutes! > 0)
-        ? '${liveEtaMinutes!} min'
-        : (liveEtaMinutes == 0 ? 'Arriving' : '—');
-    return Padding(
-      padding: EdgeInsets.only(
-        top: topPadding + 12,
-        left: MyShopSpacing.md,
-        right: MyShopSpacing.md,
-      ),
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-            horizontal: MyShopSpacing.md, vertical: 14),
-        decoration: BoxDecoration(
-          color: MyShopColors.surfaceWhite,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x1A000000),
-              blurRadius: 12,
-              offset: Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: MyShopColors.surfaceGrey,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.navigation,
-                  size: 22, color: MyShopColors.darkSlate),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(distanceLabel,
-                      style: const TextStyle(
-                          fontFamily: 'Raleway',
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          color: MyShopColors.textPrimary)),
-                  Text(address,
-                      style: const TextStyle(
-                          fontFamily: 'Raleway',
-                          fontSize: 12,
-                          color: MyShopColors.textSecondary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                ],
-              ),
-            ),
-            Container(
-              width: 1,
-              height: 36,
-              color: MyShopColors.divider,
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(phaseLabel,
-                    style: const TextStyle(
-                        fontFamily: 'Raleway',
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        color: MyShopColors.primaryGold,
-                        letterSpacing: 0.5)),
-                const SizedBox(height: 2),
-                Text(etaLabel,
-                    style: const TextStyle(
-                        fontFamily: 'Raleway',
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: MyShopColors.textPrimary)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+// Old `_NavigationHeader` lived here — replaced by `ManeuverBanner` from
+// `core/widgets/maneuver_banner.dart`. The banner now renders the next
+// turn (icon + distance + instruction) when Directions API steps are
+// available, and falls back to the previous distance/ETA card when
+// they aren't.
 
 // ─── Live metrics + map handle ──────────────────────────────────────────────
 
 class _LiveMetrics {
-  const _LiveMetrics({this.distanceMeters, this.etaMinutes});
+  const _LiveMetrics({this.distanceMeters, this.etaMinutes, this.progress});
 
   /// Straight-line distance from current GPS to the routing target, in
   /// meters. Null until we get the first fix.
@@ -540,6 +426,12 @@ class _LiveMetrics {
   /// Estimated minutes remaining, derived from the Directions route's
   /// average road speed applied to [distanceMeters].
   final int? etaMinutes;
+
+  /// Live navigation progress — current step, distance to the next
+  /// maneuver, upcoming step. Drives the Google-Maps-style banner.
+  /// Null on the fallback straight-line route (Directions API not
+  /// available) — the banner falls back to a plain distance/ETA card.
+  final NavProgress? progress;
 }
 
 /// Recenter shim — handed to [_NavigationMap] so it can register a callback
@@ -614,10 +506,24 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   static const _routeRefreshMeters = 80.0;
   static const _routeRefreshThrottle = Duration(seconds: 30);
 
+  /// Driver is "off-route" once they're this far from the nearest point
+  /// on the route polyline. At that distance the Directions API's snap
+  /// margin can no longer plausibly account for the gap — either they
+  /// took a different turn or they're on a road the route doesn't know
+  /// about. Either way we re-fetch the route from their current
+  /// position.
+  static const _offRouteThresholdMeters = 65.0;
+
   /// Camera params for nav mode. Tilt 50° gives a 3-D forward-looking
   /// view; zoom 17.5 is the same level Google Maps' "Start" mode opens at.
   static const _navZoom = 17.5;
   static const _navTilt = 50.0;
+
+  /// Spoken turn-by-turn coach — fires "in 200m, turn left" prompts at
+  /// the same thresholds Google Maps uses. Owned per-map-state so it
+  /// disposes with the screen and stops talking when the driver leaves
+  /// the active ride.
+  final NavVoiceCoach _voice = NavVoiceCoach();
 
   @override
   void initState() {
@@ -639,6 +545,9 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
       _hasFittedCamera = false;
       _markers = _buildMarkers();
       _polylines = const <Polyline>{};
+      // New leg → new set of maneuvers. Wipe the spoken-step memory so
+      // the first turn on the new route gets announced.
+      _voice.reset();
       final driver = _driver;
       if (driver != null) {
         _refreshRouteIfNeeded(driver, force: true);
@@ -659,6 +568,7 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
     if (widget.handle.recenter == _handleRecenter) {
       widget.handle.recenter = null;
     }
+    _voice.dispose();
     _mapController?.dispose();
     super.dispose();
   }
@@ -796,10 +706,30 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
       return;
     }
     final distance = _haversineMeters(driver, widget.target);
+    final route = _route;
+    final progress = route != null
+        ? NavGuidance.progressFor(driver: driver, route: route)
+        : null;
     widget.metrics.value = _LiveMetrics(
       distanceMeters: distance,
-      etaMinutes: _liveEtaMinutes(distance, _route),
+      etaMinutes: _liveEtaMinutes(distance, route),
+      progress: progress,
     );
+
+    // Voice prompts — only when we have a real maneuver to speak about.
+    if (progress != null && progress.currentStep != null) {
+      _voice.announce(progress);
+    }
+
+    // Off-route detection. The driver has wandered far enough from the
+    // route polyline that we should recompute from their current GPS.
+    // Bypasses the throttle because waiting 30s with stale directions
+    // means the banner is lying to the driver about what to do next.
+    final offBy = progress?.offRouteMeters;
+    if (offBy != null && offBy > _offRouteThresholdMeters && !_routeLoading) {
+      _voice.reset();
+      _refreshRouteIfNeeded(driver, force: true);
+    }
   }
 
   Set<Marker> _buildMarkers() {

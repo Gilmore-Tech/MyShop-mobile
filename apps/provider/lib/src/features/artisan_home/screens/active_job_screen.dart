@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/chat/chat_entry_button.dart';
 import '../../../core/providers/socket_provider.dart' show ratingSheetShownFor;
 import '../../../core/services/directions_service.dart';
+import '../../../core/services/nav_guidance.dart';
 import '../../driver_home/providers/driver_location_provider.dart';
 import '../providers/active_job_provider.dart';
 import '../widgets/rate_client_sheet.dart';
@@ -272,7 +273,13 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
               ),
             ),
 
-            // ── Top header. Rebuilds on every metrics tick (cheap text only).
+            // ── Top header. Rebuilds on every metrics tick (cheap text
+            // only). When the Directions API has surfaced steps for the
+            // current leg, the header swaps the Distance/ETA chips for
+            // a maneuver row ("Turn left in 250m onto Liberation Rd")
+            // so the artisan gets the same turn-by-turn cue the
+            // driver-side screen renders. Falls back to chips when no
+            // steps are available (fallback straight-line route).
             Positioned(
               top: 0,
               left: 0,
@@ -285,6 +292,7 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
                     address: job.addressText ?? 'Destination',
                     liveDistanceMeters: metrics.distanceMeters,
                     liveEtaMinutes: metrics.etaMinutes,
+                    progress: metrics.progress,
                     onBack: goBackToJobs,
                     onRecenter: () => _mapHandle.recenter?.call(),
                     onOpenInMaps: () => _launchExternalNavigation(destination),
@@ -344,7 +352,7 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
 // ─────────────────────────────────────────────────────────────────────────
 
 class _LiveMetrics {
-  const _LiveMetrics({this.distanceMeters, this.etaMinutes});
+  const _LiveMetrics({this.distanceMeters, this.etaMinutes, this.progress});
 
   /// Straight-line distance from current GPS to the destination, in
   /// meters. Null until we get the first fix.
@@ -353,6 +361,10 @@ class _LiveMetrics {
   /// Estimated minutes remaining, derived from the Directions route's
   /// average road speed applied to [distanceMeters].
   final int? etaMinutes;
+
+  /// Live navigation progress for the maneuver banner. Null on the
+  /// fallback straight-line route; the banner downgrades gracefully.
+  final NavProgress? progress;
 }
 
 /// Recenter shim — handed to [_NavigationMap] so it can register a
@@ -418,6 +430,16 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   static const _routeRefreshMeters = 80.0;
   static const _routeRefreshThrottle = Duration(seconds: 30);
 
+  /// Driver/artisan is "off-route" once they're this far from the
+  /// nearest point on the route polyline — triggers a forced re-fetch
+  /// so the maneuver banner doesn't stale-instruct.
+  static const _offRouteThresholdMeters = 65.0;
+
+  /// Spoken turn-by-turn coach. Owned per-state so it disposes with
+  /// the screen — no orphan TTS sessions surviving navigation away
+  /// from the active job.
+  final NavVoiceCoach _voice = NavVoiceCoach();
+
   @override
   void initState() {
     super.initState();
@@ -430,6 +452,7 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
     if (widget.handle.recenter == _handleRecenter) {
       widget.handle.recenter = null;
     }
+    _voice.dispose();
     _mapController?.dispose();
     super.dispose();
   }
@@ -516,10 +539,25 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
       return;
     }
     final distance = _haversineMeters(artisan, widget.destination);
+    final route = _route;
+    final progress = route != null
+        ? NavGuidance.progressFor(driver: artisan, route: route)
+        : null;
     widget.metrics.value = _LiveMetrics(
       distanceMeters: distance,
-      etaMinutes: _liveEtaMinutes(distance, _route),
+      etaMinutes: _liveEtaMinutes(distance, route),
+      progress: progress,
     );
+
+    if (progress != null && progress.currentStep != null) {
+      _voice.announce(progress);
+    }
+
+    final offBy = progress?.offRouteMeters;
+    if (offBy != null && offBy > _offRouteThresholdMeters && !_routeLoading) {
+      _voice.reset();
+      _refreshRouteIfNeeded(artisan, force: true);
+    }
   }
 
   Set<Marker> _buildMarkers() {
@@ -816,6 +854,7 @@ class _NavHeader extends StatelessWidget {
     required this.address,
     required this.liveDistanceMeters,
     required this.liveEtaMinutes,
+    required this.progress,
     required this.onBack,
     required this.onRecenter,
     required this.onOpenInMaps,
@@ -832,6 +871,11 @@ class _NavHeader extends StatelessWidget {
   /// average road speed applied to [liveDistanceMeters]. Null when we
   /// don't yet have a GPS fix.
   final int? liveEtaMinutes;
+
+  /// Live navigation progress — when non-null and carrying a
+  /// [NavProgress.currentStep], the header swaps the chip row for a
+  /// maneuver instruction.
+  final NavProgress? progress;
   final VoidCallback onBack;
   final VoidCallback onRecenter;
   final VoidCallback onOpenInMaps;
@@ -907,24 +951,141 @@ class _NavHeader extends StatelessWidget {
             ],
           ),
           const SizedBox(height: MyShopSpacing.sm),
-          Row(
-            children: [
-              _MetricChip(
-                icon: Icons.route_outlined,
-                label: 'Distance',
-                value: distanceLabel,
-              ),
-              const SizedBox(width: MyShopSpacing.sm),
-              _MetricChip(
-                icon: Icons.access_time,
-                label: 'ETA',
-                value: etaLabel,
-              ),
-            ],
-          ),
+          if (progress?.currentStep != null)
+            _ManeuverRow(progress: progress!, etaLabel: etaLabel)
+          else
+            Row(
+              children: [
+                _MetricChip(
+                  icon: Icons.route_outlined,
+                  label: 'Distance',
+                  value: distanceLabel,
+                ),
+                const SizedBox(width: MyShopSpacing.sm),
+                _MetricChip(
+                  icon: Icons.access_time,
+                  label: 'ETA',
+                  value: etaLabel,
+                ),
+              ],
+            ),
         ],
       ),
     );
+  }
+}
+
+/// Compact maneuver row shown inside the artisan nav header when the
+/// Directions API has surfaced steps for the current leg. Pairs a turn
+/// arrow + distance with the full instruction and the route ETA on the
+/// right. Visually shorter than the driver-side full [ManeuverBanner]
+/// because the artisan header already carries the client-info row above.
+class _ManeuverRow extends StatelessWidget {
+  const _ManeuverRow({required this.progress, required this.etaLabel});
+
+  final NavProgress progress;
+  final String etaLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final step = progress.currentStep!;
+    final dist = progress.distanceToManeuverMeters;
+    final distanceLabel = dist < 1000
+        ? '${(dist / 10).round() * 10} m'
+        : '${(dist / 1000).toStringAsFixed(1)} km';
+    return Row(
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: MyShopColors.darkSlate,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(_maneuverIcon(step.maneuver),
+              size: 26, color: Colors.white),
+        ),
+        const SizedBox(width: MyShopSpacing.sm),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(distanceLabel,
+                  style: const TextStyle(
+                      fontFamily: 'Raleway',
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: MyShopColors.textPrimary,
+                      height: 1.1)),
+              const SizedBox(height: 2),
+              Text(
+                step.instruction.isNotEmpty ? step.instruction : 'Continue',
+                style: const TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: MyShopColors.textSecondary,
+                    height: 1.3),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+        Container(width: 1, height: 32, color: MyShopColors.divider),
+        const SizedBox(width: MyShopSpacing.sm),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            const Text('ETA',
+                style: TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                    color: MyShopColors.primaryGold,
+                    letterSpacing: 0.4)),
+            const SizedBox(height: 2),
+            Text(etaLabel,
+                style: const TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: MyShopColors.textPrimary)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  static IconData _maneuverIcon(String maneuver) {
+    switch (maneuver) {
+      case 'turn-left':
+        return Icons.turn_left;
+      case 'turn-right':
+        return Icons.turn_right;
+      case 'turn-sharp-left':
+      case 'turn-slight-left':
+        return Icons.turn_sharp_left;
+      case 'turn-sharp-right':
+      case 'turn-slight-right':
+        return Icons.turn_sharp_right;
+      case 'uturn-left':
+      case 'uturn-right':
+        return Icons.u_turn_left;
+      case 'ramp-left':
+      case 'fork-left':
+        return Icons.ramp_left;
+      case 'ramp-right':
+      case 'fork-right':
+        return Icons.ramp_right;
+      case 'merge':
+        return Icons.merge;
+      case 'roundabout-left':
+      case 'roundabout-right':
+        return Icons.roundabout_right;
+      default:
+        return Icons.straight;
+    }
   }
 }
 

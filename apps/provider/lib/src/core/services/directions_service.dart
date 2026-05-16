@@ -7,6 +7,52 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../constants/maps_config.dart';
 
+/// One step of a Directions route — a single road segment ending at a
+/// maneuver (turn, merge, ramp, etc.). Drives the Google-Maps-style
+/// turn-by-turn banner: maneuver icon + instruction + distance to the
+/// maneuver.
+///
+/// `maneuver` is Google's enum-ish string ('turn-left', 'turn-right',
+/// 'ramp-left', 'merge', 'roundabout-right', 'straight', etc.). Empty
+/// string when the step is just "continue" with no explicit turn —
+/// callers should render the straight arrow as the default.
+class DirectionsStep {
+  const DirectionsStep({
+    required this.instruction,
+    required this.maneuver,
+    required this.distanceMeters,
+    required this.durationSeconds,
+    required this.startLocation,
+    required this.endLocation,
+    required this.polyline,
+  });
+
+  /// Human-readable instruction with HTML stripped — "Turn left onto
+  /// Liberation Rd", "Continue onto N1", "Take the exit toward Tema".
+  /// The raw API response is HTML; [_stripHtml] cleans it for plain
+  /// rendering.
+  final String instruction;
+
+  /// Maneuver type ('turn-left', 'turn-right', 'straight', 'merge',
+  /// 'ramp-left', 'roundabout-right', etc.) or empty when no explicit
+  /// maneuver was specified. Drives the arrow icon in the banner.
+  final String maneuver;
+
+  /// Distance of this step in meters — distance to the maneuver at the
+  /// end of the step.
+  final int distanceMeters;
+
+  /// Driving duration of this step in seconds.
+  final int durationSeconds;
+
+  final LatLng startLocation;
+  final LatLng endLocation;
+
+  /// Decoded polyline for this step alone — used for off-route detection
+  /// (compare driver GPS against this segment, not the whole route).
+  final List<LatLng> polyline;
+}
+
 /// Driving route between two points as returned by Google's Directions API.
 ///
 /// `polyline` is the list of [LatLng] points that, when drawn on a
@@ -18,12 +64,18 @@ class DirectionsRoute {
     required this.polyline,
     required this.distanceMeters,
     required this.durationSeconds,
+    this.steps = const [],
     this.isFallback = false,
   });
 
   final List<LatLng> polyline;
   final int distanceMeters;
   final int durationSeconds;
+
+  /// Turn-by-turn steps from the route's first leg. Empty on the
+  /// fallback straight-line path — UI should gracefully degrade to the
+  /// distance/ETA banner when there are no steps.
+  final List<DirectionsStep> steps;
 
   /// True when this route was synthesised locally (straight line) because
   /// the Directions API call didn't land.
@@ -103,10 +155,50 @@ class DirectionsService {
                   ?.toInt() ??
               0;
 
+      // Parse the leg's `steps[]` for turn-by-turn navigation. Empty
+      // when the API doesn't return them (e.g. an unsupported region) —
+      // the nav banner gracefully degrades to the distance/ETA card.
+      final rawSteps = leg['steps'] as List<dynamic>? ?? const <dynamic>[];
+      final steps = <DirectionsStep>[];
+      for (final raw in rawSteps) {
+        if (raw is! Map<String, dynamic>) continue;
+        final stepPolylineEncoded =
+            (raw['polyline'] as Map<String, dynamic>?)?['points'] as String?;
+        final stepPolyline =
+            stepPolylineEncoded != null && stepPolylineEncoded.isNotEmpty
+                ? _decodePolyline(stepPolylineEncoded)
+                : const <LatLng>[];
+        final start = raw['start_location'] as Map<String, dynamic>?;
+        final end = raw['end_location'] as Map<String, dynamic>?;
+        if (start == null || end == null) continue;
+        steps.add(DirectionsStep(
+          instruction: _stripHtml(raw['html_instructions'] as String? ?? ''),
+          maneuver: raw['maneuver'] as String? ?? '',
+          distanceMeters:
+              ((raw['distance'] as Map<String, dynamic>?)?['value'] as num?)
+                      ?.toInt() ??
+                  0,
+          durationSeconds:
+              ((raw['duration'] as Map<String, dynamic>?)?['value'] as num?)
+                      ?.toInt() ??
+                  0,
+          startLocation: LatLng(
+            (start['lat'] as num).toDouble(),
+            (start['lng'] as num).toDouble(),
+          ),
+          endLocation: LatLng(
+            (end['lat'] as num).toDouble(),
+            (end['lng'] as num).toDouble(),
+          ),
+          polyline: stepPolyline,
+        ));
+      }
+
       return DirectionsRoute(
         polyline: polyline,
         distanceMeters: distance,
         durationSeconds: duration,
+        steps: steps,
       );
     } catch (error, stack) {
       if (!_hasLoggedFailure) {
@@ -166,6 +258,21 @@ class DirectionsService {
       points.add(LatLng(lat / 1e5, lng / 1e5));
     }
     return points;
+  }
+
+  /// Google's `html_instructions` field carries bold/link tags around
+  /// road names. Strip them for plain-text rendering and TTS narration.
+  /// Also collapses `&nbsp;` and inserts a space before "Destination
+  /// will be on the right" sub-clauses that Google embeds as `<div>`.
+  static String _stripHtml(String html) {
+    return html
+        .replaceAll(RegExp(r'<div[^>]*>'), '. ')
+        .replaceAll(RegExp(r'</div>'), '')
+        .replaceAll(RegExp(r'<[^>]+>'), '')
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&amp;', '&')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   /// Great-circle distance in meters — used only when the Directions API
