@@ -145,7 +145,25 @@ class EarningsTodayCard {
   final int commissionPesewas;
 
   /// Net of commission. Shown inside the earnings module breakdown.
+  ///
+  /// CAREFUL: for **cash** bookings the backend writes `0` here because
+  /// the artisan already collected the gross from the client directly —
+  /// the platform tracks the commission they owe via a Clawback row, not
+  /// a positive net payout. So `netEarningsPesewas` is "net payout from
+  /// MyShop", not "what the artisan effectively earned". For the
+  /// home-screen headline you almost always want [effectiveEarningsPesewas]
+  /// instead, which gives the same number for in-app jobs but reflects
+  /// gross-minus-commission for cash jobs.
   final int netEarningsPesewas;
+
+  /// What the artisan/driver effectively earned today — gross fare minus
+  /// the platform's commission — regardless of whether the booking was
+  /// paid in cash or in-app. Drives the "Earnings" tile on the home
+  /// dashboard so the figure doesn't read GHS 0 on a cash-only day.
+  int get effectiveEarningsPesewas {
+    final v = grossEarningsPesewas - commissionPesewas;
+    return v < 0 ? 0 : v;
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
