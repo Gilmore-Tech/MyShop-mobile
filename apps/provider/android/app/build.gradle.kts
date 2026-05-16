@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -31,6 +33,16 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Google Maps key flows from `local.properties` (gitignored) →
+        // `${MAPS_API_KEY}` placeholder in AndroidManifest.xml. Matches
+        // the client app's setup. Returns empty when the key isn't
+        // configured locally; the manifest substitution then injects
+        // an empty value and the map renders blank (no crash).
+        val localProps = Properties()
+        val localPropsFile = rootProject.file("local.properties")
+        if (localPropsFile.exists()) localProps.load(localPropsFile.inputStream())
+        manifestPlaceholders["MAPS_API_KEY"] = localProps.getProperty("MAPS_API_KEY", "")
     }
 
     buildTypes {

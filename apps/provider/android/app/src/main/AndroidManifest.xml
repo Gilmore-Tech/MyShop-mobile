@@ -47,9 +47,14 @@
              TODO: replace placeholder with a real key (read from local.properties
              via Gradle manifestPlaceholders) before shipping. The placeholder
              prevents the IllegalStateException crash on launch. -->
+        <!-- Google Maps key supplied at build time via Gradle's
+             manifestPlaceholders mechanism. Set `MAPS_API_KEY=AIza...`
+             in `android/local.properties` (gitignored) and the value
+             flows through `app/build.gradle.kts` to this placeholder.
+             Empty value renders blank maps but doesn't crash. -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyAdeUq7xKMQsvxWYwv8rTeE3YK_egOLx34" />
+            android:value="${MAPS_API_KEY}" />
 
         <!-- Default FCM channel — pushes without an explicit channel id get
              routed to the urgent `job_alerts` channel so incoming requests

@@ -1,17 +1,21 @@
-/// Static configuration for Google Maps-related services used by the provider
-/// app (Maps SDK, Roads API, Directions API, …).
+/// Static configuration for Google Maps-related services used by the
+/// provider app (Maps SDK, Roads API, Directions API, …).
 ///
-/// For now we fall back to a hardcoded dev key that matches the one in
-/// `android/app/src/main/AndroidManifest.xml`. Override it per-environment at
-/// build time with `--dart-define=GOOGLE_MAPS_API_KEY=...`.
+/// The key MUST be supplied at build time via `--dart-define`:
 ///
-/// TODO(ops): move the dev key out of source control and load from
-/// `local.properties` / Info.plist / secret manager before shipping.
+///   flutter build apk --dart-define=GOOGLE_MAPS_API_KEY=AIza...
+///
+/// `defaultValue` is intentionally empty so a build without the define
+/// fails fast (map widget renders blank + Directions calls reject)
+/// rather than silently shipping with a placeholder key. The same value
+/// must be set in `android/local.properties` (`MAPS_API_KEY=AIza…`) so
+/// the native Maps SDK on Android picks it up via the manifest
+/// `${MAPS_API_KEY}` placeholder.
 class MapsConfig {
   const MapsConfig._();
 
   static const String apiKey = String.fromEnvironment(
     'GOOGLE_MAPS_API_KEY',
-    defaultValue: 'AIzaSyAdeUq7xKMQsvxWYwv8rTeE3YK_egOLx34',
+    defaultValue: '',
   );
 }

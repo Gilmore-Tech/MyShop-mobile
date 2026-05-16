@@ -110,6 +110,13 @@ final safetyServiceProvider = Provider<SafetyService>((ref) {
   return SafetyService(ref.watch(dioProvider));
 });
 
+/// User service — read + update + DELETE `/v1/users/me`. Used by the
+/// deactivate-account flow for Apple Guideline 5.1.1(v) compliance:
+/// every sign-up app must offer in-app deletion.
+final userServiceProvider = Provider<UserService>((ref) {
+  return UserService(ref.watch(dioProvider));
+});
+
 /// Platform config — public `GET /config/:key` reader. Admins flip
 /// commission rate, payout windows, surge ceilings via the dashboard;
 /// mobile reads them on demand so changes don't require a release.
