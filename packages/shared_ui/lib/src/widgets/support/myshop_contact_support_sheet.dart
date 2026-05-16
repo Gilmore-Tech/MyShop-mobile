@@ -141,24 +141,10 @@ class MyShopContactSupportSheet extends StatelessWidget {
                   onNewTicket();
                 },
               ),
-              const SizedBox(height: MyShopSpacing.sm),
-              _ChannelTile(
-                icon: Icons.phone_outlined,
-                iconBg: MyShopColors.primaryGold,
-                iconColor: MyShopColors.textOnPrimary,
-                title: 'Call support',
-                subtitle: supportPhone,
-                onTap: () async {
-                  Navigator.of(context).pop();
-                  final ok = await SupportChannels.openPhone(supportPhone);
-                  if (!ok && context.mounted) {
-                    MyShopToast.show(
-                      context,
-                      message: 'Could not start a call. Try another channel.',
-                    );
-                  }
-                },
-              ),
+              // "Call support" tile removed in v1.0 — call-out channel
+              // returns in v1.2 once masked calls land. Users reach
+              // support via the in-app ticket flow above and email
+              // below.
               const SizedBox(height: MyShopSpacing.sm),
               _ChannelTile(
                 icon: Icons.mail_outline,

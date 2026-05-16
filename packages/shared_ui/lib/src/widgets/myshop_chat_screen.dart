@@ -54,7 +54,6 @@ class MyShopChatScreen extends StatefulWidget {
     required this.messages,
     required this.onSend,
     this.onFilePicked,
-    this.onPhoneCall,
     this.onMoreMenu,
     this.contextBanner,
     this.onRetry,
@@ -71,7 +70,7 @@ class MyShopChatScreen extends StatefulWidget {
   final List<ChatMessage> messages;
   final ValueChanged<String> onSend;
   final ValueChanged<File>? onFilePicked;
-  final VoidCallback? onPhoneCall;
+  // `onPhoneCall` removed in v1.0 — masked calls deferred to v1.2.
   final VoidCallback? onMoreMenu;
   final Widget? contextBanner;
 
@@ -266,7 +265,6 @@ class _MyShopChatScreenState extends State<MyShopChatScreen> {
             _Header(
               peerName: widget.peerName,
               peerStatus: widget.peerStatus,
-              onPhoneCall: widget.onPhoneCall,
               onMoreMenu: widget.onMoreMenu,
             ),
             if (widget.contextBanner != null) widget.contextBanner!,
@@ -335,13 +333,11 @@ class _Header extends StatelessWidget {
   const _Header({
     required this.peerName,
     required this.peerStatus,
-    this.onPhoneCall,
     this.onMoreMenu,
   });
 
   final String peerName;
   final String peerStatus;
-  final VoidCallback? onPhoneCall;
   final VoidCallback? onMoreMenu;
 
   @override
@@ -421,14 +417,6 @@ class _Header extends StatelessWidget {
               ],
             ),
           ),
-          if (onPhoneCall != null)
-            IconButton(
-              icon: const Icon(
-                Icons.phone_outlined,
-                color: MyShopColors.primaryGold,
-              ),
-              onPressed: onPhoneCall,
-            ),
           if (onMoreMenu != null)
             IconButton(
               icon: const Icon(

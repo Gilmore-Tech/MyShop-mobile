@@ -421,4 +421,55 @@ class JobService {
       throw ApiException.fromDioException(e);
     }
   }
+
+  /// PATCH /jobs/:id/confirm-schedule — artisan confirms a scheduled job
+  /// within the 24-hour pre-start window. Backend gates on `scheduledFor`
+  /// being set and `status` ∈ `{confirmed, artisan_en_route}`. Returns
+  /// `{ jobId, artisanConfirmed24h, alreadyConfirmed }` — `alreadyConfirmed`
+  /// is `true` when the artisan taps the button twice; the call is
+  /// otherwise idempotent.
+  Future<Map<String, dynamic>> confirmScheduledJob(String jobId) async {
+    try {
+      final response = await _dio.patch('/jobs/$jobId/confirm-schedule');
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// POST /jobs/:id/escalate — artisan escalates a job stuck in
+  /// `artisan_marked_complete` because the client never confirmed. Only
+  /// callable after `job_client_confirm_deadline_hours` (default 4h) has
+  /// elapsed since the artisan marked complete; backend returns
+  /// `ESCALATION_TOO_EARLY` with `remainingMinutes` otherwise.
+  ///
+  /// On success the job auto-finalises to `completed` and payment is
+  /// released to the artisan. Response: `{ jobId, escalated,
+  /// artisanMarkedCompleteAt, elapsedMs }`.
+  Future<Map<String, dynamic>> escalateJobCompletion(String jobId) async {
+    try {
+      final response = await _dio.post('/jobs/$jobId/escalate');
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// PATCH /jobs/:id/welfare-check/respond — artisan responds to a
+  /// 3-hour inactivity welfare ping. Marks the open WelfareCheck row
+  /// resolved and resets the job's `lastActivityAt` so the inactivity
+  /// clock restarts. Backend returns `NO_OPEN_WELFARE_CHECK` (400) when
+  /// there's no unresolved check for the job — typically because the
+  /// artisan acted on something else (status update, supplement
+  /// request) that already cleared the check.
+  ///
+  /// Response: `{ welfareCheckId, isResolved }`.
+  Future<Map<String, dynamic>> respondToWelfareCheck(String jobId) async {
+    try {
+      final response = await _dio.patch('/jobs/$jobId/welfare-check/respond');
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
 }
