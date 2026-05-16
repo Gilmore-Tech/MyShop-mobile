@@ -14,15 +14,15 @@ class RideTrackingSheet extends StatelessWidget {
   final MatchedDriver driver;
   final ScrollController scrollController;
   final VoidCallback onCancel;
-  final VoidCallback onAddStop;
 
   /// Null while en route; non-null once the driver has arrived. Positive
   /// values are the free-wait countdown, negative values are overtime.
   final int? waitingSeconds;
 
   /// True once the driver has started the trip. Hides the waiting timer
-  /// column and the cancel request action; surfaces a "trip in progress"
-  /// banner and the "Add a Stop" action instead.
+  /// column and the cancel request action; the "trip in progress"
+  /// banner surfaces in their place. Multi-stop / "Add a stop" is
+  /// deferred to v1.1, so there's no in-trip CTA right now.
   final bool isInProgress;
 
   const RideTrackingSheet({
@@ -30,7 +30,6 @@ class RideTrackingSheet extends StatelessWidget {
     required this.driver,
     required this.scrollController,
     required this.onCancel,
-    required this.onAddStop,
     this.waitingSeconds,
     this.isInProgress = false,
   });
@@ -84,9 +83,15 @@ class RideTrackingSheet extends StatelessWidget {
                   SizedBox(height: h * 0.017),
                   const _SafetyNotice(),
                   SizedBox(height: h * 0.021),
-                  if (isInProgress)
-                    _AddStopButton(onTap: onAddStop)
-                  else ...[
+                  // Multi-stop (`_AddStopButton`) is deferred to v1.1 —
+                  // the scaffolded `add_stop_screen.dart` + REST wrapper
+                  // are still on disk but the entry point is hidden so
+                  // pilot users don't see a half-finished feature. Once
+                  // the trip is in progress, the only relevant control
+                  // is "Cancel" — and even that is hidden in-trip per
+                  // the driver-side restriction (cancel after pickup
+                  // requires support intervention).
+                  if (!isInProgress) ...[
                     const Divider(
                         height: 1, thickness: 1, color: MyShopColors.divider),
                     SizedBox(height: h * 0.017),
@@ -645,40 +650,10 @@ class _SafetyNotice extends StatelessWidget {
   }
 }
 
-// ── Add a stop (only visible once the trip is in progress) ───────────────────
-
-class _AddStopButton extends StatelessWidget {
-  final VoidCallback onTap;
-  const _AddStopButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: 48,
-      child: OutlinedButton.icon(
-        onPressed: onTap,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: MyShopColors.darkSlate,
-          side: const BorderSide(color: MyShopColors.divider, width: 1.5),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-        icon: const Icon(Icons.add_location_alt_outlined,
-            size: 18, color: MyShopColors.darkSlate),
-        label: const Text(
-          'Add a Stop',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: MyShopColors.darkSlate,
-          ),
-        ),
-      ),
-    );
-  }
-}
+// Multi-stop / "Add a stop" deferred to v1.1 — the visible button is
+// hidden above. The route + screen + REST wrapper are still on disk
+// (`add_stop_screen.dart`, `edit_trip_provider.dart`) so the v1.1
+// reactivation is just turning the entry point back on.
 
 // ── Cancel request (revealed when the sheet is pulled up) ─────────────────────
 

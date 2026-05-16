@@ -253,7 +253,6 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
               driver: widget.driver,
               scrollController: scrollController,
               onCancel: _onCancel,
-              onAddStop: () => context.push(AppRoutes.rideStops),
               waitingSeconds: waitingSeconds,
               isInProgress: phase == RideTrackingPhase.inProgress,
             ),
