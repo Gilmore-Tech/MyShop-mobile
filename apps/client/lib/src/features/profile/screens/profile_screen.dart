@@ -362,82 +362,62 @@ class _ProfileHeader extends ConsumerWidget {
               color: MyShopColors.textSecondary,
             ),
           ),
+          SizedBox(height: h * 0.003),
+
+          // ── Rating line — drivers/artisans rate clients after every
+          // booking. Rendered as a tertiary identity line below the
+          // phone so it sits with email + phone rather than as a chip.
+          // The blind 24h reveal window means a brand-new client sees
+          // "New rider" instead of "0.0" — that would misleadingly look
+          // like a bad score.
+          _RatingLine(ref: ref, w: w),
           SizedBox(height: h * 0.017),
 
           // ── KYC badge ──
           if (profile.isKycVerified) _KycBadge(w: w, h: h),
-
-          // ── Rating chip — drivers/artisans rate clients after every
-          // booking. The blind 24h reveal window means a brand-new
-          // client (or one whose first ratings haven't revealed yet)
-          // sees the "New rider" pill instead of "0.0", which would
-          // misleadingly look like a bad score. Tap-target stays
-          // passive — this is read-only on the profile.
-          SizedBox(height: h * 0.012),
-          _RatingChip(ref: ref, w: w, h: h),
         ],
       ),
     );
   }
 }
 
-class _RatingChip extends StatelessWidget {
-  const _RatingChip({required this.ref, required this.w, required this.h});
+class _RatingLine extends StatelessWidget {
+  const _RatingLine({required this.ref, required this.w});
 
   final WidgetRef ref;
   final double w;
-  final double h;
 
   @override
   Widget build(BuildContext context) {
     final ratingsAsync = ref.watch(myRatingsProvider);
-
     return ratingsAsync.when(
       loading: () => const SizedBox.shrink(),
       error: (_, __) => const SizedBox.shrink(),
       data: (r) {
-        final hasRatings = r.hasRatings;
-        return Container(
-          padding:
-              EdgeInsets.symmetric(horizontal: w * 0.041, vertical: h * 0.008),
-          decoration: BoxDecoration(
-            color: hasRatings
-                ? MyShopColors.primaryGoldLight
-                : MyShopColors.surfaceGrey,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.star_rounded,
-                size: w * 0.046,
-                color: hasRatings
-                    ? MyShopColors.primaryGold
-                    : MyShopColors.textSecondary,
+        final label = r.hasRatings
+            ? '${r.averageDisplay}  ·  ${r.count} ${r.count == 1 ? 'rating' : 'ratings'}'
+            : 'New rider';
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.star_rounded,
+              size: w * 0.038,
+              color: r.hasRatings
+                  ? MyShopColors.primaryGold
+                  : MyShopColors.textSecondary,
+            ),
+            SizedBox(width: w * 0.013),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: w * 0.033,
+                fontWeight: FontWeight.w400,
+                color: MyShopColors.textSecondary,
               ),
-              SizedBox(width: w * 0.013),
-              Text(
-                hasRatings ? r.averageDisplay : 'New rider',
-                style: TextStyle(
-                  fontSize: w * 0.034,
-                  fontWeight: FontWeight.w800,
-                  color: MyShopColors.textPrimary,
-                ),
-              ),
-              if (hasRatings) ...[
-                SizedBox(width: w * 0.013),
-                Text(
-                  '· ${r.count} ${r.count == 1 ? 'rating' : 'ratings'}',
-                  style: TextStyle(
-                    fontSize: w * 0.030,
-                    fontWeight: FontWeight.w500,
-                    color: MyShopColors.textSecondary,
-                  ),
-                ),
-              ],
-            ],
-          ),
+            ),
+          ],
         );
       },
     );
