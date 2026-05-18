@@ -1,0 +1,160 @@
+name: iOS Release
+
+# Fires on:
+#   - tag push matching v* (canonical release path)
+#   - manual workflow_dispatch from the Actions tab
+#
+# Produces signed IPAs for client + provider and uploads each to its
+# TestFlight Internal track. Promotion to App Review / App Store is a
+# deliberate manual step in App Store Connect — see release-setup.md §6.1.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'Which app to build (or "both")'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - client
+          - provider
+
+jobs:
+  build-and-upload:
+    name: Build + upload ${{ matrix.app }} IPA
+    # macOS runner is required for any iOS code-signing. macos-14 ships
+    # with Xcode 15.2+; matches Flutter 3.27's iOS toolchain requirements.
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.app == 'both' && fromJson('["client", "provider"]') || github.event_name == 'workflow_dispatch' && fromJson(format('["{0}"]', github.event.inputs.app)) || fromJson('["client", "provider"]') }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '15.4'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.0'
+          channel: stable
+          cache: true
+
+      - name: Install Melos
+        run: dart pub global activate melos
+
+      - name: Bootstrap workspace
+        run: melos bootstrap
+
+      # ── SSH access to the private match repo ──────────────────────────
+      # The deploy key in MATCH_REPO_DEPLOY_KEY has read access to the
+      # myshop-match repo (set up per release-setup.md §2.5). Match needs
+      # to git-clone that repo to decrypt the certs + profiles.
+
+      - name: Set up SSH for match repo
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.MATCH_REPO_DEPLOY_KEY }}
+
+      - name: Trust github.com host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      # ── Install Fastlane Match ────────────────────────────────────────
+
+      - name: Install Fastlane
+        run: sudo gem install fastlane -NV
+
+      # ── Decrypt + install signing assets ──────────────────────────────
+      # `match appstore --readonly` decrypts the existing repo contents
+      # WITHOUT regenerating anything. CI must never generate new certs
+      # — that's a once-per-year human action; CI only consumes what the
+      # match repo already holds.
+
+      - name: Fetch signing assets via Match
+        env:
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          # `app_store_connect_api_key_*` lets Match authenticate without
+          # interactive Apple ID + 2FA prompts in CI.
+          APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+        run: |
+          BUNDLE_ID=com.gilmore.myshop.${{ matrix.app }}
+          cd apps/${{ matrix.app }}/ios
+          fastlane match appstore \
+            --git_url "${{ secrets.MATCH_REPO_URL }}" \
+            --app_identifier "$BUNDLE_ID" \
+            --readonly true \
+            --verbose
+
+      # ── Service-key injection ─────────────────────────────────────────
+
+      - name: Write .env.prod
+        run: |
+          GMAPS_KEY=$([ "${{ matrix.app }}" = "client" ] \
+            && echo "${{ secrets.GOOGLE_MAPS_API_KEY_CLIENT }}" \
+            || echo "${{ secrets.GOOGLE_MAPS_API_KEY_PROVIDER }}")
+          cat > .env.prod <<EOF
+          GOOGLE_MAPS_API_KEY=${GMAPS_KEY}
+          MAPBOX_ACCESS_TOKEN=${{ secrets.MAPBOX_ACCESS_TOKEN }}
+          MAPBOX_STYLE_URL=${{ secrets.MAPBOX_STYLE_URL }}
+          EOF
+
+      # ── Build ─────────────────────────────────────────────────────────
+      # tool/build.sh handles writing Secrets.xcconfig and calling
+      # `flutter build ipa --release`.
+
+      - name: Build IPA via tool/build.sh
+        run: tool/build.sh ${{ matrix.app }} ios
+
+      - name: Locate IPA
+        id: locate
+        run: |
+          # Flutter's `build ipa` produces both an .xcarchive and an .ipa
+          # under build/ios/ipa/. The .ipa is what App Store Connect wants.
+          IPA=$(find apps/${{ matrix.app }}/build/ios/ipa -name '*.ipa' | head -1)
+          test -n "$IPA" || { echo "No IPA produced under apps/${{ matrix.app }}/build/ios/ipa"; exit 1; }
+          echo "path=$IPA" >> "$GITHUB_OUTPUT"
+          echo "Built $IPA ($(du -h "$IPA" | cut -f1))"
+
+      # ── Artefact backup ───────────────────────────────────────────────
+
+      - name: Upload IPA as workflow artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.app }}-ipa-${{ github.ref_name }}
+          path: ${{ steps.locate.outputs.path }}
+          retention-days: 30
+
+      # ── TestFlight upload ─────────────────────────────────────────────
+      # `apple-actions/upload-testflight-build` is the maintained successor
+      # to the older `apple-actions/upload-testflight-action`. Auth via
+      # the App Store Connect API key — same trio of secrets that Match used.
+
+      - name: Upload to TestFlight Internal
+        uses: apple-actions/upload-testflight-build@v1
+        with:
+          app-path: ${{ steps.locate.outputs.path }}
+          issuer-id: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          api-key-id: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          api-private-key: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+        continue-on-error: true
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "::notice title=Release Built::Tag ${{ github.ref_name }} · App ${{ matrix.app }} · IPA ${{ steps.locate.outputs.path }}"
+          echo "::notice title=Next Steps::Smoke-test in TestFlight Internal. Once green, App Store Connect → Submit for Review. See docs/release-setup.md §6.1."

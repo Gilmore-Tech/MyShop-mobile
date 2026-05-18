@@ -1,0 +1,155 @@
+name: Android Release
+
+# Fires on:
+#   - tag push matching v* (the canonical release path: `git tag v1.0.1 && git push --tags`).
+#   - manual workflow_dispatch from the Actions tab, useful for retrying a
+#     failed run without bumping the version.
+#
+# Produces signed AABs for client + provider and uploads each to its
+# Google Play Console Internal Testing track. Promotion to Production
+# (with App Review) is a deliberate manual click in Play Console — see
+# docs/release-setup.md §6.1 for the rationale.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'Which app to build (or "both")'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - client
+          - provider
+
+jobs:
+  build-and-upload:
+    name: Build + upload ${{ matrix.app }} AAB
+    runs-on: ubuntu-latest
+    strategy:
+      # Don't cancel the provider build just because the client one failed
+      # — they're independent, and a partial release is better than no release.
+      fail-fast: false
+      matrix:
+        app: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.app == 'both' && fromJson('["client", "provider"]') || github.event_name == 'workflow_dispatch' && fromJson(format('["{0}"]', github.event.inputs.app)) || fromJson('["client", "provider"]') }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.0'
+          channel: stable
+          cache: true
+
+      - name: Install Melos
+        run: dart pub global activate melos
+
+      - name: Bootstrap workspace
+        run: melos bootstrap
+
+      # ── Signing ───────────────────────────────────────────────────────
+      # Decode the base64-encoded keystore back into a real .jks, then
+      # write the per-app key.properties that android/app/build.gradle.kts
+      # reads via the `keystoreProperties` block (see release-setup.md §1.2).
+      # Both files live outside the gitignore'd zone we write — Gradle reads
+      # `key.properties` directly from apps/<app>/android/.
+
+      - name: Decode keystore
+        run: |
+          mkdir -p ~/.secure
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > ~/.secure/myshop-upload.jks
+          # Sanity check: keytool can read it
+          keytool -list -keystore ~/.secure/myshop-upload.jks -storepass "${{ secrets.KEYSTORE_PASSWORD }}" > /dev/null
+
+      - name: Write key.properties
+        run: |
+          KEY_ALIAS=$([ "${{ matrix.app }}" = "client" ] && echo "${{ secrets.KEY_ALIAS_CLIENT }}" || echo "${{ secrets.KEY_ALIAS_PROVIDER }}")
+          cat > apps/${{ matrix.app }}/android/key.properties <<EOF
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${KEY_ALIAS}
+          storeFile=$HOME/.secure/myshop-upload.jks
+          EOF
+
+      # ── Service-key injection ─────────────────────────────────────────
+      # tool/build.sh expects `.env.prod` at repo root and treats every
+      # KEY=value line as a --dart-define. We pick the per-app Maps key
+      # so client + provider get their own restricted credentials.
+
+      - name: Write .env.prod
+        run: |
+          GMAPS_KEY=$([ "${{ matrix.app }}" = "client" ] \
+            && echo "${{ secrets.GOOGLE_MAPS_API_KEY_CLIENT }}" \
+            || echo "${{ secrets.GOOGLE_MAPS_API_KEY_PROVIDER }}")
+          cat > .env.prod <<EOF
+          GOOGLE_MAPS_API_KEY=${GMAPS_KEY}
+          MAPBOX_ACCESS_TOKEN=${{ secrets.MAPBOX_ACCESS_TOKEN }}
+          MAPBOX_STYLE_URL=${{ secrets.MAPBOX_STYLE_URL }}
+          EOF
+
+      # ── Build ─────────────────────────────────────────────────────────
+
+      - name: Build AAB via tool/build.sh
+        run: tool/build.sh ${{ matrix.app }} android
+
+      - name: Locate AAB
+        id: locate
+        run: |
+          AAB=apps/${{ matrix.app }}/build/app/outputs/bundle/release/app-release.aab
+          test -f "$AAB" || { echo "Missing AAB at $AAB"; exit 1; }
+          echo "path=$AAB" >> "$GITHUB_OUTPUT"
+          echo "Built $AAB ($(du -h "$AAB" | cut -f1))"
+
+      # ── Artefact backup ───────────────────────────────────────────────
+      # Always keep a copy of the AAB on the workflow run itself, even if
+      # the Play upload step fails. Lets you download + upload manually
+      # as a fallback without having to rebuild.
+
+      - name: Upload AAB as workflow artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.app }}-aab-${{ github.ref_name }}
+          path: ${{ steps.locate.outputs.path }}
+          retention-days: 30
+
+      # ── Play Console upload (Internal Testing track) ──────────────────
+      # `serviceAccountJsonPlainText` accepts the JSON contents directly,
+      # which is exactly what `secrets.PLAY_SERVICE_ACCOUNT_JSON` holds.
+      # `track: internal` is the Internal Testing track — the safety net
+      # we explicitly chose over direct-to-prod in release-setup.md §6.1.
+
+      - name: Upload to Play Console Internal Testing
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.gilmore.myshop.${{ matrix.app }}
+          releaseFiles: ${{ steps.locate.outputs.path }}
+          track: internal
+          status: completed
+          # Surface the tag name as the Play release notes — manual editing
+          # in Play Console is fine for richer notes, but having SOMETHING
+          # there avoids the "(empty release notes)" warning blocking
+          # promotion to Production later.
+          whatsNewDirectory: ${{ github.workspace }}/.github/release-notes/${{ matrix.app }}
+        # `whatsNewDirectory` is optional — if the directory doesn't exist,
+        # the action skips notes upload and Play uses the tag name.
+        continue-on-error: true
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "::notice title=Release Built::Tag ${{ github.ref_name }} · App ${{ matrix.app }} · AAB ${{ steps.locate.outputs.path }}"
+          echo "::notice title=Next Steps::Smoke-test in Play Console Internal Testing. Once green, click Promote → Production. See docs/release-setup.md §6.1."
