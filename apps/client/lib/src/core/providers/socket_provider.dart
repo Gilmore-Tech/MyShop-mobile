@@ -269,6 +269,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
           driver['lng']) as num?;
       if (dLat != null && dLng != null) {
         final heading = (driver['heading'] ?? driver['bearing']) as num?;
+        developer.log(
+            '[LIVE-TRACK] ride:state seeded driver position ($dLat, $dLng)',
+            name: 'WS');
         ref.container.read(liveDriverPositionProvider.notifier).state =
             LiveDriverPosition(
           latitude: dLat.toDouble(),
@@ -276,6 +279,11 @@ void _connectAndListen(Ref ref, SocketService socket) {
           heading: heading?.toDouble(),
           updatedAt: DateTime.now(),
         );
+      } else {
+        developer.log(
+            '[LIVE-TRACK] ride:state had no currentLat/currentLng — '
+            'marker waits for next driver:location fix',
+            name: 'WS');
       }
     }
 
@@ -380,15 +388,38 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // snapshots. Gated on the active ride id so the rider's marker
     // doesn't jitter from unrelated ride traffic.
     void handleDriverLocation(dynamic data) {
-      if (data is! Map<String, dynamic>) return;
+      if (data is! Map<String, dynamic>) {
+        developer.log('[LIVE-TRACK] driver:location dropped — payload not Map',
+            name: 'WS');
+        return;
+      }
       final activeRideId = ref.container.read(activeRideIdProvider);
-      if (activeRideId == null) return;
+      if (activeRideId == null) {
+        developer.log(
+            '[LIVE-TRACK] driver:location dropped — no activeRideId set',
+            name: 'WS');
+        return;
+      }
       final eventRideId = data['rideId'] as String? ?? data['id'] as String?;
-      if (eventRideId != null && eventRideId != activeRideId) return;
+      if (eventRideId != null && eventRideId != activeRideId) {
+        developer.log(
+            '[LIVE-TRACK] driver:location dropped — rideId mismatch '
+            '(event=$eventRideId active=$activeRideId)',
+            name: 'WS');
+        return;
+      }
       final lat = (data['latitude'] ?? data['lat']) as num?;
       final lng = (data['longitude'] ?? data['lng']) as num?;
-      if (lat == null || lng == null) return;
+      if (lat == null || lng == null) {
+        developer.log(
+            '[LIVE-TRACK] driver:location dropped — missing lat/lng in payload',
+            name: 'WS');
+        return;
+      }
       final heading = (data['heading'] ?? data['bearing']) as num?;
+      developer.log(
+          '[LIVE-TRACK] driver:location accepted ($lat, $lng) heading=$heading',
+          name: 'WS');
       ref.container.read(liveDriverPositionProvider.notifier).state = LiveDriverPosition(
         latitude: lat.toDouble(),
         longitude: lng.toDouble(),

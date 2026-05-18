@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:dio/dio.dart';
 
 import '../constants/maps_config.dart';
@@ -64,6 +66,19 @@ class GooglePlacesService {
   /// Fetch autocomplete suggestions for [query].
   Future<List<PlaceSuggestion>> autocomplete(String query) async {
     if (query.trim().isEmpty) return const [];
+    if (MapsConfig.apiKey.isEmpty) {
+      // The v1.0 secret cleanup made the default value empty so a build
+      // that forgot the dart-define fails visibly instead of silently
+      // shipping a placeholder key. Without this log the only visible
+      // symptom is "no suggestions appear when typing" because the catch
+      // block below swallows the resulting REQUEST_DENIED.
+      developer.log(
+          '[PLACES] GOOGLE_MAPS_API_KEY is empty — autocomplete will return []. '
+          'Re-run with --dart-define=GOOGLE_MAPS_API_KEY=AIza…',
+          name: 'GooglePlacesService',
+          level: 1000);
+      return const [];
+    }
 
     try {
       final response = await _dio.get(
@@ -79,6 +94,18 @@ class GooglePlacesService {
       );
 
       final data = response.data as Map<String, dynamic>;
+      // Surface Google's own error envelope — `REQUEST_DENIED` /
+      // `INVALID_REQUEST` / `OVER_QUERY_LIMIT` arrive with HTTP 200 but
+      // a non-OK `status` field, which the old try/catch couldn't see.
+      final status = data['status'] as String?;
+      if (status != null && status != 'OK' && status != 'ZERO_RESULTS') {
+        developer.log(
+            '[PLACES] autocomplete non-OK status: $status — '
+            '${data['error_message'] ?? '(no message)'}',
+            name: 'GooglePlacesService',
+            level: 900);
+        return const [];
+      }
       final predictions = data['predictions'] as List<dynamic>? ?? [];
 
       return predictions.map((p) {
@@ -90,7 +117,9 @@ class GooglePlacesService {
           fullText: p['description'] as String? ?? '',
         );
       }).toList();
-    } catch (_) {
+    } catch (e) {
+      developer.log('[PLACES] autocomplete failed: $e',
+          name: 'GooglePlacesService', level: 900);
       return const [];
     }
   }

@@ -8,13 +8,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart'
     show
         CameraOptions,
+        CircleAnnotation,
+        CircleAnnotationManager,
+        CircleAnnotationOptions,
         CompassSettings,
         CoordinateBounds,
         LineString,
         MapWidget,
         MapboxMap,
         MbxEdgeInsets,
-        PointAnnotation,
         PointAnnotationManager,
         PointAnnotationOptions,
         Point,
@@ -52,10 +54,16 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   PointAnnotationManager? _annotationManager;
   PolylineAnnotationManager? _polylineManager;
 
-  /// Separate annotation for the driver — kept around so we can update its
-  /// geometry on each fix instead of tearing down and re-creating every
-  /// pickup/destination marker as well.
-  PointAnnotation? _driverAnnotation;
+  /// Dedicated manager for the driver-car circle markers (outer halo +
+  /// inner solid dot). Circle annotations render purely from the Mapbox
+  /// style sheet rather than a font-glyph lookup, so they never fall back
+  /// to an empty square the way the 🚗 emoji can on styles that don't
+  /// ship a colour-emoji font (the original v1.0 emoji marker silently
+  /// vanished on the Mapbox Streets style — that's the "marker never
+  /// appears" symptom reported during testing).
+  CircleAnnotationManager? _driverCircleManager;
+  CircleAnnotation? _driverHaloAnnotation;
+  CircleAnnotation? _driverDotAnnotation;
 
   /// The on-map polyline tracing the driver's road route to the next
   /// waypoint (pickup while en-route/arrived, destination while in-progress).
@@ -117,34 +125,69 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   /// Create or move the driver marker. No-op while the map isn't ready or
   /// the rider hasn't received the first fix yet — the next call (from
   /// either a socket update or the REST poller) takes care of it.
+  ///
+  /// Renders the driver as a 2-layer circle (white outer halo + gold inner
+  /// dot) rather than a text emoji — the original 🚗 marker depended on the
+  /// active Mapbox style shipping a colour-emoji font; on styles that don't
+  /// (the default Streets v12 doesn't on all OS variants) the glyph
+  /// silently rendered as a blank tofu box, which is the "marker never
+  /// appears" symptom this widget was reported with.
   Future<void> _syncDriverMarker(LiveDriverPosition? pos) async {
-    final manager = _annotationManager;
-    if (manager == null) return;
+    final manager = _driverCircleManager;
+    if (manager == null) {
+      developer.log(
+          '[LIVE-TRACK] _syncDriverMarker bailed — circle manager not ready',
+          name: 'RideRouteMap');
+      return;
+    }
     if (pos == null) {
-      final existing = _driverAnnotation;
-      if (existing != null) {
-        await manager.delete(existing);
-        _driverAnnotation = null;
-      }
+      final halo = _driverHaloAnnotation;
+      final dot = _driverDotAnnotation;
+      if (halo != null) await manager.delete(halo);
+      if (dot != null) await manager.delete(dot);
+      _driverHaloAnnotation = null;
+      _driverDotAnnotation = null;
+      developer.log('[LIVE-TRACK] driver marker cleared (pos=null)',
+          name: 'RideRouteMap');
       return;
     }
     final point = Point(
       coordinates: Position(pos.longitude, pos.latitude),
     );
-    final existing = _driverAnnotation;
-    if (existing == null) {
-      _driverAnnotation = await manager.create(
-        PointAnnotationOptions(
+    final halo = _driverHaloAnnotation;
+    final dot = _driverDotAnnotation;
+    if (halo == null || dot == null) {
+      _driverHaloAnnotation = await manager.create(
+        CircleAnnotationOptions(
           geometry: point,
-          textField: '🚗',
-          textSize: 26,
-          textRotate: pos.heading ?? 0,
+          circleRadius: 14,
+          circleColor: 0xFFFFFFFF,
+          circleStrokeColor: 0x33000000,
+          circleStrokeWidth: 1.0,
         ),
       );
+      _driverDotAnnotation = await manager.create(
+        CircleAnnotationOptions(
+          geometry: point,
+          circleRadius: 9,
+          // primaryGold (0xFFF5A623) for visual consistency with the
+          // route polyline.
+          circleColor: 0xFFF5A623,
+          circleStrokeColor: 0xFFFFFFFF,
+          circleStrokeWidth: 2.0,
+        ),
+      );
+      developer.log(
+          '[LIVE-TRACK] driver marker CREATED at (${pos.latitude}, ${pos.longitude})',
+          name: 'RideRouteMap');
     } else {
-      existing.geometry = point;
-      if (pos.heading != null) existing.textRotate = pos.heading;
-      await manager.update(existing);
+      halo.geometry = point;
+      dot.geometry = point;
+      await manager.update(halo);
+      await manager.update(dot);
+      developer.log(
+          '[LIVE-TRACK] driver marker moved to (${pos.latitude}, ${pos.longitude})',
+          name: 'RideRouteMap');
     }
   }
 
@@ -321,21 +364,29 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
 
   Future<void> _onMapCreated(MapboxMap mapboxMap) async {
     _mapboxMap = mapboxMap;
+    developer.log('[LIVE-TRACK] map created — wiring annotation managers',
+        name: 'RideRouteMap');
 
     // Disable built-in compass and scale bar for a cleaner look.
     await mapboxMap.compass.updateSettings(CompassSettings(enabled: false));
     await mapboxMap.scaleBar.updateSettings(ScaleBarSettings(enabled: false));
 
-    // Polyline manager has to live below the point-annotation manager so
-    // the route line draws *under* the driver/pickup/destination pins.
-    // Mapbox renders annotation managers in creation order.
+    // Manager creation order is the z-order: first-created is drawn first
+    // (lowest layer). Route polyline at the bottom, pickup/destination
+    // text markers above it, driver circle on top so the car never gets
+    // hidden by the route line under it.
     _polylineManager =
         await mapboxMap.annotations.createPolylineAnnotationManager();
+    _driverCircleManager =
+        await mapboxMap.annotations.createCircleAnnotationManager();
     await _addMarkers();
     await _fitBounds();
     // Pick up any driver fix that arrived before the map was ready —
     // marker, route, and camera all sync at once.
     final driverPos = ref.read(liveDriverPositionProvider);
+    developer.log(
+        '[LIVE-TRACK] map ready — initial driverPos=${driverPos != null ? "(${driverPos.latitude}, ${driverPos.longitude})" : "null"}',
+        name: 'RideRouteMap');
     await _syncDriverMarker(driverPos);
     if (driverPos != null) {
       await _syncRoute(driverPos);
@@ -416,6 +467,9 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     // `core/providers/socket_provider.dart` and the tracking screen's
     // periodic REST hydrate both flow through `liveDriverPositionProvider`.
     ref.listen<LiveDriverPosition?>(liveDriverPositionProvider, (_, next) {
+      developer.log(
+          '[LIVE-TRACK] provider tick → ${next != null ? "(${next.latitude}, ${next.longitude})" : "null"}',
+          name: 'RideRouteMap');
       _syncDriverMarker(next);
       if (next != null) {
         _syncRoute(next);
