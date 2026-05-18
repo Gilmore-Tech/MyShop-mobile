@@ -24,12 +24,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       pillIcon: Icons.verified_user_rounded,
       pillLabel: 'Verified Network',
       heroIcon: Icons.shield_rounded,
+      imagePath: 'assets/images/onboarding_trust.jpg',
       heroAccentLabel: 'TRUSTED ACROSS',
       heroAccentValue: 'Ashanti Region',
       title: 'Safety & Trust',
       description:
           'Verified providers, emergency button, masked calls, and live trip sharing with family — built in.',
-      socialProof: '20k+ verified providers',
+      socialProof: '200+ verified providers',
       footnote: 'Smile Identity KYC Verified',
       gradient: [Color(0xFF1F2A35), Color(0xFF46535D)],
     ),
@@ -37,6 +38,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       pillIcon: Icons.location_on_rounded,
       pillLabel: 'Always Live',
       heroIcon: Icons.my_location_rounded,
+      imagePath: 'assets/images/onboarding_tracking.jpg',
       heroAccentLabel: 'LIVE TRACKING IN',
       heroAccentValue: 'Real Time',
       title: 'Track Everything Live',
@@ -50,6 +52,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       pillIcon: Icons.bolt_rounded,
       pillLabel: 'Loyalty Rewards',
       heroIcon: Icons.workspace_premium_rounded,
+      imagePath: 'assets/images/onboarding_spend.jpg',
       heroAccentLabel: 'EARN AS YOU',
       heroAccentValue: 'Ride & Hire',
       title: 'Earn While You Spend',
@@ -266,13 +269,8 @@ class _HeroCard extends StatelessWidget {
             aspectRatio: 0.78,
             child: ConstrainedBox(
               constraints: BoxConstraints(maxWidth: width),
-              child: Container(
+              child: DecoratedBox(
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: page.gradient,
-                  ),
                   borderRadius: BorderRadius.circular(28),
                   boxShadow: [
                     BoxShadow(
@@ -282,54 +280,65 @@ class _HeroCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: Stack(
-                  children: [
-                    Positioned(
-                      top: -40,
-                      right: -40,
-                      child: _glowOrb(160, 0.18),
-                    ),
-                    Positioned(
-                      bottom: -30,
-                      left: -30,
-                      child: _glowOrb(120, 0.12),
-                    ),
-                    Center(
-                      child: Container(
-                        width: 132,
-                        height: 132,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(28),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Full-bleed photo. Gradient is kept as the fallback
+                      // background so a slow/failed decode never leaves the
+                      // card blank.
+                      DecoratedBox(
                         decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha: 0.10),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.18),
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: page.gradient,
                           ),
                         ),
-                        child: Icon(
-                          page.heroIcon,
-                          size: 64,
-                          color: Colors.white.withValues(alpha: 0.92),
+                      ),
+                      Image.asset(
+                        page.imagePath,
+                        fit: BoxFit.cover,
+                        // If the asset is missing in dev, render the gradient
+                        // underneath instead of crashing the carousel.
+                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      ),
+                      // Dark fade at the bottom — keeps the pill (top) and
+                      // accent strip (bottom) legible over any photo.
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.black.withValues(alpha: 0.12),
+                              Colors.transparent,
+                              Colors.black.withValues(alpha: 0.55),
+                            ],
+                            stops: const [0.0, 0.45, 1.0],
+                          ),
                         ),
                       ),
-                    ),
-                    Positioned(
-                      top: MyShopSpacing.md,
-                      left: MyShopSpacing.md,
-                      child: _PillBadge(
-                        icon: page.pillIcon,
-                        label: page.pillLabel,
+                      Positioned(
+                        top: MyShopSpacing.md,
+                        left: MyShopSpacing.md,
+                        child: _PillBadge(
+                          icon: page.pillIcon,
+                          label: page.pillLabel,
+                        ),
                       ),
-                    ),
-                    Positioned(
-                      left: MyShopSpacing.md,
-                      right: MyShopSpacing.md,
-                      bottom: MyShopSpacing.md,
-                      child: _ActiveStrip(
-                        label: page.heroAccentLabel,
-                        value: page.heroAccentValue,
+                      Positioned(
+                        left: MyShopSpacing.md,
+                        right: MyShopSpacing.md,
+                        bottom: MyShopSpacing.md,
+                        child: _ActiveStrip(
+                          label: page.heroAccentLabel,
+                          value: page.heroAccentValue,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -338,20 +347,6 @@ class _HeroCard extends StatelessWidget {
       },
     );
   }
-
-  Widget _glowOrb(double size, double alpha) => Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [
-              Colors.white.withValues(alpha: alpha),
-              Colors.white.withValues(alpha: 0),
-            ],
-          ),
-        ),
-      );
 }
 
 class _PillBadge extends StatelessWidget {
@@ -566,6 +561,7 @@ class _OnboardingPage {
     required this.pillIcon,
     required this.pillLabel,
     required this.heroIcon,
+    required this.imagePath,
     required this.heroAccentLabel,
     required this.heroAccentValue,
     required this.title,
@@ -578,6 +574,7 @@ class _OnboardingPage {
   final IconData pillIcon;
   final String pillLabel;
   final IconData heroIcon;
+  final String imagePath;
   final String heroAccentLabel;
   final String heroAccentValue;
   final String title;
