@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 // ── SplashScreen ──────────────────────────────────────────────────────────────
@@ -114,13 +113,6 @@ class _SplashScreenState extends State<SplashScreen>
       backgroundColor: _bg,
       body: Stack(
         children: [
-          // ── Background radial glow behind logo ──────────────────────────
-          Positioned(
-            top: h * 0.22,
-            left: w * 0.5 - w * 0.38,
-            child: _RadialGlow(size: w * 0.76),
-          ),
-
           // ── Bottom gold accent bar ──────────────────────────────────────
           Positioned(
             bottom: 0,
@@ -175,36 +167,6 @@ class _SplashScreenState extends State<SplashScreen>
             ),
           ),
 
-          // ── DEV shortcut ───────────────────────────────────────────────
-          Positioned(
-            bottom: h * 0.015,
-            right: w * 0.041,
-            child: GestureDetector(
-              onTap: () {
-                _ctrl.stop();
-                context.go('/dev');
-              },
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white.withAlpha(20),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: Colors.white.withAlpha(40)),
-                ),
-                child: Text(
-                  'DEV',
-                  style: TextStyle(
-                    fontSize: w * 0.026,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white.withAlpha(120),
-                    letterSpacing: 1.0,
-                  ),
-                ),
-              ),
-            ),
-          ),
-
           // ── Loading dots + footer ───────────────────────────────────────
           Positioned(
             bottom: h * 0.07,
@@ -232,28 +194,6 @@ class _SplashScreenState extends State<SplashScreen>
 
 // ── Sub-widgets ────────────────────────────────────────────────────────────────
 
-class _RadialGlow extends StatelessWidget {
-  final double size;
-  const _RadialGlow({required this.size});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [
-            MyShopColors.primaryGold.withAlpha(30),
-            Colors.transparent,
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _LogoMark extends StatelessWidget {
   final double w;
   const _LogoMark({required this.w});
@@ -262,25 +202,12 @@ class _LogoMark extends StatelessWidget {
   Widget build(BuildContext context) {
     final size = w * 0.32;
 
-    return Container(
+    return Image.asset(
+      'assets/images/myshop_logo.png',
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        boxShadow: [
-          BoxShadow(
-            color: MyShopColors.primaryGold.withAlpha(90),
-            blurRadius: w * 0.10,
-            spreadRadius: w * 0.005,
-          ),
-        ],
-      ),
-      child: Image.asset(
-        'assets/images/myshop_logo.png',
-        width: size,
-        height: size,
-        fit: BoxFit.contain,
-        filterQuality: FilterQuality.medium,
-      ),
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.medium,
     );
   }
 }
@@ -324,59 +251,24 @@ class _Tagline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tagStyle = TextStyle(
+      color: Colors.white.withAlpha(180),
+      fontSize: w * 0.034,
+      letterSpacing: 0.4,
+    );
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _TagDot(w: w),
-        SizedBox(width: w * 0.018),
-        Text(
-          'Rides',
-          style: TextStyle(
-            color: Colors.white.withAlpha(180),
-            fontSize: w * 0.034,
-            letterSpacing: 0.4,
-          ),
-        ),
-        SizedBox(width: w * 0.018),
-        _TagDot(w: w),
-        SizedBox(width: w * 0.018),
-        Text(
-          'Services',
-          style: TextStyle(
-            color: Colors.white.withAlpha(180),
-            fontSize: w * 0.034,
-            letterSpacing: 0.4,
-          ),
-        ),
-        SizedBox(width: w * 0.018),
-        _TagDot(w: w),
-        SizedBox(width: w * 0.018),
-        Text(
-          'Delivered',
-          style: TextStyle(
-            color: Colors.white.withAlpha(180),
-            fontSize: w * 0.034,
-            letterSpacing: 0.4,
-          ),
-        ),
+        Text('Rides', style: tagStyle),
+        SizedBox(width: w * 0.024),
+        Text('·', style: tagStyle),
+        SizedBox(width: w * 0.024),
+        Text('Services', style: tagStyle),
+        SizedBox(width: w * 0.024),
+        Text('·', style: tagStyle),
+        SizedBox(width: w * 0.024),
+        Text('Delivered', style: tagStyle),
       ],
-    );
-  }
-}
-
-class _TagDot extends StatelessWidget {
-  final double w;
-  const _TagDot({required this.w});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: w * 0.012,
-      height: w * 0.012,
-      decoration: const BoxDecoration(
-        color: MyShopColors.primaryGold,
-        shape: BoxShape.circle,
-      ),
     );
   }
 }
