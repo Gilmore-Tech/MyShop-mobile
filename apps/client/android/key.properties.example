@@ -1,0 +1,14 @@
+# Local-machine signing config consumed by android/app/build.gradle.kts.
+# Copy this file to `key.properties` (same directory) and fill in the real
+# values. The real file is gitignored. In CI, .github/workflows/release-android.yml
+# regenerates it from GitHub Secrets.
+#
+# All four values are mandatory for a release build. If `key.properties`
+# doesn't exist at all, Gradle falls back to signing the release build
+# with the debug key — fine for debug runs, NEVER acceptable for an AAB
+# you intend to upload to Play Console.
+
+storePassword=replace-me
+keyPassword=replace-me
+keyAlias=client-upload
+storeFile=/Users/yourname/secure/myshop-upload.jks

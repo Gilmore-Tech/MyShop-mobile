@@ -73,21 +73,35 @@ class RecentArtisan {
 
 IconData _iconForSlug(String slug) {
   return switch (slug) {
-    'towing' => Icons.car_repair,
+    'towing' => Icons.local_shipping_outlined,
     'electrician' => Icons.electrical_services,
     'mechanic' => Icons.build_outlined,
-    'seamstress' || 'fashion' => Icons.content_cut,
+    'seamstress' || 'fashion' || 'tailor' => Icons.content_cut,
     'painter' => Icons.format_paint,
-    'masonry' => Icons.home_repair_service_outlined,
+    'masonry' || 'mason' => Icons.home_repair_service_outlined,
     'carpenter' => Icons.carpenter,
     'plumber' => Icons.plumbing,
-    'satellite' || 'satellite-tv' => Icons.satellite_alt,
+    'satellite' || 'satellite-tv' || 'dish' => Icons.settings_input_antenna,
     'repairs' => Icons.handyman,
     'repair-laptop' || 'laptop-repair' => Icons.laptop_mac,
     'repair-fridge' || 'fridge-repair' => Icons.kitchen,
     'repair-tv' || 'tv-repair' => Icons.tv,
     'repair-phone' || 'phone-repair' => Icons.phone_android,
-    'repair-ac' || 'ac-repair' => Icons.ac_unit,
+    'repair-ac' || 'ac-repair' || 'ac-services' || 'ac' =>
+      Icons.ac_unit_rounded,
+    'beautician' || 'beauty' || 'salon' || 'hair' || 'makeup' =>
+      Icons.face_retouching_natural,
+    'vulcanizer' || 'tire' || 'tyre' => Icons.tire_repair,
+    'welder' || 'welding' => Icons.local_fire_department_outlined,
+    'locksmith' => Icons.vpn_key_outlined,
+    'cleaner' || 'cleaning' => Icons.cleaning_services_outlined,
+    'gardener' || 'landscaper' || 'landscaping' => Icons.yard_outlined,
+    'roofer' || 'roofing' => Icons.roofing,
+    'mover' || 'movers' || 'moving' => Icons.moving_outlined,
+    'security' || 'guard' => Icons.security,
+    'pest' || 'fumigation' => Icons.pest_control_outlined,
+    'tiler' || 'tiling' => Icons.grid_view_outlined,
+    'barber' => Icons.content_cut_rounded,
     _ => Icons.miscellaneous_services,
   };
 }
