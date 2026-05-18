@@ -26,7 +26,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       heroIcon: Icons.shield_rounded,
       imagePath: 'assets/images/onboarding_trust.jpg',
       heroAccentLabel: 'TRUSTED ACROSS',
-      heroAccentValue: 'Ashanti Region',
+      heroAccentValue: 'Ghana',
       title: 'Safety & Trust',
       description:
           'Verified providers, emergency button, masked calls, and live trip sharing with family — built in.',
@@ -110,19 +110,30 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
+      // top: false — the hero image bleeds under the status bar. The Skip
+      // button is overlaid with its own top inset so it stays tappable.
       body: SafeArea(
+        top: false,
         child: Column(
           children: [
-            _Header(
-              showSkip: !isLast,
-              onSkip: _markSeenAndGo,
-            ),
             Expanded(
-              child: PageView.builder(
-                controller: _controller,
-                itemCount: _pages.length,
-                onPageChanged: (i) => setState(() => _index = i),
-                itemBuilder: (_, i) => _OnboardingPageView(page: _pages[i]),
+              child: Stack(
+                children: [
+                  PageView.builder(
+                    controller: _controller,
+                    itemCount: _pages.length,
+                    onPageChanged: (i) => setState(() => _index = i),
+                    itemBuilder: (_, i) => _OnboardingPageView(page: _pages[i]),
+                  ),
+                  Positioned(
+                    top: MediaQuery.paddingOf(context).top,
+                    right: 0,
+                    child: _Header(
+                      showSkip: !isLast,
+                      onSkip: _markSeenAndGo,
+                    ),
+                  ),
+                ],
               ),
             ),
             _PageDots(count: _pages.length, index: _index),
@@ -175,32 +186,32 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: MyShopSpacing.lg,
-        vertical: MyShopSpacing.sm,
+      padding: const EdgeInsets.fromLTRB(
+        0,
+        MyShopSpacing.sm,
+        MyShopSpacing.lg,
+        MyShopSpacing.sm,
       ),
-      child: SizedBox(
-        height: 32,
-        child: Align(
-          alignment: Alignment.centerRight,
-          child: AnimatedOpacity(
-            duration: const Duration(milliseconds: 200),
-            opacity: showSkip ? 1 : 0,
-            child: TextButton(
-              onPressed: showSkip ? onSkip : null,
-              style: TextButton.styleFrom(
-                foregroundColor: MyShopColors.textPrimary,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: MyShopSpacing.sm,
-                ),
-                minimumSize: const Size(48, 32),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 200),
+        opacity: showSkip ? 1 : 0,
+        child: Material(
+          color: Colors.black.withValues(alpha: 0.35),
+          shape: const StadiumBorder(),
+          child: InkWell(
+            onTap: showSkip ? onSkip : null,
+            customBorder: const StadiumBorder(),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: MyShopSpacing.md,
+                vertical: 6,
               ),
               child: Text(
                 'Skip',
                 style: MyShopTypography.body1.copyWith(
-                  color: MyShopColors.textPrimary,
-                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
                 ),
               ),
             ),
@@ -218,15 +229,14 @@ class _OnboardingPageView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(height: MyShopSpacing.sm),
-          Expanded(flex: 5, child: _HeroCard(page: page)),
-          const SizedBox(height: MyShopSpacing.xl),
-          Text(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(flex: 7, child: _HeroCard(page: page)),
+        const SizedBox(height: MyShopSpacing.xl),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.lg),
+          child: Text(
             page.title,
             textAlign: TextAlign.center,
             style: MyShopTypography.display.copyWith(
@@ -235,8 +245,11 @@ class _OnboardingPageView extends StatelessWidget {
               letterSpacing: -0.5,
             ),
           ),
-          const SizedBox(height: MyShopSpacing.md),
-          Text(
+        ),
+        const SizedBox(height: MyShopSpacing.md),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.lg),
+          child: Text(
             page.description,
             textAlign: TextAlign.center,
             style: MyShopTypography.body1.copyWith(
@@ -245,11 +258,11 @@ class _OnboardingPageView extends StatelessWidget {
               height: 1.5,
             ),
           ),
-          const Spacer(),
-          _SocialProofRow(label: page.socialProof),
-          const SizedBox(height: MyShopSpacing.md),
-        ],
-      ),
+        ),
+        const Spacer(),
+        _SocialProofRow(label: page.socialProof),
+        const SizedBox(height: MyShopSpacing.md),
+      ],
     );
   }
 }
@@ -261,90 +274,70 @@ class _HeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth.clamp(0, 360).toDouble();
-        return Center(
-          child: AspectRatio(
-            aspectRatio: 0.78,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: width),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(28),
-                  boxShadow: [
-                    BoxShadow(
-                      color: page.gradient.last.withValues(alpha: 0.25),
-                      blurRadius: 28,
-                      offset: const Offset(0, 16),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(28),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      // Full-bleed photo. Gradient is kept as the fallback
-                      // background so a slow/failed decode never leaves the
-                      // card blank.
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: page.gradient,
-                          ),
-                        ),
-                      ),
-                      Image.asset(
-                        page.imagePath,
-                        fit: BoxFit.cover,
-                        // If the asset is missing in dev, render the gradient
-                        // underneath instead of crashing the carousel.
-                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                      ),
-                      // Dark fade at the bottom — keeps the pill (top) and
-                      // accent strip (bottom) legible over any photo.
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.black.withValues(alpha: 0.12),
-                              Colors.transparent,
-                              Colors.black.withValues(alpha: 0.55),
-                            ],
-                            stops: const [0.0, 0.45, 1.0],
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        top: MyShopSpacing.md,
-                        left: MyShopSpacing.md,
-                        child: _PillBadge(
-                          icon: page.pillIcon,
-                          label: page.pillLabel,
-                        ),
-                      ),
-                      Positioned(
-                        left: MyShopSpacing.md,
-                        right: MyShopSpacing.md,
-                        bottom: MyShopSpacing.md,
-                        child: _ActiveStrip(
-                          label: page.heroAccentLabel,
-                          value: page.heroAccentValue,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+    return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        bottomLeft: Radius.circular(32),
+        bottomRight: Radius.circular(32),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Full-bleed photo. Gradient is kept as the fallback background
+          // so a slow/failed decode never leaves the card blank.
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: page.gradient,
               ),
             ),
           ),
-        );
-      },
+          Image.asset(
+            page.imagePath,
+            fit: BoxFit.cover,
+            // If the asset is missing in dev, render the gradient
+            // underneath instead of crashing the carousel.
+            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          ),
+          // Dark fade at the bottom — keeps the pill (top) and accent
+          // strip (bottom) legible over any photo.
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withValues(alpha: 0.12),
+                  Colors.transparent,
+                  Colors.black.withValues(alpha: 0.55),
+                ],
+                stops: const [0.0, 0.45, 1.0],
+              ),
+            ),
+          ),
+          Positioned(
+            // Align with the Skip button on the right — Skip sits at
+            // `statusBarHeight + MyShopSpacing.sm` from the screen top, so
+            // the pill matches that exact offset.
+            top: MediaQuery.paddingOf(context).top + MyShopSpacing.sm,
+            left: MyShopSpacing.lg,
+            child: _PillBadge(
+              icon: page.pillIcon,
+              label: page.pillLabel,
+            ),
+          ),
+          Positioned(
+            left: MyShopSpacing.lg,
+            right: MyShopSpacing.lg,
+            bottom: MyShopSpacing.md,
+            child: _ActiveStrip(
+              label: page.heroAccentLabel,
+              value: page.heroAccentValue,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
