@@ -394,6 +394,7 @@ class ServiceCategory {
     required this.id,
     required this.name,
     required this.slug,
+    this.iconName,
     this.isActive = true,
     this.minBidPesewas,
     this.children = const [],
@@ -404,6 +405,7 @@ class ServiceCategory {
       id: json['id'] as String,
       name: json['name'] as String,
       slug: json['slug'] as String,
+      iconName: json['iconName'] as String?,
       minBidPesewas: json['minBidPesewas'] as int?,
       isActive: json['isActive'] as bool? ?? true,
       children: (json['children'] as List<dynamic>?)
@@ -416,6 +418,7 @@ class ServiceCategory {
   final String id;
   final String name;
   final String slug;
+  final String? iconName;
   final int? minBidPesewas;
   final bool isActive;
   final List<ServiceCategory> children;

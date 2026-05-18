@@ -69,7 +69,48 @@ class RecentArtisan {
   });
 }
 
-// ── Icon mapping for category slugs ──────────────────────────────────────────
+// ── Icon mapping ─────────────────────────────────────────────────────────────
+//
+// Categories are admin-managed (see admin CategoriesPage). The backend stores
+// an [iconName] string per category drawn from a curated set; we resolve it to
+// a Material [IconData] here. Adding a new admin-selectable icon means adding
+// an entry to both [_categoryIconByName] below and the matching list in
+// apps/admin/src/api/categories.ts (CATEGORY_ICONS).
+//
+// [_iconForSlug] remains a fallback for the offline static catalogue and for
+// older categories that haven't been backfilled with an [iconName].
+
+const Map<String, IconData> _categoryIconByName = {
+  'handyman': Icons.handyman,
+  'car_repair': Icons.car_repair,
+  'electrical_services': Icons.electrical_services,
+  'build_outlined': Icons.build_outlined,
+  'content_cut': Icons.content_cut,
+  'format_paint': Icons.format_paint,
+  'home_repair_service_outlined': Icons.home_repair_service_outlined,
+  'carpenter': Icons.carpenter,
+  'plumbing': Icons.plumbing,
+  'satellite_alt': Icons.satellite_alt,
+  'laptop_mac': Icons.laptop_mac,
+  'kitchen': Icons.kitchen,
+  'tv': Icons.tv,
+  'phone_android': Icons.phone_android,
+  'ac_unit': Icons.ac_unit,
+  'cleaning_services': Icons.cleaning_services,
+  'local_shipping': Icons.local_shipping,
+  'local_florist': Icons.local_florist,
+  'pets': Icons.pets,
+  'brush': Icons.brush,
+  'lock': Icons.lock,
+  'water_drop': Icons.water_drop,
+  'bolt': Icons.bolt,
+  'wifi': Icons.wifi,
+  'computer': Icons.computer,
+  'camera_alt': Icons.camera_alt,
+  'restaurant': Icons.restaurant,
+  'spa': Icons.spa,
+  'miscellaneous_services': Icons.miscellaneous_services,
+};
 
 IconData _iconForSlug(String slug) {
   return switch (slug) {
@@ -106,6 +147,13 @@ IconData _iconForSlug(String slug) {
   };
 }
 
+IconData _iconFor(String? iconName, String slug) {
+  if (iconName != null && _categoryIconByName.containsKey(iconName)) {
+    return _categoryIconByName[iconName]!;
+  }
+  return _iconForSlug(slug);
+}
+
 // ── Providers ─────────────────────────────────────────────────────────────────
 
 final serviceCategoriesProvider =
@@ -124,13 +172,13 @@ class _CategoriesNotifier extends AsyncNotifier<List<ServiceCategory>> {
         return ServiceCategory(
           id: cat.id,
           name: cat.name,
-          icon: _iconForSlug(cat.slug),
+          icon: _iconFor(cat.iconName, cat.slug),
           children: cat.hasChildren
               ? cat.children
                   .map((child) => ServiceCategory(
                         id: child.id,
                         name: child.name,
-                        icon: _iconForSlug(child.slug),
+                        icon: _iconFor(child.iconName, child.slug),
                       ))
                   .toList()
               : null,
