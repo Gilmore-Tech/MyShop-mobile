@@ -10,5 +10,5 @@
 
 storePassword=replace-me
 keyPassword=replace-me
-keyAlias=client-upload
+keyAlias=provider-upload
 storeFile=/Users/yourname/secure/myshop-upload.jks

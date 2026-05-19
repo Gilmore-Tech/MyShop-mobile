@@ -92,7 +92,10 @@ jobs:
           APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
         run: |
-          BUNDLE_ID=com.gilmore.myshop.${{ matrix.app }}
+          # Concatenated form: com.gilmoretech.myshop<app> — matches each
+          # app's Xcode PRODUCT_BUNDLE_IDENTIFIER and the App Store Connect
+          # entry. NOT the dot-separated form most tutorials use.
+          BUNDLE_ID=com.gilmoretech.myshop${{ matrix.app }}
           cd apps/${{ matrix.app }}/ios
           fastlane match appstore \
             --git_url "${{ secrets.MATCH_REPO_URL }}" \

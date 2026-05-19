@@ -177,10 +177,10 @@ In <https://appstoreconnect.apple.com>:
 
 1. My Apps → + → New App → iOS:
    - Name: **MyShop Client** (must be globally unique on the App Store; if taken, try **MyShop Ghana** or **MyShop Rides**).
-   - Bundle ID: `com.gilmore.myshop.client` (or whatever you've already used in `apps/client/ios/Runner.xcodeproj`).
+   - Bundle ID: `com.gilmoretech.myshopclient` (or whatever you've already used in `apps/client/ios/Runner.xcodeproj`).
    - SKU: any string, e.g. `myshop-client-v1`.
    - User access: Full Access.
-2. Repeat for **MyShop Provider** with bundle ID `com.gilmore.myshop.provider`.
+2. Repeat for **MyShop Provider** with bundle ID `com.gilmoretech.myshopprovider`.
 
 Bundle IDs must match what's in each `apps/<app>/ios/Runner.xcodeproj/project.pbxproj`. Check with:
 
@@ -222,10 +222,10 @@ fastlane match init
 # Match needs full read/write on this repo.
 
 # Generate App Store certs + profiles (one command per app)
-fastlane match appstore --app_identifier com.gilmore.myshop.client
+fastlane match appstore --app_identifier com.gilmoretech.myshopclient
 
 cd ../../provider/ios
-fastlane match appstore --app_identifier com.gilmore.myshop.provider
+fastlane match appstore --app_identifier com.gilmoretech.myshopprovider
 ```
 
 You'll be prompted for:
@@ -258,9 +258,9 @@ For each app, create a separate Google Maps API key:
 3. Click each key → Edit:
    - **Application restrictions:**
      - **Android apps:** add two entries per app:
-       - Package: `com.gilmore.myshop.client`, SHA-1: your upload-key fingerprint from §1.3.
-       - Package: `com.gilmore.myshop.client`, SHA-1: the Play App Signing fingerprint (you'll get this AFTER uploading the first AAB to Play Console → Setup → App integrity).
-     - **iOS apps:** add the bundle ID `com.gilmore.myshop.client`.
+       - Package: `com.gilmoretech.myshopclient`, SHA-1: your upload-key fingerprint from §1.3.
+       - Package: `com.gilmoretech.myshopclient`, SHA-1: the Play App Signing fingerprint (you'll get this AFTER uploading the first AAB to Play Console → Setup → App integrity).
+     - **iOS apps:** add the bundle ID `com.gilmoretech.myshopclient`.
    - **API restrictions:** restrict to: Maps SDK for Android, Maps SDK for iOS, Places API, Geocoding API. Disable everything else.
 4. Repeat for the Provider key with that app's package + bundle ID.
 

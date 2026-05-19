@@ -131,11 +131,19 @@ jobs:
       # `track: internal` is the Internal Testing track — the safety net
       # we explicitly chose over direct-to-prod in release-setup.md §6.1.
 
+      - name: Resolve package name
+        id: pkg
+        run: |
+          # Concatenated `com.gilmoretech.myshop<app>` — different from
+          # the dot-separated form most Android tutorials use. Matches
+          # what's in each app's android/app/build.gradle.kts.
+          echo "name=com.gilmoretech.myshop${{ matrix.app }}" >> "$GITHUB_OUTPUT"
+
       - name: Upload to Play Console Internal Testing
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-          packageName: com.gilmore.myshop.${{ matrix.app }}
+          packageName: ${{ steps.pkg.outputs.name }}
           releaseFiles: ${{ steps.locate.outputs.path }}
           track: internal
           status: completed
