@@ -22,6 +22,7 @@ class SupportLegalConfig {
     required this.onOpenSearch,
     required this.onOpenLegal,
     required this.onOpenContactSheet,
+    this.logoAssetPath,
   });
 
   /// Selects which audience the backend serves articles + legal docs for.
@@ -69,4 +70,9 @@ class SupportLegalConfig {
   /// User tapped "Contact Support" — open the bottom sheet that exposes
   /// WhatsApp / phone / email / new-ticket.
   final void Function() onOpenContactSheet;
+
+  /// Path to the host app's logo asset (declared in the app's pubspec).
+  /// Rendered in the footer next to the app name. When null, a generic
+  /// shopping-bag icon is shown instead.
+  final String? logoAssetPath;
 }

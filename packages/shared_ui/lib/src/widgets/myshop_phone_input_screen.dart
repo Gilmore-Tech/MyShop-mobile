@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:intl_phone_field/phone_number.dart';
 
@@ -49,6 +50,25 @@ bool _safeIsValidPhone(PhoneNumber phone) {
   }
 }
 
+// Users in Ghana (and most countries with a trunk-prefix dial plan) habitually
+// type the leading "0" they'd dial locally. The country code already encodes
+// that, so the leading 0 makes the number one digit too long and fails
+// validation. Silently drop it as they type.
+class _StripLeadingZeroFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (!newValue.text.startsWith('0')) return newValue;
+    final stripped = newValue.text.replaceFirst(RegExp(r'^0+'), '');
+    return TextEditingValue(
+      text: stripped,
+      selection: TextSelection.collapsed(offset: stripped.length),
+    );
+  }
+}
+
 class _MyShopPhoneInputScreenState extends State<MyShopPhoneInputScreen> {
   PhoneNumber? _phone;
   bool _isValid = false;
@@ -89,6 +109,7 @@ class _MyShopPhoneInputScreenState extends State<MyShopPhoneInputScreen> {
                 enabled: !widget.isLoading,
                 initialCountryCode: 'GH',
                 disableLengthCheck: false,
+                inputFormatters: [_StripLeadingZeroFormatter()],
                 decoration: InputDecoration(
                   labelText: 'Phone number',
                   filled: true,

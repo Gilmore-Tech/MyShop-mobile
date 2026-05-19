@@ -24,15 +24,10 @@ class MyShopSupportLegalScreen extends StatelessWidget {
   const MyShopSupportLegalScreen({
     super.key,
     required this.config,
-    required this.categoriesAsync,
     this.openTicketsBadge = 0,
   });
 
   final SupportLegalConfig config;
-
-  /// Caller hands us the categories tri-state: data, loading, error. The
-  /// shell renders skeletons while loading and a retry button on error.
-  final SupportLegalAsync<List<HelpCategory>> categoriesAsync;
 
   /// Number of tickets that have unread agent replies. Drives the badge
   /// next to "My tickets".
@@ -55,8 +50,6 @@ class MyShopSupportLegalScreen extends StatelessWidget {
                   MyShopSpacing.lg,
                 ),
                 children: [
-                  _SearchBar(onTap: () => config.onOpenSearch(null)),
-                  const SizedBox(height: MyShopSpacing.lg),
                   const _SectionLabel(label: 'DIRECT HELP'),
                   const SizedBox(height: MyShopSpacing.sm),
                   _DirectHelpCard(
@@ -86,21 +79,13 @@ class MyShopSupportLegalScreen extends StatelessWidget {
                     onTap: config.onOpenTickets,
                   ),
                   const SizedBox(height: MyShopSpacing.lg),
-                  _BrowseTopicsHeader(
-                    onSearchTap: () => config.onOpenSearch(null),
-                  ),
-                  const SizedBox(height: MyShopSpacing.sm),
-                  _CategoriesGrid(
-                    state: categoriesAsync,
-                    onCategoryTap: config.onOpenCategory,
-                  ),
-                  const SizedBox(height: MyShopSpacing.lg),
                   _LegalCard(onOpen: config.onOpenLegal),
                   const SizedBox(height: MyShopSpacing.xl),
                   _AppInfoFooter(
                     appName: config.appName,
                     version: config.appVersion,
                     copyright: config.copyright,
+                    logoAssetPath: config.logoAssetPath,
                     onPrivacy: () => config.onOpenLegal(LegalSlugs.privacy),
                     onTerms: () => config.onOpenLegal(LegalSlugs.terms),
                   ),
@@ -173,50 +158,6 @@ class _Header extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Search bar (acts as a button — tap routes to search screen)
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _SearchBar extends StatelessWidget {
-  const _SearchBar({required this.onTap});
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(24),
-      child: Container(
-        height: 48,
-        padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-        decoration: BoxDecoration(
-          color: MyShopColors.surfaceWhite,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: MyShopColors.divider),
-        ),
-        child: Row(
-          children: [
-            const Icon(
-              Icons.search,
-              size: 20,
-              color: MyShopColors.textSecondary,
-            ),
-            const SizedBox(width: MyShopSpacing.sm),
-            Expanded(
-              child: Text(
-                'Search help articles…',
-                style: MyShopTypography.body1.copyWith(
-                  color: MyShopColors.textSecondary,
-                  fontWeight: FontWeight.w400,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Section label
@@ -403,256 +344,6 @@ class _MyTicketsRow extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// "Browse Topics" header
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _BrowseTopicsHeader extends StatelessWidget {
-  const _BrowseTopicsHeader({required this.onSearchTap});
-  final VoidCallback onSearchTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Expanded(child: _SectionLabel(label: 'BROWSE TOPICS')),
-        GestureDetector(
-          onTap: onSearchTap,
-          child: Text(
-            'Search',
-            style: MyShopTypography.body1.copyWith(
-              color: MyShopColors.primaryGold,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Categories grid (2 cols)
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _CategoriesGrid extends StatelessWidget {
-  const _CategoriesGrid({required this.state, required this.onCategoryTap});
-
-  final SupportLegalAsync<List<HelpCategory>> state;
-  final void Function(String slug) onCategoryTap;
-
-  @override
-  Widget build(BuildContext context) {
-    if (state.loading) {
-      return const _CategoriesSkeleton();
-    }
-    if (state.hasError && !state.hasData) {
-      return _CategoriesError(error: state.error!);
-    }
-    final categories = state.data ?? const [];
-    if (categories.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: MyShopSpacing.md),
-        child: Text(
-          'No help articles available yet — try contacting support.',
-          style: MyShopTypography.body2,
-        ),
-      );
-    }
-
-    final tiles = categories
-        .map(
-          (c) => _CategoryTile(
-            category: c,
-            onTap: () => onCategoryTap(c.slug),
-          ),
-        )
-        .toList();
-
-    final rows = <Widget>[];
-    for (var i = 0; i < tiles.length; i += 2) {
-      rows.add(
-        Row(
-          children: [
-            Expanded(child: tiles[i]),
-            const SizedBox(width: MyShopSpacing.md),
-            if (i + 1 < tiles.length)
-              Expanded(child: tiles[i + 1])
-            else
-              const Expanded(child: SizedBox()),
-          ],
-        ),
-      );
-      if (i + 2 < tiles.length) {
-        rows.add(const SizedBox(height: MyShopSpacing.md));
-      }
-    }
-    return Column(children: rows);
-  }
-}
-
-class _CategoryTile extends StatelessWidget {
-  const _CategoryTile({required this.category, required this.onTap});
-
-  final HelpCategory category;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(MyShopSpacing.md),
-        decoration: BoxDecoration(
-          color: MyShopColors.surfaceWhite,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: MyShopColors.divider),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: MyShopColors.surfaceGrey,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                _iconFor(category.iconName),
-                size: 18,
-                color: MyShopColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: MyShopSpacing.md),
-            Text(
-              category.title,
-              style: MyShopTypography.h3.copyWith(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (category.description != null) ...[
-              const SizedBox(height: 2),
-              Text(
-                category.description!,
-                style: MyShopTypography.body2,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Map backend icon hints (snake_case-ish names) to Material icons.
-  /// Unrecognised hints fall back to the generic help icon — the backend
-  /// can introduce new categories without a mobile release blocking on
-  /// us shipping the icon mapping.
-  static IconData _iconFor(String? hint) {
-    switch (hint) {
-      case 'account':
-      case 'account_circle':
-        return Icons.person_outline;
-      case 'payments':
-      case 'credit_card':
-        return Icons.credit_card;
-      case 'safety':
-      case 'shield':
-        return Icons.shield_outlined;
-      case 'fraud':
-        return Icons.gpp_maybe_outlined;
-      case 'rides':
-      case 'ride':
-        return Icons.directions_car_outlined;
-      case 'jobs':
-      case 'job':
-        return Icons.handyman_outlined;
-      case 'payouts':
-        return Icons.account_balance_wallet_outlined;
-      case 'verification':
-        return Icons.verified_user_outlined;
-      case 'bug':
-        return Icons.bug_report_outlined;
-      default:
-        return Icons.help_outline;
-    }
-  }
-}
-
-class _CategoriesSkeleton extends StatelessWidget {
-  const _CategoriesSkeleton();
-
-  @override
-  Widget build(BuildContext context) {
-    Container tile() => Container(
-          height: 96,
-          decoration: BoxDecoration(
-            color: MyShopColors.surfaceGrey,
-            borderRadius: BorderRadius.circular(12),
-          ),
-        );
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(child: tile()),
-            const SizedBox(width: MyShopSpacing.md),
-            Expanded(child: tile()),
-          ],
-        ),
-        const SizedBox(height: MyShopSpacing.md),
-        Row(
-          children: [
-            Expanded(child: tile()),
-            const SizedBox(width: MyShopSpacing.md),
-            Expanded(child: tile()),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _CategoriesError extends StatelessWidget {
-  const _CategoriesError({required this.error});
-  final Object error;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(MyShopSpacing.md),
-      decoration: BoxDecoration(
-        color: MyShopColors.errorLight,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: MyShopColors.error.withValues(alpha: 0.4)),
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.error_outline,
-            color: MyShopColors.error,
-          ),
-          const SizedBox(width: MyShopSpacing.sm),
-          Expanded(
-            child: Text(
-              "Couldn't load help topics. Pull to retry.",
-              style: MyShopTypography.body2.copyWith(
-                color: MyShopColors.error,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Legal card
@@ -766,11 +457,13 @@ class _AppInfoFooter extends StatelessWidget {
     required this.copyright,
     required this.onPrivacy,
     required this.onTerms,
+    this.logoAssetPath,
   });
 
   final String appName;
   final String version;
   final String copyright;
+  final String? logoAssetPath;
   final VoidCallback onPrivacy;
   final VoidCallback onTerms;
 
@@ -787,19 +480,43 @@ class _AppInfoFooter extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: MyShopColors.primaryGold,
-                borderRadius: BorderRadius.circular(8),
+            if (logoAssetPath != null)
+              SizedBox(
+                width: 36,
+                height: 36,
+                child: Image.asset(
+                  logoAssetPath!,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.medium,
+                  errorBuilder: (_, __, ___) => Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: MyShopColors.primaryGold,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.shopping_bag_outlined,
+                      size: 20,
+                      color: MyShopColors.textOnPrimary,
+                    ),
+                  ),
+                ),
+              )
+            else
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: MyShopColors.primaryGold,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.shopping_bag_outlined,
+                  size: 20,
+                  color: MyShopColors.textOnPrimary,
+                ),
               ),
-              child: const Icon(
-                Icons.shopping_bag_outlined,
-                size: 20,
-                color: MyShopColors.textOnPrimary,
-              ),
-            ),
             const SizedBox(width: MyShopSpacing.sm),
             Text(
               appName,

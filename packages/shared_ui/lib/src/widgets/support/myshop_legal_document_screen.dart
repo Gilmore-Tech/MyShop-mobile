@@ -144,9 +144,57 @@ class MyShopLegalDocumentScreen extends StatelessWidget {
           onTapLink: (_, href, __) {
             if (href != null) SupportChannels.openExternalUrl(href);
           },
+          styleSheet: _markdownStyle(),
         ),
         const SizedBox(height: MyShopSpacing.xl),
       ],
+    );
+  }
+
+  static MarkdownStyleSheet _markdownStyle() {
+    return MarkdownStyleSheet(
+      p: MyShopTypography.body1.copyWith(
+        fontWeight: FontWeight.w400,
+        height: 1.55,
+        color: MyShopColors.textPrimary,
+      ),
+      h1: MyShopTypography.h1.copyWith(fontSize: 20),
+      h2: MyShopTypography.h2,
+      h3: MyShopTypography.h3,
+      a: MyShopTypography.body1.copyWith(
+        color: MyShopColors.primaryGold,
+        decoration: TextDecoration.underline,
+        decorationColor: MyShopColors.primaryGold,
+        fontWeight: FontWeight.w700,
+      ),
+      strong: MyShopTypography.body1.copyWith(
+        fontWeight: FontWeight.w800,
+        color: MyShopColors.textPrimary,
+      ),
+      em: MyShopTypography.body1.copyWith(
+        fontStyle: FontStyle.italic,
+        color: MyShopColors.textPrimary,
+      ),
+      listBullet: MyShopTypography.body1.copyWith(
+        color: MyShopColors.textPrimary,
+      ),
+      blockquote: MyShopTypography.body1.copyWith(
+        color: MyShopColors.textSecondary,
+        fontStyle: FontStyle.italic,
+      ),
+      blockquoteDecoration: BoxDecoration(
+        color: MyShopColors.offWhite,
+        borderRadius: BorderRadius.circular(8),
+        border: const Border(
+          left: BorderSide(color: MyShopColors.primaryGold, width: 3),
+        ),
+      ),
+      code: const TextStyle(
+        fontFamily: 'monospace',
+        fontSize: 13,
+        backgroundColor: MyShopColors.surfaceGrey,
+        color: MyShopColors.textPrimary,
+      ),
     );
   }
 
