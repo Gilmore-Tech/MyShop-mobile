@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:intl_phone_field/intl_phone_field.dart';
+import 'package:intl_phone_field/phone_number.dart';
 
 import '../theme/myshop_colors.dart';
 import '../theme/myshop_typography.dart';
-import '../utils/validators.dart';
 import 'myshop_primary_button.dart';
-import 'myshop_text_field.dart';
 
 /// Shared phone-number input screen used by both client and provider apps.
 ///
 /// Accepts callbacks so each app can wire its own state management and
-/// navigation. Validates with [Validators.ghanaPhone] and formats the
-/// number as `+233XXXXXXXXX` before calling [onSubmit].
+/// navigation. The country picker defaults to Ghana but accepts any country;
+/// the value passed to [onSubmit] is always a full E.164 string
+/// (e.g. `+233241234567`, `+447911123456`).
 class MyShopPhoneInputScreen extends StatefulWidget {
   const MyShopPhoneInputScreen({
     super.key,
@@ -38,30 +38,29 @@ class MyShopPhoneInputScreen extends StatefulWidget {
   State<MyShopPhoneInputScreen> createState() => _MyShopPhoneInputScreenState();
 }
 
+// intl_phone_field's PhoneNumber.isValidNumber() throws NumberTooShortException
+// (and NumberTooLongException) while the user is mid-typing instead of returning
+// false. Wrap it so partial input doesn't crash the form.
+bool _safeIsValidPhone(PhoneNumber phone) {
+  try {
+    return phone.isValidNumber();
+  } catch (_) {
+    return false;
+  }
+}
+
 class _MyShopPhoneInputScreenState extends State<MyShopPhoneInputScreen> {
-  final _controller = TextEditingController();
+  PhoneNumber? _phone;
+  bool _isValid = false;
   String? _localError;
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  String? _validate(String raw) => Validators.ghanaPhone(raw);
-
   void _submit() {
-    final raw = _controller.text;
-    final err = _validate(raw);
-    if (err != null) {
-      setState(() => _localError = err);
+    if (!_isValid || _phone == null) {
+      setState(() => _localError = 'Enter a valid phone number.');
       return;
     }
     setState(() => _localError = null);
-    // Validator already accepted both "24XXXXXXX" and "024XXXXXXX";
-    // strip the leading 0 so the wire form is always +233 + 9 digits.
-    final phone = '+233${Validators.normalizeGhanaPhoneDigits(raw)}';
-    widget.onSubmit(phone);
+    widget.onSubmit(_phone!.completeNumber);
   }
 
   @override
@@ -86,38 +85,44 @@ class _MyShopPhoneInputScreenState extends State<MyShopPhoneInputScreen> {
               const SizedBox(height: 8),
               Text(widget.subtitle, style: MyShopTypography.body2),
               const SizedBox(height: 32),
-              MyShopTextField(
-                controller: _controller,
-                label: 'Phone number',
-                hint: '24 123 4567',
-                keyboardType: TextInputType.phone,
-                textInputAction: TextInputAction.done,
+              IntlPhoneField(
                 enabled: !widget.isLoading,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  // Accept either 9 digits (24XXXXXXX) or 10 with leading 0
-                  // (024XXXXXXX) — Validators.ghanaPhone normalises both.
-                  LengthLimitingTextInputFormatter(10),
-                ],
-                prefix: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Align(
-                    alignment: Alignment.center,
-                    widthFactor: 1,
-                    child: Text(
-                      '+233',
-                      style: TextStyle(
-                        fontFamily: 'Raleway',
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: MyShopColors.textPrimary,
-                      ),
+                initialCountryCode: 'GH',
+                disableLengthCheck: false,
+                decoration: InputDecoration(
+                  labelText: 'Phone number',
+                  filled: true,
+                  fillColor: MyShopColors.surfaceGrey,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(
+                      color: MyShopColors.primaryGold,
+                      width: 1.5,
                     ),
                   ),
+                  errorText: error,
                 ),
-                errorText: error,
-                onChanged: (_) {
-                  if (_localError != null) setState(() => _localError = null);
+                style: const TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 14,
+                  color: MyShopColors.textPrimary,
+                ),
+                dropdownTextStyle: const TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: MyShopColors.textPrimary,
+                ),
+                onChanged: (phone) {
+                  setState(() {
+                    _phone = phone;
+                    _isValid = _safeIsValidPhone(phone);
+                    if (_localError != null) _localError = null;
+                  });
                   widget.onErrorCleared?.call();
                 },
                 onSubmitted: (_) => _submit(),

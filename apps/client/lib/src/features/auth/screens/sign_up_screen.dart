@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl_phone_field/countries.dart';
+import 'package:intl_phone_field/intl_phone_field.dart';
+import 'package:intl_phone_field/phone_number.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../../app/router.dart';
@@ -18,13 +20,31 @@ class SignUpScreen extends ConsumerStatefulWidget {
 
 class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   final _nameController = TextEditingController();
-  final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
   final _nameFocus = FocusNode();
+
+  // Phone state — IntlPhoneField manages its own text controller; we just
+  // hold the parsed PhoneNumber so we can submit a full E.164 string.
+  PhoneNumber? _phone;
+  bool _isValidPhone = false;
+  String _initialCountryCode = 'GH';
+  String _initialPhoneValue = '';
 
   @override
   void initState() {
     super.initState();
+
+    // Prefill from the auth state set by the previous phone-input screen.
+    // The number arrives as full E.164 (e.g. +233241234567, +447911123456);
+    // split it into country + national parts for IntlPhoneField.
+    final authState = ref.read(clientAuthControllerProvider);
+    final prefill = authState is AuthNeedsRegistration ? authState.phone : null;
+    if (prefill != null && prefill.isNotEmpty) {
+      final parsed = _splitE164(prefill);
+      _initialCountryCode = parsed.iso;
+      _initialPhoneValue = parsed.national;
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _nameFocus.requestFocus();
     });
@@ -33,7 +53,6 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   @override
   void dispose() {
     _nameController.dispose();
-    _phoneController.dispose();
     _emailController.dispose();
     _nameFocus.dispose();
     super.dispose();
@@ -45,27 +64,20 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     final w = MediaQuery.sizeOf(context).width;
     final h = MediaQuery.sizeOf(context).height;
 
-    // Extract state — works whether user came via checkPhone or direct link
-    String? prefillPhone;
+    // Extract state — works whether user came via checkPhone or direct link.
+    // Phone prefill is consumed once in initState (via _splitE164); we don't
+    // re-prefill on rebuilds because IntlPhoneField owns its own text state.
     bool isLoading = false;
     String? error;
     String? infoMessage;
 
     if (authState is AuthNeedsRegistration) {
-      prefillPhone = authState.phone;
       isLoading = authState.isLoading;
       error = authState.error;
       infoMessage = authState.message;
     } else if (authState is AuthUnauthenticated) {
       isLoading = authState.isLoading;
       error = authState.error;
-    }
-
-    // Pre-fill phone from state if available and field is empty
-    if (prefillPhone != null && _phoneController.text.isEmpty) {
-      // Strip +233 prefix for display
-      final display = prefillPhone.replaceFirst('+233', '');
-      _phoneController.text = display;
     }
 
     return Scaffold(
@@ -180,11 +192,43 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                         // Phone number
                         _FieldLabel(label: 'Phone Number', w: w),
                         SizedBox(height: h * 0.008),
-                        _PhoneField(
-                          controller: _phoneController,
-                          w: w,
-                          h: h,
-                          onChanged: (_) => setState(() {}),
+                        IntlPhoneField(
+                          initialCountryCode: _initialCountryCode,
+                          initialValue: _initialPhoneValue,
+                          disableLengthCheck: false,
+                          style: TextStyle(
+                              fontSize: w * 0.038,
+                              color: MyShopColors.textPrimary),
+                          dropdownTextStyle: TextStyle(
+                            fontSize: w * 0.038,
+                            fontWeight: FontWeight.w600,
+                            color: MyShopColors.textPrimary,
+                          ),
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor: MyShopColors.surfaceGrey,
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: w * 0.04,
+                              vertical: h * 0.018,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(w * 0.025),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(w * 0.025),
+                              borderSide: const BorderSide(
+                                color: MyShopColors.primaryGold,
+                                width: 1.5,
+                              ),
+                            ),
+                          ),
+                          onChanged: (phone) {
+                            setState(() {
+                              _phone = phone;
+                              _isValidPhone = _safeIsValidPhone(phone);
+                            });
+                          },
                         ),
                         SizedBox(height: h * 0.022),
 
@@ -314,20 +358,46 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   }
 
   bool get _canSubmit =>
-      _nameController.text.trim().length >= 2 &&
-      _phoneController.text.replaceAll(RegExp(r'\D'), '').length == 9;
+      _nameController.text.trim().length >= 2 && _isValidPhone && _phone != null;
 
   void _submit() {
     final name = _nameController.text.trim();
-    final rawPhone = _phoneController.text.replaceAll(RegExp(r'\D'), '');
-    final phone = '+233$rawPhone';
     final email = _emailController.text.trim();
     ref.read(clientAuthControllerProvider.notifier).register(
-          phone: phone,
+          phone: _phone!.completeNumber,
           fullName: name,
           email: email.isNotEmpty ? email : null,
         );
   }
+}
+
+// intl_phone_field's PhoneNumber.isValidNumber() throws NumberTooShortException
+// (and NumberTooLongException) while the user is mid-typing instead of returning
+// false. Wrap it so partial input doesn't crash the form.
+bool _safeIsValidPhone(PhoneNumber phone) {
+  try {
+    return phone.isValidNumber();
+  } catch (_) {
+    return false;
+  }
+}
+
+// Split an E.164 number (e.g. "+233241234567") into ISO country code and the
+// national portion ("GH", "241234567"). Falls back to Ghana when the prefix
+// doesn't match any known dial code. Used to seed IntlPhoneField when the
+// previous screen has already captured a number for the new user.
+({String iso, String national}) _splitE164(String e164) {
+  if (!e164.startsWith('+')) return (iso: 'GH', national: e164);
+  final digits = e164.substring(1);
+  // Match longest dial code first so '+1xxx' doesn't beat '+1xxx' regions etc.
+  final sorted = [...countries]
+    ..sort((a, b) => b.dialCode.length.compareTo(a.dialCode.length));
+  for (final c in sorted) {
+    if (digits.startsWith(c.dialCode)) {
+      return (iso: c.code, national: digits.substring(c.dialCode.length));
+    }
+  }
+  return (iso: 'GH', national: digits);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -418,63 +488,3 @@ class _StyledTextField extends StatelessWidget {
   }
 }
 
-class _PhoneField extends StatelessWidget {
-  const _PhoneField({
-    required this.controller,
-    required this.w,
-    required this.h,
-    this.onChanged,
-  });
-
-  final TextEditingController controller;
-  final double w;
-  final double h;
-  final ValueChanged<String>? onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      keyboardType: TextInputType.phone,
-      style: TextStyle(fontSize: w * 0.038, color: MyShopColors.textPrimary),
-      onChanged: onChanged,
-      inputFormatters: [
-        FilteringTextInputFormatter.digitsOnly,
-        LengthLimitingTextInputFormatter(9),
-      ],
-      decoration: InputDecoration(
-        hintText: '24 123 4567',
-        hintStyle: TextStyle(color: MyShopColors.textHint, fontSize: w * 0.036),
-        filled: true,
-        fillColor: MyShopColors.surfaceGrey,
-        contentPadding: EdgeInsets.symmetric(
-          horizontal: w * 0.04,
-          vertical: h * 0.018,
-        ),
-        prefixIcon: Padding(
-          padding: EdgeInsets.only(left: w * 0.04, right: w * 0.02),
-          child: Text(
-            '+233',
-            style: TextStyle(
-              fontSize: w * 0.038,
-              fontWeight: FontWeight.w600,
-              color: MyShopColors.textPrimary,
-            ),
-          ),
-        ),
-        prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(w * 0.025),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(w * 0.025),
-          borderSide: const BorderSide(
-            color: MyShopColors.primaryGold,
-            width: 1.5,
-          ),
-        ),
-      ),
-    );
-  }
-}
