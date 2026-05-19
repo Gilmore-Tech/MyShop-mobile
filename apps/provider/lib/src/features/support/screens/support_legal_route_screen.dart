@@ -11,7 +11,6 @@ class SupportLegalRouteScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final categoriesAsync = ref.watch(helpCategoriesProvider);
     final ticketsAsync = ref.watch(ticketsListProvider);
     final unread = ticketsAsync.maybeWhen(
       data: (s) =>
@@ -24,6 +23,7 @@ class SupportLegalRouteScreen extends ConsumerWidget {
       appName: 'MyShop Provider',
       appVersion: 'Version 1.0.0',
       copyright: '© 2026 Gilmore Tech. All rights reserved.',
+      logoAssetPath: 'assets/images/myshop_logo.png',
       supportEmail: 'support@myshop.com.gh',
       supportPhone: '+233 30 000 0000',
       whatsappNumber: '233300000000',
@@ -57,7 +57,6 @@ class SupportLegalRouteScreen extends ConsumerWidget {
 
     return MyShopSupportLegalScreen(
       config: config,
-      categoriesAsync: asSupportAsync(categoriesAsync),
       openTicketsBadge: unread,
     );
   }
