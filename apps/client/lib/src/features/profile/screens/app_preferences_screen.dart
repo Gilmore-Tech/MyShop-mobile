@@ -49,40 +49,40 @@ class AppPreferencesScreen extends ConsumerWidget {
 
             SizedBox(height: h * 0.028),
 
-            // ── Navigation & Units ─────────────────────────────────────────
-            _SectionLabel(label: 'NAVIGATION & UNITS', w: w, h: h),
-            _SectionCard(
-              w: w,
-              children: [
-                _MapUnitsRow(
-                  selected: state.distanceUnit,
-                  onSelect: (v) => ref
-                      .read(appPreferencesProvider.notifier)
-                      .setDistanceUnit(v),
-                  w: w,
-                  h: h,
-                ),
-              ],
-            ),
+            // ── Navigation & Units (hidden — coming in next update) ─────────
+            // _SectionLabel(label: 'NAVIGATION & UNITS', w: w, h: h),
+            // _SectionCard(
+            //   w: w,
+            //   children: [
+            //     _MapUnitsRow(
+            //       selected: state.distanceUnit,
+            //       onSelect: (v) => ref
+            //           .read(appPreferencesProvider.notifier)
+            //           .setDistanceUnit(v),
+            //       w: w,
+            //       h: h,
+            //     ),
+            //   ],
+            // ),
+            //
+            // SizedBox(height: h * 0.028),
 
-            SizedBox(height: h * 0.028),
-
-            // ── Visual Style ───────────────────────────────────────────────
-            _SectionLabel(label: 'VISUAL STYLE', w: w, h: h),
-            _SectionCard(
-              w: w,
-              children: [
-                _InterfaceThemeRow(
-                  selected: state.themeMode,
-                  onSelect: (v) =>
-                      ref.read(appPreferencesProvider.notifier).setTheme(v),
-                  w: w,
-                  h: h,
-                ),
-              ],
-            ),
-
-            SizedBox(height: h * 0.028),
+            // ── Visual Style (hidden — coming in next update) ──────────────
+            // _SectionLabel(label: 'VISUAL STYLE', w: w, h: h),
+            // _SectionCard(
+            //   w: w,
+            //   children: [
+            //     _InterfaceThemeRow(
+            //       selected: state.themeMode,
+            //       onSelect: (v) =>
+            //           ref.read(appPreferencesProvider.notifier).setTheme(v),
+            //       w: w,
+            //       h: h,
+            //     ),
+            //   ],
+            // ),
+            //
+            // SizedBox(height: h * 0.028),
 
             // ── Onboarding & Help ──────────────────────────────────────────
             _SectionLabel(label: 'ONBOARDING & HELP', w: w, h: h),
@@ -271,7 +271,9 @@ class _RowDivider extends StatelessWidget {
 }
 
 // ── Map Units row ─────────────────────────────────────────────────────────────
+// Kept (but not currently rendered) — will be re-enabled in the next update.
 
+// ignore: unused_element
 class _MapUnitsRow extends StatelessWidget {
   final DistanceUnit selected;
   final ValueChanged<DistanceUnit> onSelect;
@@ -346,7 +348,9 @@ class _MapUnitsRow extends StatelessWidget {
 }
 
 // ── Interface Theme row ───────────────────────────────────────────────────────
+// Kept (but not currently rendered) — will be re-enabled in the next update.
 
+// ignore: unused_element
 class _InterfaceThemeRow extends StatelessWidget {
   final AppThemeMode selected;
   final ValueChanged<AppThemeMode> onSelect;

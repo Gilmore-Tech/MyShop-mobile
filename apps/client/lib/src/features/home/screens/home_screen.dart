@@ -88,7 +88,7 @@ class _HomeGreeting extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Welcome',
+                  'Akwaaba',
                   style: TextStyle(
                     fontSize: w * 0.034,
                     fontWeight: FontWeight.w400,

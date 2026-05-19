@@ -50,6 +50,16 @@ class RideSearchNotifier extends StateNotifier<RideSearchState> {
         ? RideSearchState(destination: state.destination)
         : RideSearchState(pickup: state.pickup);
   }
+
+  /// Wipe both endpoints. Called when the user backs out of / cancels
+  /// the Plan Your Trip screen — without this, the next entry into the
+  /// fare-estimate flow shows the previous pickup + destination, which
+  /// the user reads as "the app remembered a trip I already cancelled".
+  /// Pickup is also cleared so the home screen's auto-seed from current
+  /// location fires fresh on the next visit.
+  void reset() {
+    state = const RideSearchState();
+  }
 }
 
 final rideSearchProvider =

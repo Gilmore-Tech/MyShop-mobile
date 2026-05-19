@@ -4,10 +4,19 @@ import 'package:shared_ui/shared_ui.dart';
 const _warningBg = MyShopColors.primaryGoldLight; // primaryGoldLight
 
 class SurgePricingBanner extends StatelessWidget {
-  const SurgePricingBanner({super.key});
+  /// Raw multiplier from the backend (e.g. 1.3 for a 30% surge). Pass it
+  /// in so the banner can render the actual rate — a generic "surge is
+  /// on" notice that doesn't tell the user HOW much higher fares are is
+  /// the kind of warning that erodes pricing trust over time.
+  final double multiplier;
+
+  const SurgePricingBanner({super.key, required this.multiplier});
 
   @override
   Widget build(BuildContext context) {
+    // e.g. 1.30 → "1.3×" — clean one-decimal display.
+    final pct = ((multiplier - 1) * 100).round();
+    final rate = multiplier.toStringAsFixed(1);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
@@ -29,9 +38,9 @@ class SurgePricingBanner extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Text(
-                      'Surge Pricing Active',
-                      style: TextStyle(
+                    Text(
+                      'Surge Pricing Active · $rate×',
+                      style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                         color: MyShopColors.textPrimary,
@@ -42,9 +51,9 @@ class SurgePricingBanner extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 3),
-                const Text(
-                  'High demand in Kumasi area. Fares are slightly higher to attract more drivers.',
-                  style: TextStyle(
+                Text(
+                  'High demand in your area — fares are about $pct% higher to attract more drivers.',
+                  style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w400,
                     color: MyShopColors.textSecondary,

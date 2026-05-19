@@ -22,53 +22,6 @@ class ServiceCategory {
   bool get hasChildren => children != null && children!.isNotEmpty;
 }
 
-// ── Featured Artisan ──────────────────────────────────────────────────────────
-
-class FeaturedArtisan {
-  final String id;
-  final String name;
-  final String tradeTitle;
-  final double rating;
-  final int reviewCount;
-  final int minPricePesewas;
-  final bool isVerified;
-  final Color cardColor;
-
-  const FeaturedArtisan({
-    required this.id,
-    required this.name,
-    required this.tradeTitle,
-    required this.rating,
-    required this.reviewCount,
-    required this.minPricePesewas,
-    required this.isVerified,
-    required this.cardColor,
-  });
-
-  String get minPriceDisplay =>
-      'From GHS ${(minPricePesewas / 100).toStringAsFixed(0)}';
-}
-
-// ── Recently Viewed Artisan ───────────────────────────────────────────────────
-
-class RecentArtisan {
-  final String id;
-  final String name;
-  final String trade;
-  final double rating;
-  final int reviewCount;
-  final int? unreadCount;
-
-  const RecentArtisan({
-    required this.id,
-    required this.name,
-    required this.trade,
-    required this.rating,
-    required this.reviewCount,
-    this.unreadCount,
-  });
-}
-
 // ── Icon mapping ─────────────────────────────────────────────────────────────
 //
 // Categories are admin-managed (see admin CategoriesPage). The backend stores
@@ -188,35 +141,6 @@ class _CategoriesNotifier extends AsyncNotifier<List<ServiceCategory>> {
       // Fallback to static categories if API fails (offline-graceful)
       return _fallbackCategories;
     }
-  }
-}
-
-final featuredArtisansProvider =
-    AsyncNotifierProvider<_FeaturedNotifier, List<FeaturedArtisan>>(
-  _FeaturedNotifier.new,
-);
-
-class _FeaturedNotifier extends AsyncNotifier<List<FeaturedArtisan>> {
-  @override
-  Future<List<FeaturedArtisan>> build() async {
-    // TODO: Replace with GET /artisans?featured=true&region=ashanti
-    // when backend supports a featured artisan endpoint.
-    // For pilot launch, return empty — the UI handles empty state gracefully.
-    return const [];
-  }
-}
-
-final recentArtisansProvider =
-    AsyncNotifierProvider<_RecentNotifier, List<RecentArtisan>>(
-  _RecentNotifier.new,
-);
-
-class _RecentNotifier extends AsyncNotifier<List<RecentArtisan>> {
-  @override
-  Future<List<RecentArtisan>> build() async {
-    // Hydrated from local SharedPreferences cache in production.
-    // Empty on first launch — populated as user interacts with artisans.
-    return const [];
   }
 }
 

@@ -22,9 +22,9 @@ class HelpArticleRouteScreen extends ConsumerWidget {
       ),
       onContactSupport: () => MyShopContactSupportSheet.show(
         context,
-        whatsappNumber: '233300000000',
-        supportPhone: '+233 30 000 0000',
-        supportEmail: 'support@myshop.com.gh',
+        whatsappNumber: '233 024 292 4671',
+        supportPhone: '+233 54 025 2576',
+        supportEmail: 'support@gilmoretechnologiesgh.com',
         onNewTicket: () => Navigator.of(context).maybePop(),
       ),
       onRefresh: () async {

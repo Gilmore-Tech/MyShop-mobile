@@ -40,6 +40,11 @@ class VehicleOption {
   final int durationMins;
   final bool surgeActive;
 
+  /// Raw multiplier from the backend. 1.0 = baseline, 1.5 = 50% surge.
+  /// Surfaced so the surge banner can render the actual rate ("Surge 1.3×")
+  /// instead of an ambient warning the user can't size up.
+  final double surgeMultiplier;
+
   const VehicleOption({
     required this.id,
     required this.name,
@@ -51,6 +56,7 @@ class VehicleOption {
     this.distanceKm = 0,
     this.durationMins = 0,
     this.surgeActive = false,
+    this.surgeMultiplier = 1.0,
   });
 
   String get fareDisplay {
@@ -164,7 +170,7 @@ const vehicleOptions = [
   VehicleOption(
     id: 'moto_ride_1',
     name: 'Moto-Ride',
-    description: 'Beat the heavy Kumasi traffic',
+    description: 'Beat the heavy traffic',
     capacityPersons: 1,
     farePesewas: 1200,
     estimatedTime: '1 min',
@@ -173,7 +179,7 @@ const vehicleOptions = [
   VehicleOption(
     id: 'moto_ride_2',
     name: 'Moto-Ride',
-    description: 'Beat the heavy Kumasi traffic',
+    description: 'Beat the heavy traffic',
     capacityPersons: 1,
     farePesewas: 1200,
     estimatedTime: '1 min',

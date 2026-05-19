@@ -10,13 +10,12 @@ import '../providers/support_providers.dart';
 /// Per-app glue for the lifted `MyShopSupportLegalScreen`.
 ///
 /// Owns the [SupportLegalConfig] (audience, copy, support contact info,
-/// nav callbacks) and the `helpCategoriesProvider` watch.
+/// nav callbacks).
 class SupportLegalRouteScreen extends ConsumerWidget {
   const SupportLegalRouteScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final categoriesAsync = ref.watch(helpCategoriesProvider);
     final ticketsAsync = ref.watch(ticketsListProvider);
     final unread = ticketsAsync.maybeWhen(
       data: (s) =>
@@ -29,9 +28,10 @@ class SupportLegalRouteScreen extends ConsumerWidget {
       appName: 'MyShop',
       appVersion: 'Version 1.0.0',
       copyright: '© 2026 Gilmore Tech. All rights reserved.',
-      supportEmail: 'support@myshop.com.gh',
-      supportPhone: '+233 30 000 0000',
-      whatsappNumber: '233300000000', // E.164 without leading +
+      logoAssetPath: 'assets/images/myshop_logo.png',
+      supportEmail: 'support@gilmoretechnologiesgh.com',
+      supportPhone: '+233 24 292 4671',
+      whatsappNumber: '2333 24 292 4671', // E.164 without leading +
       onOpenTickets: () => context.push(AppRoutes.supportTickets),
       onNewTicket: (preselect) => context.push(
         AppRoutes.supportNewTicket,
@@ -49,9 +49,9 @@ class SupportLegalRouteScreen extends ConsumerWidget {
       onOpenLegal: (slug) => context.push(AppRoutes.legalDocumentPath(slug)),
       onOpenContactSheet: () => MyShopContactSupportSheet.show(
         context,
-        whatsappNumber: '233300000000',
-        supportPhone: '+233 30 000 0000',
-        supportEmail: 'support@myshop.com.gh',
+        whatsappNumber: '2333 24 292 4671',
+        supportPhone: '+233 54 025 2576',
+        supportEmail: 'support@gilmoretechnologiesgh.com',
         onNewTicket: () => context.push(
           AppRoutes.supportNewTicket,
           extra: const <String, Object?>{
@@ -63,7 +63,6 @@ class SupportLegalRouteScreen extends ConsumerWidget {
 
     return MyShopSupportLegalScreen(
       config: config,
-      categoriesAsync: asSupportAsync(categoriesAsync),
       openTicketsBadge: unread,
     );
   }

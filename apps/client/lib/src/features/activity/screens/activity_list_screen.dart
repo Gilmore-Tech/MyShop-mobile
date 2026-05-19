@@ -455,7 +455,11 @@ class _TripCountBadge extends StatelessWidget {
                 ),
               ),
               Text(
-                'TRIPS',
+                // `tripCount` counts rides + artisan jobs together, so the
+                // label has to cover both. "ACTIVITIES" matches the screen
+                // title and keeps the badge honest. No logic change — the
+                // provider's monthItems.length already includes both.
+                'ACTIVITIES',
                 style: TextStyle(
                   fontFamily: 'Raleway',
                   fontSize: w * 0.024,

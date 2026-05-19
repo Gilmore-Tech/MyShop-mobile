@@ -45,7 +45,7 @@ const _kCategories = [
   _CategoryTemplate(
     id: 'moto_ride',
     name: 'Moto-Ride',
-    description: 'Beat the heavy Kumasi traffic',
+    description: 'Beat the heavy traffic',
     capacityPersons: 1,
     fareMultiplier: 0.55,
     etaOffsetMins: -2,
@@ -110,7 +110,12 @@ final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
       isMotorcycle: cat.isMotorcycle,
       distanceKm: distanceKm,
       durationMins: durationMins,
-      surgeActive: surgeMultiplier > 1.0,
+      // 1.05× threshold — backend's baseline can drift to 1.0001 due to
+      // float rounding inside the surge engine, which used to flicker
+      // the "Surge Pricing Active" banner during off-peak hours.
+      // Anything below a 5% multiplier isn't a meaningful surge anyway.
+      surgeActive: surgeMultiplier > 1.05,
+      surgeMultiplier: surgeMultiplier,
     );
   }).toList();
 });

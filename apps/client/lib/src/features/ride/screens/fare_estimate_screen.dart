@@ -22,6 +22,15 @@ import '../widgets/vehicle_option_card.dart';
 class FareEstimateScreen extends ConsumerWidget {
   const FareEstimateScreen({super.key});
 
+  /// Clear sticky trip state when the user abandons the screen. Called on
+  /// both the back arrow and the Cancel button — without it, the next
+  /// visit shows the previous pickup + destination + vehicle, which the
+  /// user reads as "the app remembered a trip I already cancelled".
+  void _resetTripState(WidgetRef ref) {
+    ref.read(rideSearchProvider.notifier).reset();
+    ref.read(selectedVehicleProvider.notifier).state = '';
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final search = ref.watch(rideSearchProvider);
@@ -32,9 +41,18 @@ class FareEstimateScreen extends ConsumerWidget {
     final estimate = ref.watch(fareEstimateProvider);
     final estimateReady = estimate.valueOrNull?.isNotEmpty == true;
 
-    return Scaffold(
+    return PopScope(
+      canPop: true,
+      // Fires AFTER the pop has happened, so the screen is already off
+      // screen. Resetting here makes the Android back-gesture / iOS
+      // edge-swipe match the explicit Cancel / back-arrow behaviour —
+      // every exit path leaves the trip state clean for the next entry.
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) _resetTripState(ref);
+      },
+      child: Scaffold(
       backgroundColor: MyShopColors.offWhite,
-      appBar: _buildAppBar(context),
+      appBar: _buildAppBar(context, ref),
       body: Column(
         children: [
           Expanded(
@@ -66,11 +84,20 @@ class FareEstimateScreen extends ConsumerWidget {
                               ),
                     ),
                   if (hasCoords) ...[
-                    const SizedBox(height: 16),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: SurgePricingBanner(),
-                    ),
+                    if (estimate.valueOrNull?.any((v) => v.surgeActive) ==
+                        true) ...[
+                      const SizedBox(height: 16),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        // Every estimate carries the same multiplier, so
+                        // reading the first surging option is enough.
+                        child: SurgePricingBanner(
+                          multiplier: estimate.valueOrNull!
+                              .firstWhere((v) => v.surgeActive)
+                              .surgeMultiplier,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 20),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -103,19 +130,30 @@ class FareEstimateScreen extends ConsumerWidget {
                 );
                 context.go(AppRoutes.rideMatching);
               },
+              onCancel: () {
+                _resetTripState(ref);
+                context.pop();
+              },
             ),
         ],
+      ),
       ),
     );
   }
 
-  PreferredSizeWidget _buildAppBar(BuildContext context) {
+  PreferredSizeWidget _buildAppBar(BuildContext context, WidgetRef ref) {
     return AppBar(
       backgroundColor: Colors.white,
       elevation: 0,
       scrolledUnderElevation: 0,
       leading: IconButton(
-        onPressed: () => context.pop(),
+        onPressed: () {
+          // Same clean-up as the Cancel button: backing out of Plan Your
+          // Trip should not leave stale pickup/destination/vehicle
+          // selections behind for the next entry into the flow.
+          _resetTripState(ref);
+          context.pop();
+        },
         icon: const Icon(Icons.arrow_back_rounded,
             color: MyShopColors.textPrimary),
       ),
@@ -335,7 +373,8 @@ class _PaymentSection extends ConsumerWidget {
 
 class _BottomActions extends StatelessWidget {
   final VoidCallback onConfirm;
-  const _BottomActions({required this.onConfirm});
+  final VoidCallback onCancel;
+  const _BottomActions({required this.onConfirm, required this.onCancel});
 
   @override
   Widget build(BuildContext context) {
@@ -369,7 +408,7 @@ class _BottomActions extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           GestureDetector(
-            onTap: () => context.pop(),
+            onTap: onCancel,
             child: const Text(
               'Cancel Request',
               style: TextStyle(
