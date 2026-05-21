@@ -57,11 +57,13 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
-# Parse `.env.prod` once into both an associative array (for the native
-# side, where we need to pluck specific keys) and a `--dart-define` array
-# (for the Dart side, where every key flows through).
-declare -A ENV_VARS
+# Parse `.env.prod` once into a flat `--dart-define` array and pluck the
+# few keys the native side needs into plain shell variables.
+#
+# Avoids `declare -A` (associative arrays) so the script works on macOS's
+# stock bash 3.2 as well as the bash 5+ that ships on GitHub Actions runners.
 DEFINES=()
+GOOGLE_MAPS_API_KEY=""
 while IFS='=' read -r key value; do
   key="${key#"${key%%[![:space:]]*}"}"
   [[ -z "$key" || "$key" == \#* ]] && continue
@@ -69,11 +71,15 @@ while IFS='=' read -r key value; do
   value="${value#\"}"
   value="${value%\'}"
   value="${value#\'}"
-  ENV_VARS["$key"]="$value"
   DEFINES+=("--dart-define=${key}=${value}")
+  # Native-side passthroughs — additive `if` rather than associative
+  # lookup so the script stays compatible with old bash. Add another
+  # branch here if a new native-side env var is introduced.
+  if [[ "$key" == "GOOGLE_MAPS_API_KEY" ]]; then
+    GOOGLE_MAPS_API_KEY="$value"
+  fi
 done < "$ENV_FILE"
 
-GOOGLE_MAPS_API_KEY="${ENV_VARS[GOOGLE_MAPS_API_KEY]:-}"
 if [[ -z "$GOOGLE_MAPS_API_KEY" ]]; then
   echo "error: GOOGLE_MAPS_API_KEY missing from $ENV_FILE — required for production build." >&2
   exit 1
