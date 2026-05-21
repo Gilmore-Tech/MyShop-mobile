@@ -1508,6 +1508,15 @@ class _PaymentSummaryNotifier
       );
     }
 
+    // Completion label — derive from the accepted bid's `durationMinutes`
+    // (the artisan's quote, in minutes). The original implementation read
+    // `data['estimatedDuration']` which the backend never sends, so the
+    // value defaulted to '—' on every payment screen. Mirror the same
+    // formatting `active_job_provider._parseJob` uses for consistency.
+    final durationMinutes = (bidData['durationMinutes'] as num?)?.toInt();
+    final completionLabel = _formatMinutes(durationMinutes) ??
+        (data['estimatedDuration'] as String? ?? '—');
+
     return PaymentSummary(
       jobId: data['id'] as String? ?? '',
       serviceId: 'Service ID: #${data['id'] ?? ''}',
@@ -1521,7 +1530,7 @@ class _PaymentSummaryNotifier
               data['addressText'] ??
               data['address']) as String? ??
           '',
-      completionLabel: data['estimatedDuration'] as String? ?? '—',
+      completionLabel: completionLabel,
       artisanName: artisanName.isNotEmpty ? artisanName : 'Artisan',
       artisanFirstName:
           (artisanData['firstName'] ?? artisanData['first_name']) as String? ??
@@ -1555,6 +1564,19 @@ class _PaymentSummaryNotifier
       if (v is num) return v.toInt();
     }
     return null;
+  }
+
+  /// Minutes → human-readable label, matching the shape `active_job_provider`
+  /// uses on the in-progress job card so the wording is consistent across
+  /// surfaces ("45 mins", "2 hrs", "2h 30m"). Returns null for null/0
+  /// so the caller can fall back to a placeholder.
+  static String? _formatMinutes(int? mins) {
+    if (mins == null || mins <= 0) return null;
+    if (mins < 60) return '$mins min${mins == 1 ? '' : 's'}';
+    final hours = mins ~/ 60;
+    final rem = mins % 60;
+    if (rem == 0) return '$hours hr${hours == 1 ? '' : 's'}';
+    return '${hours}h ${rem}m';
   }
 }
 

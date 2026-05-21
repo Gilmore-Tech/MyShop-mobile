@@ -14,6 +14,15 @@ import '../../../core/di/providers.dart';
 enum JobStatus {
   queued,
   open,
+  // `pendingAdmin` and `adminAssigned` are the no-bids escalation path —
+  // when the bid window expires with 0 bids, the backend flips the job
+  // to `pending_admin`; an admin then re-routes it (or the cron fans out
+  // to a wider radius) and it becomes `admin_assigned`. The client used
+  // to fall through to `JobStatus.open` here and display "Pending" with
+  // no distinct treatment — keeping the rider stuck thinking artisans
+  // were still bidding. See bid.service.ts::expireBidWindows.
+  pendingAdmin,
+  adminAssigned,
   confirmed,
   enRoute,
   arrived,
@@ -28,6 +37,8 @@ extension JobStatusX on JobStatus {
   String get displayLabel => switch (this) {
         JobStatus.queued => 'Queued',
         JobStatus.open => 'Open',
+        JobStatus.pendingAdmin => 'No bids yet — review',
+        JobStatus.adminAssigned => 'Artisan assigned',
         JobStatus.confirmed => 'Confirmed',
         JobStatus.enRoute => 'En Route',
         JobStatus.arrived => 'Arrived',
@@ -47,6 +58,12 @@ extension JobStatusX on JobStatus {
         JobStatus.enRoute => MyShopColors.primaryGold,
         JobStatus.arrived => MyShopColors.primaryGold,
         JobStatus.confirmed => MyShopColors.success,
+        // Surface the no-bids escalation distinctly from the "open and
+        // still collecting bids" state — uses the warning amber so the
+        // rider can tell something needs attention without it looking
+        // like an outright failure.
+        JobStatus.pendingAdmin => MyShopColors.warning,
+        JobStatus.adminAssigned => MyShopColors.info,
         _ => MyShopColors.warning,
       };
 }
@@ -315,6 +332,8 @@ class _JobDetailNotifier
     return switch (status) {
       'queued' => JobStatus.queued,
       'open' => JobStatus.open,
+      'pending_admin' || 'admin_review' => JobStatus.pendingAdmin,
+      'admin_assigned' || 'awaiting_artisan_quote' => JobStatus.adminAssigned,
       'confirmed' => JobStatus.confirmed,
       'artisan_en_route' || 'en_route' => JobStatus.enRoute,
       'arrived' => JobStatus.arrived,

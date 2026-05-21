@@ -217,6 +217,7 @@ class _BidDetailBody extends ConsumerWidget {
 /// an already-assigned job.
 bool _isJobLocked(JobStatus status) {
   switch (status) {
+    case JobStatus.adminAssigned:
     case JobStatus.confirmed:
     case JobStatus.enRoute:
     case JobStatus.arrived:
@@ -228,6 +229,9 @@ bool _isJobLocked(JobStatus status) {
       return true;
     case JobStatus.open:
     case JobStatus.queued:
+    case JobStatus.pendingAdmin:
+      // No artisan yet — the bid window expired with zero bids and the
+      // job is sitting in the admin queue waiting for re-routing.
       return false;
   }
 }

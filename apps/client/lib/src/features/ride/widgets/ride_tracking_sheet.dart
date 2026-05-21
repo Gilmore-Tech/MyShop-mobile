@@ -20,10 +20,18 @@ class RideTrackingSheet extends StatelessWidget {
   final int? waitingSeconds;
 
   /// True once the driver has started the trip. Hides the waiting timer
-  /// column and the cancel request action; the "trip in progress"
-  /// banner surfaces in their place. Multi-stop / "Add a stop" is
-  /// deferred to v1.1, so there's no in-trip CTA right now.
+  /// column; the "trip in progress" banner surfaces in its place.
+  /// Multi-stop / "Add a stop" is deferred to v1.1, so there's no
+  /// in-trip CTA right now.
   final bool isInProgress;
+
+  /// Controls Cancel Request visibility. The caller gates this on the
+  /// active ride phase being `enRoute` or `arrived` — once the trip
+  /// starts (or completes / cancels) the button hides. Without this
+  /// gate the button used to render even on a `completed` ride for the
+  /// brief frame before navigation away, which surprised users into
+  /// thinking the ride was still cancellable.
+  final bool canCancel;
 
   const RideTrackingSheet({
     super.key,
@@ -32,6 +40,7 @@ class RideTrackingSheet extends StatelessWidget {
     required this.onCancel,
     this.waitingSeconds,
     this.isInProgress = false,
+    this.canCancel = false,
   });
 
   @override
@@ -81,15 +90,15 @@ class RideTrackingSheet extends StatelessWidget {
                   SizedBox(height: h * 0.017),
                   const _SafetyNotice(),
                   SizedBox(height: h * 0.021),
-                  // Multi-stop (`_AddStopButton`) is deferred to v1.1 —
-                  // the scaffolded `add_stop_screen.dart` + REST wrapper
-                  // are still on disk but the entry point is hidden so
-                  // pilot users don't see a half-finished feature. Once
-                  // the trip is in progress, the only relevant control
-                  // is "Cancel" — and even that is hidden in-trip per
-                  // the driver-side restriction (cancel after pickup
-                  // requires support intervention).
-                  if (!isInProgress) ...[
+                  // Cancel Request is only relevant while the driver is
+                  // still on the way (enRoute) or waiting at pickup
+                  // (arrived). Once the trip starts, completes, or is
+                  // cancelled by the other party, the rider's cancel
+                  // action no longer applies — the previous gate of
+                  // `!isInProgress` left the button visible on a
+                  // `completed` phase for the brief frame before the
+                  // tracking-screen listener navigated to /ride-complete.
+                  if (canCancel) ...[
                     const Divider(
                         height: 1, thickness: 1, color: MyShopColors.divider),
                     SizedBox(height: h * 0.017),

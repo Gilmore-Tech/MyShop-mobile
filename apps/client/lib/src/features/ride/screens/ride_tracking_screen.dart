@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
@@ -99,10 +100,22 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
     setState(() => _sheetSize = _sheetController.size);
   }
 
+  /// Double-tap guard so a slow API response doesn't queue a second
+  /// cancel request while the first is in flight.
+  bool _cancellingNow = false;
+
   Future<void> _onCancel() async {
+    if (_cancellingNow) {
+      developer.log('[CANCEL] re-entry blocked — already cancelling',
+          name: 'RideTrackingScreen');
+      return;
+    }
     final rideId = ref.read(activeRideIdProvider);
+    developer.log('[CANCEL] tapped — rideId=$rideId', name: 'RideTrackingScreen');
     if (rideId == null || rideId.isEmpty) {
       // No active ride to cancel — just bail out to home.
+      developer.log('[CANCEL] no active rideId, navigating home',
+          name: 'RideTrackingScreen');
       if (mounted) context.go(AppRoutes.home);
       return;
     }
@@ -128,35 +141,60 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted) {
+      developer.log('[CANCEL] dialog dismissed without confirmation',
+          name: 'RideTrackingScreen');
+      return;
+    }
 
+    _cancellingNow = true;
     final messenger = ScaffoldMessenger.of(context);
     String message = 'Ride cancelled.';
     try {
+      developer.log('[CANCEL] PATCH /rides/$rideId/cancel',
+          name: 'RideTrackingScreen');
       final result = await ref.read(rideServiceProvider).cancelRide(
             rideId,
             reason: 'rider_cancelled',
           );
-      final feePesewas = (result['cancellationFeePesewas'] as num?)?.toInt() ?? 0;
+      final feePesewas =
+          (result['cancellationFeePesewas'] as num?)?.toInt() ?? 0;
       if (feePesewas > 0) {
         final fee = (feePesewas / 100).toStringAsFixed(2);
         message = 'Ride cancelled. Cancellation fee: GHS $fee';
       }
+      developer.log('[CANCEL] success — fee=${feePesewas}p',
+          name: 'RideTrackingScreen');
     } on ApiException catch (e) {
+      developer.log('[CANCEL] ApiException: ${e.message}',
+          name: 'RideTrackingScreen', level: 900);
       message = e.message;
-    } catch (_) {
+    } catch (e) {
+      developer.log('[CANCEL] unexpected error: $e',
+          name: 'RideTrackingScreen', level: 900);
       message = 'Could not cancel the ride. Please try again.';
     }
 
-    // Reset local state regardless of the outcome — the rider's intent is
-    // to abandon, and the backend (if it succeeded) has already broadcast.
+    // Reset every ride-related provider so the next booking starts
+    // from a clean slate. The original cancel handler missed
+    // rideTrackingPhaseProvider + liveDriverPositionProvider, which
+    // could leave a stale phase / marker if the user navigated back
+    // to the tracking surface before the next ride loaded.
     ref.read(activeRideIdProvider.notifier).state = null;
     ref.read(matchedDriverProvider.notifier).state = null;
     ref.read(bookingPhaseProvider.notifier).reset();
+    ref.read(rideTrackingPhaseProvider.notifier).state =
+        RideTrackingPhase.enRoute;
+    ref.read(liveDriverPositionProvider.notifier).state = null;
+    ref.read(rideMatchedViaSocketProvider.notifier).state = false;
 
-    if (!mounted) return;
+    if (!mounted) {
+      _cancellingNow = false;
+      return;
+    }
     messenger.showSnackBar(SnackBar(content: Text(message)));
     context.go(AppRoutes.home);
+    _cancellingNow = false;
   }
 
   @override
@@ -255,6 +293,12 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
               onCancel: _onCancel,
               waitingSeconds: waitingSeconds,
               isInProgress: phase == RideTrackingPhase.inProgress,
+              // Only show Cancel Request while a cancel is still
+              // semantically meaningful — driver en-route to pickup
+              // or waiting at pickup. After trip start / completion /
+              // cancellation the button hides immediately.
+              canCancel: phase == RideTrackingPhase.enRoute ||
+                  phase == RideTrackingPhase.arrived,
             ),
           ),
           Positioned(
