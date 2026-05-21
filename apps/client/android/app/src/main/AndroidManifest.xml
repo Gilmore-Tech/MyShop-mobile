@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- ── Internet ─────────────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.INTERNET"/>
@@ -8,10 +9,19 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- Keep the device awake long enough to render a heads-up banner. -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
-    <!-- Vibrate is needed for the urgent channel. -->
+    <!-- Vibrate is needed for the urgent notification channel. -->
     <uses-permission android:name="android.permission.VIBRATE"/>
-    <!-- Required for fullScreenIntent on the urgent channel (calls/alarms). -->
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+    <!-- USE_FULL_SCREEN_INTENT is declared by `flutter_local_notifications`'s
+         own plugin manifest and would otherwise be merged into ours. The
+         client app does NOT use full-screen-intent notifications in v1.0
+         (calls deferred to v1.2, no alarm feature). `tools:node="remove"`
+         tells the manifest merger to strip it even when a plugin requests
+         it — verified against the previous AAB's merged manifest which
+         contained the permission despite us not declaring it. Without
+         this directive Play asks for a "core functionality" justification
+         on every upload and Maps & Navigation apps don't qualify. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"
+        tools:node="remove"/>
 
     <!-- ── Location (map + place picker) ────────────────────────────── -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
@@ -19,9 +29,22 @@
 
     <!-- ── Camera & media (image_picker for profile photos / job photos) ─ -->
     <uses-permission android:name="android.permission.CAMERA"/>
-    <!-- Android 13+ scoped media access -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
-    <!-- Legacy storage read (Android 12 and below) for file_picker / image_picker -->
+    <!-- READ_MEDIA_IMAGES intentionally stripped. Every photo flow in
+         the client app is a one-off user-initiated pick (profile photo,
+         job-post photos ≤3, Ghana Card upload). image_picker 1.1+ uses
+         Android's permission-free Photo Picker on API 33+ by default,
+         and the legacy storage permission below covers API ≤32 fallback.
+         Declaring READ_MEDIA_IMAGES triggers Play's "broad media access"
+         justification flow on every upload — and we don't qualify
+         because our usage is one-off. tools:node="remove" strips the
+         permission if any plugin manifest tries to merge it in
+         (image_picker historically did so on plugin versions <1.1). -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"
+        tools:node="remove"/>
+    <!-- Legacy storage read (Android 12 and below) for file_picker /
+         image_picker fallback when the Photo Picker backport isn't
+         available. Capped at API 32 so newer devices use the
+         permission-free Photo Picker path. -->
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"/>
