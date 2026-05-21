@@ -429,43 +429,43 @@ class _DriverRideCompleteScreenState
           ]),
           const SizedBox(height: MyShopSpacing.md),
 
-          // Payout status
-          Container(
-            padding: const EdgeInsets.all(MyShopSpacing.md),
-            decoration: BoxDecoration(
-                color: MyShopColors.surfaceWhite,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                    color: MyShopColors.divider.withValues(alpha: 0.5))),
-            child: Row(children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                    color: MyShopColors.surfaceGrey,
-                    borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.smartphone,
-                    size: 18, color: MyShopColors.textSecondary),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    Row(children: [
-                      Text(s.payoutMethod,
-                          style: MyShopTypography.body1.copyWith(fontSize: 13)),
-                      const SizedBox(width: 8),
-                      Text(s.payoutStatus,
-                          style: MyShopTypography.overline.copyWith(
-                              fontSize: 9, color: MyShopColors.primaryGold)),
-                    ]),
-                    Text(
-                        'Funds are being sent to your registered MoMo wallet (+233 •••• 567). Usually arrives in 2-5 minutes.',
-                        style: MyShopTypography.caption.copyWith(fontSize: 10)),
-                  ])),
-            ]),
-          ),
+          // // Payout status
+          // Container(
+          //   padding: const EdgeInsets.all(MyShopSpacing.md),
+          //   decoration: BoxDecoration(
+          //       color: MyShopColors.surfaceWhite,
+          //       borderRadius: BorderRadius.circular(16),
+          //       border: Border.all(
+          //           color: MyShopColors.divider.withValues(alpha: 0.5))),
+          //   child: Row(children: [
+          //     Container(
+          //       width: 36,
+          //       height: 36,
+          //       decoration: BoxDecoration(
+          //           color: MyShopColors.surfaceGrey,
+          //           borderRadius: BorderRadius.circular(10)),
+          //       child: const Icon(Icons.smartphone,
+          //           size: 18, color: MyShopColors.textSecondary),
+          //     ),
+          //     const SizedBox(width: 12),
+          //     Expanded(
+          //         child: Column(
+          //             crossAxisAlignment: CrossAxisAlignment.start,
+          //             children: [
+          //           Row(children: [
+          //             Text(s.payoutMethod,
+          //                 style: MyShopTypography.body1.copyWith(fontSize: 13)),
+          //             const SizedBox(width: 8),
+          //             Text(s.payoutStatus,
+          //                 style: MyShopTypography.overline.copyWith(
+          //                     fontSize: 9, color: MyShopColors.primaryGold)),
+          //           ]),
+          //           Text(
+          //               'Funds are being sent to your registered MoMo wallet (+233 •••• 567). Usually arrives in 2-5 minutes.',
+          //               style: MyShopTypography.caption.copyWith(fontSize: 10)),
+          //         ])),
+          //   ]),
+          // ),
           const SizedBox(height: MyShopSpacing.md),
 
           // Go to wallet CTA → the earnings tab is the driver's wallet
