@@ -40,17 +40,27 @@ class ChatController {
     required ChatRealtime realtime,
     required ChatOutbox outbox,
     required String selfUserId,
+    required ChatSenderRole selfRole,
     @visibleForTesting Random? random,
   })  : _rest = rest,
         _realtime = realtime,
         _outbox = outbox,
         _selfUserId = selfUserId,
+        _selfRole = selfRole,
         _random = random ?? Random();
 
   final ChatService _rest;
   final ChatRealtime _realtime;
   final ChatOutbox _outbox;
   final String _selfUserId;
+
+  /// The role the local user is currently signed in as. Pinned at
+  /// controller-construction time. Critical for "is this my message?"
+  /// resolution on a device where the same human runs both apps with
+  /// the same `selfUserId` — without role-awareness, every incoming
+  /// message looked like it came from the local user and rendered on
+  /// the right-hand side. See Phase 1/2 hotfix history in CHANGELOG.
+  final ChatSenderRole _selfRole;
   final Random _random;
 
   // ── Per-channel state ─────────────────────────────────────────────────────
@@ -125,6 +135,29 @@ class ChatController {
   /// for the controller's lifetime — the auth-wired Riverpod provider
   /// reconstructs the controller on user change.
   String get selfUserId => _selfUserId;
+
+  /// Role the local user is signed in as. UI uses (selfUserId, selfRole)
+  /// as the identity tuple when deciding which side of the chat to
+  /// render a bubble on. A bare userId comparison breaks on devices
+  /// where the same human runs both Client + Provider apps.
+  ChatSenderRole get selfRole => _selfRole;
+
+  /// True iff the given message originated from the local user-role
+  /// pair. Optimistic local sends (id `tmp_*`) are always considered
+  /// "mine" by construction — the orchestrator stamps them before the
+  /// server-id swap. For server-originated messages BOTH the userId
+  /// AND the role have to match; without the role half, every message
+  /// on a same-phone-multi-role device renders on the right side.
+  bool isOwnMessage(ChatMessage m) {
+    if (m.id.startsWith('tmp_')) return true;
+    if (_selfUserId.isEmpty || m.senderId.isEmpty) return false;
+    if (m.senderId != _selfUserId) return false;
+    // Both sides must agree on role for it to count as ours. A null
+    // role on the wire (legacy / unauthenticated path) falls back to
+    // userId-only — same as the pre-Phase-2 behaviour.
+    if (m.senderRole == null) return true;
+    return m.senderRole == _selfRole;
+  }
 
   /// Snapshot of messages, ordered by `createdAt` ascending.
   List<ChatMessage> get currentMessages => List.unmodifiable(_messages.values);
@@ -379,6 +412,7 @@ class ChatController {
     final optimistic = ChatMessage(
       id: tempId,
       senderId: _selfUserId,
+      senderRole: _selfRole,
       message: body,
       createdAt: DateTime.now().toUtc(),
     );
@@ -519,7 +553,7 @@ class ChatController {
     if (messageId.startsWith('tmp_')) return;
     final m = _messages[messageId];
     if (m == null) return;
-    if (m.senderId == _selfUserId) return; // can't read own
+    if (isOwnMessage(m)) return; // can't read own
     if (m.isRead) return;
 
     DateTime? readAt;
@@ -560,12 +594,15 @@ class ChatController {
 
     // Try to match an optimistic temp by sender+text — only the sender
     // has a tmp entry, so this only matters for our own broadcasts.
-    if (incoming.senderId == _selfUserId) {
+    // Role-aware: on a same-phone-multi-role device the peer can share
+    // our userId, so we'd otherwise swallow their messages into our
+    // pending tmp slot. `isOwnMessage` checks both (userId, role).
+    if (isOwnMessage(incoming)) {
       final tmp = _messages.entries
           .where(
             (e) =>
                 e.key.startsWith('tmp_') &&
-                e.value.senderId == _selfUserId &&
+                isOwnMessage(e.value) &&
                 e.value.message == incoming.message,
           )
           .firstOrNull;
@@ -659,7 +696,7 @@ class ChatController {
       // we removed the outbox item.
       final dupeFound = _messages.values.any(
         (m) =>
-            m.senderId == _selfUserId &&
+            isOwnMessage(m) &&
             m.message == item.message &&
             (m.createdAt.difference(item.queuedAt)).abs() <
                 const Duration(minutes: 1),
@@ -671,6 +708,7 @@ class ChatController {
       _messages[item.tempId] = ChatMessage(
         id: item.tempId,
         senderId: _selfUserId,
+        senderRole: _selfRole,
         message: item.message,
         createdAt: item.queuedAt,
       );
@@ -719,8 +757,11 @@ class ChatController {
 
   void _emitUnreadCount() {
     if (_unreadCountController.isClosed) return;
+    // Role-aware: on same-phone-multi-role devices, "from peer" can't
+    // be derived from `senderId != _selfUserId` alone — the userId
+    // collides. `isOwnMessage` checks (userId, role) together.
     final count = _messages.values
-        .where((m) => m.senderId != _selfUserId && !m.isRead)
+        .where((m) => !isOwnMessage(m) && !m.isRead)
         .length;
     _unreadCountController.add(count);
   }

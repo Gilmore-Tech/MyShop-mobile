@@ -62,6 +62,7 @@ void main() {
       realtime: realtime,
       outbox: outbox,
       selfUserId: _selfId,
+      selfRole: ChatSenderRole.client,
     );
   });
 
