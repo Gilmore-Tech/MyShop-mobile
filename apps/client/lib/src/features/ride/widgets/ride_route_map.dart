@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart'
@@ -49,10 +50,29 @@ class RideRouteMap extends ConsumerStatefulWidget {
   ConsumerState<RideRouteMap> createState() => _RideRouteMapState();
 }
 
+/// In-memory state of the live-track pipeline, surfaced to the on-screen
+/// debug banner so the rider can see why the marker isn't appearing
+/// without needing log filters. Two halves:
+///   provider: 'null' / '(5.61, -0.18)' — last value from liveDriverPositionProvider
+///   marker:   'cleared' / 'created' / 'moved' / 'pending (manager not ready)'
+class _LiveTrackDiagnostic {
+  final String provider;
+  final String marker;
+  const _LiveTrackDiagnostic({required this.provider, required this.marker});
+  static const empty =
+      _LiveTrackDiagnostic(provider: 'awaiting first fix', marker: 'pending');
+}
+
 class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   MapboxMap? _mapboxMap;
   PointAnnotationManager? _annotationManager;
   PolylineAnnotationManager? _polylineManager;
+
+  /// Diagnostic bus driving the debug-only banner — toggled in
+  /// `_syncDriverMarker` and `_onMapCreated`. Stripped from release
+  /// builds via the `kDebugMode` gate at the render site.
+  final ValueNotifier<_LiveTrackDiagnostic> _diagnosticBus =
+      ValueNotifier(_LiveTrackDiagnostic.empty);
 
   /// Dedicated manager for the driver-car circle markers (outer halo +
   /// inner solid dot). Circle annotations render purely from the Mapbox
@@ -103,6 +123,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   @override
   void dispose() {
     _directionsDio.close(force: true);
+    _diagnosticBus.dispose();
     _mapboxMap = null;
     super.dispose();
   }
@@ -135,9 +156,12 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   Future<void> _syncDriverMarker(LiveDriverPosition? pos) async {
     final manager = _driverCircleManager;
     if (manager == null) {
-      developer.log(
-          '[LIVE-TRACK] _syncDriverMarker bailed — circle manager not ready',
-          name: 'RideRouteMap');
+      debugPrint(
+          '[LIVE-TRACK] _syncDriverMarker bailed — circle manager not ready');
+      _diagnosticBus.value = _LiveTrackDiagnostic(
+        provider: _diagnosticBus.value.provider,
+        marker: 'pending (manager not ready)',
+      );
       return;
     }
     if (pos == null) {
@@ -147,8 +171,11 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
       if (dot != null) await manager.delete(dot);
       _driverHaloAnnotation = null;
       _driverDotAnnotation = null;
-      developer.log('[LIVE-TRACK] driver marker cleared (pos=null)',
-          name: 'RideRouteMap');
+      debugPrint('[LIVE-TRACK] driver marker cleared (pos=null)');
+      _diagnosticBus.value = _LiveTrackDiagnostic(
+        provider: 'null',
+        marker: 'cleared',
+      );
       return;
     }
     final point = Point(
@@ -177,17 +204,23 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
           circleStrokeWidth: 2.0,
         ),
       );
-      developer.log(
-          '[LIVE-TRACK] driver marker CREATED at (${pos.latitude}, ${pos.longitude})',
-          name: 'RideRouteMap');
+      debugPrint(
+          '[LIVE-TRACK] driver marker CREATED at (${pos.latitude}, ${pos.longitude})');
+      _diagnosticBus.value = _LiveTrackDiagnostic(
+        provider: '(${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)})',
+        marker: 'created',
+      );
     } else {
       halo.geometry = point;
       dot.geometry = point;
       await manager.update(halo);
       await manager.update(dot);
-      developer.log(
-          '[LIVE-TRACK] driver marker moved to (${pos.latitude}, ${pos.longitude})',
-          name: 'RideRouteMap');
+      debugPrint(
+          '[LIVE-TRACK] driver marker moved to (${pos.latitude}, ${pos.longitude})');
+      _diagnosticBus.value = _LiveTrackDiagnostic(
+        provider: '(${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)})',
+        marker: 'moved',
+      );
     }
   }
 
@@ -364,8 +397,11 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
 
   Future<void> _onMapCreated(MapboxMap mapboxMap) async {
     _mapboxMap = mapboxMap;
-    developer.log('[LIVE-TRACK] map created — wiring annotation managers',
-        name: 'RideRouteMap');
+    debugPrint('[LIVE-TRACK] map created — wiring annotation managers');
+    _diagnosticBus.value = _LiveTrackDiagnostic(
+      provider: _diagnosticBus.value.provider,
+      marker: 'map ready, manager creating',
+    );
 
     // Disable built-in compass and scale bar for a cleaner look.
     await mapboxMap.compass.updateSettings(CompassSettings(enabled: false));
@@ -384,9 +420,8 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     // Pick up any driver fix that arrived before the map was ready —
     // marker, route, and camera all sync at once.
     final driverPos = ref.read(liveDriverPositionProvider);
-    developer.log(
-        '[LIVE-TRACK] map ready — initial driverPos=${driverPos != null ? "(${driverPos.latitude}, ${driverPos.longitude})" : "null"}',
-        name: 'RideRouteMap');
+    debugPrint(
+        '[LIVE-TRACK] map ready — initial driverPos=${driverPos != null ? "(${driverPos.latitude}, ${driverPos.longitude})" : "null"}');
     await _syncDriverMarker(driverPos);
     if (driverPos != null) {
       await _syncRoute(driverPos);
@@ -467,9 +502,14 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     // `core/providers/socket_provider.dart` and the tracking screen's
     // periodic REST hydrate both flow through `liveDriverPositionProvider`.
     ref.listen<LiveDriverPosition?>(liveDriverPositionProvider, (_, next) {
-      developer.log(
-          '[LIVE-TRACK] provider tick → ${next != null ? "(${next.latitude}, ${next.longitude})" : "null"}',
-          name: 'RideRouteMap');
+      debugPrint(
+          '[LIVE-TRACK] provider tick → ${next != null ? "(${next.latitude}, ${next.longitude})" : "null"}');
+      _diagnosticBus.value = _LiveTrackDiagnostic(
+        provider: next != null
+            ? '(${next.latitude.toStringAsFixed(4)}, ${next.longitude.toStringAsFixed(4)})'
+            : 'null',
+        marker: _diagnosticBus.value.marker,
+      );
       _syncDriverMarker(next);
       if (next != null) {
         _syncRoute(next);
@@ -512,6 +552,18 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
           right: 16,
           child: _DestinationOverlay(destination: widget.destination),
         ),
+        // Debug-only diagnostic strip — replaces the need to filter
+        // adb logcat. Shows the two halves of the live-track pipeline:
+        // (1) what `liveDriverPositionProvider` last yielded, and
+        // (2) whether the on-map marker is currently rendered.
+        // Stripped in release via the kDebugMode gate.
+        if (kDebugMode)
+          Positioned(
+            bottom: 16,
+            left: 16,
+            right: 16,
+            child: _LiveTrackDebugBanner(bus: _diagnosticBus),
+          ),
       ],
     );
   }
@@ -547,6 +599,62 @@ BoxDecoration _cardDecoration() => BoxDecoration(
         ),
       ],
     );
+
+/// Debug-only diagnostic strip pinned to the bottom of the map. Always
+/// visible in debug builds so the rider can see why the live driver
+/// marker isn't appearing without having to filter adb logcat. Watches
+/// a [ValueNotifier] driven by the state machine in [_RideRouteMapState].
+class _LiveTrackDebugBanner extends StatelessWidget {
+  const _LiveTrackDebugBanner({required this.bus});
+
+  final ValueNotifier<_LiveTrackDiagnostic> bus;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<_LiveTrackDiagnostic>(
+      valueListenable: bus,
+      builder: (_, value, __) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.72),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'LIVE-TRACK DEBUG',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 9,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.0,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'provider: ${value.provider}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontFamily: 'monospace',
+              ),
+            ),
+            Text(
+              'marker:   ${value.marker}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _DestinationOverlay extends StatelessWidget {
   final String destination;
