@@ -116,18 +116,18 @@ class _ProviderChatScreenState extends ConsumerState<ProviderChatScreen> {
 
   ChatMessage _toUi(
     models.ChatMessage m,
-    String selfId,
+    ChatController controller,
     Set<String> debugSeen,
   ) {
-    // Both ids must be non-empty before they can match — otherwise an
-    // empty-vs-empty comparison would route every bubble to the right.
-    // `tmp_…` ids are always our own messages by construction.
-    final isMine = m.id.startsWith('tmp_') ||
-        (selfId.isNotEmpty && m.senderId.isNotEmpty && m.senderId == selfId);
+    // Role-aware "is this my message?" — see client/chat_screen.dart for
+    // the multi-role rationale. A bare `senderId == selfUserId` check
+    // collapses when both apps share `auth.user.id` on the same device.
+    final isMine = controller.isOwnMessage(m);
     if (kDebugMode && debugSeen.add(m.id)) {
       debugPrint(
         '[CHAT-UI] id=${m.id} senderId="${m.senderId}" '
-        'selfId="$selfId" → isMine=$isMine',
+        'senderRole=${m.senderRole?.wire} selfId="${controller.selfUserId}" '
+        'selfRole=${controller.selfRole.wire} → isMine=$isMine',
       );
     }
     final ChatMessageStatus status;
@@ -189,10 +189,9 @@ class _ProviderChatScreenState extends ConsumerState<ProviderChatScreen> {
                 ? '${activeJob.categoryName} request'
                 : 'Active job');
 
-        final selfId = controller.selfUserId;
         final debugSeen = <String>{};
         final uiMessages =
-            _messages.map((m) => _toUi(m, selfId, debugSeen)).toList();
+            _messages.map((m) => _toUi(m, controller, debugSeen)).toList();
 
         return MyShopChatScreen(
           peerName: peerName,
