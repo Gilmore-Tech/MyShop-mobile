@@ -1,5 +1,6 @@
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_models/shared_models.dart' show ChatSenderRole;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/auth/providers/auth_controller.dart';
@@ -28,6 +29,12 @@ final chatControllerProvider = FutureProvider<ChatController?>((ref) async {
     realtime: realtime,
     outbox: outbox,
     selfUserId: auth.profile.id,
+    // The client app is always in the client role. Without this, a
+    // human running both Client + Provider apps on the same phone
+    // shares `auth.profile.id` across both apps and every chat
+    // message rendered on the right (looked like "mine") regardless
+    // of who actually sent it.
+    selfRole: ChatSenderRole.client,
   );
   ref.onDispose(controller.dispose);
   return controller;

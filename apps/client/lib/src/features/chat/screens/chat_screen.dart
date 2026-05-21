@@ -127,19 +127,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   /// id per visible render, not one per rebuild.
   ChatMessage _toUi(
     models.ChatMessage m,
-    String selfId,
+    ChatController controller,
     Set<String> debugSeen,
   ) {
-    // Both ids must be non-empty before they can match — otherwise an
-    // empty-vs-empty comparison would route every bubble to the right.
-    // Also treat `tmp_…` ids as "mine" by construction; the orchestrator
-    // assigns those locally on send before the server-id swap.
-    final isMine = m.id.startsWith('tmp_') ||
-        (selfId.isNotEmpty && m.senderId.isNotEmpty && m.senderId == selfId);
+    // Role-aware "is this my message?" — the orchestrator compares both
+    // userId AND role. A bare `senderId == selfUserId` check rendered
+    // every bubble on the right on devices where the same human runs
+    // both Client + Provider apps with the same auth.profile.id.
+    final isMine = controller.isOwnMessage(m);
     if (kDebugMode && debugSeen.add(m.id)) {
       debugPrint(
         '[CHAT-UI] id=${m.id} senderId="${m.senderId}" '
-        'selfId="$selfId" → isMine=$isMine',
+        'senderRole=${m.senderRole?.wire} selfId="${controller.selfUserId}" '
+        'selfRole=${controller.selfRole.wire} → isMine=$isMine',
       );
     }
     final ChatMessageStatus status;
@@ -191,7 +191,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         final selfId = controller.selfUserId;
         final debugSeen = <String>{};
         final uiMessages =
-            _messages.map((m) => _toUi(m, selfId, debugSeen)).toList();
+            _messages.map((m) => _toUi(m, controller, debugSeen)).toList();
         final isClosed = _channel?.isClosed == true;
 
         // Debug-only routing diagnostic — when bubbles render on the
