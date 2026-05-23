@@ -1,39 +1,28 @@
 import 'dart:async';
-import 'dart:developer' as developer;
 import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart'
-    show
-        CameraOptions,
-        CircleAnnotation,
-        CircleAnnotationManager,
-        CircleAnnotationOptions,
-        CompassSettings,
-        CoordinateBounds,
-        LineString,
-        MapWidget,
-        MapboxMap,
-        MbxEdgeInsets,
-        PointAnnotationManager,
-        PointAnnotationOptions,
-        Point,
-        PolylineAnnotation,
-        PolylineAnnotationManager,
-        PolylineAnnotationOptions,
-        Position,
-        ScaleBarSettings;
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-import '../../../core/constants/mapbox_config.dart';
-import '../../../core/providers/current_location_provider.dart';
+import '../../../core/constants/maps_config.dart';
 import '../providers/ride_provider.dart'
     show LiveDriverPosition, RideTrackingPhase, liveDriverPositionProvider;
 import '../providers/ride_search_provider.dart';
+import 'driver_car_marker.dart';
 
+/// Rider's live-tracking map.
+///
+/// Google Maps + a hand-drawn `BitmapDescriptor` car marker — the same
+/// rendering approach the provider app already uses for the online-driver
+/// marker (see `apps/provider/.../widgets/driver_car_marker.dart`). The
+/// previous Mapbox + emoji / CircleAnnotation iteration never made the
+/// driver dot visible during real rides; switching to the Google Maps
+/// path that already works on the provider side eliminates the entire
+/// class of glyph-lookup / annotation-manager bugs.
 class RideRouteMap extends ConsumerStatefulWidget {
   final String destination;
   final int etaMinutes;
@@ -52,9 +41,7 @@ class RideRouteMap extends ConsumerStatefulWidget {
 
 /// In-memory state of the live-track pipeline, surfaced to the on-screen
 /// debug banner so the rider can see why the marker isn't appearing
-/// without needing log filters. Two halves:
-///   provider: 'null' / '(5.61, -0.18)' — last value from liveDriverPositionProvider
-///   marker:   'cleared' / 'created' / 'moved' / 'pending (manager not ready)'
+/// without needing log filters.
 class _LiveTrackDiagnostic {
   final String provider;
   final String marker;
@@ -64,42 +51,52 @@ class _LiveTrackDiagnostic {
 }
 
 class _RideRouteMapState extends ConsumerState<RideRouteMap> {
-  MapboxMap? _mapboxMap;
-  PointAnnotationManager? _annotationManager;
-  PolylineAnnotationManager? _polylineManager;
+  GoogleMapController? _mapController;
 
-  /// Diagnostic bus driving the debug-only banner — toggled in
-  /// `_syncDriverMarker` and `_onMapCreated`. Stripped from release
-  /// builds via the `kDebugMode` gate at the render site.
+  /// Bitmap for the driver marker. Lazy-built on first use because canvas
+  /// rendering is async — we store it once and reuse for every position
+  /// update. Falls back to `BitmapDescriptor.defaultMarkerWithHue(yellow)`
+  /// during the brief window before the canvas paint finishes.
+  BitmapDescriptor? _carIcon;
+
+  /// Last-known driver position. Updated by the `liveDriverPositionProvider`
+  /// listener on every socket / REST fix. Drives both the driver marker's
+  /// position+rotation and (after first fix) the follow-camera.
+  LiveDriverPosition? _lastDriverPos;
+
+  /// Captured once — pickup/destination don't change during a single ride.
+  late final RideSearchState _searchState;
+
+  /// Debug bus driving the on-screen diagnostic strip — toggled on every
+  /// pipeline state change. Stripped from release via `kDebugMode`.
   final ValueNotifier<_LiveTrackDiagnostic> _diagnosticBus =
       ValueNotifier(_LiveTrackDiagnostic.empty);
 
-  /// Dedicated manager for the driver-car circle markers (outer halo +
-  /// inner solid dot). Circle annotations render purely from the Mapbox
-  /// style sheet rather than a font-glyph lookup, so they never fall back
-  /// to an empty square the way the 🚗 emoji can on styles that don't
-  /// ship a colour-emoji font (the original v1.0 emoji marker silently
-  /// vanished on the Mapbox Streets style — that's the "marker never
-  /// appears" symptom reported during testing).
-  CircleAnnotationManager? _driverCircleManager;
-  CircleAnnotation? _driverHaloAnnotation;
-  CircleAnnotation? _driverDotAnnotation;
+  /// Has the camera ever fitted pickup + destination? We only do this on
+  /// the first map-create; after that the camera follows the driver and
+  /// we don't want to keep yanking it back.
+  bool _initialBoundsFit = false;
 
-  /// The on-map polyline tracing the driver's road route to the next
-  /// waypoint (pickup while en-route/arrived, destination while in-progress).
-  /// Stored so we can update its geometry in place rather than re-create.
-  PolylineAnnotation? _routeAnnotation;
-
-  /// Origin (driver lat/lng) used for the most recent successful Directions
-  /// fetch — lets us skip refetches while the driver hasn't moved much.
-  Position? _lastRoutedFromCoord;
+  /// Decoded polyline for the driver→nextWaypoint route. Re-fetched when
+  /// the driver drifts more than `_routeRefreshMeters` OR the phase flips
+  /// (en-route ↔ in-progress, which changes the target). Cleared while
+  /// the fetch is in flight so we never render two routes at once.
+  List<LatLng> _routePolyline = const [];
+  LatLng? _lastRoutedFrom;
   RideTrackingPhase? _lastRoutedPhase;
   DateTime? _lastRouteFetchAt;
   bool _routeFetchInFlight = false;
 
-  /// Reuse a single Dio instance for the Mapbox Directions API. Configured
-  /// with short timeouts because the rider is staring at a stale route
-  /// while we're fetching — better to skip a tick than to block the UI.
+  /// Throttle constants — match the previous Mapbox implementation so the
+  /// route doesn't refresh on every GPS bump (Google Directions is billed
+  /// per call). 100 m of driver drift or 30 s elapsed since the last
+  /// fetch, whichever comes first.
+  static const _routeRefreshMeters = 100.0;
+  static const _routeRefreshThrottle = Duration(seconds: 30);
+
+  /// Reuse one Dio for all Directions calls. Short timeouts because the
+  /// rider is staring at a stale route while we fetch — better to skip a
+  /// tick than to block the UI.
   late final Dio _directionsDio = Dio(
     BaseOptions(
       connectTimeout: const Duration(seconds: 6),
@@ -107,163 +104,89 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     ),
   );
 
-  // Refresh thresholds — same shape as the driver-side _NavigationMap.
-  static const _routeRefreshMeters = 100.0;
-  static const _routeRefreshThrottle = Duration(seconds: 30);
-
-  // Captured once — pickup/destination don't change during an active ride.
-  late final RideSearchState _searchState;
-
   @override
   void initState() {
     super.initState();
     _searchState = ref.read(rideSearchProvider);
+    // Build the car bitmap once. Anything that arrives before this
+    // resolves will use the default-yellow fallback marker.
+    _initCarIcon();
+  }
+
+  Future<void> _initCarIcon() async {
+    try {
+      final pixelRatio =
+          WidgetsBinding.instance.platformDispatcher.views.first.devicePixelRatio;
+      final icon = await DriverCarMarker.create(
+        devicePixelRatio: pixelRatio.clamp(2.0, 4.0),
+      );
+      if (!mounted) return;
+      setState(() => _carIcon = icon);
+      debugPrint('[LIVE-TRACK] car bitmap ready');
+    } catch (e) {
+      debugPrint('[LIVE-TRACK] car bitmap failed: $e — fallback marker used');
+    }
   }
 
   @override
   void dispose() {
     _directionsDio.close(force: true);
     _diagnosticBus.dispose();
-    _mapboxMap = null;
+    _mapController?.dispose();
     super.dispose();
   }
 
   @override
   void didUpdateWidget(covariant RideRouteMap oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Phase change (en-route → arrived → in-progress) flips the target
-    // waypoint. Re-fetch the route + recenter the camera right away
-    // instead of waiting for the next GPS fix to drag us out of sync.
+    // Phase flip (en-route → arrived → in-progress) changes the target
+    // waypoint — force-refresh the route so the line doesn't keep
+    // pointing at pickup after the trip starts.
     if (oldWidget.phase != widget.phase) {
-      final pos = ref.read(liveDriverPositionProvider);
-      if (pos != null) {
-        _syncRoute(pos);
-        _followCamera(pos);
-      }
+      final pos = _lastDriverPos;
+      if (pos != null) _syncRoute(pos);
     }
   }
 
-  /// Create or move the driver marker. No-op while the map isn't ready or
-  /// the rider hasn't received the first fix yet — the next call (from
-  /// either a socket update or the REST poller) takes care of it.
-  ///
-  /// Renders the driver as a 2-layer circle (white outer halo + gold inner
-  /// dot) rather than a text emoji — the original 🚗 marker depended on the
-  /// active Mapbox style shipping a colour-emoji font; on styles that don't
-  /// (the default Streets v12 doesn't on all OS variants) the glyph
-  /// silently rendered as a blank tofu box, which is the "marker never
-  /// appears" symptom this widget was reported with.
-  Future<void> _syncDriverMarker(LiveDriverPosition? pos) async {
-    final manager = _driverCircleManager;
-    if (manager == null) {
-      debugPrint(
-          '[LIVE-TRACK] _syncDriverMarker bailed — circle manager not ready');
-      _diagnosticBus.value = _LiveTrackDiagnostic(
-        provider: _diagnosticBus.value.provider,
-        marker: 'pending (manager not ready)',
-      );
-      return;
-    }
-    if (pos == null) {
-      final halo = _driverHaloAnnotation;
-      final dot = _driverDotAnnotation;
-      if (halo != null) await manager.delete(halo);
-      if (dot != null) await manager.delete(dot);
-      _driverHaloAnnotation = null;
-      _driverDotAnnotation = null;
-      debugPrint('[LIVE-TRACK] driver marker cleared (pos=null)');
-      _diagnosticBus.value = _LiveTrackDiagnostic(
-        provider: 'null',
-        marker: 'cleared',
-      );
-      return;
-    }
-    final point = Point(
-      coordinates: Position(pos.longitude, pos.latitude),
+  // ── Pipeline helpers ─────────────────────────────────────────────────────
+
+  void _onDriverPosition(LiveDriverPosition? next) {
+    debugPrint(
+      '[LIVE-TRACK] provider tick → ${next != null ? "(${next.latitude}, ${next.longitude})" : "null"}',
     );
-    final halo = _driverHaloAnnotation;
-    final dot = _driverDotAnnotation;
-    if (halo == null || dot == null) {
-      _driverHaloAnnotation = await manager.create(
-        CircleAnnotationOptions(
-          geometry: point,
-          circleRadius: 14,
-          circleColor: 0xFFFFFFFF,
-          circleStrokeColor: 0x33000000,
-          circleStrokeWidth: 1.0,
-        ),
-      );
-      _driverDotAnnotation = await manager.create(
-        CircleAnnotationOptions(
-          geometry: point,
-          circleRadius: 9,
-          // primaryGold (0xFFF5A623) for visual consistency with the
-          // route polyline.
-          circleColor: 0xFFF5A623,
-          circleStrokeColor: 0xFFFFFFFF,
-          circleStrokeWidth: 2.0,
-        ),
-      );
-      debugPrint(
-          '[LIVE-TRACK] driver marker CREATED at (${pos.latitude}, ${pos.longitude})');
-      _diagnosticBus.value = _LiveTrackDiagnostic(
-        provider: '(${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)})',
-        marker: 'created',
-      );
-    } else {
-      halo.geometry = point;
-      dot.geometry = point;
-      await manager.update(halo);
-      await manager.update(dot);
-      debugPrint(
-          '[LIVE-TRACK] driver marker moved to (${pos.latitude}, ${pos.longitude})');
-      _diagnosticBus.value = _LiveTrackDiagnostic(
-        provider: '(${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)})',
-        marker: 'moved',
-      );
+    setState(() => _lastDriverPos = next);
+    _diagnosticBus.value = _LiveTrackDiagnostic(
+      provider: next != null
+          ? '(${next.latitude.toStringAsFixed(4)}, ${next.longitude.toStringAsFixed(4)})'
+          : 'null',
+      marker: next != null
+          ? (_carIcon != null ? 'rendered (car bitmap)' : 'rendered (fallback)')
+          : 'cleared',
+    );
+    if (next != null) {
+      _followCamera(next);
+      _syncRoute(next);
     }
   }
 
-  /// The lat/lng the driver is currently navigating *to* — pickup until
-  /// the trip starts, drop-off after. Returns null when the corresponding
-  /// search-state coords are missing.
-  Position? _targetForPhase(RideTrackingPhase phase) {
-    final pickup = _searchState.pickup;
-    final dest = _searchState.destination;
-    switch (phase) {
-      case RideTrackingPhase.inProgress:
-      case RideTrackingPhase.completed:
-        if (dest?.lat == null || dest?.lng == null) return null;
-        return Position(dest!.lng!, dest.lat!);
-      case RideTrackingPhase.enRoute:
-      case RideTrackingPhase.arrived:
-        if (pickup?.lat == null || pickup?.lng == null) return null;
-        return Position(pickup!.lng!, pickup.lat!);
-      case RideTrackingPhase.cancelled:
-        // Tracking screen routes away the moment phase flips to cancelled,
-        // so there's no useful target — null skips the route fetch and
-        // we render whatever is already on the map for the single frame
-        // before the navigation lands.
-        return null;
-    }
-  }
-
-  /// Fetch a driving route from the driver's current position to whatever
-  /// waypoint matches the current phase, and draw it as a polyline. Skips
-  /// the network call if the driver hasn't moved much since the last fetch
-  /// (and the phase hasn't flipped).
-  Future<void> _syncRoute(LiveDriverPosition? pos) async {
-    final manager = _polylineManager;
-    if (manager == null || pos == null) return;
-    final origin = Position(pos.longitude, pos.latitude);
-    final target = _targetForPhase(widget.phase);
+  /// Fetch a driving route from the driver's current position to the
+  /// phase-appropriate waypoint (pickup while en-route/arrived, dropoff
+  /// while in-progress) and store the decoded polyline in state so the
+  /// map paints it.
+  ///
+  /// Throttled to avoid hammering Google Directions on every GPS tick —
+  /// skips if the driver hasn't moved 100 m since the last fetch AND
+  /// less than 30 s has passed AND the phase target hasn't flipped.
+  Future<void> _syncRoute(LiveDriverPosition pos) async {
+    final target = _targetForPhase();
     if (target == null) return;
+    final origin = LatLng(pos.latitude, pos.longitude);
 
-    // Skip refetch if we already have a route that's still fresh.
-    final last = _lastRoutedFromCoord;
+    // Skip refetch when we already have a fresh-enough route.
+    final lastFrom = _lastRoutedFrom;
     final phaseChanged = _lastRoutedPhase != widget.phase;
-    if (last != null && !phaseChanged && _routeAnnotation != null) {
-      final drift = _haversineMeters(last, origin);
+    if (lastFrom != null && !phaseChanged && _routePolyline.isNotEmpty) {
+      final drift = _haversineMeters(lastFrom, origin);
       if (drift < _routeRefreshMeters) return;
       final lastAt = _lastRouteFetchAt;
       if (lastAt != null &&
@@ -276,267 +199,315 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     _routeFetchInFlight = true;
     _lastRouteFetchAt = DateTime.now();
     try {
-      final coords = await _fetchMapboxRoute(origin, target);
-      if (!mounted || coords == null || coords.length < 2) return;
-      final geom = LineString(coordinates: coords);
-      final existing = _routeAnnotation;
-      if (existing == null) {
-        _routeAnnotation = await manager.create(
-          PolylineAnnotationOptions(
-            geometry: geom,
-            // 0xAARRGGBB — primaryGold-ish at full opacity.
-            lineColor: 0xFFF5A623,
-            lineWidth: 5.0,
-          ),
-        );
-      } else {
-        existing.geometry = geom;
-        await manager.update(existing);
-      }
-      _lastRoutedFromCoord = origin;
+      final points = await _fetchGoogleRoute(origin, target);
+      if (!mounted || points == null || points.length < 2) return;
+      setState(() => _routePolyline = points);
+      _lastRoutedFrom = origin;
       _lastRoutedPhase = widget.phase;
     } catch (e) {
-      developer.log('Mapbox directions fetch failed: $e',
-          name: 'RideRouteMap', level: 800);
+      debugPrint('[LIVE-TRACK] Directions fetch failed: $e');
     } finally {
       _routeFetchInFlight = false;
     }
   }
 
-  /// Camera follow — keeps both the driver and the next waypoint in view
-  /// as the driver moves. Same fitBounds approach as the static `_fitBounds`
-  /// but with the driver's current position substituted for the static
-  /// pickup point so the camera tracks the car.
-  Future<void> _followCamera(LiveDriverPosition pos) async {
-    final mapboxMap = _mapboxMap;
-    if (mapboxMap == null) return;
-    final target = _targetForPhase(widget.phase);
-    if (target == null) return;
-    final driverCoord = Position(pos.longitude, pos.latitude);
-
-    final minLat = math.min(driverCoord.lat.toDouble(), target.lat.toDouble());
-    final maxLat = math.max(driverCoord.lat.toDouble(), target.lat.toDouble());
-    final minLng = math.min(driverCoord.lng.toDouble(), target.lng.toDouble());
-    final maxLng = math.max(driverCoord.lng.toDouble(), target.lng.toDouble());
-
-    try {
-      final camera = await mapboxMap.cameraForCoordinateBounds(
-        CoordinateBounds(
-          southwest: Point(coordinates: Position(minLng, minLat)),
-          northeast: Point(coordinates: Position(maxLng, maxLat)),
-          infiniteBounds: false,
-        ),
-        MbxEdgeInsets(top: 160, left: 60, bottom: 320, right: 60),
-        null,
-        null,
-        null,
-        null,
+  /// Calls Google Directions API and returns the decoded route polyline.
+  /// Returns null on any non-OK response — the caller leaves the existing
+  /// polyline in place so a transient network blip doesn't blank the route.
+  Future<List<LatLng>?> _fetchGoogleRoute(LatLng origin, LatLng target) async {
+    if (MapsConfig.apiKey.isEmpty) {
+      debugPrint(
+        '[LIVE-TRACK] Directions skipped — GOOGLE_MAPS_API_KEY empty. '
+        'Re-run with --dart-define=GOOGLE_MAPS_API_KEY=AIza…',
       );
-      await mapboxMap.flyTo(
-        camera,
-        // Smooth 600ms slide so the camera glides between fixes rather
-        // than jumping every update.
-        null,
-      );
-    } catch (_) {
-      // Camera moves are best-effort; failing one tick doesn't matter.
+      return null;
     }
-  }
 
-  /// Mapbox Directions API call. Returns the route's GeoJSON coordinates
-  /// (already `[lng, lat]` in the right order for `LineString`). Returns
-  /// null on any failure so the polyline path falls through to the static
-  /// pickup/destination markers.
-  Future<List<Position>?> _fetchMapboxRoute(
-    Position origin,
-    Position destination,
-  ) async {
-    final coords = '${origin.lng},${origin.lat};'
-        '${destination.lng},${destination.lat}';
     final uri = Uri.https(
-      'api.mapbox.com',
-      '/directions/v5/mapbox/driving/$coords',
+      'maps.googleapis.com',
+      '/maps/api/directions/json',
       {
-        'geometries': 'geojson',
-        'overview': 'full',
-        'access_token': MapboxConfig.accessToken,
+        'origin': '${origin.latitude},${origin.longitude}',
+        'destination': '${target.latitude},${target.longitude}',
+        'mode': 'driving',
+        'key': MapsConfig.apiKey,
       },
     );
     final response = await _directionsDio.getUri<Map<String, dynamic>>(uri);
     final data = response.data;
     if (data == null) return null;
+    final status = data['status'] as String?;
+    if (status != 'OK') {
+      debugPrint(
+        '[LIVE-TRACK] Directions non-OK status: $status — '
+        '${data['error_message'] ?? '(no message)'}',
+      );
+      return null;
+    }
     final routes = data['routes'] as List<dynamic>?;
     if (routes == null || routes.isEmpty) return null;
-    final route = routes.first as Map<String, dynamic>;
-    final geometry = route['geometry'] as Map<String, dynamic>?;
-    final raw = geometry?['coordinates'] as List<dynamic>?;
-    if (raw == null || raw.isEmpty) return null;
-    return raw.map((c) {
-      final pair = c as List<dynamic>;
-      return Position(
-        (pair[0] as num).toDouble(),
-        (pair[1] as num).toDouble(),
-      );
-    }).toList(growable: false);
+    final overview =
+        (routes.first as Map<String, dynamic>)['overview_polyline']
+            as Map<String, dynamic>?;
+    final encoded = overview?['points'] as String?;
+    if (encoded == null || encoded.isEmpty) return null;
+    return _decodePolyline(encoded);
   }
 
-  /// Great-circle distance in meters between two `Position` coordinates.
-  /// Used to throttle Directions API calls — the rider's marker only
-  /// triggers a route refetch when the driver has moved meaningfully.
-  static double _haversineMeters(Position a, Position b) {
+  /// Decode Google's "encoded polyline algorithm" string to a list of
+  /// LatLng points. Inline implementation so we don't add a dependency
+  /// just for this one call. Reference: developers.google.com/maps/
+  /// documentation/utilities/polylinealgorithm
+  List<LatLng> _decodePolyline(String encoded) {
+    final points = <LatLng>[];
+    var index = 0;
+    var lat = 0;
+    var lng = 0;
+    while (index < encoded.length) {
+      var shift = 0;
+      var result = 0;
+      int b;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      final dlat = (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+      lat += dlat;
+
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      final dlng = (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+      lng += dlng;
+
+      points.add(LatLng(lat / 1e5, lng / 1e5));
+    }
+    return points;
+  }
+
+  /// Great-circle distance in metres — used to throttle route refetches.
+  double _haversineMeters(LatLng a, LatLng b) {
     const earthRadius = 6371000.0;
-    final lat1 = a.lat.toDouble() * math.pi / 180.0;
-    final lat2 = b.lat.toDouble() * math.pi / 180.0;
-    final dLat = (b.lat.toDouble() - a.lat.toDouble()) * math.pi / 180.0;
-    final dLng = (b.lng.toDouble() - a.lng.toDouble()) * math.pi / 180.0;
+    final lat1 = a.latitude * math.pi / 180.0;
+    final lat2 = b.latitude * math.pi / 180.0;
+    final dLat = (b.latitude - a.latitude) * math.pi / 180.0;
+    final dLng = (b.longitude - a.longitude) * math.pi / 180.0;
     final s1 = math.sin(dLat / 2);
     final s2 = math.sin(dLng / 2);
     final h = s1 * s1 + s2 * s2 * math.cos(lat1) * math.cos(lat2);
     return 2 * earthRadius * math.asin(math.sqrt(h.clamp(0.0, 1.0)));
   }
 
-  Future<void> _onMapCreated(MapboxMap mapboxMap) async {
-    _mapboxMap = mapboxMap;
-    debugPrint('[LIVE-TRACK] map created — wiring annotation managers');
-    _diagnosticBus.value = _LiveTrackDiagnostic(
-      provider: _diagnosticBus.value.provider,
-      marker: 'map ready, manager creating',
-    );
-
-    // Disable built-in compass and scale bar for a cleaner look.
-    await mapboxMap.compass.updateSettings(CompassSettings(enabled: false));
-    await mapboxMap.scaleBar.updateSettings(ScaleBarSettings(enabled: false));
-
-    // Manager creation order is the z-order: first-created is drawn first
-    // (lowest layer). Route polyline at the bottom, pickup/destination
-    // text markers above it, driver circle on top so the car never gets
-    // hidden by the route line under it.
-    _polylineManager =
-        await mapboxMap.annotations.createPolylineAnnotationManager();
-    _driverCircleManager =
-        await mapboxMap.annotations.createCircleAnnotationManager();
-    await _addMarkers();
-    await _fitBounds();
-    // Pick up any driver fix that arrived before the map was ready —
-    // marker, route, and camera all sync at once.
-    final driverPos = ref.read(liveDriverPositionProvider);
-    debugPrint(
-        '[LIVE-TRACK] map ready — initial driverPos=${driverPos != null ? "(${driverPos.latitude}, ${driverPos.longitude})" : "null"}');
-    await _syncDriverMarker(driverPos);
-    if (driverPos != null) {
-      await _syncRoute(driverPos);
-      await _followCamera(driverPos);
+  LatLng? _targetForPhase() {
+    final pickup = _searchState.pickup;
+    final dest = _searchState.destination;
+    switch (widget.phase) {
+      case RideTrackingPhase.inProgress:
+      case RideTrackingPhase.completed:
+        if (dest?.lat == null || dest?.lng == null) return null;
+        return LatLng(dest!.lat!, dest.lng!);
+      case RideTrackingPhase.enRoute:
+      case RideTrackingPhase.arrived:
+        if (pickup?.lat == null || pickup?.lng == null) return null;
+        return LatLng(pickup!.lat!, pickup.lng!);
+      case RideTrackingPhase.cancelled:
+        return null;
     }
   }
 
-  Future<void> _addMarkers() async {
-    final mapboxMap = _mapboxMap;
-    if (mapboxMap == null) return;
+  Future<void> _followCamera(LiveDriverPosition pos) async {
+    final mc = _mapController;
+    if (mc == null) return;
+    final target = _targetForPhase();
+    if (target == null) {
+      // No phase-target — just centre on the driver.
+      await mc.animateCamera(
+        CameraUpdate.newLatLng(LatLng(pos.latitude, pos.longitude)),
+      );
+      return;
+    }
+    final bounds = _boundsFromTwo(
+      LatLng(pos.latitude, pos.longitude),
+      target,
+    );
+    try {
+      await mc.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
+    } catch (_) {
+      // Bounds fit fails on a freshly-mounted map with no layout pass yet.
+      // Fall back to centring on the driver — the next tick re-tries.
+      await mc.animateCamera(
+        CameraUpdate.newLatLng(LatLng(pos.latitude, pos.longitude)),
+      );
+    }
+  }
 
-    _annotationManager ??=
-        await mapboxMap.annotations.createPointAnnotationManager();
+  Future<void> _fitInitialBounds() async {
+    final mc = _mapController;
+    if (mc == null || _initialBoundsFit) return;
+    final pickup = _searchState.pickup;
+    final dest = _searchState.destination;
+    if (pickup?.lat == null || dest?.lat == null) return;
+    final bounds = _boundsFromTwo(
+      LatLng(pickup!.lat!, pickup.lng!),
+      LatLng(dest!.lat!, dest.lng!),
+    );
+    try {
+      await mc.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
+      _initialBoundsFit = true;
+    } catch (_) {
+      // Same first-frame race as in _followCamera — retry on next tick.
+    }
+  }
 
-    await _annotationManager!.deleteAll();
+  LatLngBounds _boundsFromTwo(LatLng a, LatLng b) {
+    final minLat = a.latitude < b.latitude ? a.latitude : b.latitude;
+    final maxLat = a.latitude > b.latitude ? a.latitude : b.latitude;
+    final minLng = a.longitude < b.longitude ? a.longitude : b.longitude;
+    final maxLng = a.longitude > b.longitude ? a.longitude : b.longitude;
+    return LatLngBounds(
+      southwest: LatLng(minLat, minLng),
+      northeast: LatLng(maxLat, maxLng),
+    );
+  }
 
+  Future<void> _onMapCreated(GoogleMapController mc) async {
+    _mapController = mc;
+    debugPrint('[LIVE-TRACK] Google Map ready');
+    _diagnosticBus.value = _LiveTrackDiagnostic(
+      provider: _diagnosticBus.value.provider,
+      marker: 'map ready',
+    );
+
+    // Pick up any driver fix that arrived before the map mounted.
+    final pos = ref.read(liveDriverPositionProvider);
+    if (pos != null) {
+      _onDriverPosition(pos);
+    } else {
+      await _fitInitialBounds();
+    }
+  }
+
+  // ── Marker construction ─────────────────────────────────────────────────
+
+  Set<Polyline> _buildPolylines() {
+    if (_routePolyline.length < 2) return const {};
+    return {
+      Polyline(
+        polylineId: const PolylineId('driverRoute'),
+        points: _routePolyline,
+        width: 5,
+        // primaryGold for visual consistency with the in-app accent.
+        color: MyShopColors.primaryGold,
+        // Smooth joins so the line doesn't look segmented around bends.
+        jointType: JointType.round,
+        startCap: Cap.roundCap,
+        endCap: Cap.roundCap,
+      ),
+    };
+  }
+
+  Set<Marker> _buildMarkers() {
+    final markers = <Marker>{};
     final pickup = _searchState.pickup;
     final dest = _searchState.destination;
 
     if (pickup?.lat != null && pickup?.lng != null) {
-      await _annotationManager!.create(
-        PointAnnotationOptions(
-          geometry: Point(
-            coordinates: Position(pickup!.lng!, pickup.lat!),
+      markers.add(
+        Marker(
+          markerId: const MarkerId('pickup'),
+          position: LatLng(pickup!.lat!, pickup.lng!),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueGreen,
           ),
-          textField: '📍',
-          textSize: 24,
+          infoWindow: const InfoWindow(title: 'Pickup'),
         ),
       );
     }
 
     if (dest?.lat != null && dest?.lng != null) {
-      await _annotationManager!.create(
-        PointAnnotationOptions(
-          geometry: Point(
-            coordinates: Position(dest!.lng!, dest.lat!),
+      markers.add(
+        Marker(
+          markerId: const MarkerId('destination'),
+          position: LatLng(dest!.lat!, dest.lng!),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueRed,
           ),
-          textField: '🏁',
-          textSize: 24,
+          infoWindow: const InfoWindow(title: 'Destination'),
         ),
       );
     }
+
+    final pos = _lastDriverPos;
+    if (pos != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('driver'),
+          position: LatLng(pos.latitude, pos.longitude),
+          // Use the custom car bitmap if it finished rendering; otherwise
+          // a default-yellow marker so the driver is visible from frame 1.
+          icon: _carIcon ??
+              BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueYellow,
+              ),
+          rotation: pos.heading ?? 0,
+          // Anchor at the centre so rotation pivots on the visual middle
+          // of the car (matches the square bitmap's centre).
+          anchor: const Offset(0.5, 0.5),
+          flat: true, // Marker stays flat against the map when tilted.
+          infoWindow: const InfoWindow(title: 'Driver'),
+        ),
+      );
+    }
+
+    return markers;
   }
 
-  Future<void> _fitBounds() async {
-    final mapboxMap = _mapboxMap;
-    if (mapboxMap == null) return;
-
-    final pickup = _searchState.pickup;
-    final dest = _searchState.destination;
-
-    if (pickup?.lat == null || dest?.lat == null) return;
-
-    final minLat = pickup!.lat! < dest!.lat! ? pickup.lat! : dest.lat!;
-    final maxLat = pickup.lat! > dest.lat! ? pickup.lat! : dest.lat!;
-    final minLng = pickup.lng! < dest.lng! ? pickup.lng! : dest.lng!;
-    final maxLng = pickup.lng! > dest.lng! ? pickup.lng! : dest.lng!;
-
-    final camera = await mapboxMap.cameraForCoordinateBounds(
-      CoordinateBounds(
-        southwest: Point(coordinates: Position(minLng, minLat)),
-        northeast: Point(coordinates: Position(maxLng, maxLat)),
-        infiniteBounds: false,
-      ),
-      MbxEdgeInsets(top: 120, left: 60, bottom: 320, right: 60),
-      null,
-      null,
-      null,
-      null,
-    );
-    await mapboxMap.setCamera(camera);
-  }
+  // ── Build ────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    // Re-sync the driver pin, the on-road route polyline, and the camera
-    // every time the live position changes. Socket updates from
-    // `core/providers/socket_provider.dart` and the tracking screen's
-    // periodic REST hydrate both flow through `liveDriverPositionProvider`.
+    // Re-sync on every driver-position tick. ref.listen survives rebuilds.
     ref.listen<LiveDriverPosition?>(liveDriverPositionProvider, (_, next) {
-      debugPrint(
-          '[LIVE-TRACK] provider tick → ${next != null ? "(${next.latitude}, ${next.longitude})" : "null"}');
-      _diagnosticBus.value = _LiveTrackDiagnostic(
-        provider: next != null
-            ? '(${next.latitude.toStringAsFixed(4)}, ${next.longitude.toStringAsFixed(4)})'
-            : 'null',
-        marker: _diagnosticBus.value.marker,
-      );
-      _syncDriverMarker(next);
-      if (next != null) {
-        _syncRoute(next);
-        _followCamera(next);
-      }
+      _onDriverPosition(next);
     });
 
     final pickup = _searchState.pickup;
-    final cachedDevice = ref.read(currentDevicePositionProvider);
-    final initialCenter = pickup?.lat != null && pickup?.lng != null
-        ? Position(pickup!.lng!, pickup.lat!)
-        : (cachedDevice != null
-            ? Position(cachedDevice.longitude, cachedDevice.latitude)
-            : Position(MapboxConfig.defaultLng, MapboxConfig.defaultLat));
+    final dest = _searchState.destination;
+    // Pick a reasonable starting centre — favour pickup, fall back to
+    // destination, fall back to a hardcoded Kumasi centroid.
+    final initialCenter = pickup?.lat != null
+        ? LatLng(pickup!.lat!, pickup.lng!)
+        : dest?.lat != null
+            ? LatLng(dest!.lat!, dest.lng!)
+            : const LatLng(6.6885, -1.6244);
 
     final statusBarHeight = MediaQuery.paddingOf(context).top;
 
     return Stack(
       children: [
         Positioned.fill(
-          child: MapWidget(
+          child: GoogleMap(
             key: const ValueKey('rideRouteMap'),
-            styleUri: MapboxConfig.styleUrl,
-            cameraOptions: CameraOptions(
-              center: Point(coordinates: initialCenter),
-              zoom: 14.0,
+            initialCameraPosition: CameraPosition(
+              target: initialCenter,
+              zoom: 14,
             ),
+            markers: _buildMarkers(),
+            polylines: _buildPolylines(),
+            myLocationEnabled: false,
+            myLocationButtonEnabled: false,
+            zoomControlsEnabled: false,
+            mapToolbarEnabled: false,
+            compassEnabled: false,
+            // Required for Android — sometimes the platform view needs a
+            // single hint to be touchable in stacked layouts. Identical
+            // pattern the pickup/destination picker uses.
+            gestureRecognizers: const {},
             onMapCreated: _onMapCreated,
           ),
         ),
@@ -552,11 +523,6 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
           right: 16,
           child: _DestinationOverlay(destination: widget.destination),
         ),
-        // Debug-only diagnostic strip — replaces the need to filter
-        // adb logcat. Shows the two halves of the live-track pipeline:
-        // (1) what `liveDriverPositionProvider` last yielded, and
-        // (2) whether the on-map marker is currently rendered.
-        // Stripped in release via the kDebugMode gate.
         if (kDebugMode)
           Positioned(
             bottom: 16,
@@ -578,15 +544,12 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
         return _InProgressPill(minutes: widget.etaMinutes);
       case RideTrackingPhase.completed:
       case RideTrackingPhase.cancelled:
-        // Tracking screen navigates away on both terminal phases; render
-        // the trip pill in the brief frame before that happens so we
-        // don't flash an empty area.
         return _InProgressPill(minutes: widget.etaMinutes);
     }
   }
 }
 
-// ── Destination (HEADING TO) card ─────────────────────────────────────────────
+// ── Destination ("HEADING TO") card ───────────────────────────────────────────
 
 BoxDecoration _cardDecoration() => BoxDecoration(
       color: Colors.white,
@@ -600,10 +563,8 @@ BoxDecoration _cardDecoration() => BoxDecoration(
       ],
     );
 
-/// Debug-only diagnostic strip pinned to the bottom of the map. Always
-/// visible in debug builds so the rider can see why the live driver
-/// marker isn't appearing without having to filter adb logcat. Watches
-/// a [ValueNotifier] driven by the state machine in [_RideRouteMapState].
+/// Debug-only diagnostic strip — visible in debug builds so the rider can
+/// see why the live driver marker isn't appearing without filtering logs.
 class _LiveTrackDebugBanner extends StatelessWidget {
   const _LiveTrackDebugBanner({required this.bus});
 
@@ -826,7 +787,7 @@ class _InProgressPill extends StatelessWidget {
   }
 }
 
-/// Gold rail: filled dot → dashed vertical line → outlined circle.
+/// Gold rail — filled dot → dashed vertical line → outlined circle.
 class _RouteRail extends StatelessWidget {
   const _RouteRail();
 
