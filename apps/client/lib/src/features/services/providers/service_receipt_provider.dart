@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/di/providers.dart';
 import '../../ride/providers/ride_receipt_provider.dart' show PaymentMethodType;
@@ -129,10 +130,21 @@ class _ServiceReceiptNotifier
       laborHoursLabel: costBreakdown['laborHoursLabel'] as String? ?? '',
       materialsPesewas: materialsPesewas,
       totalPaidPesewas: totalPesewas,
-      dateTimeLabel: data['completedAt'] as String? ?? '',
+      dateTimeLabel: _formatReceiptDate(data['completedAt'] as String?),
       paymentMethodLabel: paymentData['label'] as String? ?? '',
       paymentMethodType: paymentMethodType,
     );
   }
+}
+
+/// Format the completedAt ISO timestamp as a receipt-friendly label
+/// in the user's local time zone. Renders like "22 May 2026 · 10:14 PM".
+/// Returns an empty string for missing/invalid input so the receipt UI
+/// can fall back to its placeholder rather than showing "1970-01-01".
+String _formatReceiptDate(String? raw) {
+  if (raw == null || raw.isEmpty) return '';
+  final dt = DateTime.tryParse(raw);
+  if (dt == null) return '';
+  return DateFormat('d MMM yyyy · h:mm a').format(dt.toLocal());
 }
 
