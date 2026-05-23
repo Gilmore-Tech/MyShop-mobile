@@ -5,13 +5,15 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/auth_controller.dart';
 
-/// Single welcome screen — replaces the old 3-slide carousel.
+/// Single welcome screen — edge-to-edge hero photo on top, copy + CTAs below.
 ///
-/// Top half: a brand-aligned hero composition showing the two sides of the
-/// MyShop provider platform (driver + artisan). Bottom half: headline, value
-/// props, primary "Get Started" CTA, and a sign-in shortcut.
+/// Matches the client app's onboarding pattern: the hero image bleeds under
+/// the status bar with only its bottom corners rounded; headline, value
+/// props, and CTAs render in a padded column underneath.
 class OnboardingScreen extends ConsumerWidget {
   const OnboardingScreen({super.key});
+
+  static const _heroImage = 'assets/images/onboarding_provider.jpg';
 
   static const _highlights = <_Highlight>[
     _Highlight(
@@ -46,7 +48,7 @@ class OnboardingScreen extends ConsumerWidget {
         child: SingleChildScrollView(
           child: Column(
             children: [
-              const _PlatformHero(),
+              const _Hero(heroImage: _heroImage),
               Padding(
                 padding: const EdgeInsets.fromLTRB(
                   MyShopSpacing.lg,
@@ -122,197 +124,122 @@ class OnboardingScreen extends ConsumerWidget {
   }
 }
 
-/// Hero composition shown at the top of the welcome screen. Renders a soft
-/// gold backdrop with two stacked "platform" cards — one for drivers and one
-/// for artisans — communicating the dual-sided product without needing any
-/// custom illustration assets.
-class _PlatformHero extends StatelessWidget {
-  const _PlatformHero();
+// ── Hero ─────────────────────────────────────────────────────────────────────
+
+/// Full-bleed photo hero with a pill badge top-left. Bleeds under the status
+/// bar; only bottom corners are rounded so the image flows from the top edge.
+///
+/// Renders a gradient fallback when [heroImage] isn't present in the bundle
+/// yet — keeps the screen looking intentional during the gap between wiring
+/// and asset drop.
+class _Hero extends StatelessWidget {
+  const _Hero({required this.heroImage});
+
+  final String heroImage;
 
   @override
   Widget build(BuildContext context) {
-    final topInset = MediaQuery.of(context).padding.top;
+    final size = MediaQuery.sizeOf(context);
+    final heroHeight = size.height * 0.46;
+    final topInset = MediaQuery.paddingOf(context).top;
 
-    return Container(
+    return SizedBox(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(
-        MyShopSpacing.lg,
-        topInset + MyShopSpacing.md,
-        MyShopSpacing.lg,
-        MyShopSpacing.xl,
-      ),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            MyShopColors.primaryGoldLight,
-            MyShopColors.surfaceWhite,
+      height: heroHeight,
+      child: ClipRRect(
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(32),
+          bottomRight: Radius.circular(32),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Gradient fallback — always painted underneath so a missing
+            // / slow-decoding asset never leaves the area blank.
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFF1F2A35),
+                    MyShopColors.primaryGoldDark,
+                  ],
+                ),
+              ),
+            ),
+            Image.asset(
+              heroImage,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+            // Dark gradient overlay — keeps the pill badge legible over any
+            // photo and softens the bottom edge into the page background.
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.30),
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.30),
+                  ],
+                  stops: const [0.0, 0.45, 1.0],
+                ),
+              ),
+            ),
+            Positioned(
+              top: topInset + MyShopSpacing.md,
+              left: MyShopSpacing.lg,
+              child: const _PillBadge(
+                icon: Icons.workspace_premium_rounded,
+                label: 'EARN WITH MYSHOP',
+              ),
+            ),
           ],
         ),
-        borderRadius: BorderRadius.vertical(
-          bottom: Radius.circular(32),
-        ),
-      ),
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.center,
-        children: [
-          // Decorative gold halo behind the cards.
-          Positioned(
-            top: 24,
-            child: Container(
-              width: 220,
-              height: 220,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: MyShopColors.primaryGold.withValues(alpha: 0.18),
-              ),
-            ),
-          ),
-          // Decorative ring.
-          Positioned(
-            top: 8,
-            right: 12,
-            child: Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: MyShopColors.primaryGold.withValues(alpha: 0.35),
-                  width: 2,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: -8,
-            left: 4,
-            child: Container(
-              width: 18,
-              height: 18,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: MyShopColors.primaryGoldDark,
-              ),
-            ),
-          ),
-          SizedBox(
-            height: 280,
-            child: Stack(
-              clipBehavior: Clip.none,
-              alignment: Alignment.center,
-              children: [
-                // Driver card — tilted slightly left, sits behind.
-                Positioned(
-                  left: 0,
-                  top: 24,
-                  child: Transform.rotate(
-                    angle: -0.08,
-                    child: const _PlatformCard(
-                      icon: Icons.directions_car_filled_rounded,
-                      label: 'DRIVERS',
-                      title: 'Pick up rides',
-                      subtitle: 'Live trips • Fare meter • Navigation',
-                      accent: MyShopColors.darkSlate,
-                    ),
-                  ),
-                ),
-                // Artisan card — tilted slightly right, sits in front.
-                Positioned(
-                  right: 0,
-                  bottom: 0,
-                  child: Transform.rotate(
-                    angle: 0.06,
-                    child: const _PlatformCard(
-                      icon: Icons.handyman_rounded,
-                      label: 'ARTISANS',
-                      title: 'Win new jobs',
-                      subtitle: 'Bid • Chat • Get paid',
-                      accent: MyShopColors.primaryGoldDark,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
 }
 
-/// One of the two phone-style cards shown inside the hero.
-class _PlatformCard extends StatelessWidget {
-  const _PlatformCard({
-    required this.icon,
-    required this.label,
-    required this.title,
-    required this.subtitle,
-    required this.accent,
-  });
+class _PillBadge extends StatelessWidget {
+  const _PillBadge({required this.icon, required this.label});
 
   final IconData icon;
   final String label;
-  final String title;
-  final String subtitle;
-  final Color accent;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 180,
-      padding: const EdgeInsets.all(MyShopSpacing.md),
+      padding: const EdgeInsets.symmetric(
+        horizontal: MyShopSpacing.md,
+        vertical: MyShopSpacing.sm,
+      ),
       decoration: BoxDecoration(
-        color: MyShopColors.surfaceWhite,
-        borderRadius: BorderRadius.circular(20),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(MyShopRadius.pill),
         boxShadow: [
           BoxShadow(
-            color: MyShopColors.darkText.withValues(alpha: 0.08),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, size: 24, color: accent),
-          ),
-          const SizedBox(height: MyShopSpacing.md),
+          Icon(icon, size: 14, color: MyShopColors.primaryGoldDark),
+          const SizedBox(width: 6),
           Text(
             label,
-            style: MyShopTypography.overline.copyWith(color: accent),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: MyShopTypography.h3,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
-            style: MyShopTypography.caption,
-            maxLines: 2,
-          ),
-          const SizedBox(height: MyShopSpacing.sm),
-          Container(
-            height: 4,
-            width: 60,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.25),
-              borderRadius: BorderRadius.circular(2),
+            style: MyShopTypography.body1.copyWith(
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+              color: MyShopColors.textPrimary,
+              letterSpacing: 0.6,
             ),
           ),
         ],
