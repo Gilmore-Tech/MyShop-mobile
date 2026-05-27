@@ -16,6 +16,14 @@ class CurrentLocationService {
 
   final Ref _ref;
 
+  /// Serialises concurrent ensure() calls. Geolocator throws
+  /// PermissionRequestInProgressException if requestPermission() is
+  /// invoked while another request is still pending, which happens on
+  /// first launch when several providers/widgets fire location reads
+  /// during the initial build. Sharing a single in-flight Future across
+  /// callers collapses the parallel requests into one.
+  Future<Position?>? _inFlight;
+
   /// Returns the cached fix if we already have one, otherwise requests
   /// permission (if needed), reads the GPS, caches it, and returns the
   /// new fix. Returns `null` when the user denies permission or location
@@ -25,12 +33,24 @@ class CurrentLocationService {
   /// open at the right place, then refresh with a fresh GPS read on a short
   /// timeout. Without the timeout, iOS can hang 30s–2min waiting for the
   /// sensor to settle (kCLErrorDomain 0).
-  Future<Position?> ensure({bool forceRefresh = false}) async {
+  Future<Position?> ensure({bool forceRefresh = false}) {
     if (!forceRefresh) {
       final cached = _ref.read(currentDevicePositionProvider);
-      if (cached != null) return cached;
+      if (cached != null) return Future.value(cached);
+      // Reuse an already-running ensure() instead of starting a parallel
+      // permission request that the plugin would reject.
+      final existing = _inFlight;
+      if (existing != null) return existing;
     }
 
+    final future = _ensureInternal();
+    _inFlight = future;
+    return future.whenComplete(() {
+      if (identical(_inFlight, future)) _inFlight = null;
+    });
+  }
+
+  Future<Position?> _ensureInternal() async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) return null;
 

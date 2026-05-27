@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:api_client/api_client.dart' show ApiException;
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
+import '../../../core/di/providers.dart';
 import '../providers/bid_list_provider.dart';
 import '../providers/job_detail_provider.dart';
 import '../widgets/bid_list_sheet.dart';
@@ -208,18 +210,98 @@ class _AppBar extends StatelessWidget {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (_) => _MoreMenuSheet(w: w, h: h),
+      builder: (_) => _MoreMenuSheet(jobId: job.id, w: w, h: h),
     );
   }
 }
 
-class _MoreMenuSheet extends StatelessWidget {
+class _MoreMenuSheet extends ConsumerStatefulWidget {
+  final String jobId;
   final double w;
   final double h;
-  const _MoreMenuSheet({required this.w, required this.h});
+  const _MoreMenuSheet({
+    required this.jobId,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  ConsumerState<_MoreMenuSheet> createState() => _MoreMenuSheetState();
+}
+
+class _MoreMenuSheetState extends ConsumerState<_MoreMenuSheet> {
+  /// Reentry guard so a slow cancel-API doesn't queue a second request
+  /// while the first is in flight.
+  bool _cancelling = false;
+
+  Future<void> _handleCancel() async {
+    if (_cancelling) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel job request?'),
+        content: const Text(
+          'Cancelling within 30 minutes of posting is free. '
+          'After that a small cancellation fee may apply.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Keep request'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: MyShopColors.error),
+            child: const Text('Cancel request'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _cancelling = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    final router = GoRouter.of(context);
+    final jobService = ref.read(jobServiceProvider);
+
+    String message = 'Job request cancelled.';
+    try {
+      final result = await jobService.cancelJob(
+        widget.jobId,
+        reason: 'client_cancelled',
+      );
+      final feePesewas =
+          (result['cancellationFeePesewas'] as num?)?.toInt() ?? 0;
+      if (feePesewas > 0) {
+        final fee = (feePesewas / 100).toStringAsFixed(2);
+        message = 'Request cancelled. Cancellation fee: GHS $fee';
+      }
+    } on ApiException catch (e) {
+      message = e.message;
+    } catch (_) {
+      message = 'Could not cancel the request. Please try again.';
+    }
+
+    // Invalidate the screen's data sources so any provider holding a
+    // stale "open" job doesn't keep the user looking at the same page
+    // after they navigate away and back.
+    ref.invalidate(jobDetailProvider(widget.jobId));
+    ref.invalidate(bidsForJobProvider(widget.jobId));
+
+    if (!mounted) return;
+    navigator.pop(); // close the menu sheet
+    messenger.showSnackBar(SnackBar(content: Text(message)));
+    // Land the user on activity so they can see the cancellation
+    // reflected (and aren't stuck on the now-cancelled job page).
+    router.go(AppRoutes.activity);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final w = widget.w;
+    final h = widget.h;
     final bottomPad = MediaQuery.paddingOf(context).bottom;
     return Container(
       decoration: BoxDecoration(
@@ -235,21 +317,15 @@ class _MoreMenuSheet extends StatelessWidget {
         children: [
           _MenuRow(
             icon: Icons.cancel_outlined,
-            label: 'Cancel Request',
-            color: MyShopColors.error,
-            onTap: () => Navigator.of(context).pop(),
+            label: _cancelling ? 'Cancelling…' : 'Cancel Request',
+            color: _cancelling ? MyShopColors.disabled : MyShopColors.error,
+            onTap: _cancelling ? () {} : () => _handleCancel(),
             w: w,
             h: h,
           ),
-          const Divider(height: 1, color: MyShopColors.divider),
-          _MenuRow(
-            icon: Icons.share_outlined,
-            label: 'Share Job Link',
-            color: MyShopColors.textPrimary,
-            onTap: () => Navigator.of(context).pop(),
-            w: w,
-            h: h,
-          ),
+          // "Share Job Link" deferred to v1.2 — no shareable job-link
+          // infrastructure on the backend yet (no share_token on jobs,
+          // unlike rides). v1.0 ships with cancel-only on this menu.
         ],
       ),
     );
