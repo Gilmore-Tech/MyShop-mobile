@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:shared_models/shared_models.dart';
 
 import '../models/api_exception.dart';
 
@@ -60,6 +61,38 @@ class JobService {
     } on DioException catch (e) {
       // Return empty list if endpoint not implemented yet.
       if (e.response?.statusCode == 404) return [];
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// GET /jobs/live-feed — Anonymised platform-wide feed of recent open jobs.
+  ///
+  /// Used by the provider artisan home "Live Job Feed" carousel as a
+  /// social-proof signal. The response is anonymised by the backend (no
+  /// client identity, no full address, no description) — every field in
+  /// [LiveFeedJob] is safe to display to any artisan. Returns an empty list
+  /// on any non-success status so the carousel falls back to the empty-state
+  /// placeholder instead of throwing.
+  Future<List<LiveFeedJob>> getLiveFeed({int limit = 20}) async {
+    try {
+      final response = await _dio.get(
+        '/jobs/live-feed',
+        queryParameters: {'limit': limit},
+      );
+      final body = response.data;
+      List<dynamic> raw = const [];
+      if (body is Map<String, dynamic>) {
+        final data = body['data'];
+        if (data is List) raw = data;
+      }
+      return raw
+          .whereType<Map<String, dynamic>>()
+          .map(LiveFeedJob.fromJson)
+          .toList(growable: false);
+    } on DioException catch (e) {
+      // Endpoint not yet deployed → empty feed (carousel falls back to
+      // the existing "No jobs nearby" empty state).
+      if (e.response?.statusCode == 404) return const [];
       throw ApiException.fromDioException(e);
     }
   }

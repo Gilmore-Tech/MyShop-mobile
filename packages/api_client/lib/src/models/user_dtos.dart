@@ -272,6 +272,8 @@ class ArtisanProfile {
     this.privacyPolicyAcceptedAt,
     this.displayName,
     this.businessName,
+    this.businessAddress,
+    this.businessPhone,
     this.profilePhotoUrl,
     this.serviceLatitude,
     this.serviceLongitude,
@@ -290,6 +292,8 @@ class ArtisanProfile {
       privacyPolicyAcceptedAt: _asString(json['privacyPolicyAcceptedAt']),
       displayName: _asString(json['displayName']),
       businessName: _asString(json['businessName']),
+      businessAddress: _asString(json['businessAddress']),
+      businessPhone: _asString(json['businessPhone']),
       ghanaCardVerified: json['ghanaCardVerified'] as bool? ?? false,
       profilePhotoUrl: _asString(json['profilePhotoUrl']),
       verificationStatus: _asString(json['verificationStatus']) ?? 'pending',
@@ -333,6 +337,14 @@ class ArtisanProfile {
   /// The artisan's trade/business name (e.g. "Bright Spark Electrical").
   /// Distinct from [UserProfile.fullName] which is the person's legal name.
   final String? businessName;
+
+  /// Public business address shown to clients. Distinct from any pickup or
+  /// saved location — this is the artisan's "where you'll find me" string.
+  final String? businessAddress;
+
+  /// Public business contact phone (e.g. WhatsApp Business). Independent of
+  /// the OTP-login phone on `users.phone`, which is shared across roles.
+  final String? businessPhone;
 
   final bool ghanaCardVerified;
   final String? profilePhotoUrl;
@@ -508,6 +520,9 @@ class UpdateArtisanProfileRequest {
   const UpdateArtisanProfileRequest({
     this.displayName,
     this.businessName,
+    this.email,
+    this.businessAddress,
+    this.businessPhone,
     this.shopCapacity,
     this.maxConcurrentJobs,
     this.serviceLatitude,
@@ -520,6 +535,13 @@ class UpdateArtisanProfileRequest {
 
   final String? displayName;
   final String? businessName;
+
+  /// Per-role artisan email (independent of users.email and of other roles
+  /// on the same phone). Unique within the artisan role on the backend.
+  final String? email;
+
+  final String? businessAddress;
+  final String? businessPhone;
   final String? shopCapacity;
   final int? maxConcurrentJobs;
   final double? serviceLatitude;
@@ -533,6 +555,9 @@ class UpdateArtisanProfileRequest {
     final json = <String, dynamic>{};
     if (displayName != null) json['displayName'] = displayName;
     if (businessName != null) json['businessName'] = businessName;
+    if (email != null) json['email'] = email;
+    if (businessAddress != null) json['businessAddress'] = businessAddress;
+    if (businessPhone != null) json['businessPhone'] = businessPhone;
     if (shopCapacity != null) json['shopCapacity'] = shopCapacity;
     if (maxConcurrentJobs != null) {
       json['maxConcurrentJobs'] = maxConcurrentJobs;
