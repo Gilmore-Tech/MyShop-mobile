@@ -24,7 +24,7 @@ import '../widgets/settings_section.dart';
 ///   1. Header: avatar, name, role badge, verification chip, contact info
 ///   2. Edit Profile + KYC status buttons row
 ///   3. Verification banner (in-progress / verified state)
-///   4. Performance card (Active Trips, Earnings, Rating)
+///   4. Performance card (Trips/Jobs Today, Earnings, Rating)
 ///   5. General Settings section
 ///   6. App & Security section
 ///   7. Support section
@@ -263,7 +263,8 @@ class AccountSettingsScreen extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
               child: _PerformanceCard(
-                trips: todayTrips,
+                isDriver: isDriver,
+                bookings: todayTrips,
                 earnings: todayEarnings,
                 rating: ratingDisplay,
               ),
@@ -402,7 +403,7 @@ class AccountSettingsScreen extends ConsumerWidget {
               child: Column(children: [
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                   Image.asset(
-                    'assets/images/myshop_logo.png',
+                    'assets/images/myshop_provider_logo.png',
                     width: 16,
                     height: 16,
                     fit: BoxFit.contain,
@@ -605,16 +606,25 @@ class _VerificationBanner extends StatelessWidget {
 
 class _PerformanceCard extends StatelessWidget {
   const _PerformanceCard({
-    required this.trips,
+    required this.isDriver,
+    required this.bookings,
     required this.earnings,
     required this.rating,
   });
-  final String trips;
+  final bool isDriver;
+  final String bookings;
   final String earnings;
   final String rating;
 
   @override
   Widget build(BuildContext context) {
+    // Drivers do trips; artisans do jobs. Pair the label with a matching
+    // icon so the card reads correctly on each role's account screen.
+    final bookingsLabel = isDriver ? 'Trips Today' : 'Jobs Today';
+    final bookingsIcon = isDriver
+        ? Icons.directions_car_outlined
+        : Icons.handyman_outlined;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -646,9 +656,9 @@ class _PerformanceCard extends StatelessWidget {
           child: Row(
             children: [
               _PerfStat(
-                  icon: Icons.shopping_bag_outlined,
-                  value: trips,
-                  label: 'Trips Today'),
+                  icon: bookingsIcon,
+                  value: bookings,
+                  label: bookingsLabel),
               const _PerfDivider(),
               _PerfStat(
                   icon: Icons.payments_outlined,

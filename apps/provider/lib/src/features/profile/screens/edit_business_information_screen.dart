@@ -30,7 +30,6 @@ class EditBusinessInformationScreen extends ConsumerStatefulWidget {
 class _EditBusinessInformationScreenState
     extends ConsumerState<EditBusinessInformationScreen> {
   late final TextEditingController _name;
-  late final TextEditingController _registration;
   late final TextEditingController _address;
   late final TextEditingController _email;
   late final TextEditingController _phone;
@@ -55,12 +54,14 @@ class _EditBusinessInformationScreenState
     final ap = user?.artisanProfile;
 
     _name = TextEditingController(
-      text: user?.businessName ?? user?.displayName ?? '',
+      text: ap?.businessName ?? ap?.displayName ?? user?.fullName ?? '',
     );
-    _registration = TextEditingController(); // No backend field yet
-    _address = TextEditingController(); // No backend field yet
-    _email = TextEditingController(text: user?.email ?? '');
-    _phone = TextEditingController(text: user?.phone ?? '');
+    _address = TextEditingController(text: ap?.businessAddress ?? '');
+    // All three contact fields are per-role on `artisans.*`. The login phone
+    // on `users.phone` is intentionally NOT used here — it's the OTP identity,
+    // not a public contact number.
+    _email = TextEditingController(text: ap?.email ?? '');
+    _phone = TextEditingController(text: ap?.businessPhone ?? '');
     _radiusKm = ap?.serviceRadiusKm ?? 5;
     if (ap?.hasServiceLocation == true) {
       _centre = LatLng(ap!.serviceLatitude!, ap.serviceLongitude!);
@@ -74,7 +75,7 @@ class _EditBusinessInformationScreenState
           : LatLng(cached.latitude, cached.longitude);
     }
 
-    for (final c in [_name, _registration, _address, _email, _phone]) {
+    for (final c in [_name, _address, _email, _phone]) {
       c.addListener(_markDirty);
     }
   }
@@ -86,7 +87,6 @@ class _EditBusinessInformationScreenState
   @override
   void dispose() {
     _name.dispose();
-    _registration.dispose();
     _address.dispose();
     _email.dispose();
     _phone.dispose();
@@ -110,11 +110,22 @@ class _EditBusinessInformationScreenState
 
     setState(() => _isSaving = true);
 
-    // Save business name, service area location, and radius via PUT /users/me/artisan.
+    // PUT /v1/users/me/artisan. Address, email, phone are optional. Empty
+    // input is sent as `null` which the request omits from the JSON body, so
+    // a cleared field stays at whatever the server last had. Re-clearing a
+    // previously set value is a v1.1 follow-up if anyone asks for it.
+    String? trimOrNull(String value) {
+      final t = value.trim();
+      return t.isEmpty ? null : t;
+    }
+
     final error =
         await ref.read(authControllerProvider.notifier).updateArtisanProfile(
               UpdateArtisanProfileRequest(
                 businessName: _name.text.trim(),
+                businessAddress: trimOrNull(_address.text),
+                email: trimOrNull(_email.text),
+                businessPhone: trimOrNull(_phone.text),
                 serviceLatitude: _centre.latitude,
                 serviceLongitude: _centre.longitude,
                 serviceRadiusKm: _radiusKm,
@@ -155,18 +166,14 @@ class _EditBusinessInformationScreenState
                   _SectionCard(
                     icon: Icons.business_outlined,
                     title: 'Business Details',
-                    subtitle: 'Provide your registered business information.',
+                    subtitle: 'Shown to clients when they view your profile.',
                     children: [
                       _LabelledField(
                         label: 'BUSINESS NAME',
                         controller: _name,
                       ),
                       _LabelledField(
-                        label: 'REGISTRATION NUMBER',
-                        controller: _registration,
-                      ),
-                      _LabelledField(
-                        label: 'BUSINESS ADDRESS',
+                        label: 'BUSINESS ADDRESS (OPTIONAL)',
                         controller: _address,
                         minLines: 2,
                         maxLines: 3,
@@ -177,15 +184,16 @@ class _EditBusinessInformationScreenState
                   _SectionCard(
                     icon: Icons.alternate_email,
                     title: 'Contact',
-                    subtitle: 'How clients can reach you outside the app.',
+                    subtitle:
+                        'How clients can reach you outside the app. Independent of your login phone.',
                     children: [
                       _LabelledField(
-                        label: 'BUSINESS EMAIL',
+                        label: 'BUSINESS EMAIL (OPTIONAL)',
                         controller: _email,
                         keyboardType: TextInputType.emailAddress,
                       ),
                       _LabelledField(
-                        label: 'BUSINESS PHONE',
+                        label: 'BUSINESS PHONE (OPTIONAL)',
                         controller: _phone,
                         keyboardType: TextInputType.phone,
                       ),

@@ -9,6 +9,7 @@ import 'package:shared_models/shared_models.dart';
 import '../../app/router.dart' show goRouterProvider;
 import '../../features/artisan_home/providers/active_job_provider.dart';
 import '../../features/artisan_home/providers/job_poller_provider.dart';
+import '../../features/artisan_home/providers/live_job_feed_provider.dart';
 import '../../features/artisan_home/widgets/rate_client_sheet.dart';
 import '../../features/artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dart';
@@ -385,6 +386,25 @@ void _connectAndListen(Ref ref, SocketService socket) {
       ..on('job:new', handleJob)
       ..on('job:request', handleJob); // legacy
 
+    // Platform-wide anonymised "Live Job Feed" snapshots — independent of
+    // category/radius eligibility. Drives the read-only artisan-home carousel.
+    void handleJobFeed(dynamic data) {
+      if (data is! Map<String, dynamic>) {
+        debugPrint('[WS] job:feed:new payload not a Map — got ${data.runtimeType}');
+        return;
+      }
+      try {
+        final snapshot = LiveFeedJob.fromJson(data);
+        ref.container.read(liveJobFeedProvider.notifier).prepend(snapshot);
+      } catch (e, st) {
+        debugPrint('[WS] Failed to parse job:feed:new payload: $e\n$st');
+      }
+    }
+
+    socket
+      ..off('job:feed:new')
+      ..on('job:feed:new', handleJobFeed);
+
     debugPrint('[WS] Job/ride listeners attached (id=${socket.isConnected})');
 
     // Canonical ride snapshot — fired by the backend on every ride state
@@ -508,6 +528,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
       ..off('job:bid_rejected')
       ..off('bid:accepted')
       ..off('bid:rejected')
+      ..off('job:cancelled')
       ..on('job:status', handleJobStatus)
       // Paystack flow uses the `:changed` suffix; older code emits plain
       // `job:status`. Listen for both so every status transition — including
@@ -518,7 +539,14 @@ void _connectAndListen(Ref ref, SocketService socket) {
       ..on('job:bid_accepted', handleJobStatus)
       ..on('job:bid_rejected', handleJobStatus)
       ..on('bid:accepted', handleJobStatus)
-      ..on('bid:rejected', handleJobStatus);
+      ..on('bid:rejected', handleJobStatus)
+      // Client cancelled a job during the bidding window (pre-acceptance)
+      // OR mid-trip. Same payload shape — `{jobId, status: 'cancelled', …}`
+      // — so the existing handler does the right thing: drops the job
+      // from the pending-incoming queue, marks the active job cancelled
+      // if it was active. Without this listener the artisan kept seeing
+      // bid requests for jobs the client had already pulled.
+      ..on('job:cancelled', handleJobStatus);
 
     // Fired by the backend's POST /payments/acknowledge-cash when the
     // client lands on the payment screen and picks a method. Flips the

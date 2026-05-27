@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../core/widgets/provider_status_dot.dart';
 import '../../auth/providers/current_user_provider.dart';
 import '../../profile/providers/verification_provider.dart';
 
@@ -97,22 +98,12 @@ class DriverHomeHeader extends ConsumerWidget {
                           )
                         : null,
                   ),
-                  // Green online indicator
-                  Positioned(
+                  // Status indicator — green/orange/red/grey based on the
+                  // provider's online state + ability to go online.
+                  const Positioned(
                     bottom: 0.86,
                     right: 0.86,
-                    child: Container(
-                      width: 10,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: MyShopColors.online,
-                        borderRadius: BorderRadius.circular(5),
-                        border: Border.all(
-                          color: MyShopColors.surfaceWhite,
-                          width: 1.5,
-                        ),
-                      ),
-                    ),
+                    child: ProviderStatusDot(size: 10),
                   ),
                 ],
               ),

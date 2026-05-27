@@ -9,10 +9,17 @@ import '../providers/earnings_providers.dart';
 /// `/payments/payouts` endpoint is role-agnostic — backend filters by the
 /// authenticated user's role — so this widget is shared between the driver
 /// and artisan earnings screens.
+///
+/// Strictly capped at [_kMaxRecentRows] entries, sorted most-recent first.
+/// The full list lives on the dedicated payouts history screen reachable
+/// via "See All".
 class PayoutsList extends ConsumerWidget {
-  const PayoutsList({super.key, this.maxRows = 5});
+  const PayoutsList({super.key});
 
-  final int maxRows;
+  /// Hard cap — the "Recent Payouts" card never grows past this regardless
+  /// of how many records the backend hands over. Five gives the user a
+  /// glanceable history without dominating the earnings screen.
+  static const int _kMaxRecentRows = 5;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -33,9 +40,15 @@ class PayoutsList extends ConsumerWidget {
             subtitle: 'Your payout history will appear here',
           );
         }
+        // Sort newest first by createdAt — the backend doesn't guarantee
+        // ordering, so without this the "Recent" 5 could land on any 5
+        // arbitrary records.
+        final sorted = [...rows]
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        final recent = sorted.take(_kMaxRecentRows);
         return Column(
           children: [
-            for (final row in rows.take(maxRows))
+            for (final row in recent)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: _PayoutRow(payout: row),

@@ -8,6 +8,12 @@ import '../providers/categories_provider.dart';
 import '../providers/registration_controller.dart';
 import 'registration_step_scaffold.dart';
 
+/// Max number of service categories an artisan can pick at signup.
+/// Keeps the bid pool focused on tradespeople who actually do the work
+/// rather than artisans who tick every box. Server-side gates also enforce
+/// this on the registration endpoint.
+const kMaxArtisanCategories = 3;
+
 /// Step 2 of artisan registration — business details, services, radius.
 class ArtisanBusinessStep extends ConsumerStatefulWidget {
   const ArtisanBusinessStep({super.key});
@@ -130,7 +136,8 @@ class _ArtisanBusinessStepState extends ConsumerState<ArtisanBusinessStep>
           Text('Services you offer', style: MyShopTypography.body1),
           const SizedBox(height: 2),
           Text(
-            'Pick everything you can do well.',
+            'Pick up to $kMaxArtisanCategories services you do best '
+            '(${draft.serviceCategories.length}/$kMaxArtisanCategories selected).',
             style: MyShopTypography.body2,
           ),
           if (showAll && draft.serviceCategories.isEmpty) ...[
@@ -217,11 +224,25 @@ class _CategoriesChips extends StatelessWidget {
   final bool showError;
   final ValueChanged<List<String>> onChanged;
 
-  void _toggle(String id) {
+  bool get _atCap => selectedIds.length >= kMaxArtisanCategories;
+
+  void _toggle(BuildContext context, String id) {
     final next = List<String>.from(selectedIds);
     if (next.contains(id)) {
       next.remove(id);
     } else {
+      if (_atCap) {
+        // Visual cap should already prevent this via disabled chips, but
+        // guard the data path so an out-of-order tap never sneaks past it.
+        MyShopToast.show(
+          context,
+          message:
+              'You can pick up to $kMaxArtisanCategories services. '
+              'Remove one to add another.',
+          type: ToastType.warning,
+        );
+        return;
+      }
       next.add(id);
     }
     onChanged(next);
@@ -247,11 +268,13 @@ class _CategoriesChips extends StatelessWidget {
         widgets.add(Wrap(
           spacing: MyShopSpacing.sm,
           runSpacing: MyShopSpacing.sm,
-          children: cat.children.map((sub) => _chip(sub.id, sub.name)).toList(),
+          children: cat.children
+              .map((sub) => _chip(context, sub.id, sub.name))
+              .toList(),
         ));
       } else {
         // Leaf category — collect for a single wrap
-        widgets.add(_chip(cat.id, cat.name));
+        widgets.add(_chip(context, cat.id, cat.name));
       }
     }
 
@@ -289,28 +312,37 @@ class _CategoriesChips extends StatelessWidget {
     );
   }
 
-  Widget _chip(String id, String name) {
+  Widget _chip(BuildContext context, String id, String name) {
     final selected = selectedIds.contains(id);
+    // Disabled = at the cap AND not yet selected. The user can always tap a
+    // selected chip to deselect, even when at the cap.
+    final disabled = _atCap && !selected;
     return FilterChip(
       label: Text(name),
       selected: selected,
       showCheckmark: true,
       labelStyle: MyShopTypography.body2.copyWith(
-        color:
-            selected ? MyShopColors.primaryGoldDark : MyShopColors.textPrimary,
+        color: selected
+            ? MyShopColors.primaryGoldDark
+            : disabled
+                ? MyShopColors.textHint
+                : MyShopColors.textPrimary,
         fontWeight: FontWeight.w600,
       ),
       backgroundColor: MyShopColors.surfaceWhite,
+      disabledColor: MyShopColors.surfaceGrey,
       selectedColor: MyShopColors.primaryGoldLight,
       checkmarkColor: MyShopColors.primaryGoldDark,
       side: BorderSide(
         color: selected
             ? MyShopColors.primaryGold
-            : showError
-                ? MyShopColors.error
-                : MyShopColors.divider,
+            : disabled
+                ? MyShopColors.divider
+                : showError
+                    ? MyShopColors.error
+                    : MyShopColors.divider,
       ),
-      onSelected: (_) => _toggle(id),
+      onSelected: disabled ? null : (_) => _toggle(context, id),
     );
   }
 }
