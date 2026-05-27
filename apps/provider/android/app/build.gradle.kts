@@ -42,15 +42,24 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // Google Maps key flows from `local.properties` (gitignored) →
-        // `${MAPS_API_KEY}` placeholder in AndroidManifest.xml. Matches
-        // the client app's setup. Returns empty when the key isn't
-        // configured locally; the manifest substitution then injects
+        // Google Maps key resolution order:
+        //   1. Gradle project property `MAPS_API_KEY` (sourced from
+        //      android/gradle.properties, which `flutter run` does NOT
+        //      regenerate — unlike local.properties, which it wipes on
+        //      every debug build).
+        //   2. `local.properties` fallback for legacy `tool/build.sh`
+        //      release builds that already write there.
+        // Empty when neither is set; manifest substitution then injects
         // an empty value and the map renders blank (no crash).
-        val localProps = Properties()
-        val localPropsFile = rootProject.file("local.properties")
-        if (localPropsFile.exists()) localProps.load(localPropsFile.inputStream())
-        manifestPlaceholders["MAPS_API_KEY"] = localProps.getProperty("MAPS_API_KEY", "")
+        val mapsApiKey: String = run {
+            val fromGradle = (project.findProperty("MAPS_API_KEY") as String?)?.trim()
+            if (!fromGradle.isNullOrEmpty()) return@run fromGradle
+            val localProps = Properties()
+            val localPropsFile = rootProject.file("local.properties")
+            if (localPropsFile.exists()) localProps.load(localPropsFile.inputStream())
+            localProps.getProperty("MAPS_API_KEY", "")
+        }
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
     signingConfigs {
@@ -84,8 +93,14 @@ android {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // Firebase BOM kept so any firebase_* Flutter plugin native deps resolve
+    // to a single version line. We deliberately do NOT pull in firebase-analytics:
+    // no Dart code uses it, and its transitive play-services-measurement-api
+    // auto-injects ACCESS_ADSERVICES_AD_ID + ACCESS_ADSERVICES_ATTRIBUTION
+    // which Play Console cross-checks against the Data Safety "Advertising ID
+    // = No" answer we give. If product analytics is ever added, also wire the
+    // ad-id collection disable meta-data in AndroidManifest before re-enabling.
     implementation(platform("com.google.firebase:firebase-bom:34.12.0"))
-    implementation("com.google.firebase:firebase-analytics")
 }
 
 flutter {

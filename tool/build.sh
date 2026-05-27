@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Build a MyShop mobile app for production.
 #
-#   tool/build.sh client android         # AAB at apps/client/build/app/outputs/bundle/release/
+#   tool/build.sh client android         # AAB at apps/client/build/app/outputs/bundle/release/  (Play Store)
+#   tool/build.sh client android-apk     # fat APK at apps/client/build/app/outputs/flutter-apk/ (sideload / alpha)
 #   tool/build.sh client ios             # archive that opens in Xcode for App Store upload
 #   tool/build.sh provider android
+#   tool/build.sh provider android-apk
 #   tool/build.sh provider ios
 #
 # Reads `.env.prod` (gitignored — copy from `.env.dev.example` and fill in
@@ -27,7 +29,7 @@ cd "$(dirname "$0")/.."
 REPO_ROOT="$(pwd)"
 
 if [[ $# -lt 2 ]]; then
-  echo "usage: tool/build.sh <client|provider> <android|ios> [extra flutter args...]" >&2
+  echo "usage: tool/build.sh <client|provider> <android|android-apk|ios> [extra flutter args...]" >&2
   exit 2
 fi
 
@@ -44,9 +46,9 @@ case "$APP" in
 esac
 
 case "$PLATFORM" in
-  android|ios) ;;
+  android|android-apk|ios) ;;
   *)
-    echo "error: platform must be 'android' or 'ios', got '$PLATFORM'" >&2
+    echo "error: platform must be 'android', 'android-apk', or 'ios', got '$PLATFORM'" >&2
     exit 2
     ;;
 esac
@@ -87,18 +89,24 @@ fi
 
 APP_DIR="$REPO_ROOT/apps/$APP"
 
-if [[ "$PLATFORM" == "android" ]]; then
-  # `MAPS_API_KEY` in `android/local.properties` is what
-  # `manifestPlaceholders` reads to fill `${MAPS_API_KEY}` in
-  # AndroidManifest.xml at build time.
-  LOCAL_PROPS="$APP_DIR/android/local.properties"
-  if [[ -f "$LOCAL_PROPS" ]]; then
-    # Strip any existing MAPS_API_KEY line so we don't end up with two.
-    sed -i.bak '/^MAPS_API_KEY=/d' "$LOCAL_PROPS"
-    rm -f "$LOCAL_PROPS.bak"
+if [[ "$PLATFORM" == "android" || "$PLATFORM" == "android-apk" ]]; then
+  # Native Maps SDK reads MAPS_API_KEY via the `${MAPS_API_KEY}`
+  # manifestPlaceholder, which build.gradle.kts resolves from Gradle's
+  # `project.findProperty("MAPS_API_KEY")` (android/gradle.properties).
+  #
+  # We use gradle.properties — not local.properties — because Flutter
+  # regenerates local.properties on every debug `flutter run`, wiping
+  # any custom keys. gradle.properties is gitignored and stable.
+  GRADLE_PROPS="$APP_DIR/android/gradle.properties"
+  if [[ -f "$GRADLE_PROPS" ]]; then
+    sed -i.bak '/^MAPS_API_KEY=/d' "$GRADLE_PROPS"
+    rm -f "$GRADLE_PROPS.bak"
+    if [[ -n "$(tail -c 1 "$GRADLE_PROPS")" ]]; then
+      printf '\n' >> "$GRADLE_PROPS"
+    fi
   fi
-  echo "MAPS_API_KEY=$GOOGLE_MAPS_API_KEY" >> "$LOCAL_PROPS"
-  echo "→ wrote MAPS_API_KEY to $LOCAL_PROPS"
+  echo "MAPS_API_KEY=$GOOGLE_MAPS_API_KEY" >> "$GRADLE_PROPS"
+  echo "→ wrote MAPS_API_KEY to $GRADLE_PROPS"
 fi
 
 if [[ "$PLATFORM" == "ios" ]]; then
@@ -120,6 +128,12 @@ case "$PLATFORM" in
   android)
     echo "→ flutter build appbundle (release) for apps/$APP with ${#DEFINES[@]} dart-defines"
     exec flutter build appbundle --release "${DEFINES[@]}" "$@"
+    ;;
+  android-apk)
+    echo "→ flutter build apk (release, fat APK) for apps/$APP with ${#DEFINES[@]} dart-defines"
+    echo "  Output: $APP_DIR/build/app/outputs/flutter-apk/app-release.apk"
+    echo "  Install on a phone with: adb install -r <path>/app-release.apk"
+    exec flutter build apk --release "${DEFINES[@]}" "$@"
     ;;
   ios)
     echo "→ flutter build ipa (release) for apps/$APP with ${#DEFINES[@]} dart-defines"

@@ -44,10 +44,22 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        val localProps = Properties()
-        val localPropsFile = rootProject.file("local.properties")
-        if (localPropsFile.exists()) localProps.load(localPropsFile.inputStream())
-        manifestPlaceholders["MAPS_API_KEY"] = localProps.getProperty("MAPS_API_KEY", "")
+        // Google Maps key resolution order:
+        //   1. Gradle project property `MAPS_API_KEY` (sourced from
+        //      android/gradle.properties, which `flutter run` does NOT
+        //      regenerate — unlike local.properties, which it wipes on
+        //      every debug build).
+        //   2. `local.properties` fallback for legacy `tool/build.sh`
+        //      release builds that already write there.
+        val mapsApiKey: String = run {
+            val fromGradle = (project.findProperty("MAPS_API_KEY") as String?)?.trim()
+            if (!fromGradle.isNullOrEmpty()) return@run fromGradle
+            val localProps = Properties()
+            val localPropsFile = rootProject.file("local.properties")
+            if (localPropsFile.exists()) localProps.load(localPropsFile.inputStream())
+            localProps.getProperty("MAPS_API_KEY", "")
+        }
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
     signingConfigs {
