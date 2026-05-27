@@ -1,11 +1,18 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 
+import 'package:flutter/material.dart' show DateTimeRange;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 
 import '../../../core/di/providers.dart';
 import 'submitted_bids_provider.dart';
+
+/// Optional date-range filter applied on top of the tab filter. Null = no
+/// date filter (every entry passes through). The range is inclusive on
+/// both ends; the filter compares against `job.createdAt`.
+final artisanJobsDateFilterProvider =
+    StateProvider<DateTimeRange?>((_) => null);
 
 /// Hard cap on the jobs fetch — without this, a stalled backend leaves the
 /// spinner up indefinitely because `listJobs` has no built-in deadline.
@@ -346,6 +353,7 @@ final artisanJobsFilteredProvider = Provider.autoDispose
     .family<List<ArtisanJobEntry>, ArtisanJobFilter>((ref, filter) {
   final state = ref.watch(artisanJobsProvider);
   final localBids = ref.watch(submittedBidsProvider);
+  final dateFilter = ref.watch(artisanJobsDateFilterProvider);
 
   // 1. Enrich every backend entry with local bid data when present.
   //    Also merge client identity (name/phone/photo) and cosmetic fields
@@ -399,8 +407,30 @@ final artisanJobsFilteredProvider = Provider.autoDispose
       );
     }
   }
-  return results;
+
+  // 3. Apply the optional date-range filter against `job.createdAt`.
+  //    Entries with an unparseable / missing timestamp drop out — without
+  //    a date we can't decide which side of the range they're on.
+  if (dateFilter == null) return results;
+  return results.where((e) => _inDateRange(e.job.createdAt, dateFilter)).toList();
 });
+
+/// True when [iso] falls inside [range] (inclusive on both ends, day-level
+/// precision). Returns false for null / unparseable timestamps so they
+/// never sneak past a filter the user intentionally set.
+bool _inDateRange(String? iso, DateTimeRange range) {
+  if (iso == null) return false;
+  final dt = DateTime.tryParse(iso);
+  if (dt == null) return false;
+  final local = dt.toLocal();
+  final start = DateTime(range.start.year, range.start.month, range.start.day);
+  final endExclusive = DateTime(
+    range.end.year,
+    range.end.month,
+    range.end.day,
+  ).add(const Duration(days: 1));
+  return !local.isBefore(start) && local.isBefore(endExclusive);
+}
 
 bool _matches(ArtisanJobEntry entry, ArtisanJobFilter filter) {
   final status = entry.job.status;

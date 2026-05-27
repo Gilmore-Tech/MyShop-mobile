@@ -30,13 +30,44 @@ class _ArtisanJobsScreenState extends ConsumerState<ArtisanJobsScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: ArtisanJobFilter.values.length, vsync: this);
+    // Land on the "Bids" tab by default — that's the artisan's primary
+    // workspace (where their submitted bids live). The other tabs cover
+    // adjacent states (new requests, jobs in progress, completed work).
+    _tabs = TabController(
+      length: ArtisanJobFilter.values.length,
+      vsync: this,
+      initialIndex: ArtisanJobFilter.submitted.index,
+    );
     // Clear the "New" badge once the artisan opens this screen — they're
     // looking at the requests now.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       ref.read(navBadgeProvider.notifier).clear('/trips');
     });
+  }
+
+  Future<void> _pickDateRange() async {
+    final current = ref.read(artisanJobsDateFilterProvider);
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 2),
+      lastDate: now,
+      initialDateRange: current ??
+          DateTimeRange(
+            start: now.subtract(const Duration(days: 30)),
+            end: now,
+          ),
+      helpText: 'Filter by date',
+      saveText: 'Apply',
+    );
+    if (picked != null) {
+      ref.read(artisanJobsDateFilterProvider.notifier).state = picked;
+    }
+  }
+
+  void _clearDateFilter() {
+    ref.read(artisanJobsDateFilterProvider.notifier).state = null;
   }
 
   @override
@@ -48,6 +79,8 @@ class _ArtisanJobsScreenState extends ConsumerState<ArtisanJobsScreen>
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(artisanJobsProvider);
+    final dateFilter = ref.watch(artisanJobsDateFilterProvider);
+    final hasDateFilter = dateFilter != null;
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
@@ -62,7 +95,23 @@ class _ArtisanJobsScreenState extends ConsumerState<ArtisanJobsScreen>
           ),
         ),
         actions: [
+          // Calendar icon — opens a date-range picker. When a filter is
+          // active, the icon flips to filled + gold so the user can see at
+          // a glance that the list is narrowed.
           IconButton(
+            tooltip: 'Filter by date',
+            icon: Icon(
+              hasDateFilter
+                  ? Icons.event_available
+                  : Icons.calendar_today_outlined,
+              color: hasDateFilter
+                  ? MyShopColors.primaryGold
+                  : MyShopColors.textPrimary,
+            ),
+            onPressed: _pickDateRange,
+          ),
+          IconButton(
+            tooltip: 'Refresh',
             icon: const Icon(Icons.refresh, color: MyShopColors.textPrimary),
             onPressed: () => ref.read(artisanJobsProvider.notifier).load(),
           ),
@@ -81,16 +130,125 @@ class _ArtisanJobsScreenState extends ConsumerState<ArtisanJobsScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabs,
+      body: Column(
         children: [
-          for (final f in ArtisanJobFilter.values)
-            _JobsTab(
-              filter: f,
-              isLoading: state.isLoading,
-              errorMessage: state.errorMessage,
-              onRetry: () => ref.read(artisanJobsProvider.notifier).load(),
+          if (hasDateFilter)
+            _DateFilterChip(
+              range: dateFilter,
+              onTap: _pickDateRange,
+              onClear: _clearDateFilter,
             ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabs,
+              children: [
+                for (final f in ArtisanJobFilter.values)
+                  _JobsTab(
+                    filter: f,
+                    isLoading: state.isLoading,
+                    errorMessage: state.errorMessage,
+                    onRetry: () =>
+                        ref.read(artisanJobsProvider.notifier).load(),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Compact chip shown below the tab bar when a date filter is active.
+/// Tap the chip body to re-open the picker; tap × to clear the filter.
+class _DateFilterChip extends StatelessWidget {
+  const _DateFilterChip({
+    required this.range,
+    required this.onTap,
+    required this.onClear,
+  });
+
+  final DateTimeRange range;
+  final VoidCallback onTap;
+  final VoidCallback onClear;
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  String _fmt(DateTime d) =>
+      '${_months[d.month - 1]} ${d.day}, ${d.year}';
+
+  @override
+  Widget build(BuildContext context) {
+    final sameDay = range.start.year == range.end.year &&
+        range.start.month == range.end.month &&
+        range.start.day == range.end.day;
+    final label = sameDay
+        ? _fmt(range.start)
+        : '${_fmt(range.start)} — ${_fmt(range.end)}';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(
+        MyShopSpacing.md,
+        MyShopSpacing.sm,
+        MyShopSpacing.md,
+        0,
+      ),
+      color: MyShopColors.surfaceWhite,
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: MyShopSpacing.md,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: MyShopColors.primaryGoldLight,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: MyShopColors.primaryGold),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.event_available,
+                      size: 14,
+                      color: MyShopColors.primaryGoldDark,
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        label,
+                        style: MyShopTypography.body2.copyWith(
+                          color: MyShopColors.primaryGoldDark,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    GestureDetector(
+                      onTap: onClear,
+                      child: const Icon(
+                        Icons.close,
+                        size: 14,
+                        color: MyShopColors.primaryGoldDark,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

@@ -12,8 +12,10 @@ import '../../earnings/providers/ratings_provider.dart';
 import '../../profile/providers/verification_provider.dart';
 import '../../profile/widgets/incomplete_profile_sheet.dart';
 import 'package:shared_models/shared_models.dart' show EarningsRole;
+import '../providers/live_job_feed_provider.dart';
 import '../widgets/artisan_home_header.dart';
 import '../widgets/artisan_online_banner.dart';
+import '../widgets/live_job_feed_carousel.dart';
 import '../widgets/performance_summary_section.dart';
 
 /// Artisan Home — card-first dashboard for artisan providers.
@@ -196,106 +198,10 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
 
             const SizedBox(height: MyShopSpacing.lg),
 
-            // Live job feed header
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: MyShopSpacing.md,
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: MyShopColors.textSecondary.withValues(alpha: 0.4),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: MyShopSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      'LIVE JOB FEED',
-                      style: MyShopTypography.overline.copyWith(
-                        color: MyShopColors.textPrimary,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 13,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: MyShopColors.surfaceWhite,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: MyShopColors.divider),
-                    ),
-                    child: Text(
-                      '0 Nearby',
-                      style: MyShopTypography.body2.copyWith(
-                        color: MyShopColors.textSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: MyShopSpacing.md),
-
-            // Live job feed — empty state
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: MyShopSpacing.md,
-              ),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 40),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFAFAFB),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: MyShopColors.divider.withValues(alpha: 0.5),
-                  ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: MyShopColors.surfaceGrey,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: const Icon(
-                        Icons.work_outline,
-                        size: 24,
-                        color: MyShopColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: MyShopSpacing.md),
-                    Text(
-                      'No jobs nearby',
-                      style: MyShopTypography.body1.copyWith(
-                        color: MyShopColors.textPrimary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: MyShopSpacing.xs),
-                    Text(
-                      'New job requests will appear here',
-                      style: MyShopTypography.body2.copyWith(
-                        color: MyShopColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            // Live job feed header + body — counts and indicator dot turn live
+            // when at least one snapshot has arrived via REST seed or the
+            // `job:feed:new` socket event.
+            _LiveJobFeedSection(),
 
             const SizedBox(height: MyShopSpacing.xxl),
           ],
@@ -310,5 +216,119 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
       return ghs.toStringAsFixed(0);
     }
     return ghs.toStringAsFixed(2);
+  }
+}
+
+/// Live job feed section: header (with data-driven count badge and indicator
+/// dot) + body that switches between the existing empty-state placeholder
+/// and the auto-scrolling [LiveJobFeedCarousel] as soon as the feed has at
+/// least one snapshot.
+class _LiveJobFeedSection extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final feed = ref.watch(liveJobFeedProvider);
+    final isLive = feed.isNotEmpty;
+    final badgeText = isLive ? '${feed.length} live' : '0 Nearby';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+          child: Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: isLive
+                      ? MyShopColors.success
+                      : MyShopColors.textSecondary.withValues(alpha: 0.4),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: MyShopSpacing.sm),
+              Expanded(
+                child: Text(
+                  'LIVE JOB FEED',
+                  style: MyShopTypography.overline.copyWith(
+                    color: MyShopColors.textPrimary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: MyShopColors.surfaceWhite,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: MyShopColors.divider),
+                ),
+                child: Text(
+                  badgeText,
+                  style: MyShopTypography.body2.copyWith(
+                    color: MyShopColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: MyShopSpacing.md),
+        if (isLive)
+          const LiveJobFeedCarousel()
+        else
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 40),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFAFAFB),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: MyShopColors.divider.withValues(alpha: 0.5),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: MyShopColors.surfaceGrey,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: const Icon(
+                      Icons.work_outline,
+                      size: 24,
+                      color: MyShopColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: MyShopSpacing.md),
+                  Text(
+                    'No jobs nearby',
+                    style: MyShopTypography.body1.copyWith(
+                      color: MyShopColors.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: MyShopSpacing.xs),
+                  Text(
+                    'New job requests will appear here',
+                    style: MyShopTypography.body2.copyWith(
+                      color: MyShopColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
   }
 }

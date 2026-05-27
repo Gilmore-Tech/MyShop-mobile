@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../core/widgets/provider_status_dot.dart';
+
 /// Top header for the Artisan Home screen.
 ///
 /// Layout: Business name + region (left) | Notification bell + avatar (right)
@@ -56,15 +58,19 @@ class ArtisanHomeHeader extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(
-                      Icons.location_on,
+                      Icons.handyman_outlined,
                       size: 14,
                       color: MyShopColors.primaryGold,
                     ),
                     const SizedBox(width: 4),
-                    Text(
-                      region.toUpperCase(),
-                      style: MyShopTypography.overline.copyWith(
-                        color: MyShopColors.primaryGold,
+                    Flexible(
+                      child: Text(
+                        region.toUpperCase(),
+                        style: MyShopTypography.overline.copyWith(
+                          color: MyShopColors.primaryGold,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -151,21 +157,10 @@ class ArtisanHomeHeader extends StatelessWidget {
                         )
                       : null,
                 ),
-                Positioned(
+                const Positioned(
                   bottom: 0,
                   right: 0,
-                  child: Container(
-                    width: 11,
-                    height: 11,
-                    decoration: BoxDecoration(
-                      color: MyShopColors.online,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: MyShopColors.surfaceWhite,
-                        width: 1.5,
-                      ),
-                    ),
-                  ),
+                  child: ProviderStatusDot(),
                 ),
               ],
             ),
