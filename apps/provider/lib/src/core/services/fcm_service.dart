@@ -325,41 +325,68 @@ class FcmService {
   /// client). Also subscribes to token refresh events.
   Future<void> syncToken() async {
     debugPrint('[FCM] syncToken() entered');
+
+    // Register the token-refresh listener FIRST. On iOS, APNs registration
+    // on a fresh install can take longer than our initial retry window.
+    // If we exhaust retries here, the FCM token still arrives later via
+    // onTokenRefresh — and we need the listener already wired so the
+    // _register call fires the moment the token shows up.
+    _tokenRefreshSub?.cancel();
+    _tokenRefreshSub = _fcm.onTokenRefresh.listen(_register);
+
     // iOS: FCM derives its token from the APNs device token. On cold
-    // start `getToken()` can race the APNs registration and return null
-    // before APNs has handed back a token — silently failing registration.
-    // Wait for the APNs token to arrive first; the retry loop below then
-    // also covers the `requestPermission()` race on first launch.
-    if (Platform.isIOS) await _awaitApnsToken();
+    // start `getToken()` throws `apns-token-not-set` if called before
+    // APNs has handed back a token. Wait first; if it never arrives
+    // within our budget, return and let onTokenRefresh catch it.
+    if (Platform.isIOS) {
+      final apnsReady = await _awaitApnsToken();
+      if (!apnsReady) {
+        debugPrint('[FCM] APNs not ready within budget — '
+            'onTokenRefresh will register the token when it arrives');
+        return;
+      }
+    }
+
     String? token;
     for (int attempt = 1; attempt <= 3; attempt++) {
-      token = await _fcm.getToken();
-      if (token != null) break;
+      try {
+        token = await _fcm.getToken();
+        if (token != null) break;
+      } catch (e) {
+        // Swallow the iOS `apns-token-not-set` race — the listener above
+        // covers the eventually-arrives case. Logging only.
+        debugPrint('[FCM] getToken threw (attempt $attempt/3): $e');
+      }
       debugPrint('[FCM] getToken null (attempt $attempt/3) — retrying');
       await Future<void>.delayed(Duration(seconds: attempt * 2));
     }
     if (token == null) {
-      debugPrint('[FCM] getToken exhausted retries — token unavailable');
+      debugPrint('[FCM] initial getToken exhausted retries — '
+          'relying on onTokenRefresh');
       return;
     }
     debugPrint('[FCM] obtained token (last 12) …${token.substring(token.length - 12)}');
     await _register(token);
-
-    _tokenRefreshSub?.cancel();
-    _tokenRefreshSub = _fcm.onTokenRefresh.listen(_register);
   }
 
-  Future<void> _awaitApnsToken() async {
-    for (int attempt = 1; attempt <= 5; attempt++) {
+  /// Returns true if APNs token arrived within the retry budget, false
+  /// otherwise. False does NOT mean "never" — onTokenRefresh will still
+  /// catch a late arrival.
+  Future<bool> _awaitApnsToken() async {
+    // 10 attempts with linear backoff = up to ~55s total. First APNs
+    // registration on a freshly installed dev build can easily take
+    // 20–40s, and the previous 15s budget routinely undershot.
+    const maxAttempts = 10;
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       final apns = await _fcm.getAPNSToken();
       if (apns != null) {
         debugPrint('[FCM] APNs token ready on attempt $attempt');
-        return;
+        return true;
       }
-      debugPrint('[FCM] APNs token not yet available (attempt $attempt/5)');
+      debugPrint('[FCM] APNs token not yet available (attempt $attempt/$maxAttempts)');
       await Future<void>.delayed(Duration(seconds: attempt));
     }
-    debugPrint('[FCM] APNs token never arrived — falling through to getToken anyway');
+    return false;
   }
 
   Future<void> _register(String token) async {
