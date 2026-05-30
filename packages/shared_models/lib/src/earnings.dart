@@ -202,6 +202,7 @@ class EarningsSummary {
     required this.todayAvailableBalancePesewas,
     required this.weeklyAvailableBalancePesewas,
     required this.netEarningsPesewas,
+    required this.tipsEarnedPesewas,
     required this.paidOutPesewas,
     required this.cashCommissionOwedPesewas,
     required this.pendingPayoutsPesewas,
@@ -222,6 +223,7 @@ class EarningsSummary {
       weeklyAvailableBalancePesewas:
           (json['weeklyAvailableBalancePesewas'] as num?)?.toInt() ?? 0,
       netEarningsPesewas: (json['netEarningsPesewas'] as num?)?.toInt() ?? 0,
+      tipsEarnedPesewas: (json['tipsEarnedPesewas'] as num?)?.toInt() ?? 0,
       paidOutPesewas: (json['paidOutPesewas'] as num?)?.toInt() ?? 0,
       cashCommissionOwedPesewas:
           (json['cashCommissionOwedPesewas'] as num?)?.toInt() ?? 0,
@@ -246,6 +248,7 @@ class EarningsSummary {
         todayAvailableBalancePesewas: 0,
         weeklyAvailableBalancePesewas: 0,
         netEarningsPesewas: 0,
+        tipsEarnedPesewas: 0,
         paidOutPesewas: 0,
         cashCommissionOwedPesewas: 0,
         pendingPayoutsPesewas: 0,
@@ -267,8 +270,15 @@ class EarningsSummary {
   /// Net earnings over the last 7 days.
   final int weeklyAvailableBalancePesewas;
 
-  /// Net earnings over the **selected period**.
+  /// Net earnings over the **selected period** (excludes tips).
   final int netEarningsPesewas;
+
+  /// Tips earned in the selected period. Disjoint from [netEarningsPesewas]:
+  /// tips carry no commission and are disbursed directly to the provider's
+  /// MoMo when the client adds them, so they never accrue to
+  /// [availableBalancePesewas]. Surfaced so the dashboard's "total earned"
+  /// line can read net + tips together.
+  final int tipsEarnedPesewas;
 
   /// Money already disbursed in the selected period. Excludes cash trips.
   final int paidOutPesewas;

@@ -8,6 +8,7 @@ import '../data/ratings_service.dart';
 import '../providers/earnings_providers.dart';
 import '../providers/ratings_provider.dart';
 import '../widgets/commission_card.dart';
+import '../widgets/pay_commission_sheet.dart';
 import '../widgets/payouts_list.dart';
 import '../widgets/request_payout_sheet.dart';
 import '../widgets/weekly_performance_card.dart';
@@ -152,6 +153,7 @@ class _EarningsContent extends ConsumerWidget {
           periodNet: periodNet,
           jobsDone: jobsDone,
           ratingsAsync: ratingsAsync,
+          isInArrears: isInArrears,
         ),
         if (pendingPesewas > 0) ...[
           const SizedBox(height: MyShopSpacing.sm),
@@ -188,35 +190,56 @@ class _EarningsContent extends ConsumerWidget {
           ),
         ],
         const SizedBox(height: MyShopSpacing.sm),
-        // Request Payout — surfaces the right state across three cases:
-        //   * Available > 0, nothing in flight → enabled, primary CTA.
-        //   * In flight (retrying / pending) → disabled with a hint.
-        //   * Available 0 and nothing in flight → disabled, no hint.
-        ElevatedButton.icon(
-          onPressed: availablePesewas > 0 && !isInArrears && pendingPesewas == 0
-              ? () => showRequestPayoutSheet(context)
-              : null,
-          icon: const Icon(Icons.send_rounded, size: 18),
-          label: Text(
-            pendingPesewas > 0
-                ? 'PAYOUT IN PROGRESS'
-                : 'REQUEST PAYOUT',
-          ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: MyShopColors.primaryGold,
-            foregroundColor: MyShopColors.textOnPrimary,
-            disabledBackgroundColor:
-                MyShopColors.primaryGold.withValues(alpha: 0.4),
-            minimumSize: const Size(double.infinity, 48),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(28),
+        // Action CTA — Pay Commission when in arrears, Request Payout when
+        // there's a withdrawable balance, disabled otherwise. Mirrors the
+        // driver dashboard so both roles share the same earnings UX.
+        if (isInArrears)
+          ElevatedButton.icon(
+            onPressed: () => showPayCommissionSheet(
+              context,
+              owedPesewas: summary.cashCommissionOwedPesewas,
             ),
-            textStyle: const TextStyle(
-              fontFamily: 'Raleway',
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.5,
+            icon: const Icon(Icons.payments_rounded, size: 18),
+            label: const Text('PAY COMMISSION'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: MyShopColors.error,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+              ),
+              textStyle: const TextStyle(
+                fontFamily: 'Raleway',
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5,
+              ),
             ),
+          )
+        else
+          ElevatedButton.icon(
+            onPressed: availablePesewas > 0 && pendingPesewas == 0
+                ? () => showRequestPayoutSheet(context)
+                : null,
+            icon: const Icon(Icons.send_rounded, size: 18),
+            label: Text(
+              pendingPesewas > 0 ? 'PAYOUT IN PROGRESS' : 'REQUEST PAYOUT',
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: MyShopColors.primaryGold,
+              foregroundColor: MyShopColors.textOnPrimary,
+              disabledBackgroundColor:
+                  MyShopColors.primaryGold.withValues(alpha: 0.4),
+              minimumSize: const Size(double.infinity, 48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+              ),
+              textStyle: const TextStyle(
+                fontFamily: 'Raleway',
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5,
+              ),
           ),
         ),
         const SizedBox(height: MyShopSpacing.md),
@@ -423,15 +446,28 @@ class _BalanceCard extends StatelessWidget {
     required this.periodNet,
     required this.jobsDone,
     required this.ratingsAsync,
+    required this.isInArrears,
   });
 
+  /// Effective balance — positive when payable, negative when the artisan
+  /// owes pending cash-commission clawbacks. UI renders the absolute value
+  /// when [isInArrears] is true and reframes the labelling accordingly.
   final double available;
   final double periodNet;
   final int jobsDone;
   final AsyncValue<ProviderRatingsSummary> ratingsAsync;
+  final bool isInArrears;
 
   @override
   Widget build(BuildContext context) {
+    final headline = isInArrears ? 'Owings' : 'Available Balance';
+    final amountColor = isInArrears
+        ? MyShopColors.error.withValues(alpha: 0.95)
+        : MyShopColors.textOnDarkSlate;
+    final magnitude = available.abs().toStringAsFixed(2);
+    final amountText =
+        isInArrears ? '−GH₵ $magnitude' : 'GH₵ ${available.toStringAsFixed(2)}';
+
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.lg),
       decoration: BoxDecoration(
@@ -443,9 +479,19 @@ class _BalanceCard extends StatelessWidget {
         children: [
           Row(
             children: [
+              Icon(
+                isInArrears
+                    ? Icons.warning_amber_rounded
+                    : Icons.account_balance_wallet_outlined,
+                size: 16,
+                color: isInArrears
+                    ? MyShopColors.error
+                    : MyShopColors.textOnDarkSlate.withValues(alpha: 0.85),
+              ),
+              const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'Available Balance',
+                  headline,
                   style: MyShopTypography.body1.copyWith(
                     color: MyShopColors.textOnDarkSlate.withValues(alpha: 0.85),
                     fontWeight: FontWeight.w600,
@@ -458,15 +504,25 @@ class _BalanceCard extends StatelessWidget {
           ),
           const SizedBox(height: MyShopSpacing.sm),
           Text(
-            'GH₵ ${available.toStringAsFixed(2)}',
-            style: const TextStyle(
+            amountText,
+            style: TextStyle(
               fontFamily: 'Raleway',
               fontSize: 38,
               fontWeight: FontWeight.w900,
-              color: MyShopColors.textOnDarkSlate,
+              color: amountColor,
               height: 1.1,
             ),
           ),
+          if (isInArrears) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Will be netted from your next in-app earnings',
+              style: MyShopTypography.caption.copyWith(
+                color: Colors.white70,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
           const SizedBox(height: MyShopSpacing.md),
           Divider(
             height: 1,
