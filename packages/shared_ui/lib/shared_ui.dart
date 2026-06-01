@@ -1,11 +1,34 @@
 library shared_ui;
 
-// export 'src/theme/app_theme.dart';
-// export 'src/theme/app_colors.dart';
-// export 'src/theme/app_typography.dart';
-// export 'src/widgets/myshop_button.dart';
-// export 'src/widgets/myshop_text_field.dart';
-// export 'src/widgets/skeleton_loader.dart';
-// export 'src/widgets/status_badge.dart';
-// export 'src/widgets/empty_state.dart';
-// export 'src/widgets/error_state.dart';
+export 'src/theme/myshop_colors.dart';
+export 'src/theme/myshop_typography.dart';
+export 'src/theme/myshop_spacing.dart';
+export 'src/theme/myshop_radius.dart';
+export 'src/theme/myshop_theme.dart';
+
+export 'src/widgets/myshop_text_field.dart';
+export 'src/widgets/myshop_primary_button.dart';
+export 'src/widgets/myshop_otp_input.dart';
+export 'src/widgets/myshop_stepper.dart';
+export 'src/widgets/myshop_chat_screen.dart';
+export 'src/widgets/myshop_phone_input_screen.dart';
+export 'src/widgets/myshop_otp_verification_screen.dart';
+export 'src/widgets/myshop_toast.dart';
+export 'src/widgets/myshop_error_body.dart';
+export 'src/widgets/job_elapsed_time.dart';
+
+// Support & Legal
+export 'src/widgets/support/myshop_contact_support_sheet.dart';
+export 'src/widgets/support/myshop_help_article_screen.dart';
+export 'src/widgets/support/myshop_help_category_screen.dart';
+export 'src/widgets/support/myshop_help_search_screen.dart';
+export 'src/widgets/support/myshop_legal_document_screen.dart';
+export 'src/widgets/support/myshop_new_ticket_screen.dart';
+export 'src/widgets/support/myshop_support_legal_screen.dart';
+export 'src/widgets/support/myshop_ticket_detail_screen.dart';
+export 'src/widgets/support/myshop_tickets_list_screen.dart';
+export 'src/widgets/support/support_channels.dart';
+export 'src/widgets/support/support_legal_config.dart';
+
+export 'src/utils/media_picker_helper.dart';
+export 'src/utils/validators.dart';

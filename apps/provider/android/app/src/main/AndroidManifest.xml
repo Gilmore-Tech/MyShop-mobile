@@ -1,6 +1,24 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- ── Internet ─────────────────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- ── Push notifications ───────────────────────────────────────── -->
+    <!-- Android 13+ requires runtime permission for notifications. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Keep the device awake long enough to render a heads-up banner. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <!-- Required for the urgent `job_alerts` channel's full-screen-intent. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+
+    <!-- ── Camera + location ────────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+
     <application
-        android:label="myshop_provider"
+        android:label="MyShop Provider"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -25,6 +43,35 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Google Maps Android API key.
+             TODO: replace placeholder with a real key (read from local.properties
+             via Gradle manifestPlaceholders) before shipping. The placeholder
+             prevents the IllegalStateException crash on launch. -->
+        <!-- Google Maps key supplied at build time via Gradle's
+             manifestPlaceholders mechanism. Set `MAPS_API_KEY=AIza...`
+             in `android/local.properties` (gitignored) and the value
+             flows through `app/build.gradle.kts` to this placeholder.
+             Empty value renders blank maps but doesn't crash. -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS_API_KEY}" />
+
+        <!-- Default FCM channel — pushes without an explicit channel id get
+             routed to the urgent `job_alerts` channel so incoming requests
+             never land in a muted bucket. Matches the channel id created
+             by LocalNotificationService. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="job_alerts" />
+
+        <!-- Default FCM small icon. Required for background auto-display
+             on Android 5+; without it FCM tries to use the launcher icon
+             which is colored, gets rejected by the status bar, and the
+             notification silently fails to render on many OEM ROMs. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

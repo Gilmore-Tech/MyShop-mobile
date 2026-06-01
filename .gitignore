@@ -25,6 +25,11 @@
 .env
 .env.*
 !.env.example
+!.env.dev.example
+
+# Build-time injected secrets (written by tool/build.sh from .env.prod)
+**/ios/Flutter/Secrets.xcconfig
+**/android/local.properties
 
 # Coverage
 coverage/
@@ -32,3 +37,4 @@ coverage/
 
 # Melos
 .melos/
+gradle.properties

@@ -1,6 +1,61 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ── Internet ─────────────────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- ── Push notifications ───────────────────────────────────────── -->
+    <!-- Android 13+ requires runtime permission for notifications. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Keep the device awake long enough to render a heads-up banner. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- Vibrate is needed for the urgent notification channel. -->
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <!-- USE_FULL_SCREEN_INTENT is declared by `flutter_local_notifications`'s
+         own plugin manifest and would otherwise be merged into ours. The
+         client app does NOT use full-screen-intent notifications in v1.0
+         (calls deferred to v1.2, no alarm feature). `tools:node="remove"`
+         tells the manifest merger to strip it even when a plugin requests
+         it — verified against the previous AAB's merged manifest which
+         contained the permission despite us not declaring it. Without
+         this directive Play asks for a "core functionality" justification
+         on every upload and Maps & Navigation apps don't qualify. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"
+        tools:node="remove"/>
+
+    <!-- ── Location (map + place picker) ────────────────────────────── -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+
+    <!-- ── Camera & media (image_picker for profile photos / job photos) ─ -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- READ_MEDIA_IMAGES intentionally stripped. Every photo flow in
+         the client app is a one-off user-initiated pick (profile photo,
+         job-post photos ≤3, Ghana Card upload). image_picker 1.1+ uses
+         Android's permission-free Photo Picker on API 33+ by default,
+         and the legacy storage permission below covers API ≤32 fallback.
+         Declaring READ_MEDIA_IMAGES triggers Play's "broad media access"
+         justification flow on every upload — and we don't qualify
+         because our usage is one-off. tools:node="remove" strips the
+         permission if any plugin manifest tries to merge it in
+         (image_picker historically did so on plugin versions <1.1). -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"
+        tools:node="remove"/>
+    <!-- Legacy storage read (Android 12 and below) for file_picker /
+         image_picker fallback when the Photo Picker backport isn't
+         available. Capped at API 32 so newer devices use the
+         permission-free Photo Picker path. -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"/>
+
+    <!-- Camera hardware is optional — phones without a camera can still install. -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false"/>
+
     <application
-        android:label="myshop_client"
+        android:label="MyShop"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -20,11 +75,32 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS_API_KEY}" />
+
+        <!-- Default FCM channel. Must match the id created via
+             `flutter_local_notifications` (see LocalNotificationService)
+             so data-only pushes and client-side local notifications
+             share the same sound/importance. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="myshop_timeline" />
+
+        <!-- Default FCM small icon. Required for background auto-display
+             on Android 5+; without it FCM tries to use the launcher icon
+             which is colored, gets rejected by the status bar, and the
+             notification silently fails to render on many OEM ROMs. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

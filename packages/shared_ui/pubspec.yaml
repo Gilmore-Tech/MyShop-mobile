@@ -13,6 +13,13 @@ dependencies:
   flutter_svg: ^2.0.0
   shimmer: ^3.0.0
   cached_network_image: ^3.4.0
+  image_picker: ^1.1.0
+  file_picker: ^8.1.0
+  flutter_markdown: ^0.7.4
+  url_launcher: ^6.3.0
+  intl_phone_field: ^3.2.0
+  shared_models:
+    path: ../shared_models
 
 dev_dependencies:
   flutter_test:

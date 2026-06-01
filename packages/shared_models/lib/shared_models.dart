@@ -1,9 +1,10 @@
 library shared_models;
 
-// export 'src/enums.dart';
-// export 'src/user.dart';
-// export 'src/ride.dart';
-// export 'src/artisan_job.dart';
-// export 'src/bid.dart';
-// export 'src/payment.dart';
-// export 'src/notification.dart';
+export 'src/chat.dart';
+export 'src/enums.dart';
+export 'src/earnings.dart';
+export 'src/job.dart';
+export 'src/legal.dart';
+export 'src/live_feed_job.dart';
+export 'src/ride.dart';
+export 'src/support.dart';

@@ -1,0 +1,89 @@
+import '../models/auth_dtos.dart';
+import '../models/user_dtos.dart';
+
+/// Auth API contract.
+///
+/// Implementations:
+/// - [MockAuthService] for local UI development
+/// - [RealAuthService] for the live backend
+abstract class AuthService {
+  /// Register a new account. Sends OTP to the phone.
+  /// POST /auth/register
+  Future<void> register(RegisterRequest request);
+
+  /// Login as an existing driver. Sends OTP to the phone.
+  /// POST /auth/login/driver
+  Future<void> loginDriver(LoginRequest request);
+
+  /// Login as an existing artisan. Sends OTP to the phone.
+  /// POST /auth/login/artisan
+  Future<void> loginArtisan(LoginRequest request);
+
+  /// Login as an existing client. Sends OTP to the phone.
+  /// POST /auth/login/client
+  Future<void> loginClient(LoginRequest request);
+
+  /// Check which roles are registered to a phone number.
+  /// POST /auth/check-phone
+  /// Returns a list of roles (e.g. ["driver"], ["artisan"], ["driver", "artisan"]).
+  Future<List<String>> checkPhone(String phone);
+
+  /// Login with phone number, auto-detecting the user's role.
+  /// Tries driver first, then artisan. Returns the detected role.
+  Future<String> login(LoginRequest request);
+
+  /// Verify OTP and receive JWT tokens.
+  /// POST /auth/verify-otp
+  Future<TokenResponse> verifyOtp(VerifyOtpRequest request);
+
+  // Token refresh is owned by [TokenRefresher] (single-flight across
+  // REST + main WS + chat WS). Do NOT add a refreshToken() method here
+  // — any caller-driven refresh racing the shared single-flight will
+  // burn the rotating refresh token and force-logout the user.
+
+  /// Revoke the current refresh token server-side. Best-effort: callers
+  /// must clear local tokens regardless of whether this succeeds, since
+  /// the backend is also fine with eventual revocation on next /refresh.
+  /// POST /v1/auth/logout
+  Future<void> logout();
+
+  /// Notify support that the user can't sign out on the device currently
+  /// holding the active session. Backend records the request and alerts
+  /// support so an operator can revoke the active session manually.
+  /// Public endpoint — no auth required.
+  /// POST /auth/request-session-recovery
+  Future<void> requestSessionRecovery({
+    required String phone,
+    required String deviceId,
+  });
+
+  /// Get the current user's full profile.
+  /// GET /users/me
+  Future<UserProfile> getMe();
+
+  /// Same as [getMe] but returns the raw decoded JSON map alongside the
+  /// parsed profile. Used by the repository to cache the response so the
+  /// session can be restored offline.
+  Future<({UserProfile profile, Map<String, dynamic> raw})> getMeWithRaw();
+
+  /// Update user profile fields.
+  /// PUT /users/me
+  Future<UserProfile> updateMe(UpdateProfileRequest request);
+
+  /// Update driver-specific fields (display name, vehicle, licence, payout).
+  /// PUT /users/me/driver
+  Future<UserProfile> updateDriver(UpdateDriverProfileRequest request);
+
+  /// Update artisan-specific fields (display name, business name, payout, etc.).
+  /// PUT /users/me/artisan
+  Future<UserProfile> updateArtisan(UpdateArtisanProfileRequest request);
+}
+
+/// Generic auth exception with a user-facing message.
+class AuthException implements Exception {
+  AuthException(this.message, {this.code});
+  final String message;
+  final String? code;
+  @override
+  String toString() => 'AuthException($code): $message';
+}

@@ -28,12 +28,25 @@ dart pub global activate melos
 # Bootstrap all packages
 melos bootstrap
 
-# Run Client App
-cd apps/client && flutter run
-
-# Run Provider App
-cd apps/provider && flutter run
+# Run via tool/run.sh — passes API keys from .env.dev
+cp .env.dev.example .env.dev    # one-time, then fill in real values
+tool/run.sh client              # runs apps/client
+tool/run.sh provider            # runs apps/provider
 ```
+
+Plain `flutter run` works but produces an app with empty Google Maps + Mapbox keys; autocomplete and maps will fail silently. Use `tool/run.sh` unless you've passed the `--dart-define`s manually.
+
+## Releasing
+
+Tag a version and push — GitHub Actions builds signed AABs + IPAs and uploads them to Play Console Internal Testing + TestFlight Internal. You smoke-test there, then click "Promote" once per release.
+
+```bash
+$EDITOR apps/client/pubspec.yaml apps/provider/pubspec.yaml  # bump version
+git commit -am "chore(release): v1.0.1"
+git tag v1.0.1 && git push --tags
+```
+
+**One-time setup** (keystore, Apple Developer, Fastlane Match, GitHub Secrets): see [docs/release-setup.md](docs/release-setup.md). Budget 3–6 hours mostly waiting on Apple's UI.
 
 ## Apps
 

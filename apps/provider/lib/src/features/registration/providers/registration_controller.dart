@@ -1,0 +1,144 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../profile/providers/provider_type_provider.dart';
+
+/// Tracks which role the user picked at signup; null until role picker.
+final pendingRoleProvider = StateProvider<ProviderType?>((_) => null);
+
+/// When `true`, all registration step widgets should reveal their validation
+/// errors — even for fields the user hasn't touched yet. Set to `true` when
+/// the user taps "Continue" while the form is invalid. Reset to `false` when
+/// navigating to the next step.
+final showRegistrationErrorsProvider = StateProvider<bool>((_) => false);
+
+/// Whether the user has accepted the privacy policy and terms of service
+/// on the review step. Must be `true` before "Create Account" is allowed.
+final policyAcceptedProvider = StateProvider<bool>((_) => false);
+
+/// Driver registration draft.
+///
+/// Holds form data during the registration wizard. The actual API call
+/// happens via [AuthController.registerAndSendOtp] when the user submits
+/// their phone number on the phone input screen.
+class DriverRegistrationDraft {
+  DriverRegistrationDraft({
+    this.fullName = '',
+    this.email = '',
+    this.ghanaCardNumber = '',
+    this.vehicleMake = '',
+    this.vehicleModel = '',
+    this.vehicleYear = '',
+    this.vehiclePlate = '',
+    this.vehicleColor = '',
+  });
+
+  final String fullName;
+  final String email;
+  final String ghanaCardNumber;
+  final String vehicleMake;
+  final String vehicleModel;
+  final String vehicleYear;
+  final String vehiclePlate;
+  final String vehicleColor;
+
+  DriverRegistrationDraft copyWith({
+    String? fullName,
+    String? email,
+    String? ghanaCardNumber,
+    String? vehicleMake,
+    String? vehicleModel,
+    String? vehicleYear,
+    String? vehiclePlate,
+    String? vehicleColor,
+  }) =>
+      DriverRegistrationDraft(
+        fullName: fullName ?? this.fullName,
+        email: email ?? this.email,
+        ghanaCardNumber: ghanaCardNumber ?? this.ghanaCardNumber,
+        vehicleMake: vehicleMake ?? this.vehicleMake,
+        vehicleModel: vehicleModel ?? this.vehicleModel,
+        vehicleYear: vehicleYear ?? this.vehicleYear,
+        vehiclePlate: vehiclePlate ?? this.vehiclePlate,
+        vehicleColor: vehicleColor ?? this.vehicleColor,
+      );
+
+  /// Only fullName is required for POST /auth/register.
+  /// Vehicle details are submitted later via profile/verification endpoints.
+  bool get isComplete => fullName.isNotEmpty;
+}
+
+class DriverRegistrationController
+    extends StateNotifier<DriverRegistrationDraft> {
+  DriverRegistrationController() : super(DriverRegistrationDraft());
+
+  void update(DriverRegistrationDraft draft) => state = draft;
+}
+
+final driverRegistrationProvider = StateNotifierProvider<
+    DriverRegistrationController, DriverRegistrationDraft>((ref) {
+  return DriverRegistrationController();
+});
+
+/// Artisan registration draft.
+///
+/// Holds form data during the registration wizard. The actual API call
+/// happens via [AuthController.registerAndSendOtp] when the user submits
+/// their phone number on the phone input screen.
+class ArtisanRegistrationDraft {
+  ArtisanRegistrationDraft({
+    this.fullName = '',
+    this.email = '',
+    this.ghanaCardNumber = '',
+    this.businessName = '',
+    this.tradeCategory = '',
+    this.yearsOfExperience = 0,
+    this.serviceCategories = const [],
+    this.serviceRadiusKm = 5,
+  });
+
+  final String fullName;
+  final String email;
+  final String ghanaCardNumber;
+  final String businessName;
+  final String tradeCategory;
+  final int yearsOfExperience;
+  final List<String> serviceCategories;
+  final double serviceRadiusKm;
+
+  ArtisanRegistrationDraft copyWith({
+    String? fullName,
+    String? email,
+    String? ghanaCardNumber,
+    String? businessName,
+    String? tradeCategory,
+    int? yearsOfExperience,
+    List<String>? serviceCategories,
+    double? serviceRadiusKm,
+  }) =>
+      ArtisanRegistrationDraft(
+        fullName: fullName ?? this.fullName,
+        email: email ?? this.email,
+        ghanaCardNumber: ghanaCardNumber ?? this.ghanaCardNumber,
+        businessName: businessName ?? this.businessName,
+        tradeCategory: tradeCategory ?? this.tradeCategory,
+        yearsOfExperience: yearsOfExperience ?? this.yearsOfExperience,
+        serviceCategories: serviceCategories ?? this.serviceCategories,
+        serviceRadiusKm: serviceRadiusKm ?? this.serviceRadiusKm,
+      );
+
+  /// Only fullName and serviceCategories are required for POST /auth/register.
+  /// Business details are submitted later via profile endpoints.
+  bool get isComplete => fullName.isNotEmpty && serviceCategories.isNotEmpty;
+}
+
+class ArtisanRegistrationController
+    extends StateNotifier<ArtisanRegistrationDraft> {
+  ArtisanRegistrationController() : super(ArtisanRegistrationDraft());
+
+  void update(ArtisanRegistrationDraft draft) => state = draft;
+}
+
+final artisanRegistrationProvider = StateNotifierProvider<
+    ArtisanRegistrationController, ArtisanRegistrationDraft>((ref) {
+  return ArtisanRegistrationController();
+});

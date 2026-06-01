@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "626850152691",
+    "project_id": "myshop-8b12c",
+    "storage_bucket": "myshop-8b12c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:626850152691:android:ab41526beca8c04c36b786",
+        "android_client_info": {
+          "package_name": "com.gilmoretech.myshopclient"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCMGCiS70imYifcv7aPSjUrEFtgAD_2vHA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:626850152691:android:8470bda31ac31c3b36b786",
+        "android_client_info": {
+          "package_name": "com.gilmoretech.myshopprovider"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCMGCiS70imYifcv7aPSjUrEFtgAD_2vHA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
