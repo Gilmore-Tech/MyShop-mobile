@@ -437,68 +437,125 @@ class _PickupInfo extends ConsumerWidget {
       minutesAway = estimatedEtaMinutes(metersAway);
     }
 
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-              color: MyShopColors.surfaceGrey,
-              borderRadius: BorderRadius.circular(16)),
-          child: const Icon(Icons.location_on,
-              size: 18, color: MyShopColors.textSecondary)),
-      const SizedBox(width: 12),
-      Expanded(
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('PICKUP LOCATION',
-            style: MyShopTypography.overline
-                .copyWith(fontSize: 11, letterSpacing: 0.5)),
-        const SizedBox(height: 4),
-        Text(ride.pickupAddress,
-            style: const TextStyle(
-                fontFamily: 'Raleway',
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: MyShopColors.textPrimary)),
-        const SizedBox(height: 8),
-        Row(children: [
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // ── Pickup row ────────────────────────────────────────────────────
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+                color: MyShopColors.surfaceGrey,
+                borderRadius: BorderRadius.circular(16)),
+            child: const Icon(Icons.trip_origin,
+                size: 18, color: MyShopColors.textSecondary)),
+        const SizedBox(width: 12),
+        Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('PICKUP LOCATION',
+              style: MyShopTypography.overline
+                  .copyWith(fontSize: 11, letterSpacing: 0.5)),
+          const SizedBox(height: 4),
+          Text(ride.pickupAddress,
+              style: const TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: MyShopColors.textPrimary)),
+          if (minutesAway != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: MyShopColors.primaryGold.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.near_me,
+                    size: 13, color: MyShopColors.primaryGold),
+                const SizedBox(width: 6),
+                Text(
+                  '${(metersAway! / 1000).toStringAsFixed(1)} km · '
+                  '~${formatEtaLabel(minutesAway)} away',
+                  style: MyShopTypography.body2.copyWith(
+                    color: MyShopColors.primaryGold,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+              ]),
+            ),
+          ],
+        ])),
+      ]),
+
+      // ── Connector + trip metrics (pickup → dropoff) ──────────────────
+      // The dashed vertical line visually links the two stops so the
+      // driver reads it as one journey. Trip-level metrics (total distance,
+      // total duration) sit alongside the line because they describe the
+      // whole pickup→dropoff leg, not the pickup alone.
+      Padding(
+        padding: const EdgeInsets.only(left: 15, top: 4, bottom: 4),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          SizedBox(
+            width: 2,
+            height: 24,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: MyShopColors.divider,
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
+          ),
+          const SizedBox(width: 18),
           const Icon(Icons.straighten,
               size: 14, color: MyShopColors.textSecondary),
           const SizedBox(width: 4),
           Text(ride.distanceDisplay, style: MyShopTypography.body2),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           const Icon(Icons.access_time, size: 14, color: MyShopColors.online),
           const SizedBox(width: 4),
-          Text('${ride.estimatedDurationMins} min drive',
-              style:
-                  MyShopTypography.body2.copyWith(color: MyShopColors.online)),
+          Text('${ride.estimatedDurationMins} min trip',
+              style: MyShopTypography.body2
+                  .copyWith(color: MyShopColors.online)),
         ]),
-        if (minutesAway != null) ...[
-          const SizedBox(height: 8),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      ),
+
+      // ── Destination row ──────────────────────────────────────────────
+      // The destination was previously not surfaced on the request screen;
+      // drivers were accepting blind to where the rider wanted to go.
+      // Backend has emitted dropoffAddress on `ride:new` since launch — we
+      // just weren't rendering it here.
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
-              color: MyShopColors.primaryGold.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.near_me,
-                  size: 13, color: MyShopColors.primaryGold),
-              const SizedBox(width: 6),
-              Text(
-                '${(metersAway! / 1000).toStringAsFixed(1)} km · '
-                '~${formatEtaLabel(minutesAway)} away',
-                style: MyShopTypography.body2.copyWith(
-                  color: MyShopColors.primaryGold,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
-                ),
-              ),
-            ]),
-          ),
-        ],
-      ])),
+                color: MyShopColors.surfaceGrey,
+                borderRadius: BorderRadius.circular(16)),
+            child: const Icon(Icons.location_on,
+                size: 18, color: MyShopColors.error)),
+        const SizedBox(width: 12),
+        Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('DESTINATION',
+              style: MyShopTypography.overline
+                  .copyWith(fontSize: 11, letterSpacing: 0.5)),
+          const SizedBox(height: 4),
+          Text(
+              ride.dropoffAddress.isEmpty
+                  ? 'Destination not provided'
+                  : ride.dropoffAddress,
+              style: TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: ride.dropoffAddress.isEmpty
+                      ? MyShopColors.textSecondary
+                      : MyShopColors.textPrimary)),
+        ])),
+      ]),
     ]);
   }
 }

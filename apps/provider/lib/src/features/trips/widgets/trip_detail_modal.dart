@@ -128,8 +128,16 @@ class TripDetailModal extends StatelessWidget {
                 ),
 
                 // ── 6. Fare Breakdown card ──
+                // Only completed rides have a Total Paid — a cancelled
+                // request never collected fare and shouldn't render as if
+                // it did (no Total, no commission, no receipt). For
+                // non-completed states we surface a neutral notice
+                // explaining why there's no breakdown.
                 const Divider(height: 1, color: MyShopColors.divider),
-                _FareBreakdownCard(trip: trip),
+                if (trip.status.toLowerCase() == 'completed')
+                  _FareBreakdownCard(trip: trip)
+                else
+                  _CancelledFareNotice(status: trip.status),
 
               ],
             ),
@@ -639,6 +647,74 @@ class _FareBreakdownCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Renders in place of [_FareBreakdownCard] when the ride wasn't completed.
+/// A cancelled (or otherwise non-terminal) ride didn't collect fare from
+/// the rider, so the breakdown / Total Paid / commission would be
+/// misleading — we surface a single neutral notice instead.
+class _CancelledFareNotice extends StatelessWidget {
+  const _CancelledFareNotice({required this.status});
+
+  /// Original status string from [TripDetailData], used in the message so
+  /// the driver knows exactly which terminal state they're looking at.
+  /// Falls back to "cancelled" if blank.
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = status.trim().isEmpty ? 'cancelled' : status.toLowerCase();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+      child: Container(
+        padding: const EdgeInsets.all(MyShopSpacing.md),
+        decoration: BoxDecoration(
+          color: MyShopColors.errorLight,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: MyShopColors.error.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(
+              Icons.info_outline,
+              size: 18,
+              color: MyShopColors.error,
+            ),
+            const SizedBox(width: MyShopSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'No fare collected',
+                    style: const TextStyle(
+                      fontFamily: 'Raleway',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: MyShopColors.error,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'This ride was $label before completion, so no '
+                    'payment was charged and no receipt is generated.',
+                    style: const TextStyle(
+                      fontFamily: 'Raleway',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: MyShopColors.textSecondary,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
