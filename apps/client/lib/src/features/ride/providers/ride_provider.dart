@@ -45,6 +45,13 @@ class VehicleOption {
   /// instead of an ambient warning the user can't size up.
   final double surgeMultiplier;
 
+  /// `false` when the backend found no online, non-busy driver within the max
+  /// match radius — [estimatedTime] is then a fallback number, not a real ETA.
+  /// The vehicle cards show "No drivers available", gray out, and become
+  /// non-selectable; the Confirm CTA is disabled. Route-level, so every option
+  /// in a single estimate carries the same value (mirrors [surgeActive]).
+  final bool driversAvailable;
+
   const VehicleOption({
     required this.id,
     required this.name,
@@ -57,6 +64,7 @@ class VehicleOption {
     this.durationMins = 0,
     this.surgeActive = false,
     this.surgeMultiplier = 1.0,
+    this.driversAvailable = true,
   });
 
   String get fareDisplay {

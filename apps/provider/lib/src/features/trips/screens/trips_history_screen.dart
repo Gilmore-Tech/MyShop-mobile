@@ -6,6 +6,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../providers/driver_trips_provider.dart';
 import '../widgets/date_range_picker_modal.dart';
+import '../widgets/trip_detail_modal.dart';
 
 /// Trips history screen with date range filter, tab filters, and trip
 /// cards. Trips come from [driverTripsProvider] (`GET /rides`); the
@@ -264,7 +265,16 @@ class _TripsHistoryScreenState extends ConsumerState<TripsHistoryScreen>
                           horizontal: MyShopSpacing.md, vertical: 4),
                       itemCount: filtered.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (_, i) => _TripCard(trip: filtered[i]),
+                      itemBuilder: (context, i) {
+                        final trip = filtered[i];
+                        return _TripCard(
+                          trip: trip,
+                          onTap: () => TripDetailModal.show(
+                            context,
+                            _rideToTripDetailData(trip),
+                          ),
+                        );
+                      },
                     ),
                   );
                 },
@@ -339,9 +349,13 @@ class _TripsHistoryScreenState extends ConsumerState<TripsHistoryScreen>
 // ── Trip card ───────────────────────────────────────────────────────────────
 
 class _TripCard extends StatelessWidget {
-  const _TripCard({required this.trip});
+  const _TripCard({required this.trip, this.onTap});
 
   final Ride trip;
+
+  /// Tapping a card opens [TripDetailModal] with the mapped trip detail.
+  /// Optional so the widget remains testable without a real navigator.
+  final VoidCallback? onTap;
 
   Color get _statusColor {
     switch (trip.status) {
@@ -378,7 +392,15 @@ class _TripCard extends StatelessWidget {
     final at = trip.completedAt ?? trip.cancelledAt ?? trip.createdAt;
     final distance = trip.actualDistanceKm ?? trip.estimatedDistanceKm;
     final duration = trip.actualDurationMins ?? trip.estimatedDurationMins;
-    return Container(
+    // InkWell needs a Material ancestor for ripple feedback. We borrow the
+    // card's own background so the ripple stays inside the rounded border.
+    return Material(
+      color: MyShopColors.surfaceWhite,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),
       decoration: BoxDecoration(
         color: MyShopColors.surfaceWhite,
@@ -447,18 +469,35 @@ class _TripCard extends StatelessWidget {
                   label: '$duration mins',
                 ),
               const Spacer(),
-              Text(
-                trip.finalFareDisplay,
-                style: const TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                  color: MyShopColors.textPrimary,
+              // Fare is only meaningful when the ride actually completed —
+              // cancelled rides never charged the rider, so showing a number
+              // here reads as "you earned this" which is misleading. We
+              // surface a dash for non-completed terminal states instead.
+              if (trip.status == RideStatus.completed)
+                Text(
+                  trip.finalFareDisplay,
+                  style: const TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: MyShopColors.textPrimary,
+                  ),
+                )
+              else
+                const Text(
+                  '—',
+                  style: TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: MyShopColors.textSecondary,
+                  ),
                 ),
-              ),
             ],
           ),
         ],
+      ),
+        ),
       ),
     );
   }
@@ -617,5 +656,96 @@ class _TripsSkeleton extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+// ─── Ride → TripDetailData mapping ──────────────────────────────────────────
+//
+// TripDetailModal was designed for a rich snapshot (per-line fare breakdown,
+// commission split). The list endpoint only carries the Ride summary, so the
+// breakdown lines fall back to '—'. The modal still surfaces what matters:
+// status, route, distance/duration, and (for completed trips) the Total Paid
+// plus payment method. Cancelled trips render the "No fare collected" notice
+// added earlier, so the placeholder breakdown lines never reach the user.
+//
+// When we add a `GET /rides/:id/snapshot` endpoint, swap this for a fetch +
+// fuller mapping; the modal's contract doesn't change.
+
+TripDetailData _rideToTripDetailData(Ride r) {
+  final at = r.completedAt ?? r.cancelledAt ?? r.createdAt;
+  final local = at.toLocal();
+  final dateFmt = DateFormat('d MMM yyyy');
+  final timeFmt = DateFormat('HH:mm');
+
+  final pickupAt = r.pickedUpAt ?? r.acceptedAt ?? r.createdAt;
+  final dropAt = r.completedAt ?? r.cancelledAt ?? pickupAt;
+
+  String fmtTime(DateTime t) => timeFmt.format(t.toLocal());
+
+  final isCompleted = r.status == RideStatus.completed;
+  final statusLabel = switch (r.status) {
+    RideStatus.completed => 'Completed',
+    RideStatus.cancelled => 'Cancelled',
+    _ => r.status.name[0].toUpperCase() + r.status.name.substring(1),
+  };
+
+  // Distance + duration prefer the actual values (post-ride) over the
+  // estimate so completed trips show what really happened.
+  final distance = r.actualDistanceKm ?? r.estimatedDistanceKm;
+  final duration = r.actualDurationMins ?? r.estimatedDurationMins;
+
+  return TripDetailData(
+    tripId: 'TRP-${r.id.substring(0, 8).toUpperCase()}',
+    rideId: r.id,
+    status: statusLabel,
+    date: dateFmt.format(local),
+    timeRange: '${fmtTime(pickupAt)} – ${fmtTime(dropAt)}',
+    pickupTime: fmtTime(pickupAt),
+    pickupAddress: r.pickupAddress.isEmpty ? 'Pickup' : r.pickupAddress,
+    dropoffTime: fmtTime(dropAt),
+    dropoffAddress: r.dropoffAddress.isEmpty ? 'Destination' : r.dropoffAddress,
+    // Coords for the map preview come from `GET /rides/:id` inside the
+    // modal — the list endpoint can't project PostGIS geometry so the
+    // Ride model arrives here with lat/lng=0. The modal handles the
+    // fetch + placeholder.
+    distanceKm: distance.toStringAsFixed(1),
+    durationMins: duration,
+    surgeMultiplier: '${r.surgeMultiplier.toStringAsFixed(1)}x',
+    // Breakdown lines are placeholders — the list-endpoint payload doesn't
+    // carry them. Cancelled trips skip the breakdown card entirely (handled
+    // in the modal), so users only see '—' on completed trips where we have
+    // the Total Paid figure (which IS accurate).
+    baseFare: '—',
+    distanceFare: '—',
+    timeFare: '—',
+    surgeFare: r.hasSurge ? '—' : 'GHS 0.00',
+    subtotal: isCompleted ? r.finalFareDisplay : '—',
+    taxes: '—',
+    promoDiscount: '—',
+    totalPaid: isCompleted ? r.finalFareDisplay : 'GHS 0.00',
+    commission: '—',
+    paymentMethod: _formatPaymentMethod(r.paymentMethod),
+  );
+}
+
+/// Human-friendly payment method label for the detail modal footer.
+/// Mirrors the labels the client app uses on the pre-booking sheet so the
+/// same trip reads consistently across surfaces.
+String _formatPaymentMethod(String raw) {
+  switch (raw) {
+    case 'cash':
+      return 'Cash';
+    case 'momo_mtn':
+      return 'MTN MoMo';
+    case 'momo_telecel':
+      return 'Telecel MoMo';
+    case 'momo_airteltigo':
+      return 'AirtelTigo MoMo';
+    case 'card':
+      return 'Card';
+    default:
+      return raw.isEmpty
+          ? 'Unknown'
+          : raw[0].toUpperCase() + raw.substring(1).replaceAll('_', ' ');
   }
 }

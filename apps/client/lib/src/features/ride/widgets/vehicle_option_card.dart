@@ -16,41 +16,56 @@ class VehicleOptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: isSelected
-                    ? MyShopColors.primaryGold
-                    : MyShopColors.divider,
-                width: isSelected ? 2 : 1,
+    final available = option.driversAvailable;
+    // When no drivers are available the card is informational only — it shows
+    // the fare but can't be picked. Gray it out, drop the tap handler, and
+    // never paint it as selected so it reads as disabled (Semantics flag keeps
+    // it non-color-dependent for screen readers).
+    final selected = isSelected && available;
+
+    return Semantics(
+      enabled: available,
+      selected: selected,
+      child: Opacity(
+        opacity: available ? 1.0 : 0.55,
+        child: GestureDetector(
+          onTap: available ? onTap : null,
+          behavior: HitTestBehavior.opaque,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: selected
+                        ? MyShopColors.primaryGold
+                        : MyShopColors.divider,
+                    width: selected ? 2 : 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    _VehicleIcon(isMotorcycle: option.isMotorcycle),
+                    const SizedBox(width: 12),
+                    Expanded(child: _VehicleInfo(option: option)),
+                    _FareInfo(option: option, isSelected: selected),
+                  ],
+                ),
               ),
-            ),
-            child: Row(
-              children: [
-                _VehicleIcon(isMotorcycle: option.isMotorcycle),
-                const SizedBox(width: 12),
-                Expanded(child: _VehicleInfo(option: option)),
-                _FareInfo(option: option, isSelected: isSelected),
-              ],
-            ),
+              if (selected)
+                const Positioned(
+                  top: -6,
+                  right: -6,
+                  child: _SelectedBadge(),
+                ),
+            ],
           ),
-          if (isSelected)
-            const Positioned(
-              top: -6,
-              right: -6,
-              child: _SelectedBadge(),
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -167,29 +182,52 @@ class _FareInfo extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.access_time_rounded,
-              size: 11,
-              color: isSelected
-                  ? MyShopColors.primaryGold
-                  : MyShopColors.textSecondary,
-            ),
-            const SizedBox(width: 3),
-            Text(
-              option.estimatedTime,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
+        if (!option.driversAvailable)
+          // Replaces the ETA — there's no honest "x min" to show when no
+          // driver is in range. Paired with an icon + text (not color alone).
+          const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.person_off_outlined,
+                size: 11,
+                color: MyShopColors.error,
+              ),
+              SizedBox(width: 3),
+              Text(
+                'No drivers',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: MyShopColors.error,
+                ),
+              ),
+            ],
+          )
+        else
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.access_time_rounded,
+                size: 11,
                 color: isSelected
                     ? MyShopColors.primaryGold
                     : MyShopColors.textSecondary,
               ),
-            ),
-          ],
-        ),
+              const SizedBox(width: 3),
+              Text(
+                option.estimatedTime,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: isSelected
+                      ? MyShopColors.primaryGold
+                      : MyShopColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
       ],
     );
   }
