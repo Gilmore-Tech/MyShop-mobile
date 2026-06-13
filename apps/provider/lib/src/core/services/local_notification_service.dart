@@ -379,7 +379,15 @@ class LocalNotificationService {
           importance: isUrgent ? Importance.max : Importance.high,
           priority: isUrgent ? Priority.high : Priority.defaultPriority,
           category: androidCategory,
-          fullScreenIntent: isUrgent,
+          // Full-screen intent is intentionally OFF. The USE_FULL_SCREEN_INTENT
+          // permission is stripped from the merged manifest (Google Play only
+          // auto-grants it to alarm / calling apps on Android 14+, and a
+          // provider app doesn't qualify — see AndroidManifest.xml). Without
+          // the permission the OS ignores this flag anyway, so we set it false
+          // explicitly to keep code and manifest honest. Urgent requests still
+          // alert loudly via the max-importance heads-up banner, custom
+          // ringtone, vibration and WAKE_LOCK above.
+          fullScreenIntent: false,
           // Tap dismisses for every type (it's the standard notification
           // behavior). Incoming-request types additionally stick
           // (`ongoing: true`) so the user can't accidentally swipe the

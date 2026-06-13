@@ -39,7 +39,12 @@ class FareEstimateScreen extends ConsumerWidget {
     final hasCoords =
         search.pickup?.lat != null && search.destination?.lat != null;
     final estimate = ref.watch(fareEstimateProvider);
-    final estimateReady = estimate.valueOrNull?.isNotEmpty == true;
+    final options = estimate.valueOrNull;
+    final estimateReady = options?.isNotEmpty == true;
+    // Route-level flag (every option shares it). When true the backend found
+    // no online, non-busy driver in range — booking is blocked so the user
+    // can't dispatch into a void; the cards already render as disabled.
+    final noDrivers = estimateReady && options!.first.driversAvailable == false;
 
     return PopScope(
       canPop: true,
@@ -121,6 +126,9 @@ class FareEstimateScreen extends ConsumerWidget {
           ),
           if (estimateReady)
             _BottomActions(
+              // No drivers in range → block the confirm path entirely so the
+              // user can't kick off a match that has nobody to match against.
+              enabled: !noDrivers,
               onConfirm: () {
                 // Hand the long-running matcher a container instead of
                 // `ref` — the screen disposes on the next line's `go`,
@@ -245,27 +253,40 @@ class _VehicleSelectionSection extends ConsumerWidget {
           error: (_, __) => _VehicleEstimateError(
             onRetry: () => ref.invalidate(fareEstimateProvider),
           ),
-          data: (options) => Column(
-            mainAxisSize: MainAxisSize.min,
-            children: options.map((v) {
-              // Auto-select the first option when selected id isn't in the list.
-              if (!options.any((o) => o.id == selectedId)) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  ref.read(selectedVehicleProvider.notifier).state =
-                      options.first.id;
-                });
-              }
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: VehicleOptionCard(
-                  option: v,
-                  isSelected: selectedId == v.id,
-                  onTap: () =>
-                      ref.read(selectedVehicleProvider.notifier).state = v.id,
+          data: (options) {
+            final noDrivers =
+                options.isNotEmpty && options.first.driversAvailable == false;
+            // Auto-select the first option when the selected id isn't in the
+            // list — but never when drivers are unavailable, since the cards
+            // are non-selectable and a gold "selected" border would be wrong.
+            if (!noDrivers && !options.any((o) => o.id == selectedId)) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                ref.read(selectedVehicleProvider.notifier).state =
+                    options.first.id;
+              });
+            }
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (noDrivers) ...[
+                  const _NoDriversBanner(),
+                  const SizedBox(height: 12),
+                ],
+                ...options.map(
+                  (v) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: VehicleOptionCard(
+                      option: v,
+                      isSelected: selectedId == v.id,
+                      onTap: () => ref
+                          .read(selectedVehicleProvider.notifier)
+                          .state = v.id,
+                    ),
+                  ),
                 ),
-              );
-            }).toList(),
-          ),
+              ],
+            );
+          },
         ),
       ],
     );
@@ -334,6 +355,60 @@ class _VehicleEstimateError extends StatelessWidget {
   }
 }
 
+/// Shown above the (disabled) vehicle list when the estimate came back with
+/// no driver in range. Spells out the situation in full text so the meaning
+/// isn't carried by the grayed-out cards alone (WCAG — not color-only).
+class _NoDriversBanner extends StatelessWidget {
+  const _NoDriversBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: MyShopColors.error.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: MyShopColors.error.withValues(alpha: 0.30)),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.person_off_outlined,
+              size: 18, color: MyShopColors.error),
+          SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'No drivers available right now',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: MyShopColors.textPrimary,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Every nearby driver is offline or busy. Please try '
+                  'again in a few minutes.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                    color: MyShopColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PaymentSection extends ConsumerWidget {
   const _PaymentSection();
 
@@ -374,7 +449,12 @@ class _PaymentSection extends ConsumerWidget {
 class _BottomActions extends StatelessWidget {
   final VoidCallback onConfirm;
   final VoidCallback onCancel;
-  const _BottomActions({required this.onConfirm, required this.onCancel});
+  final bool enabled;
+  const _BottomActions({
+    required this.onConfirm,
+    required this.onCancel,
+    this.enabled = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -388,18 +468,22 @@ class _BottomActions extends StatelessWidget {
             width: double.infinity,
             height: 52,
             child: ElevatedButton(
-              onPressed: onConfirm,
+              // Null onPressed renders the button in its disabled style — the
+              // user can't dispatch a ride when no driver is available.
+              onPressed: enabled ? onConfirm : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: MyShopColors.darkSlate,
                 foregroundColor: Colors.white,
+                disabledBackgroundColor: MyShopColors.divider,
+                disabledForegroundColor: MyShopColors.textSecondary,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
                 elevation: 0,
               ),
-              child: const Text(
-                'Confirm Ride',
-                style: TextStyle(
+              child: Text(
+                enabled ? 'Confirm Ride' : 'No Drivers Available',
+                style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
                 ),

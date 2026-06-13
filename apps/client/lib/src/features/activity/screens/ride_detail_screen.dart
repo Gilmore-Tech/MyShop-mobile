@@ -37,14 +37,18 @@ class RideDetailScreen extends ConsumerWidget {
                 fontWeight: FontWeight.w700)),
         centerTitle: false,
         actions: [
-          TextButton(
-            onPressed: () => context.push(AppRoutes.rideReceiptPath(rideId)),
-            child: Text('Receipt',
-                style: TextStyle(
-                    color: MyShopColors.primaryGold,
-                    fontSize: w * 0.036,
-                    fontWeight: FontWeight.w600)),
-          ),
+          if (asyncDetail.maybeWhen(
+            data: (d) => d.isCompleted,
+            orElse: () => false,
+          ))
+            TextButton(
+              onPressed: () => context.push(AppRoutes.rideReceiptPath(rideId)),
+              child: Text('Receipt',
+                  style: TextStyle(
+                      color: MyShopColors.primaryGold,
+                      fontSize: w * 0.036,
+                      fontWeight: FontWeight.w600)),
+            ),
         ],
       ),
       body: asyncDetail.when(
@@ -93,7 +97,10 @@ class _RideDetailBody extends StatelessWidget {
           SizedBox(height: h * 0.020),
           _DriverCard(data: data, w: w, h: h),
           SizedBox(height: h * 0.020),
-          _FareCard(data: data, w: w, h: h),
+          if (data.isCompleted)
+            _FareCard(data: data, w: w, h: h)
+          else
+            _CancelledFareNotice(w: w, h: h),
           SizedBox(height: h * 0.024),
           _ActionRow(rideId: rideId, data: data, w: w, h: h),
         ],
@@ -488,24 +495,24 @@ class _ActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!data.isCompleted) return const SizedBox.shrink();
     return Row(
       children: [
-        if (data.isCompleted)
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: () => context.push(AppRoutes.rideDisputePath(rideId)),
-              icon: const Icon(Icons.flag_outlined, size: 18),
-              label: const Text('Dispute Fare'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: MyShopColors.error,
-                side: const BorderSide(color: MyShopColors.error),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
-                padding: EdgeInsets.symmetric(vertical: h * 0.018),
-              ),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: () => context.push(AppRoutes.rideDisputePath(rideId)),
+            icon: const Icon(Icons.flag_outlined, size: 18),
+            label: const Text('Dispute Fare'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: MyShopColors.error,
+              side: const BorderSide(color: MyShopColors.error),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+              padding: EdgeInsets.symmetric(vertical: h * 0.018),
             ),
           ),
-        if (data.isCompleted) SizedBox(width: w * 0.030),
+        ),
+        SizedBox(width: w * 0.030),
         Expanded(
           child: ElevatedButton.icon(
             onPressed: () => context.push(AppRoutes.rideReceiptPath(rideId)),
@@ -522,6 +529,58 @@ class _ActionRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ── Cancelled fare notice ─────────────────────────────────────────────────────
+
+class _CancelledFareNotice extends StatelessWidget {
+  final double w, h;
+  const _CancelledFareNotice({required this.w, required this.h});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(w * 0.04),
+      decoration: BoxDecoration(
+        color: MyShopColors.surfaceWhite,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: MyShopColors.divider),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: EdgeInsets.all(w * 0.025),
+            decoration: const BoxDecoration(
+              color: MyShopColors.warningLight,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.info_outline_rounded,
+                color: MyShopColors.warning, size: 18),
+          ),
+          SizedBox(width: w * 0.030),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('No fare collected',
+                    style: TextStyle(
+                      color: MyShopColors.textPrimary,
+                      fontSize: w * 0.036,
+                      fontWeight: FontWeight.w700,
+                    )),
+                const SizedBox(height: 2),
+                Text('This ride was cancelled before completion.',
+                    style: TextStyle(
+                      color: MyShopColors.textSecondary,
+                      fontSize: w * 0.030,
+                    )),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
