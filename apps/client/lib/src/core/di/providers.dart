@@ -41,6 +41,7 @@ final dioClientProvider = Provider<DioClient>((ref) {
   return createDioClient(
     config: config,
     tokenStorage: tokenStorage,
+    clientId: 'myshop-client',
     onForceLogout: handler.call,
   );
 });

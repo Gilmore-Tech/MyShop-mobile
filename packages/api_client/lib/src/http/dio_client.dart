@@ -27,6 +27,11 @@ DioClient createDioClient({
   required TokenStorage tokenStorage,
   void Function()? onForceLogout,
   bool enableLogging = true,
+  // Identifies the calling app on every request (e.g. 'myshop-provider/1.2.0').
+  // Lets the Cloudflare WAF drop scripted traffic to /auth that doesn't look
+  // like the app (see docs/cloudflare-edge-protection.md §5). Informational,
+  // not a secret.
+  String clientId = 'myshop-app',
 }) {
   final dio = Dio(
     BaseOptions(
@@ -37,6 +42,7 @@ DioClient createDioClient({
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
+        'X-MyShop-Client': clientId,
       },
     ),
   );

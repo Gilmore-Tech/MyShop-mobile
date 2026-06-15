@@ -32,6 +32,7 @@ final dioClientProvider = Provider<DioClient>((ref) {
   return createDioClient(
     config: config,
     tokenStorage: tokenStorage,
+    clientId: 'myshop-provider',
     onForceLogout: () {
       ref.read(authControllerProvider.notifier).onForceLogoutFromInterceptor();
     },
