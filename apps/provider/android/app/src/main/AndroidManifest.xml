@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- ── Internet ─────────────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.INTERNET"/>
@@ -9,8 +10,18 @@
     <!-- Keep the device awake long enough to render a heads-up banner. -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
-    <!-- Required for the urgent `job_alerts` channel's full-screen-intent. -->
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+    <!-- USE_FULL_SCREEN_INTENT is pulled in transitively by
+         `flutter_local_notifications`'s plugin manifest. Google Play only
+         auto-grants this permission to apps whose core purpose is alarms or
+         phone/video calls (Android 14+ policy); a ride-hailing / artisan
+         provider app does not qualify and uploads get rejected for it. We
+         strip it with `tools:node="remove"` so it never reaches the merged
+         manifest. Incoming job/ride requests still alert via a max-importance
+         heads-up banner + custom ringtone + WAKE_LOCK + vibration; we just no
+         longer pop a lock-screen full-screen takeover. See the matching
+         directive in the client app's manifest. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"
+        tools:node="remove"/>
 
     <!-- ── Camera + location ────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.CAMERA"/>

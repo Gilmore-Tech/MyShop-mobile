@@ -90,6 +90,10 @@ final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
   final distanceKm = (result['distanceKm'] as num?)?.toDouble() ?? 0.0;
   final durationMins = (result['durationMins'] as num?)?.toInt() ?? 0;
   final pickupEtaMins = (result['pickupEtaMins'] as num?)?.toInt() ?? 5;
+  // Default true for backward compatibility with older API builds that don't
+  // send the flag — absence means "don't block booking", same as the backend's
+  // optimistic posture on a transient lookup error.
+  final driversAvailable = (result['driversAvailable'] as bool?) ?? true;
 
   developer.log(
     'Estimate: ₵${(baseFarePesewas / 100).toStringAsFixed(2)} '
@@ -116,6 +120,7 @@ final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
       // Anything below a 5% multiplier isn't a meaningful surge anyway.
       surgeActive: surgeMultiplier > 1.05,
       surgeMultiplier: surgeMultiplier,
+      driversAvailable: driversAvailable,
     );
   }).toList();
 });

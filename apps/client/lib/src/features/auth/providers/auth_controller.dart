@@ -345,8 +345,22 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
     if (current is! AuthOtpSent) return;
     try {
       await _repo.loginClient(current.phone);
+      // Success — clear any prior error so the screen reflects the new send.
+      state = AuthOtpSent(phone: current.phone, isNewUser: current.isNewUser);
+    } on ApiException catch (e) {
+      // Surface cooldown / daily-cap / send failures. Previously swallowed, so
+      // the user saw nothing and no code arrived (OTP_COOLDOWN, OTP_DAILY_LIMIT).
+      state = AuthOtpSent(
+        phone: current.phone,
+        isNewUser: current.isNewUser,
+        error: AuthErrorMapper.message(e),
+      );
     } catch (_) {
-      // Silently fail — user can tap again
+      state = AuthOtpSent(
+        phone: current.phone,
+        isNewUser: current.isNewUser,
+        error: 'Could not resend the code. Please try again.',
+      );
     }
   }
 
