@@ -154,6 +154,110 @@ class TokenResponse {
   final String refreshToken;
 }
 
+/// POST /auth/provider/verify-otp request body. Role-agnostic — the backend
+/// resolves the provider role(s) after verifying the code.
+class ProviderVerifyOtpRequest {
+  const ProviderVerifyOtpRequest({
+    required this.phone,
+    required this.otp,
+    required this.deviceId,
+    this.deviceInfo,
+    this.forceLogin = false,
+  });
+
+  final String phone;
+  final String otp;
+  final String deviceId;
+  final Map<String, dynamic>? deviceInfo;
+  final bool forceLogin;
+
+  Map<String, dynamic> toJson() {
+    final json = <String, dynamic>{
+      'phone': phone,
+      'otp': otp,
+      'deviceId': deviceId,
+    };
+    if (deviceInfo != null) json['deviceInfo'] = deviceInfo;
+    if (forceLogin) json['forceLogin'] = true;
+    return json;
+  }
+}
+
+/// POST /auth/provider/select-role request body. Exchanges the selection token
+/// (from a dual-role verify) plus the chosen role for a session.
+class ProviderSelectRoleRequest {
+  const ProviderSelectRoleRequest({
+    required this.selectionToken,
+    required this.role,
+    this.forceLogin = false,
+  });
+
+  final String selectionToken;
+  final String role; // 'driver' | 'artisan'
+  final bool forceLogin;
+
+  Map<String, dynamic> toJson() {
+    final json = <String, dynamic>{
+      'selectionToken': selectionToken,
+      'role': role,
+    };
+    if (forceLogin) json['forceLogin'] = true;
+    return json;
+  }
+}
+
+/// Result of POST /auth/provider/verify-otp. Either a ready session (single
+/// provider role) or a role choice (the account holds both driver + artisan).
+sealed class ProviderVerifyResult {
+  const ProviderVerifyResult();
+
+  /// Parse the backend payload, discriminating on the `multiRole` flag.
+  factory ProviderVerifyResult.fromJson(Map<String, dynamic> json) {
+    if (json['multiRole'] == true) {
+      return ProviderRoleChoice(
+        roles: (json['roles'] as List).cast<String>(),
+        selectionToken: json['selectionToken'] as String,
+      );
+    }
+    return ProviderSession(
+      accessToken: json['accessToken'] as String,
+      refreshToken: json['refreshToken'] as String,
+      role: json['role'] as String,
+    );
+  }
+}
+
+/// Single-role verify (or select-role) outcome: tokens + the resolved role.
+class ProviderSession extends ProviderVerifyResult {
+  const ProviderSession({
+    required this.accessToken,
+    required this.refreshToken,
+    required this.role,
+  });
+
+  factory ProviderSession.fromJson(Map<String, dynamic> json) => ProviderSession(
+        accessToken: json['accessToken'] as String,
+        refreshToken: json['refreshToken'] as String,
+        role: json['role'] as String,
+      );
+
+  final String accessToken;
+  final String refreshToken;
+  final String role; // 'driver' | 'artisan'
+}
+
+/// Dual-role verify outcome: the user must pick a role, then call select-role
+/// with [selectionToken].
+class ProviderRoleChoice extends ProviderVerifyResult {
+  const ProviderRoleChoice({
+    required this.roles,
+    required this.selectionToken,
+  });
+
+  final List<String> roles; // ['driver', 'artisan']
+  final String selectionToken;
+}
+
 /// POST /auth/refresh request body.
 class RefreshRequest {
   const RefreshRequest({required this.refreshToken});
