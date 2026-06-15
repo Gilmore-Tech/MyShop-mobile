@@ -118,6 +118,54 @@ class MockAuthService implements AuthService {
   }
 
   @override
+  Future<void> providerLogin(LoginRequest request) async {
+    await _delay();
+    // Uniform — never reveals whether the number is registered.
+    _lastPhone = request.phone;
+  }
+
+  @override
+  Future<ProviderVerifyResult> providerVerifyOtp(
+    ProviderVerifyOtpRequest request,
+  ) async {
+    await _delay();
+    if (request.otp != _validCode) {
+      throw AuthException('Invalid OTP code.', code: 'INVALID_OTP');
+    }
+    if (!_registeredPhones.contains(request.phone)) {
+      throw AuthException(
+        'No provider account found for this phone number.',
+        code: 'ACCOUNT_NOT_FOUND',
+      );
+    }
+    _lastPhone = request.phone;
+    if (_lastType == 'both') {
+      return const ProviderRoleChoice(
+        roles: ['driver', 'artisan'],
+        selectionToken: 'mock_selection_token',
+      );
+    }
+    return ProviderSession(
+      accessToken: 'mock_access_token',
+      refreshToken: 'mock_refresh_token',
+      role: _lastType == 'artisan' ? 'artisan' : 'driver',
+    );
+  }
+
+  @override
+  Future<ProviderSession> providerSelectRole(
+    ProviderSelectRoleRequest request,
+  ) async {
+    await _delay();
+    _lastType = request.role;
+    return ProviderSession(
+      accessToken: 'mock_access_token',
+      refreshToken: 'mock_refresh_token',
+      role: request.role,
+    );
+  }
+
+  @override
   Future<UserProfile> getMe() async {
     await _delay();
     final phone = _lastPhone ?? '+233241234567';
