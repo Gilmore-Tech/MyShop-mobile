@@ -53,10 +53,15 @@ class RideCancelOutcome {
   const RideCancelOutcome({
     this.feePesewas = 0,
     this.driverSuspended = false,
+    this.driverNoShow = false,
   });
 
   final int feePesewas;
   final bool driverSuspended;
+
+  /// True when the backend treated this as a client no-show (driver waited out
+  /// the free window before cancelling) — no rating/counter penalty applied.
+  final bool driverNoShow;
 
   bool get hasFee => feePesewas > 0;
 }
@@ -284,6 +289,7 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       outcome = RideCancelOutcome(
         feePesewas: (result['cancellationFeePesewas'] as num?)?.toInt() ?? 0,
         driverSuspended: result['driverSuspended'] == true,
+        driverNoShow: result['driverNoShow'] == true,
       );
       developer.log(
         'cancelRide PATCH succeeded for ${ride.id} '
