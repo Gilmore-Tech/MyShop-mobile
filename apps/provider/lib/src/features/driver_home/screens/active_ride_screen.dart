@@ -303,11 +303,24 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
       );
     }
     if (!mounted) return;
-    // Active ride state is now cleared. Route via GoRouter so the
-    // matchList stays consistent — `Navigator.pop` would clash with the
-    // ride:state listener above (which already navigates on the cancelled
-    // snapshot) and trip the "no pages left to show" assertion.
-    context.go('/home');
+    // The active-ride screen is a raw MaterialPageRoute pushed on top of the
+    // GoRouter shell (ride_request_screen._accept → pushReplacement). So
+    // context.go('/home') updates the route table but leaves THIS screen sitting
+    // on top — the driver stays stuck on the map. Pop it to reveal the home
+    // shell, where clearRide()/_resumeOnline has already flipped the driver back
+    // online so they receive requests again.
+    //
+    // Safe from the historical double-pop crash: on a driver-initiated cancel
+    // the ride is already cleared to null (not `cancelled`), so the
+    // cancelled-snapshot listener above does NOT fire — this is the only
+    // navigation in flight. The canPop fallback covers the recovery flow where
+    // the screen was opened via the /active-ride GoRoute instead of a push.
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else {
+      context.go('/home');
+    }
   }
 
   /// Where the driver is currently navigating to. Pickup until they have
