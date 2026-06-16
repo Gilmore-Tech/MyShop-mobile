@@ -328,6 +328,18 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       // stable if the backend rooms ever cross-talk).
       return;
     }
+    // Late terminal echo for a ride we've ALREADY cleared locally. A
+    // driver-initiated cancel clears state + navigates home synchronously,
+    // then the backend's own `ride:state` (cancelled) lands a second or two
+    // later over the socket. Without this guard we'd re-populate `ride` with
+    // the cancelled snapshot and bounce the driver back to the active-ride
+    // map. Nothing to transition — just make sure we're back online.
+    if (current == null &&
+        (snapshot.status == RideStatus.completed ||
+            snapshot.status == RideStatus.cancelled)) {
+      _resumeOnline();
+      return;
+    }
     // Backend's `ride:state` payload doesn't yet include `stops`; preserve
     // whatever we already have locally so a snapshot doesn't blow away
     // stops that arrived via `ride:route_updated` REST refetch.
