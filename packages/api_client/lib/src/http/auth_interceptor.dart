@@ -59,6 +59,11 @@ class AuthInterceptor extends Interceptor {
     '/auth/login/driver',
     '/auth/login/artisan',
     '/auth/verify-otp',
+    // Provider post-OTP login flow (v1.2.0) — all pre-auth, no token. The
+    // trailing slash prefix covers /auth/provider/login, /verify-otp and
+    // /select-role. Without this the interceptor rejects them locally with a
+    // spurious "session is over" before they ever hit the wire.
+    '/auth/provider/',
     '/auth/refresh',
     '/auth/recover',
     '/auth/request-session-recovery',

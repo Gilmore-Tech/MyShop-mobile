@@ -1,15 +1,12 @@
 import 'package:api_client/api_client.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/auth/providers/auth_controller.dart';
 
 /// API configuration (base URL).
 final apiConfigProvider = Provider<ApiConfig>((ref) {
-  final config = ApiConfig.fromEnvironment();
-  debugPrint('[DIAG] API base URL = ${config.baseUrl}'); // TEMP: provider-login diagnosis
-  return config;
+  return ApiConfig.fromEnvironment();
 });
 
 /// Token storage backed by Flutter Secure Storage.
