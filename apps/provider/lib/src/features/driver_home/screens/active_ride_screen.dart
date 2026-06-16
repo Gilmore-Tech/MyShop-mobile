@@ -229,6 +229,116 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
     await _confirmAndCancel(ride);
   }
 
+  /// Reasons a driver can pick when cancelling. The backend requires a
+  /// non-empty reason on every cancellation, and the rider is shown that the
+  /// driver cancelled — so we always collect a real reason rather than send a
+  /// hardcoded placeholder.
+  static const _driverCancelReasons = <String>[
+    'Rider is not at the pickup point',
+    'Could not reach the rider',
+    'Pickup location is wrong or too far',
+    'Vehicle problem',
+    'Safety concern',
+    'Other',
+  ];
+  static const _noShowReasons = <String>[
+    'Rider did not show up',
+    'Could not reach the rider',
+    'Other',
+  ];
+
+  /// Bottom sheet that collects the cancellation reason. Returns the chosen
+  /// reason, or null if the driver backed out ("Keep ride" / dismiss).
+  Future<String?> _pickCancellationReason(bool isFreeNoShow) {
+    final reasons = isFreeNoShow ? _noShowReasons : _driverCancelReasons;
+    return showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: MyShopColors.surfaceWhite,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 8),
+            Center(
+              child: Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: MyShopColors.divider,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+            ),
+            const SizedBox(height: MyShopSpacing.md),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+              child: Text(
+                'Why are you cancelling?',
+                style: TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: MyShopColors.textPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+              child: Text(
+                isFreeNoShow
+                    ? "You've waited the full 3 minutes — treated as a rider "
+                        'no-show, no penalty.'
+                    : "The rider's 3-minute wait hasn't elapsed — cancelling "
+                        'now affects your rating.',
+                style: const TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: MyShopColors.textSecondary,
+                ),
+              ),
+            ),
+            const SizedBox(height: MyShopSpacing.sm),
+            for (final r in reasons)
+              ListTile(
+                title: Text(
+                  r,
+                  style: const TextStyle(
+                    fontFamily: 'Raleway',
+                    fontWeight: FontWeight.w600,
+                    color: MyShopColors.textPrimary,
+                  ),
+                ),
+                onTap: () => Navigator.of(sheetCtx).pop(r),
+              ),
+            const Divider(height: 1),
+            ListTile(
+              leading:
+                  const Icon(Icons.close, color: MyShopColors.textSecondary),
+              title: const Text(
+                'Keep ride',
+                style: TextStyle(
+                  fontFamily: 'Raleway',
+                  fontWeight: FontWeight.w700,
+                  color: MyShopColors.textSecondary,
+                ),
+              ),
+              onTap: () => Navigator.of(sheetCtx).pop(),
+            ),
+            const SizedBox(height: MyShopSpacing.sm),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _confirmAndCancel(Ride ride) async {
     // A driver who has waited out the full free window at pickup is treated
     // as cancelling a rider no-show — penalty-free. Cancelling before that
@@ -239,34 +349,10 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
         : _freeWaitSecs;
     final isFreeNoShow = ride.status == RideStatus.arrived && remaining <= 0;
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogCtx) => AlertDialog(
-        title: Text(isFreeNoShow ? 'Rider did not show?' : 'Cancel this ride?'),
-        content: Text(
-          isFreeNoShow
-              ? "You've waited the full 3 minutes. Cancelling now is treated "
-                  "as a rider no-show — it won't affect your rating or "
-                  'cancellation count.'
-              : "The rider's 3-minute wait hasn't elapsed yet. Cancelling now "
-                  'counts as a driver cancellation: it lowers your rating and, '
-                  'if it happens often, can suspend your account.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogCtx).pop(false),
-            child: const Text('Keep ride'),
-          ),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: MyShopColors.error),
-            onPressed: () => Navigator.of(dialogCtx).pop(true),
-            child: Text(isFreeNoShow ? 'Cancel — no-show' : 'Cancel ride'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    final outcome = await ref.read(activeRideProvider.notifier).cancelRide();
+    final reason = await _pickCancellationReason(isFreeNoShow);
+    if (reason == null || !mounted) return;
+    final outcome =
+        await ref.read(activeRideProvider.notifier).cancelRide(reason: reason);
     if (!mounted) return;
 
     // Surface the outcome before popping. Suspension takes priority — the
