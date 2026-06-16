@@ -332,17 +332,25 @@ class AuthController extends StateNotifier<AuthState> {
     _requesting = true;
     state = const AuthUnauthenticated(isLoading: true);
     try {
+      debugPrint('[DIAG] providerLogin → calling for $phone'); // TEMP
       await _repo.providerLogin(phone);
+      debugPrint('[DIAG] providerLogin → OK, OTP requested'); // TEMP
       // role unknown until post-OTP resolution.
       state = AuthOtpSent(phone: phone, isNewUser: false);
     } on ApiException catch (e) {
+      debugPrint(
+        '[DIAG] providerLogin ApiException: isNetwork=${e is NetworkException} '
+        'status=${e.statusCode} code=${e.errorCode} msg=${e.message}',
+      ); // TEMP
       state = AuthUnauthenticated(
         error: AuthErrorMapper.message(e),
         fieldErrors: AuthErrorMapper.fieldErrors(e),
       );
     } on AuthException catch (e) {
+      debugPrint('[DIAG] providerLogin AuthException: ${e.code} ${e.message}'); // TEMP
       state = AuthUnauthenticated(error: e.message);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[DIAG] providerLogin OTHER ${e.runtimeType}: $e'); // TEMP
       state = const AuthUnauthenticated(
         error: 'Something went wrong. Please try again.',
       );
