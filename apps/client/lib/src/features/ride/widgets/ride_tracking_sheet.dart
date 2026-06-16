@@ -533,21 +533,50 @@ class _SafetyNotice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
-    return Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(Icons.shield_outlined,
-            size: w * 0.038, color: MyShopColors.textSecondary),
-        SizedBox(width: w * 0.021),
-        Expanded(
-          child: Text(
-            'Your safety is our priority. In-app recording is active for this trip. '
-            'Share your live location with family for extra peace of mind.',
-            style: TextStyle(
-              fontSize: w * 0.028,
-              fontWeight: FontWeight.w400,
-              color: MyShopColors.textSecondary,
-              height: 1.5,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.shield_outlined,
+                size: w * 0.038, color: MyShopColors.textSecondary),
+            SizedBox(width: w * 0.021),
+            Expanded(
+              child: Text(
+                'Your safety is our priority. In-app recording is active for this trip. '
+                'Share your live location with family for extra peace of mind.',
+                style: TextStyle(
+                  fontSize: w * 0.028,
+                  fontWeight: FontWeight.w400,
+                  color: MyShopColors.textSecondary,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: w * 0.021),
+        Padding(
+          padding: EdgeInsets.only(left: w * 0.059),
+          child: GestureDetector(
+            onTap: () => context.push(AppRoutes.safetyShare),
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.ios_share_rounded,
+                    size: w * 0.040, color: MyShopColors.primaryGold),
+                SizedBox(width: w * 0.016),
+                Text(
+                  'Share live location',
+                  style: TextStyle(
+                    fontSize: w * 0.030,
+                    fontWeight: FontWeight.w700,
+                    color: MyShopColors.primaryGold,
+                  ),
+                ),
+              ],
             ),
           ),
         ),

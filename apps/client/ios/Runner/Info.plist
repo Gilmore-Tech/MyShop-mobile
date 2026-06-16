@@ -92,5 +92,20 @@
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
+		<!-- Referral deep links: myshop://refer?code=… launches the app and the
+		     Dart-side AppLinks bridge prefills the sign-up screen. -->
+		<key>CFBundleURLTypes</key>
+		<array>
+			<dict>
+				<key>CFBundleTypeRole</key>
+				<string>Editor</string>
+				<key>CFBundleURLName</key>
+				<string>com.gilmoretech.myshopclient.referral</string>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<string>myshop</string>
+				</array>
+			</dict>
+		</array>
 	</dict>
 </plist>

@@ -80,6 +80,17 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+
+            <!-- Referral deep links: myshop://refer?code=… opens the app and
+                 the Dart-side AppLinks bridge prefills the sign-up screen.
+                 Custom scheme (no domain verification needed). BROWSABLE so
+                 links in browsers / messaging apps can launch us. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="myshop"/>
+            </intent-filter>
         </activity>
         <meta-data
             android:name="com.google.android.geo.API_KEY"

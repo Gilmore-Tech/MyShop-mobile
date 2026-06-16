@@ -7,6 +7,7 @@ import 'package:intl_phone_field/phone_number.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../../app/router.dart';
+import '../../../core/deep_links/referral_deep_link.dart';
 import '../providers/auth_controller.dart';
 
 /// PRD § 4.1 — Client registration requires: full name + phone.
@@ -21,6 +22,7 @@ class SignUpScreen extends ConsumerStatefulWidget {
 class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
+  final _referralController = TextEditingController();
   final _nameFocus = FocusNode();
 
   // Phone state — IntlPhoneField manages its own text controller; we just
@@ -45,6 +47,13 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       _initialPhoneValue = parsed.national;
     }
 
+    // Prefill the referral code if the user arrived via a referral deep link
+    // (myshop://refer?code=…) captured before they reached this screen.
+    final pendingReferral = ref.read(pendingReferralCodeProvider);
+    if (pendingReferral != null && pendingReferral.isNotEmpty) {
+      _referralController.text = pendingReferral;
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _nameFocus.requestFocus();
     });
@@ -54,6 +63,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
+    _referralController.dispose();
     _nameFocus.dispose();
     super.dispose();
   }
@@ -242,6 +252,20 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                           w: w,
                           h: h,
                         ),
+                        SizedBox(height: h * 0.022),
+
+                        // Referral code (optional) — auto-filled when the user
+                        // arrives via a myshop://refer?code=… deep link.
+                        _FieldLabel(
+                            label: 'Referral Code', w: w, optional: true),
+                        SizedBox(height: h * 0.008),
+                        _StyledTextField(
+                          controller: _referralController,
+                          hint: 'e.g. AMA10',
+                          textCapitalization: TextCapitalization.characters,
+                          w: w,
+                          h: h,
+                        ),
 
                         // Error message
                         if (error != null) ...[
@@ -363,11 +387,16 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   void _submit() {
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
+    final referral = _referralController.text.trim();
     ref.read(clientAuthControllerProvider.notifier).register(
           phone: _phone!.completeNumber,
           fullName: name,
           email: email.isNotEmpty ? email : null,
+          referralCode: referral.isNotEmpty ? referral : null,
         );
+    // One-shot: clear the captured code so it can't bleed into a later,
+    // unrelated registration on the same install.
+    ref.read(pendingReferralCodeProvider.notifier).state = null;
   }
 }
 

@@ -1,13 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:api_client/api_client.dart' show ApiException;
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../../core/di/providers.dart';
+import '../../ride/providers/ride_provider.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD § 4.6 / § 4.10 — Share a live tracking link with trusted contacts.
-// Link expires when the ride/job ends.
-// EDD: POST /v1/bookings/:id/share-link → { url, expiresAt }
+// Link expires when the ride ends.
+// EDD: GET /v1/rides/:id/share → { shareUrl, shareToken, expiresAt }
+// The recipient opens the public page at /v1/rides/track/:shareToken — no app,
+// no auth required.
 
 class ShareTrackingScreen extends ConsumerStatefulWidget {
   const ShareTrackingScreen({super.key});
@@ -18,20 +27,79 @@ class ShareTrackingScreen extends ConsumerStatefulWidget {
 }
 
 class _ShareTrackingScreenState extends ConsumerState<ShareTrackingScreen> {
-  bool _linkGenerated = false;
   bool _isGenerating = false;
+  String? _shareUrl;
+  DateTime? _expiresAt;
 
-  static const _mockLink = 'https://myshop.com.gh/track/r/abc123xyz';
+  bool get _linkGenerated => _shareUrl != null;
+
+  /// Message accompanying the link when shared via SMS / OS share sheet.
+  String get _shareMessage =>
+      "I'm on a MyShop ride. Follow my live location for safety: $_shareUrl";
 
   Future<void> _generateLink() async {
+    final rideId = ref.read(activeRideIdProvider);
+    if (rideId == null || rideId.isEmpty) {
+      MyShopToast.show(context,
+          message: 'No active ride to share. Start a ride first.',
+          type: ToastType.warning);
+      return;
+    }
+
     setState(() => _isGenerating = true);
-    // TODO: POST /v1/bookings/:id/share-link
-    await Future.delayed(const Duration(milliseconds: 700));
-    if (!mounted) return;
-    setState(() {
-      _isGenerating = false;
-      _linkGenerated = true;
-    });
+    try {
+      final res = await ref.read(rideServiceProvider).getShareLink(rideId);
+      if (!mounted) return;
+      final url = res['shareUrl'] as String?;
+      if (url == null || url.isEmpty) {
+        throw const ApiException(
+            message: 'Tracking link was not returned. Please try again.');
+      }
+      final expiresRaw = res['expiresAt'] as String?;
+      setState(() {
+        _shareUrl = url;
+        _expiresAt =
+            expiresRaw == null ? null : DateTime.tryParse(expiresRaw)?.toLocal();
+        _isGenerating = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _isGenerating = false);
+      MyShopToast.show(context, message: e.message, type: ToastType.error);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isGenerating = false);
+      MyShopToast.show(context,
+          message: "Couldn't generate link. Please try again.",
+          type: ToastType.error);
+    }
+  }
+
+  void _copyLink() {
+    final url = _shareUrl;
+    if (url == null) return;
+    Clipboard.setData(ClipboardData(text: url));
+    MyShopToast.show(context, message: 'Link copied to clipboard');
+  }
+
+  Future<void> _shareViaSms() async {
+    final url = _shareUrl;
+    if (url == null) return;
+    final uri = Uri(
+        scheme: 'sms',
+        queryParameters: <String, String>{'body': _shareMessage});
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else if (mounted) {
+      MyShopToast.show(context,
+          message: 'No SMS app available', type: ToastType.error);
+    }
+  }
+
+  Future<void> _shareViaSheet() async {
+    final url = _shareUrl;
+    if (url == null) return;
+    await Share.share(_shareMessage, subject: 'My MyShop ride');
   }
 
   @override
@@ -66,19 +134,21 @@ class _ShareTrackingScreenState extends ConsumerState<ShareTrackingScreen> {
             SizedBox(height: h * 0.024),
             if (_linkGenerated) ...[
               _LinkCard(
-                link: _mockLink,
+                link: _shareUrl!,
                 w: w,
                 h: h,
-                onCopy: () {
-                  Clipboard.setData(const ClipboardData(text: _mockLink));
-                  MyShopToast.show(context,
-                      message: 'Link copied to clipboard');
-                },
+                onCopy: _copyLink,
               ),
               SizedBox(height: h * 0.024),
-              _ShareMethods(w: w, h: h),
+              _ShareMethods(
+                w: w,
+                h: h,
+                onSms: _shareViaSms,
+                onShare: _shareViaSheet,
+                onCopy: _copyLink,
+              ),
               SizedBox(height: h * 0.024),
-              _ExpiryNote(w: w),
+              _ExpiryNote(w: w, expiresAt: _expiresAt),
             ] else
               _GeneratePrompt(w: w, h: h),
             const Spacer(),
@@ -288,30 +358,32 @@ class _LinkCard extends StatelessWidget {
 
 class _ShareMethods extends StatelessWidget {
   final double w, h;
-  const _ShareMethods({required this.w, required this.h});
-
-  static const _methods = [
-    (icon: Icons.sms_rounded, label: 'SMS', color: MyShopColors.success),
-    (icon: Icons.share_rounded, label: 'Share', color: MyShopColors.info),
-    (
-      icon: Icons.copy_all_rounded,
-      label: 'Copy',
-      color: MyShopColors.darkSlate
-    ),
-  ];
+  final VoidCallback onSms;
+  final VoidCallback onShare;
+  final VoidCallback onCopy;
+  const _ShareMethods({
+    required this.w,
+    required this.h,
+    required this.onSms,
+    required this.onShare,
+    required this.onCopy,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final methods = <({IconData icon, String label, Color color, VoidCallback onTap})>[
+      (icon: Icons.sms_rounded, label: 'SMS', color: MyShopColors.success, onTap: onSms),
+      (icon: Icons.share_rounded, label: 'Share', color: MyShopColors.info, onTap: onShare),
+      (icon: Icons.copy_all_rounded, label: 'Copy', color: MyShopColors.darkSlate, onTap: onCopy),
+    ];
     return Row(
-      children: _methods.map((m) {
-        final isLast = m == _methods.last;
+      children: methods.map((m) {
+        final isLast = m == methods.last;
         return Expanded(
           child: Padding(
             padding: EdgeInsets.only(right: isLast ? 0 : w * 0.030),
             child: GestureDetector(
-              onTap: () {
-                // TODO: invoke platform share
-              },
+              onTap: m.onTap,
               child: Container(
                 padding: EdgeInsets.symmetric(vertical: h * 0.018),
                 decoration: BoxDecoration(
@@ -344,10 +416,16 @@ class _ShareMethods extends StatelessWidget {
 
 class _ExpiryNote extends StatelessWidget {
   final double w;
-  const _ExpiryNote({required this.w});
+  final DateTime? expiresAt;
+  const _ExpiryNote({required this.w, this.expiresAt});
 
   @override
   Widget build(BuildContext context) {
+    final until = expiresAt;
+    final text = until == null
+        ? 'This link expires automatically when your ride ends.'
+        : 'This link expires automatically when your ride ends '
+            '(by ${DateFormat('h:mm a').format(until)}).';
     return Row(
       children: [
         const Icon(Icons.timer_outlined,
@@ -355,7 +433,7 @@ class _ExpiryNote extends StatelessWidget {
         SizedBox(width: w * 0.016),
         Expanded(
           child: Text(
-            'This link expires automatically when your ride or job ends.',
+            text,
             style: TextStyle(
                 color: MyShopColors.textSecondary,
                 fontSize: w * 0.030,
