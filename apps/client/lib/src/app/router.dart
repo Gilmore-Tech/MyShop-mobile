@@ -87,6 +87,7 @@ import '../features/support/screens/legal_document_route_screen.dart';
 import '../features/profile/screens/referral_screen.dart';
 import '../features/profile/screens/payment_methods_screen.dart';
 import '../features/profile/screens/emergency_contacts_screen.dart';
+import '../features/loyalty/screens/points_history_screen.dart';
 import '../features/profile/screens/loyalty_points_screen.dart';
 
 // ── Chat / Safety / Notifications ─────────────────────────────────────────────
@@ -200,6 +201,7 @@ abstract final class AppRoutes {
   static const profilePayments = '/profile/payments';
   static const profileEmergency = '/profile/emergency-contacts';
   static const profileLoyalty = '/profile/loyalty';
+  static const loyaltyHistory = '/profile/loyalty/history';
 
   // Overlays
   static const chat = '/chat';
@@ -706,6 +708,11 @@ GoRouter _buildRouter({
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.profileLoyalty,
         builder: (_, __) => const LoyaltyPointsScreen(),
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: AppRoutes.loyaltyHistory,
+        builder: (_, __) => const PointsHistoryScreen(),
       ),
 
       // ── Overlays (full-screen, above shell) ────────────────────────────────────

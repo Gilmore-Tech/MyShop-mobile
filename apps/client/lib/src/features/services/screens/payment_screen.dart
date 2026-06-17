@@ -6,6 +6,9 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../loyalty/domain/loyalty_models.dart';
+import '../../loyalty/providers/loyalty_redemption_providers.dart';
+import '../../loyalty/widgets/apply_loyalty_points_row.dart';
 import '../providers/active_job_provider.dart';
 import '../providers/payment_provider.dart';
 import '../widgets/otp_entry_sheet.dart';
@@ -662,7 +665,7 @@ class _CategoryChip extends StatelessWidget {
 
 // ── Payment Summary Card ──────────────────────────────────────────────────────
 
-class _PaymentSummaryCard extends StatelessWidget {
+class _PaymentSummaryCard extends ConsumerWidget {
   final PaymentSummary summary;
   final double w;
   final double h;
@@ -670,7 +673,15 @@ class _PaymentSummaryCard extends StatelessWidget {
       {required this.summary, required this.w, required this.h});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final applied = ref.watch(appliedRedemptionProvider(summary.jobId));
+    final discount = applied?.discountPesewas ?? 0;
+    final netTotalPesewas = (summary.totalPesewas - discount)
+        .clamp(0, summary.totalPesewas)
+        .toInt();
+    final totalDisplay = applied != null
+        ? formatGhsFromPesewas(netTotalPesewas)
+        : summary.totalDisplay;
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -745,6 +756,24 @@ class _PaymentSummaryCard extends StatelessWidget {
                 w: w,
                 h: h,
               ),
+              // ── Loyalty redemption (job booking) ──
+              SizedBox(height: h * 0.012),
+              ApplyLoyaltyPointsRow(
+                bookingType: RedeemableBookingType.job,
+                bookingId: summary.jobId,
+                farePesewas: summary.totalPesewas,
+                padding: EdgeInsets.zero,
+              ),
+              if (applied != null) ...[
+                SizedBox(height: h * 0.012),
+                _LineItem(
+                  label: 'Loyalty discount',
+                  value: '-${applied.discountDisplay}',
+                  w: w,
+                  h: h,
+                  valueColor: MyShopColors.success,
+                ),
+              ],
               SizedBox(height: h * 0.017),
               const Divider(height: 1, color: MyShopColors.divider),
               SizedBox(height: h * 0.017),
@@ -767,7 +796,7 @@ class _PaymentSummaryCard extends StatelessWidget {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerRight,
                       child: Text(
-                        summary.totalDisplay,
+                        totalDisplay,
                         style: TextStyle(
                           fontSize: w * 0.051,
                           fontWeight: FontWeight.w800,
@@ -860,11 +889,13 @@ class _LineItem extends StatelessWidget {
   final String value;
   final double w;
   final double h;
+  final Color? valueColor;
   const _LineItem({
     required this.label,
     required this.value,
     required this.w,
     required this.h,
+    this.valueColor,
   });
 
   @override
@@ -886,7 +917,7 @@ class _LineItem extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.033,
             fontWeight: FontWeight.w500,
-            color: MyShopColors.textPrimary,
+            color: valueColor ?? MyShopColors.textPrimary,
           ),
         ),
       ],
@@ -933,10 +964,10 @@ class _PaymentMethodCardState extends ConsumerState<_PaymentMethodCard> {
     final w = widget.w;
     final h = widget.h;
     final momoPhoneCtrl = widget.momoPhoneCtrl;
-    final phoneError = selected.requiresMomoPhone &&
-            momoPhoneCtrl.text.isNotEmpty
-        ? Validators.ghanaPhone(momoPhoneCtrl.text)
-        : null;
+    final phoneError =
+        selected.requiresMomoPhone && momoPhoneCtrl.text.isNotEmpty
+            ? Validators.ghanaPhone(momoPhoneCtrl.text)
+            : null;
 
     return _Card(
       w: w,
@@ -1225,8 +1256,19 @@ class _BottomBarState extends ConsumerState<_BottomBar> {
     final h = widget.h;
     final momoPhoneCtrl = widget.momoPhoneCtrl;
     final requiresMomo = state.selectedMethod.requiresMomoPhone;
-    final isMomoValid = !requiresMomo ||
-        Validators.ghanaPhone(momoPhoneCtrl.text) == null;
+    final isMomoValid =
+        !requiresMomo || Validators.ghanaPhone(momoPhoneCtrl.text) == null;
+
+    // Reflect any applied loyalty discount in the amount-to-pay. The backend
+    // applies the same discount at settlement, so this is display-only.
+    final applied = ref.watch(appliedRedemptionProvider(summary.jobId));
+    final netTotalPesewas =
+        (summary.totalPesewas - (applied?.discountPesewas ?? 0))
+            .clamp(0, summary.totalPesewas)
+            .toInt();
+    final totalDisplay = applied != null
+        ? formatGhsFromPesewas(netTotalPesewas)
+        : summary.totalDisplay;
 
     return Container(
       decoration: const BoxDecoration(
@@ -1260,7 +1302,7 @@ class _BottomBarState extends ConsumerState<_BottomBar> {
                   ),
                   SizedBox(height: h * 0.003),
                   Text(
-                    summary.totalDisplay,
+                    totalDisplay,
                     style: TextStyle(
                       fontSize: w * 0.056,
                       fontWeight: FontWeight.w800,
@@ -1308,14 +1350,15 @@ class _BottomBarState extends ConsumerState<_BottomBar> {
                 // notifier falls back to abandon-by-booking + fresh
                 // /initiate when the window expired or the row is no
                 // longer retryable.
-                PaymentPhase.failed when isMomoValid => () =>
-                    ref.read(paymentNotifierProvider.notifier).retryAfterFailure(
-                          jobId: summary.jobId,
-                          summary: summary,
-                          momoPhone: state.selectedMethod.requiresMomoPhone
-                              ? momoPhoneCtrl.text
-                              : null,
-                        ),
+                PaymentPhase.failed when isMomoValid => () => ref
+                    .read(paymentNotifierProvider.notifier)
+                    .retryAfterFailure(
+                      jobId: summary.jobId,
+                      summary: summary,
+                      momoPhone: state.selectedMethod.requiresMomoPhone
+                          ? momoPhoneCtrl.text
+                          : null,
+                    ),
                 PaymentPhase.idle when isMomoValid => () =>
                     ref.read(paymentNotifierProvider.notifier).confirmPayment(
                           jobId: summary.jobId,

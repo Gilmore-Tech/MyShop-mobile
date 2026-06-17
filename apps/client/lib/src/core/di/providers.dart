@@ -124,6 +124,14 @@ final loyaltyServiceProvider = Provider<LoyaltyService>((ref) {
   return LoyaltyService(ref.watch(dioProvider));
 });
 
+/// Reader for runtime business rules in `platform_config` (public, no auth).
+/// Loyalty redemption uses it for `loyalty_ghs_per_point_pesewas` and
+/// `loyalty_max_redemption_percent`; callers pair it with hard-coded
+/// fallbacks so a config miss never blocks the flow.
+final platformConfigServiceProvider = Provider<PlatformConfigService>((ref) {
+  return PlatformConfigService(ref.watch(dioProvider));
+});
+
 /// Verification service for document + profile photo uploads.
 final verificationServiceProvider = Provider<VerificationService>((ref) {
   return VerificationService(ref.watch(dioProvider));

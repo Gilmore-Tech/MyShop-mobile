@@ -14,3 +14,8 @@ key.properties
 **/*.jks
 
 gradle.properties
+
+# Build/runtime artifacts — never commit
+*.hprof
+.kotlin/
+java_pid*.hprof

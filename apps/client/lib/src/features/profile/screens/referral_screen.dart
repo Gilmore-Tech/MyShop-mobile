@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -205,7 +206,16 @@ class _CodeCard extends StatelessWidget {
                   icon: Icons.share_rounded,
                   label: 'Share',
                   isPrimary: true,
-                  onTap: code.isEmpty ? null : () {},
+                  onTap: code.isEmpty
+                      ? null
+                      : () {
+                          Share.share(
+                            'Join me on MyShop! Use my referral code '
+                            '$code to get GHS 10 off your first ride or job. '
+                            'Download the app: https://myshop.com.gh/refer/$code',
+                            subject: 'Get GHS 10 off MyShop',
+                          );
+                        },
                   w: w,
                   h: h,
                 ),

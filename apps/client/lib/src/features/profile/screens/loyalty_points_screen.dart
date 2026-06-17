@@ -3,6 +3,7 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../app/router.dart';
 import '../providers/loyalty_provider.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
@@ -120,7 +121,14 @@ class _Body extends StatelessWidget {
           _RedeemCard(data: data, w: w, h: h),
           if (data.ledger.isNotEmpty) ...[
             SizedBox(height: h * 0.028),
-            _SectionTitle(text: 'Recent activity', w: w),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                _SectionTitle(text: 'Recent activity', w: w),
+                _SeeAllHistoryButton(w: w),
+              ],
+            ),
             SizedBox(height: h * 0.016),
             _LedgerList(entries: data.ledger, w: w, h: h),
           ],
@@ -461,6 +469,35 @@ class _SectionTitle extends StatelessWidget {
           fontSize: w * 0.040,
           fontWeight: FontWeight.w700,
         ));
+  }
+}
+
+class _SeeAllHistoryButton extends StatelessWidget {
+  final double w;
+  const _SeeAllHistoryButton({required this.w});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => context.push(AppRoutes.loyaltyHistory),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('See all',
+                style: TextStyle(
+                  color: MyShopColors.primaryGold,
+                  fontSize: w * 0.032,
+                  fontWeight: FontWeight.w700,
+                )),
+            const Icon(Icons.chevron_right_rounded,
+                color: MyShopColors.primaryGold, size: 18),
+          ],
+        ),
+      ),
+    );
   }
 }
 

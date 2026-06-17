@@ -7,6 +7,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
 import '../../../core/chat/chat_entry_button.dart';
+import '../../loyalty/domain/loyalty_models.dart';
+import '../../loyalty/providers/loyalty_redemption_providers.dart';
+import '../../loyalty/widgets/apply_loyalty_points_row.dart';
 import '../providers/ride_payment_method_provider.dart';
 import '../providers/ride_provider.dart';
 
@@ -73,6 +76,10 @@ class RideTrackingSheet extends StatelessWidget {
           children: [
             const _DragHandle(),
             _FareRow(driver: driver, waitingSeconds: effectiveWaiting),
+            // Loyalty redemption — only while the ride is still active and the
+            // client has points. Reads the ride id from the active-ride
+            // provider; renders nothing when there's no points/booking.
+            const _LoyaltyRow(),
             if (isOvertime) const _OvertimeNotice(),
             if (isInProgress) const _TripInProgressNotice(),
             const Divider(height: 1, thickness: 1, color: MyShopColors.divider),
@@ -142,17 +149,28 @@ class _DragHandle extends StatelessWidget {
 
 // ── Fare row ──────────────────────────────────────────────────────────────────
 
-class _FareRow extends StatelessWidget {
+String _fmtGhc(int pesewas) => 'GH₵ ${(pesewas / 100).toStringAsFixed(2)}';
+
+class _FareRow extends ConsumerWidget {
   final MatchedDriver driver;
   final int? waitingSeconds;
 
   const _FareRow({required this.driver, this.waitingSeconds});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final w = MediaQuery.sizeOf(context).width;
     final h = MediaQuery.sizeOf(context).height;
     final showTimer = waitingSeconds != null;
+
+    // Reflect any loyalty discount applied to this ride in the headline fare.
+    final rideId = ref.watch(activeRideIdProvider);
+    final applied =
+        rideId == null ? null : ref.watch(appliedRedemptionProvider(rideId));
+    final discount = applied?.discountPesewas ?? 0;
+    final netFare =
+        (driver.activeFarePesewas - discount).clamp(0, 1 << 31).toInt();
+
     return Padding(
       padding: EdgeInsets.fromLTRB(w * 0.041, h * 0.009, w * 0.041, h * 0.017),
       child: Row(
@@ -163,8 +181,21 @@ class _FareRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (discount > 0) ...[
+                  Text(
+                    driver.activeFareDisplay,
+                    style: TextStyle(
+                      fontSize: w * 0.036,
+                      fontWeight: FontWeight.w500,
+                      color: MyShopColors.textSecondary,
+                      decoration: TextDecoration.lineThrough,
+                      height: 1.1,
+                    ),
+                  ),
+                  SizedBox(height: h * 0.003),
+                ],
                 Text(
-                  driver.activeFareDisplay,
+                  _fmtGhc(netFare),
                   style: TextStyle(
                     fontSize: w * 0.067,
                     fontWeight: FontWeight.w700,
@@ -180,6 +211,29 @@ class _FareRow extends StatelessWidget {
           if (showTimer) _WaitingTimer(seconds: waitingSeconds!),
         ],
       ),
+    );
+  }
+}
+
+/// Loyalty "Apply points" entry for the active ride. Reads the ride id from
+/// [activeRideIdProvider] and delegates to the shared [ApplyLoyaltyPointsRow]
+/// (which itself hides when the client has no points to spend).
+class _LoyaltyRow extends ConsumerWidget {
+  const _LoyaltyRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final w = MediaQuery.sizeOf(context).width;
+    final rideId = ref.watch(activeRideIdProvider);
+    final driver = ref.watch(matchedDriverProvider);
+    if (rideId == null || rideId.isEmpty || driver == null) {
+      return const SizedBox.shrink();
+    }
+    return ApplyLoyaltyPointsRow(
+      bookingType: RedeemableBookingType.ride,
+      bookingId: rideId,
+      farePesewas: driver.activeFarePesewas,
+      padding: EdgeInsets.fromLTRB(w * 0.041, 0, w * 0.041, w * 0.03),
     );
   }
 }
