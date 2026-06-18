@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../core/utils/payment_method_label.dart';
 import '../providers/ride_request_provider.dart';
 import '../widgets/rate_passenger_sheet.dart';
 
@@ -98,19 +99,9 @@ class _DriverRideCompleteScreenState
     );
   }
 
-  String _formatPaymentMethod(String raw) {
-    switch (raw) {
-      case 'cash':
-        return 'Cash Payment';
-      case 'card':
-        return 'Card Payment';
-      case 'momo':
-      case 'mobile_money':
-        return 'MoMo Payment';
-      default:
-        return raw.isEmpty ? 'Payment' : raw;
-    }
-  }
+  // Shared label map (handles momo_mtn / momo_telecel / momo_airteltigo / cash
+  // / card) so the completion summary matches the rider's choice exactly.
+  String _formatPaymentMethod(String raw) => paymentMethodLabel(raw);
 
   @override
   Widget build(BuildContext context) {

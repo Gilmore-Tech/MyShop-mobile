@@ -9,6 +9,7 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:shared_utils/shared_utils.dart';
 
 import '../../../core/services/local_notification_service.dart';
+import '../../../core/utils/payment_method_label.dart';
 import '../providers/driver_location_provider.dart';
 import '../providers/ride_request_provider.dart';
 import 'active_ride_screen.dart';
@@ -597,7 +598,7 @@ class _EarningsCard extends StatelessWidget {
               color: MyShopColors.surfaceWhite,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: MyShopColors.divider)),
-          child: Text(ride.paymentMethod,
+          child: Text(paymentMethodLabel(ride.paymentMethod),
               style: MyShopTypography.body2.copyWith(
                   fontWeight: FontWeight.w600,
                   color: MyShopColors.textPrimary)),
