@@ -289,6 +289,8 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('ride:state')
       ..on('ride:state', (data) {
+        debugPrint(
+            '[DIAG] ride:state received (${data.runtimeType}): status=${data is Map ? data['status'] : '?'}'); // TEMP
         if (data is! Map<String, dynamic>) return;
         try {
           applyRideSnapshot(data);
@@ -308,6 +310,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('ride:cancelled')
       ..on('ride:cancelled', (data) {
+        debugPrint('[DIAG] ride:cancelled received (${data.runtimeType}): $data'); // TEMP
         if (data is! Map) return;
         final map = Map<String, dynamic>.from(data);
         final cancelledBy = (map['cancelledBy'] as String?) ?? '';
