@@ -289,8 +289,6 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('ride:state')
       ..on('ride:state', (data) {
-        debugPrint(
-            '[DIAG] ride:state received (${data.runtimeType}): status=${data is Map ? data['status'] : '?'}'); // TEMP
         // Broad Map guard + normalise: Socket.IO frequently delivers
         // Map<dynamic,dynamic>, which the old narrow Map<String,dynamic> guard
         // silently dropped — leaving the rider stuck on the map when the driver
@@ -317,7 +315,6 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('ride:cancelled')
       ..on('ride:cancelled', (data) {
-        debugPrint('[DIAG] ride:cancelled received (${data.runtimeType}): $data'); // TEMP
         if (data is! Map) return;
         final map = Map<String, dynamic>.from(data);
         final cancelledBy = (map['cancelledBy'] as String?) ?? '';
