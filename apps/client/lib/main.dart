@@ -7,6 +7,7 @@ import 'package:myshop_client/firebase_options.dart';
 
 import 'src/app/client_app.dart';
 import 'src/core/constants/mapbox_config.dart';
+import 'src/core/deep_links/referral_deep_link.dart';
 import 'src/core/di/providers.dart';
 import 'src/core/providers/active_ride_recovery_bridge.dart';
 import 'src/core/providers/current_location_provider.dart';
@@ -107,6 +108,12 @@ Future<void> main() async {
   // every transition out of AuthAuthenticated, so a second user signing
   // in on the same install starts clean.
   container.read(logoutCleanupBridgeProvider);
+
+  // Start listening for referral deep links (myshop://refer?code=…). Captures
+  // the cold-start link and any links delivered while running, parking the
+  // code for the sign-up screen to prefill. Read (not listen) — the bridge
+  // holds its own stream subscription for the container's lifetime.
+  container.read(referralDeepLinkBridgeProvider);
 
   runApp(
     UncontrolledProviderScope(

@@ -22,6 +22,7 @@ class Ride {
     required this.paymentMethod,
     required this.createdAt,
     this.acceptedAt,
+    this.arrivedAtPickupAt,
     this.pickedUpAt,
     this.completedAt,
     this.cancelledAt,
@@ -105,6 +106,7 @@ class Ride {
       paymentMethod: json['paymentMethod'] as String? ?? 'cash',
       createdAt: _date(json['createdAt']) ?? DateTime.now(),
       acceptedAt: _date(json['acceptedAt']),
+      arrivedAtPickupAt: _date(json['arrivedAtPickupAt']),
       pickedUpAt: _date(json['pickedUpAt']),
       completedAt: _date(json['completedAt']),
       cancelledAt: _date(json['cancelledAt']),
@@ -147,6 +149,7 @@ class Ride {
   final String paymentMethod;
   final DateTime createdAt;
   final DateTime? acceptedAt;
+  final DateTime? arrivedAtPickupAt;
   final DateTime? pickedUpAt;
   final DateTime? completedAt;
   final DateTime? cancelledAt;
@@ -191,6 +194,7 @@ class Ride {
       paymentMethod: paymentMethod,
       createdAt: createdAt,
       acceptedAt: acceptedAt,
+      arrivedAtPickupAt: arrivedAtPickupAt,
       pickedUpAt: pickedUpAt,
       completedAt: completedAt,
       cancelledAt: cancelledAt,

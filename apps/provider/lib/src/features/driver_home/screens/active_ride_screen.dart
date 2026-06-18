@@ -69,6 +69,19 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
 
   Timer? _proximityTimer;
 
+  /// Ticks once a second while the ride is `arrived` so the pickup wait
+  /// countdown re-renders. Cancelled the moment the ride leaves `arrived`.
+  Timer? _waitTicker;
+
+  /// Fallback anchor for the wait countdown when the backend hasn't yet
+  /// surfaced `arrivedAtPickupAt` on the local ride (e.g. the status PATCH
+  /// response lands before the authoritative `ride:state` snapshot).
+  DateTime? _localArrivedAt;
+
+  /// Free wait at pickup before the driver can cancel a no-show penalty-free.
+  /// Mirrors the backend `ride_driver_wait_window_secs` config (default 180s).
+  static const int _freeWaitSecs = 180;
+
   @override
   void initState() {
     super.initState();
@@ -106,6 +119,7 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
   @override
   void dispose() {
     _proximityTimer?.cancel();
+    _waitTicker?.cancel();
     _sheetController.dispose();
     _liveMetrics.dispose();
     super.dispose();
@@ -134,6 +148,37 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
     // ride hits a terminal state (completed → trip summary, cancelled →
     // back to home). Don't pop from here — that double-pop was leaving
     // the navigator on a black screen below the home shell.
+  }
+
+  /// Seconds left in the free pickup wait while `arrived` (negative once the
+  /// window has elapsed — the driver may then cancel a no-show penalty-free).
+  /// Anchors to the server `arrivedAtPickupAt` when available, falling back to
+  /// the moment this device first observed the `arrived` state. Also lazily
+  /// starts the once-a-second ticker so the display counts down live.
+  int _waitRemainingSecs(Ride ride) {
+    final serverAnchor = ride.arrivedAtPickupAt;
+    if (serverAnchor == null) {
+      _localArrivedAt ??= DateTime.now();
+    }
+    _ensureWaitTicker();
+    final anchor = serverAnchor ?? _localArrivedAt!;
+    final elapsed =
+        DateTime.now().toUtc().difference(anchor.toUtc()).inSeconds;
+    return _freeWaitSecs - elapsed;
+  }
+
+  void _ensureWaitTicker() {
+    _waitTicker ??= Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      final status = ref.read(activeRideProvider).ride?.status;
+      if (status != RideStatus.arrived) {
+        _waitTicker?.cancel();
+        _waitTicker = null;
+        _localArrivedAt = null;
+        return;
+      }
+      setState(() {});
+    });
   }
 
   /// Bottom sheet with the "off the happy path" actions — currently just
@@ -184,31 +229,130 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
     await _confirmAndCancel(ride);
   }
 
-  Future<void> _confirmAndCancel(Ride ride) async {
-    final confirmed = await showDialog<bool>(
+  /// Reasons a driver can pick when cancelling. The backend requires a
+  /// non-empty reason on every cancellation, and the rider is shown that the
+  /// driver cancelled — so we always collect a real reason rather than send a
+  /// hardcoded placeholder.
+  static const _driverCancelReasons = <String>[
+    'Rider is not at the pickup point',
+    'Could not reach the rider',
+    'Pickup location is wrong or too far',
+    'Vehicle problem',
+    'Safety concern',
+    'Other',
+  ];
+  static const _noShowReasons = <String>[
+    'Rider did not show up',
+    'Could not reach the rider',
+    'Other',
+  ];
+
+  /// Bottom sheet that collects the cancellation reason. Returns the chosen
+  /// reason, or null if the driver backed out ("Keep ride" / dismiss).
+  Future<String?> _pickCancellationReason(bool isFreeNoShow) {
+    final reasons = isFreeNoShow ? _noShowReasons : _driverCancelReasons;
+    return showModalBottomSheet<String>(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
-        title: const Text('Cancel this ride?'),
-        content: const Text(
-          'The rider will be notified. A cancellation fee may be deducted '
-          'from your next payout, and frequent cancellations can suspend '
-          'your account.',
+      backgroundColor: MyShopColors.surfaceWhite,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 8),
+            Center(
+              child: Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: MyShopColors.divider,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+            ),
+            const SizedBox(height: MyShopSpacing.md),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+              child: Text(
+                'Why are you cancelling?',
+                style: TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: MyShopColors.textPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+              child: Text(
+                isFreeNoShow
+                    ? "You've waited the full 3 minutes — treated as a rider "
+                        'no-show, no penalty.'
+                    : "The rider's 3-minute wait hasn't elapsed — cancelling "
+                        'now affects your rating.',
+                style: const TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: MyShopColors.textSecondary,
+                ),
+              ),
+            ),
+            const SizedBox(height: MyShopSpacing.sm),
+            for (final r in reasons)
+              ListTile(
+                title: Text(
+                  r,
+                  style: const TextStyle(
+                    fontFamily: 'Raleway',
+                    fontWeight: FontWeight.w600,
+                    color: MyShopColors.textPrimary,
+                  ),
+                ),
+                onTap: () => Navigator.of(sheetCtx).pop(r),
+              ),
+            const Divider(height: 1),
+            ListTile(
+              leading:
+                  const Icon(Icons.close, color: MyShopColors.textSecondary),
+              title: const Text(
+                'Keep ride',
+                style: TextStyle(
+                  fontFamily: 'Raleway',
+                  fontWeight: FontWeight.w700,
+                  color: MyShopColors.textSecondary,
+                ),
+              ),
+              onTap: () => Navigator.of(sheetCtx).pop(),
+            ),
+            const SizedBox(height: MyShopSpacing.sm),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogCtx).pop(false),
-            child: const Text('Keep ride'),
-          ),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: MyShopColors.error),
-            onPressed: () => Navigator.of(dialogCtx).pop(true),
-            child: const Text('Cancel ride'),
-          ),
-        ],
       ),
     );
-    if (confirmed != true || !mounted) return;
-    final outcome = await ref.read(activeRideProvider.notifier).cancelRide();
+  }
+
+  Future<void> _confirmAndCancel(Ride ride) async {
+    // A driver who has waited out the full free window at pickup is treated
+    // as cancelling a rider no-show — penalty-free. Cancelling before that
+    // (or before arriving at all) is a driver cancellation that affects their
+    // rating and cancellation count.
+    final remaining = ride.status == RideStatus.arrived
+        ? _waitRemainingSecs(ride)
+        : _freeWaitSecs;
+    final isFreeNoShow = ride.status == RideStatus.arrived && remaining <= 0;
+
+    final reason = await _pickCancellationReason(isFreeNoShow);
+    if (reason == null || !mounted) return;
+    final outcome =
+        await ref.read(activeRideProvider.notifier).cancelRide(reason: reason);
     if (!mounted) return;
 
     // Surface the outcome before popping. Suspension takes priority — the
@@ -232,6 +376,12 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
           ],
         ),
       );
+    } else if (outcome.driverNoShow) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ride cancelled — rider no-show. No penalty applied.'),
+        ),
+      );
     } else if (outcome.hasFee) {
       final fee = (outcome.feePesewas / 100).toStringAsFixed(2);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -239,11 +389,24 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
       );
     }
     if (!mounted) return;
-    // Active ride state is now cleared. Route via GoRouter so the
-    // matchList stays consistent — `Navigator.pop` would clash with the
-    // ride:state listener above (which already navigates on the cancelled
-    // snapshot) and trip the "no pages left to show" assertion.
-    context.go('/home');
+    // The active-ride screen is a raw MaterialPageRoute pushed on top of the
+    // GoRouter shell (ride_request_screen._accept → pushReplacement). So
+    // context.go('/home') updates the route table but leaves THIS screen sitting
+    // on top — the driver stays stuck on the map. Pop it to reveal the home
+    // shell, where clearRide()/_resumeOnline has already flipped the driver back
+    // online so they receive requests again.
+    //
+    // Safe from the historical double-pop crash: on a driver-initiated cancel
+    // the ride is already cleared to null (not `cancelled`), so the
+    // cancelled-snapshot listener above does NOT fire — this is the only
+    // navigation in flight. The canPop fallback covers the recovery flow where
+    // the screen was opened via the /active-ride GoRoute instead of a push.
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else {
+      context.go('/home');
+    }
   }
 
   /// Where the driver is currently navigating to. Pickup until they have
@@ -425,8 +588,12 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
                 ride: ride,
                 scrollController: scrollController,
                 isUpdating: isUpdating,
+                waitRemainingSecs: ride.status == RideStatus.arrived
+                    ? _waitRemainingSecs(ride)
+                    : null,
                 onPrimaryAction: () => _handlePrimaryAction(ride),
                 onNavigate: () => _onNavigatePressed(ride),
+                onCancel: () => _confirmAndCancel(ride),
               );
             },
           ),
@@ -1019,6 +1186,8 @@ class _PassengerPanel extends StatelessWidget {
     required this.isUpdating,
     required this.onPrimaryAction,
     required this.onNavigate,
+    required this.onCancel,
+    this.waitRemainingSecs,
   });
 
   final Ride ride;
@@ -1031,6 +1200,14 @@ class _PassengerPanel extends StatelessWidget {
   /// button so the driver isn't stranded if they kill the maps app and
   /// return to the MyShop screen.
   final VoidCallback onNavigate;
+
+  /// Confirms and cancels the ride. Surfaced inline while waiting at pickup
+  /// so the driver doesn't have to hunt through the overflow menu.
+  final VoidCallback onCancel;
+
+  /// Seconds left in the free pickup wait, or null when not `arrived`.
+  /// Negative once the window has elapsed (overtime — penalty-free cancel).
+  final int? waitRemainingSecs;
 
   @override
   Widget build(BuildContext context) {
@@ -1144,6 +1321,14 @@ class _PassengerPanel extends StatelessWidget {
             // Trip stepper
             _TripStepper(status: ride.status),
             const SizedBox(height: MyShopSpacing.md),
+
+            // Pickup wait countdown — only while `arrived`. Shows the driver
+            // how long the rider's free wait has left; once it elapses they
+            // can cancel a no-show without a rating/cancellation penalty.
+            if (waitRemainingSecs != null) ...[
+              _WaitCountdownBanner(remainingSecs: waitRemainingSecs!),
+              const SizedBox(height: MyShopSpacing.md),
+            ],
 
             // Pickup → Destination card with FARE
             Container(
@@ -1310,6 +1495,28 @@ class _PassengerPanel extends StatelessWidget {
                 letterSpacing: 0.6,
               ),
             ),
+
+            // Inline cancel while waiting at pickup — the rider may be a
+            // no-show and the driver shouldn't have to dig through the
+            // overflow menu to free themselves for the next trip.
+            if (ride.status == RideStatus.arrived) ...[
+              const SizedBox(height: MyShopSpacing.xs),
+              TextButton.icon(
+                onPressed: isUpdating ? null : onCancel,
+                icon: const Icon(Icons.close_rounded, size: 18),
+                label: const Text('CANCEL RIDE'),
+                style: TextButton.styleFrom(
+                  foregroundColor: MyShopColors.error,
+                  minimumSize: const Size(double.infinity, 44),
+                  textStyle: const TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -1336,6 +1543,92 @@ class _PassengerPanel extends StatelessWidget {
       RideStatus.inProgress => 'TAP END WHEN PASSENGER HAS EXITED SAFELY',
       _ => '',
     };
+  }
+}
+
+// ─── Pickup wait countdown ──────────────────────────────────────────────────
+
+/// The free-wait countdown shown while the driver waits at pickup. Counts
+/// down from the free window (default 3 min); once it hits zero it flips to
+/// an overtime view telling the driver they can now cancel a rider no-show
+/// without a penalty.
+class _WaitCountdownBanner extends StatelessWidget {
+  const _WaitCountdownBanner({required this.remainingSecs});
+
+  /// May be negative — that's the overtime / penalty-free state.
+  final int remainingSecs;
+
+  String _fmt(int secs) {
+    final abs = secs.abs();
+    final m = (abs ~/ 60).toString();
+    final s = (abs % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final elapsed = remainingSecs <= 0;
+    final accent = elapsed ? MyShopColors.success : MyShopColors.warning;
+    final timeLabel = elapsed ? '+${_fmt(remainingSecs)}' : _fmt(remainingSecs);
+    final title = elapsed ? 'WAIT TIME COMPLETE' : 'FREE WAITING TIME';
+    final subtitle = elapsed
+        ? 'Rider no-show — you can cancel with no penalty.'
+        : 'Cancelling before this ends affects your rating.';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: MyShopSpacing.md, vertical: 12),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: accent.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(elapsed ? Icons.check_circle_rounded : Icons.timer_outlined,
+              size: 22, color: accent),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    color: accent,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: MyShopColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            timeLabel,
+            style: TextStyle(
+              fontFamily: 'Raleway',
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: accent,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

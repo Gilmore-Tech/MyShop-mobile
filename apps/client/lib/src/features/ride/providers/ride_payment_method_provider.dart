@@ -16,6 +16,12 @@ enum RidePaymentMethod {
 
   /// MTN Mobile Money — pre-trip choice, charged via Paystack on completion.
   momoMtn,
+
+  /// Telecel Cash (formerly Vodafone Cash) — charged via Paystack on completion.
+  momoTelecel,
+
+  /// AT Cash (AirtelTigo Money) — charged via Paystack on completion.
+  momoAirtelTigo,
 }
 
 extension RidePaymentMethodX on RidePaymentMethod {
@@ -25,6 +31,8 @@ extension RidePaymentMethodX on RidePaymentMethod {
   String get wireValue => switch (this) {
         RidePaymentMethod.cash => 'cash',
         RidePaymentMethod.momoMtn => 'momo_mtn',
+        RidePaymentMethod.momoTelecel => 'momo_telecel',
+        RidePaymentMethod.momoAirtelTigo => 'momo_airteltigo',
       };
 
   /// Short display label for screens that only have room for the name
@@ -32,6 +40,8 @@ extension RidePaymentMethodX on RidePaymentMethod {
   String get label => switch (this) {
         RidePaymentMethod.cash => 'Cash',
         RidePaymentMethod.momoMtn => 'MTN Mobile Money',
+        RidePaymentMethod.momoTelecel => 'Telecel Cash',
+        RidePaymentMethod.momoAirtelTigo => 'AT Cash',
       };
 
   /// One-line subtitle used on the picker sheet.
@@ -39,15 +49,22 @@ extension RidePaymentMethodX on RidePaymentMethod {
         RidePaymentMethod.cash => 'Pay the driver in cash at the end',
         RidePaymentMethod.momoMtn =>
           'Charged on your MTN line when the trip ends',
+        RidePaymentMethod.momoTelecel =>
+          'Charged on your Telecel line when the trip ends',
+        RidePaymentMethod.momoAirtelTigo =>
+          'Charged on your AirtelTigo line when the trip ends',
       };
 
   IconData get icon => switch (this) {
         RidePaymentMethod.cash => Icons.payments_outlined,
         RidePaymentMethod.momoMtn => Icons.smartphone_outlined,
+        RidePaymentMethod.momoTelecel => Icons.smartphone_outlined,
+        RidePaymentMethod.momoAirtelTigo => Icons.smartphone_outlined,
       };
 
   /// Whether the rider needs to settle a Paystack charge after the trip.
-  bool get isInApp => this == RidePaymentMethod.momoMtn;
+  /// Every method except cash is charged in-app via Paystack.
+  bool get isInApp => this != RidePaymentMethod.cash;
 }
 
 /// Inverse of [RidePaymentMethodX.wireValue]. Used to project the
@@ -60,6 +77,10 @@ RidePaymentMethod? ridePaymentMethodFromWire(String? wire) {
       return RidePaymentMethod.cash;
     case 'momo_mtn':
       return RidePaymentMethod.momoMtn;
+    case 'momo_telecel':
+      return RidePaymentMethod.momoTelecel;
+    case 'momo_airteltigo':
+      return RidePaymentMethod.momoAirtelTigo;
     default:
       return null;
   }

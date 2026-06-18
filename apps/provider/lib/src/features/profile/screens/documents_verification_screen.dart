@@ -36,12 +36,24 @@ class DocumentsVerificationScreen extends ConsumerWidget {
     final requiredDocs = isArtisan
         ? _buildArtisanRequired(user, backendDocs, uploadState)
         : _buildDriverRequired(user, backendDocs, uploadState);
+    // Artisans must provide the Ghana Card PLUS any one of these trade
+    // credentials (not all of them).
+    final oneOfDocs = isArtisan
+        ? _buildArtisanOneOf(backendDocs, uploadState)
+        : const <_DocItem>[];
     final optionalDocs = isArtisan
         ? _buildArtisanOptional(backendDocs, uploadState)
         : const <_DocItem>[];
 
     final uploadedRequired =
         requiredDocs.where((d) => d.status != _DocStatus.missing).length;
+    final oneOfSatisfied =
+        oneOfDocs.any((d) => d.status != _DocStatus.missing);
+    // The "any one of" group counts as a single requirement towards progress:
+    // satisfied as soon as one credential is uploaded.
+    final docsCompleted =
+        uploadedRequired + (oneOfDocs.isEmpty ? 0 : (oneOfSatisfied ? 1 : 0));
+    final docsTotal = requiredDocs.length + (oneOfDocs.isEmpty ? 0 : 1);
 
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
@@ -61,8 +73,8 @@ class DocumentsVerificationScreen extends ConsumerWidget {
                   _ProgressCard(
                     completed: completion.completed,
                     total: completion.total,
-                    docsCompleted: uploadedRequired,
-                    docsTotal: requiredDocs.length,
+                    docsCompleted: docsCompleted,
+                    docsTotal: docsTotal,
                     isArtisan: isArtisan,
                   ),
                   const SizedBox(height: MyShopSpacing.lg),
@@ -100,6 +112,53 @@ class DocumentsVerificationScreen extends ConsumerWidget {
                     providerType: isArtisan ? 'artisan' : 'driver',
                     ref: ref,
                   ),
+                  if (oneOfDocs.isNotEmpty) ...[
+                    const SizedBox(height: MyShopSpacing.lg),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _SectionLabel(
+                            icon: Icons.rule,
+                            label: 'PROVIDE ANY ONE',
+                            iconColor: MyShopColors.error,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: oneOfSatisfied
+                                ? MyShopColors.successLight
+                                : MyShopColors.errorLight,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            oneOfSatisfied ? 'Done' : 'Pick one',
+                            style: MyShopTypography.body2.copyWith(
+                              color: oneOfSatisfied
+                                  ? MyShopColors.success
+                                  : MyShopColors.error,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Upload your Trade Certificate OR Business Registration — '
+                      'whichever you have. One is enough.',
+                      style: MyShopTypography.body2.copyWith(height: 1.5),
+                    ),
+                    const SizedBox(height: MyShopSpacing.sm),
+                    _DocsCard(
+                      items: oneOfDocs,
+                      providerType: 'artisan',
+                      ref: ref,
+                    ),
+                  ],
                   if (optionalDocs.isNotEmpty) ...[
                     const SizedBox(height: MyShopSpacing.lg),
                     Row(
@@ -209,6 +268,8 @@ class DocumentsVerificationScreen extends ConsumerWidget {
     ];
   }
 
+  /// Strictly mandatory artisan documents — only the Ghana Card. The trade
+  /// credential is a separate "provide any one" group (see [_buildArtisanOneOf]).
   static List<_DocItem> _buildArtisanRequired(
     AuthUser? user,
     List<DocumentInfo> docs,
@@ -228,6 +289,16 @@ class DocumentsVerificationScreen extends ConsumerWidget {
             ? _DocStatus.approved
             : _DocStatus.missing,
       ),
+    ];
+  }
+
+  /// The trade credential — an artisan must supply **any one** of these
+  /// alongside the Ghana Card (not all of them).
+  static List<_DocItem> _buildArtisanOneOf(
+    List<DocumentInfo> docs,
+    DocumentUploadState uploadState,
+  ) {
+    return [
       _docItemFromBackend(
         docs: docs,
         uploadState: uploadState,

@@ -41,17 +41,22 @@ class AuthUnauthenticated extends AuthState {
   final bool isLoading;
 }
 
-/// Phone has both roles — user must pick which to sign in as.
+/// Phone has both roles — user must pick which to sign in as. Reached AFTER
+/// OTP verification (post-OTP role resolution): [selectionToken] is the
+/// short-lived token from `provider/verify-otp` that `provider/select-role`
+/// exchanges for a session.
 class AuthRoleSelection extends AuthState {
   const AuthRoleSelection({
     required this.phone,
     required this.roles,
+    required this.selectionToken,
     this.isLoading = false,
     this.error,
   });
 
   final String phone;
   final List<String> roles;
+  final String selectionToken;
   final bool isLoading;
   final String? error;
 }
@@ -80,14 +85,28 @@ class AuthOtpSent extends AuthState {
 class AuthBlockedByOtherDevice extends AuthState {
   const AuthBlockedByOtherDevice({
     required this.phone,
-    required this.role,
+    this.role,
+    this.otpCode,
+    this.selectionToken,
     this.recoveryRequestStatus = RecoveryRequestStatus.idle,
     this.isTakingOver = false,
     this.takeoverError,
   });
 
   final String phone;
-  final ProviderType role;
+
+  /// The role being taken over. Null in the post-OTP single-role flow where
+  /// the backend resolves the role itself on the forceLogin retry.
+  final ProviderType? role;
+
+  /// The OTP code to replay on a forceLogin takeover (single-role verify
+  /// conflict — the backend preserves the unconsumed code). Null for the
+  /// role-selection conflict path, which retries with [selectionToken].
+  final String? otpCode;
+
+  /// The role-selection token to replay on a forceLogin takeover (dual-role
+  /// select-role conflict). Null for the single-role verify path.
+  final String? selectionToken;
 
   /// Tracks the in-flight state of the "request session recovery" call so
   /// the dialog can show a spinner / success / failure.
@@ -303,46 +322,24 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
-  /// Sign-in step 1: check which roles this phone has.
-  /// - Single role → auto-sends OTP via the role-specific login endpoint.
-  /// - Both roles → transitions to [AuthRoleSelection] for user to pick.
+  /// Sign-in step 1: request a provider login OTP WITHOUT revealing the role.
+  /// The backend returns a uniform response whether or not the number is
+  /// registered (no enumeration oracle), so we always advance to the OTP
+  /// screen. The role is resolved after the code is verified (one role → in;
+  /// both roles → role picker). Method name kept for the phone screen.
   Future<void> checkPhoneAndLogin({required String phone}) async {
     if (_requesting) return;
     _requesting = true;
     state = const AuthUnauthenticated(isLoading: true);
-    String? attemptedRole;
     try {
-      final roles = await _repo.checkPhone(phone);
-      if (roles.isEmpty) {
-        state = const AuthUnauthenticated(
-          error:
-              'No account found for this phone number. Please register first.',
-        );
-        return;
-      }
-      if (roles.length == 1) {
-        // Single role — send OTP immediately.
-        attemptedRole = roles.first;
-        await _loginWithRole(phone: phone, role: attemptedRole);
-      } else {
-        // Both roles — ask the user to choose.
-        state = AuthRoleSelection(phone: phone, roles: roles);
-      }
+      await _repo.providerLogin(phone);
+      // role unknown until post-OTP resolution.
+      state = AuthOtpSent(phone: phone, isNewUser: false);
     } on ApiException catch (e) {
-      if (e.errorCode == AuthErrorCodes.alreadyLoggedInElsewhere &&
-          attemptedRole != null) {
-        state = AuthBlockedByOtherDevice(
-          phone: phone,
-          role: attemptedRole == 'artisan'
-              ? ProviderType.artisan
-              : ProviderType.driver,
-        );
-      } else {
-        state = AuthUnauthenticated(
-          error: AuthErrorMapper.message(e),
-          fieldErrors: AuthErrorMapper.fieldErrors(e),
-        );
-      }
+      state = AuthUnauthenticated(
+        error: AuthErrorMapper.message(e),
+        fieldErrors: AuthErrorMapper.fieldErrors(e),
+      );
     } on AuthException catch (e) {
       state = AuthUnauthenticated(error: e.message);
     } catch (_) {
@@ -354,7 +351,8 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
-  /// Sign-in step 2 (only when both roles exist): user picked a role.
+  /// Sign-in step 3 (dual-role accounts only): the user picked a role on the
+  /// post-OTP picker. Exchanges the selection token + role for a session.
   Future<void> selectRoleAndLogin({required String role}) async {
     final current = state;
     if (current is! AuthRoleSelection) return;
@@ -363,20 +361,27 @@ class AuthController extends StateNotifier<AuthState> {
     state = AuthRoleSelection(
       phone: current.phone,
       roles: current.roles,
+      selectionToken: current.selectionToken,
       isLoading: true,
     );
     try {
-      await _loginWithRole(phone: current.phone, role: role);
+      final session = await _repo.providerSelectRole(
+        selectionToken: current.selectionToken,
+        role: role,
+      );
+      await _completeProviderSession(session);
     } on ApiException catch (e) {
       if (e.errorCode == AuthErrorCodes.alreadyLoggedInElsewhere) {
         state = AuthBlockedByOtherDevice(
           phone: current.phone,
           role: role == 'artisan' ? ProviderType.artisan : ProviderType.driver,
+          selectionToken: current.selectionToken,
         );
       } else {
         state = AuthRoleSelection(
           phone: current.phone,
           roles: current.roles,
+          selectionToken: current.selectionToken,
           error: AuthErrorMapper.message(e),
         );
       }
@@ -384,40 +389,37 @@ class AuthController extends StateNotifier<AuthState> {
       state = AuthRoleSelection(
         phone: current.phone,
         roles: current.roles,
+        selectionToken: current.selectionToken,
         error: e.message,
       );
     } catch (_) {
       state = AuthRoleSelection(
         phone: current.phone,
         roles: current.roles,
-        error: 'Could not send verification code. Please try again.',
+        selectionToken: current.selectionToken,
+        error: 'Could not sign you in. Please try again.',
       );
     } finally {
       _requesting = false;
     }
   }
 
-  /// Calls the role-specific login endpoint and transitions to OTP state.
-  ///
-  /// [forceLogin] tells the backend to bypass the single-device check
-  /// at this step — used by the takeover-via-OTP flow off the
-  /// ALREADY_LOGGED_IN_ELSEWHERE block dialog.
-  Future<void> _loginWithRole({
-    required String phone,
-    required String role,
-    bool forceLogin = false,
-  }) async {
-    if (role == 'driver') {
-      await _repo.loginDriver(phone, forceLogin: forceLogin);
-    } else {
-      await _repo.loginArtisan(phone, forceLogin: forceLogin);
-    }
-    final providerType =
-        role == 'artisan' ? ProviderType.artisan : ProviderType.driver;
-    state = AuthOtpSent(phone: phone, isNewUser: false, role: providerType);
+  /// Fetch the profile for a freshly-issued provider session and flip to
+  /// authenticated. Shared by single-role verify and role selection.
+  Future<void> _completeProviderSession(ProviderSession session) async {
+    final providerType = session.role == 'artisan'
+        ? ProviderType.artisan
+        : ProviderType.driver;
+    final user = await _repo.fetchProfile();
+    onAuthenticated?.call(user, providerType);
+    state = AuthAuthenticated(user);
   }
 
-  /// Verify OTP code → fetch profile → authenticated.
+  /// Verify OTP code.
+  ///
+  /// Sign-up (isNewUser) keeps the legacy `verify-otp` path — registration
+  /// already committed the role. Sign-in uses the post-OTP provider flow:
+  /// one provider role → straight in; both roles → the role picker.
   Future<void> verifyOtp(String code) async {
     final current = state;
     if (current is! AuthOtpSent) return;
@@ -430,17 +432,40 @@ class AuthController extends StateNotifier<AuthState> {
     );
 
     try {
-      await _repo.verifyOtp(phone: current.phone, code: code);
-      final user = await _repo.fetchProfile();
-      onAuthenticated?.call(user, current.role);
-      state = AuthAuthenticated(user);
+      if (current.isNewUser) {
+        // Registration: role already chosen at sign-up; legacy verify.
+        await _repo.verifyOtp(phone: current.phone, code: code);
+        final user = await _repo.fetchProfile();
+        onAuthenticated?.call(user, current.role);
+        state = AuthAuthenticated(user);
+        return;
+      }
+
+      final result =
+          await _repo.providerVerifyOtp(phone: current.phone, code: code);
+      switch (result) {
+        case ProviderSession session:
+          await _completeProviderSession(session);
+        case ProviderRoleChoice choice:
+          state = AuthRoleSelection(
+            phone: current.phone,
+            roles: choice.roles,
+            selectionToken: choice.selectionToken,
+          );
+      }
     } on ApiException catch (e) {
-      state = AuthOtpSent(
-        phone: current.phone,
-        isNewUser: current.isNewUser,
-        role: current.role,
-        error: AuthErrorMapper.message(e),
-      );
+      if (e.errorCode == AuthErrorCodes.alreadyLoggedInElsewhere) {
+        // Conflict surfaced after OTP — the backend preserved the code, so
+        // the takeover retry replays it with forceLogin.
+        state = AuthBlockedByOtherDevice(phone: current.phone, otpCode: code);
+      } else {
+        state = AuthOtpSent(
+          phone: current.phone,
+          isNewUser: current.isNewUser,
+          role: current.role,
+          error: AuthErrorMapper.message(e),
+        );
+      }
     } on AuthException catch (e) {
       state = AuthOtpSent(
         phone: current.phone,
@@ -466,21 +491,19 @@ class AuthController extends StateNotifier<AuthState> {
     final current = state;
     if (current is! AuthOtpSent) return;
     if (_requesting) return;
-    if (current.role == null) {
-      state = AuthOtpSent(
-        phone: current.phone,
-        isNewUser: current.isNewUser,
-        role: current.role,
-        error: 'Unable to resend code. Please restart sign-in.',
-      );
-      return;
-    }
     _requesting = true;
     try {
-      if (current.role == ProviderType.driver) {
-        await _repo.loginDriver(current.phone);
+      if (current.isNewUser && current.role != null) {
+        // Sign-up resend: the role is already committed — re-send via the
+        // role-specific login endpoint (re-issues a code for the new account).
+        if (current.role == ProviderType.driver) {
+          await _repo.loginDriver(current.phone);
+        } else {
+          await _repo.loginArtisan(current.phone);
+        }
       } else {
-        await _repo.loginArtisan(current.phone);
+        // Sign-in resend: role-agnostic provider login.
+        await _repo.providerLogin(current.phone);
       }
       state = AuthOtpSent(
         phone: current.phone,
@@ -522,6 +545,7 @@ class AuthController extends StateNotifier<AuthState> {
       state = AuthRoleSelection(
         phone: current.phone,
         roles: current.roles,
+        selectionToken: current.selectionToken,
       );
     } else if (current is AuthOtpSent && current.error != null) {
       state = AuthOtpSent(
@@ -651,6 +675,8 @@ class AuthController extends StateNotifier<AuthState> {
     state = AuthBlockedByOtherDevice(
       phone: current.phone,
       role: current.role,
+      otpCode: current.otpCode,
+      selectionToken: current.selectionToken,
       recoveryRequestStatus: RecoveryRequestStatus.sending,
     );
     try {
@@ -658,12 +684,16 @@ class AuthController extends StateNotifier<AuthState> {
       state = AuthBlockedByOtherDevice(
         phone: current.phone,
         role: current.role,
+        otpCode: current.otpCode,
+        selectionToken: current.selectionToken,
         recoveryRequestStatus: RecoveryRequestStatus.sent,
       );
     } catch (_) {
       state = AuthBlockedByOtherDevice(
         phone: current.phone,
         role: current.role,
+        otpCode: current.otpCode,
+        selectionToken: current.selectionToken,
         recoveryRequestStatus: RecoveryRequestStatus.failed,
       );
     }
@@ -685,20 +715,49 @@ class AuthController extends StateNotifier<AuthState> {
     state = AuthBlockedByOtherDevice(
       phone: current.phone,
       role: current.role,
+      otpCode: current.otpCode,
+      selectionToken: current.selectionToken,
       recoveryRequestStatus: current.recoveryRequestStatus,
       isTakingOver: true,
     );
     try {
-      await _loginWithRole(
-        phone: current.phone,
-        role: current.role.name,
-        forceLogin: true,
-      );
-      // _loginWithRole sets state = AuthOtpSent on success.
+      // The backend preserved the OTP / selection token on the conflict, so
+      // the takeover replays it with forceLogin and completes the session
+      // directly — no re-entering the OTP.
+      if (current.selectionToken != null && current.role != null) {
+        final session = await _repo.providerSelectRole(
+          selectionToken: current.selectionToken!,
+          role: current.role!.name,
+          forceLogin: true,
+        );
+        await _completeProviderSession(session);
+      } else if (current.otpCode != null) {
+        final result = await _repo.providerVerifyOtp(
+          phone: current.phone,
+          code: current.otpCode!,
+          forceLogin: true,
+        );
+        switch (result) {
+          case ProviderSession session:
+            await _completeProviderSession(session);
+          case ProviderRoleChoice choice:
+            state = AuthRoleSelection(
+              phone: current.phone,
+              roles: choice.roles,
+              selectionToken: choice.selectionToken,
+            );
+        }
+      } else {
+        state = const AuthUnauthenticated(
+          error: 'Please sign in again.',
+        );
+      }
     } on ApiException catch (e) {
       state = AuthBlockedByOtherDevice(
         phone: current.phone,
         role: current.role,
+        otpCode: current.otpCode,
+        selectionToken: current.selectionToken,
         recoveryRequestStatus: current.recoveryRequestStatus,
         takeoverError: AuthErrorMapper.message(e),
       );
@@ -706,6 +765,8 @@ class AuthController extends StateNotifier<AuthState> {
       state = AuthBlockedByOtherDevice(
         phone: current.phone,
         role: current.role,
+        otpCode: current.otpCode,
+        selectionToken: current.selectionToken,
         recoveryRequestStatus: current.recoveryRequestStatus,
         takeoverError: e.message,
       );
@@ -713,6 +774,8 @@ class AuthController extends StateNotifier<AuthState> {
       state = AuthBlockedByOtherDevice(
         phone: current.phone,
         role: current.role,
+        otpCode: current.otpCode,
+        selectionToken: current.selectionToken,
         recoveryRequestStatus: current.recoveryRequestStatus,
         takeoverError: 'Could not sign in. Please try again.',
       );

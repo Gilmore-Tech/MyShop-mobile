@@ -36,6 +36,20 @@ abstract class AuthService {
   /// POST /auth/verify-otp
   Future<TokenResponse> verifyOtp(VerifyOtpRequest request);
 
+  /// Request a provider login OTP WITHOUT specifying a role. Returns a uniform
+  /// acknowledgement whether or not the number is registered (no enumeration
+  /// oracle). POST /auth/provider/login
+  Future<void> providerLogin(LoginRequest request);
+
+  /// Verify a provider login OTP. One provider role → a [ProviderSession];
+  /// both roles → a [ProviderRoleChoice] carrying a selection token.
+  /// POST /auth/provider/verify-otp
+  Future<ProviderVerifyResult> providerVerifyOtp(ProviderVerifyOtpRequest request);
+
+  /// Exchange a role-selection token + the chosen role for a session.
+  /// POST /auth/provider/select-role
+  Future<ProviderSession> providerSelectRole(ProviderSelectRoleRequest request);
+
   // Token refresh is owned by [TokenRefresher] (single-flight across
   // REST + main WS + chat WS). Do NOT add a refreshToken() method here
   // — any caller-driven refresh racing the shared single-flight will

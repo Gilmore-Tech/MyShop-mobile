@@ -53,10 +53,15 @@ class RideCancelOutcome {
   const RideCancelOutcome({
     this.feePesewas = 0,
     this.driverSuspended = false,
+    this.driverNoShow = false,
   });
 
   final int feePesewas;
   final bool driverSuspended;
+
+  /// True when the backend treated this as a client no-show (driver waited out
+  /// the free window before cancelling) — no rating/counter penalty applied.
+  final bool driverNoShow;
 
   bool get hasFee => feePesewas > 0;
 }
@@ -284,6 +289,7 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       outcome = RideCancelOutcome(
         feePesewas: (result['cancellationFeePesewas'] as num?)?.toInt() ?? 0,
         driverSuspended: result['driverSuspended'] == true,
+        driverNoShow: result['driverNoShow'] == true,
       );
       developer.log(
         'cancelRide PATCH succeeded for ${ride.id} '
@@ -320,6 +326,18 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       // Snapshot for a different ride than the one we're tracking — guard
       // against cross-ride leaks (shouldn't happen, but keeps the screen
       // stable if the backend rooms ever cross-talk).
+      return;
+    }
+    // Late terminal echo for a ride we've ALREADY cleared locally. A
+    // driver-initiated cancel clears state + navigates home synchronously,
+    // then the backend's own `ride:state` (cancelled) lands a second or two
+    // later over the socket. Without this guard we'd re-populate `ride` with
+    // the cancelled snapshot and bounce the driver back to the active-ride
+    // map. Nothing to transition — just make sure we're back online.
+    if (current == null &&
+        (snapshot.status == RideStatus.completed ||
+            snapshot.status == RideStatus.cancelled)) {
+      _resumeOnline();
       return;
     }
     // Backend's `ride:state` payload doesn't yet include `stops`; preserve

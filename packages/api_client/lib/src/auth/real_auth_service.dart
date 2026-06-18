@@ -138,6 +138,47 @@ class RealAuthService implements AuthService {
   }
 
   @override
+  Future<void> providerLogin(LoginRequest request) async {
+    try {
+      await _dio.post('/auth/provider/login', data: request.toJson());
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  @override
+  Future<ProviderVerifyResult> providerVerifyOtp(
+    ProviderVerifyOtpRequest request,
+  ) async {
+    try {
+      final response = await _dio.post(
+        '/auth/provider/verify-otp',
+        data: request.toJson(),
+      );
+      final data = _unwrap(response) as Map<String, dynamic>;
+      return ProviderVerifyResult.fromJson(data);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  @override
+  Future<ProviderSession> providerSelectRole(
+    ProviderSelectRoleRequest request,
+  ) async {
+    try {
+      final response = await _dio.post(
+        '/auth/provider/select-role',
+        data: request.toJson(),
+      );
+      final data = _unwrap(response) as Map<String, dynamic>;
+      return ProviderSession.fromJson(data);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  @override
   Future<UserProfile> getMe() async {
     try {
       final response = await _dio.get('/users/me');

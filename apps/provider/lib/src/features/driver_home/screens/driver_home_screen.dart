@@ -14,7 +14,6 @@ import '../data/road_snap_service.dart';
 import '../providers/driver_location_provider.dart';
 import '../../../core/providers/provider_status_provider.dart';
 import '../screens/ride_request_screen.dart';
-import '../widgets/auto_accept_card.dart';
 import '../widgets/driver_car_marker.dart';
 import '../widgets/driver_home_header.dart';
 import '../widgets/earnings_summary_section.dart';
@@ -453,13 +452,9 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
                     // Earnings summary
                     const EarningsSummarySection(),
 
-                    // Auto-accept toggle
-                    const Padding(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-                      child: AutoAcceptCard(),
-                    ),
-
+                    // Auto-accept toggle removed for now — to be reintroduced
+                    // as the feature is built out (widget retained in
+                    // auto_accept_card.dart).
                     const SizedBox(height: MyShopSpacing.lg),
 
                     // Recent Activity

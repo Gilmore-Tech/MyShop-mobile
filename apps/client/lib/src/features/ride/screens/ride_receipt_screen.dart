@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
 import '../providers/ride_receipt_provider.dart';
+import '../utils/ride_receipt_pdf.dart';
 import '../widgets/rate_ride_sheet.dart';
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -45,7 +47,7 @@ class RideReceiptScreen extends ConsumerWidget {
         ),
         data: (receipt) => _ReceiptBody(receipt: receipt, w: w, h: h),
       ),
-      bottomNavigationBar: _ShareBar(w: w, h: h),
+      bottomNavigationBar: _ShareBar(rideId: rideId, w: w, h: h),
     );
   }
 
@@ -770,46 +772,106 @@ class _PaymentIcon extends StatelessWidget {
 
 // ── Share Bar ─────────────────────────────────────────────────────────────────
 
-class _ShareBar extends StatelessWidget {
+class _ShareBar extends ConsumerStatefulWidget {
+  final String rideId;
   final double w;
   final double h;
-  const _ShareBar({required this.w, required this.h});
+  const _ShareBar({required this.rideId, required this.w, required this.h});
+
+  @override
+  ConsumerState<_ShareBar> createState() => _ShareBarState();
+}
+
+class _ShareBarState extends ConsumerState<_ShareBar> {
+  bool _generating = false;
+
+  /// Builds the PDF receipt and opens the OS share sheet so the rider can
+  /// share it (WhatsApp, Email, Drive, …) or save it via "Save to Files" /
+  /// "Save to Phone". A single tap covers both flows.
+  Future<void> _onShare(RideReceiptData receipt) async {
+    if (_generating) return;
+    setState(() => _generating = true);
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final bytes = await buildRideReceiptPdf(receipt);
+      if (!mounted) return;
+
+      // Anchor the share sheet to this bar's rect — required for the popover
+      // on iPad and harmless on phones.
+      final box = context.findRenderObject() as RenderBox?;
+      final bounds = box != null && box.hasSize
+          ? box.localToGlobal(Offset.zero) & box.size
+          : null;
+
+      await Printing.sharePdf(
+        bytes: bytes,
+        filename:
+            'MyShop-Receipt-${receipt.rideId.replaceAll(RegExp(r'[^A-Za-z0-9-]'), '')}.pdf',
+        bounds: bounds,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text("Couldn't generate the receipt. Please try again."),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _generating = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final w = widget.w;
+    final h = widget.h;
+    final receiptAsync = ref.watch(rideReceiptByIdProvider(widget.rideId));
+    final receipt = receiptAsync.valueOrNull;
+    // Disabled until the receipt has loaded — there's nothing to share yet.
+    final enabled = receipt != null && !_generating;
+
     return SafeArea(
       top: false,
       child: SizedBox(
         height: h * 0.076, // ~64dp
         child: Material(
-          color: MyShopColors.primaryGold,
+          color: enabled
+              ? MyShopColors.primaryGold
+              : MyShopColors.primaryGold.withValues(alpha: 0.5),
           child: InkWell(
-            onTap: () {
-              // TODO: share_plus — Share.share(receiptText)
-              MyShopToast.show(context,
-                  message: 'Receipt sharing coming soon.');
-            },
+            onTap: enabled ? () => _onShare(receipt) : null,
             child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.share_rounded,
-                    color: Colors.white,
-                    size: w * 0.051, // ~20dp
-                  ),
-                  SizedBox(width: w * 0.021),
-                  Text(
-                    'SHARE RECEIPT',
-                    style: TextStyle(
-                      fontSize: w * 0.036, // ~14dp
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                      letterSpacing: 0.8,
+              child: _generating
+                  ? SizedBox(
+                      width: w * 0.051,
+                      height: w * 0.051,
+                      child: const CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.share_rounded,
+                          color: Colors.white,
+                          size: w * 0.051, // ~20dp
+                        ),
+                        SizedBox(width: w * 0.021),
+                        Text(
+                          'SHARE RECEIPT',
+                          style: TextStyle(
+                            fontSize: w * 0.036, // ~14dp
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
             ),
           ),
         ),

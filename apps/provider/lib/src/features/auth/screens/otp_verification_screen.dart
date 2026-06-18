@@ -6,18 +6,41 @@ import 'package:shared_ui/shared_ui.dart';
 import '../../profile/providers/provider_type_provider.dart';
 import '../../registration/providers/registration_controller.dart';
 import '../providers/auth_controller.dart';
+import '../widgets/blocked_device_dialog.dart';
 
 /// 6-digit OTP verification screen.
 ///
 /// Used for both sign-in and sign-up flows. The auth state determines context.
 /// On successful verify, the controller fetches the user profile and
-/// transitions directly to [AuthAuthenticated].
-class ProviderOtpVerificationScreen extends ConsumerWidget {
+/// transitions directly to [AuthAuthenticated]. In the post-OTP provider login
+/// a single-device conflict can surface here (the role is resolved after the
+/// code is verified), so this screen also hosts the takeover dialog.
+class ProviderOtpVerificationScreen extends ConsumerStatefulWidget {
   const ProviderOtpVerificationScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProviderOtpVerificationScreen> createState() =>
+      _ProviderOtpVerificationScreenState();
+}
+
+class _ProviderOtpVerificationScreenState
+    extends ConsumerState<ProviderOtpVerificationScreen> {
+  bool _blockedDialogVisible = false;
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(authControllerProvider);
+
+    ref.listen<AuthState>(authControllerProvider, (prev, next) {
+      if (next is AuthBlockedByOtherDevice && !_blockedDialogVisible) {
+        _blockedDialogVisible = true;
+        showBlockedByOtherDeviceDialog(context, ref, next.phone)
+            .then((_) => _blockedDialogVisible = false);
+      } else if (next is! AuthBlockedByOtherDevice && _blockedDialogVisible) {
+        _blockedDialogVisible = false;
+        if (Navigator.canPop(context)) Navigator.pop(context);
+      }
+    });
 
     String phone = '';
     String? error;

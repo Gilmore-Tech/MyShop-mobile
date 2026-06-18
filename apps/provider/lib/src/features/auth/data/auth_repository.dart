@@ -133,6 +133,68 @@ class AuthRepository {
     return result;
   }
 
+  /// Request a provider login OTP without specifying a role. The backend
+  /// returns a uniform response whether or not the number is registered.
+  Future<void> providerLogin(String phone, {bool forceLogin = false}) async {
+    final ctx = await _deviceContext();
+    await _service.providerLogin(LoginRequest(
+      phone: phone,
+      deviceId: ctx.deviceId,
+      deviceInfo: ctx.deviceInfo,
+      forceLogin: forceLogin,
+    ));
+    await _tokenStorage.writePhone(phone);
+  }
+
+  /// Verify a provider login OTP. On a single-role result the tokens are
+  /// persisted (and the session start stamped) before returning; on a
+  /// dual-role result no tokens are written — the caller must follow up with
+  /// [providerSelectRole].
+  Future<ProviderVerifyResult> providerVerifyOtp({
+    required String phone,
+    required String code,
+    bool forceLogin = false,
+  }) async {
+    final ctx = await _deviceContext();
+    final result = await _service.providerVerifyOtp(ProviderVerifyOtpRequest(
+      phone: phone,
+      otp: code,
+      deviceId: ctx.deviceId,
+      deviceInfo: ctx.deviceInfo,
+      forceLogin: forceLogin,
+    ));
+    if (result is ProviderSession) {
+      await _persistSession(result, phone);
+    }
+    return result;
+  }
+
+  /// Exchange a role-selection token + chosen role for a session, persisting
+  /// the tokens on success.
+  Future<ProviderSession> providerSelectRole({
+    required String selectionToken,
+    required String role,
+    bool forceLogin = false,
+  }) async {
+    final session = await _service.providerSelectRole(ProviderSelectRoleRequest(
+      selectionToken: selectionToken,
+      role: role,
+      forceLogin: forceLogin,
+    ));
+    final phone = await _tokenStorage.readPhone() ?? '';
+    await _persistSession(session, phone);
+    return session;
+  }
+
+  Future<void> _persistSession(ProviderSession session, String phone) async {
+    await _tokenStorage.writeTokens(
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
+    );
+    if (phone.isNotEmpty) await _tokenStorage.writePhone(phone);
+    await _tokenStorage.writeSessionStartedAt(DateTime.now());
+  }
+
   /// Fetch the user's full profile from GET /users/me.
   /// Caches the raw response so [bootstrap] can restore the session offline.
   Future<AuthUser> fetchProfile() async {

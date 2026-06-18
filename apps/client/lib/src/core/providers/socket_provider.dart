@@ -14,6 +14,7 @@ import '../../features/notifications/providers/notifications_provider.dart';
 import '../../features/ride/providers/edit_trip_provider.dart';
 import '../../features/ride/providers/ride_provider.dart';
 import '../../features/ride/widgets/rate_ride_sheet.dart';
+import '../../features/ride/widgets/ride_cancelled_dialog.dart';
 import '../../features/services/providers/active_job_provider.dart';
 import '../../features/services/providers/bid_detail_provider.dart';
 import '../../features/services/providers/bid_list_provider.dart';
@@ -288,13 +289,68 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('ride:state')
       ..on('ride:state', (data) {
-        if (data is! Map<String, dynamic>) return;
+        // Broad Map guard + normalise: Socket.IO frequently delivers
+        // Map<dynamic,dynamic>, which the old narrow Map<String,dynamic> guard
+        // silently dropped — leaving the rider stuck on the map when the driver
+        // cancelled (the cancelled snapshot was discarded before reaching
+        // applyRideSnapshot). Mirrors the broad guard already used by
+        // driver:location and ride:matcher_progress.
+        if (data is! Map) return;
+        final snap = Map<String, dynamic>.from(data);
         try {
-          applyRideSnapshot(data);
+          applyRideSnapshot(snap);
         } catch (e) {
           developer.log('Failed to apply ride:state snapshot: $e',
               name: 'WS', level: 900);
         }
+      });
+
+    // Authoritative cancel signal. The rider only consumes `ride:state` for
+    // tracking, so a driver/support cancel could be missed if that snapshot
+    // wasn't delivered or the rider isn't on the tracking screen. This handler
+    // ALWAYS surfaces the cancellation with a blocking dialog → home. The
+    // rider's own cancel (cancelledBy == 'client') is skipped — they navigate
+    // from their own flow.
+    final shownCancelledFor = <String>{};
+    socket
+      ..off('ride:cancelled')
+      ..on('ride:cancelled', (data) {
+        if (data is! Map) return;
+        final map = Map<String, dynamic>.from(data);
+        final cancelledBy = (map['cancelledBy'] as String?) ?? '';
+        if (cancelledBy == 'client') return;
+        final rideId = (map['rideId'] ?? map['id']) as String? ?? '';
+        if (rideId.isNotEmpty && !shownCancelledFor.add(rideId)) return;
+
+        final reason = (map['reason'] as String?) ?? '';
+        final message = cancelledBy == 'driver'
+            ? 'The driver cancelled this ride.'
+            : cancelledBy == 'admin'
+                ? 'Your ride was cancelled by support.'
+                : (reason.isNotEmpty && reason != 'driver_cancelled'
+                    ? reason
+                    : 'This ride was cancelled.');
+
+        // Clear local ride state so the next booking starts clean. Don't flip
+        // rideTrackingPhase here — the dialog + home navigation is the single
+        // user-facing exit, avoiding a snackbar/auto-nav race with the
+        // tracking screen.
+        ref.container.read(matchedDriverProvider.notifier).state = null;
+        if (ref.container.exists(bookingPhaseProvider)) {
+          ref.container.read(bookingPhaseProvider.notifier).reset();
+        }
+        if (ref.container.exists(activityHistoryProvider)) {
+          ref.container.read(activityHistoryProvider.notifier).silentReload();
+        }
+
+        final router = ref.container.read(routerProvider);
+        final ctx = router.routerDelegate.navigatorKey.currentContext;
+        if (ctx == null) return;
+        showRideCancelledDialog(
+          ctx,
+          message,
+          onConfirm: () => router.go(AppRoutes.home),
+        );
       });
 
     // Backend pushes `ride:matcher_progress` on every dispatch attempt —
