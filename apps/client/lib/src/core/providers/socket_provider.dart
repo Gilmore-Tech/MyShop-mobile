@@ -291,9 +291,16 @@ void _connectAndListen(Ref ref, SocketService socket) {
       ..on('ride:state', (data) {
         debugPrint(
             '[DIAG] ride:state received (${data.runtimeType}): status=${data is Map ? data['status'] : '?'}'); // TEMP
-        if (data is! Map<String, dynamic>) return;
+        // Broad Map guard + normalise: Socket.IO frequently delivers
+        // Map<dynamic,dynamic>, which the old narrow Map<String,dynamic> guard
+        // silently dropped — leaving the rider stuck on the map when the driver
+        // cancelled (the cancelled snapshot was discarded before reaching
+        // applyRideSnapshot). Mirrors the broad guard already used by
+        // driver:location and ride:matcher_progress.
+        if (data is! Map) return;
+        final snap = Map<String, dynamic>.from(data);
         try {
-          applyRideSnapshot(data);
+          applyRideSnapshot(snap);
         } catch (e) {
           developer.log('Failed to apply ride:state snapshot: $e',
               name: 'WS', level: 900);
