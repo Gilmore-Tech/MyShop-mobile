@@ -906,11 +906,20 @@ Future<void> _hydrateFromRest(
     // here, but `applyRideSnapshot` is private; instead, push the raw
     // status fields into the public providers.
     if (status == 'cancelled' || status == 'no_drivers') {
-      read(bookingFailureMessageProvider.notifier).state = status ==
-              'no_drivers'
+      final cancelledBy = json['cancelledBy'] as String?;
+      read(bookingFailureMessageProvider.notifier).state = status == 'no_drivers'
           ? 'No drivers are available nearby right now. Please try again in a moment.'
-          : 'This ride was cancelled.';
+          : cancelledBy == 'driver'
+              ? 'The driver cancelled this ride.'
+              : 'This ride was cancelled.';
       read(bookingPhaseProvider.notifier).fail();
+      // CRITICAL: also flip the tracking phase. The live-map tracking screen
+      // watches rideTrackingPhaseProvider (NOT bookingPhase), so without this a
+      // cancel detected via the REST poll left the rider stuck on the map. The
+      // tracking screen's listener turns this into the "ride cancelled" snackbar
+      // + route home (mirrors the socket path and the `completed` branch below).
+      read(rideTrackingPhaseProvider.notifier).state =
+          RideTrackingPhase.cancelled;
       return;
     }
     // Completed — populate the receipt so the post-trip screens have real
