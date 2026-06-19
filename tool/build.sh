@@ -137,7 +137,11 @@ case "$PLATFORM" in
     ;;
   ios)
     echo "→ flutter build ipa (release) for apps/$APP with ${#DEFINES[@]} dart-defines"
-    echo "  After this completes, open build/ios/archive/Runner.xcarchive in Xcode → Distribute App."
-    exec flutter build ipa --release "${DEFINES[@]}" "$@"
+    echo "  Exports via $REPO_ROOT/ExportOptions.plist (uploadSymbols=false) to"
+    echo "  dodge the 'exportArchive Copy failed' dSYM bug. Output IPA in"
+    echo "  build/ios/ipa/ — upload with Transporter."
+    exec flutter build ipa --release \
+      --export-options-plist "$REPO_ROOT/ExportOptions.plist" \
+      "${DEFINES[@]}" "$@"
     ;;
 esac
