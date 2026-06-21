@@ -729,6 +729,10 @@ Future<void> requestRideAndMatchDriver(ProviderContainer ref) async {
     final cached = ref.read(currentDevicePositionProvider);
 
     final selectedMethod = ref.read(selectedRidePaymentMethodProvider);
+    // The selected vehicle option id IS the ride category slug (e.g. 'regular',
+    // 'comfort') — backend prices and matches on it. Mutually exclusive: a
+    // Comfort booking only reaches Comfort-approved drivers.
+    final selectedCategory = ref.read(selectedVehicleProvider);
     final result = await rideService.createRide(
       pickupLat: pickup?.lat ?? cached?.latitude ?? 6.6884,
       pickupLng: pickup?.lng ?? cached?.longitude ?? -1.6244,
@@ -737,6 +741,7 @@ Future<void> requestRideAndMatchDriver(ProviderContainer ref) async {
       pickupAddress: pickup?.address,
       destinationAddress: destination?.address,
       paymentMethod: selectedMethod.wireValue,
+      rideCategory: selectedCategory.isEmpty ? null : selectedCategory,
     );
 
     developer.log('createRide raw result: $result', name: 'RideProvider');
