@@ -20,6 +20,7 @@ class RegisterRequest {
     this.email,
     this.referralCode,
     this.categories,
+    this.rideCategories,
     this.shopCapacity,
     this.maxConcurrentJobs,
   });
@@ -34,7 +35,8 @@ class RegisterRequest {
   final String? businessName; // artisan only — trade/shop name
   final String? email;
   final String? referralCode;
-  final List<String>? categories; // artisan only — category UUIDs
+  final List<String>? categories; // artisan only — service category UUIDs
+  final List<String>? rideCategories; // driver only — ride category slugs (admin-verified)
   final String? shopCapacity; // "solo" or "multi"
   final int? maxConcurrentJobs; // 2-3, only when shopCapacity = "multi"
 
@@ -52,6 +54,7 @@ class RegisterRequest {
     if (email != null) json['email'] = email;
     if (referralCode != null) json['referralCode'] = referralCode;
     if (categories != null) json['categories'] = categories;
+    if (rideCategories != null) json['rideCategories'] = rideCategories;
     if (shopCapacity != null) json['shopCapacity'] = shopCapacity;
     if (maxConcurrentJobs != null) {
       json['maxConcurrentJobs'] = maxConcurrentJobs;
