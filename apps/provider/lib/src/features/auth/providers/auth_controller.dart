@@ -288,6 +288,7 @@ class AuthController extends StateNotifier<AuthState> {
     String? businessName,
     String? email,
     List<String>? categories,
+    List<String>? rideCategories,
     String? shopCapacity,
   }) async {
     if (_requesting) return;
@@ -303,6 +304,7 @@ class AuthController extends StateNotifier<AuthState> {
         businessName: businessName,
         email: email,
         categories: categories,
+        rideCategories: rideCategories,
         shopCapacity: shopCapacity,
       ));
       state = AuthOtpSent(phone: phone, isNewUser: true, role: role);

@@ -73,6 +73,12 @@ class AuthInterceptor extends Interceptor {
     // before the user has authenticated. Marked @Public() on the backend
     // — keep this list aligned.
     '/categories',
+    // Ride categories are read during DRIVER registration (tier picker) and
+    // the client booking sheet — both before/without auth. Marked @Public()
+    // on the backend. NB: this does NOT overlap '/categories' above —
+    // '/ride-categories'.contains('/categories') is false (preceding char is
+    // '-', not '/'), so it needs its own entry.
+    '/ride-categories',
   };
 
   bool _isPublic(String path) {

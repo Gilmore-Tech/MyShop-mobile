@@ -30,6 +30,7 @@ class DriverRegistrationDraft {
     this.vehicleYear = '',
     this.vehiclePlate = '',
     this.vehicleColor = '',
+    this.rideCategories = const [],
   });
 
   final String fullName;
@@ -41,6 +42,10 @@ class DriverRegistrationDraft {
   final String vehiclePlate;
   final String vehicleColor;
 
+  /// Ride category slugs the driver wants to serve (e.g. ['regular','comfort']).
+  /// Each is admin-verified before the driver is matchable for that tier.
+  final List<String> rideCategories;
+
   DriverRegistrationDraft copyWith({
     String? fullName,
     String? email,
@@ -50,6 +55,7 @@ class DriverRegistrationDraft {
     String? vehicleYear,
     String? vehiclePlate,
     String? vehicleColor,
+    List<String>? rideCategories,
   }) =>
       DriverRegistrationDraft(
         fullName: fullName ?? this.fullName,
@@ -60,11 +66,12 @@ class DriverRegistrationDraft {
         vehicleYear: vehicleYear ?? this.vehicleYear,
         vehiclePlate: vehiclePlate ?? this.vehiclePlate,
         vehicleColor: vehicleColor ?? this.vehicleColor,
+        rideCategories: rideCategories ?? this.rideCategories,
       );
 
-  /// Only fullName is required for POST /auth/register.
+  /// fullName and at least one ride category are required for POST /auth/register.
   /// Vehicle details are submitted later via profile/verification endpoints.
-  bool get isComplete => fullName.isNotEmpty;
+  bool get isComplete => fullName.isNotEmpty && rideCategories.isNotEmpty;
 }
 
 class DriverRegistrationController

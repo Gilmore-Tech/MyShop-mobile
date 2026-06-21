@@ -122,6 +122,9 @@ class _ProviderPhoneInputScreenState
           privacyPolicyAccepted: true,
           role: role,
           email: draft.email.isNotEmpty ? draft.email : null,
+          rideCategories: draft.rideCategories.isNotEmpty
+              ? draft.rideCategories
+              : null,
         );
       } else {
         final draft = ref.read(artisanRegistrationProvider);

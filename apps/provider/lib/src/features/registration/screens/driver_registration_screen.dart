@@ -4,12 +4,13 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../providers/registration_controller.dart';
+import '../widgets/driver_categories_step.dart';
 import '../widgets/driver_profile_step.dart';
 import '../widgets/driver_review_step.dart';
 import '../widgets/driver_vehicle_step.dart';
 import '../widgets/registration_step_scaffold.dart';
 
-/// Driver onboarding — 3-step wizard (Profile → Vehicle → Review).
+/// Driver onboarding — 4-step wizard (Profile → Vehicle → Categories → Review).
 class DriverRegistrationScreen extends ConsumerStatefulWidget {
   const DriverRegistrationScreen({super.key});
 
@@ -23,12 +24,14 @@ class _DriverRegistrationScreenState
   static const _steps = <MyShopStepItem>[
     MyShopStepItem(label: 'Profile', icon: Icons.person_outline),
     MyShopStepItem(label: 'Vehicle', icon: Icons.directions_car_outlined),
+    MyShopStepItem(label: 'Categories', icon: Icons.local_taxi_outlined),
     MyShopStepItem(label: 'Review', icon: Icons.fact_check_outlined),
   ];
 
   static const _stepTitles = <(String, String)>[
     ('Your profile', 'Tell us about yourself'),
     ('Vehicle details', "About the car you'll drive"),
+    ('Ride categories', 'Choose the rides you want'),
     ('Almost done!', 'Review and confirm'),
   ];
 
@@ -53,6 +56,8 @@ class _DriverRegistrationScreenState
             Validators.vehicleYear(d.vehicleYear) == null &&
             Validators.licensePlate(d.vehiclePlate) == null &&
             d.vehicleColor.isNotEmpty;
+      case 2:
+        return d.rideCategories.isNotEmpty;
       default:
         return d.isComplete;
     }
@@ -136,6 +141,7 @@ class _DriverRegistrationScreenState
           children: [
             const DriverProfileStep(),
             const DriverVehicleStep(),
+            const DriverCategoriesStep(),
             DriverReviewStep(onEditStep: _goTo),
           ],
         ),
