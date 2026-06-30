@@ -37,6 +37,12 @@ class AuthErrorCodes {
   /// point the winning refresh has rotated the token pair and the
   /// stored access token is fresh.
   static const refreshInFlight = 'REFRESH_IN_FLIGHT';
+
+  /// Returned by /auth/verify-otp (400) during provider signup when the
+  /// `regionId` carried by the earlier register call is unknown/inactive —
+  /// practically only a stale-cache edge case. The app re-fetches
+  /// `GET /v1/regions`, asks the user to re-select, and retries.
+  static const invalidRegion = 'INVALID_REGION';
 }
 
 /// Maps [ApiException] instances to user-friendly, actionable error messages
@@ -152,6 +158,10 @@ class AuthErrorMapper {
       case 'RATE_LIMITED':
       case 'TOO_MANY_REQUESTS':
         return 'Too many requests. Please wait a moment before trying again.';
+
+      // ── Region (provider signup) ────────────────────────────────────
+      case AuthErrorCodes.invalidRegion:
+        return 'That region is no longer available. Go back and choose your region again, then re-enter the code.';
 
       // ── Validation (422) ────────────────────────────────────────────
       case 'VALIDATION_ERROR':

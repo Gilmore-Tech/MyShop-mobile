@@ -21,15 +21,18 @@ class DriverCategoriesStep extends ConsumerWidget {
     final options = ref.watch(rideCategoryOptionsProvider);
 
     void toggle(String slug) {
-      final current = List<String>.from(draft.rideCategories);
+      // Fresh-read merge (same pattern as the profile/vehicle steps) so a
+      // rebuild between taps can never write a stale draft and drop a prior
+      // selection.
+      final notifier = ref.read(driverRegistrationProvider.notifier);
+      final latest = ref.read(driverRegistrationProvider);
+      final current = List<String>.from(latest.rideCategories);
       if (current.contains(slug)) {
         current.remove(slug);
       } else {
         current.add(slug);
       }
-      ref
-          .read(driverRegistrationProvider.notifier)
-          .update(draft.copyWith(rideCategories: current));
+      notifier.update(latest.copyWith(rideCategories: current));
     }
 
     return RegistrationStepCard(

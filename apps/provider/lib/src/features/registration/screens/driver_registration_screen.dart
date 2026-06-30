@@ -3,14 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../providers/regions_provider.dart';
 import '../providers/registration_controller.dart';
 import '../widgets/driver_categories_step.dart';
 import '../widgets/driver_profile_step.dart';
 import '../widgets/driver_review_step.dart';
 import '../widgets/driver_vehicle_step.dart';
+import '../widgets/region_step.dart';
 import '../widgets/registration_step_scaffold.dart';
 
-/// Driver onboarding — 4-step wizard (Profile → Vehicle → Categories → Review).
+/// Driver onboarding — 5-step wizard
+/// (Profile → Vehicle → Categories → Region → Review).
 class DriverRegistrationScreen extends ConsumerStatefulWidget {
   const DriverRegistrationScreen({super.key});
 
@@ -25,6 +28,7 @@ class _DriverRegistrationScreenState
     MyShopStepItem(label: 'Profile', icon: Icons.person_outline),
     MyShopStepItem(label: 'Vehicle', icon: Icons.directions_car_outlined),
     MyShopStepItem(label: 'Categories', icon: Icons.local_taxi_outlined),
+    MyShopStepItem(label: 'Region', icon: Icons.location_on_outlined),
     MyShopStepItem(label: 'Review', icon: Icons.fact_check_outlined),
   ];
 
@@ -32,6 +36,7 @@ class _DriverRegistrationScreenState
     ('Your profile', 'Tell us about yourself'),
     ('Vehicle details', "About the car you'll drive"),
     ('Ride categories', 'Choose the rides you want'),
+    ('Your region', 'Where you operate'),
     ('Almost done!', 'Review and confirm'),
   ];
 
@@ -58,6 +63,16 @@ class _DriverRegistrationScreenState
             d.vehicleColor.isNotEmpty;
       case 2:
         return d.rideCategories.isNotEmpty;
+      case 3:
+        // Region is a pre-selected confirmation in the pilot. Only block
+        // when the user genuinely has more than one region to choose from
+        // and hasn't picked one; a single (auto-selected) or unavailable
+        // list never blocks (backend defaults to the pilot region).
+        final regions = ref.read(regionsProvider).valueOrNull;
+        if (regions != null && regions.length > 1) {
+          return d.regionId.isNotEmpty;
+        }
+        return true;
       default:
         return d.isComplete;
     }
@@ -142,6 +157,7 @@ class _DriverRegistrationScreenState
             const DriverProfileStep(),
             const DriverVehicleStep(),
             const DriverCategoriesStep(),
+            const DriverRegionStep(),
             DriverReviewStep(onEditStep: _goTo),
           ],
         ),

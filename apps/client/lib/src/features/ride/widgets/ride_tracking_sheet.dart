@@ -626,15 +626,6 @@ class _CancelRequestButton extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 8),
-        const Text(
-          'Free cancellation within 3 minutes of match.',
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w400,
-            color: MyShopColors.textSecondary,
-          ),
-        ),
       ],
     );
   }

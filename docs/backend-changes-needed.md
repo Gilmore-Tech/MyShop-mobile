@@ -77,6 +77,43 @@ These are the field names the mobile reads from the canonical snapshot. If the b
 
 **Mobile impact**: small "Reassigning…" indicator on the matching screen.
 
+### 2.6 Automatic demand-based surge engine
+
+**Problem**: mobile already displays `surgeMultiplier`, but surge is only useful if the backend calculates it from live demand and locks it into the fare at booking time. A manual/default surge also creates trust issues: riders and drivers can see "high demand" when supply is actually normal.
+
+**Ask**: make `POST /v1/rides/estimate` and `POST /v1/rides` call a server-side surge calculator scoped to pickup zone + ride category.
+
+Suggested inputs:
+
+- Demand window: requested/unmatched rides in the pickup zone during the last `surge_window_secs` (default 300).
+- Supply window: online, verified, non-busy drivers for that category inside the matching radius, with heartbeat newer than the online TTL.
+- Pressure score: `demand / max(availableDrivers, 1)`, with a `surge_min_requests` floor so one stranded request does not surge an empty zone.
+- Signals to dampen abuse: recent acceptance rate, decline rate, and average pickup ETA can increase/decrease the score, but the demand/supply ratio should remain the main input.
+
+Suggested multiplier tiers, all configurable via `platform_config`:
+
+| Pressure score | Multiplier |
+|---|---:|
+| `< 1.2` | `1.00` |
+| `1.2 - 1.79` | `1.10` |
+| `1.8 - 2.49` | `1.25` |
+| `2.5 - 3.49` | `1.40` |
+| `>= 3.5` | `1.60` |
+
+Guardrails:
+
+- Cap by `surge_max_multiplier` (pilot default `1.60`, absolute admin max `2.00`).
+- Add hysteresis/cooldown (`surge_cooldown_secs`, default 300) so the multiplier does not flicker every estimate call.
+- Surge applies to new estimates/requests only. Persist the selected `surgeMultiplier` and `estimatedFarePesewas` on `Ride` when `POST /rides` succeeds; do not re-price a ride while it is waiting for acceptance.
+- Fare formula should be deterministic and integer-safe: compute in pesewas, apply category multiplier and surge to the fare subtotal, subtract promo after commission basis is captured, then round up to the nearest whole GHS per PRD edge case #11.
+- Admin can disable all surge with `surge_enabled=false`.
+
+Mobile contract:
+
+- Keep returning top-level `surgeMultiplier` on `POST /rides/estimate`.
+- Return the same locked `surgeMultiplier` plus the locked `estimatedFarePesewas` from `POST /rides` and every `ride:state` / `GET /rides/:id` snapshot.
+- Optional but useful: include `surgeReason` (`"high_demand"`, `"low_supply"`, `"long_eta"`) and `surgeZoneName` so mobile can make the banner more specific. Mobile remains compatible if these are absent.
+
 ---
 
 ## 3. Mobile-only follow-ups (no backend dep)

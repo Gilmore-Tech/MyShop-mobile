@@ -31,6 +31,7 @@ class DriverRegistrationDraft {
     this.vehiclePlate = '',
     this.vehicleColor = '',
     this.rideCategories = const [],
+    this.regionId = '',
   });
 
   final String fullName;
@@ -46,6 +47,11 @@ class DriverRegistrationDraft {
   /// Each is admin-verified before the driver is matchable for that tier.
   final List<String> rideCategories;
 
+  /// Home region UUID (from GET /v1/regions) chosen on the region step.
+  /// Empty when the regions endpoint is unavailable — register then omits it
+  /// and the backend defaults to the active pilot region.
+  final String regionId;
+
   DriverRegistrationDraft copyWith({
     String? fullName,
     String? email,
@@ -56,6 +62,7 @@ class DriverRegistrationDraft {
     String? vehiclePlate,
     String? vehicleColor,
     List<String>? rideCategories,
+    String? regionId,
   }) =>
       DriverRegistrationDraft(
         fullName: fullName ?? this.fullName,
@@ -67,6 +74,7 @@ class DriverRegistrationDraft {
         vehiclePlate: vehiclePlate ?? this.vehiclePlate,
         vehicleColor: vehicleColor ?? this.vehicleColor,
         rideCategories: rideCategories ?? this.rideCategories,
+        regionId: regionId ?? this.regionId,
       );
 
   /// fullName and at least one ride category are required for POST /auth/register.
@@ -101,6 +109,7 @@ class ArtisanRegistrationDraft {
     this.yearsOfExperience = 0,
     this.serviceCategories = const [],
     this.serviceRadiusKm = 5,
+    this.regionId = '',
   });
 
   final String fullName;
@@ -112,6 +121,11 @@ class ArtisanRegistrationDraft {
   final List<String> serviceCategories;
   final double serviceRadiusKm;
 
+  /// Home region UUID (from GET /v1/regions) chosen on the region step.
+  /// Empty when the regions endpoint is unavailable — register then omits it
+  /// and the backend defaults to the active pilot region.
+  final String regionId;
+
   ArtisanRegistrationDraft copyWith({
     String? fullName,
     String? email,
@@ -121,6 +135,7 @@ class ArtisanRegistrationDraft {
     int? yearsOfExperience,
     List<String>? serviceCategories,
     double? serviceRadiusKm,
+    String? regionId,
   }) =>
       ArtisanRegistrationDraft(
         fullName: fullName ?? this.fullName,
@@ -131,6 +146,7 @@ class ArtisanRegistrationDraft {
         yearsOfExperience: yearsOfExperience ?? this.yearsOfExperience,
         serviceCategories: serviceCategories ?? this.serviceCategories,
         serviceRadiusKm: serviceRadiusKm ?? this.serviceRadiusKm,
+        regionId: regionId ?? this.regionId,
       );
 
   /// Only fullName and serviceCategories are required for POST /auth/register.
