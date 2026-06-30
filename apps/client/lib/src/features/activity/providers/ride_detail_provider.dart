@@ -26,6 +26,11 @@ class RideDetailData {
   final double driverRating;
   final String? driverPhotoUrl;
 
+  /// Driver's real, dialable number. Backend only includes it on the ride
+  /// snapshot for 24h after the trip completes, then drops it — so this is
+  /// non-null only inside that post-trip contact window.
+  final String? driverPhone;
+
   // Trip
   final int durationMins;
   final double distanceKm;
@@ -50,6 +55,7 @@ class RideDetailData {
     required this.vehicleDisplay,
     required this.driverRating,
     this.driverPhotoUrl,
+    this.driverPhone,
     required this.durationMins,
     required this.distanceKm,
     required this.baseFarePesewas,
@@ -156,6 +162,9 @@ class _RideDetailNotifier
           ' · ${driver['plateNumber'] ?? ''}',
       driverRating: (driver['rating'] as num?)?.toDouble() ?? 0.0,
       driverPhotoUrl: driver['photoUrl'] as String?,
+      driverPhone: (driver['phone'] as String?)?.isNotEmpty == true
+          ? driver['phone'] as String
+          : null,
       durationMins: (ride['actualDurationMins'] as num?)?.toInt() ??
           (ride['estimatedDurationMins'] as num?)?.toInt() ??
           0,

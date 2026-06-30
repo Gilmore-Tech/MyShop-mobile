@@ -5,10 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_ui/shared_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-import '../../../core/constants/maps_config.dart';
 import '../../../core/di/providers.dart';
 import '../../../core/services/directions_service.dart';
+import '../../../core/widgets/route_warning_banner.dart';
 
 /// Full-screen trip summary modal shown when a trip card is tapped.
 ///
@@ -157,8 +158,7 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
                                         MainAxisAlignment.spaceBetween,
                                     children: [
                                       _TripIdTag(tripId: widget.trip.tripId),
-                                      _StatusBadge(
-                                          status: widget.trip.status),
+                                      _StatusBadge(status: widget.trip.status),
                                     ],
                                   ),
                                   const SizedBox(height: MyShopSpacing.sm),
@@ -181,22 +181,18 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
                                     children: [
                                       const Icon(Icons.calendar_today,
                                           size: 12,
-                                          color:
-                                              MyShopColors.textSecondary),
+                                          color: MyShopColors.textSecondary),
                                       const SizedBox(width: 8),
-                                      Text(widget.trip.date,
-                                          style: _metaStyle),
+                                      Text(widget.trip.date, style: _metaStyle),
                                       const SizedBox(width: 12),
                                       const Text('•',
                                           style: TextStyle(
-                                              color:
-                                                  MyShopColors.textSecondary,
+                                              color: MyShopColors.textSecondary,
                                               fontSize: 12)),
                                       const SizedBox(width: 12),
                                       const Icon(Icons.access_time,
                                           size: 12,
-                                          color:
-                                              MyShopColors.textSecondary),
+                                          color: MyShopColors.textSecondary),
                                       const SizedBox(width: 8),
                                       Text(widget.trip.timeRange,
                                           style: _metaStyle),
@@ -209,10 +205,22 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
                                     pickupTime: widget.trip.pickupTime,
                                     pickupAddress: widget.trip.pickupAddress,
                                     dropoffTime: widget.trip.dropoffTime,
-                                    dropoffAddress:
-                                        widget.trip.dropoffAddress,
+                                    dropoffAddress: widget.trip.dropoffAddress,
                                   ),
                                   const SizedBox(height: MyShopSpacing.lg),
+
+                                  // ── 5b. Customer contact ──
+                                  // The rider's real number is available for
+                                  // 24h after completion so the driver can
+                                  // reach them (e.g. a forgotten item). The
+                                  // backend stops sending it once the window
+                                  // closes, so this section simply disappears.
+                                  if (_isCompleted &&
+                                      _snapshot?.clientPhone != null) ...[
+                                    _ContactSection(
+                                        phone: _snapshot!.clientPhone!),
+                                    const SizedBox(height: MyShopSpacing.lg),
+                                  ],
                                 ],
                               ),
                             ),
@@ -226,8 +234,7 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
                                 snapshot: _snapshot,
                               )
                             else
-                              _CancelledFareNotice(
-                                  status: widget.trip.status),
+                              _CancelledFareNotice(status: widget.trip.status),
                             const SizedBox(height: MyShopSpacing.md),
                           ],
                         ),
@@ -321,6 +328,7 @@ class _MapPreview extends ConsumerStatefulWidget {
 class _MapPreviewState extends ConsumerState<_MapPreview> {
   GoogleMapController? _mapController;
   Set<Polyline> _polylines = const <Polyline>{};
+  String? _routeWarning;
 
   @override
   void initState() {
@@ -354,12 +362,12 @@ class _MapPreviewState extends ConsumerState<_MapPreview> {
       // run` console. Safe to leave in: dart:developer.log is debug-only.
       developer.log(
         'Directions result: points=${route.polyline.length} '
-        'isFallback=${route.isFallback} '
-        'apiKeySet=${MapsConfig.apiKey.isNotEmpty}',
+        'isFallback=${route.isFallback}',
         name: 'TripDetailModal',
       );
       if (!mounted || route.polyline.isEmpty) return;
       setState(() {
+        _routeWarning = route.warningMessage;
         _polylines = {
           Polyline(
             polylineId: const PolylineId('trip-route'),
@@ -505,6 +513,13 @@ class _MapPreviewState extends ConsumerState<_MapPreview> {
               ),
             ),
           ),
+          if (_routeWarning case final warning?)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 8,
+              child: RouteWarningBanner(message: warning),
+            ),
         ],
       ),
     );
@@ -756,6 +771,74 @@ class _RouteDot extends StatelessWidget {
   }
 }
 
+// ─── Customer Contact Section ───────────────────────────────────────────────
+
+/// Rider's real, dialable number, shown only inside the 24h post-trip contact
+/// window (gated by the caller). Tapping "Call" hands off to the OS dialer.
+class _ContactSection extends StatelessWidget {
+  const _ContactSection({required this.phone});
+
+  final String phone;
+
+  Future<void> _dial() async {
+    final uri = Uri.parse('tel:$phone');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      decoration: BoxDecoration(
+        color: MyShopColors.surfaceGrey,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.phone_rounded,
+              size: 18, color: MyShopColors.textSecondary),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Customer contact',
+                  style: TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: MyShopColors.textSecondary,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  phone,
+                  style: const TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: MyShopColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton.icon(
+            onPressed: _dial,
+            icon: const Icon(Icons.call_rounded, size: 18),
+            label: const Text('Call'),
+            style: TextButton.styleFrom(
+              foregroundColor: MyShopColors.primaryGold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ─── Fare Breakdown Card ────────────────────────────────────────────────────
 
 class _FareBreakdownCard extends StatelessWidget {
@@ -790,7 +873,8 @@ class _FareBreakdownCard extends StatelessWidget {
     // Total Paid: prefer the freshly-fetched total when available so a
     // late dispute adjustment is reflected; otherwise fall back to the
     // value already on the list row.
-    final totalDisplay = hasSnapshot ? _ghs(s.totalFarePesewas) : trip.totalPaid;
+    final totalDisplay =
+        hasSnapshot ? _ghs(s.totalFarePesewas) : trip.totalPaid;
 
     // Commission shown as 20% of total — the platform_config key is
     // `commission_rate_ride` and is fixed at 0.20 across the pilot.
@@ -1141,12 +1225,17 @@ class _RideSnapshot {
     required this.bookingFeePesewas,
     required this.totalFarePesewas,
     required this.surgeMultiplier,
+    this.clientPhone,
   });
 
   factory _RideSnapshot.fromJson(Map<String, dynamic> json) {
     int asInt(dynamic v) => v is num ? v.toInt() : 0;
     double asDouble(dynamic v, [double fallback = 0]) =>
         v is num ? v.toDouble() : fallback;
+    final client = json['client'] is Map<String, dynamic>
+        ? json['client'] as Map<String, dynamic>
+        : const <String, dynamic>{};
+    final phone = client['phone'];
     return _RideSnapshot(
       pickupLat: asDouble(json['pickupLat']),
       pickupLng: asDouble(json['pickupLng']),
@@ -1157,6 +1246,7 @@ class _RideSnapshot {
       bookingFeePesewas: asInt(json['bookingFee']),
       totalFarePesewas: asInt(json['totalFare']),
       surgeMultiplier: asDouble(json['surgeMultiplier'], 1.0),
+      clientPhone: phone is String && phone.isNotEmpty ? phone : null,
     );
   }
 
@@ -1169,6 +1259,11 @@ class _RideSnapshot {
   final int bookingFeePesewas;
   final int totalFarePesewas;
   final double surgeMultiplier;
+
+  /// Rider's real, dialable number. The backend only includes it on the ride
+  /// snapshot for 24h after the trip completes, then drops it — so this is
+  /// non-null only inside that post-trip contact window.
+  final String? clientPhone;
 }
 
 // ─── Data Model ─────────────────────────────────────────────────────────────
