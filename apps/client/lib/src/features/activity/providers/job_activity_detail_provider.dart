@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:api_client/api_client.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_models/shared_models.dart';
 
 import '../../../core/di/providers.dart';
 
@@ -26,6 +27,11 @@ class JobActivityDetail {
   final bool artisanVerified;
   final String? artisanPhotoUrl;
 
+  /// Artisan's real number — shown as read-only text (no call button) only
+  /// while the completed job is inside the 24h post-job contact window.
+  /// Null otherwise.
+  final String? artisanPhone;
+
   // Bids
   final int bidCount;
 
@@ -48,6 +54,7 @@ class JobActivityDetail {
     this.artisanJobCount,
     this.artisanVerified = false,
     this.artisanPhotoUrl,
+    this.artisanPhone,
     this.bidCount = 0,
     required this.agreedPricePesewas,
     this.supplementPesewas,
@@ -134,6 +141,20 @@ class _JobActivityDetailNotifier
     final supplement = (job['supplementAmount'] as num?)?.toInt();
     final total = agreed + (supplement ?? 0);
 
+    final status = job['status'] as String? ?? 'open';
+
+    // Only surface the artisan's real number while the completed job is
+    // inside the 24h post-job contact window. Read-only — no call button.
+    final completedAtDt = DateTime.tryParse(
+        (job['completedAt'] ?? job['completed_at']) as String? ?? '');
+    final rawArtisanPhone =
+        (artisan['phone'] ?? artisan['maskedPhone']) as String?;
+    final artisanPhone = status == 'completed' &&
+            isWithinPostTripContactWindow(completedAtDt) &&
+            (rawArtisanPhone?.trim().isNotEmpty ?? false)
+        ? rawArtisanPhone
+        : null;
+
     return JobActivityDetail(
       jobId: job['id'] as String? ?? jobId,
       title: description,
@@ -150,6 +171,7 @@ class _JobActivityDetailNotifier
       artisanJobCount: (artisan['completedJobs'] as num?)?.toInt(),
       artisanVerified: artisan['verified'] as bool? ?? false,
       artisanPhotoUrl: artisan['photoUrl'] as String?,
+      artisanPhone: artisanPhone,
       agreedPricePesewas: agreed,
       supplementPesewas: supplement,
       totalPesewas: total,
