@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../providers/regions_provider.dart';
 import '../providers/registration_controller.dart';
+import '../providers/ride_categories_provider.dart';
 import 'review_section_card.dart';
 
 /// Step 3 of driver registration — review and confirm.
@@ -22,6 +24,26 @@ class DriverReviewStep extends ConsumerWidget {
       draft.vehicleModel,
       if (draft.vehicleYear.isNotEmpty) '(${draft.vehicleYear})',
     ].where((s) => s.isNotEmpty).join(' ');
+
+    // Resolve ride-category slugs to display names (falls back to the slug
+    // until the options list loads).
+    final rideCatOptions = ref.watch(rideCategoryOptionsProvider).valueOrNull;
+    final rideCatNames = {
+      for (final o in rideCatOptions ?? const []) o.slug: o.name,
+    };
+    final rideCategories = draft.rideCategories
+        .map((s) => rideCatNames[s] ?? s)
+        .join(', ');
+
+    // Resolve the home-region id to its display name.
+    final regions = ref.watch(regionsProvider).valueOrNull ?? const [];
+    var regionName = '';
+    for (final r in regions) {
+      if (r.id == draft.regionId) {
+        regionName = r.name;
+        break;
+      }
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
@@ -84,6 +106,24 @@ class DriverReviewStep extends ConsumerWidget {
             rows: [
               ReviewRow(label: 'Vehicle', value: vehicle),
               ReviewRow(label: 'License plate', value: draft.vehiclePlate),
+            ],
+          ),
+          const SizedBox(height: MyShopSpacing.md),
+          ReviewSectionCard(
+            icon: Icons.local_taxi_outlined,
+            title: 'Ride categories',
+            onEdit: () => onEditStep(2),
+            rows: [
+              ReviewRow(label: 'Categories', value: rideCategories),
+            ],
+          ),
+          const SizedBox(height: MyShopSpacing.md),
+          ReviewSectionCard(
+            icon: Icons.location_on_outlined,
+            title: 'Your region',
+            onEdit: () => onEditStep(3),
+            rows: [
+              ReviewRow(label: 'Region', value: regionName),
             ],
           ),
           const SizedBox(height: MyShopSpacing.md),
