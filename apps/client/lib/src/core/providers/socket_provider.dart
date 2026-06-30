@@ -156,7 +156,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
         tripCount: (driver['tripCount'] as num?)?.toInt() ?? 0,
         isVerified: driver['isVerified'] as bool? ?? false,
         isPoliceChecked: driver['isPoliceChecked'] as bool? ?? false,
-        maskedPhone: driver['maskedPhone'] as String? ?? '',
+        phone: (driver['phone'] as String?) ??
+            (driver['maskedPhone'] as String?) ??
+            '',
         vehicleTier: driver['vehicleTier'] as String? ?? '',
         baseFarePesewas: fare.baseFarePesewas,
         distanceFarePesewas: fare.distanceFarePesewas,

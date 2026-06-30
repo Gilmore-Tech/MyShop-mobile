@@ -103,7 +103,7 @@ class MatchedDriver {
   final int tripCount;
   final bool isVerified;
   final bool isPoliceChecked;
-  final String maskedPhone; // e.g. "+233 ••• ••• 42"
+  final String phone; // real, dialable number e.g. "+233241234542"
   final String vehicleTier; // e.g. "Premier Comfort"
   final int baseFarePesewas;
   final int distanceFarePesewas;
@@ -132,7 +132,7 @@ class MatchedDriver {
     this.tripCount = 0,
     this.isVerified = false,
     this.isPoliceChecked = false,
-    this.maskedPhone = '',
+    this.phone = '',
     this.vehicleTier = '',
     this.baseFarePesewas = 0,
     this.distanceFarePesewas = 0,
@@ -1081,7 +1081,9 @@ Future<void> _hydrateFromRest(
       tripCount: (driver['tripCount'] as num?)?.toInt() ?? 0,
       isVerified: driver['isVerified'] as bool? ?? false,
       isPoliceChecked: driver['isPoliceChecked'] as bool? ?? false,
-      maskedPhone: driver['maskedPhone'] as String? ?? '',
+      phone: (driver['phone'] as String?) ??
+          (driver['maskedPhone'] as String?) ??
+          '',
       vehicleTier: driver['vehicleTier'] as String? ?? '',
       baseFarePesewas: fare.baseFarePesewas,
       distanceFarePesewas: fare.distanceFarePesewas,

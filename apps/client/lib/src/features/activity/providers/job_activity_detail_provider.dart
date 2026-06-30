@@ -26,6 +26,10 @@ class JobActivityDetail {
   final bool artisanVerified;
   final String? artisanPhotoUrl;
 
+  /// Artisan's real, dialable number — exposed on the post-job snapshot for a
+  /// limited window so the client can reconnect. Null once it closes.
+  final String? artisanPhone;
+
   // Bids
   final int bidCount;
 
@@ -48,6 +52,7 @@ class JobActivityDetail {
     this.artisanJobCount,
     this.artisanVerified = false,
     this.artisanPhotoUrl,
+    this.artisanPhone,
     this.bidCount = 0,
     required this.agreedPricePesewas,
     this.supplementPesewas,
@@ -150,6 +155,7 @@ class _JobActivityDetailNotifier
       artisanJobCount: (artisan['completedJobs'] as num?)?.toInt(),
       artisanVerified: artisan['verified'] as bool? ?? false,
       artisanPhotoUrl: artisan['photoUrl'] as String?,
+      artisanPhone: (artisan['phone'] ?? artisan['maskedPhone']) as String?,
       agreedPricePesewas: agreed,
       supplementPesewas: supplement,
       totalPesewas: total,

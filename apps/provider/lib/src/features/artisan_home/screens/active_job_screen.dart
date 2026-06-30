@@ -1341,17 +1341,30 @@ class _BottomPanel extends StatelessWidget {
             onTap: onAdvance,
           ),
           const SizedBox(height: MyShopSpacing.sm),
-          SizedBox(
-            width: double.infinity,
-            child: ChatEntryButton(
-              bookingType: ChatBookingType.artisanJob,
-              bookingId: job.id,
-              label: 'Message',
-              peerName: job.clientName ?? 'Client',
-              peerStatus: 'On the job',
-              background: MyShopColors.surfaceWhite,
-              foreground: MyShopColors.textPrimary,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: ChatEntryButton(
+                  bookingType: ChatBookingType.artisanJob,
+                  bookingId: job.id,
+                  label: 'Message',
+                  peerName: job.clientName ?? 'Client',
+                  peerStatus: 'On the job',
+                  background: MyShopColors.surfaceWhite,
+                  foreground: MyShopColors.textPrimary,
+                ),
+              ),
+              // Numbers aren't masked during the pilot — the artisan can call
+              // the client directly alongside the chat button.
+              if ((job.clientPhone ?? '').trim().isNotEmpty) ...[
+                const SizedBox(width: 10),
+                MyShopCallButton(
+                  phoneNumber: job.clientPhone,
+                  size: 48,
+                  semanticLabel: 'Call client',
+                ),
+              ],
+            ],
           ),
           if (_supplementAllowed) ...[
             const SizedBox(height: MyShopSpacing.sm),

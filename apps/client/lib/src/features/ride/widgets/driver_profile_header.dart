@@ -107,7 +107,7 @@ class _DriverIdentityCard extends StatelessWidget {
             isPoliceChecked: driver.isPoliceChecked,
           ),
           SizedBox(height: h * 0.017),
-          _PhoneChip(maskedPhone: driver.maskedPhone),
+          _PhoneChip(phone: driver.phone),
         ],
       ),
     );
@@ -285,31 +285,51 @@ class _OutlinedBadge extends StatelessWidget {
 }
 
 class _PhoneChip extends StatelessWidget {
-  final String maskedPhone;
-  const _PhoneChip({required this.maskedPhone});
+  final String phone;
+  const _PhoneChip({required this.phone});
 
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
     final h = MediaQuery.sizeOf(context).height;
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: w * 0.031,
-        vertical: h * 0.008,
-      ),
-      decoration: BoxDecoration(
-        color: MyShopColors.surfaceGrey,
-        borderRadius: BorderRadius.circular(w * 0.051),
-      ),
-      child: Text(
-        // Phone icon dropped in v1.0 to avoid implying a tappable call
-        // affordance — masked calls land in v1.2. The masked digits
-        // stay so the rider can identify the driver if support asks.
-        maskedPhone,
-        style: TextStyle(
-          fontSize: w * 0.031,
-          fontWeight: FontWeight.w500,
-          color: MyShopColors.textSecondary,
+    if (phone.trim().isEmpty) return const SizedBox.shrink();
+
+    // Numbers are no longer masked during the pilot — the chip dials the
+    // driver's real number so the rider can call directly (e.g. to find
+    // each other at pickup).
+    return Semantics(
+      button: true,
+      label: 'Call driver',
+      child: GestureDetector(
+        onTap: () => dialPhoneNumber(context, phone),
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: w * 0.036,
+            vertical: h * 0.009,
+          ),
+          decoration: BoxDecoration(
+            color: MyShopColors.success.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(w * 0.051),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.call_rounded,
+                size: w * 0.038,
+                color: MyShopColors.success,
+              ),
+              SizedBox(width: w * 0.018),
+              Text(
+                phone,
+                style: TextStyle(
+                  fontSize: w * 0.033,
+                  fontWeight: FontWeight.w600,
+                  color: MyShopColors.success,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

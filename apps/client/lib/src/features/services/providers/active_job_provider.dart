@@ -78,6 +78,11 @@ class ActiveJobArtisan {
   /// Profile photo URL — empty when the backend hasn't uploaded one.
   final String photoUrl;
 
+  /// Artisan's real, dialable phone number. Numbers aren't masked during the
+  /// pilot — the backend serves the live number so the client can call the
+  /// artisan directly. Empty when the backend omits it.
+  final String phone;
+
   const ActiveJobArtisan({
     required this.artisanId,
     required this.name,
@@ -87,6 +92,7 @@ class ActiveJobArtisan {
     this.specialty = '',
     this.rating = 0.0,
     this.photoUrl = '',
+    this.phone = '',
   });
 }
 
@@ -618,6 +624,9 @@ class _ActiveJobNotifier
         photoUrl: (artisanData['photoUrl'] as String?) ??
             (artisanData['profilePhotoUrl'] as String?) ??
             (artisanData['avatarUrl'] as String?) ??
+            '',
+        phone: (artisanData['phone'] as String?) ??
+            (artisanData['maskedPhone'] as String?) ??
             '',
       ),
       cost: ActiveJobCost(
