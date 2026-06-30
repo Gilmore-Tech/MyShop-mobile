@@ -70,6 +70,12 @@ final rideServiceProvider = Provider<RideService>((ref) {
   return RideService(ref.watch(dioProvider));
 });
 
+/// Region service — public `GET /v1/regions`. Used by provider signup to
+/// let the driver/artisan pick their home region. No auth header needed.
+final regionServiceProvider = Provider<RegionService>((ref) {
+  return RegionService(ref.watch(dioProvider));
+});
+
 /// Ratings — `POST /ratings` (blind 24h window). Used by the driver-side
 /// rate-passenger sheet on the trip-complete screen; same endpoint the
 /// rider hits to rate the driver, just with `bookingType: 'ride'` and a
