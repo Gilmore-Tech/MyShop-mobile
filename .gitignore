@@ -26,6 +26,7 @@
 .env.*
 !.env.example
 !.env.dev.example
+!.env.prod.example
 
 # Build-time injected secrets (written by tool/build.sh from .env.prod)
 **/ios/Flutter/Secrets.xcconfig
