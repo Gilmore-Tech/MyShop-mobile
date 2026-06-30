@@ -7,6 +7,7 @@ import 'package:shared_ui/shared_ui.dart';
 import '../../auth/providers/current_user_provider.dart';
 import '../providers/provider_type_provider.dart';
 import '../providers/verification_provider.dart';
+import '../widgets/profile_read_only_note.dart';
 
 /// Vehicle Information screen — driver-only.
 ///
@@ -53,26 +54,6 @@ class VehicleInformationScreen extends ConsumerWidget {
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
                 color: MyShopColors.textPrimary)),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: MyShopSpacing.md),
-            child: OutlinedButton.icon(
-              onPressed: () => context.push('/account/vehicle/edit'),
-              icon: const Icon(Icons.edit, size: 14),
-              label: const Text('Edit'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: MyShopColors.textPrimary,
-                side: const BorderSide(color: MyShopColors.divider),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
-                textStyle: const TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700),
-              ),
-            ),
-          ),
-        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(MyShopSpacing.md),
@@ -187,6 +168,11 @@ class VehicleInformationScreen extends ConsumerWidget {
                     label: 'MODEL',
                     value: dp?.vehicleModel ?? '--')),
           ]),
+          const SizedBox(height: MyShopSpacing.md),
+
+          // Vehicle details are read-only for providers — changes are made
+          // by an admin on request.
+          const ProfileReadOnlyNote(),
           const SizedBox(height: MyShopSpacing.lg),
 
           // Compliance & Docs

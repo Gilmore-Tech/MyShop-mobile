@@ -39,11 +39,8 @@ import '../features/earnings/screens/earnings_reports_screen.dart';
 import '../features/profile/screens/account_settings_screen.dart';
 import '../features/profile/screens/availability_schedule_screen.dart';
 import '../features/profile/screens/business_information_screen.dart';
-import '../features/profile/screens/edit_business_information_screen.dart';
-import '../features/profile/screens/edit_vehicle_information_screen.dart';
 import '../features/profile/screens/deactivate_account_screen.dart';
 import '../features/profile/screens/documents_verification_screen.dart';
-import '../features/profile/screens/edit_provider_profile_screen.dart';
 import '../features/profile/screens/notification_settings_screen.dart';
 import '../features/profile/screens/payout_methods_screen.dart';
 import '../features/profile/screens/privacy_security_screen.dart';
@@ -211,9 +208,14 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       ),
 
       // Account sub-pages (full-screen, no bottom nav)
+      //
+      // Provider profile is read-only: the former edit screens
+      // (/account/edit, /account/vehicle/edit, /account/business/edit) now
+      // redirect back to their view screens so deep links can't reach an
+      // edit form. Profile changes are made by an admin on request.
       GoRoute(
         path: '/account/edit',
-        builder: (context, state) => const EditProviderProfileScreen(),
+        redirect: (context, state) => '/account',
       ),
       GoRoute(
         path: '/account/documents',
@@ -233,9 +235,8 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         redirect: (context, state) {
           final role = ref.read(providerTypeProvider);
           if (role.isArtisan) return '/account';
-          return null;
+          return '/account/vehicle';
         },
-        builder: (context, state) => const EditVehicleInformationScreen(),
       ),
       GoRoute(
         path: '/account/business',
@@ -243,7 +244,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/account/business/edit',
-        builder: (context, state) => const EditBusinessInformationScreen(),
+        redirect: (context, state) => '/account/business',
       ),
       GoRoute(
         path: '/account/payouts',
