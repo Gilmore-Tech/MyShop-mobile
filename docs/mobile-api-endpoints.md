@@ -680,13 +680,36 @@ Token payload: `{ sub: userId, role: "client"|"driver"|"artisan", phone: "+233..
 **Response:**
 ```json
 {
-  "estimatedFarePesewas": 1500,
   "distanceKm": 12.4,
   "durationMins": 25,
   "surgeMultiplier": 1.0,
-  "pickupEtaMins": 5
+  "categories": [
+    {
+      "slug": "regular",
+      "name": "Regular",
+      "description": "Everyday cars at the best price",
+      "capacityPersons": 4,
+      "estimatedFarePesewas": 1500,
+      "pickupEtaMins": 5,
+      "driversAvailable": true
+    },
+    {
+      "slug": "comfort",
+      "name": "Comfort",
+      "description": "Newer cars with extra space",
+      "capacityPersons": 4,
+      "estimatedFarePesewas": 2100,
+      "pickupEtaMins": 8,
+      "driversAvailable": false
+    }
+  ],
+  "surgeReason": "high_demand",
+  "surgeZoneName": "Adum"
 }
 ```
+
+`surgeReason` and `surgeZoneName` are optional. Mobile only requires
+`surgeMultiplier`; values above `1.05` show the high-demand banner.
 
 **Error codes:** `OUTSIDE_PILOT_REGION` (400), `ROUTE_NOT_FOUND` (400), `MAPS_API_ERROR` (400)
 
@@ -705,6 +728,7 @@ Token payload: `{ sub: userId, role: "client"|"driver"|"artisan", phone: "+233..
 **Optional fields:**
 - `pickupAddress` (string) — Human-readable pickup address
 - `dropoffAddress` (string) — Human-readable dropoff address
+- `rideCategory` (string) — Category slug selected from `/rides/estimate`
 - `promoCode` (string) — Promo code to apply
 
 **Response (201):**
