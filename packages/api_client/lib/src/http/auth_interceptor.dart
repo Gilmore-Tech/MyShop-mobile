@@ -59,6 +59,9 @@ class AuthInterceptor extends Interceptor {
     '/auth/login/driver',
     '/auth/login/artisan',
     '/auth/verify-otp',
+    // OTP channel discovery and resend both happen before verification, so
+    // there is no bearer token yet. The prefix covers /channels and /resend.
+    '/auth/otp/',
     // Provider post-OTP login flow (v1.2.0) — all pre-auth, no token. The
     // trailing slash prefix covers /auth/provider/login, /verify-otp and
     // /select-role. Without this the interceptor rejects them locally with a
