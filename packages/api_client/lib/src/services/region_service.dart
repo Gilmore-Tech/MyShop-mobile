@@ -16,7 +16,10 @@ class RegionService {
   /// backend defaults to the active pilot region.
   Future<List<Region>> getRegions() async {
     try {
-      final response = await _dio.get('/v1/regions');
+      // baseUrl already ends in `/v1` — use a root-relative path like every
+      // other service ('/categories', '/auth/register'). '/v1/regions' would
+      // resolve to '.../v1/v1/regions' and 404.
+      final response = await _dio.get('/regions');
       final body = response.data as Map<String, dynamic>;
       final data = body['data'] as Map<String, dynamic>?;
       final regions = data?['regions'] as List<dynamic>? ?? const [];
