@@ -79,6 +79,12 @@ class AuthInterceptor extends Interceptor {
     // '/ride-categories'.contains('/categories') is false (preceding char is
     // '-', not '/'), so it needs its own entry.
     '/ride-categories',
+    // Regions are read during PROVIDER registration (home-region picker)
+    // before the user has authenticated. Marked @Public() on the backend
+    // (GET /v1/regions) — keep this list aligned. Without this entry the
+    // interceptor rejects the pre-auth fetch locally and the region step
+    // shows "Couldn't load regions" instead of degrading gracefully.
+    '/regions',
   };
 
   bool _isPublic(String path) {
