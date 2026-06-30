@@ -15,6 +15,10 @@ class OtpVerificationScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(clientAuthControllerProvider);
+    final whatsappAvailable = ref.watch(clientOtpChannelsProvider).maybeWhen(
+          data: (channels) => channels.contains('whatsapp'),
+          orElse: () => false,
+        );
 
     // Extract state for the OTP screen
     String phone = '';
@@ -35,6 +39,13 @@ class OtpVerificationScreen extends ConsumerWidget {
       onResend: () async {
         await ref.read(clientAuthControllerProvider.notifier).resendOtp();
       },
+      onResendWhatsApp: whatsappAvailable
+          ? () async {
+              await ref
+                  .read(clientAuthControllerProvider.notifier)
+                  .resendOtp(channel: 'whatsapp');
+            }
+          : null,
       isVerifying: isVerifying,
       errorText: error,
       onErrorCleared: () {
