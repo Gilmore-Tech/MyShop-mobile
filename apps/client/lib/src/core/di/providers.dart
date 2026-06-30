@@ -135,6 +135,7 @@ final verificationServiceProvider = Provider<VerificationService>((ref) {
 final googlePlacesServiceProvider = Provider<GooglePlacesService>((ref) {
   final position = ref.watch(currentDevicePositionProvider);
   return GooglePlacesService(
+    dio: ref.watch(dioProvider),
     biasLatitude: position?.latitude,
     biasLongitude: position?.longitude,
   );

@@ -13,7 +13,6 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:shared_utils/shared_utils.dart' as geo_utils;
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../../core/constants/maps_config.dart';
 import '../../../core/di/providers.dart';
 
 import '../../artisan_jobs/providers/artisan_jobs_provider.dart';
@@ -272,7 +271,8 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                                 context,
                                 job: effectiveJob,
                                 editingBidId: liveEntry!.bidId,
-                                initialAmountPesewas: liveEntry.bidAmountPesewas,
+                                initialAmountPesewas:
+                                    liveEntry.bidAmountPesewas,
                                 initialEtaMinutes: liveEntry.bidEtaMinutes,
                                 initialDurationMinutes:
                                     liveEntry.bidDurationMinutes,
@@ -412,9 +412,10 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                       // in the bid-summary card without a release. Falls
                       // back to the PRD-default 20% inside the provider
                       // when the config endpoint is unreachable.
-                      feePercent:
-                          ref.watch(commissionRatePercentProvider).valueOrNull ??
-                              20,
+                      feePercent: ref
+                              .watch(commissionRatePercentProvider)
+                              .valueOrNull ??
+                          20,
                     ),
                   ],
                   const SizedBox(height: MyShopSpacing.lg),
@@ -1324,15 +1325,13 @@ class _LocationCard extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: Column(
           children: [
-            // A full `GoogleMap` widget here is a ~50 MB native GL
-            // allocation per mount — on iOS `liteModeEnabled` is ignored
-            // so every request-details open ate that cost even though
-            // this preview is only 160 px tall. Swap for a Google Static
-            // Maps PNG — it's a ~30 KB image, cached and sized to the
-            // screen, and the tap handler already launches real maps.
+            // Keep this preview code-native. A full GoogleMap costs a large
+            // native GL allocation, while a Static Maps image would expose a
+            // paid web-service key from the app. Tapping opens the real maps
+            // application with these coordinates.
             SizedBox(
               height: 160,
-              child: _StaticMapPreview(
+              child: _LocationPreview(
                 latitude: latitude,
                 longitude: longitude,
                 onTap: () => _openDirections(context),
@@ -1396,15 +1395,13 @@ class _LocationCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Static-map preview — replaces the heavy `GoogleMap` preview on the
-// request-details screen. Uses Google's Static Maps endpoint to fetch a
-// PNG sized to the card; that's a ~30 KB bitmap vs. a full GL map
-// instance that costs ~50 MB of native memory per mount and was
-// blowing iOS's jetsam budget on open.
+// Key-free location preview. It deliberately does not claim to be a street
+// map; it gives the request card useful spatial affordance without mounting a
+// native map or sending a paid Google web-service key from the mobile app.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _StaticMapPreview extends StatelessWidget {
-  const _StaticMapPreview({
+class _LocationPreview extends StatelessWidget {
+  const _LocationPreview({
     required this.latitude,
     required this.longitude,
     required this.onTap,
@@ -1416,50 +1413,115 @@ class _StaticMapPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dpr = MediaQuery.devicePixelRatioOf(context);
-    final widthPx = (MediaQuery.sizeOf(context).width.clamp(320, 640)).round();
-    // Static Maps caps scale at 2 — anything beyond renders aliased but
-    // doesn't buy more resolution, so clamp to stay within quota.
-    final scale = dpr >= 2 ? 2 : 1;
-    final url = Uri.https(
-      'maps.googleapis.com',
-      '/maps/api/staticmap',
-      {
-        'center': '$latitude,$longitude',
-        'zoom': '15',
-        'size': '${widthPx}x160',
-        'scale': '$scale',
-        'markers': 'color:orange|$latitude,$longitude',
-        'key': MapsConfig.apiKey,
-      },
-    ).toString();
-
-    return GestureDetector(
-      onTap: onTap,
-      child: CachedNetworkImage(
-        imageUrl: url,
-        fit: BoxFit.cover,
-        // Decode at the displayed width so the bitmap in RAM stays small.
-        memCacheWidth: (widthPx * scale).toInt(),
-        placeholder: (_, __) => Container(
-          color: MyShopColors.surfaceGrey,
-          alignment: Alignment.center,
-          child: const Icon(
-            Icons.map_outlined,
-            color: MyShopColors.textSecondary,
-          ),
-        ),
-        errorWidget: (_, __, ___) => Container(
-          color: MyShopColors.surfaceGrey,
-          alignment: Alignment.center,
-          child: const Icon(
-            Icons.map_outlined,
-            color: MyShopColors.textSecondary,
-          ),
+    return Semantics(
+      button: true,
+      label: 'Open job location in maps',
+      child: InkWell(
+        onTap: onTap,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            const ColoredBox(
+              color: Color(0xFFF0F3F1),
+              child: CustomPaint(painter: _LocationPreviewPainter()),
+            ),
+            const Center(
+              child: Icon(
+                Icons.location_on,
+                size: 48,
+                color: MyShopColors.primaryGold,
+                shadows: [
+                  Shadow(
+                    color: Color(0x40000000),
+                    blurRadius: 8,
+                    offset: Offset(0, 3),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              left: 12,
+              bottom: 10,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: MyShopColors.surfaceWhite.withValues(alpha: 0.94),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x18000000), blurRadius: 5),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.open_in_new, size: 14),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Open live map  •  ${latitude.toStringAsFixed(4)}, '
+                      '${longitude.toStringAsFixed(4)}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
+}
+
+class _LocationPreviewPainter extends CustomPainter {
+  const _LocationPreviewPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final minorRoad = Paint()
+      ..color = const Color(0xFFD8DFDB)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 5;
+    final majorRoad = Paint()
+      ..color = const Color(0xFFFFFFFF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 10;
+
+    canvas.drawPath(
+      Path()
+        ..moveTo(-20, size.height * 0.78)
+        ..quadraticBezierTo(
+          size.width * 0.3,
+          size.height * 0.35,
+          size.width + 20,
+          size.height * 0.58,
+        ),
+      majorRoad,
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(size.width * 0.2, -10)
+        ..lineTo(size.width * 0.38, size.height + 10),
+      minorRoad,
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(size.width * 0.78, -10)
+        ..quadraticBezierTo(
+          size.width * 0.58,
+          size.height * 0.45,
+          size.width * 0.84,
+          size.height + 10,
+        ),
+      minorRoad,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
