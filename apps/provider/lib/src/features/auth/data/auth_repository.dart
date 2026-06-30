@@ -134,6 +134,14 @@ class AuthRepository {
     return result;
   }
 
+  Future<List<String>> getOtpChannels() => _service.getOtpChannels();
+
+  Future<void> resendOtp({
+    required String phone,
+    required String channel,
+  }) =>
+      _service.resendOtp(phone: phone, channel: channel);
+
   /// Request a provider login OTP without specifying a role. The backend
   /// returns a uniform response whether or not the number is registered.
   Future<void> providerLogin(String phone, {bool forceLogin = false}) async {
