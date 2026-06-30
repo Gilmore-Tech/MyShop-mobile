@@ -69,6 +69,7 @@ class AuthOtpSent extends AuthState {
     this.role,
     this.error,
     this.isVerifying = false,
+    this.regionRejected = false,
   });
 
   final String phone;
@@ -76,6 +77,11 @@ class AuthOtpSent extends AuthState {
   final ProviderType? role;
   final String? error;
   final bool isVerifying;
+
+  /// True when [error] came from an INVALID_REGION verify failure during
+  /// provider signup. The OTP screen reacts by dropping the cached region
+  /// list so the region step re-fetches when the user backs out to re-select.
+  final bool regionRejected;
 }
 
 /// Backend rejected the login because the same account has an active
@@ -289,6 +295,7 @@ class AuthController extends StateNotifier<AuthState> {
     String? email,
     List<String>? categories,
     List<String>? rideCategories,
+    String? regionId,
     String? shopCapacity,
   }) async {
     if (_requesting) return;
@@ -305,6 +312,7 @@ class AuthController extends StateNotifier<AuthState> {
         email: email,
         categories: categories,
         rideCategories: rideCategories,
+        regionId: regionId,
         shopCapacity: shopCapacity,
       ));
       state = AuthOtpSent(phone: phone, isNewUser: true, role: role);
@@ -412,10 +420,22 @@ class AuthController extends StateNotifier<AuthState> {
     final providerType = session.role == 'artisan'
         ? ProviderType.artisan
         : ProviderType.driver;
-    final user = await _repo.fetchProfile();
+    // Pass the freshly-selected role into fetchProfile. Storage still holds
+    // the previous session's role at this point (onAuthenticated writes the
+    // new one below), so without this the AuthUser would resolve its
+    // name/email/photo from the wrong role — e.g. the artisan business name
+    // showing up on a driver login.
+    final user = await _repo.fetchProfile(activeRole: _authRoleFor(providerType));
     onAuthenticated?.call(user, providerType);
     state = AuthAuthenticated(user);
   }
+
+  /// Map the app's [ProviderType] to the api_client [AuthRole] used to
+  /// resolve per-role identity on [AuthUser]. Returns null when the role is
+  /// unknown, letting [AuthRepository.fetchProfile] fall back to storage.
+  AuthRole? _authRoleFor(ProviderType? type) => type == null
+      ? null
+      : (type.isArtisan ? AuthRole.artisan : AuthRole.driver);
 
   /// Verify OTP code.
   ///
@@ -437,7 +457,11 @@ class AuthController extends StateNotifier<AuthState> {
       if (current.isNewUser) {
         // Registration: role already chosen at sign-up; legacy verify.
         await _repo.verifyOtp(phone: current.phone, code: code);
-        final user = await _repo.fetchProfile();
+        // Same stale-role guard as _completeProviderSession: pass the role
+        // chosen at sign-up so identity resolves from the right profile
+        // before onAuthenticated persists it.
+        final user = await _repo.fetchProfile(
+            activeRole: _authRoleFor(current.role));
         onAuthenticated?.call(user, current.role);
         state = AuthAuthenticated(user);
         return;
@@ -461,11 +485,16 @@ class AuthController extends StateNotifier<AuthState> {
         // the takeover retry replays it with forceLogin.
         state = AuthBlockedByOtherDevice(phone: current.phone, otpCode: code);
       } else {
+        // INVALID_REGION is a stale-cache edge case: the region step re-fetches
+        // GET /v1/regions when the user backs out to re-select (the OTP screen
+        // drops the cache on this flag). The draft still holds the rejected
+        // regionId — the register payload is re-sent on the next attempt.
         state = AuthOtpSent(
           phone: current.phone,
           isNewUser: current.isNewUser,
           role: current.role,
           error: AuthErrorMapper.message(e),
+          regionRejected: e.errorCode == AuthErrorCodes.invalidRegion,
         );
       }
     } on AuthException catch (e) {

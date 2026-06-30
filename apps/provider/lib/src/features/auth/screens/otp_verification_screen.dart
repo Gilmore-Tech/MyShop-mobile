@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../profile/providers/provider_type_provider.dart';
+import '../../registration/providers/regions_provider.dart';
 import '../../registration/providers/registration_controller.dart';
 import '../providers/auth_controller.dart';
 import '../widgets/blocked_device_dialog.dart';
@@ -39,6 +40,13 @@ class _ProviderOtpVerificationScreenState
       } else if (next is! AuthBlockedByOtherDevice && _blockedDialogVisible) {
         _blockedDialogVisible = false;
         if (Navigator.canPop(context)) Navigator.pop(context);
+      }
+
+      // Stale-cache edge case: the backend rejected the home region at
+      // verify-otp. Drop the cached region list so the region step re-fetches
+      // GET /v1/regions when the user backs out to re-select.
+      if (next is AuthOtpSent && next.regionRejected) {
+        ref.invalidate(regionsProvider);
       }
     });
 
