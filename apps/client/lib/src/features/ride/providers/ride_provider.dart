@@ -163,6 +163,130 @@ class MatchedDriver {
   String get activeFareDisplay => _fmt(activeFarePesewas);
 }
 
+class RideFareFields {
+  const RideFareFields({
+    required this.baseFarePesewas,
+    required this.distanceFarePesewas,
+    required this.timeFarePesewas,
+    required this.bookingFeePesewas,
+    required this.taxesPesewas,
+    required this.promoDiscountPesewas,
+    required this.totalFarePesewas,
+    required this.distanceKm,
+    required this.durationMins,
+    required this.surgeMultiplier,
+    required this.surgeFarePesewas,
+    required this.subtotalPesewas,
+  });
+
+  factory RideFareFields.fromSnapshot(Map<String, dynamic> snapshot) {
+    final baseFare = _readInt(snapshot, const ['baseFarePesewas', 'baseFare']);
+    final distanceFare =
+        _readInt(snapshot, const ['distanceFarePesewas', 'distanceFare']);
+    final timeFare = _readInt(snapshot, const ['timeFarePesewas', 'timeFare']);
+    final bookingFee =
+        _readInt(snapshot, const ['bookingFeePesewas', 'bookingFee']);
+    final taxes = _readInt(snapshot, const ['taxesPesewas', 'taxes']);
+    final promoDiscount = _readInt(
+      snapshot,
+      const ['promoDiscountPesewas', 'discountPesewas', 'promoDiscount'],
+    );
+    final surgeFare =
+        _readInt(snapshot, const ['surgeFarePesewas', 'surgeFare']);
+    final componentTotal = baseFare +
+        distanceFare +
+        timeFare +
+        bookingFee +
+        taxes +
+        surgeFare -
+        promoDiscount;
+    final total = _readInt(
+      snapshot,
+      const [
+        'finalFarePesewas',
+        'totalFarePesewas',
+        'totalFare',
+        'estimatedFarePesewas',
+      ],
+      fallback: componentTotal > 0 ? componentTotal : 0,
+    );
+
+    return RideFareFields(
+      baseFarePesewas: baseFare,
+      distanceFarePesewas: distanceFare,
+      timeFarePesewas: timeFare,
+      bookingFeePesewas: bookingFee,
+      taxesPesewas: taxes,
+      promoDiscountPesewas: promoDiscount,
+      totalFarePesewas: total,
+      distanceKm: _readDouble(
+        snapshot,
+        const ['actualDistanceKm', 'distanceKm', 'estimatedDistanceKm'],
+      ),
+      durationMins: _readInt(
+        snapshot,
+        const ['actualDurationMins', 'durationMins', 'estimatedDurationMins'],
+      ),
+      surgeMultiplier: _readDouble(
+        snapshot,
+        const ['surgeMultiplier'],
+        fallback: 1.0,
+      ),
+      surgeFarePesewas: surgeFare,
+      subtotalPesewas: _readInt(
+        snapshot,
+        const ['subtotalPesewas', 'subtotal', 'prePromoFarePesewas'],
+        fallback: total,
+      ),
+    );
+  }
+
+  final int baseFarePesewas;
+  final int distanceFarePesewas;
+  final int timeFarePesewas;
+  final int bookingFeePesewas;
+  final int taxesPesewas;
+  final int promoDiscountPesewas;
+  final int totalFarePesewas;
+  final double distanceKm;
+  final int durationMins;
+  final double surgeMultiplier;
+  final int surgeFarePesewas;
+  final int subtotalPesewas;
+}
+
+int _readInt(
+  Map<String, dynamic> source,
+  List<String> keys, {
+  int fallback = 0,
+}) {
+  for (final key in keys) {
+    final value = source[key];
+    if (value is num) return value.toInt();
+    if (value is String) {
+      final parsed = num.tryParse(value);
+      if (parsed != null) return parsed.toInt();
+    }
+  }
+  return fallback;
+}
+
+double _readDouble(
+  Map<String, dynamic> source,
+  List<String> keys, {
+  double fallback = 0,
+}) {
+  for (final key in keys) {
+    final value = source[key];
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      final parsed = num.tryParse(value);
+      if (parsed != null) return parsed.toDouble();
+    }
+  }
+  return fallback;
+}
+
 // ── Static mock data ──────────────────────────────────────────────────────────
 
 const vehicleOptions = [
@@ -338,10 +462,10 @@ final tipStateProvider =
 final rideReceiptProvider = StateProvider<RideReceipt?>((_) => null);
 
 /// Build a [RideReceipt] from the canonical `ride:state` snapshot shape.
-/// Backend currently only returns the total fare and the trip metadata —
-/// the per-line fare components (base, distance, time, surge, taxes,
-/// promo) aren't broken out yet, so we return zero for those and the
-/// receipt screen suppresses rows that are zero.
+/// Fare fields are deliberately alias-tolerant because older snapshots used
+/// `totalFare` / `baseFare`, while newer endpoints use `finalFarePesewas` /
+/// `baseFarePesewas`. One parser keeps estimate, tracking, and receipt screens
+/// from drifting when the backend returns either shape.
 RideReceipt buildRideReceiptFromSnapshot(Map<String, dynamic> snapshot) {
   final driver = snapshot['driver'] is Map<String, dynamic>
       ? snapshot['driver'] as Map<String, dynamic>
@@ -363,12 +487,7 @@ RideReceipt buildRideReceiptFromSnapshot(Map<String, dynamic> snapshot) {
     shortVehicle,
     if (plate.isNotEmpty) plate,
   ].where((p) => p.isNotEmpty).join(' · ');
-  final total = (snapshot['finalFarePesewas'] as num?)?.toInt() ??
-      (snapshot['totalFare'] as num?)?.toInt() ??
-      (snapshot['estimatedFarePesewas'] as num?)?.toInt() ??
-      0;
-  final distanceKm = (snapshot['distanceKm'] as num?)?.toDouble() ?? 0;
-  final durationMins = (snapshot['durationMins'] as num?)?.toInt() ?? 0;
+  final fare = RideFareFields.fromSnapshot(snapshot);
   final completedAtRaw = snapshot['completedAt'] as String?;
   final completedAt = completedAtRaw != null
       ? _formatCompletedAt(DateTime.tryParse(completedAtRaw))
@@ -384,18 +503,17 @@ RideReceipt buildRideReceiptFromSnapshot(Map<String, dynamic> snapshot) {
     completedAt: completedAt,
     pickupAddress: snapshot['pickupAddress'] as String? ?? '',
     dropoffAddress: snapshot['dropoffAddress'] as String? ?? '',
-    // Backend doesn't break out the components yet — see comment above.
-    baseFarePesewas: 0,
-    distanceKm: distanceKm,
-    distanceFarePesewas: 0,
-    durationMins: durationMins,
-    timeFarePesewas: 0,
-    surgeMultiplier: (snapshot['surgeMultiplier'] as num?)?.toDouble() ?? 1.0,
-    surgeFarePesewas: 0,
-    subtotalPesewas: total,
-    taxesPesewas: 0,
-    promoDiscountPesewas: 0,
-    totalPaidPesewas: total,
+    baseFarePesewas: fare.baseFarePesewas,
+    distanceKm: fare.distanceKm,
+    distanceFarePesewas: fare.distanceFarePesewas,
+    durationMins: fare.durationMins,
+    timeFarePesewas: fare.timeFarePesewas,
+    surgeMultiplier: fare.surgeMultiplier,
+    surgeFarePesewas: fare.surgeFarePesewas,
+    subtotalPesewas: fare.subtotalPesewas,
+    taxesPesewas: fare.taxesPesewas,
+    promoDiscountPesewas: fare.promoDiscountPesewas,
+    totalPaidPesewas: fare.totalFarePesewas,
     paymentMethod: _formatPaymentMethod(paymentMethodRaw),
     paymentStatus: 'SUCCESS',
   );
@@ -670,9 +788,9 @@ final rideTrackingPhaseProvider = StateProvider<RideTrackingPhase>(
 final tripEtaProvider =
     StateNotifierProvider<EtaNotifier, int>((_) => EtaNotifier(12));
 
-/// Free waiting period (seconds) once the driver has arrived.
-/// Default 180 (3 minutes) matches the "Free cancellation within 3 minutes"
-/// policy surfaced elsewhere in the UI.
+/// Free waiting period (seconds) once the driver has arrived. Default 180
+/// (3 minutes) — the backend's penalty-free cancellation window. This is an
+/// internal timer only; the window is no longer advertised in the UI.
 final waitingCountdownProvider =
     StateNotifierProvider<WaitingCountdownNotifier, int>(
   (_) => WaitingCountdownNotifier(180),
@@ -912,7 +1030,8 @@ Future<void> _hydrateFromRest(
     // status fields into the public providers.
     if (status == 'cancelled' || status == 'no_drivers') {
       final cancelledBy = json['cancelledBy'] as String?;
-      read(bookingFailureMessageProvider.notifier).state = status == 'no_drivers'
+      read(bookingFailureMessageProvider.notifier).state = status ==
+              'no_drivers'
           ? 'No drivers are available nearby right now. Please try again in a moment.'
           : cancelledBy == 'driver'
               ? 'The driver cancelled this ride.'
@@ -948,6 +1067,7 @@ Future<void> _hydrateFromRest(
     final assembledName = (firstName != null || lastName != null)
         ? [firstName, lastName].whereType<String>().join(' ').trim()
         : null;
+    final fare = RideFareFields.fromSnapshot(json);
     final matched = MatchedDriver(
       name: (driver['name'] as String?) ??
           assembledName ??
@@ -963,12 +1083,12 @@ Future<void> _hydrateFromRest(
       isPoliceChecked: driver['isPoliceChecked'] as bool? ?? false,
       maskedPhone: driver['maskedPhone'] as String? ?? '',
       vehicleTier: driver['vehicleTier'] as String? ?? '',
-      baseFarePesewas: (json['baseFare'] as num?)?.toInt() ?? 0,
-      distanceFarePesewas: (json['distanceFare'] as num?)?.toInt() ?? 0,
-      distanceKm: (json['distanceKm'] as num?)?.toDouble() ?? 0,
-      bookingFeePesewas: (json['bookingFee'] as num?)?.toInt() ?? 0,
+      baseFarePesewas: fare.baseFarePesewas,
+      distanceFarePesewas: fare.distanceFarePesewas,
+      distanceKm: fare.distanceKm,
+      bookingFeePesewas: fare.bookingFeePesewas,
       vehicleShortName: driver['vehicleShortName'] as String? ?? '',
-      confirmedFarePesewas: (json['totalFare'] as num?)?.toInt() ?? 0,
+      confirmedFarePesewas: fare.totalFarePesewas,
       paymentMethod: json['paymentMethod'] as String? ?? 'Cash',
       photoUrl: (driver['photoUrl'] as String?) ??
           (driver['profilePhotoUrl'] as String?) ??

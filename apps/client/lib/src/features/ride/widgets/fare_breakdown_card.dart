@@ -9,6 +9,10 @@ class FareBreakdownCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasBreakdown = driver.baseFarePesewas +
+            driver.distanceFarePesewas +
+            driver.bookingFeePesewas >
+        0;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
@@ -19,18 +23,20 @@ class FareBreakdownCard extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _FareRow(label: 'Base Fare', amount: driver.baseFareDisplay),
-          const SizedBox(height: 10),
-          _FareRow(
-            label: 'Distance (${driver.distanceKm.toStringAsFixed(1)} km)',
-            amount: driver.distanceFareDisplay,
-          ),
-          const SizedBox(height: 10),
-          _FareRow(label: 'Booking Fee', amount: driver.bookingFeeDisplay),
-          const SizedBox(height: 14),
-          const Divider(height: 1, thickness: 1, color: MyShopColors.divider),
-          const SizedBox(height: 14),
-          _TotalRow(total: driver.totalFareDisplay),
+          if (hasBreakdown) ...[
+            _FareRow(label: 'Base Fare', amount: driver.baseFareDisplay),
+            const SizedBox(height: 10),
+            _FareRow(
+              label: 'Distance (${driver.distanceKm.toStringAsFixed(1)} km)',
+              amount: driver.distanceFareDisplay,
+            ),
+            const SizedBox(height: 10),
+            _FareRow(label: 'Booking Fee', amount: driver.bookingFeeDisplay),
+            const SizedBox(height: 14),
+            const Divider(height: 1, thickness: 1, color: MyShopColors.divider),
+            const SizedBox(height: 14),
+          ],
+          _TotalRow(total: driver.activeFareDisplay),
           const SizedBox(height: 8),
           const Text(
             'Includes all taxes and commissions. No hidden charges.',
@@ -99,9 +105,9 @@ class _TotalRow extends StatelessWidget {
         Text(
           total,
           style: const TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-            color: MyShopColors.textPrimary,
+            fontSize: 26,
+            fontWeight: FontWeight.w900,
+            color: MyShopColors.darkSlate,
           ),
         ),
       ],

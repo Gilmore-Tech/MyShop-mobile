@@ -68,8 +68,7 @@ class DriverFoundScreen extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Cancel ride?'),
         content: const Text(
-          'Cancelling within 3 minutes of the driver accepting is free. '
-          'After that a small cancellation fee applies.',
+          'Are you sure you want to cancel this ride?',
         ),
         actions: [
           TextButton(
@@ -225,16 +224,6 @@ class _BottomActions extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Free cancellation within 3 minutes of match.',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w400,
-              color: MyShopColors.textSecondary,
-            ),
-            textAlign: TextAlign.center,
           ),
         ],
       ),

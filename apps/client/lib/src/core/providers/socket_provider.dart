@@ -142,6 +142,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
       final assembledName = (firstName != null || lastName != null)
           ? [firstName, lastName].whereType<String>().join(' ').trim()
           : null;
+      final fare = RideFareFields.fromSnapshot(data);
       final matched = MatchedDriver(
         name: (driver['name'] as String?) ??
             assembledName ??
@@ -157,12 +158,12 @@ void _connectAndListen(Ref ref, SocketService socket) {
         isPoliceChecked: driver['isPoliceChecked'] as bool? ?? false,
         maskedPhone: driver['maskedPhone'] as String? ?? '',
         vehicleTier: driver['vehicleTier'] as String? ?? '',
-        baseFarePesewas: (data['baseFare'] as num?)?.toInt() ?? 0,
-        distanceFarePesewas: (data['distanceFare'] as num?)?.toInt() ?? 0,
-        distanceKm: (data['distanceKm'] as num?)?.toDouble() ?? 0,
-        bookingFeePesewas: (data['bookingFee'] as num?)?.toInt() ?? 0,
+        baseFarePesewas: fare.baseFarePesewas,
+        distanceFarePesewas: fare.distanceFarePesewas,
+        distanceKm: fare.distanceKm,
+        bookingFeePesewas: fare.bookingFeePesewas,
         vehicleShortName: driver['vehicleShortName'] as String? ?? '',
-        confirmedFarePesewas: (data['totalFare'] as num?)?.toInt() ?? 0,
+        confirmedFarePesewas: fare.totalFarePesewas,
         paymentMethod: data['paymentMethod'] as String? ?? 'Cash',
         photoUrl: (driver['photoUrl'] as String?) ??
             (driver['profilePhotoUrl'] as String?) ??
@@ -186,7 +187,8 @@ void _connectAndListen(Ref ref, SocketService socket) {
           // (avoid clobbering with a half-built model on `requested`).
           ref.container.read(matchedDriverProvider.notifier).state = matched;
           ref.container.read(bookingPhaseProvider.notifier).accepted();
-          ref.container.read(rideMatchedViaSocketProvider.notifier).state = true;
+          ref.container.read(rideMatchedViaSocketProvider.notifier).state =
+              true;
         case 'completed':
           // Final snapshot — keep the matched driver around for the
           // receipt screen but flip tracking phase to navigate away.
@@ -280,8 +282,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
           updatedAt: DateTime.now(),
         );
       } else {
-        debugPrint(
-            '[LIVE-TRACK] ride:state had no currentLat/currentLng — '
+        debugPrint('[LIVE-TRACK] ride:state had no currentLat/currentLng — '
             'marker waits for next driver:location fix');
       }
     }
@@ -454,8 +455,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
       }
       final eventRideId = data['rideId'] as String? ?? data['id'] as String?;
       if (eventRideId != null && eventRideId != activeRideId) {
-        debugPrint(
-            '[LIVE-TRACK] driver:location dropped — rideId mismatch '
+        debugPrint('[LIVE-TRACK] driver:location dropped — rideId mismatch '
             '(event=$eventRideId active=$activeRideId)');
         return;
       }
@@ -469,7 +469,8 @@ void _connectAndListen(Ref ref, SocketService socket) {
       final heading = (data['heading'] ?? data['bearing']) as num?;
       debugPrint(
           '[LIVE-TRACK] driver:location accepted ($lat, $lng) heading=$heading');
-      ref.container.read(liveDriverPositionProvider.notifier).state = LiveDriverPosition(
+      ref.container.read(liveDriverPositionProvider.notifier).state =
+          LiveDriverPosition(
         latitude: lat.toDouble(),
         longitude: lng.toDouble(),
         heading: heading?.toDouble(),
@@ -553,21 +554,21 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('job:artisan_confirmed')
       ..on('job:artisan_confirmed', (data) {
-      developer.log('Received job:artisan_confirmed event', name: 'WS');
-      try {
-        final etaLabel = data is Map<String, dynamic>
-            ? data['etaLabel'] as String? ?? ''
-            : '';
-        if (ref.container.exists(bidDetailActionProvider)) {
-          ref
-              .read(bidDetailActionProvider.notifier)
-              .onArtisanConfirmed(etaLabel: etaLabel);
+        developer.log('Received job:artisan_confirmed event', name: 'WS');
+        try {
+          final etaLabel = data is Map<String, dynamic>
+              ? data['etaLabel'] as String? ?? ''
+              : '';
+          if (ref.container.exists(bidDetailActionProvider)) {
+            ref
+                .read(bidDetailActionProvider.notifier)
+                .onArtisanConfirmed(etaLabel: etaLabel);
+          }
+        } catch (e) {
+          developer.log('Failed to handle job:artisan_confirmed: $e',
+              name: 'WS', level: 900);
         }
-      } catch (e) {
-        developer.log('Failed to handle job:artisan_confirmed: $e',
-            name: 'WS', level: 900);
-      }
-    });
+      });
 
     // ── New / updated bid on a job ───────────────────────────────────────
     // Backend emits `job:bid:received` (new submission) and
@@ -638,30 +639,32 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('notification:new')
       ..on('notification:new', (data) {
-      developer.log('Received notification:new event', name: 'WS');
-      try {
-        if (ref.container.exists(notifsProvider)) {
-          ref.container.read(notifsProvider.notifier).reload();
+        developer.log('Received notification:new event', name: 'WS');
+        try {
+          if (ref.container.exists(notifsProvider)) {
+            ref.container.read(notifsProvider.notifier).reload();
+          }
+          ref.container.read(navBadgeProvider.notifier).increment('/profile');
+        } catch (e) {
+          developer.log('Failed to handle notification:new: $e',
+              name: 'WS', level: 900);
         }
-        ref.container.read(navBadgeProvider.notifier).increment('/profile');
-      } catch (e) {
-        developer.log('Failed to handle notification:new: $e',
-            name: 'WS', level: 900);
-      }
-    });
+      });
 
     // ── Profile updated ──────────────────────────────────────────────────
     socket
       ..off('profile:updated')
       ..on('profile:updated', (data) {
-      developer.log('Received profile:updated event', name: 'WS');
-      try {
-        ref.container.read(clientAuthControllerProvider.notifier).refreshProfile();
-      } catch (e) {
-        developer.log('Failed to handle profile:updated: $e',
-            name: 'WS', level: 900);
-      }
-    });
+        developer.log('Received profile:updated event', name: 'WS');
+        try {
+          ref.container
+              .read(clientAuthControllerProvider.notifier)
+              .refreshProfile();
+        } catch (e) {
+          developer.log('Failed to handle profile:updated: $e',
+              name: 'WS', level: 900);
+        }
+      });
 
     // ── Rating prompt ────────────────────────────────────────────────────
     // Backend emits `rating:prompt` to the client socket room when a
@@ -673,9 +676,8 @@ void _connectAndListen(Ref ref, SocketService socket) {
       developer.log('Received rating:prompt: $data', name: 'WS');
       if (data is! Map<String, dynamic>) return;
       final bookingType = data['bookingType'] as String?;
-      final bookingId = (data['bookingId'] ??
-          data['rideId'] ??
-          data['jobId']) as String?;
+      final bookingId =
+          (data['bookingId'] ?? data['rideId'] ?? data['jobId']) as String?;
       if (bookingType == null || bookingId == null || bookingId.isEmpty) {
         return;
       }
@@ -683,16 +685,20 @@ void _connectAndListen(Ref ref, SocketService socket) {
       // arriving milliseconds later must not stack a second sheet.
       if (!shownRatingFor.add(bookingId)) return;
 
-      final ctx =
-          ref.container.read(routerProvider).routerDelegate.navigatorKey.currentContext;
+      final ctx = ref.container
+          .read(routerProvider)
+          .routerDelegate
+          .navigatorKey
+          .currentContext;
       if (ctx == null) return;
 
       Future<void> openSheet() async {
         if (bookingType == 'ride') {
           var firstName = 'Driver';
           try {
-            final raw =
-                await ref.container.read(rideServiceProvider).getRide(bookingId);
+            final raw = await ref.container
+                .read(rideServiceProvider)
+                .getRide(bookingId);
             final driver = raw['driver'];
             if (driver is Map<String, dynamic>) {
               final name = driver['name'] as String?;
@@ -740,9 +746,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
           // the artisan, or download the receipt. Mirrors the post-
           // payment dialog's flow.
           if (ctx.mounted) {
-            ref
-                .read(routerProvider)
-                .go(AppRoutes.jobDetailPath(bookingId));
+            ref.read(routerProvider).go(AppRoutes.jobDetailPath(bookingId));
           }
         } else {
           shownRatingFor.remove(bookingId);

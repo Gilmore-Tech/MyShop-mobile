@@ -47,6 +47,7 @@ class Ride {
     double _num(dynamic v, [double fallback = 0]) =>
         v is num ? v.toDouble() : fallback;
     int _int(dynamic v, [int fallback = 0]) => v is num ? v.toInt() : fallback;
+    int? _optionalInt(dynamic v) => v is num ? v.toInt() : null;
     DateTime? _date(dynamic v) => v is String ? DateTime.tryParse(v) : null;
 
     // Backend serves the full ride entity with client info under a nested
@@ -72,12 +73,14 @@ class Ride {
     final assembledName = (clientFirstName != null || clientLastName != null)
         ? [clientFirstName, clientLastName].whereType<String>().join(' ').trim()
         : null;
+    final status =
+        RideStatus.fromString(json['status'] as String? ?? 'requested');
 
     return Ride(
       id: (json['id'] ?? json['rideId']) as String,
       clientId: json['clientId'] as String? ?? clientObj['id'] as String? ?? '',
       driverId: json['driverId'] as String?,
-      status: RideStatus.fromString(json['status'] as String? ?? 'requested'),
+      status: status,
       pickupAddress: json['pickupAddress'] as String? ?? '',
       dropoffAddress: json['dropoffAddress'] as String? ?? '',
       pickupLat: _num(
@@ -88,10 +91,13 @@ class Ride {
       ),
       dropoffLat: _num(json['dropoffLat'] ?? json['dropoffLatitude']),
       dropoffLng: _num(json['dropoffLng'] ?? json['dropoffLongitude']),
-      estimatedFarePesewas: _int(json['estimatedFarePesewas']),
-      finalFarePesewas: json['finalFarePesewas'] is num
-          ? (json['finalFarePesewas'] as num).toInt()
-          : null,
+      estimatedFarePesewas: _int(
+        json['estimatedFarePesewas'] ?? json['totalFare'],
+      ),
+      finalFarePesewas: _optionalInt(
+        json['finalFarePesewas'] ??
+            (status == RideStatus.completed ? json['totalFare'] : null),
+      ),
       estimatedDistanceKm: _num(
         json['estimatedDistanceKm'] ?? json['distanceKm'],
       ),

@@ -4,6 +4,7 @@ import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
+import 'ride_provider.dart' show RideFareFields;
 
 // ── Payment Method ─────────────────────────────────────────────────────────────
 // Defined here and re-exported so service_receipt_provider can share the type.
@@ -83,6 +84,7 @@ class _RideReceiptNotifier
       final ride = await rideService.getRide(rideId);
       final driver =
           ride['driver'] as Map<String, dynamic>? ?? <String, dynamic>{};
+      final fare = RideFareFields.fromSnapshot(ride);
 
       // Parse payment method type from API label
       final paymentLabel = ride['paymentMethod'] as String? ?? 'Cash';
@@ -102,12 +104,12 @@ class _RideReceiptNotifier
         dropoffAddress:
             (ride['dropoffAddress'] ?? ride['destinationAddress']) as String? ??
                 '',
-        baseFarePesewas: (ride['baseFare'] as num?)?.toInt() ?? 0,
-        distanceKm: (ride['distanceKm'] as num?)?.toDouble() ?? 0,
-        distanceFarePesewas: (ride['distanceFare'] as num?)?.toInt() ?? 0,
-        bookingFeePesewas: (ride['bookingFee'] as num?)?.toInt() ?? 0,
-        taxesPesewas: (ride['taxes'] as num?)?.toInt() ?? 0,
-        totalPaidPesewas: (ride['totalFare'] as num?)?.toInt() ?? 0,
+        baseFarePesewas: fare.baseFarePesewas,
+        distanceKm: fare.distanceKm,
+        distanceFarePesewas: fare.distanceFarePesewas,
+        bookingFeePesewas: fare.bookingFeePesewas,
+        taxesPesewas: fare.taxesPesewas,
+        totalPaidPesewas: fare.totalFarePesewas,
         dateTimeLabel: ride['completedAt'] as String? ?? '',
         paymentMethodLabel: paymentLabel,
         paymentMethodType: pmType,
