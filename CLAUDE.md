@@ -384,7 +384,7 @@ test(client): add unit tests for ride booking provider
 - Never log tokens, passwords, or payment details
 - Certificate pinning for API communication
 - Biometric authentication option for app unlock (fingerprint / Face ID)
-- Mask all phone numbers in UI — backend handles masking, client never sees real numbers
+- Mask all phone numbers in UI — backend handles masking, the client never sees real numbers. **Exception:** for 24h after a trip *completes*, the ride snapshot (`GET /v1/rides/:id`) exposes the counterparty's real, dialable number on the ride-history detail (`driver.phone` for the rider, `client.phone` for the driver) so the two sides can reconnect (e.g. a forgotten item). The backend drops it to `null` once the window closes; the UI must not cache or persist it past the live snapshot.
 
 ### 8.5 Platform-Specific Notes
 
