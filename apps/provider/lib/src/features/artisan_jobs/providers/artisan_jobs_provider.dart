@@ -449,7 +449,13 @@ bool _matches(ArtisanJobEntry entry, ArtisanJobFilter filter) {
       // gets assigned to someone else or is cancelled. The card shows the
       // outcome (pending / accepted / not selected / expired) so the
       // artisan can always track their bidding history.
-      return entry.hasBid;
+      //
+      // Directed-quote jobs (admin routed this job to the artisan and is
+      // waiting for their price) also live here even before a bid exists —
+      // otherwise an `admin_assigned` job is neither active nor completed
+      // and would only be reachable via the push notification. Surfacing it
+      // in Bids lets the artisan find it and quote at their own pace.
+      return entry.hasBid || status == JobStatus.adminAssigned;
     case ArtisanJobFilter.completed:
       return status == JobStatus.completed || status == JobStatus.cancelled;
   }

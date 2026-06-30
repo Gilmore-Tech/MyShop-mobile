@@ -532,6 +532,12 @@ class _JobCard extends ConsumerWidget {
     if (entry.bidAccepted) return BidStatus.accepted;
     if (entry.bidRejected) return BidStatus.notSelected;
     final status = entry.job.status;
+    // A directed-quote job the artisan hasn't priced yet has no bid to
+    // show — return `none` so the detail screen renders the PLACE BID /
+    // quote flow instead of an empty "Your Submitted Bid" card.
+    if (!entry.hasBid && status == JobStatus.adminAssigned) {
+      return BidStatus.none;
+    }
     if (status == JobStatus.pendingAdmin ||
         status == JobStatus.adminAssigned ||
         status == JobStatus.open ||

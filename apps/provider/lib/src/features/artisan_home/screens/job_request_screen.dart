@@ -343,6 +343,15 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                       effectiveJob,
                       artisanUserId: ref.watch(currentUserProvider)?.id,
                     )) ...[
+                      // Directed-quote jobs (admin routed this job to this
+                      // specific artisan after the public window closed with
+                      // zero bids) get a banner so the artisan understands
+                      // why the job is here and that they're expected to
+                      // quote — the bid form itself is unchanged.
+                      if (effectiveJob.status == JobStatus.adminAssigned) ...[
+                        const _DirectedQuoteBanner(),
+                        const SizedBox(height: MyShopSpacing.md),
+                      ],
                       // If the artisan started a bid in a previous session
                       // (or got force-killed mid-submit), surface a tappable
                       // banner above PLACE BID. The bid sheet itself
@@ -1724,6 +1733,61 @@ class _BidDraftBanner extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Shown above the bid form when the admin manually routed this job to the
+/// current artisan (status `admin_assigned`). Reassures the artisan that the
+/// platform picked them and that the next step is to submit their price.
+class _DirectedQuoteBanner extends StatelessWidget {
+  const _DirectedQuoteBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      decoration: BoxDecoration(
+        color: MyShopColors.primaryGold.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: MyShopColors.primaryGold.withValues(alpha: 0.45),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.assignment_ind_outlined,
+            size: 20,
+            color: MyShopColors.primaryGoldDark,
+          ),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'MyShop asked you to quote this job',
+                  style: MyShopTypography.body1.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: MyShopColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'No artisans bid in time, so MyShop routed it to you. '
+                  'Send your price to take the job.',
+                  style: MyShopTypography.body2.copyWith(
+                    color: MyShopColors.textSecondary,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

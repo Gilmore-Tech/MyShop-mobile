@@ -690,13 +690,21 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         await hydrateAndGoToActiveJob(jobIdFromPayload());
         break;
 
-      // Admin opened a job up because no bids landed in time, or assigned
-      // this artisan manually. Either way we want them to see the job
-      // request screen so they can review and bid. Fetch the job first
-      // so the screen can render context; bounce to /home on failure.
+      // Admin re-opened a job after no bids landed, or assigned this artisan
+      // directly. A manual assignment can resolve into one of two states, so
+      // we branch on the *fetched* job status rather than the push type:
+      //   • admin_assigned → ops asked the artisan to quote (directed quote);
+      //     they still have to place a bid, so route to the job-request /
+      //     quote screen.
+      //   • confirmed (or later active states) → ops assigned and set the
+      //     price outright; the job is already active work, so route straight
+      //     to the active-job map and seed the slot.
+      // A no-bids-escalated job is always `open`, so it falls to the quote
+      // branch too. Fetch the job first so we can read its status; bounce to
+      // /home on failure.
       case NotificationPayload.typeJobNoBidsEscalated:
       case NotificationPayload.typeJobManuallyAssigned:
-        final jobId = payload[NotificationPayload.keyJobId] as String?;
+        final jobId = jobIdFromPayload();
         if (jobId == null) {
           router.go('/home');
           break;
@@ -704,7 +712,13 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         try {
           final data = await ref.read(jobServiceProvider).getJob(jobId);
           final job = Job.fromJson(data);
-          router.push('/job-request', extra: job);
+          if (job.status.isActive ||
+              job.status == JobStatus.artisanMarkedComplete) {
+            ref.read(activeJobProvider.notifier).setJob(job);
+            router.go('/active-job');
+          } else {
+            router.push('/job-request', extra: job);
+          }
         } catch (e) {
           debugPrint('[FCM] tap fetch failed for job $jobId: $e');
           router.go('/home');
