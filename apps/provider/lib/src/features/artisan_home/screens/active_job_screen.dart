@@ -16,6 +16,7 @@ import '../../../core/providers/socket_provider.dart' show ratingSheetShownFor;
 import '../../../core/services/directions_service.dart';
 import '../../../core/services/nav_guidance.dart';
 import '../../../core/widgets/nav_arrow_icon.dart';
+import '../../../core/widgets/route_warning_banner.dart';
 import '../../driver_home/providers/driver_location_provider.dart';
 import '../providers/active_job_provider.dart';
 import '../widgets/rate_client_sheet.dart';
@@ -290,19 +291,26 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
                 builder: (context, metrics, _) {
                   return ValueListenableBuilder<bool>(
                     valueListenable: _mapHandle.voiceMuted,
-                    builder: (_, muted, __) => _NavHeader(
-                      clientName: job.clientName ?? 'Client',
-                      address: job.addressText ?? 'Destination',
-                      liveDistanceMeters: metrics.distanceMeters,
-                      liveEtaMinutes: metrics.etaMinutes,
-                      progress: metrics.progress,
-                      voiceMuted: muted,
-                      onBack: goBackToJobs,
-                      onRecenter: () => _mapHandle.recenter?.call(),
-                      onOpenInMaps: () =>
-                          _launchExternalNavigation(destination),
-                      onToggleVoice: () => _mapHandle.voiceMuted.value =
-                          !_mapHandle.voiceMuted.value,
+                    builder: (_, muted, __) => Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _NavHeader(
+                          clientName: job.clientName ?? 'Client',
+                          address: job.addressText ?? 'Destination',
+                          liveDistanceMeters: metrics.distanceMeters,
+                          liveEtaMinutes: metrics.etaMinutes,
+                          progress: metrics.progress,
+                          voiceMuted: muted,
+                          onBack: goBackToJobs,
+                          onRecenter: () => _mapHandle.recenter?.call(),
+                          onOpenInMaps: () =>
+                              _launchExternalNavigation(destination),
+                          onToggleVoice: () => _mapHandle.voiceMuted.value =
+                              !_mapHandle.voiceMuted.value,
+                        ),
+                        if (metrics.routeWarning case final warning?)
+                          RouteWarningBanner(message: warning),
+                      ],
                     ),
                   );
                 },
@@ -359,7 +367,12 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
 // ─────────────────────────────────────────────────────────────────────────
 
 class _LiveMetrics {
-  const _LiveMetrics({this.distanceMeters, this.etaMinutes, this.progress});
+  const _LiveMetrics({
+    this.distanceMeters,
+    this.etaMinutes,
+    this.progress,
+    this.routeWarning,
+  });
 
   /// Straight-line distance from current GPS to the destination, in
   /// meters. Null until we get the first fix.
@@ -372,6 +385,8 @@ class _LiveMetrics {
   /// Live navigation progress for the maneuver banner. Null on the
   /// fallback straight-line route; the banner downgrades gracefully.
   final NavProgress? progress;
+
+  final String? routeWarning;
 }
 
 /// Recenter shim — handed to [_NavigationMap] so it can register a
@@ -606,9 +621,8 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
     // Bearing tracking — same noise-suppression as the driver screen:
     // ignore NaN/slow-speed values so the rotated camera doesn't spin
     // while the artisan is parked.
-    final bearing = (pos.heading.isFinite && pos.speed >= 1.0)
-        ? pos.heading
-        : _lastBearing;
+    final bearing =
+        (pos.heading.isFinite && pos.speed >= 1.0) ? pos.heading : _lastBearing;
     _lastBearing = bearing;
 
     setState(() {
@@ -639,6 +653,7 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
       distanceMeters: distance,
       etaMinutes: _liveEtaMinutes(distance, route),
       progress: progress,
+      routeWarning: route?.warningMessage,
     );
 
     if (progress != null && progress.currentStep != null) {
@@ -1088,8 +1103,8 @@ class _ManeuverRow extends StatelessWidget {
             color: MyShopColors.darkSlate,
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(_maneuverIcon(step.maneuver),
-              size: 26, color: Colors.white),
+          child:
+              Icon(_maneuverIcon(step.maneuver), size: 26, color: Colors.white),
         ),
         const SizedBox(width: MyShopSpacing.sm),
         Expanded(

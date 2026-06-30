@@ -8,34 +8,12 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../di/providers.dart';
 
-/// One road segment ending at a maneuver (turn, merge, ramp, etc.).
-class DirectionsStep {
-  const DirectionsStep({
-    required this.instruction,
-    required this.maneuver,
-    required this.distanceMeters,
-    required this.durationSeconds,
-    required this.startLocation,
-    required this.endLocation,
-    required this.polyline,
-  });
-
-  final String instruction;
-  final String maneuver;
-  final int distanceMeters;
-  final int durationSeconds;
-  final LatLng startLocation;
-  final LatLng endLocation;
-  final List<LatLng> polyline;
-}
-
 /// Driving route returned by the authenticated MyShop backend.
 class DirectionsRoute {
   const DirectionsRoute({
     required this.polyline,
     required this.distanceMeters,
     required this.durationSeconds,
-    this.steps = const [],
     this.isFallback = false,
     this.warningMessage,
   });
@@ -43,25 +21,21 @@ class DirectionsRoute {
   final List<LatLng> polyline;
   final int distanceMeters;
   final int durationSeconds;
-  final List<DirectionsStep> steps;
 
   /// True only when the backend route could not be loaded and the app is
   /// displaying a direct two-point line to keep the destination visible.
   final bool isFallback;
 
-  /// User-facing explanation for a fallback. This prevents a route failure
-  /// from quietly masquerading as valid road navigation.
+  /// User-facing/loggable explanation for a fallback. This prevents a route
+  /// failure from quietly masquerading as valid road routing.
   final String? warningMessage;
-
-  double get distanceKm => distanceMeters / 1000.0;
-  int get durationMinutes => (durationSeconds / 60).round();
 }
 
 /// Fetches traffic-aware routes through the authenticated MyShop API.
 ///
 /// The Google Routes key stays on the backend and can therefore be restricted
-/// to the Render service's outbound IP addresses. The Provider app only keeps
-/// its native Maps SDK key for rendering the map itself.
+/// to the Render service's outbound IP addresses. The rider app only keeps its
+/// native Maps SDK key for rendering the map itself.
 class DirectionsService {
   DirectionsService(this._dio);
 
@@ -117,44 +91,10 @@ class DirectionsService {
         throw const FormatException('Route polyline was invalid');
       }
 
-      final steps = <DirectionsStep>[];
-      final rawSteps = data['steps'] as List<dynamic>? ?? const <dynamic>[];
-      for (final raw in rawSteps) {
-        if (raw is! Map<String, dynamic>) continue;
-        final start = raw['startLocation'] as Map<String, dynamic>?;
-        final end = raw['endLocation'] as Map<String, dynamic>?;
-        final startLatitude = (start?['latitude'] as num?)?.toDouble();
-        final startLongitude = (start?['longitude'] as num?)?.toDouble();
-        final endLatitude = (end?['latitude'] as num?)?.toDouble();
-        final endLongitude = (end?['longitude'] as num?)?.toDouble();
-        if (startLatitude == null ||
-            startLongitude == null ||
-            endLatitude == null ||
-            endLongitude == null) {
-          continue;
-        }
-
-        final stepEncoded = raw['polyline'] as String? ?? '';
-        steps.add(
-          DirectionsStep(
-            instruction: raw['instruction'] as String? ?? '',
-            maneuver: raw['maneuver'] as String? ?? '',
-            distanceMeters: (raw['distanceMeters'] as num?)?.toInt() ?? 0,
-            durationSeconds: (raw['durationSeconds'] as num?)?.toInt() ?? 0,
-            startLocation: LatLng(startLatitude, startLongitude),
-            endLocation: LatLng(endLatitude, endLongitude),
-            polyline: stepEncoded.isEmpty
-                ? const <LatLng>[]
-                : _decodePolyline(stepEncoded),
-          ),
-        );
-      }
-
       return DirectionsRoute(
         polyline: polyline,
         distanceMeters: distanceMeters,
         durationSeconds: durationSeconds,
-        steps: steps,
       );
     } catch (error, stack) {
       developer.log(

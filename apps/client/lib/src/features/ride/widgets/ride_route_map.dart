@@ -1,14 +1,13 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-import '../../../core/constants/maps_config.dart';
+import '../../../core/services/directions_service.dart';
 import '../providers/ride_provider.dart'
     show LiveDriverPosition, RideTrackingPhase, liveDriverPositionProvider;
 import '../providers/ride_search_provider.dart';
@@ -87,22 +86,11 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   DateTime? _lastRouteFetchAt;
   bool _routeFetchInFlight = false;
 
-  /// Throttle constants — match the previous Mapbox implementation so the
-  /// route doesn't refresh on every GPS bump (Google Directions is billed
-  /// per call). 100 m of driver drift or 30 s elapsed since the last
-  /// fetch, whichever comes first.
+  /// Throttle constants — route refreshes still hit a paid backend Google
+  /// Routes call, so avoid refreshing on every GPS bump. 100 m of driver drift
+  /// or 30 s elapsed since the last fetch, whichever comes first.
   static const _routeRefreshMeters = 100.0;
   static const _routeRefreshThrottle = Duration(seconds: 30);
-
-  /// Reuse one Dio for all Directions calls. Short timeouts because the
-  /// rider is staring at a stale route while we fetch — better to skip a
-  /// tick than to block the UI.
-  late final Dio _directionsDio = Dio(
-    BaseOptions(
-      connectTimeout: const Duration(seconds: 6),
-      receiveTimeout: const Duration(seconds: 6),
-    ),
-  );
 
   @override
   void initState() {
@@ -115,8 +103,8 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
 
   Future<void> _initCarIcon() async {
     try {
-      final pixelRatio =
-          WidgetsBinding.instance.platformDispatcher.views.first.devicePixelRatio;
+      final pixelRatio = WidgetsBinding
+          .instance.platformDispatcher.views.first.devicePixelRatio;
       final icon = await DriverCarMarker.create(
         devicePixelRatio: pixelRatio.clamp(2.0, 4.0),
       );
@@ -130,7 +118,6 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
 
   @override
   void dispose() {
-    _directionsDio.close(force: true);
     _diagnosticBus.dispose();
     _mapController?.dispose();
     super.dispose();
@@ -170,9 +157,9 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   }
 
   /// Fetch a driving route from the driver's current position to the
-  /// phase-appropriate waypoint (pickup while en-route/arrived, dropoff
-  /// while in-progress) and store the decoded polyline in state so the
-  /// map paints it.
+  /// phase-appropriate waypoint (pickup while en-route/arrived, dropoff while
+  /// in-progress) through the authenticated backend route proxy and store the
+  /// decoded polyline in state so the map paints it.
   ///
   /// Throttled to avoid hammering Google Directions on every GPS tick —
   /// skips if the driver hasn't moved 100 m since the last fetch AND
@@ -199,7 +186,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     _routeFetchInFlight = true;
     _lastRouteFetchAt = DateTime.now();
     try {
-      final points = await _fetchGoogleRoute(origin, target);
+      final points = await _fetchBackendRoute(origin, target);
       if (!mounted || points == null || points.length < 2) return;
       setState(() => _routePolyline = points);
       _lastRoutedFrom = origin;
@@ -211,83 +198,19 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     }
   }
 
-  /// Calls Google Directions API and returns the decoded route polyline.
-  /// Returns null on any non-OK response — the caller leaves the existing
-  /// polyline in place so a transient network blip doesn't blank the route.
-  Future<List<LatLng>?> _fetchGoogleRoute(LatLng origin, LatLng target) async {
-    if (MapsConfig.apiKey.isEmpty) {
+  /// Calls the authenticated backend route proxy and returns its decoded route
+  /// polyline. The Google Routes key never leaves the backend.
+  Future<List<LatLng>?> _fetchBackendRoute(LatLng origin, LatLng target) async {
+    final route = await ref.read(directionsServiceProvider).fetchRoute(
+          origin: origin,
+          destination: target,
+        );
+    if (route.isFallback) {
       debugPrint(
-        '[LIVE-TRACK] Directions skipped — GOOGLE_MAPS_API_KEY empty. '
-        'Re-run with --dart-define=GOOGLE_MAPS_API_KEY=AIza…',
+        '[LIVE-TRACK] ${route.warningMessage ?? 'Route unavailable.'}',
       );
-      return null;
     }
-
-    final uri = Uri.https(
-      'maps.googleapis.com',
-      '/maps/api/directions/json',
-      {
-        'origin': '${origin.latitude},${origin.longitude}',
-        'destination': '${target.latitude},${target.longitude}',
-        'mode': 'driving',
-        'key': MapsConfig.apiKey,
-      },
-    );
-    final response = await _directionsDio.getUri<Map<String, dynamic>>(uri);
-    final data = response.data;
-    if (data == null) return null;
-    final status = data['status'] as String?;
-    if (status != 'OK') {
-      debugPrint(
-        '[LIVE-TRACK] Directions non-OK status: $status — '
-        '${data['error_message'] ?? '(no message)'}',
-      );
-      return null;
-    }
-    final routes = data['routes'] as List<dynamic>?;
-    if (routes == null || routes.isEmpty) return null;
-    final overview =
-        (routes.first as Map<String, dynamic>)['overview_polyline']
-            as Map<String, dynamic>?;
-    final encoded = overview?['points'] as String?;
-    if (encoded == null || encoded.isEmpty) return null;
-    return _decodePolyline(encoded);
-  }
-
-  /// Decode Google's "encoded polyline algorithm" string to a list of
-  /// LatLng points. Inline implementation so we don't add a dependency
-  /// just for this one call. Reference: developers.google.com/maps/
-  /// documentation/utilities/polylinealgorithm
-  List<LatLng> _decodePolyline(String encoded) {
-    final points = <LatLng>[];
-    var index = 0;
-    var lat = 0;
-    var lng = 0;
-    while (index < encoded.length) {
-      var shift = 0;
-      var result = 0;
-      int b;
-      do {
-        b = encoded.codeUnitAt(index++) - 63;
-        result |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-      final dlat = (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
-      lat += dlat;
-
-      shift = 0;
-      result = 0;
-      do {
-        b = encoded.codeUnitAt(index++) - 63;
-        result |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-      final dlng = (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
-      lng += dlng;
-
-      points.add(LatLng(lat / 1e5, lng / 1e5));
-    }
-    return points;
+    return route.polyline;
   }
 
   /// Great-circle distance in metres — used to throttle route refetches.
