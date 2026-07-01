@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../app/router.dart';
 import '../providers/ride_detail_provider.dart';
@@ -314,7 +313,7 @@ class _DriverCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: MyShopColors.divider),
       ),
-      child: Column(
+      child: Row(
         children: [
           Container(
             width: w * 0.13,
@@ -366,109 +365,31 @@ class _DriverCard extends StatelessWidget {
                     Text(data.driverRating.toStringAsFixed(1),
                         style: TextStyle(
                           color: MyShopColors.textPrimary,
-                          fontSize: w * 0.040,
-                          fontWeight: FontWeight.w700,
+                          fontSize: w * 0.032,
+                          fontWeight: FontWeight.w600,
                         )),
-                    const SizedBox(height: 3),
-                    Text(data.vehicleDisplay,
-                        style: TextStyle(
-                            color: MyShopColors.textSecondary,
-                            fontSize: w * 0.032)),
-                    if (data.driverRating > 0) ...[
-                      const SizedBox(height: 4),
-                      Row(children: [
-                        const Icon(Icons.star_rounded,
-                            color: MyShopColors.primaryGold, size: 14),
-                        const SizedBox(width: 3),
-                        Text(data.driverRating.toStringAsFixed(1),
-                            style: TextStyle(
-                              color: MyShopColors.textPrimary,
-                              fontSize: w * 0.032,
-                              fontWeight: FontWeight.w600,
-                            )),
-                      ]),
-                    ],
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(data.durationDisplay,
-                      style: TextStyle(
-                        color: MyShopColors.textPrimary,
-                        fontSize: w * 0.036,
-                        fontWeight: FontWeight.w700,
-                      )),
-                  const SizedBox(height: 2),
-                  Text(data.distanceDisplay,
-                      style: TextStyle(
-                          color: MyShopColors.textSecondary,
-                          fontSize: w * 0.028)),
+                  ]),
                 ],
-              ),
-            ],
+              ],
+            ),
           ),
-          // Driver's real number, available for 24h after the trip so the
-          // rider can reach them (e.g. a forgotten item). The backend stops
-          // sending it once the window closes, so this row simply disappears.
-          if (data.driverPhone != null) ...[
-            SizedBox(height: h * 0.014),
-            const Divider(height: 1, color: MyShopColors.divider),
-            SizedBox(height: h * 0.014),
-            _ContactRow(phone: data.driverPhone!, w: w),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-// ── Contact row (tap to call) ──────────────────────────────────────────────────
-
-class _ContactRow extends StatelessWidget {
-  final String phone;
-  final double w;
-  const _ContactRow({required this.phone, required this.w});
-
-  Future<void> _dial() async {
-    final uri = Uri.parse('tel:$phone');
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Icon(Icons.phone_rounded,
-            color: MyShopColors.textSecondary, size: 18),
-        SizedBox(width: w * 0.030),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text('Driver contact',
-                  style: TextStyle(
-                      color: MyShopColors.textSecondary, fontSize: w * 0.028)),
-              const SizedBox(height: 2),
-              Text(phone,
+              Text(data.durationDisplay,
                   style: TextStyle(
                     color: MyShopColors.textPrimary,
-                    fontSize: w * 0.038,
+                    fontSize: w * 0.036,
                     fontWeight: FontWeight.w700,
                   )),
+              const SizedBox(height: 2),
+              Text(data.distanceDisplay,
+                  style: TextStyle(
+                      color: MyShopColors.textSecondary, fontSize: w * 0.028)),
             ],
           ),
-        ),
-        TextButton.icon(
-          onPressed: _dial,
-          icon: const Icon(Icons.call_rounded, size: 18),
-          label: const Text('Call'),
-          style: TextButton.styleFrom(
-            foregroundColor: MyShopColors.primaryGold,
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
