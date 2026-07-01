@@ -17,6 +17,7 @@ class MyShopOtpVerificationScreen extends StatefulWidget {
     required this.phone,
     required this.onVerify,
     required this.onResend,
+    this.onResendWhatsApp,
     this.onBack,
     this.isVerifying = false,
     this.errorText,
@@ -28,6 +29,7 @@ class MyShopOtpVerificationScreen extends StatefulWidget {
   final String phone;
   final ValueChanged<String> onVerify;
   final VoidCallback onResend;
+  final VoidCallback? onResendWhatsApp;
   final VoidCallback? onBack;
   final bool isVerifying;
   final String? errorText;
@@ -78,6 +80,11 @@ class _MyShopOtpVerificationScreenState
 
   void _resend() {
     widget.onResend();
+    _startResendTimer();
+  }
+
+  void _resendViaWhatsApp() {
+    widget.onResendWhatsApp?.call();
     _startResendTimer();
   }
 
@@ -135,9 +142,22 @@ class _MyShopOtpVerificationScreenState
                         'Resend code in $_resendIn s',
                         style: MyShopTypography.body2,
                       )
-                    : TextButton(
-                        onPressed: _resend,
-                        child: const Text('Resend code'),
+                    : Wrap(
+                        alignment: WrapAlignment.center,
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          TextButton(
+                            onPressed: _resend,
+                            child: const Text('Resend SMS'),
+                          ),
+                          if (widget.onResendWhatsApp != null)
+                            TextButton.icon(
+                              onPressed: _resendViaWhatsApp,
+                              icon: const Icon(Icons.chat_outlined, size: 18),
+                              label: const Text('Send via WhatsApp'),
+                            ),
+                        ],
                       ),
               ),
               const Spacer(),

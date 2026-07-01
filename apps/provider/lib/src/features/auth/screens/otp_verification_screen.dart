@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../profile/providers/provider_type_provider.dart';
+import '../../registration/providers/regions_provider.dart';
 import '../../registration/providers/registration_controller.dart';
 import '../providers/auth_controller.dart';
 import '../widgets/blocked_device_dialog.dart';
@@ -30,6 +31,10 @@ class _ProviderOtpVerificationScreenState
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(authControllerProvider);
+    final whatsappAvailable = ref.watch(otpChannelsProvider).maybeWhen(
+          data: (channels) => channels.contains('whatsapp'),
+          orElse: () => false,
+        );
 
     ref.listen<AuthState>(authControllerProvider, (prev, next) {
       if (next is AuthBlockedByOtherDevice && !_blockedDialogVisible) {
@@ -39,6 +44,13 @@ class _ProviderOtpVerificationScreenState
       } else if (next is! AuthBlockedByOtherDevice && _blockedDialogVisible) {
         _blockedDialogVisible = false;
         if (Navigator.canPop(context)) Navigator.pop(context);
+      }
+
+      // Stale-cache edge case: the backend rejected the home region at
+      // verify-otp. Drop the cached region list so the region step re-fetches
+      // GET /v1/regions when the user backs out to re-select.
+      if (next is AuthOtpSent && next.regionRejected) {
+        ref.invalidate(regionsProvider);
       }
     });
 
@@ -66,6 +78,13 @@ class _ProviderOtpVerificationScreenState
           await ref.read(authControllerProvider.notifier).resendOtp();
         } catch (_) {}
       },
+      onResendWhatsApp: whatsappAvailable
+          ? () async {
+              await ref
+                  .read(authControllerProvider.notifier)
+                  .resendOtp(channel: 'whatsapp');
+            }
+          : null,
       onBack: () => ref.read(authControllerProvider.notifier).reset(),
     );
   }

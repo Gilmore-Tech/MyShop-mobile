@@ -3,13 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../providers/regions_provider.dart';
 import '../providers/registration_controller.dart';
 import '../widgets/artisan_business_step.dart';
 import '../widgets/artisan_profile_step.dart';
 import '../widgets/artisan_review_step.dart';
+import '../widgets/region_step.dart';
 import '../widgets/registration_step_scaffold.dart';
 
-/// Artisan onboarding — 3-step wizard (Profile → Business → Review).
+/// Artisan onboarding — 4-step wizard
+/// (Profile → Business → Region → Review).
 class ArtisanRegistrationScreen extends ConsumerStatefulWidget {
   const ArtisanRegistrationScreen({super.key});
 
@@ -23,12 +26,14 @@ class _ArtisanRegistrationScreenState
   static const _steps = <MyShopStepItem>[
     MyShopStepItem(label: 'Profile', icon: Icons.person_outline),
     MyShopStepItem(label: 'Business', icon: Icons.work_outline),
+    MyShopStepItem(label: 'Region', icon: Icons.location_on_outlined),
     MyShopStepItem(label: 'Review', icon: Icons.fact_check_outlined),
   ];
 
   static const _stepTitles = <(String, String)>[
     ('Your profile', 'Tell us about yourself'),
     ('Your business', 'What you offer and where'),
+    ('Your region', 'Where you operate'),
     ('Almost done!', 'Review and confirm'),
   ];
 
@@ -51,6 +56,16 @@ class _ArtisanRegistrationScreenState
         return d.businessName.isNotEmpty &&
             d.tradeCategory.isNotEmpty &&
             d.serviceCategories.isNotEmpty;
+      case 2:
+        // Region is a pre-selected confirmation in the pilot. Only block
+        // when the user genuinely has more than one region to choose from
+        // and hasn't picked one; a single (auto-selected) or unavailable
+        // list never blocks (backend defaults to the pilot region).
+        final regions = ref.read(regionsProvider).valueOrNull;
+        if (regions != null && regions.length > 1) {
+          return d.regionId.isNotEmpty;
+        }
+        return true;
       default:
         return d.isComplete;
     }
@@ -134,6 +149,7 @@ class _ArtisanRegistrationScreenState
           children: [
             const ArtisanProfileStep(),
             const ArtisanBusinessStep(),
+            const ArtisanRegionStep(),
             ArtisanReviewStep(onEditStep: _goTo),
           ],
         ),

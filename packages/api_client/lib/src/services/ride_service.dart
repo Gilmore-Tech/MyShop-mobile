@@ -61,6 +61,7 @@ class RideService {
     List<Map<String, dynamic>>? stops,
     String? paymentMethod,
     String? promoCode,
+    String? rideCategory,
   }) async {
     try {
       final response = await _dio.post(
@@ -75,10 +76,29 @@ class RideService {
           if (stops != null) 'stops': stops,
           'paymentMethod': paymentMethod ?? 'cash',
           if (promoCode != null) 'promoCode': promoCode,
+          // Slug of the chosen ride category (e.g. 'regular', 'comfort').
+          // Drives pricing + which drivers are matched. Backend defaults to
+          // 'regular' when omitted.
+          if (rideCategory != null) 'rideCategory': rideCategory,
         },
       );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// GET /ride-categories — Public list of active ride categories (tiers).
+  /// Used by the booking sheet and driver signup. Returns an empty list if the
+  /// endpoint is unavailable so older backends degrade gracefully.
+  Future<List<Map<String, dynamic>>> listRideCategories() async {
+    try {
+      final response = await _dio.get('/ride-categories');
+      final data = _unwrap(response);
+      if (data is List) return data.cast<Map<String, dynamic>>();
+      return [];
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return [];
       throw ApiException.fromDioException(e);
     }
   }

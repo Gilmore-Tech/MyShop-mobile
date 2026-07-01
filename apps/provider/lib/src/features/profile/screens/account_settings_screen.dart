@@ -11,6 +11,7 @@ import '../../earnings/providers/earnings_providers.dart';
 import '../../earnings/providers/ratings_provider.dart';
 import '../providers/provider_type_provider.dart';
 import '../providers/verification_provider.dart';
+import '../widgets/profile_read_only_note.dart';
 import '../widgets/settings_list_tile.dart';
 import '../widgets/settings_section.dart';
 
@@ -203,49 +204,33 @@ class AccountSettingsScreen extends ConsumerWidget {
             const SizedBox(height: MyShopSpacing.md),
 
             // ── 3. Action buttons row ──
+            // Profile details are read-only for providers — they can view
+            // their information but changes must be made by an admin. Only
+            // the KYC / documents status entry point remains here.
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => context.push('/account/edit'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: MyShopColors.textPrimary,
-                        side: const BorderSide(color: MyShopColors.divider),
-                        minimumSize: const Size(0, 44),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                        textStyle: const TextStyle(
-                            fontFamily: 'Raleway',
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700),
-                      ),
-                      child: const Text('Edit Profile'),
-                    ),
-                  ),
-                  const SizedBox(width: MyShopSpacing.sm),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => context.push('/account/documents'),
-                      icon: const Icon(Icons.shield_outlined, size: 14),
-                      label: Text(kycLabel),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: kycColor,
-                        side: BorderSide(color: kycColor),
-                        backgroundColor: kycBg,
-                        minimumSize: const Size(0, 44),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                        textStyle: const TextStyle(
-                            fontFamily: 'Raleway',
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ),
-                ],
+              child: OutlinedButton.icon(
+                onPressed: () => context.push('/account/documents'),
+                icon: const Icon(Icons.shield_outlined, size: 14),
+                label: Text(kycLabel),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: kycColor,
+                  side: BorderSide(color: kycColor),
+                  backgroundColor: kycBg,
+                  minimumSize: const Size(double.infinity, 44),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                  textStyle: const TextStyle(
+                      fontFamily: 'Raleway',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700),
+                ),
               ),
+            ),
+            const SizedBox(height: MyShopSpacing.sm),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+              child: ProfileReadOnlyNote(),
             ),
             const SizedBox(height: MyShopSpacing.md),
 

@@ -515,12 +515,23 @@ class _ChatRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rideId = ref.watch(activeRideIdProvider) ?? '';
-    return ChatEntryButton(
+    final phone = ref.watch(matchedDriverProvider)?.phone ?? '';
+    final chat = ChatEntryButton(
       bookingType: ChatBookingType.ride,
       bookingId: rideId,
       label: 'Chat with $driverFirstName',
       peerName: driverFullName,
       peerStatus: 'On your trip',
+    );
+    if (phone.trim().isEmpty) return chat;
+    // Numbers aren't masked during the pilot — let the rider call the driver
+    // directly alongside the chat affordance.
+    return Row(
+      children: [
+        Expanded(child: chat),
+        const SizedBox(width: 10),
+        MyShopCallButton(phoneNumber: phone, size: 48, semanticLabel: 'Call driver'),
+      ],
     );
   }
 }
@@ -624,15 +635,6 @@ class _CancelRequestButton extends StatelessWidget {
                 color: MyShopColors.error,
               ),
             ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Free cancellation within 3 minutes of match.',
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w400,
-            color: MyShopColors.textSecondary,
           ),
         ),
       ],

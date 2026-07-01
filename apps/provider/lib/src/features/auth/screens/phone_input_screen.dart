@@ -122,6 +122,13 @@ class _ProviderPhoneInputScreenState
           privacyPolicyAccepted: true,
           role: role,
           email: draft.email.isNotEmpty ? draft.email : null,
+          rideCategories: draft.rideCategories.isNotEmpty
+              ? draft.rideCategories
+              : null,
+          regionId: draft.regionId.isNotEmpty ? draft.regionId : null,
+          referralCode: draft.referralCode.trim().isNotEmpty
+              ? draft.referralCode.trim()
+              : null,
         );
       } else {
         final draft = ref.read(artisanRegistrationProvider);
@@ -136,6 +143,10 @@ class _ProviderPhoneInputScreenState
           email: draft.email.isNotEmpty ? draft.email : null,
           categories: draft.serviceCategories.isNotEmpty
               ? draft.serviceCategories
+              : null,
+          regionId: draft.regionId.isNotEmpty ? draft.regionId : null,
+          referralCode: draft.referralCode.trim().isNotEmpty
+              ? draft.referralCode.trim()
               : null,
         );
       }

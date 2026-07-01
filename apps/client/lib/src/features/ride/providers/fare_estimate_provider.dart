@@ -6,62 +6,16 @@ import '../../../core/di/providers.dart';
 import 'ride_provider.dart';
 import 'ride_search_provider.dart';
 
-// ── Vehicle category templates ────────────────────────────────────────────────
-//
-// The backend returns one fare for the route. Each category applies a
-// multiplier to derive its own price. Prices are always rounded UP to the
-// nearest whole GHS (matching backend behaviour — PRD edge case #11).
-
-class _CategoryTemplate {
-  final String id;
-  final String name;
-  final String description;
-  final int capacityPersons;
-  final double fareMultiplier;
-  final int etaOffsetMins; // added to/subtracted from pickupEtaMins
-  final bool isMotorcycle;
-
-  const _CategoryTemplate({
-    required this.id,
-    required this.name,
-    required this.description,
-    required this.capacityPersons,
-    required this.fareMultiplier,
-    required this.etaOffsetMins,
-    required this.isMotorcycle,
-  });
-}
-
-const _kCategories = [
-  _CategoryTemplate(
-    id: 'ride_comfort',
-    name: 'Ride Comfort',
-    description: 'Newer cars with extra legroom',
-    capacityPersons: 4,
-    fareMultiplier: 1.0,
-    etaOffsetMins: 0,
-    isMotorcycle: false,
-  ),
-  _CategoryTemplate(
-    id: 'moto_ride',
-    name: 'Moto-Ride',
-    description: 'Beat the heavy traffic',
-    capacityPersons: 1,
-    fareMultiplier: 0.55,
-    etaOffsetMins: -2,
-    isMotorcycle: true,
-  ),
-];
-
-int _roundUpToGhs(int pesewas) {
-  final rem = pesewas % 100;
-  return rem == 0 ? pesewas : pesewas + (100 - rem);
-}
-
 // ── Provider ──────────────────────────────────────────────────────────────────
+//
+// The backend now prices each ride category server-side and returns one priced
+// entry per active category (Regular, Comfort, …) with its own fare and
+// per-category driver-availability flag. The client renders one selectable card
+// per entry — the `id` IS the category slug, which the booking flow sends back
+// on POST /rides so pricing and matching stay category-exclusive.
 
-/// Calls POST /rides/estimate and returns a priced [VehicleOption] per
-/// vehicle category. Automatically re-fetches when pickup or destination
+/// Calls POST /rides/estimate and returns a priced [VehicleOption] per active
+/// ride category. Automatically re-fetches when pickup or destination
 /// coordinates change. Returns an empty list (no error) until both
 /// coordinates are available.
 final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
@@ -84,43 +38,42 @@ final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
     destinationLng: destination.lng!,
   );
 
-  final baseFarePesewas = (result['estimatedFarePesewas'] as num).toInt();
   final surgeMultiplier =
       (result['surgeMultiplier'] as num?)?.toDouble() ?? 1.0;
   final distanceKm = (result['distanceKm'] as num?)?.toDouble() ?? 0.0;
   final durationMins = (result['durationMins'] as num?)?.toInt() ?? 0;
-  final pickupEtaMins = (result['pickupEtaMins'] as num?)?.toInt() ?? 5;
-  // Default true for backward compatibility with older API builds that don't
-  // send the flag — absence means "don't block booking", same as the backend's
-  // optimistic posture on a transient lookup error.
-  final driversAvailable = (result['driversAvailable'] as bool?) ?? true;
+  final categories = (result['categories'] as List?) ?? const [];
 
   developer.log(
-    'Estimate: ₵${(baseFarePesewas / 100).toStringAsFixed(2)} '
-    '· ${distanceKm}km · ${durationMins}min · surge ${surgeMultiplier}x',
+    'Estimate: ${categories.length} categories · ${distanceKm}km '
+    '· ${durationMins}min · surge ${surgeMultiplier}x',
     name: 'FareEstimate',
   );
 
-  return _kCategories.map((cat) {
-    final fare = _roundUpToGhs((baseFarePesewas * cat.fareMultiplier).ceil());
-    final eta = (pickupEtaMins + cat.etaOffsetMins).clamp(1, 99);
+  return categories.map((raw) {
+    final cat = raw as Map<String, dynamic>;
+    final slug = cat['slug'] as String;
+    final eta = (cat['pickupEtaMins'] as num?)?.toInt() ?? 5;
     return VehicleOption(
-      id: cat.id,
-      name: cat.name,
-      description: cat.description,
-      capacityPersons: cat.capacityPersons,
-      farePesewas: fare,
+      // id carries the slug so the booking flow can send it back on POST /rides.
+      id: slug,
+      name: cat['name'] as String? ?? slug,
+      description: cat['description'] as String? ?? '',
+      capacityPersons: (cat['capacityPersons'] as num?)?.toInt() ?? 4,
+      farePesewas: (cat['estimatedFarePesewas'] as num).toInt(),
       estimatedTime: '$eta min',
-      isMotorcycle: cat.isMotorcycle,
+      // Motorcycle tiers are identified by slug convention (none seeded today).
+      isMotorcycle: slug.contains('moto'),
       distanceKm: distanceKm,
       durationMins: durationMins,
       // 1.05× threshold — backend's baseline can drift to 1.0001 due to
       // float rounding inside the surge engine, which used to flicker
       // the "Surge Pricing Active" banner during off-peak hours.
-      // Anything below a 5% multiplier isn't a meaningful surge anyway.
       surgeActive: surgeMultiplier > 1.05,
       surgeMultiplier: surgeMultiplier,
-      driversAvailable: driversAvailable,
+      // Per-category availability — a Comfort card greys out when only Regular
+      // drivers are online.
+      driversAvailable: (cat['driversAvailable'] as bool?) ?? true,
     );
   }).toList();
 });

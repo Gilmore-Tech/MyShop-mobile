@@ -45,6 +45,16 @@ class FareEstimateScreen extends ConsumerWidget {
     // no online, non-busy driver in range — booking is blocked so the user
     // can't dispatch into a void; the cards already render as disabled.
     final noDrivers = estimateReady && options!.first.driversAvailable == false;
+    // The fare on the currently-selected vehicle is what the client will pay —
+    // surface it boldly in the confirm bar so it's the clearest number on the
+    // screen before they commit.
+    final selectedId = ref.watch(selectedVehicleProvider);
+    final selectedOption = estimateReady
+        ? options!.firstWhere(
+            (o) => o.id == selectedId,
+            orElse: () => options.first,
+          )
+        : null;
 
     return PopScope(
       canPop: true,
@@ -129,6 +139,10 @@ class FareEstimateScreen extends ConsumerWidget {
               // No drivers in range → block the confirm path entirely so the
               // user can't kick off a match that has nobody to match against.
               enabled: !noDrivers,
+              // What the client pays for the selected vehicle — shown bold
+              // above the Confirm button. Hidden when no drivers are available
+              // (nothing is bookable, so a price would be misleading).
+              fareDisplay: noDrivers ? null : selectedOption?.fareDisplay,
               onConfirm: () {
                 // Hand the long-running matcher a container instead of
                 // `ref` — the screen disposes on the next line's `go`,
@@ -450,10 +464,16 @@ class _BottomActions extends StatelessWidget {
   final VoidCallback onConfirm;
   final VoidCallback onCancel;
   final bool enabled;
+
+  /// Formatted fare for the selected vehicle (e.g. "GHS 23"). When non-null it
+  /// renders as a bold "Total to pay" row above the Confirm button.
+  final String? fareDisplay;
+
   const _BottomActions({
     required this.onConfirm,
     required this.onCancel,
     this.enabled = true,
+    this.fareDisplay,
   });
 
   @override
@@ -464,6 +484,30 @@ class _BottomActions extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (fareDisplay != null) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Total to pay',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: MyShopColors.textSecondary,
+                  ),
+                ),
+                Text(
+                  fareDisplay!,
+                  style: const TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w900,
+                    color: MyShopColors.darkSlate,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
           SizedBox(
             width: double.infinity,
             height: 52,
@@ -500,15 +544,6 @@ class _BottomActions extends StatelessWidget {
                 fontWeight: FontWeight.w600,
                 color: MyShopColors.textPrimary,
               ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Free cancellation within 3 minutes of match',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w400,
-              color: MyShopColors.textSecondary,
             ),
           ),
         ],

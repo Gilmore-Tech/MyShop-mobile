@@ -8,12 +8,26 @@
 #   tool/build.sh provider android-apk
 #   tool/build.sh provider ios
 #
-# Reads `.env.prod` (gitignored — copy from `.env.dev.example` and fill in
+# Reads `.env.prod` (gitignored — copy from `.env.prod.example` and fill in
 # the PRODUCTION-restricted keys) and threads the values through every
-# build surface that needs them:
+# build surface that needs them.
 #
-#   - Dart code: `--dart-define=KEY=value` for every line in `.env.prod`.
-#   - Android native: writes `apps/<app>/android/local.properties`'s
+# Google Maps keys are restricted per app AND per platform — an Android key
+# carries an Android app restriction, an iOS key an iOS one, so they cannot
+# be the same key. `.env.prod` therefore holds four keys and this script
+# selects the one matching the (app, platform) being built:
+#
+#   GOOGLE_MAPS_API_KEY_CLIENT_ANDROID
+#   GOOGLE_MAPS_API_KEY_CLIENT_IOS
+#   GOOGLE_MAPS_API_KEY_PROVIDER_ANDROID
+#   GOOGLE_MAPS_API_KEY_PROVIDER_IOS
+#
+# (A single legacy `GOOGLE_MAPS_API_KEY` is still honoured as a fallback.)
+# The selected key is threaded through every build surface:
+#
+#   - Dart code: `--dart-define=GOOGLE_MAPS_API_KEY=<selected>` (plus a
+#     `--dart-define` for every other line in `.env.prod`).
+#   - Android native: writes `apps/<app>/android/gradle.properties`'s
 #     `MAPS_API_KEY` so AndroidManifest's `${MAPS_API_KEY}` placeholder
 #     resolves at native build time.
 #   - iOS native: writes `apps/<app>/ios/Flutter/Secrets.xcconfig` so the
@@ -59,13 +73,23 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
-# Parse `.env.prod` once into a flat `--dart-define` array and pluck the
-# few keys the native side needs into plain shell variables.
+# Parse `.env.prod` once into a flat `--dart-define` array. The Google Maps
+# keys are handled specially: rather than passing all four as dart-defines
+# (which would bake every app/platform key into every build), we capture them
+# as shell variables and select the one for this (app, platform) afterwards.
 #
-# Avoids `declare -A` (associative arrays) so the script works on macOS's
-# stock bash 3.2 as well as the bash 5+ that ships on GitHub Actions runners.
+# Pre-initialise all four (plus the legacy generic) to empty so the indirect
+# lookup `${!SPECIFIC_VAR}` is safe under `set -u`. Avoids `declare -A` so the
+# script works on macOS's stock bash 3.2 as well as bash 5+ on CI runners.
 DEFINES=()
 GOOGLE_MAPS_API_KEY=""
+GOOGLE_MAPS_API_KEY_CLIENT_ANDROID=""
+GOOGLE_MAPS_API_KEY_CLIENT_IOS=""
+GOOGLE_MAPS_API_KEY_PROVIDER_ANDROID=""
+GOOGLE_MAPS_API_KEY_PROVIDER_IOS=""
+MAPS_ANDROID_CERT_SHA1=""
+MAPS_ANDROID_CERT_SHA1_CLIENT=""
+MAPS_ANDROID_CERT_SHA1_PROVIDER=""
 while IFS='=' read -r key value; do
   key="${key#"${key%%[![:space:]]*}"}"
   [[ -z "$key" || "$key" == \#* ]] && continue
@@ -73,18 +97,59 @@ while IFS='=' read -r key value; do
   value="${value#\"}"
   value="${value%\'}"
   value="${value#\'}"
-  DEFINES+=("--dart-define=${key}=${value}")
-  # Native-side passthroughs — additive `if` rather than associative
-  # lookup so the script stays compatible with old bash. Add another
-  # branch here if a new native-side env var is introduced.
-  if [[ "$key" == "GOOGLE_MAPS_API_KEY" ]]; then
-    GOOGLE_MAPS_API_KEY="$value"
+  # Capture the per-(app[,platform]) Maps keys and Android cert SHA-1s into
+  # like-named shell vars and skip the dart-define — the selected ones are
+  # appended after the loop. `printf -v` (bash 3.1+) is the bash-3.2-safe way
+  # to assign to a dynamically-named variable.
+  if [[ "$key" == "GOOGLE_MAPS_API_KEY" || "$key" == GOOGLE_MAPS_API_KEY_* \
+     || "$key" == "MAPS_ANDROID_CERT_SHA1" || "$key" == MAPS_ANDROID_CERT_SHA1_* ]]; then
+    printf -v "$key" '%s' "$value"
+    continue
   fi
+  DEFINES+=("--dart-define=${key}=${value}")
 done < "$ENV_FILE"
 
-if [[ -z "$GOOGLE_MAPS_API_KEY" ]]; then
-  echo "error: GOOGLE_MAPS_API_KEY missing from $ENV_FILE — required for production build." >&2
+# Select the Maps key for this (app, platform). android and android-apk
+# share the Android key; ios uses the iOS key.
+case "$PLATFORM" in
+  android|android-apk) MAPS_PLATFORM="ANDROID" ;;
+  ios)                 MAPS_PLATFORM="IOS" ;;
+esac
+case "$APP" in
+  client)   MAPS_APP="CLIENT" ;;
+  provider) MAPS_APP="PROVIDER" ;;
+esac
+SPECIFIC_VAR="GOOGLE_MAPS_API_KEY_${MAPS_APP}_${MAPS_PLATFORM}"
+SPECIFIC_VAL="${!SPECIFIC_VAR}"
+if [[ -n "$SPECIFIC_VAL" ]]; then
+  GOOGLE_MAPS_API_KEY="$SPECIFIC_VAL"
+  echo "→ Maps key: $SPECIFIC_VAR"
+elif [[ -n "$GOOGLE_MAPS_API_KEY" ]]; then
+  # Legacy single-key .env.prod that predates the per-platform split — all
+  # four targets share this one key.
+  echo "→ Maps key: $SPECIFIC_VAR unset — falling back to legacy GOOGLE_MAPS_API_KEY"
+else
+  echo "error: no Maps key for this build. Set $SPECIFIC_VAR (preferred) or a" >&2
+  echo "       legacy GOOGLE_MAPS_API_KEY in $ENV_FILE." >&2
   exit 1
+fi
+
+# Dart side reads String.fromEnvironment('GOOGLE_MAPS_API_KEY').
+DEFINES+=("--dart-define=GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}")
+
+# Android cert SHA-1 for the `X-Android-Cert` header that MapsConfig attaches
+# to direct REST calls (Places / Directions / Roads / Static Maps) so an
+# Android-application-restricted key accepts them. Per app — client and
+# provider are signed with different certs. Only used on Android (ignored by
+# MapsConfig.restApiHeaders on iOS), so it's harmless in an iOS build.
+CERT_VAR="MAPS_ANDROID_CERT_SHA1_${MAPS_APP}"
+CERT_VAL="${!CERT_VAR}"
+if [[ -z "$CERT_VAL" ]]; then CERT_VAL="$MAPS_ANDROID_CERT_SHA1"; fi
+DEFINES+=("--dart-define=MAPS_ANDROID_CERT_SHA1=${CERT_VAL}")
+if [[ -z "$CERT_VAL" && ( "$PLATFORM" == "android" || "$PLATFORM" == "android-apk" ) ]]; then
+  echo "warning: no $CERT_VAR (or generic MAPS_ANDROID_CERT_SHA1) in $ENV_FILE —" >&2
+  echo "         direct REST calls (Places/Directions/Roads/Static Maps) will be" >&2
+  echo "         REQUEST_DENIED if this Android key has an application restriction." >&2
 fi
 
 APP_DIR="$REPO_ROOT/apps/$APP"
@@ -137,7 +202,11 @@ case "$PLATFORM" in
     ;;
   ios)
     echo "→ flutter build ipa (release) for apps/$APP with ${#DEFINES[@]} dart-defines"
-    echo "  After this completes, open build/ios/archive/Runner.xcarchive in Xcode → Distribute App."
-    exec flutter build ipa --release "${DEFINES[@]}" "$@"
+    echo "  Exports via $REPO_ROOT/ExportOptions.plist (uploadSymbols=false) to"
+    echo "  dodge the 'exportArchive Copy failed' dSYM bug. Output IPA in"
+    echo "  build/ios/ipa/ — upload with Transporter."
+    exec flutter build ipa --release \
+      --export-options-plist "$REPO_ROOT/ExportOptions.plist" \
+      "${DEFINES[@]}" "$@"
     ;;
 esac

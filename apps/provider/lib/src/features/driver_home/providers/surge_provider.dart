@@ -20,5 +20,5 @@ class SurgeState {
 
 /// Provides current surge pricing info for the driver's area.
 final surgeProvider = StateProvider<SurgeState>(
-  (ref) => const SurgeState(multiplier: 1.5, zoneName: 'Adum'),
+  (ref) => const SurgeState(),
 );

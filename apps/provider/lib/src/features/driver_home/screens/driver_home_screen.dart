@@ -10,7 +10,7 @@ import 'package:shared_ui/shared_ui.dart';
 import '../../../core/providers/availability_controller.dart';
 import '../../../core/providers/socket_provider.dart';
 import '../../profile/providers/verification_provider.dart';
-import '../data/road_snap_service.dart';
+import '../data/gps_position_smoother.dart';
 import '../providers/driver_location_provider.dart';
 import '../../../core/providers/provider_status_provider.dart';
 import '../screens/ride_request_screen.dart';
@@ -51,9 +51,8 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
   BitmapDescriptor? _carIcon;
   Marker? _driverMarker;
 
-  /// Animates the marker from the last rendered point to the next road-snapped
-  /// GPS fix so the car appears to glide down the street rather than teleport
-  /// on each update.
+  /// Animates the marker from the last rendered point to the next locally
+  /// smoothed GPS fix so the car glides rather than teleporting on each update.
   late final AnimationController _moveController;
 
   LatLng? _fromPos;
@@ -62,6 +61,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
   double _toRotation = 0;
   LatLng? _currentPos;
   double _currentRotation = 0;
+  final GpsPositionSmoother _positionSmoother = GpsPositionSmoother();
 
   /// Guards camera auto-follow so we only animate on the first location fix
   /// after each online session (we don't want to fight the user if they pan).
@@ -234,13 +234,12 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
     final icon = _carIcon;
     if (icon == null) return;
 
-    final rawPoint = LatLng(position.latitude, position.longitude);
-
-    // Snap the GPS point to the nearest road so the car glides along streets
-    // instead of drifting across rooftops. Falls back to the raw point if the
-    // Roads API isn't available or errors out.
-    final snapped =
-        await ref.read(roadSnapServiceProvider).snap(rawPoint) ?? rawPoint;
+    final displayPoint = _positionSmoother.filter(
+      point: LatLng(position.latitude, position.longitude),
+      accuracyMeters: position.accuracy,
+      speedMetersPerSecond: position.speed,
+      timestamp: position.timestamp,
+    );
 
     if (!mounted) return;
 
@@ -252,12 +251,12 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
 
     // First fix after going online: show immediately and centre the camera.
     if (_currentPos == null) {
-      _currentPos = snapped;
+      _currentPos = displayPoint;
       _currentRotation = targetRotation;
       setState(() {
         _driverMarker = Marker(
           markerId: const MarkerId('driver_self'),
-          position: snapped,
+          position: displayPoint,
           icon: icon,
           anchor: const Offset(0.5, 0.5),
           flat: true,
@@ -270,7 +269,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
         final controller = await _mapController.future;
         if (!mounted) return;
         await controller.animateCamera(
-          CameraUpdate.newLatLngZoom(snapped, 16.5),
+          CameraUpdate.newLatLngZoom(displayPoint, 16.5),
         );
       }
       return;
@@ -279,7 +278,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
     // Subsequent fixes: animate from wherever the marker currently is (even
     // mid-tween) to the new snapped target.
     _fromPos = _currentPos;
-    _toPos = snapped;
+    _toPos = displayPoint;
     _fromRotation = _currentRotation;
     _toRotation = targetRotation;
     _moveController
@@ -293,6 +292,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
       return;
     }
     _moveController.stop();
+    _positionSmoother.reset();
     setState(() {
       _driverMarker = null;
       _hasCenteredOnDriver = false;

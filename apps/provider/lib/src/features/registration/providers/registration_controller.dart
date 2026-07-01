@@ -30,6 +30,9 @@ class DriverRegistrationDraft {
     this.vehicleYear = '',
     this.vehiclePlate = '',
     this.vehicleColor = '',
+    this.rideCategories = const [],
+    this.regionId = '',
+    this.referralCode = '',
   });
 
   final String fullName;
@@ -41,6 +44,20 @@ class DriverRegistrationDraft {
   final String vehiclePlate;
   final String vehicleColor;
 
+  /// Ride category slugs the driver wants to serve (e.g. ['regular','comfort']).
+  /// Each is admin-verified before the driver is matchable for that tier.
+  final List<String> rideCategories;
+
+  /// Home region UUID (from GET /v1/regions) chosen on the region step.
+  /// Empty when the regions endpoint is unavailable — register then omits it
+  /// and the backend defaults to the active pilot region.
+  final String regionId;
+
+  /// Optional referral code entered at signup. Empty when not provided.
+  /// Forwarded to POST /auth/register and linked fire-and-forget by the
+  /// backend — a bad code is ignored and never blocks registration.
+  final String referralCode;
+
   DriverRegistrationDraft copyWith({
     String? fullName,
     String? email,
@@ -50,6 +67,9 @@ class DriverRegistrationDraft {
     String? vehicleYear,
     String? vehiclePlate,
     String? vehicleColor,
+    List<String>? rideCategories,
+    String? regionId,
+    String? referralCode,
   }) =>
       DriverRegistrationDraft(
         fullName: fullName ?? this.fullName,
@@ -60,11 +80,14 @@ class DriverRegistrationDraft {
         vehicleYear: vehicleYear ?? this.vehicleYear,
         vehiclePlate: vehiclePlate ?? this.vehiclePlate,
         vehicleColor: vehicleColor ?? this.vehicleColor,
+        rideCategories: rideCategories ?? this.rideCategories,
+        regionId: regionId ?? this.regionId,
+        referralCode: referralCode ?? this.referralCode,
       );
 
-  /// Only fullName is required for POST /auth/register.
+  /// fullName and at least one ride category are required for POST /auth/register.
   /// Vehicle details are submitted later via profile/verification endpoints.
-  bool get isComplete => fullName.isNotEmpty;
+  bool get isComplete => fullName.isNotEmpty && rideCategories.isNotEmpty;
 }
 
 class DriverRegistrationController
@@ -94,6 +117,8 @@ class ArtisanRegistrationDraft {
     this.yearsOfExperience = 0,
     this.serviceCategories = const [],
     this.serviceRadiusKm = 5,
+    this.regionId = '',
+    this.referralCode = '',
   });
 
   final String fullName;
@@ -105,6 +130,16 @@ class ArtisanRegistrationDraft {
   final List<String> serviceCategories;
   final double serviceRadiusKm;
 
+  /// Home region UUID (from GET /v1/regions) chosen on the region step.
+  /// Empty when the regions endpoint is unavailable — register then omits it
+  /// and the backend defaults to the active pilot region.
+  final String regionId;
+
+  /// Optional referral code entered at signup. Empty when not provided.
+  /// Forwarded to POST /auth/register and linked fire-and-forget by the
+  /// backend — a bad code is ignored and never blocks registration.
+  final String referralCode;
+
   ArtisanRegistrationDraft copyWith({
     String? fullName,
     String? email,
@@ -114,6 +149,8 @@ class ArtisanRegistrationDraft {
     int? yearsOfExperience,
     List<String>? serviceCategories,
     double? serviceRadiusKm,
+    String? regionId,
+    String? referralCode,
   }) =>
       ArtisanRegistrationDraft(
         fullName: fullName ?? this.fullName,
@@ -124,6 +161,8 @@ class ArtisanRegistrationDraft {
         yearsOfExperience: yearsOfExperience ?? this.yearsOfExperience,
         serviceCategories: serviceCategories ?? this.serviceCategories,
         serviceRadiusKm: serviceRadiusKm ?? this.serviceRadiusKm,
+        regionId: regionId ?? this.regionId,
+        referralCode: referralCode ?? this.referralCode,
       );
 
   /// Only fullName and serviceCategories are required for POST /auth/register.

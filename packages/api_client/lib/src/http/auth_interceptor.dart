@@ -59,6 +59,9 @@ class AuthInterceptor extends Interceptor {
     '/auth/login/driver',
     '/auth/login/artisan',
     '/auth/verify-otp',
+    // OTP channel discovery and resend both happen before verification, so
+    // there is no bearer token yet. The prefix covers /channels and /resend.
+    '/auth/otp/',
     // Provider post-OTP login flow (v1.2.0) — all pre-auth, no token. The
     // trailing slash prefix covers /auth/provider/login, /verify-otp and
     // /select-role. Without this the interceptor rejects them locally with a
@@ -73,6 +76,18 @@ class AuthInterceptor extends Interceptor {
     // before the user has authenticated. Marked @Public() on the backend
     // — keep this list aligned.
     '/categories',
+    // Ride categories are read during DRIVER registration (tier picker) and
+    // the client booking sheet — both before/without auth. Marked @Public()
+    // on the backend. NB: this does NOT overlap '/categories' above —
+    // '/ride-categories'.contains('/categories') is false (preceding char is
+    // '-', not '/'), so it needs its own entry.
+    '/ride-categories',
+    // Regions are read during PROVIDER registration (home-region picker)
+    // before the user has authenticated. Marked @Public() on the backend
+    // (GET /v1/regions) — keep this list aligned. Without this entry the
+    // interceptor rejects the pre-auth fetch locally and the region step
+    // shows "Couldn't load regions" instead of degrading gracefully.
+    '/regions',
   };
 
   bool _isPublic(String path) {

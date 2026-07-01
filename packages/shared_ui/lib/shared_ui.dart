@@ -15,6 +15,7 @@ export 'src/widgets/myshop_phone_input_screen.dart';
 export 'src/widgets/myshop_otp_verification_screen.dart';
 export 'src/widgets/myshop_toast.dart';
 export 'src/widgets/myshop_error_body.dart';
+export 'src/widgets/myshop_call_button.dart';
 export 'src/widgets/job_elapsed_time.dart';
 
 // Support & Legal
@@ -31,4 +32,5 @@ export 'src/widgets/support/support_channels.dart';
 export 'src/widgets/support/support_legal_config.dart';
 
 export 'src/utils/media_picker_helper.dart';
+export 'src/utils/phone_dialer.dart';
 export 'src/utils/validators.dart';

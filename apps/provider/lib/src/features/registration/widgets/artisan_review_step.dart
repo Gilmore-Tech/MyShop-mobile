@@ -5,6 +5,7 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../providers/categories_provider.dart';
+import '../providers/regions_provider.dart';
 import '../providers/registration_controller.dart';
 import 'review_section_card.dart';
 
@@ -33,6 +34,16 @@ class ArtisanReviewStep extends ConsumerWidget {
         ? 'Less than a year'
         : '${draft.yearsOfExperience} years';
     final radius = '${draft.serviceRadiusKm.toStringAsFixed(0)} km';
+
+    // Resolve the home-region id to its display name.
+    final regions = ref.watch(regionsProvider).valueOrNull ?? const [];
+    var regionName = '';
+    for (final r in regions) {
+      if (r.id == draft.regionId) {
+        regionName = r.name;
+        break;
+      }
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
@@ -98,6 +109,15 @@ class ArtisanReviewStep extends ConsumerWidget {
               ReviewRow(label: 'Experience', value: experience),
               ReviewRow(label: 'Services', value: services),
               ReviewRow(label: 'Service radius', value: radius),
+            ],
+          ),
+          const SizedBox(height: MyShopSpacing.md),
+          ReviewSectionCard(
+            icon: Icons.location_on_outlined,
+            title: 'Your region',
+            onEdit: () => onEditStep(2),
+            rows: [
+              ReviewRow(label: 'Region', value: regionName),
             ],
           ),
           const SizedBox(height: MyShopSpacing.md),

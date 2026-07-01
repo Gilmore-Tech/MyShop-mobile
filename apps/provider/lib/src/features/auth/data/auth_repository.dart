@@ -49,6 +49,7 @@ class AuthRepository {
       email: request.email,
       referralCode: request.referralCode,
       categories: request.categories,
+      rideCategories: request.rideCategories,
       shopCapacity: request.shopCapacity,
       maxConcurrentJobs: request.maxConcurrentJobs,
     );
@@ -133,6 +134,14 @@ class AuthRepository {
     return result;
   }
 
+  Future<List<String>> getOtpChannels() => _service.getOtpChannels();
+
+  Future<void> resendOtp({
+    required String phone,
+    required String channel,
+  }) =>
+      _service.resendOtp(phone: phone, channel: channel);
+
   /// Request a provider login OTP without specifying a role. The backend
   /// returns a uniform response whether or not the number is registered.
   Future<void> providerLogin(String phone, {bool forceLogin = false}) async {
@@ -197,13 +206,21 @@ class AuthRepository {
 
   /// Fetch the user's full profile from GET /users/me.
   /// Caches the raw response so [bootstrap] can restore the session offline.
-  Future<AuthUser> fetchProfile() async {
+  ///
+  /// [activeRole] forces which role profile the returned [AuthUser] resolves
+  /// its name/email/photo from. Callers in the login flow MUST pass it: the
+  /// persisted role (read by [_activeRole]) still holds the *previous*
+  /// session's role until `onAuthenticated` writes the new one, so relying on
+  /// storage here surfaces the old role's identity (e.g. the artisan business
+  /// name on a fresh driver login). When omitted, falls back to the persisted
+  /// role — correct for post-login refreshes where storage is already current.
+  Future<AuthUser> fetchProfile({AuthRole? activeRole}) async {
     final result = await _service.getMeWithRaw();
     if (result.raw.isNotEmpty) {
       await _tokenStorage.writeCachedProfileJson(jsonEncode(result.raw));
     }
     return AuthUser.fromProfile(result.profile,
-        activeRole: await _activeRole());
+        activeRole: activeRole ?? await _activeRole());
   }
 
   /// Try to restore a session from stored tokens.

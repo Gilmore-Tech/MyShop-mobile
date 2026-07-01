@@ -485,7 +485,7 @@ All formula parameters are stored in `platform_config` and adjustable without co
 
 - Estimated fare: calculated from Distance Matrix API response (shown before booking)
 - Final fare: calculated from actual GPS trail distance and ride duration
-- Surge: `final_fare × surge_multiplier` (configurable by Super Admin)
+- Surge: server-calculated from pickup-zone demand/supply pressure and capped by Super Admin config; multiplier is applied to new estimates only and persisted on the ride at booking
 - Multi-stop: fare recalculated incrementally at each added stop
 - Rounding: all fractional fares rounded UP to nearest whole GHS via `roundUpToGhs()` (PRD edge case #11)
 - Surge lock: fare locked at booking time — if surge activates after booking but before acceptance, the original fare is preserved (PRD edge case #8)

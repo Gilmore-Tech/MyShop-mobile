@@ -121,6 +121,11 @@ final clientAuthRepositoryProvider = Provider<ClientAuthRepository>((ref) {
   );
 });
 
+final clientOtpChannelsProvider =
+    FutureProvider.autoDispose<List<String>>((ref) {
+  return ref.watch(clientAuthRepositoryProvider).getOtpChannels();
+});
+
 final clientAuthControllerProvider =
     StateNotifierProvider<ClientAuthController, ClientAuthState>((ref) {
   final controller = ClientAuthController(
@@ -339,12 +344,12 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
     }
   }
 
-  /// Resend OTP.
-  Future<void> resendOtp() async {
+  /// Re-deliver the active OTP without issuing a new code.
+  Future<void> resendOtp({String channel = 'sms'}) async {
     final current = state;
     if (current is! AuthOtpSent) return;
     try {
-      await _repo.loginClient(current.phone);
+      await _repo.resendOtp(phone: current.phone, channel: channel);
       // Success — clear any prior error so the screen reflects the new send.
       state = AuthOtpSent(phone: current.phone, isNewUser: current.isNewUser);
     } on ApiException catch (e) {

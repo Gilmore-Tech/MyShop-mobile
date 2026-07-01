@@ -16,6 +16,7 @@ import '../../../core/services/directions_service.dart';
 import '../../../core/services/nav_guidance.dart';
 import '../../../core/widgets/maneuver_banner.dart';
 import '../../../core/widgets/nav_arrow_icon.dart';
+import '../../../core/widgets/route_warning_banner.dart';
 import '../data/external_nav_service.dart';
 import '../providers/driver_location_provider.dart';
 import '../providers/ride_request_provider.dart';
@@ -162,8 +163,7 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
     }
     _ensureWaitTicker();
     final anchor = serverAnchor ?? _localArrivedAt!;
-    final elapsed =
-        DateTime.now().toUtc().difference(anchor.toUtc()).inSeconds;
+    final elapsed = DateTime.now().toUtc().difference(anchor.toUtc()).inSeconds;
     return _freeWaitSecs - elapsed;
   }
 
@@ -510,12 +510,19 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
             child: ValueListenableBuilder<_LiveMetrics>(
               valueListenable: _liveMetrics,
               builder: (context, metrics, _) {
-                return ManeuverBanner(
-                  progress: metrics.progress,
-                  fallbackDistanceMeters: metrics.distanceMeters,
-                  fallbackEtaMinutes: metrics.etaMinutes,
-                  fallbackAddress: targetAddress,
-                  phaseLabel: targetLabel,
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ManeuverBanner(
+                      progress: metrics.progress,
+                      fallbackDistanceMeters: metrics.distanceMeters,
+                      fallbackEtaMinutes: metrics.etaMinutes,
+                      fallbackAddress: targetAddress,
+                      phaseLabel: targetLabel,
+                    ),
+                    if (metrics.routeWarning case final warning?)
+                      RouteWarningBanner(message: warning),
+                  ],
                 );
               },
             ),
@@ -541,8 +548,8 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
                   valueListenable: _mapHandle.voiceMuted,
                   builder: (_, muted, __) => _MapControlButton(
                     icon: muted ? Icons.volume_off : Icons.volume_up,
-                    onTap: () =>
-                        _mapHandle.voiceMuted.value = !_mapHandle.voiceMuted.value,
+                    onTap: () => _mapHandle.voiceMuted.value =
+                        !_mapHandle.voiceMuted.value,
                   ),
                 ),
                 const SizedBox(height: MyShopSpacing.sm),
@@ -612,7 +619,12 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
 // ─── Live metrics + map handle ──────────────────────────────────────────────
 
 class _LiveMetrics {
-  const _LiveMetrics({this.distanceMeters, this.etaMinutes, this.progress});
+  const _LiveMetrics({
+    this.distanceMeters,
+    this.etaMinutes,
+    this.progress,
+    this.routeWarning,
+  });
 
   /// Straight-line distance from current GPS to the routing target, in
   /// meters. Null until we get the first fix.
@@ -627,6 +639,8 @@ class _LiveMetrics {
   /// Null on the fallback straight-line route (Directions API not
   /// available) — the banner falls back to a plain distance/ETA card.
   final NavProgress? progress;
+
+  final String? routeWarning;
 }
 
 /// Recenter shim — handed to [_NavigationMap] so it can register a callback
@@ -906,9 +920,8 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
     // stationary) and noisy below ~1 m/s. Keep the previous bearing in
     // those cases so the camera doesn't spin while the driver waits at
     // a red light.
-    final bearing = (pos.heading.isFinite && pos.speed >= 1.0)
-        ? pos.heading
-        : _lastBearing;
+    final bearing =
+        (pos.heading.isFinite && pos.speed >= 1.0) ? pos.heading : _lastBearing;
     _lastBearing = bearing;
 
     setState(() {
@@ -945,6 +958,7 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
       distanceMeters: distance,
       etaMinutes: _liveEtaMinutes(distance, route),
       progress: progress,
+      routeWarning: route?.warningMessage,
     );
 
     // Voice prompts — only when we have a real maneuver to speak about.
@@ -1312,8 +1326,15 @@ class _PassengerPanel extends StatelessWidget {
                   rideId: ride.id,
                   riderName: ride.clientName ?? 'Passenger',
                 ),
-                // Phone `_ContactButton` removed in v1.0 — masked calls
-                // deferred to v1.2. Chat is the peer comms channel.
+                // Numbers aren't masked during the pilot — the driver can
+                // call the passenger directly alongside the chat button.
+                if ((ride.clientPhone ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(width: 10),
+                  MyShopCallButton(
+                    phoneNumber: ride.clientPhone,
+                    semanticLabel: 'Call passenger',
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: MyShopSpacing.lg),

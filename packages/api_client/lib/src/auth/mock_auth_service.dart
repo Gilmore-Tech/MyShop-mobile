@@ -118,6 +118,21 @@ class MockAuthService implements AuthService {
   }
 
   @override
+  Future<List<String>> getOtpChannels() async {
+    await _delay();
+    return const ['sms', 'whatsapp'];
+  }
+
+  @override
+  Future<void> resendOtp({
+    required String phone,
+    required String channel,
+  }) async {
+    await _delay();
+    _lastPhone = phone;
+  }
+
+  @override
   Future<void> providerLogin(LoginRequest request) async {
     await _delay();
     // Uniform — never reveals whether the number is registered.

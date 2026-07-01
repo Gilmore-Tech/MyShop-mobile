@@ -28,9 +28,12 @@ class Ride {
     this.cancelledAt,
     this.cancellationReason,
     this.clientName,
+    this.clientPhone,
     this.clientPhotoUrl,
     this.clientRating,
     this.clientTripCount,
+    this.driverName,
+    this.driverPhone,
     this.stops = const [],
   });
 
@@ -47,6 +50,7 @@ class Ride {
     double _num(dynamic v, [double fallback = 0]) =>
         v is num ? v.toDouble() : fallback;
     int _int(dynamic v, [int fallback = 0]) => v is num ? v.toInt() : fallback;
+    int? _optionalInt(dynamic v) => v is num ? v.toInt() : null;
     DateTime? _date(dynamic v) => v is String ? DateTime.tryParse(v) : null;
 
     // Backend serves the full ride entity with client info under a nested
@@ -73,11 +77,40 @@ class Ride {
         ? [clientFirstName, clientLastName].whereType<String>().join(' ').trim()
         : null;
 
+    // Driver identity may arrive nested under `driver: {...}` (full REST
+    // snapshot) or flattened at the top level. Mirror the client-side
+    // resolution so the rider-facing history can render the driver's real
+    // name + number.
+    final driverObj = json['driver'] is Map<String, dynamic>
+        ? json['driver'] as Map<String, dynamic>
+        : const <String, dynamic>{};
+    String? _driverStr(String topKey, [List<String> nestedKeys = const []]) {
+      final top = json[topKey];
+      if (top is String && top.isNotEmpty) return top;
+      for (final k in nestedKeys) {
+        final v = driverObj[k];
+        if (v is String && v.isNotEmpty) return v;
+      }
+      return null;
+    }
+
+    final driverFirstName = driverObj['firstName'] as String?;
+    final driverLastName = driverObj['lastName'] as String?;
+    final assembledDriverName =
+        (driverFirstName != null || driverLastName != null)
+            ? [driverFirstName, driverLastName]
+                .whereType<String>()
+                .join(' ')
+                .trim()
+            : null;
+    final status =
+        RideStatus.fromString(json['status'] as String? ?? 'requested');
+
     return Ride(
       id: (json['id'] ?? json['rideId']) as String,
       clientId: json['clientId'] as String? ?? clientObj['id'] as String? ?? '',
       driverId: json['driverId'] as String?,
-      status: RideStatus.fromString(json['status'] as String? ?? 'requested'),
+      status: status,
       pickupAddress: json['pickupAddress'] as String? ?? '',
       dropoffAddress: json['dropoffAddress'] as String? ?? '',
       pickupLat: _num(
@@ -88,10 +121,13 @@ class Ride {
       ),
       dropoffLat: _num(json['dropoffLat'] ?? json['dropoffLatitude']),
       dropoffLng: _num(json['dropoffLng'] ?? json['dropoffLongitude']),
-      estimatedFarePesewas: _int(json['estimatedFarePesewas']),
-      finalFarePesewas: json['finalFarePesewas'] is num
-          ? (json['finalFarePesewas'] as num).toInt()
-          : null,
+      estimatedFarePesewas: _int(
+        json['estimatedFarePesewas'] ?? json['totalFare'],
+      ),
+      finalFarePesewas: _optionalInt(
+        json['finalFarePesewas'] ??
+            (status == RideStatus.completed ? json['totalFare'] : null),
+      ),
       estimatedDistanceKm: _num(
         json['estimatedDistanceKm'] ?? json['distanceKm'],
       ),
@@ -113,6 +149,7 @@ class Ride {
       cancellationReason: json['cancellationReason'] as String?,
       clientName:
           _clientStr('clientName', ['name', 'fullName']) ?? assembledName,
+      clientPhone: _clientStr('clientPhone', ['phone', 'maskedPhone']),
       clientPhotoUrl: _clientStr(
         'clientPhotoUrl',
         ['photoUrl', 'profilePhotoUrl', 'avatarUrl'],
@@ -122,6 +159,9 @@ class Ride {
       clientTripCount: json['clientTripCount'] as int? ??
           (clientObj['tripCount'] as num?)?.toInt() ??
           (clientObj['totalRides'] as num?)?.toInt(),
+      driverName:
+          _driverStr('driverName', ['name', 'fullName']) ?? assembledDriverName,
+      driverPhone: _driverStr('driverPhone', ['phone', 'maskedPhone']),
       stops: (json['stops'] as List<dynamic>?)
               ?.map((s) => RideStop.fromJson(s as Map<String, dynamic>))
               .toList() ??
@@ -155,9 +195,19 @@ class Ride {
   final DateTime? cancelledAt;
   final String? cancellationReason;
   final String? clientName;
+
+  /// Counterparty's real, dialable phone number. During the pilot the platform
+  /// no longer masks these — the backend serves the live number on active
+  /// rides and (for a limited window) on completed-ride snapshots so the two
+  /// sides can reconnect. Null when the backend omits it / the window closed.
+  final String? clientPhone;
   final String? clientPhotoUrl;
   final double? clientRating;
   final int? clientTripCount;
+  final String? driverName;
+
+  /// Driver's real, dialable phone number (see [clientPhone]).
+  final String? driverPhone;
   final List<RideStop> stops;
 
   /// Display fare in GHS format
@@ -200,9 +250,12 @@ class Ride {
       cancelledAt: cancelledAt,
       cancellationReason: cancellationReason,
       clientName: clientName,
+      clientPhone: clientPhone,
       clientPhotoUrl: clientPhotoUrl,
       clientRating: clientRating,
       clientTripCount: clientTripCount,
+      driverName: driverName,
+      driverPhone: driverPhone,
       stops: stops ?? this.stops,
     );
   }
