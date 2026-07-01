@@ -176,6 +176,7 @@ class _ActiveJobBody extends ConsumerWidget {
                 _ActionButtonsRow(
                   jobId: job.jobId,
                   artisanName: job.artisan.name,
+                  artisanPhone: job.artisan.phone,
                   w: w,
                   h: h,
                 ),
@@ -657,30 +658,45 @@ class _ActiveJobMapPainter extends CustomPainter {
 class _ActionButtonsRow extends StatelessWidget {
   final String jobId;
   final String artisanName;
+  final String artisanPhone;
   final double w;
   final double h;
   const _ActionButtonsRow({
     required this.jobId,
     required this.artisanName,
+    required this.artisanPhone,
     required this.w,
     required this.h,
   });
 
   @override
   Widget build(BuildContext context) {
+    final chat = ChatEntryButton(
+      bookingType: ChatBookingType.artisanJob,
+      bookingId: jobId,
+      label: 'Message Artisan',
+      peerName: artisanName,
+      peerStatus: 'On your job',
+      background: MyShopColors.surfaceWhite,
+      foreground: MyShopColors.textPrimary,
+    );
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
-      child: ChatEntryButton(
-        bookingType: ChatBookingType.artisanJob,
-        bookingId: jobId,
-        label: 'Message Artisan',
-        peerName: artisanName,
-        peerStatus: 'On your job',
-        background: MyShopColors.surfaceWhite,
-        foreground: MyShopColors.textPrimary,
-      ),
-      // "Call Artisan" button removed in v1.0 — masked calls deferred
-      // to v1.2. Chat is the only peer comms channel for the pilot.
+      // Numbers aren't masked during the pilot — let the client call the
+      // artisan directly alongside the chat affordance.
+      child: artisanPhone.trim().isEmpty
+          ? chat
+          : Row(
+              children: [
+                Expanded(child: chat),
+                const SizedBox(width: 10),
+                MyShopCallButton(
+                  phoneNumber: artisanPhone,
+                  size: 48,
+                  semanticLabel: 'Call artisan',
+                ),
+              ],
+            ),
     );
   }
 }

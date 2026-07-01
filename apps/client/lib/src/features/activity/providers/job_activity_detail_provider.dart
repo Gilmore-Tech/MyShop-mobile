@@ -27,9 +27,8 @@ class JobActivityDetail {
   final bool artisanVerified;
   final String? artisanPhotoUrl;
 
-  /// Artisan's real number — shown as read-only text (no call button) only
-  /// while the completed job is inside the 24h post-job contact window.
-  /// Null otherwise.
+  /// Artisan's real, dialable number — exposed on the post-job snapshot for a
+  /// limited window so the client can reconnect. Null once it closes.
   final String? artisanPhone;
 
   // Bids
@@ -171,7 +170,7 @@ class _JobActivityDetailNotifier
       artisanJobCount: (artisan['completedJobs'] as num?)?.toInt(),
       artisanVerified: artisan['verified'] as bool? ?? false,
       artisanPhotoUrl: artisan['photoUrl'] as String?,
-      artisanPhone: artisanPhone,
+      artisanPhone: (artisan['phone'] ?? artisan['maskedPhone']) as String?,
       agreedPricePesewas: agreed,
       supplementPesewas: supplement,
       totalPesewas: total,

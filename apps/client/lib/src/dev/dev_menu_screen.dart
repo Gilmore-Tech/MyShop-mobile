@@ -17,7 +17,7 @@ const _mockDriver = MatchedDriver(
   tripCount: 1450,
   isVerified: true,
   isPoliceChecked: true,
-  maskedPhone: '+233 ••• ••• 42',
+  phone: '+233241234542',
   vehicleTier: 'Premier Comfort',
   baseFarePesewas: 1200,
   distanceFarePesewas: 1550,

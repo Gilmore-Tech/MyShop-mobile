@@ -288,6 +288,16 @@ class _ArtisanCard extends StatelessWidget {
                 ],
               ),
             ),
+          // Backend exposes the artisan's real number on the post-job
+          // snapshot for a limited window so the client can reconnect.
+          if ((data.artisanPhone ?? '').trim().isNotEmpty) ...[
+            SizedBox(width: w * 0.030),
+            MyShopCallButton(
+              phoneNumber: data.artisanPhone,
+              size: w * 0.105,
+              semanticLabel: 'Call artisan',
+            ),
+          ],
         ],
       ),
     );

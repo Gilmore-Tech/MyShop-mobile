@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/di/providers.dart';
 import '../../../core/services/directions_service.dart';
@@ -54,10 +53,11 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
   /// as dashes.
   _RideSnapshot? _snapshot;
 
-  /// Passenger identity from the same snapshot. [_clientPhone] is only set
-  /// when the trip is completed and still inside the 24h post-trip contact
-  /// window — shown as read-only text (no call button) so the driver can
-  /// note the rider's number to reconnect. Null otherwise.
+  /// Passenger identity pulled from the same `GET /rides/:id` snapshot. The
+  /// backend exposes the rider's real, dialable number on completed-ride
+  /// snapshots for a limited window so the driver can reconnect (e.g. a
+  /// forgotten item); both stay null when the payload omits them / the
+  /// window has closed.
   String? _clientName;
   String? _clientPhone;
 
@@ -75,20 +75,14 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
           await ref.read(rideServiceProvider).getRide(widget.trip.rideId);
       if (!mounted) return;
       final clientObj = raw['client'] as Map<String, dynamic>?;
-      final completedAt = DateTime.tryParse(
-          (raw['completedAt'] ?? raw['completed_at']) as String? ?? '');
-      final rawPhone = (raw['clientPhone'] ??
-          clientObj?['phone'] ??
-          clientObj?['maskedPhone']) as String?;
-      final showContact = _isCompleted &&
-          isWithinPostTripContactWindow(completedAt) &&
-          (rawPhone?.trim().isNotEmpty ?? false);
       setState(() {
         _snapshot = _RideSnapshot.fromJson(raw);
         _clientName = (raw['clientName'] ??
-            clientObj?['name'] ??
-            clientObj?['fullName']) as String?;
-        _clientPhone = showContact ? rawPhone : null;
+                clientObj?['name'] ??
+                clientObj?['fullName']) as String?;
+        _clientPhone = (raw['clientPhone'] ??
+                clientObj?['phone'] ??
+                clientObj?['maskedPhone']) as String?;
       });
     } catch (_) {
       // Network / 404 — leave _snapshot null. The placeholder map + dashes
@@ -232,10 +226,10 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
                                   ),
                                   const SizedBox(height: MyShopSpacing.lg),
 
-                                  // ── 5b. Passenger number (read-only;
-                                  // 24h post-trip window only) ──
-                                  if ((_clientPhone ?? '').trim().isNotEmpty)
-                                    ...[
+                                  // ── 5b. Passenger contact (post-trip
+                                  // window only — number drops to null once
+                                  // it closes) ──
+                                  if ((_clientPhone ?? '').trim().isNotEmpty) ...[
                                     _PassengerContactRow(
                                       name: _clientName ?? 'Passenger',
                                       phone: _clientPhone!,
@@ -290,9 +284,9 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
 
 // ─── Passenger contact row ──────────────────────────────────────────────────
 
-/// Read-only rider identity + number shown on a completed trip's detail while
-/// the backend still serves the rider's real number (24h post-trip window).
-/// History is informational only — there's deliberately no call button.
+/// Compact rider identity + "Call" affordance shown on a completed trip's
+/// detail while the backend still serves the rider's real number (post-trip
+/// reconnect window). Hidden entirely once the number drops to null.
 class _PassengerContactRow extends StatelessWidget {
   const _PassengerContactRow({required this.name, required this.phone});
 
@@ -328,25 +322,17 @@ class _PassengerContactRow extends StatelessWidget {
                     color: MyShopColors.textPrimary,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Row(
-                  children: [
-                    const Icon(Icons.phone_rounded,
-                        size: 13, color: MyShopColors.textSecondary),
-                    const SizedBox(width: 5),
-                    Text(
-                      phone,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: MyShopColors.textPrimary,
-                      ),
-                    ),
-                  ],
+                Text(
+                  phone,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: MyShopColors.textSecondary,
+                  ),
                 ),
               ],
             ),
           ),
+          MyShopCallButton(phoneNumber: phone, semanticLabel: 'Call passenger'),
         ],
       ),
     );
@@ -857,74 +843,6 @@ class _RouteDot extends StatelessWidget {
   }
 }
 
-// ─── Customer Contact Section ───────────────────────────────────────────────
-
-/// Rider's real, dialable number, shown only inside the 24h post-trip contact
-/// window (gated by the caller). Tapping "Call" hands off to the OS dialer.
-class _ContactSection extends StatelessWidget {
-  const _ContactSection({required this.phone});
-
-  final String phone;
-
-  Future<void> _dial() async {
-    final uri = Uri.parse('tel:$phone');
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(MyShopSpacing.md),
-      decoration: BoxDecoration(
-        color: MyShopColors.surfaceGrey,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.phone_rounded,
-              size: 18, color: MyShopColors.textSecondary),
-          const SizedBox(width: MyShopSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Customer contact',
-                  style: TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: MyShopColors.textSecondary,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  phone,
-                  style: const TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: MyShopColors.textPrimary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          TextButton.icon(
-            onPressed: _dial,
-            icon: const Icon(Icons.call_rounded, size: 18),
-            label: const Text('Call'),
-            style: TextButton.styleFrom(
-              foregroundColor: MyShopColors.primaryGold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ─── Fare Breakdown Card ────────────────────────────────────────────────────
 
 class _FareBreakdownCard extends StatelessWidget {
@@ -1311,17 +1229,12 @@ class _RideSnapshot {
     required this.bookingFeePesewas,
     required this.totalFarePesewas,
     required this.surgeMultiplier,
-    this.clientPhone,
   });
 
   factory _RideSnapshot.fromJson(Map<String, dynamic> json) {
     int asInt(dynamic v) => v is num ? v.toInt() : 0;
     double asDouble(dynamic v, [double fallback = 0]) =>
         v is num ? v.toDouble() : fallback;
-    final client = json['client'] is Map<String, dynamic>
-        ? json['client'] as Map<String, dynamic>
-        : const <String, dynamic>{};
-    final phone = client['phone'];
     return _RideSnapshot(
       pickupLat: asDouble(json['pickupLat']),
       pickupLng: asDouble(json['pickupLng']),
@@ -1332,7 +1245,6 @@ class _RideSnapshot {
       bookingFeePesewas: asInt(json['bookingFee']),
       totalFarePesewas: asInt(json['totalFare']),
       surgeMultiplier: asDouble(json['surgeMultiplier'], 1.0),
-      clientPhone: phone is String && phone.isNotEmpty ? phone : null,
     );
   }
 
@@ -1345,11 +1257,6 @@ class _RideSnapshot {
   final int bookingFeePesewas;
   final int totalFarePesewas;
   final double surgeMultiplier;
-
-  /// Rider's real, dialable number. The backend only includes it on the ride
-  /// snapshot for 24h after the trip completes, then drops it — so this is
-  /// non-null only inside that post-trip contact window.
-  final String? clientPhone;
 }
 
 // ─── Data Model ─────────────────────────────────────────────────────────────

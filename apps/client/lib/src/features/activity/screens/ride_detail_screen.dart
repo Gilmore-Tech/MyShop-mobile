@@ -339,23 +339,6 @@ class _DriverCard extends StatelessWidget {
                     style: TextStyle(
                         color: MyShopColors.textSecondary,
                         fontSize: w * 0.032)),
-                // Read-only number, visible only during the 24h post-trip
-                // contact window (gated in the provider). No call button —
-                // this is a history page.
-                if ((data.driverPhone ?? '').trim().isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Row(children: [
-                    Icon(Icons.phone_rounded,
-                        size: w * 0.034, color: MyShopColors.textSecondary),
-                    SizedBox(width: w * 0.012),
-                    Text(data.driverPhone!,
-                        style: TextStyle(
-                          color: MyShopColors.textPrimary,
-                          fontSize: w * 0.032,
-                          fontWeight: FontWeight.w600,
-                        )),
-                  ]),
-                ],
                 if (data.driverRating > 0) ...[
                   const SizedBox(height: 4),
                   Row(children: [
@@ -388,6 +371,17 @@ class _DriverCard extends StatelessWidget {
                       color: MyShopColors.textSecondary, fontSize: w * 0.028)),
             ],
           ),
+          // Backend exposes the driver's real number on the post-trip
+          // snapshot for a limited window so the rider can reconnect
+          // (e.g. a forgotten item). Hidden once it drops to null.
+          if ((data.driverPhone ?? '').trim().isNotEmpty) ...[
+            SizedBox(width: w * 0.030),
+            MyShopCallButton(
+              phoneNumber: data.driverPhone,
+              size: w * 0.105,
+              semanticLabel: 'Call driver',
+            ),
+          ],
         ],
       ),
     );

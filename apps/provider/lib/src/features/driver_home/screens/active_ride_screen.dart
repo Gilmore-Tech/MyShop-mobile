@@ -1326,8 +1326,15 @@ class _PassengerPanel extends StatelessWidget {
                   rideId: ride.id,
                   riderName: ride.clientName ?? 'Passenger',
                 ),
-                // Phone `_ContactButton` removed in v1.0 — masked calls
-                // deferred to v1.2. Chat is the peer comms channel.
+                // Numbers aren't masked during the pilot — the driver can
+                // call the passenger directly alongside the chat button.
+                if ((ride.clientPhone ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(width: 10),
+                  MyShopCallButton(
+                    phoneNumber: ride.clientPhone,
+                    semanticLabel: 'Call passenger',
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: MyShopSpacing.lg),

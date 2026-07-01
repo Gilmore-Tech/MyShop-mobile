@@ -27,9 +27,9 @@ class RideDetailData {
   final double driverRating;
   final String? driverPhotoUrl;
 
-  /// Driver's real number — shown as read-only text (no call button) only
-  /// while the completed ride is inside the 24h post-trip contact window.
-  /// Null otherwise (cancelled, window expired, or backend omitted it).
+  /// Driver's real, dialable number. The backend exposes it on the completed
+  /// ride snapshot for a limited window so the rider can reconnect (e.g. a
+  /// forgotten item); null once that window closes.
   final String? driverPhone;
 
   // Trip
@@ -178,7 +178,7 @@ class _RideDetailNotifier
           ' · ${driver['plateNumber'] ?? ''}',
       driverRating: (driver['rating'] as num?)?.toDouble() ?? 0.0,
       driverPhotoUrl: driver['photoUrl'] as String?,
-      driverPhone: driverPhone,
+      driverPhone: (driver['phone'] ?? driver['maskedPhone']) as String?,
       durationMins: (ride['actualDurationMins'] as num?)?.toInt() ??
           (ride['estimatedDurationMins'] as num?)?.toInt() ??
           0,
