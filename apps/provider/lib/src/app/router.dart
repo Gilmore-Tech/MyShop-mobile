@@ -77,12 +77,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         '/onboarding',
         '/signin/phone',
         '/signin/role',
-        '/signin/otp',
         '/signup/role',
         '/signup/driver',
         '/signup/artisan',
         '/signup/phone',
-        '/signup/otp',
       };
 
       if (auth is AuthAuthenticated) {
@@ -113,6 +111,13 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         return loc == otpRoute ? null : otpRoute;
       }
       // AuthUnauthenticated — decide between onboarding and sign-in.
+      //
+      // Backing out of the OTP screen calls reset() → AuthUnauthenticated. The
+      // OTP routes are deliberately NOT in unauthAllowed, so an unauthenticated
+      // user is never left stranded on them; send them back to the phone step
+      // that started the flow (sign-up vs sign-in) instead of a dead no-op.
+      if (loc == '/signup/otp') return '/signup/phone';
+      if (loc == '/signin/otp') return '/signin/phone';
       if (!unauthAllowed.contains(loc)) {
         // Returning user (has seen onboarding before) → go to sign-in.
         // First-time user → show onboarding welcome.
