@@ -6,6 +6,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/current_user_provider.dart';
 import '../providers/verification_provider.dart';
+import '../widgets/profile_read_only_note.dart';
 
 /// Business Information screen — artisan-only.
 ///
@@ -51,6 +52,11 @@ class BusinessInformationScreen extends ConsumerWidget {
                     isVerified: isVerified,
                     jobsCount: jobsDone,
                   ),
+                  const SizedBox(height: MyShopSpacing.md),
+
+                  // Business details are read-only for providers — changes
+                  // are made by an admin on request.
+                  const ProfileReadOnlyNote(),
                   const SizedBox(height: MyShopSpacing.lg),
 
                   // Enterprise profile section
@@ -194,37 +200,6 @@ class _Header extends StatelessWidget {
               style: MyShopTypography.h1.copyWith(
                 fontWeight: FontWeight.w700,
                 fontSize: 18,
-              ),
-            ),
-          ),
-          GestureDetector(
-            onTap: () => context.push('/account/business/edit'),
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: MyShopSpacing.md,
-                vertical: 8,
-              ),
-              decoration: BoxDecoration(
-                color: MyShopColors.surfaceWhite,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: MyShopColors.divider),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.edit_outlined,
-                    size: 16,
-                    color: MyShopColors.textPrimary,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Edit',
-                    style: MyShopTypography.body1.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
               ),
             ),
           ),
