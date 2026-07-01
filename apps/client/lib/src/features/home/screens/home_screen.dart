@@ -199,13 +199,13 @@ class _ServiceCardsRow extends ConsumerWidget {
     if (ref.read(rideSearchProvider).pickup != null) return;
     final pos = ref.read(currentDevicePositionProvider);
     if (pos == null) return;
-    final label = ref.read(currentLocationLabelProvider).valueOrNull ??
-        'Current location';
+    final place = ref.read(currentLocationPlaceProvider).valueOrNull;
+    final label = place?.name ?? 'Current location';
     ref.read(rideSearchProvider.notifier).setLocation(
           RideSearchField.pickup,
           RideLocation(
             name: label,
-            address: label,
+            address: place?.address ?? label,
             lat: pos.latitude,
             lng: pos.longitude,
           ),
