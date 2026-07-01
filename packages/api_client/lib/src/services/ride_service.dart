@@ -195,11 +195,19 @@ class RideService {
   Future<Map<String, dynamic>> updateRideStatus(
     String rideId, {
     required String status,
+    double? currentLat,
+    double? currentLng,
   }) async {
     try {
       final response = await _dio.patch(
         '/rides/$rideId/status',
-        data: {'status': status},
+        data: {
+          'status': status,
+          if (currentLat != null && currentLng != null) ...{
+            'currentLat': currentLat,
+            'currentLng': currentLng,
+          },
+        },
       );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {

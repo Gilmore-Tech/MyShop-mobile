@@ -41,6 +41,7 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
       LatLng(MapboxConfig.defaultLat, MapboxConfig.defaultLng);
 
   late LatLng _currentCenter;
+  String _name = '';
   String _address = '';
   bool _isGeocoding = false;
   bool _centerOnUserOnMapReady = false;
@@ -88,13 +89,14 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
   Future<void> _reverseGeocode(LatLng position) async {
     setState(() => _isGeocoding = true);
     final places = ref.read(googlePlacesServiceProvider);
-    final result = await places.reverseGeocode(
+    final result = await places.reverseGeocodePlace(
       position.latitude,
       position.longitude,
     );
     if (!mounted) return;
     setState(() {
-      _address = result ?? 'Unknown location';
+      _name = result?.name ?? 'Selected location';
+      _address = result?.address ?? 'Unknown location';
       _isGeocoding = false;
     });
   }
@@ -105,15 +107,24 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
     if (_isStopEdit) {
       final stops = ref.read(tripStopsProvider.notifier);
       if (widget.stopId == kNewStopSentinel) {
-        stops.addIntermediateStop(_address);
+        stops.addIntermediateStop(
+          _address,
+          lat: _currentCenter.latitude,
+          lng: _currentCenter.longitude,
+        );
       } else {
-        stops.updateStopAddress(widget.stopId!, _address);
+        stops.updateStopAddress(
+          widget.stopId!,
+          _address,
+          lat: _currentCenter.latitude,
+          lng: _currentCenter.longitude,
+        );
       }
     } else {
       ref.read(rideSearchProvider.notifier).setLocation(
             widget.field,
             RideLocation(
-              name: _address.split(',').first.trim(),
+              name: _name,
               address: _address,
               lat: _currentCenter.latitude,
               lng: _currentCenter.longitude,

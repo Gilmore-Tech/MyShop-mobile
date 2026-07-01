@@ -128,8 +128,13 @@ class _DestinationSearchScreenState
     if (!mounted) return;
 
     if (detail != null) {
+      if (detail.requiresExactPin) {
+        setState(() => _isLoading = false);
+        await _refineAreaSelection(detail);
+        return;
+      }
       _applyLocation(
-        name: suggestion.mainText,
+        name: detail.name.isEmpty ? suggestion.mainText : detail.name,
         address: detail.address,
         lat: detail.latitude,
         lng: detail.longitude,
@@ -137,6 +142,53 @@ class _DestinationSearchScreenState
     } else {
       setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _refineAreaSelection(PlaceDetail detail) async {
+    if (_isStopEdit) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Choose a specific address or use “Set location on map” for this stop.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Keep the area's representative point only to centre the map. The fare
+    // provider rejects `area` precision, so this coordinate can never produce
+    // a misleading quote while the rider is choosing their exact point.
+    ref.read(rideSearchProvider.notifier).setLocation(
+          widget.field,
+          RideLocation(
+            name: detail.name,
+            address: detail.address,
+            lat: detail.latitude,
+            lng: detail.longitude,
+            precision: RideLocationPrecision.area,
+          ),
+        );
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Choose an exact point'),
+        content: Text(
+          '${detail.name} covers a wide area. Move the map pin to your exact '
+          '${_isPickup ? 'pickup' : 'destination'} so the route and fare are accurate.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Continue to map'),
+          ),
+        ],
+      ),
+    );
+    if (mounted) await _openPinPicker();
   }
 
   void _selectSavedPlace(_SavedPlace place) {
@@ -188,6 +240,8 @@ class _DestinationSearchScreenState
     final fieldArg = _isPickup ? 'pickup' : 'destination';
     final search = ref.read(rideSearchProvider);
     final prevLat = _isPickup ? search.pickup?.lat : search.destination?.lat;
+    final wasPrecise =
+        (_isPickup ? search.pickup : search.destination)?.isPrecise ?? false;
 
     await context.push<void>(
       AppRoutes.ridePinPickerPath(fieldArg),
@@ -203,8 +257,10 @@ class _DestinationSearchScreenState
 
     // Map picker confirmed a new location — close the search screen too so the
     // user lands back on the fare estimate screen with the field already filled.
-    if (newLat != null && newLat != prevLat) {
-      final picked = _isPickup ? newSearch.pickup : newSearch.destination;
+    final picked = _isPickup ? newSearch.pickup : newSearch.destination;
+    if (newLat != null &&
+        picked?.isPrecise == true &&
+        (newLat != prevLat || !wasPrecise)) {
       final pickedLat = picked?.lat;
       final pickedLng = picked?.lng;
       if (picked != null && pickedLat != null && pickedLng != null) {
