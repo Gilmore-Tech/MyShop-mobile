@@ -47,8 +47,7 @@ class DocumentsVerificationScreen extends ConsumerWidget {
 
     final uploadedRequired =
         requiredDocs.where((d) => d.status != _DocStatus.missing).length;
-    final oneOfSatisfied =
-        oneOfDocs.any((d) => d.status != _DocStatus.missing);
+    final oneOfSatisfied = oneOfDocs.any((d) => d.status != _DocStatus.missing);
     // The "any one of" group counts as a single requirement towards progress:
     // satisfied as soon as one credential is uploaded.
     final docsCompleted =

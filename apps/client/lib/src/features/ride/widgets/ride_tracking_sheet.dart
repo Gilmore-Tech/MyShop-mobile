@@ -530,7 +530,8 @@ class _ChatRow extends ConsumerWidget {
       children: [
         Expanded(child: chat),
         const SizedBox(width: 10),
-        MyShopCallButton(phoneNumber: phone, size: 48, semanticLabel: 'Call driver'),
+        MyShopCallButton(
+            phoneNumber: phone, size: 48, semanticLabel: 'Call driver'),
       ],
     );
   }

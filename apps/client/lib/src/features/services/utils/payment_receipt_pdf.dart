@@ -213,8 +213,7 @@ pw.Widget _detailsTable(PaymentConfirmation c) {
     children: [
       for (var i = 0; i < rows.length; i++) ...[
         _detailRow(rows[i].$1, rows[i].$2),
-        if (i != rows.length - 1)
-          pw.Container(height: 0.6, color: _divider),
+        if (i != rows.length - 1) pw.Container(height: 0.6, color: _divider),
       ],
     ],
   );

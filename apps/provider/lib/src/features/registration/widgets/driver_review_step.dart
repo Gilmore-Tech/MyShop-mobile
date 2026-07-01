@@ -31,9 +31,8 @@ class DriverReviewStep extends ConsumerWidget {
     final rideCatNames = {
       for (final o in rideCatOptions ?? const []) o.slug: o.name,
     };
-    final rideCategories = draft.rideCategories
-        .map((s) => rideCatNames[s] ?? s)
-        .join(', ');
+    final rideCategories =
+        draft.rideCategories.map((s) => rideCatNames[s] ?? s).join(', ');
 
     // Resolve the home-region id to its display name.
     final regions = ref.watch(regionsProvider).valueOrNull ?? const [];

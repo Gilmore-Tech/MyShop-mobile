@@ -38,7 +38,9 @@ class ServiceCard extends StatelessWidget {
             _ServiceIcon(type: type),
             SizedBox(height: h * 0.014),
             Text(
-              type == ServiceCardType.ride ? 'Book Akwaaba Ride' : 'MyShop Artisan',
+              type == ServiceCardType.ride
+                  ? 'Book Akwaaba Ride'
+                  : 'MyShop Artisan',
               style: TextStyle(
                 fontSize: w * 0.034,
                 fontWeight: FontWeight.w700,

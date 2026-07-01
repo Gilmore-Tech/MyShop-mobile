@@ -226,7 +226,8 @@ class LocalNotificationService {
     if (_initialised) return;
     _initialised = true;
 
-    const androidInit = AndroidInitializationSettings('@drawable/ic_notification');
+    const androidInit =
+        AndroidInitializationSettings('@drawable/ic_notification');
     const iosInit = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,

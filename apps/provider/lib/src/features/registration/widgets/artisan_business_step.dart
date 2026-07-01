@@ -236,8 +236,7 @@ class _CategoriesChips extends StatelessWidget {
         // guard the data path so an out-of-order tap never sneaks past it.
         MyShopToast.show(
           context,
-          message:
-              'You can pick up to $kMaxArtisanCategories services. '
+          message: 'You can pick up to $kMaxArtisanCategories services. '
               'Remove one to add another.',
           type: ToastType.warning,
         );

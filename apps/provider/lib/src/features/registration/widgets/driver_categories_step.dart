@@ -66,7 +66,8 @@ class DriverCategoriesStep extends ConsumerWidget {
                     ),
                   ),
                   TextButton(
-                    onPressed: () => ref.invalidate(rideCategoryOptionsProvider),
+                    onPressed: () =>
+                        ref.invalidate(rideCategoryOptionsProvider),
                     child: const Text('Retry'),
                   ),
                 ],
@@ -74,7 +75,8 @@ class DriverCategoriesStep extends ConsumerWidget {
             ),
             data: (cats) {
               if (cats.isEmpty) {
-                return const Text('No ride categories are available right now.');
+                return const Text(
+                    'No ride categories are available right now.');
               }
               return Column(
                 children: [
@@ -146,7 +148,9 @@ class _CategoryTile extends StatelessWidget {
           children: [
             Icon(
               selected ? Icons.check_circle : Icons.circle_outlined,
-              color: selected ? MyShopColors.primaryGold : MyShopColors.textSecondary,
+              color: selected
+                  ? MyShopColors.primaryGold
+                  : MyShopColors.textSecondary,
             ),
             const SizedBox(width: MyShopSpacing.md),
             Expanded(

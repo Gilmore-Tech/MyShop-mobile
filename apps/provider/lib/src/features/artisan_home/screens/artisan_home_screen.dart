@@ -260,7 +260,8 @@ class _LiveJobFeedSection extends ConsumerWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: MyShopColors.surfaceWhite,
                   borderRadius: BorderRadius.circular(20),

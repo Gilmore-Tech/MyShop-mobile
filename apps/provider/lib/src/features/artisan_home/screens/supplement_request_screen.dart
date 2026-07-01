@@ -170,8 +170,7 @@ class _SupplementRequestScreenState
               const SizedBox(height: MyShopSpacing.sm),
               Text(
                 _errorMessage!,
-                style: const TextStyle(
-                    color: MyShopColors.error, fontSize: 12),
+                style: const TextStyle(color: MyShopColors.error, fontSize: 12),
               ),
             ],
             const SizedBox(height: MyShopSpacing.lg),

@@ -933,10 +933,10 @@ class _PaymentMethodCardState extends ConsumerState<_PaymentMethodCard> {
     final w = widget.w;
     final h = widget.h;
     final momoPhoneCtrl = widget.momoPhoneCtrl;
-    final phoneError = selected.requiresMomoPhone &&
-            momoPhoneCtrl.text.isNotEmpty
-        ? Validators.ghanaPhone(momoPhoneCtrl.text)
-        : null;
+    final phoneError =
+        selected.requiresMomoPhone && momoPhoneCtrl.text.isNotEmpty
+            ? Validators.ghanaPhone(momoPhoneCtrl.text)
+            : null;
 
     return _Card(
       w: w,
@@ -1225,8 +1225,8 @@ class _BottomBarState extends ConsumerState<_BottomBar> {
     final h = widget.h;
     final momoPhoneCtrl = widget.momoPhoneCtrl;
     final requiresMomo = state.selectedMethod.requiresMomoPhone;
-    final isMomoValid = !requiresMomo ||
-        Validators.ghanaPhone(momoPhoneCtrl.text) == null;
+    final isMomoValid =
+        !requiresMomo || Validators.ghanaPhone(momoPhoneCtrl.text) == null;
 
     return Container(
       decoration: const BoxDecoration(
@@ -1308,14 +1308,15 @@ class _BottomBarState extends ConsumerState<_BottomBar> {
                 // notifier falls back to abandon-by-booking + fresh
                 // /initiate when the window expired or the row is no
                 // longer retryable.
-                PaymentPhase.failed when isMomoValid => () =>
-                    ref.read(paymentNotifierProvider.notifier).retryAfterFailure(
-                          jobId: summary.jobId,
-                          summary: summary,
-                          momoPhone: state.selectedMethod.requiresMomoPhone
-                              ? momoPhoneCtrl.text
-                              : null,
-                        ),
+                PaymentPhase.failed when isMomoValid => () => ref
+                    .read(paymentNotifierProvider.notifier)
+                    .retryAfterFailure(
+                      jobId: summary.jobId,
+                      summary: summary,
+                      momoPhone: state.selectedMethod.requiresMomoPhone
+                          ? momoPhoneCtrl.text
+                          : null,
+                    ),
                 PaymentPhase.idle when isMomoValid => () =>
                     ref.read(paymentNotifierProvider.notifier).confirmPayment(
                           jobId: summary.jobId,

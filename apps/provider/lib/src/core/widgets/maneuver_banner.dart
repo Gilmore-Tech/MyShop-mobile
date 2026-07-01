@@ -125,9 +125,7 @@ class _ManeuverContent extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    step.instruction.isNotEmpty
-                        ? step.instruction
-                        : 'Continue',
+                    step.instruction.isNotEmpty ? step.instruction : 'Continue',
                     style: const TextStyle(
                       fontFamily: 'Raleway',
                       fontSize: 13,

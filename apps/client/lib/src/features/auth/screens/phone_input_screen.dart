@@ -78,8 +78,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
         return Consumer(
           builder: (context, ref, _) {
             final state = ref.watch(clientAuthControllerProvider);
-            final blocked =
-                state is AuthBlockedByOtherDevice ? state : null;
+            final blocked = state is AuthBlockedByOtherDevice ? state : null;
             final recoveryStatus =
                 blocked?.recoveryRequestStatus ?? RecoveryRequestStatus.idle;
             final sendingRecovery =
@@ -114,9 +113,8 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: anyInFlight
-                      ? null
-                      : () => controller.forceTakeover(),
+                  onPressed:
+                      anyInFlight ? null : () => controller.forceTakeover(),
                   child: takingOver
                       ? const SizedBox(
                           width: 16,
@@ -131,8 +129,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                       : () async {
                           await controller.requestSessionRecovery();
                           if (!dialogContext.mounted) return;
-                          final after = ref
-                              .read(clientAuthControllerProvider);
+                          final after = ref.read(clientAuthControllerProvider);
                           if (after is AuthBlockedByOtherDevice) {
                             if (after.recoveryRequestStatus ==
                                 RecoveryRequestStatus.sent) {

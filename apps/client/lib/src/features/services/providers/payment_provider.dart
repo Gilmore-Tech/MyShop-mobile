@@ -1579,4 +1579,3 @@ class _PaymentSummaryNotifier
     return '${hours}h ${rem}m';
   }
 }
-

@@ -159,7 +159,8 @@ class _JobLocationSearchScreenState
       padding: EdgeInsets.only(top: h * 0.007),
       children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(w * 0.041, h * 0.012, w * 0.041, h * 0.006),
+          padding:
+              EdgeInsets.fromLTRB(w * 0.041, h * 0.012, w * 0.041, h * 0.006),
           child: Text(
             'RECENT',
             style: TextStyle(

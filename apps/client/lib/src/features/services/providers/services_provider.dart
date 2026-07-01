@@ -178,9 +178,16 @@ IconData _iconForSlug(String slug) {
     'repair-fridge' || 'fridge-repair' => Icons.kitchen,
     'repair-tv' || 'tv-repair' => Icons.tv,
     'repair-phone' || 'phone-repair' => Icons.phone_android,
-    'repair-ac' || 'ac-repair' || 'ac-services' || 'ac' =>
+    'repair-ac' ||
+    'ac-repair' ||
+    'ac-services' ||
+    'ac' =>
       Icons.ac_unit_rounded,
-    'beautician' || 'beauty' || 'salon' || 'hair' || 'makeup' =>
+    'beautician' ||
+    'beauty' ||
+    'salon' ||
+    'hair' ||
+    'makeup' =>
       Icons.face_retouching_natural,
     'vulcanizer' || 'tire' || 'tyre' => Icons.tire_repair,
     'welder' || 'welding' => Icons.local_fire_department_outlined,

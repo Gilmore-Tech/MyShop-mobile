@@ -96,13 +96,10 @@ class Ride {
 
     final driverFirstName = driverObj['firstName'] as String?;
     final driverLastName = driverObj['lastName'] as String?;
-    final assembledDriverName =
-        (driverFirstName != null || driverLastName != null)
-            ? [driverFirstName, driverLastName]
-                .whereType<String>()
-                .join(' ')
-                .trim()
-            : null;
+    final assembledDriverName = (driverFirstName != null ||
+            driverLastName != null)
+        ? [driverFirstName, driverLastName].whereType<String>().join(' ').trim()
+        : null;
     final status =
         RideStatus.fromString(json['status'] as String? ?? 'requested');
 

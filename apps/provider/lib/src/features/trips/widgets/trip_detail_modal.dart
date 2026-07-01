@@ -88,8 +88,8 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
       setState(() {
         _snapshot = _RideSnapshot.fromJson(raw);
         _clientName = (raw['clientName'] ??
-                clientObj?['name'] ??
-                clientObj?['fullName']) as String?;
+            clientObj?['name'] ??
+            clientObj?['fullName']) as String?;
         _clientPhone = showContact ? rawPhone : null;
       });
     } catch (_) {
@@ -237,7 +237,9 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
                                   // ── 5b. Passenger contact (post-trip
                                   // window only — number drops to null once
                                   // it closes) ──
-                                  if ((_clientPhone ?? '').trim().isNotEmpty) ...[
+                                  if ((_clientPhone ?? '')
+                                      .trim()
+                                      .isNotEmpty) ...[
                                     _PassengerContactRow(
                                       name: _clientName ?? 'Passenger',
                                       phone: _clientPhone!,

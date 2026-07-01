@@ -119,10 +119,10 @@ class _ServiceReceiptNotifier
       status: data['status'] as String? ?? '',
       artisanName: artisanName.isNotEmpty ? artisanName : 'Artisan',
       artisanSpecialty: artisanData['specialty'] as String? ?? '',
-      artisanRating: ((artisanData['averageRating'] ?? artisanData['rating'])
-                  as num?)
-              ?.toDouble() ??
-          0.0,
+      artisanRating:
+          ((artisanData['averageRating'] ?? artisanData['rating']) as num?)
+                  ?.toDouble() ??
+              0.0,
       serviceLocation: data['locationAddress'] as String? ?? '',
       workDurationLabel: data['workDurationLabel'] as String? ?? '—',
       serviceCallFeePesewas: serviceCallFeePesewas,
@@ -147,4 +147,3 @@ String _formatReceiptDate(String? raw) {
   if (dt == null) return '';
   return DateFormat('d MMM yyyy · h:mm a').format(dt.toLocal());
 }
-

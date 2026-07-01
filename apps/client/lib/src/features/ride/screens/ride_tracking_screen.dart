@@ -111,7 +111,8 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
       return;
     }
     final rideId = ref.read(activeRideIdProvider);
-    developer.log('[CANCEL] tapped — rideId=$rideId', name: 'RideTrackingScreen');
+    developer.log('[CANCEL] tapped — rideId=$rideId',
+        name: 'RideTrackingScreen');
     if (rideId == null || rideId.isEmpty) {
       // No active ride to cancel — just bail out to home.
       developer.log('[CANCEL] no active rideId, navigating home',

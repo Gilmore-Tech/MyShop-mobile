@@ -160,9 +160,7 @@ class _JobElapsedTimeState extends State<JobElapsedTime> {
             : MyShopColors.primaryGold.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(MyShopRadius.card),
         border: Border.all(
-          color: (isFrozen
-                  ? MyShopColors.success
-                  : MyShopColors.primaryGold)
+          color: (isFrozen ? MyShopColors.success : MyShopColors.primaryGold)
               .withValues(alpha: 0.25),
         ),
       ),

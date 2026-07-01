@@ -316,7 +316,8 @@ class FcmService {
           'relying on onTokenRefresh');
       return;
     }
-    debugPrint('[FCM] obtained token (last 12) …${token.substring(token.length - 12)}');
+    debugPrint(
+        '[FCM] obtained token (last 12) …${token.substring(token.length - 12)}');
     await _register(token);
   }
 
@@ -334,7 +335,8 @@ class FcmService {
         debugPrint('[FCM] APNs token ready on attempt $attempt');
         return true;
       }
-      debugPrint('[FCM] APNs token not yet available (attempt $attempt/$maxAttempts)');
+      debugPrint(
+          '[FCM] APNs token not yet available (attempt $attempt/$maxAttempts)');
       await Future<void>.delayed(Duration(seconds: attempt));
     }
     return false;
@@ -357,8 +359,7 @@ class FcmService {
               platform: _platform,
               role: role,
             );
-        debugPrint(
-            '[FCM] token registered (role=$role, attempt $attempt)');
+        debugPrint('[FCM] token registered (role=$role, attempt $attempt)');
         return;
       } catch (e) {
         debugPrint('[FCM] register attempt $attempt/3 failed: $e');
@@ -453,10 +454,12 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     // us the raw `message.data` map — so we have to normalise here too,
     // otherwise every background / cold-start tap fell through to the
     // default case and dumped the user on /activity.
-    final type = rawType == null ? null : NotificationPayload.normaliseType(rawType);
+    final type =
+        rawType == null ? null : NotificationPayload.normaliseType(rawType);
     final jobId = payload[NotificationPayload.keyJobId] as String?;
     final rideId = payload[NotificationPayload.keyRideId] as String?;
-    debugPrint('[FCM-tap] type=$type (raw=$rawType) jobId=$jobId rideId=$rideId');
+    debugPrint(
+        '[FCM-tap] type=$type (raw=$rawType) jobId=$jobId rideId=$rideId');
 
     switch (type) {
       // ── Ride timeline ─────────────────────────────────────────────────
@@ -573,17 +576,16 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         String peerStatus = '';
         try {
           if (bookingType == ChatBookingType.ride) {
-            final raw =
-                await ref.read(rideServiceProvider).getRide(bookingId);
-            final driver = raw['driver'] as Map<String, dynamic>? ??
-                <String, dynamic>{};
+            final raw = await ref.read(rideServiceProvider).getRide(bookingId);
+            final driver =
+                raw['driver'] as Map<String, dynamic>? ?? <String, dynamic>{};
             final name = (driver['name'] as String?)?.trim();
             if (name != null && name.isNotEmpty) peerName = name;
             peerStatus = _ridePeerStatusFor(raw['status'] as String?);
           } else {
             final raw = await ref.read(jobServiceProvider).getJob(bookingId);
-            final artisan = raw['artisan'] as Map<String, dynamic>? ??
-                <String, dynamic>{};
+            final artisan =
+                raw['artisan'] as Map<String, dynamic>? ?? <String, dynamic>{};
             final name = ((artisan['businessName'] ??
                     artisan['fullName'] ??
                     artisan['name']) as String?)

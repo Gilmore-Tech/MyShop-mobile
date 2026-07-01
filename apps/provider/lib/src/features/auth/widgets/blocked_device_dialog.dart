@@ -57,7 +57,8 @@ Future<void> showBlockedByOtherDeviceDialog(
             ),
             actions: [
               TextButton(
-                onPressed: anyInFlight ? null : () => controller.forceTakeover(),
+                onPressed:
+                    anyInFlight ? null : () => controller.forceTakeover(),
                 child: takingOver
                     ? const SizedBox(
                         width: 16,

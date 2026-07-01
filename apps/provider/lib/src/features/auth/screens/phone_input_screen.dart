@@ -122,9 +122,8 @@ class _ProviderPhoneInputScreenState
           privacyPolicyAccepted: true,
           role: role,
           email: draft.email.isNotEmpty ? draft.email : null,
-          rideCategories: draft.rideCategories.isNotEmpty
-              ? draft.rideCategories
-              : null,
+          rideCategories:
+              draft.rideCategories.isNotEmpty ? draft.rideCategories : null,
           regionId: draft.regionId.isNotEmpty ? draft.regionId : null,
           referralCode: draft.referralCode.trim().isNotEmpty
               ? draft.referralCode.trim()
@@ -163,8 +162,7 @@ class _ProviderPhoneInputScreenState
         return Consumer(
           builder: (context, ref, _) {
             final state = ref.watch(authControllerProvider);
-            final blocked =
-                state is AuthBlockedByOtherDevice ? state : null;
+            final blocked = state is AuthBlockedByOtherDevice ? state : null;
             final recoveryStatus =
                 blocked?.recoveryRequestStatus ?? RecoveryRequestStatus.idle;
             final sendingRecovery =
@@ -199,9 +197,8 @@ class _ProviderPhoneInputScreenState
               ),
               actions: [
                 TextButton(
-                  onPressed: anyInFlight
-                      ? null
-                      : () => controller.forceTakeover(),
+                  onPressed:
+                      anyInFlight ? null : () => controller.forceTakeover(),
                   child: takingOver
                       ? const SizedBox(
                           width: 16,

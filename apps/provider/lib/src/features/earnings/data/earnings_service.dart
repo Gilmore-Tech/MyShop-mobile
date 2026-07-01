@@ -241,4 +241,3 @@ class DriverPayout {
     return '₵${ghs.toStringAsFixed(2)}';
   }
 }
-

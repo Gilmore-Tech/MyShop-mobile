@@ -30,9 +30,8 @@ final chatControllerProvider = FutureProvider<ChatController?>((ref) async {
   // the controller when the human switches between driver and artisan,
   // which is the correct moment to flip the chat identity tuple.
   final providerType = ref.watch(providerTypeProvider);
-  final selfRole = providerType.isDriver
-      ? ChatSenderRole.driver
-      : ChatSenderRole.artisan;
+  final selfRole =
+      providerType.isDriver ? ChatSenderRole.driver : ChatSenderRole.artisan;
 
   final controller = ChatController(
     rest: rest,

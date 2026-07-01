@@ -365,7 +365,8 @@ class FcmService {
           'relying on onTokenRefresh');
       return;
     }
-    debugPrint('[FCM] obtained token (last 12) …${token.substring(token.length - 12)}');
+    debugPrint(
+        '[FCM] obtained token (last 12) …${token.substring(token.length - 12)}');
     await _register(token);
   }
 
@@ -383,7 +384,8 @@ class FcmService {
         debugPrint('[FCM] APNs token ready on attempt $attempt');
         return true;
       }
-      debugPrint('[FCM] APNs token not yet available (attempt $attempt/$maxAttempts)');
+      debugPrint(
+          '[FCM] APNs token not yet available (attempt $attempt/$maxAttempts)');
       await Future<void>.delayed(Duration(seconds: attempt));
     }
     return false;
@@ -406,8 +408,7 @@ class FcmService {
               platform: _platform,
               role: role,
             );
-        debugPrint(
-            '[FCM] token registered (role=$role, attempt $attempt)');
+        debugPrint('[FCM] token registered (role=$role, attempt $attempt)');
         return;
       } catch (e) {
         debugPrint('[FCM] register attempt $attempt/3 failed: $e');
@@ -517,7 +518,8 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     // direct paths (onMessageOpenedApp + getInitialMessage) hand us the
     // raw `message.data` map — so we have to normalise here too, otherwise
     // every background / cold-start tap fell through to the default case.
-    final type = rawType == null ? null : NotificationPayload.normaliseType(rawType);
+    final type =
+        rawType == null ? null : NotificationPayload.normaliseType(rawType);
     final router = ref.read(goRouterProvider);
     debugPrint('[FCM-tap] type=$type (raw=$rawType)');
 

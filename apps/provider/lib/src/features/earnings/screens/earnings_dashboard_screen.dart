@@ -278,8 +278,7 @@ class EarningsDashboardScreen extends ConsumerWidget {
                     ? ElevatedButton.icon(
                         onPressed: () => showPayCommissionSheet(
                           context,
-                          owedPesewas:
-                              summary?.cashCommissionOwedPesewas ?? 0,
+                          owedPesewas: summary?.cashCommissionOwedPesewas ?? 0,
                         ),
                         icon: const Icon(Icons.payments_rounded, size: 18),
                         label: const Text('PAY COMMISSION'),
@@ -580,9 +579,8 @@ class _BalanceCard extends StatelessWidget {
     final weekDisplay = _fmtGhs(weekPesewas);
     final headline = isInArrears ? 'Owings' : 'Available Balance';
     final badgeText = isInArrears ? 'Owes platform' : 'Active';
-    final amountColor = isInArrears
-        ? MyShopColors.error.withValues(alpha: 0.95)
-        : Colors.white;
+    final amountColor =
+        isInArrears ? MyShopColors.error.withValues(alpha: 0.95) : Colors.white;
 
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.lg),

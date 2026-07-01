@@ -54,10 +54,7 @@ class EditProfileState {
   }
 
   bool get canSave =>
-      !isSaving &&
-      !isSaved &&
-      nameError == null &&
-      emailError == null;
+      !isSaving && !isSaved && nameError == null && emailError == null;
 
   EditProfileState copyWith({
     String? fullName,

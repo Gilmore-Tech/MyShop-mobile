@@ -1757,9 +1757,8 @@ class _AwaitingPaymentReceiptTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isCash = method == 'cash';
-    final label = isCash
-        ? 'Awaiting artisan to confirm receipt'
-        : 'Processing payment…';
+    final label =
+        isCash ? 'Awaiting artisan to confirm receipt' : 'Processing payment…';
     return Container(
       width: double.infinity,
       height: h * 0.062,

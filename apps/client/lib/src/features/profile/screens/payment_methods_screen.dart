@@ -533,10 +533,9 @@ class _AddMethodSheetState extends ConsumerState<_AddMethodSheet> {
             width: double.infinity,
             height: h * 0.062,
             child: ElevatedButton(
-              onPressed:
-                  (_selectedMomo != null && _isPhoneValid && !_loading)
-                      ? _saveMomo
-                      : null,
+              onPressed: (_selectedMomo != null && _isPhoneValid && !_loading)
+                  ? _saveMomo
+                  : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: MyShopColors.primaryGold,
                 foregroundColor: Colors.white,

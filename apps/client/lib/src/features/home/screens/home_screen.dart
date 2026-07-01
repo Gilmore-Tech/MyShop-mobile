@@ -284,8 +284,7 @@ class _SectionHeader extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (leadingIcon != null) ...[
-            Icon(leadingIcon,
-                size: w * 0.036, color: MyShopColors.primaryGold),
+            Icon(leadingIcon, size: w * 0.036, color: MyShopColors.primaryGold),
             SizedBox(width: w * 0.015),
           ],
           Text(

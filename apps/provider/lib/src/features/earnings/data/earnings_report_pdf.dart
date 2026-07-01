@@ -328,8 +328,8 @@ class EarningsReportPdf {
         for (final p in series)
           pw.TableRow(
             children: [
-              _tableCell(_formatBucketDate(p.bucketStart, granularity),
-                  cellStyle),
+              _tableCell(
+                  _formatBucketDate(p.bucketStart, granularity), cellStyle),
               _tableCell('${p.count}', cellStyle, align: pw.Alignment.center),
               _tableCell('GHS ${_fmtGhs(p.grossPesewas)}', cellStyle,
                   align: pw.Alignment.centerRight),
@@ -391,8 +391,7 @@ class EarningsReportPdf {
   static pw.Widget _summaryCell(_SummaryCellData c) {
     final bg = c.highlight ? _darkSlate : PdfColors.white;
     final fg = c.highlight ? PdfColors.white : _textPrimary;
-    final subFg =
-        c.highlight ? PdfColor.fromInt(0x99FFFFFF) : _textSecondary;
+    final subFg = c.highlight ? PdfColor.fromInt(0x99FFFFFF) : _textSecondary;
 
     return pw.Container(
       padding: const pw.EdgeInsets.all(10),

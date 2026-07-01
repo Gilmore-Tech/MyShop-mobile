@@ -56,7 +56,8 @@ class DriverFoundScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _confirmAndCancelRide(BuildContext context, WidgetRef ref) async {
+  Future<void> _confirmAndCancelRide(
+      BuildContext context, WidgetRef ref) async {
     final rideId = ref.read(activeRideIdProvider);
     if (rideId == null || rideId.isEmpty) {
       context.go(AppRoutes.home);
@@ -92,7 +93,8 @@ class DriverFoundScreen extends ConsumerWidget {
             rideId,
             reason: 'rider_cancelled',
           );
-      final feePesewas = (result['cancellationFeePesewas'] as num?)?.toInt() ?? 0;
+      final feePesewas =
+          (result['cancellationFeePesewas'] as num?)?.toInt() ?? 0;
       if (feePesewas > 0) {
         final fee = (feePesewas / 100).toStringAsFixed(2);
         message = 'Ride cancelled. Cancellation fee: GHS $fee';

@@ -104,8 +104,7 @@ class NavGuidance {
     }
 
     final current = route.steps[idx];
-    final upcoming =
-        idx + 1 < route.steps.length ? route.steps[idx + 1] : null;
+    final upcoming = idx + 1 < route.steps.length ? route.steps[idx + 1] : null;
     final distToManeuver = _haversineMeters(driver, current.endLocation);
     return NavProgress(
       currentStepIndex: idx,
@@ -228,8 +227,7 @@ class NavVoiceCoach {
       await _tts.stop();
       await _tts.speak(phrase);
     } catch (e) {
-      developer.log('TTS speak failed: $e',
-          name: 'NavVoiceCoach', level: 700);
+      developer.log('TTS speak failed: $e', name: 'NavVoiceCoach', level: 700);
     }
   }
 

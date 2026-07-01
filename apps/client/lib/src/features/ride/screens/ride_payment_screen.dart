@@ -127,8 +127,7 @@ class _RidePaymentScreenState extends ConsumerState<RidePaymentScreen> {
   Widget build(BuildContext context) {
     // Auto-advance to the receipt flow once the charge settles.
     ref.listen<RidePaymentState>(ridePaymentNotifierProvider, (prev, next) {
-      if (next.phase == RidePaymentPhase.settled &&
-          prev?.phase != next.phase) {
+      if (next.phase == RidePaymentPhase.settled && prev?.phase != next.phase) {
         context.go(AppRoutes.rideComplete);
       }
       // 409 PAYMENT_ALREADY_INITIATED — pop the timing-aware

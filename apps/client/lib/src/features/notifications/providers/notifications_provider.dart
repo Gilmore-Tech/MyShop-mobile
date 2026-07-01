@@ -99,4 +99,3 @@ final notifsProvider =
   final notificationService = ref.watch(notificationServiceProvider);
   return NotifsNotifier(notificationService);
 });
-

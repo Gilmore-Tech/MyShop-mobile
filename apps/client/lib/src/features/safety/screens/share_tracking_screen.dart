@@ -58,8 +58,9 @@ class _ShareTrackingScreenState extends ConsumerState<ShareTrackingScreen> {
       final expiresRaw = res['expiresAt'] as String?;
       setState(() {
         _shareUrl = url;
-        _expiresAt =
-            expiresRaw == null ? null : DateTime.tryParse(expiresRaw)?.toLocal();
+        _expiresAt = expiresRaw == null
+            ? null
+            : DateTime.tryParse(expiresRaw)?.toLocal();
         _isGenerating = false;
       });
     } on ApiException catch (e) {
@@ -371,10 +372,26 @@ class _ShareMethods extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final methods = <({IconData icon, String label, Color color, VoidCallback onTap})>[
-      (icon: Icons.sms_rounded, label: 'SMS', color: MyShopColors.success, onTap: onSms),
-      (icon: Icons.share_rounded, label: 'Share', color: MyShopColors.info, onTap: onShare),
-      (icon: Icons.copy_all_rounded, label: 'Copy', color: MyShopColors.darkSlate, onTap: onCopy),
+    final methods =
+        <({IconData icon, String label, Color color, VoidCallback onTap})>[
+      (
+        icon: Icons.sms_rounded,
+        label: 'SMS',
+        color: MyShopColors.success,
+        onTap: onSms
+      ),
+      (
+        icon: Icons.share_rounded,
+        label: 'Share',
+        color: MyShopColors.info,
+        onTap: onShare
+      ),
+      (
+        icon: Icons.copy_all_rounded,
+        label: 'Copy',
+        color: MyShopColors.darkSlate,
+        onTap: onCopy
+      ),
     ];
     return Row(
       children: methods.map((m) {
