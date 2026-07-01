@@ -170,7 +170,7 @@ class _JobActivityDetailNotifier
       artisanJobCount: (artisan['completedJobs'] as num?)?.toInt(),
       artisanVerified: artisan['verified'] as bool? ?? false,
       artisanPhotoUrl: artisan['photoUrl'] as String?,
-      artisanPhone: (artisan['phone'] ?? artisan['maskedPhone']) as String?,
+      artisanPhone: artisanPhone,
       agreedPricePesewas: agreed,
       supplementPesewas: supplement,
       totalPesewas: total,

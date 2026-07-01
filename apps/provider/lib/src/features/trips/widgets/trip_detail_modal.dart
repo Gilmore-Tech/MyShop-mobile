@@ -75,14 +75,22 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
           await ref.read(rideServiceProvider).getRide(widget.trip.rideId);
       if (!mounted) return;
       final clientObj = raw['client'] as Map<String, dynamic>?;
+      final completedAt = DateTime.tryParse(
+          (raw['completedAt'] ?? raw['completed_at']) as String? ?? '');
+      final rawPhone = (raw['clientPhone'] ??
+          clientObj?['phone'] ??
+          clientObj?['maskedPhone']) as String?;
+      // Read-only number, shown only while the completed trip is inside the
+      // 24h post-trip contact window. No call button — once completed, done.
+      final showContact = _isCompleted &&
+          isWithinPostTripContactWindow(completedAt) &&
+          (rawPhone?.trim().isNotEmpty ?? false);
       setState(() {
         _snapshot = _RideSnapshot.fromJson(raw);
         _clientName = (raw['clientName'] ??
                 clientObj?['name'] ??
                 clientObj?['fullName']) as String?;
-        _clientPhone = (raw['clientPhone'] ??
-                clientObj?['phone'] ??
-                clientObj?['maskedPhone']) as String?;
+        _clientPhone = showContact ? rawPhone : null;
       });
     } catch (_) {
       // Network / 404 — leave _snapshot null. The placeholder map + dashes
@@ -322,17 +330,26 @@ class _PassengerContactRow extends StatelessWidget {
                     color: MyShopColors.textPrimary,
                   ),
                 ),
-                Text(
-                  phone,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: MyShopColors.textSecondary,
-                  ),
+                Row(
+                  children: [
+                    const Icon(Icons.phone_rounded,
+                        size: 13, color: MyShopColors.textSecondary),
+                    const SizedBox(width: 5),
+                    Text(
+                      phone,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: MyShopColors.textPrimary,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-          MyShopCallButton(phoneNumber: phone, semanticLabel: 'Call passenger'),
+          // History is read-only — no call button. The passenger number
+          // shows as text only, and only during the 24h post-trip window.
         ],
       ),
     );

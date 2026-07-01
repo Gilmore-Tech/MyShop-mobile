@@ -178,7 +178,7 @@ class _RideDetailNotifier
           ' · ${driver['plateNumber'] ?? ''}',
       driverRating: (driver['rating'] as num?)?.toDouble() ?? 0.0,
       driverPhotoUrl: driver['photoUrl'] as String?,
-      driverPhone: (driver['phone'] ?? driver['maskedPhone']) as String?,
+      driverPhone: driverPhone,
       durationMins: (ride['actualDurationMins'] as num?)?.toInt() ??
           (ride['estimatedDurationMins'] as num?)?.toInt() ??
           0,
