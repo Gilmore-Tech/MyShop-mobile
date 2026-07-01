@@ -39,8 +39,6 @@ class JobService {
           if (search != null && search.isNotEmpty) 'q': search,
         },
       );
-      // ignore: avoid_print
-      print('[JobService] raw response.data: ${response.data}');
       final body = response.data;
       // Handle various response shapes from the backend.
       if (body is Map<String, dynamic>) {
@@ -131,19 +129,6 @@ class JobService {
     try {
       final response = await _dio.get('/jobs/$jobId');
       final data = _unwrap(response) as Map<String, dynamic>;
-      // Diagnostic — surface what the backend actually returns for a
-      // single-job fetch so we can confirm whether `client: {...}` is
-      // present and what shape it has. Remove once the artisan flow is
-      // confirmed showing real names end-to-end.
-      // ignore: avoid_print
-      print(
-        '[JobService.getJob] $jobId status=${data['status']} '
-        'completedAt=${data['completedAt']} '
-        'clientConfirmedCompleteAt=${data['clientConfirmedCompleteAt']} '
-        'artisanMarkedCompleteAt=${data['artisanMarkedCompleteAt']} '
-        'topKeys=${data.keys.toList()} '
-        'client=${data['client']} clientName=${data['clientName']}',
-      );
       return data;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -177,8 +162,6 @@ class JobService {
         'durationMinutes': durationMinutes,
         if (notes != null && notes.trim().isNotEmpty) 'message': notes.trim(),
       };
-      // ignore: avoid_print
-      print('[JobService] submitBid POST /jobs/$jobId/bids payload=$payload');
       final response = await _dio.post(
         '/jobs/$jobId/bids',
         data: payload,
@@ -186,15 +169,8 @@ class JobService {
             ? null
             : Options(headers: {'Idempotency-Key': clientRequestId}),
       );
-      // ignore: avoid_print
-      print(
-        '[JobService] submitBid response=${response.statusCode} data=${response.data}',
-      );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
-      // ignore: avoid_print
-      print('[JobService] submitBid FAILED status=${e.response?.statusCode} '
-          'data=${e.response?.data} message=${e.message}');
       throw ApiException.fromDioException(e);
     }
   }

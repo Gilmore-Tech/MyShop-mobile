@@ -119,8 +119,11 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
   Widget build(BuildContext context) {
     final router = ref.watch(goRouterProvider);
 
-    // Activate the FCM-tap → GoRouter bridge now that the router exists.
-    ref.watch(fcmTapBridgeProvider);
+    // Construct FirebaseMessaging only after asynchronous startup has
+    // initialized Firebase; doing it on the first frame can throw.
+    if (ref.watch(firebaseReadyProvider)) {
+      ref.watch(fcmTapBridgeProvider);
+    }
 
     return MaterialApp.router(
       title: 'MyShop Provider',

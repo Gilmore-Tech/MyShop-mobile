@@ -1,7 +1,6 @@
 import Flutter
 import UIKit
 import GoogleMaps
-import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -18,22 +17,10 @@ import UserNotifications
       GMSServices.provideAPIKey(key)
     }
 
-    // APNs registration backstop — see apps/client/ios/Runner/AppDelegate.swift
-    // for the long-form rationale. firebase_messaging's swizzled registration
-    // doesn't fire reliably on all device/build combos; we force it here.
-    UNUserNotificationCenter.current().requestAuthorization(
-      options: [.alert, .badge, .sound]
-    ) { granted, error in
-      if let error = error {
-        NSLog("[APNs] requestAuthorization error: \(error.localizedDescription)")
-      }
-      if granted {
-        DispatchQueue.main.async {
-          application.registerForRemoteNotifications()
-        }
-      } else {
-        NSLog("[APNs] requestAuthorization not granted")
-      }
+    // Obtain the APNs token without prompting on the launch screen.
+    // FcmService requests visible notification permission after first paint.
+    DispatchQueue.main.async {
+      application.registerForRemoteNotifications()
     }
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
@@ -43,8 +30,7 @@ import UserNotifications
     _ application: UIApplication,
     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
   ) {
-    let hex = deviceToken.map { String(format: "%02x", $0) }.joined()
-    NSLog("[APNs] registered, token=\(hex.prefix(12))…\(hex.suffix(8))")
+    NSLog("[APNs] registered")
     super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
   }
 

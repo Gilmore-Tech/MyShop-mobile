@@ -52,7 +52,7 @@ jobs:
           cache: true
 
       - name: Install Melos
-        run: dart pub global activate melos
+        run: dart pub global activate melos 6.3.2
 
       - name: Bootstrap workspace
         run: melos bootstrap
@@ -106,15 +106,22 @@ jobs:
       # ── Service-key injection ─────────────────────────────────────────
 
       - name: Write .env.prod
+        env:
+          MAPS_KEY: ${{ matrix.app == 'client' && secrets.GOOGLE_MAPS_API_KEY_CLIENT_IOS || secrets.GOOGLE_MAPS_API_KEY_PROVIDER_IOS }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+          MAPBOX_STYLE_URL: ${{ secrets.MAPBOX_STYLE_URL }}
         run: |
-          GMAPS_KEY=$([ "${{ matrix.app }}" = "client" ] \
-            && echo "${{ secrets.GOOGLE_MAPS_API_KEY_CLIENT }}" \
-            || echo "${{ secrets.GOOGLE_MAPS_API_KEY_PROVIDER }}")
-          cat > .env.prod <<EOF
-          GOOGLE_MAPS_API_KEY=${GMAPS_KEY}
-          MAPBOX_ACCESS_TOKEN=${{ secrets.MAPBOX_ACCESS_TOKEN }}
-          MAPBOX_STYLE_URL=${{ secrets.MAPBOX_STYLE_URL }}
-          EOF
+          test -n "$MAPS_KEY"
+          test -n "$API_BASE_URL"
+          if [ "${{ matrix.app }}" = "client" ]; then
+            printf 'GOOGLE_MAPS_API_KEY_CLIENT_IOS=%s\n' "$MAPS_KEY" > .env.prod
+          else
+            printf 'GOOGLE_MAPS_API_KEY_PROVIDER_IOS=%s\n' "$MAPS_KEY" > .env.prod
+          fi
+          printf 'MAPBOX_ACCESS_TOKEN=%s\n' "$MAPBOX_ACCESS_TOKEN" >> .env.prod
+          printf 'MAPBOX_STYLE_URL=%s\n' "$MAPBOX_STYLE_URL" >> .env.prod
+          printf 'API_BASE_URL=%s\n' "$API_BASE_URL" >> .env.prod
 
       # ── Build ─────────────────────────────────────────────────────────
       # tool/build.sh handles writing Secrets.xcconfig and calling

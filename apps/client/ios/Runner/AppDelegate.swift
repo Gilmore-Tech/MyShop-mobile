@@ -1,7 +1,6 @@
 import Flutter
 import UIKit
 import GoogleMaps
-import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -19,29 +18,11 @@ import UserNotifications
       GMSServices.provideAPIKey(key)
     }
 
-    // APNs registration backstop. The firebase_messaging plugin normally
-    // requests permission and calls `application.registerForRemoteNotifications()`
-    // via swizzling once its requestPermission() runs. On some device/build
-    // combos that swizzled call never fires, APNs registration silently
-    // never happens, and FCM then surfaces `apns-token-not-set` on
-    // getToken() — which is exactly the symptom we hit on this build.
-    //
-    // Forcing the auth request + registration in native code is idempotent
-    // (iOS returns the cached token when registration already succeeded)
-    // and removes the dependency on plugin swizzling timing.
-    UNUserNotificationCenter.current().requestAuthorization(
-      options: [.alert, .badge, .sound]
-    ) { granted, error in
-      if let error = error {
-        NSLog("[APNs] requestAuthorization error: \(error.localizedDescription)")
-      }
-      if granted {
-        DispatchQueue.main.async {
-          application.registerForRemoteNotifications()
-        }
-      } else {
-        NSLog("[APNs] requestAuthorization not granted")
-      }
+    // Obtain an APNs token without presenting a permission prompt over the
+    // launch screen. FcmService owns the single user-facing request after
+    // Flutter has painted its first frame.
+    DispatchQueue.main.async {
+      application.registerForRemoteNotifications()
     }
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
@@ -55,8 +36,7 @@ import UserNotifications
     _ application: UIApplication,
     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
   ) {
-    let hex = deviceToken.map { String(format: "%02x", $0) }.joined()
-    NSLog("[APNs] registered, token=\(hex.prefix(12))…\(hex.suffix(8))")
+    NSLog("[APNs] registered")
     super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
   }
 

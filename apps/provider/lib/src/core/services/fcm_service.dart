@@ -365,8 +365,7 @@ class FcmService {
           'relying on onTokenRefresh');
       return;
     }
-    debugPrint(
-        '[FCM] obtained token (last 12) …${token.substring(token.length - 12)}');
+    debugPrint('[FCM] obtained device token');
     await _register(token);
   }
 
@@ -461,6 +460,10 @@ class FcmService {
     }
   }
 }
+
+/// Flips only after Firebase.initializeApp succeeds. ProviderApp uses this to
+/// avoid constructing FirebaseMessaging while Firebase is still starting.
+final firebaseReadyProvider = StateProvider<bool>((_) => false);
 
 final fcmServiceProvider = Provider<FcmService>((ref) {
   return FcmService(ref);

@@ -143,6 +143,12 @@ final clientAuthControllerProvider =
 
 final hasSeenOnboardingProvider = StateProvider<bool>((_) => false);
 
+/// True once the persisted onboarding preference has either loaded or hit
+/// its startup deadline. The router keeps the Flutter splash visible until
+/// then, preventing a returning user from briefly flashing the onboarding
+/// screen while secure storage is still opening.
+final onboardingFlagLoadedProvider = StateProvider<bool>((_) => false);
+
 /// Mirrors the SharedPreferences `app_pref_replay_onboarding` flag. The
 /// AppPreferences screen sets it to true; the router redirects authenticated
 /// users to /onboarding while it's true; the OnboardingScreen clears it
@@ -196,7 +202,9 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
     _requesting = true;
     state = const AuthUnauthenticated(isLoading: true);
     try {
-      debugPrint('[Auth] submitPhone: normalized phone = "$phone"');
+      if (kDebugMode) {
+        debugPrint('[Auth] submitPhone called with a normalized phone number');
+      }
       // Attempt to send OTP directly. If a client account exists, OTP is sent.
       // If not, the backend returns a 404 and we redirect to sign-up.
       // (We don't rely on /auth/check-phone's role list because it may be

@@ -1,7 +1,7 @@
 # MyShop Mobile — Project Status
 
 > Last updated: **2026-04-12**
-> Backend: `https://myshop-api-2hy2.onrender.com/v1/` (healthy)
+> Backend: `https://api.myshop.gilmoretechnologiesgh.com/v1/` (healthy)
 
 ---
 

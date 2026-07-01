@@ -214,6 +214,11 @@ final authControllerProvider =
 /// onboarding screen.
 final hasSeenOnboardingProvider = StateProvider<bool>((_) => false);
 
+/// True once the persisted onboarding preference has loaded or its bounded
+/// startup wait has elapsed. GoRouter stays on the Flutter splash until this
+/// flips, avoiding a first-frame onboarding/sign-in flicker.
+final onboardingFlagLoadedProvider = StateProvider<bool>((_) => false);
+
 /// Call once at app startup (before runApp) to hydrate [hasSeenOnboardingProvider].
 Future<void> loadOnboardingFlag(ProviderContainer container) async {
   final storage = container.read(tokenStorageProvider);
@@ -263,7 +268,9 @@ class AuthController extends StateNotifier<AuthState> {
   /// (only the 401 interceptor may force a logout).
   Future<void> bootstrap() async {
     try {
-      final user = await _repo.bootstrap();
+      final user = await _repo
+          .bootstrap()
+          .timeout(const Duration(seconds: 8), onTimeout: () => null);
       if (user != null) {
         final savedRole = await _tokenStorage.readRole();
         final restoredRole = savedRole != null

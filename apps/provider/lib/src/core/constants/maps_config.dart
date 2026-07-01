@@ -30,17 +30,19 @@ class MapsConfig {
   /// This app's iOS bundle identifier — sent as `X-Ios-Bundle-Identifier`.
   static const String iosBundleId = 'com.gilmoretech.myshopprovider';
 
-  /// SHA-1 fingerprint (colon-separated, uppercase — keytool format) of the
-  /// signing certificate that is whitelisted on the Android key for THIS
-  /// build. Supplied per build via `--dart-define=MAPS_ANDROID_CERT_SHA1=…`
-  /// because debug and release builds present different certificates and the
-  /// `X-Android-Cert` header value must match one allowed on the key:
+  /// SHA-1 fingerprint of the signing certificate whitelisted on the Android
+  /// key for THIS build. The env file may use keytool/Cloud Console's
+  /// colon-delimited form; [restApiHeaders] normalizes it to the delimiter-
+  /// free Base16 format required by the `X-Android-Cert` HTTP header.
   ///   - `tool/run.sh`   → the debug-keystore SHA-1
   ///   - `tool/build.sh` → the upload / Play App Signing SHA-1
   static const String androidCertSha1 = String.fromEnvironment(
     'MAPS_ANDROID_CERT_SHA1',
     defaultValue: '',
   );
+
+  static String normalizeAndroidCertSha1(String value) =>
+      value.replaceAll(':', '').trim().toUpperCase();
 
   /// Headers that identify this app to the Google Maps **web-service** APIs
   /// (Directions, Roads, Static Maps) so a platform-restricted key accepts a
@@ -55,10 +57,11 @@ class MapsConfig {
   /// *unrestricted* key keeps working unchanged.
   static Map<String, String> get restApiHeaders {
     if (Platform.isAndroid) {
-      if (androidCertSha1.isEmpty) return const {};
+      final cert = normalizeAndroidCertSha1(androidCertSha1);
+      if (cert.isEmpty) return const {};
       return {
         'X-Android-Package': androidPackage,
-        'X-Android-Cert': androidCertSha1,
+        'X-Android-Cert': cert,
       };
     }
     if (Platform.isIOS) {

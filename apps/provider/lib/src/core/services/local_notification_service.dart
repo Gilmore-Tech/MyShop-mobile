@@ -246,21 +246,29 @@ class LocalNotificationService {
   );
 
   bool _initialised = false;
+  Future<void>? _initializing;
 
   void Function(Map<String, dynamic> payload)? _onTap;
   set onTap(void Function(Map<String, dynamic> payload)? handler) =>
       _onTap = handler;
 
-  Future<void> init() async {
-    if (_initialised) return;
-    _initialised = true;
+  Future<void> init() {
+    if (_initialised) return Future<void>.value();
+    return _initializing ??= _initialize().whenComplete(() {
+      _initializing = null;
+    });
+  }
 
+  Future<void> _initialize() async {
     const androidInit =
         AndroidInitializationSettings('@drawable/ic_notification');
     const iosInit = DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
+      // Permission belongs to FcmService after the first Flutter frame.
+      // Keeping it out of channel initialization prevents an OS dialog from
+      // holding main() on the native splash.
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
     );
 
     await _plugin.initialize(
@@ -283,21 +291,7 @@ class LocalNotificationService {
     await androidPlugin?.createNotificationChannel(_incomingRequestChannel);
     await androidPlugin?.createNotificationChannel(_timelineChannel);
     await androidPlugin?.createNotificationChannel(_chatChannel);
-    // requestNotificationsPermission() ultimately calls
-    // ContextCompat.checkSelfPermission, which needs an Activity-tier
-    // Context — non-existent inside the FCM background isolate. The
-    // resulting NullPointerException used to bubble out of init() and
-    // abort _renderFromRemote, which is exactly why background
-    // job_request pushes silently dropped instead of rendering the
-    // call-style local notification. Foreground init still grants the
-    // permission as before; background init is now a no-op for the
-    // permission prompt and reuses whatever was granted in foreground.
-    try {
-      await androidPlugin?.requestNotificationsPermission();
-    } catch (e) {
-      debugPrint('[LocalNotificationService] requestNotificationsPermission '
-          'skipped (likely background isolate): $e');
-    }
+    _initialised = true;
   }
 
   /// Show a persistent banner for an incoming job. Used by FCM background

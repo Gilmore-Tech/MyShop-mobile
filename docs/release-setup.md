@@ -18,11 +18,16 @@ Estimated one-time work on your side: **3–6 hours**, mostly waiting on Apple's
 ## Part 0 — Big picture
 
 ```
-.env.prod (your laptop only)        GitHub Secrets (CI)
-  GOOGLE_MAPS_API_KEY_CLIENT    →   GOOGLE_MAPS_API_KEY_CLIENT
-  GOOGLE_MAPS_API_KEY_PROVIDER  →   GOOGLE_MAPS_API_KEY_PROVIDER
-  MAPBOX_ACCESS_TOKEN           →   MAPBOX_ACCESS_TOKEN
-  MAPBOX_STYLE_URL              →   MAPBOX_STYLE_URL
+.env.prod (your laptop only)             GitHub Secrets (CI)
+  GOOGLE_MAPS_API_KEY_CLIENT_ANDROID →   GOOGLE_MAPS_API_KEY_CLIENT_ANDROID
+  GOOGLE_MAPS_API_KEY_CLIENT_IOS     →   GOOGLE_MAPS_API_KEY_CLIENT_IOS
+  GOOGLE_MAPS_API_KEY_PROVIDER_ANDROID → GOOGLE_MAPS_API_KEY_PROVIDER_ANDROID
+  GOOGLE_MAPS_API_KEY_PROVIDER_IOS   →   GOOGLE_MAPS_API_KEY_PROVIDER_IOS
+  MAPS_ANDROID_CERT_SHA1_CLIENT      →   MAPS_ANDROID_CERT_SHA1_CLIENT
+  MAPS_ANDROID_CERT_SHA1_PROVIDER    →   MAPS_ANDROID_CERT_SHA1_PROVIDER
+  API_BASE_URL                       →   API_BASE_URL
+  MAPBOX_ACCESS_TOKEN                →   MAPBOX_ACCESS_TOKEN
+  MAPBOX_STYLE_URL                   →   MAPBOX_STYLE_URL
                                     KEYSTORE_BASE64
                                     KEYSTORE_PASSWORD
                                     KEY_ALIAS
@@ -251,18 +256,18 @@ ssh-keygen -t ed25519 -f ~/secure/myshop-match-deploy-key -C "myshop-match-ci" -
 
 **Time: 30 minutes**
 
-For each app, create a separate Google Maps API key:
+Create four Google Maps API keys — one per app and platform. Google Cloud
+allows one application-restriction type per key, so an Android-restricted key
+cannot also carry an iOS bundle restriction.
 
 1. <https://console.cloud.google.com> → APIs & Services → Credentials.
-2. **Create credentials** → API key. Name it `myshop-client-maps` (and a second one `myshop-provider-maps`).
-3. Click each key → Edit:
-   - **Application restrictions:**
-     - **Android apps:** add two entries per app:
-       - Package: `com.gilmoretech.myshopclient`, SHA-1: your upload-key fingerprint from §1.3.
-       - Package: `com.gilmoretech.myshopclient`, SHA-1: the Play App Signing fingerprint (you'll get this AFTER uploading the first AAB to Play Console → Setup → App integrity).
-     - **iOS apps:** add the bundle ID `com.gilmoretech.myshopclient`.
-   - **API restrictions:** restrict to: Maps SDK for Android, Maps SDK for iOS, Places API, Geocoding API. Disable everything else.
-4. Repeat for the Provider key with that app's package + bundle ID.
+2. Create `myshop-client-android-maps` and restrict it to Android package
+   `com.gilmoretech.myshopclient`. Add both the upload SHA-1 and Play App
+   Signing SHA-1. Restrict APIs to the Android SDK and required web services.
+3. Create `myshop-client-ios-maps`, restrict it to iOS bundle
+   `com.gilmoretech.myshopclient`, and allow the iOS SDK plus required web
+   services.
+4. Repeat steps 2–3 for `com.gilmoretech.myshopprovider`.
 
 You'll come back here once after first Play upload to add the Play App Signing SHA-1 — without it, Google Maps + Places will fail silently in production-track builds that have been re-signed by Play.
 
@@ -276,8 +281,13 @@ Go to **GitHub → your repo → Settings → Secrets and variables → Actions 
 
 | Secret name | What goes in it |
 |---|---|
-| `GOOGLE_MAPS_API_KEY_CLIENT` | Client app's Maps key (from §3) |
-| `GOOGLE_MAPS_API_KEY_PROVIDER` | Provider app's Maps key |
+| `GOOGLE_MAPS_API_KEY_CLIENT_ANDROID` | Android-restricted client Maps key |
+| `GOOGLE_MAPS_API_KEY_CLIENT_IOS` | iOS-restricted client Maps key |
+| `GOOGLE_MAPS_API_KEY_PROVIDER_ANDROID` | Android-restricted provider Maps key |
+| `GOOGLE_MAPS_API_KEY_PROVIDER_IOS` | iOS-restricted provider Maps key |
+| `MAPS_ANDROID_CERT_SHA1_CLIENT` | Client Play App Signing SHA-1 |
+| `MAPS_ANDROID_CERT_SHA1_PROVIDER` | Provider Play App Signing SHA-1 |
+| `API_BASE_URL` | Production API URL, including `/v1` |
 | `MAPBOX_ACCESS_TOKEN` | Mapbox public token |
 | `MAPBOX_STYLE_URL` | `mapbox://styles/<account>/<style-id>` |
 | `KEYSTORE_BASE64` | `base64 -i ~/secure/myshop-upload.jks` output, single line |

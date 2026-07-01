@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -29,38 +31,11 @@ import 'src/features/auth/providers/auth_controller.dart';
 // `Firebase.initializeApp()` call below to use `options:` and uncomment the
 // google-services plugin in the android gradle files.
 
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
   debugPrint('[main] CLIENT app starting — FCM build marker v3');
 
   MapboxOptions.setAccessToken(MapboxConfig.accessToken);
-
-  // Firebase — guarded so the rest of the app still boots even if the
-  // platform config files (google-services.json / GoogleService-Info.plist)
-  // haven't been dropped in yet. Once configured, replace with:
-  //   await Firebase.initializeApp(
-  //     options: DefaultFirebaseOptions.currentPlatform,
-  //   );
-  try {
-    await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform);
-    // Register the background isolate handler synchronously, before
-    // runApp. The plugin commits the handle to the native side here; if
-    // we wait until FcmService.init() (fire-and-forget post-runApp), the
-    // first cold-start push after install can race the registration and
-    // be dropped.
-    FirebaseMessaging.onBackgroundMessage(fcmBackgroundHandler);
-  } catch (e) {
-    debugPrint('[main] Firebase init failed — push disabled for this run: $e');
-  }
-
-  // Local notifications — cheap, safe to await. Wrapped in case the
-  // platform channel isn't available (e.g. simulator quirks).r
-  try {
-    await LocalNotificationService.instance.init();
-  } catch (e) {
-    debugPrint('[main] Local notifications init failed: $e');
-  }
 
   final container = ProviderContainer(
     overrides: [
@@ -74,47 +49,6 @@ Future<void> main() async {
     ],
   );
 
-  // Eagerly load the onboarding flag so the router can read it synchronously.
-  await loadOnboardingFlag(container);
-
-  // Activate the WebSocket connection provider so it reacts to auth state
-  // changes. Connects automatically when the user logs in, disconnects on
-  // logout. Incoming events push live updates into Riverpod providers.
-  container.read(socketConnectionProvider);
-
-  // On every transition into authenticated, check whether the rider has
-  // an in-flight ride that needs to be resumed (force-quit / crash mid-
-  // trip). Mirrors the driver-side recovery bridge.
-  container.read(clientActiveRideRecoveryBridgeProvider);
-
-  // Register the FCM token with the backend on login; tears it down on
-  // logout. Fire this BEFORE runApp so the subscription survives the
-  // full app lifetime.
-  //
-  // Use `listen` (not `read`) so the bridge stays subscribed for the
-  // life of the container — without an active listener, Riverpod
-  // invalidates the provider on auth-state change but never re-runs
-  // the body, which would mean the AuthUnknown → AuthAuthenticated
-  // transition silently drops syncToken.
-  container.listen<void>(fcmAuthBridgeProvider, (_, __) {});
-
-  // Wire push taps into GoRouter navigation. Must happen AFTER the router
-  // provider is reachable — reading it here creates it lazily through the
-  // provider graph.
-  container.read(fcmTapBridgeProvider);
-
-  // Tear down session-scoped Riverpod state (socket, ride/booking flow,
-  // payment notifier, badges, activity feed, pending-payment store) on
-  // every transition out of AuthAuthenticated, so a second user signing
-  // in on the same install starts clean.
-  container.read(logoutCleanupBridgeProvider);
-
-  // Start listening for referral deep links (myshop://refer?code=…). Captures
-  // the cold-start link and any links delivered while running, parking the
-  // code for the sign-up screen to prefill. Read (not listen) — the bridge
-  // holds its own stream subscription for the container's lifetime.
-  container.read(referralDeepLinkBridgeProvider);
-
   runApp(
     UncontrolledProviderScope(
       container: container,
@@ -122,25 +56,90 @@ Future<void> main() async {
     ),
   );
 
-  // Kick off FCM init after the first frame so the permission prompt
-  // never blocks the UI. Fire-and-forget — handlers auto-register.
-  Future<void>(() async {
-    try {
-      await container.read(fcmServiceProvider).init();
-    } catch (e) {
-      debugPrint('[main] FCM init failed: $e');
-    }
+  // Nothing involving a platform channel or permission dialog is allowed to
+  // delay runApp. Start the rest only after Flutter has painted its first
+  // frame, so a slow plugin leaves a usable splash/router rather than the
+  // operating system's launch screen.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(_finishStartup(container));
   });
+}
 
-  // Warm up the device GPS fix so map screens and the "current location"
-  // greeting open with the user's actual position instead of the pilot-city
-  // default. Fire-and-forget — failures (denied permission, services off)
-  // just leave the cache empty and callers fall back gracefully.
-  Future<void>(() async {
+Future<void> _finishStartup(ProviderContainer container) async {
+  unawaited(_loadOnboardingPreferences(container));
+
+  // These are synchronous Riverpod subscriptions. Isolate failures so one
+  // optional bridge can never prevent the rest of startup.
+  for (final activate in <void Function()>[
+    () => container.read(socketConnectionProvider),
+    () => container.read(clientActiveRideRecoveryBridgeProvider),
+    () => container.read(logoutCleanupBridgeProvider),
+    () => container.read(referralDeepLinkBridgeProvider),
+  ]) {
     try {
-      await container.read(currentLocationServiceProvider).ensure();
+      activate();
     } catch (e) {
-      debugPrint('[main] current-location warm-up failed: $e');
+      debugPrint('[main] startup bridge failed: $e');
     }
-  });
+  }
+
+  final firebaseReadyFuture = _initializeFirebase();
+  final notificationsReadyFuture = _initializeLocalNotifications();
+  final firebaseReady = await firebaseReadyFuture;
+  await notificationsReadyFuture;
+
+  if (firebaseReady) {
+    try {
+      // Keep the auth bridge subscribed for the container lifetime and wire
+      // notification taps only after FirebaseMessaging is available.
+      container.listen<void>(fcmAuthBridgeProvider, (_, __) {});
+      container.read(fcmTapBridgeProvider);
+      unawaited(container.read(fcmServiceProvider).init().catchError(
+            (Object e) => debugPrint('[main] FCM init failed: $e'),
+          ));
+    } catch (e) {
+      debugPrint('[main] FCM bridge setup failed: $e');
+    }
+  }
+
+  // Warm up GPS without delaying navigation.
+  unawaited(container.read(currentLocationServiceProvider).ensure().catchError(
+    (Object e) {
+      debugPrint('[main] current-location warm-up failed: $e');
+      return null;
+    },
+  ));
+}
+
+Future<void> _loadOnboardingPreferences(ProviderContainer container) async {
+  try {
+    await loadOnboardingFlag(container).timeout(const Duration(seconds: 3));
+  } catch (e) {
+    debugPrint('[main] onboarding preferences unavailable: $e');
+  } finally {
+    container.read(onboardingFlagLoadedProvider.notifier).state = true;
+  }
+}
+
+Future<bool> _initializeFirebase() async {
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    ).timeout(const Duration(seconds: 8));
+    FirebaseMessaging.onBackgroundMessage(fcmBackgroundHandler);
+    return true;
+  } catch (e) {
+    debugPrint('[main] Firebase init failed — push disabled: $e');
+    return false;
+  }
+}
+
+Future<void> _initializeLocalNotifications() async {
+  try {
+    await LocalNotificationService.instance
+        .init()
+        .timeout(const Duration(seconds: 5));
+  } catch (e) {
+    debugPrint('[main] Local notifications init failed: $e');
+  }
 }

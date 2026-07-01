@@ -229,10 +229,12 @@ final _profileNavKey = GlobalKey<NavigatorState>(debugLabel: 'profile');
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(clientAuthControllerProvider);
   final hasSeen = ref.watch(hasSeenOnboardingProvider);
+  final onboardingFlagLoaded = ref.watch(onboardingFlagLoadedProvider);
   final pendingReplay = ref.watch(pendingReplayOnboardingProvider);
   return _buildRouter(
     authState: authState,
     hasSeen: hasSeen,
+    onboardingFlagLoaded: onboardingFlagLoaded,
     pendingReplay: pendingReplay,
   );
 });
@@ -240,6 +242,7 @@ final routerProvider = Provider<GoRouter>((ref) {
 GoRouter _buildRouter({
   required ClientAuthState authState,
   required bool hasSeen,
+  required bool onboardingFlagLoaded,
   required bool pendingReplay,
 }) {
   return GoRouter(
@@ -258,8 +261,10 @@ GoRouter _buildRouter({
       // Let dev menu through always
       if (isDevRoute) return null;
 
-      // Still checking stored tokens — stay on splash
-      if (authState is AuthUnknown) {
+      // Still checking stored tokens/preferences — stay on the Flutter splash.
+      // Both operations have bounded deadlines in main.dart, so this state
+      // cannot strand the user indefinitely.
+      if (authState is AuthUnknown || !onboardingFlagLoaded) {
         return path == AppRoutes.splash ? null : AppRoutes.splash;
       }
 

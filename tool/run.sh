@@ -29,6 +29,13 @@
 
 set -euo pipefail
 
+is_placeholder() {
+  case "$1" in
+    ""|*"..."*|*"replace-me"*|*"REPLACE"*|*"YOUR_"*) return 0 ;;
+  esac
+  return 1
+}
+
 cd "$(dirname "$0")/.."
 REPO_ROOT="$(pwd)"
 
@@ -104,6 +111,9 @@ ANDROID_VAR="GOOGLE_MAPS_API_KEY_${MAPS_APP}_ANDROID"
 IOS_VAR="GOOGLE_MAPS_API_KEY_${MAPS_APP}_IOS"
 ANDROID_KEY="${!ANDROID_VAR}"
 IOS_KEY="${!IOS_VAR}"
+if is_placeholder "$ANDROID_KEY"; then ANDROID_KEY=""; fi
+if is_placeholder "$IOS_KEY"; then IOS_KEY=""; fi
+if is_placeholder "$GOOGLE_MAPS_API_KEY"; then GOOGLE_MAPS_API_KEY=""; fi
 [[ -z "$ANDROID_KEY" ]] && ANDROID_KEY="$GOOGLE_MAPS_API_KEY"
 [[ -z "$IOS_KEY" ]] && IOS_KEY="$GOOGLE_MAPS_API_KEY"
 
@@ -122,7 +132,9 @@ echo "→ Maps key (dart): $SEL_VAR for $PLATFORM"
 # so a single generic MAPS_ANDROID_CERT_SHA1 usually suffices.
 CERT_VAR="MAPS_ANDROID_CERT_SHA1_${MAPS_APP}"
 CERT_VAL="${!CERT_VAR}"
+if is_placeholder "$CERT_VAL"; then CERT_VAL=""; fi
 [[ -z "$CERT_VAL" ]] && CERT_VAL="$MAPS_ANDROID_CERT_SHA1"
+if is_placeholder "$CERT_VAL"; then CERT_VAL=""; fi
 DEFINES+=("--dart-define=MAPS_ANDROID_CERT_SHA1=${CERT_VAL}")
 
 if [[ -z "$DART_MAPS_KEY" ]]; then

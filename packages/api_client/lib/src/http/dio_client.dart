@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../config/api_config.dart';
 import 'auth_interceptor.dart';
@@ -26,7 +27,7 @@ DioClient createDioClient({
   required ApiConfig config,
   required TokenStorage tokenStorage,
   void Function()? onForceLogout,
-  bool enableLogging = true,
+  bool? enableLogging,
 }) {
   final dio = Dio(
     BaseOptions(
@@ -42,7 +43,7 @@ DioClient createDioClient({
   );
 
   // Order matters: logging first (sees raw request), then auth
-  if (enableLogging) {
+  if (enableLogging ?? kDebugMode) {
     dio.interceptors.add(LoggingInterceptor());
   }
 

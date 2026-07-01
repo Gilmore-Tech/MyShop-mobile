@@ -119,8 +119,6 @@ class RideService {
           if (status != null) 'status': status,
         },
       );
-      // ignore: avoid_print
-      print('[RideService] raw response.data: ${response.data}');
       final body = response.data;
       // Handle various response shapes from the backend.
       if (body is Map<String, dynamic>) {

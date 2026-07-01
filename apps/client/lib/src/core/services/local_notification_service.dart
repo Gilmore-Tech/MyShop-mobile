@@ -216,22 +216,30 @@ class LocalNotificationService {
   );
 
   bool _initialised = false;
+  Future<void>? _initializing;
 
   /// Router-owned tap handler. Forwards the decoded payload map.
   void Function(Map<String, dynamic> payload)? _onTap;
   set onTap(void Function(Map<String, dynamic> payload)? handler) =>
       _onTap = handler;
 
-  Future<void> init() async {
-    if (_initialised) return;
-    _initialised = true;
+  Future<void> init() {
+    if (_initialised) return Future<void>.value();
+    return _initializing ??= _initialize().whenComplete(() {
+      _initializing = null;
+    });
+  }
 
+  Future<void> _initialize() async {
     const androidInit =
         AndroidInitializationSettings('@drawable/ic_notification');
     const iosInit = DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
+      // FcmService requests permission after the first Flutter frame. Asking
+      // here made main() await an OS dialog before runApp, leaving first-run
+      // users staring at the native splash until they answered it.
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
     );
 
     await _plugin.initialize(
@@ -253,7 +261,7 @@ class LocalNotificationService {
     await androidPlugin?.createNotificationChannel(_urgentChannel);
     await androidPlugin?.createNotificationChannel(_timelineChannel);
     await androidPlugin?.createNotificationChannel(_chatChannel);
-    await androidPlugin?.requestNotificationsPermission();
+    _initialised = true;
   }
 
   /// Single entry-point for rendering any timeline push. Picks the right

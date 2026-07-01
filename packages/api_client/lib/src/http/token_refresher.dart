@@ -78,9 +78,7 @@ class TokenRefresher {
 
         final newAccessToken = payload['accessToken'] as String?;
         if (newAccessToken == null) {
-          debugPrint(
-            '[TokenRefresher] response missing accessToken: $payload',
-          );
+          debugPrint('[TokenRefresher] response missing accessToken');
           return null;
         }
 
@@ -114,8 +112,7 @@ class TokenRefresher {
     final status = e.response?.statusCode;
     final code = _extractErrorCode(e.response);
     debugPrint(
-      '[TokenRefresher] DioException: status=$status code=$code '
-      'body=${e.response?.data}',
+      '[TokenRefresher] DioException: status=$status code=$code',
     );
 
     const terminalCodes = {

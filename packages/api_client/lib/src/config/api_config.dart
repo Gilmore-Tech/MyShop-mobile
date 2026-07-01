@@ -3,13 +3,21 @@ class ApiConfig {
   const ApiConfig({required this.baseUrl});
 
   /// Reads the base URL from a compile-time `--dart-define=API_BASE_URL=...`.
-  /// Falls back to the Render-hosted staging server.
+  /// Debug/profile builds retain a local fallback for contributor ergonomics;
+  /// release builds fail fast so a missing CI secret can never silently ship
+  /// a store binary pointed at the wrong environment.
   factory ApiConfig.fromEnvironment() {
-    const url = String.fromEnvironment(
-      'API_BASE_URL',
-      defaultValue: 'https://myshop-api-2hy2.onrender.com/v1',
-    );
-    return const ApiConfig(baseUrl: url);
+    const configured = String.fromEnvironment('API_BASE_URL');
+    const isRelease = bool.fromEnvironment('dart.vm.product');
+    if (configured.isEmpty && isRelease) {
+      throw StateError(
+        'API_BASE_URL is required in release builds. Use tool/build.sh.',
+      );
+    }
+    final url = configured.isEmpty
+        ? 'https://api.myshop.gilmoretechnologiesgh.com/v1'
+        : configured;
+    return ApiConfig(baseUrl: url);
   }
 
   final String baseUrl;

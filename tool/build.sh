@@ -7,6 +7,7 @@
 #   tool/build.sh provider android
 #   tool/build.sh provider android-apk
 #   tool/build.sh provider ios
+#   tool/build.sh provider android --validate-only  # config check, no build
 #
 # Reads `.env.prod` (gitignored — copy from `.env.prod.example` and fill in
 # the PRODUCTION-restricted keys) and threads the values through every
@@ -39,6 +40,15 @@
 
 set -euo pipefail
 
+is_placeholder() {
+  case "$1" in
+    ""|*"..."*|*"replace-me"*|*"REPLACE"*|*"YOUR_"*|*"your-account"*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 cd "$(dirname "$0")/.."
 REPO_ROOT="$(pwd)"
 
@@ -50,6 +60,11 @@ fi
 APP="$1"
 PLATFORM="$2"
 shift 2
+VALIDATE_ONLY=false
+if [[ "${1:-}" == "--validate-only" ]]; then
+  VALIDATE_ONLY=true
+  shift
+fi
 
 case "$APP" in
   client|provider) ;;
@@ -90,6 +105,9 @@ GOOGLE_MAPS_API_KEY_PROVIDER_IOS=""
 MAPS_ANDROID_CERT_SHA1=""
 MAPS_ANDROID_CERT_SHA1_CLIENT=""
 MAPS_ANDROID_CERT_SHA1_PROVIDER=""
+API_BASE_URL=""
+MAPBOX_ACCESS_TOKEN=""
+MAPBOX_STYLE_URL=""
 while IFS='=' read -r key value; do
   key="${key#"${key%%[![:space:]]*}"}"
   [[ -z "$key" || "$key" == \#* ]] && continue
@@ -106,8 +124,38 @@ while IFS='=' read -r key value; do
     printf -v "$key" '%s' "$value"
     continue
   fi
+  case "$key" in
+    API_BASE_URL|MAPBOX_ACCESS_TOKEN|MAPBOX_STYLE_URL)
+      printf -v "$key" '%s' "$value"
+      ;;
+  esac
   DEFINES+=("--dart-define=${key}=${value}")
 done < "$ENV_FILE"
+
+# Production builds must never fall back to a staging URL or placeholder
+# service credentials. Fail before invoking Flutter so CI cannot publish a
+# healthy-looking binary wired to the wrong backend.
+for REQUIRED_VAR in API_BASE_URL MAPBOX_ACCESS_TOKEN MAPBOX_STYLE_URL; do
+  REQUIRED_VAL="${!REQUIRED_VAR}"
+  if is_placeholder "$REQUIRED_VAL"; then
+    echo "error: $REQUIRED_VAR is missing or still a placeholder in $ENV_FILE" >&2
+    exit 1
+  fi
+done
+case "$API_BASE_URL" in
+  https://*/v1) ;;
+  *)
+    echo "error: API_BASE_URL must be HTTPS and end in /v1, got '$API_BASE_URL'" >&2
+    exit 1
+    ;;
+esac
+case "$MAPBOX_STYLE_URL" in
+  mapbox://styles/*/*) ;;
+  *)
+    echo "error: MAPBOX_STYLE_URL must look like mapbox://styles/account/style" >&2
+    exit 1
+    ;;
+esac
 
 # Select the Maps key for this (app, platform). android and android-apk
 # share the Android key; ios uses the iOS key.
@@ -121,6 +169,8 @@ case "$APP" in
 esac
 SPECIFIC_VAR="GOOGLE_MAPS_API_KEY_${MAPS_APP}_${MAPS_PLATFORM}"
 SPECIFIC_VAL="${!SPECIFIC_VAR}"
+if is_placeholder "$SPECIFIC_VAL"; then SPECIFIC_VAL=""; fi
+if is_placeholder "$GOOGLE_MAPS_API_KEY"; then GOOGLE_MAPS_API_KEY=""; fi
 if [[ -n "$SPECIFIC_VAL" ]]; then
   GOOGLE_MAPS_API_KEY="$SPECIFIC_VAL"
   echo "→ Maps key: $SPECIFIC_VAR"
@@ -144,12 +194,19 @@ DEFINES+=("--dart-define=GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}")
 # MapsConfig.restApiHeaders on iOS), so it's harmless in an iOS build.
 CERT_VAR="MAPS_ANDROID_CERT_SHA1_${MAPS_APP}"
 CERT_VAL="${!CERT_VAR}"
+if is_placeholder "$CERT_VAL"; then CERT_VAL=""; fi
 if [[ -z "$CERT_VAL" ]]; then CERT_VAL="$MAPS_ANDROID_CERT_SHA1"; fi
+if is_placeholder "$CERT_VAL"; then CERT_VAL=""; fi
 DEFINES+=("--dart-define=MAPS_ANDROID_CERT_SHA1=${CERT_VAL}")
 if [[ -z "$CERT_VAL" && ( "$PLATFORM" == "android" || "$PLATFORM" == "android-apk" ) ]]; then
-  echo "warning: no $CERT_VAR (or generic MAPS_ANDROID_CERT_SHA1) in $ENV_FILE —" >&2
-  echo "         direct REST calls (Places/Directions/Roads/Static Maps) will be" >&2
-  echo "         REQUEST_DENIED if this Android key has an application restriction." >&2
+  echo "error: no $CERT_VAR (or generic MAPS_ANDROID_CERT_SHA1) in $ENV_FILE." >&2
+  echo "       Android-restricted Maps web-service calls require the app signing SHA-1." >&2
+  exit 1
+fi
+
+if [[ "$VALIDATE_ONLY" == true ]]; then
+  echo "✓ production config valid for $APP/$PLATFORM"
+  exit 0
 fi
 
 APP_DIR="$REPO_ROOT/apps/$APP"

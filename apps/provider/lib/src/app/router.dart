@@ -66,10 +66,12 @@ final goRouterProvider = Provider<GoRouter>((ref) {
     refreshListenable: refresh,
     redirect: (context, state) {
       final auth = ref.read(authControllerProvider);
+      final onboardingFlagLoaded = ref.read(onboardingFlagLoadedProvider);
       final loc = state.matchedLocation;
 
-      // Still bootstrapping — keep the splash visible.
-      if (auth is AuthUnknown) {
+      // Still bootstrapping — keep the Flutter splash visible. Both waits
+      // have deadlines, so this route can no longer strand the user.
+      if (auth is AuthUnknown || !onboardingFlagLoaded) {
         return loc == '/splash' ? null : '/splash';
       }
 
@@ -415,18 +417,30 @@ final goRouterProvider = Provider<GoRouter>((ref) {
 /// re-evaluates its [redirect] when auth state changes.
 class _AuthRouterRefresh extends ChangeNotifier {
   _AuthRouterRefresh(this._ref) {
-    _sub = _ref.listen<AuthState>(
+    _authSub = _ref.listen<AuthState>(
       authControllerProvider,
+      (_, __) => notifyListeners(),
+    );
+    _onboardingSub = _ref.listen<bool>(
+      onboardingFlagLoadedProvider,
+      (_, __) => notifyListeners(),
+    );
+    _hasSeenSub = _ref.listen<bool>(
+      hasSeenOnboardingProvider,
       (_, __) => notifyListeners(),
     );
   }
 
   final Ref _ref;
-  late final ProviderSubscription<AuthState> _sub;
+  late final ProviderSubscription<AuthState> _authSub;
+  late final ProviderSubscription<bool> _onboardingSub;
+  late final ProviderSubscription<bool> _hasSeenSub;
 
   @override
   void dispose() {
-    _sub.close();
+    _authSub.close();
+    _onboardingSub.close();
+    _hasSeenSub.close();
     super.dispose();
   }
 }

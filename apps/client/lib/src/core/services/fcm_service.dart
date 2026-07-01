@@ -316,8 +316,7 @@ class FcmService {
           'relying on onTokenRefresh');
       return;
     }
-    debugPrint(
-        '[FCM] obtained token (last 12) …${token.substring(token.length - 12)}');
+    debugPrint('[FCM] obtained device token');
     await _register(token);
   }
 

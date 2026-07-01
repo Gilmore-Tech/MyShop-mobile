@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -15,10 +17,10 @@ import 'src/core/services/fcm_service.dart';
 import 'src/core/services/local_notification_service.dart';
 import 'src/features/auth/providers/auth_controller.dart';
 
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
   debugPrint('[main] PROVIDER app starting — FCM build marker v3');
-//CE27-04A6
+
   // Cap the in-memory image cache. Flutter's default is 100 MB / 1000
   // entries — a handful of full-resolution client-uploaded photos is
   // enough to blow past that AND iOS's ~300 MB jetsam threshold. Paired
@@ -26,28 +28,6 @@ Future<void> main() async {
   // sites, this keeps bitmap memory bounded even across long sessions.
   PaintingBinding.instance.imageCache.maximumSizeBytes = 40 * 1024 * 1024;
   PaintingBinding.instance.imageCache.maximumSize = 100;
-
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    // Register the background isolate handler synchronously, before
-    // runApp. The plugin commits the handle to the native side here; if
-    // we wait until FcmService.init() (fire-and-forget post-runApp), the
-    // first cold-start push after install can race the registration and
-    // be dropped.
-    FirebaseMessaging.onBackgroundMessage(fcmBackgroundHandler);
-  } catch (e) {
-    debugPrint('[main] Firebase init failed: $e');
-  }
-
-  // Local notifications are cheap to init — safe to await. Guard in case
-  // the platform channel isn't ready (simulator quirk).
-  try {
-    await LocalNotificationService.instance.init();
-  } catch (e) {
-    debugPrint('[main] Local notifications init failed: $e');
-  }
 
   final container = ProviderContainer(
     overrides: [
@@ -61,32 +41,6 @@ Future<void> main() async {
     ],
   );
 
-  // Eagerly load the onboarding flag so the router can read it synchronously.
-  await loadOnboardingFlag(container);
-
-  // Activate the auth-bridge so the FCM token is registered with the
-  // backend once the user signs in.
-  //
-  // Use `listen` (not `read`) so the bridge stays subscribed for the
-  // life of the container — without an active listener, Riverpod
-  // invalidates the provider on auth-state change but never re-runs
-  // the body, which would mean the AuthUnknown → AuthAuthenticated
-  // transition silently drops syncToken.
-  container.listen<void>(fcmAuthBridgeProvider, (_, __) {});
-
-  // Activate the logout-cleanup bridge so the socket, surfaced-jobs
-  // set, and online status are torn down whenever the user logs out.
-  container.read(logoutCleanupBridgeProvider);
-
-  // Recover any ride the driver was on when the app last died — without
-  // this, a crash mid-ride leaves the backend flagging them `busy` and
-  // the matcher excludes them on subsequent ride requests.
-  container.read(activeRideRecoveryBridgeProvider);
-
-  // Activate the location guard so we force the provider offline if
-  // Location Services is disabled or permission is revoked while online.
-  container.read(locationGuardProvider);
-
   runApp(
     UncontrolledProviderScope(
       container: container,
@@ -94,38 +48,98 @@ Future<void> main() async {
     ),
   );
 
-  // Fire-and-forget: FCM init pulls the token, requests permissions, and
-  // registers handlers. Running it AFTER runApp means any iOS permission
-  // dialog / getInitialMessage round-trip never blocks the first frame.
-  Future<void>(() async {
-    try {
-      await container.read(fcmServiceProvider).init();
-    } catch (e) {
-      debugPrint('[main] FCM init failed: $e');
-    }
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(_finishStartup(container));
   });
+}
 
-  // Warm up the device GPS fix so the driver/artisan home maps and the
-  // edit-business-info screen can centre on the user's actual position
-  // rather than the pilot-city default. Fire-and-forget — failures
-  // (denied permission, services off) just leave the cache empty and
-  // callers fall back gracefully.
-  Future<void>(() async {
+Future<void> _finishStartup(ProviderContainer container) async {
+  unawaited(_loadOnboardingPreferences(container));
+
+  for (final activate in <void Function()>[
+    () => container.read(logoutCleanupBridgeProvider),
+    () => container.read(activeRideRecoveryBridgeProvider),
+    () => container.read(locationGuardProvider),
+  ]) {
     try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        return;
-      }
-      final position = await Geolocator.getCurrentPosition();
-      container.read(lastKnownPositionProvider.notifier).state = position;
+      activate();
     } catch (e) {
-      debugPrint('[main] location warm-up failed: $e');
+      debugPrint('[main] startup bridge failed: $e');
     }
-  });
+  }
+
+  final firebaseReadyFuture = _initializeFirebase();
+  final notificationsReadyFuture = _initializeLocalNotifications();
+  final firebaseReady = await firebaseReadyFuture;
+  await notificationsReadyFuture;
+
+  if (firebaseReady) {
+    try {
+      container.read(firebaseReadyProvider.notifier).state = true;
+      container.listen<void>(fcmAuthBridgeProvider, (_, __) {});
+      unawaited(container.read(fcmServiceProvider).init().catchError(
+            (Object e) => debugPrint('[main] FCM init failed: $e'),
+          ));
+    } catch (e) {
+      debugPrint('[main] FCM bridge setup failed: $e');
+    }
+  }
+
+  unawaited(_warmLocation(container));
+}
+
+Future<void> _loadOnboardingPreferences(ProviderContainer container) async {
+  try {
+    await loadOnboardingFlag(container).timeout(const Duration(seconds: 3));
+  } catch (e) {
+    debugPrint('[main] onboarding preferences unavailable: $e');
+  } finally {
+    container.read(onboardingFlagLoadedProvider.notifier).state = true;
+  }
+}
+
+Future<bool> _initializeFirebase() async {
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    ).timeout(const Duration(seconds: 8));
+    FirebaseMessaging.onBackgroundMessage(fcmBackgroundHandler);
+    return true;
+  } catch (e) {
+    debugPrint('[main] Firebase init failed — push disabled: $e');
+    return false;
+  }
+}
+
+Future<void> _initializeLocalNotifications() async {
+  try {
+    await LocalNotificationService.instance
+        .init()
+        .timeout(const Duration(seconds: 5));
+  } catch (e) {
+    debugPrint('[main] Local notifications init failed: $e');
+  }
+}
+
+Future<void> _warmLocation(ProviderContainer container) async {
+  try {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return;
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      return;
+    }
+    final position = await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        timeLimit: Duration(seconds: 10),
+      ),
+    );
+    container.read(lastKnownPositionProvider.notifier).state = position;
+  } catch (e) {
+    debugPrint('[main] location warm-up failed: $e');
+  }
 }
