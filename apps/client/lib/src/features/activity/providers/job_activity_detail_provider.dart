@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:api_client/api_client.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_models/shared_models.dart';
 
 import '../../../core/di/providers.dart';
 
@@ -138,6 +139,20 @@ class _JobActivityDetailNotifier
     final agreed = (job['agreedPrice'] as num?)?.toInt() ?? 0;
     final supplement = (job['supplementAmount'] as num?)?.toInt();
     final total = agreed + (supplement ?? 0);
+
+    final status = job['status'] as String? ?? 'open';
+
+    // Only surface the artisan's real number while the completed job is
+    // inside the 24h post-job contact window. Read-only — no call button.
+    final completedAtDt = DateTime.tryParse(
+        (job['completedAt'] ?? job['completed_at']) as String? ?? '');
+    final rawArtisanPhone =
+        (artisan['phone'] ?? artisan['maskedPhone']) as String?;
+    final artisanPhone = status == 'completed' &&
+            isWithinPostTripContactWindow(completedAtDt) &&
+            (rawArtisanPhone?.trim().isNotEmpty ?? false)
+        ? rawArtisanPhone
+        : null;
 
     return JobActivityDetail(
       jobId: job['id'] as String? ?? jobId,

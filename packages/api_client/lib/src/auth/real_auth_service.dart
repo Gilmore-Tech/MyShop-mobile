@@ -138,6 +138,34 @@ class RealAuthService implements AuthService {
   }
 
   @override
+  Future<List<String>> getOtpChannels() async {
+    try {
+      final response = await _dio.get('/auth/otp/channels');
+      final data = _unwrap(response) as Map<String, dynamic>;
+      return (data['available'] as List<dynamic>)
+          .whereType<String>()
+          .toList(growable: false);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  @override
+  Future<void> resendOtp({
+    required String phone,
+    required String channel,
+  }) async {
+    try {
+      await _dio.post(
+        '/auth/otp/resend',
+        data: {'phone': phone, 'channel': channel},
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  @override
   Future<void> providerLogin(LoginRequest request) async {
     try {
       await _dio.post('/auth/provider/login', data: request.toJson());

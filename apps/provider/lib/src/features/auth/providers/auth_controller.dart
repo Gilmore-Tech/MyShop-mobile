@@ -165,6 +165,10 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
   );
 });
 
+final otpChannelsProvider = FutureProvider.autoDispose<List<String>>((ref) {
+  return ref.watch(authRepositoryProvider).getOtpChannels();
+});
+
 final authControllerProvider =
     StateNotifierProvider<AuthController, AuthState>((ref) {
   final controller = AuthController(
@@ -297,6 +301,7 @@ class AuthController extends StateNotifier<AuthState> {
     List<String>? rideCategories,
     String? regionId,
     String? shopCapacity,
+    String? referralCode,
   }) async {
     if (_requesting) return;
     _requesting = true;
@@ -314,6 +319,7 @@ class AuthController extends StateNotifier<AuthState> {
         rideCategories: rideCategories,
         regionId: regionId,
         shopCapacity: shopCapacity,
+        referralCode: referralCode,
       ));
       state = AuthOtpSent(phone: phone, isNewUser: true, role: role);
     } on ApiException catch (e) {
@@ -417,15 +423,15 @@ class AuthController extends StateNotifier<AuthState> {
   /// Fetch the profile for a freshly-issued provider session and flip to
   /// authenticated. Shared by single-role verify and role selection.
   Future<void> _completeProviderSession(ProviderSession session) async {
-    final providerType = session.role == 'artisan'
-        ? ProviderType.artisan
-        : ProviderType.driver;
+    final providerType =
+        session.role == 'artisan' ? ProviderType.artisan : ProviderType.driver;
     // Pass the freshly-selected role into fetchProfile. Storage still holds
     // the previous session's role at this point (onAuthenticated writes the
     // new one below), so without this the AuthUser would resolve its
     // name/email/photo from the wrong role — e.g. the artisan business name
     // showing up on a driver login.
-    final user = await _repo.fetchProfile(activeRole: _authRoleFor(providerType));
+    final user =
+        await _repo.fetchProfile(activeRole: _authRoleFor(providerType));
     onAuthenticated?.call(user, providerType);
     state = AuthAuthenticated(user);
   }
@@ -460,8 +466,8 @@ class AuthController extends StateNotifier<AuthState> {
         // Same stale-role guard as _completeProviderSession: pass the role
         // chosen at sign-up so identity resolves from the right profile
         // before onAuthenticated persists it.
-        final user = await _repo.fetchProfile(
-            activeRole: _authRoleFor(current.role));
+        final user =
+            await _repo.fetchProfile(activeRole: _authRoleFor(current.role));
         onAuthenticated?.call(user, current.role);
         state = AuthAuthenticated(user);
         return;
@@ -514,28 +520,14 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
-  /// Resend OTP. The account already exists after the first register call
-  /// (backend rejects duplicate phone+role with CLIENT_ACCOUNT_EXISTS), so
-  /// both sign-up and sign-in resends go through the role-specific login
-  /// endpoint which re-sends an OTP for an existing account.
-  Future<void> resendOtp() async {
+  /// Re-deliver the active OTP without issuing a new code.
+  Future<void> resendOtp({String channel = 'sms'}) async {
     final current = state;
     if (current is! AuthOtpSent) return;
     if (_requesting) return;
     _requesting = true;
     try {
-      if (current.isNewUser && current.role != null) {
-        // Sign-up resend: the role is already committed — re-send via the
-        // role-specific login endpoint (re-issues a code for the new account).
-        if (current.role == ProviderType.driver) {
-          await _repo.loginDriver(current.phone);
-        } else {
-          await _repo.loginArtisan(current.phone);
-        }
-      } else {
-        // Sign-in resend: role-agnostic provider login.
-        await _repo.providerLogin(current.phone);
-      }
+      await _repo.resendOtp(phone: current.phone, channel: channel);
       state = AuthOtpSent(
         phone: current.phone,
         isNewUser: current.isNewUser,

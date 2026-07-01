@@ -31,6 +31,10 @@ class _ProviderOtpVerificationScreenState
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(authControllerProvider);
+    final whatsappAvailable = ref.watch(otpChannelsProvider).maybeWhen(
+          data: (channels) => channels.contains('whatsapp'),
+          orElse: () => false,
+        );
 
     ref.listen<AuthState>(authControllerProvider, (prev, next) {
       if (next is AuthBlockedByOtherDevice && !_blockedDialogVisible) {
@@ -74,6 +78,13 @@ class _ProviderOtpVerificationScreenState
           await ref.read(authControllerProvider.notifier).resendOtp();
         } catch (_) {}
       },
+      onResendWhatsApp: whatsappAvailable
+          ? () async {
+              await ref
+                  .read(authControllerProvider.notifier)
+                  .resendOtp(channel: 'whatsapp');
+            }
+          : null,
       onBack: () => ref.read(authControllerProvider.notifier).reset(),
     );
   }
