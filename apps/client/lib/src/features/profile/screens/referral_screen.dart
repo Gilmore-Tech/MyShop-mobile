@@ -115,7 +115,7 @@ class _HeroBanner extends StatelessWidget {
                 color: Colors.white, size: w * 0.068),
           ),
           SizedBox(height: h * 0.016),
-          Text('Give GHS 10, Get GHS 10',
+          Text('Give GHS 0.50, Get GHS 0.50',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: w * 0.048,
@@ -124,8 +124,8 @@ class _HeroBanner extends StatelessWidget {
               )),
           SizedBox(height: h * 0.008),
           Text(
-            'Share your code. Your friend gets GHS 10 off their first ride '
-            'or job, and you earn GHS 10 in loyalty points.',
+            'Share your code. Your friend gets GHS 0.50 off their first ride '
+            'or job, and you earn GHS 0.50 in loyalty points.',
             style: TextStyle(
                 color: Colors.white.withAlpha(210),
                 fontSize: w * 0.033,
@@ -208,13 +208,27 @@ class _CodeCard extends StatelessWidget {
                   isPrimary: true,
                   onTap: code.isEmpty
                       ? null
-                      : () {
-                          Share.share(
-                            'Join me on MyShop! Use my referral code '
-                            '$code to get GHS 10 off your first ride or job. '
-                            'Download the app: https://myshop.com.gh/refer/$code',
-                            subject: 'Get GHS 10 off MyShop',
-                          );
+                      : () async {
+                          // Anchor the share sheet for iPad (share_plus
+                          // requires a non-zero origin there or it no-ops).
+                          final box = context.findRenderObject() as RenderBox?;
+                          final origin = box != null && box.hasSize
+                              ? box.localToGlobal(Offset.zero) & box.size
+                              : null;
+                          try {
+                            await Share.share(
+                              'Join me on MyShop! Use my referral code '
+                              '$code to get GHS 0.50 off your first ride or job.',
+                              subject: 'Get GHS 0.50 off MyShop',
+                              sharePositionOrigin: origin,
+                            );
+                          } catch (_) {
+                            if (context.mounted) {
+                              MyShopToast.show(context,
+                                  message: 'Could not open the share sheet',
+                                  type: ToastType.error);
+                            }
+                          }
                         },
                   w: w,
                   h: h,
@@ -372,7 +386,7 @@ class _HowItWorks extends StatelessWidget {
     (
       icon: Icons.local_offer_rounded,
       title: 'Both of you earn',
-      desc: 'They get GHS 10 off their first booking. You earn GHS 10 points.',
+      desc: 'They get GHS 0.50 off their first booking. You earn GHS 0.50 points.',
     ),
   ];
 
