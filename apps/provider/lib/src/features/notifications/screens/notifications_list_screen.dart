@@ -68,8 +68,7 @@ class ProviderNotificationsScreen extends ConsumerWidget {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () =>
-            ref.read(providerNotifsProvider.notifier).reload(),
+        onRefresh: () => ref.read(providerNotifsProvider.notifier).reload(),
         color: MyShopColors.primaryGold,
         child: notifs.isEmpty
             ? _EmptyState(w: w, h: h)
@@ -290,8 +289,7 @@ class _EmptyState extends StatelessWidget {
               SizedBox(height: h * 0.008),
               Text("You're all caught up!",
                   style: TextStyle(
-                      color: MyShopColors.textSecondary,
-                      fontSize: w * 0.034)),
+                      color: MyShopColors.textSecondary, fontSize: w * 0.034)),
             ],
           ),
         ),

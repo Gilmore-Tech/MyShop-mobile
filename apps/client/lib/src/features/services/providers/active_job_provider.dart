@@ -479,8 +479,7 @@ class _ActiveJobNotifier
   /// Parse API response into [ActiveJobData].
   ActiveJobData _parseActiveJob(Map<String, dynamic> data) {
     final status = data['status'] as String? ?? 'en_route';
-    final clientPaymentAck =
-        data['clientPaymentAcknowledgedAt'] as String?;
+    final clientPaymentAck = data['clientPaymentAcknowledgedAt'] as String?;
     final clientPaymentMethod = data['clientPaymentMethod'] as String?;
     // Diagnostic — confirms whether the backend is including the
     // payment-acknowledgement fields in the GET /jobs/:id response. If
@@ -552,12 +551,9 @@ class _ActiveJobNotifier
     // and a nested `location: { lat, lng }`. Accept any of them so the
     // tracking-map pin always finds a coord. Without this the marker was
     // being created with null lat/lng and the map rendered empty.
-    num? lat = (data['latitude'] ??
-        data['lat'] ??
-        data['locationLat']) as num?;
-    num? lng = (data['longitude'] ??
-        data['lng'] ??
-        data['locationLng']) as num?;
+    num? lat = (data['latitude'] ?? data['lat'] ?? data['locationLat']) as num?;
+    num? lng =
+        (data['longitude'] ?? data['lng'] ?? data['locationLng']) as num?;
     if ((lat == null || lng == null) && data['location'] is Map) {
       final loc = data['location'] as Map;
       lat ??= (loc['latitude'] ?? loc['lat']) as num?;
@@ -598,8 +594,8 @@ class _ActiveJobNotifier
       title: data['description'] as String? ?? '',
       categoryName: categoryData['name'] as String? ?? '',
       categoryIcon: Icons.build_rounded,
-      location: (data['locationAddress'] ?? data['addressText']) as String? ??
-          '',
+      location:
+          (data['locationAddress'] ?? data['addressText']) as String? ?? '',
       phase: phase,
       artisan: ActiveJobArtisan(
         artisanId: artisanData['id'] as String? ?? '',
@@ -608,19 +604,19 @@ class _ActiveJobNotifier
         // separate firstName on this endpoint — splitting on the first
         // space is a good-enough avatar fallback ("Kofi Mensah" → "Kofi"),
         // and a single-word displayName ("Kofi") just returns itself.
-        firstName: artisanName.isNotEmpty
-            ? artisanName.split(' ').first
-            : 'Artisan',
+        firstName:
+            artisanName.isNotEmpty ? artisanName.split(' ').first : 'Artisan',
         avatarColor: const Color(0xFF37474F),
         // verificationStatus comes through as a string ('approved', 'pending',
         // 'rejected'); treat 'approved' as verified for the badge.
-        isVerified: (artisanData['verificationStatus'] as String?) == 'approved' ||
-            (artisanData['isVerified'] as bool? ?? false),
+        isVerified:
+            (artisanData['verificationStatus'] as String?) == 'approved' ||
+                (artisanData['isVerified'] as bool? ?? false),
         specialty: artisanData['specialty'] as String? ?? '',
-        rating: ((artisanData['averageRating'] ?? artisanData['rating'])
-                    as num?)
-                ?.toDouble() ??
-            0.0,
+        rating:
+            ((artisanData['averageRating'] ?? artisanData['rating']) as num?)
+                    ?.toDouble() ??
+                0.0,
         photoUrl: (artisanData['photoUrl'] as String?) ??
             (artisanData['profilePhotoUrl'] as String?) ??
             (artisanData['avatarUrl'] as String?) ??
@@ -647,8 +643,7 @@ class _ActiveJobNotifier
       // for missing/malformed values, which the bottom sheet treats as
       // "no timer to show."
       startedAt: _parseIsoLocal(data['startedAt'] ?? data['started_at']),
-      completedAt:
-          _parseIsoLocal(data['completedAt'] ?? data['completed_at']),
+      completedAt: _parseIsoLocal(data['completedAt'] ?? data['completed_at']),
     );
   }
 
@@ -695,4 +690,3 @@ class _ActiveJobNotifier
     };
   }
 }
-

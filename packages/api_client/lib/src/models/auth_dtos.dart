@@ -37,8 +37,10 @@ class RegisterRequest {
   final String? email;
   final String? referralCode;
   final List<String>? categories; // artisan only — service category UUIDs
-  final List<String>? rideCategories; // driver only — ride category slugs (admin-verified)
-  final String? regionId; // provider only — home region UUID from GET /v1/regions
+  final List<String>?
+      rideCategories; // driver only — ride category slugs (admin-verified)
+  final String?
+      regionId; // provider only — home region UUID from GET /v1/regions
   final String? shopCapacity; // "solo" or "multi"
   final int? maxConcurrentJobs; // 2-3, only when shopCapacity = "multi"
 
@@ -241,7 +243,8 @@ class ProviderSession extends ProviderVerifyResult {
     required this.role,
   });
 
-  factory ProviderSession.fromJson(Map<String, dynamic> json) => ProviderSession(
+  factory ProviderSession.fromJson(Map<String, dynamic> json) =>
+      ProviderSession(
         accessToken: json['accessToken'] as String,
         refreshToken: json['refreshToken'] as String,
         role: json['role'] as String,

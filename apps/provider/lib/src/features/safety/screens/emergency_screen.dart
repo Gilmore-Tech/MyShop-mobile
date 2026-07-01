@@ -226,7 +226,8 @@ class _ProviderEmergencyScreenState
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: MyShopColors.error.withValues(alpha: 0.4),
+                                  color:
+                                      MyShopColors.error.withValues(alpha: 0.4),
                                   blurRadius: 24,
                                   offset: const Offset(0, 8),
                                 ),

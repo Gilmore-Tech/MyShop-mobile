@@ -256,8 +256,7 @@ class _JobDetailNotifier
           splitIndex > 0 ? rawDescription.substring(splitIndex + 2) : '';
     }
 
-    final clientPaymentAck =
-        data['clientPaymentAcknowledgedAt'] as String?;
+    final clientPaymentAck = data['clientPaymentAcknowledgedAt'] as String?;
     final clientPaymentMethod = data['clientPaymentMethod'] as String?;
 
     // When the client has acknowledged payment but the job hasn't been
@@ -266,12 +265,11 @@ class _JobDetailNotifier
     // "Processing Payment" so the user sees forward motion instead of
     // sitting on "Awaiting Confirmation". The action bar still uses the
     // raw `status` + ack to pick the right tile.
-    final timelineStatus =
-        status == JobStatus.artisanMarkedComplete &&
-                clientPaymentAck != null &&
-                clientPaymentAck.isNotEmpty
-            ? JobStatus.pendingPayment
-            : status;
+    final timelineStatus = status == JobStatus.artisanMarkedComplete &&
+            clientPaymentAck != null &&
+            clientPaymentAck.isNotEmpty
+        ? JobStatus.pendingPayment
+        : status;
 
     return JobDetail(
       id: data['id'] as String? ?? data['jobId'] as String? ?? '',

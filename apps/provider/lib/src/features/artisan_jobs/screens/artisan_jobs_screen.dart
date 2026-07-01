@@ -173,12 +173,21 @@ class _DateFilterChip extends StatelessWidget {
   final VoidCallback onClear;
 
   static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
 
-  String _fmt(DateTime d) =>
-      '${_months[d.month - 1]} ${d.day}, ${d.year}';
+  String _fmt(DateTime d) => '${_months[d.month - 1]} ${d.day}, ${d.year}';
 
   @override
   Widget build(BuildContext context) {

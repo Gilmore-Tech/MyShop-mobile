@@ -222,59 +222,59 @@ class _RolePickerScreenState extends ConsumerState<RolePickerScreen> {
                       ],
                     ),
                   ),
-                const SizedBox(height: MyShopSpacing.lg),
-                Expanded(
-                  child: AnimatedSwitcher(
-                    duration: _animDuration,
-                    switchInCurve: _animCurve,
-                    switchOutCurve: _animCurve,
-                    transitionBuilder: (child, animation) {
-                      return FadeTransition(
-                        opacity: animation,
-                        child: SlideTransition(
-                          position: Tween<Offset>(
-                            begin: const Offset(0, 0.18),
-                            end: Offset.zero,
-                          ).animate(animation),
-                          child: child,
-                        ),
-                      );
-                    },
-                    child: _selected == null
-                        ? const _EmptyHint(key: ValueKey('empty'))
-                        : _RoleDetail(
-                            key: ValueKey('detail-${_selected!.name}'),
-                            role: _selected!,
-                            accent: _accent,
+                  const SizedBox(height: MyShopSpacing.lg),
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: _animDuration,
+                      switchInCurve: _animCurve,
+                      switchOutCurve: _animCurve,
+                      transitionBuilder: (child, animation) {
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position: Tween<Offset>(
+                              begin: const Offset(0, 0.18),
+                              end: Offset.zero,
+                            ).animate(animation),
+                            child: child,
                           ),
-                  ),
-                ),
-                const SizedBox(height: MyShopSpacing.md),
-                IgnorePointer(
-                  ignoring: !hasSelection,
-                  child: AnimatedOpacity(
-                    duration: _animDuration,
-                    curve: _animCurve,
-                    opacity: hasSelection ? 1.0 : 0.0,
-                    child: _ContinueButton(
-                      accent: _accent,
-                      onPressed: _continue,
+                        );
+                      },
+                      child: _selected == null
+                          ? const _EmptyHint(key: ValueKey('empty'))
+                          : _RoleDetail(
+                              key: ValueKey('detail-${_selected!.name}'),
+                              role: _selected!,
+                              accent: _accent,
+                            ),
                     ),
                   ),
-                ),
-                if (!widget.isSignIn) ...[
-                  const SizedBox(height: MyShopSpacing.sm),
-                  _SignInLink(
-                    onTap: () => context.go('/signin/phone'),
-                    color: hasSelection
-                        ? Colors.white
-                        : MyShopColors.textSecondary,
+                  const SizedBox(height: MyShopSpacing.md),
+                  IgnorePointer(
+                    ignoring: !hasSelection,
+                    child: AnimatedOpacity(
+                      duration: _animDuration,
+                      curve: _animCurve,
+                      opacity: hasSelection ? 1.0 : 0.0,
+                      child: _ContinueButton(
+                        accent: _accent,
+                        onPressed: _continue,
+                      ),
+                    ),
                   ),
+                  if (!widget.isSignIn) ...[
+                    const SizedBox(height: MyShopSpacing.sm),
+                    _SignInLink(
+                      onTap: () => context.go('/signin/phone'),
+                      color: hasSelection
+                          ? Colors.white
+                          : MyShopColors.textSecondary,
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
-        ),
         ],
       ),
     );
@@ -390,7 +390,8 @@ class _RoleCard extends StatelessWidget {
                                     color: Colors.white.withValues(alpha: 0.25),
                                   ),
                                 ),
-                                child: Icon(icon, size: 30, color: Colors.white),
+                                child:
+                                    Icon(icon, size: 30, color: Colors.white),
                               ),
                               const Spacer(),
                               _SelectedBadge(visible: selected),

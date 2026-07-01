@@ -313,7 +313,8 @@ class _BottomSheet extends StatelessWidget {
               decoration: BoxDecoration(
                 color: MyShopColors.primaryGoldLight,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: MyShopColors.primaryGold.withAlpha(60)),
+                border:
+                    Border.all(color: MyShopColors.primaryGold.withAlpha(60)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -345,9 +346,7 @@ class _BottomSheet extends StatelessWidget {
             JobElapsedTime(
               startedAt: job.startedAt,
               endedAt: job.completedAt,
-              label: job.completedAt != null
-                  ? 'Final duration'
-                  : 'Time on job',
+              label: job.completedAt != null ? 'Final duration' : 'Time on job',
             ),
             SizedBox(height: h * 0.020),
             const Divider(height: 1, color: MyShopColors.divider),

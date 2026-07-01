@@ -30,7 +30,8 @@ class SupplementReviewScreen extends ConsumerWidget {
     // response, so duplicates are safe.
     ref.listen<SupplementResponseState>(supplementResponseProvider,
         (prev, next) {
-      if (next.errorMessage != null && next.errorMessage != prev?.errorMessage) {
+      if (next.errorMessage != null &&
+          next.errorMessage != prev?.errorMessage) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(SnackBar(content: Text(next.errorMessage!)));
@@ -74,8 +75,7 @@ class SupplementReviewScreen extends ConsumerWidget {
                       SizedBox(height: h * 0.022),
                       _ArtisanRow(w: w, artisan: job.artisan),
                       SizedBox(height: h * 0.022),
-                      _SupplementCard(
-                          w: w, h: h, supplement: supplement),
+                      _SupplementCard(w: w, h: h, supplement: supplement),
                       SizedBox(height: h * 0.022),
                       _CostBreakdown(w: w, h: h, supplement: supplement),
                       SizedBox(height: h * 0.016),
@@ -99,8 +99,7 @@ class SupplementReviewScreen extends ConsumerWidget {
                 ),
                 isApproving: response.isApproving,
                 isDeclining: response.isDeclining,
-                approveLabel:
-                    'Approve  ${supplement.additionalDisplay}',
+                approveLabel: 'Approve  ${supplement.additionalDisplay}',
                 w: w,
                 h: h,
                 bot: bot,
@@ -168,8 +167,7 @@ class _LoadingSkeleton extends StatelessWidget {
             ),
             child: Row(children: [
               CircleAvatar(
-                  radius: w * 0.065,
-                  backgroundColor: MyShopColors.surfaceGrey),
+                  radius: w * 0.065, backgroundColor: MyShopColors.surfaceGrey),
               SizedBox(width: w * 0.030),
               Expanded(
                 child: Column(
@@ -378,8 +376,7 @@ class _ArtisanRow extends StatelessWidget {
           ),
           if (artisan.isVerified)
             Container(
-              padding: EdgeInsets.symmetric(
-                  horizontal: w * 0.020, vertical: 4),
+              padding: EdgeInsets.symmetric(horizontal: w * 0.020, vertical: 4),
               decoration: BoxDecoration(
                 color: MyShopColors.successLight,
                 borderRadius: BorderRadius.circular(20),

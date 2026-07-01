@@ -27,8 +27,7 @@ class MyRatingsSummary {
 
   /// Display string with one decimal, e.g. `"4.8"`. Empty when [count]
   /// is zero so the UI can render a "New" pill instead of `0.0`.
-  String get averageDisplay =>
-      hasRatings ? average.toStringAsFixed(1) : '';
+  String get averageDisplay => hasRatings ? average.toStringAsFixed(1) : '';
 }
 
 final myRatingsProvider = FutureProvider<MyRatingsSummary>((ref) async {

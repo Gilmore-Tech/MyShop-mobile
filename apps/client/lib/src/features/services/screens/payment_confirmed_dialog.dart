@@ -361,9 +361,7 @@ class _DialogSheetState extends ConsumerState<_DialogSheet> {
                           child: _OutlinedActionButton(
                             icon: Icons.receipt_long_outlined,
                             label: 'Receipt',
-                            onTap: _generatingReceipt
-                                ? null
-                                : _onReceiptTapped,
+                            onTap: _generatingReceipt ? null : _onReceiptTapped,
                             loading: _generatingReceipt,
                             w: w,
                             h: h,

@@ -56,7 +56,8 @@ abstract class AuthService {
   /// both roles → a [ProviderRoleChoice] carrying a selection token.
   /// POST /auth/provider/verify-otp
   Future<ProviderVerifyResult> providerVerifyOtp(
-      ProviderVerifyOtpRequest request);
+    ProviderVerifyOtpRequest request,
+  );
 
   /// Exchange a role-selection token + the chosen role for a session.
   /// POST /auth/provider/select-role

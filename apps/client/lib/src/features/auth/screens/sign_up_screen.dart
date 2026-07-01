@@ -382,7 +382,9 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   }
 
   bool get _canSubmit =>
-      _nameController.text.trim().length >= 2 && _isValidPhone && _phone != null;
+      _nameController.text.trim().length >= 2 &&
+      _isValidPhone &&
+      _phone != null;
 
   void _submit() {
     final name = _nameController.text.trim();
@@ -516,4 +518,3 @@ class _StyledTextField extends StatelessWidget {
     );
   }
 }
-

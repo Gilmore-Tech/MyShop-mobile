@@ -81,7 +81,7 @@ Future<void> main() async {
   // Recover any ride the driver was on when the app last died — without
   // this, a crash mid-ride leaves the backend flagging them `busy` and
   // the matcher excludes them on subsequent ride requests.
-  container.read(activeRideRecoveryBridgeProvider); 
+  container.read(activeRideRecoveryBridgeProvider);
 
   // Activate the location guard so we force the provider offline if
   // Location Services is disabled or permission is revoked while online.

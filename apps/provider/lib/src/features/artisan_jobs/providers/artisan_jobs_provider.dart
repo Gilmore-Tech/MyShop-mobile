@@ -287,8 +287,7 @@ class ArtisanJobsNotifier extends StateNotifier<ArtisanJobsState> {
       final msg = e.toString();
       if (msg.contains('NOT_AUTHENTICATED') ||
           msg.contains('session is over')) {
-        developer.log(
-            '[ArtisanJobs] session ended — stopping poll timer',
+        developer.log('[ArtisanJobs] session ended — stopping poll timer',
             name: 'ArtisanJobs');
         _pollTimer?.cancel();
         _pollTimer = null;
@@ -412,7 +411,9 @@ final artisanJobsFilteredProvider = Provider.autoDispose
   //    Entries with an unparseable / missing timestamp drop out — without
   //    a date we can't decide which side of the range they're on.
   if (dateFilter == null) return results;
-  return results.where((e) => _inDateRange(e.job.createdAt, dateFilter)).toList();
+  return results
+      .where((e) => _inDateRange(e.job.createdAt, dateFilter))
+      .toList();
 });
 
 /// True when [iso] falls inside [range] (inclusive on both ends, day-level

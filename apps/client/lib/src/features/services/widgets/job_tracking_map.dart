@@ -160,8 +160,8 @@ class _JobTrackingMapState extends ConsumerState<JobTrackingMap> {
   Widget build(BuildContext context) {
     // Listen for live position fixes — `ref.listen` keeps the marker in
     // step with the socket without rebuilding the map widget itself.
-    ref.listen<LiveArtisanPosition?>(liveArtisanPositionProvider,
-        (_, next) => _syncArtisanMarker(next));
+    ref.listen<LiveArtisanPosition?>(
+        liveArtisanPositionProvider, (_, next) => _syncArtisanMarker(next));
 
     final lat = widget.jobLat ?? MapboxConfig.defaultLat;
     final lng = widget.jobLng ?? MapboxConfig.defaultLng;

@@ -37,7 +37,8 @@ class AccountProfile {
   /// roles on one phone but only set an email on Driver registration.
   factory AccountProfile.fromUserProfile(UserProfile profile) {
     final client = profile.client;
-    final displayName = client?.displayName ?? client?.legalName ?? profile.fullName;
+    final displayName =
+        client?.displayName ?? client?.legalName ?? profile.fullName;
     final phone = profile.phone;
     final email = client?.email ?? '';
 

@@ -606,9 +606,8 @@ class _PerformanceCard extends StatelessWidget {
     // Drivers do trips; artisans do jobs. Pair the label with a matching
     // icon so the card reads correctly on each role's account screen.
     final bookingsLabel = isDriver ? 'Trips Today' : 'Jobs Today';
-    final bookingsIcon = isDriver
-        ? Icons.directions_car_outlined
-        : Icons.handyman_outlined;
+    final bookingsIcon =
+        isDriver ? Icons.directions_car_outlined : Icons.handyman_outlined;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -641,9 +640,7 @@ class _PerformanceCard extends StatelessWidget {
           child: Row(
             children: [
               _PerfStat(
-                  icon: bookingsIcon,
-                  value: bookings,
-                  label: bookingsLabel),
+                  icon: bookingsIcon, value: bookings, label: bookingsLabel),
               const _PerfDivider(),
               _PerfStat(
                   icon: Icons.payments_outlined,

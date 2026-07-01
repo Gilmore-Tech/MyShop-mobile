@@ -760,9 +760,8 @@ class ChatController {
     // Role-aware: on same-phone-multi-role devices, "from peer" can't
     // be derived from `senderId != _selfUserId` alone — the userId
     // collides. `isOwnMessage` checks (userId, role) together.
-    final count = _messages.values
-        .where((m) => !isOwnMessage(m) && !m.isRead)
-        .length;
+    final count =
+        _messages.values.where((m) => !isOwnMessage(m) && !m.isRead).length;
     _unreadCountController.add(count);
   }
 }

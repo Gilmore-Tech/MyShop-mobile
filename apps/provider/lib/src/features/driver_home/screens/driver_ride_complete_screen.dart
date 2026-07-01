@@ -566,8 +566,7 @@ class _ClientAvatar extends StatelessWidget {
       return const CircleAvatar(
         radius: 20,
         backgroundColor: MyShopColors.avatarPlaceholder,
-        child: Icon(Icons.person,
-            size: 20, color: MyShopColors.textSecondary),
+        child: Icon(Icons.person, size: 20, color: MyShopColors.textSecondary),
       );
     }
     return CircleAvatar(
@@ -588,4 +587,3 @@ class _ClientAvatar extends StatelessWidget {
     );
   }
 }
-

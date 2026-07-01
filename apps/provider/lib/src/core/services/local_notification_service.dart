@@ -185,8 +185,7 @@ class LocalNotificationService {
       AndroidNotificationChannel(
     'job_alerts',
     'Job & Ride Requests',
-    description:
-        'Time-sensitive alerts (bid accepted, job assigned, 2-hour '
+    description: 'Time-sensitive alerts (bid accepted, job assigned, 2-hour '
         'reminders). Muting this channel will cause you to miss work.',
     importance: Importance.max,
     playSound: true,
@@ -256,7 +255,8 @@ class LocalNotificationService {
     if (_initialised) return;
     _initialised = true;
 
-    const androidInit = AndroidInitializationSettings('@drawable/ic_notification');
+    const androidInit =
+        AndroidInitializationSettings('@drawable/ic_notification');
     const iosInit = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -295,8 +295,7 @@ class LocalNotificationService {
     try {
       await androidPlugin?.requestNotificationsPermission();
     } catch (e) {
-      debugPrint(
-          '[LocalNotificationService] requestNotificationsPermission '
+      debugPrint('[LocalNotificationService] requestNotificationsPermission '
           'skipped (likely background isolate): $e');
     }
   }
@@ -496,8 +495,7 @@ class LocalNotificationService {
       await player.play(AssetSource('audio/incoming_request.mp3'));
       debugPrint('[LocalNotificationService] ringtone playing');
     } catch (e) {
-      debugPrint(
-          '[LocalNotificationService] ringtone asset unavailable, '
+      debugPrint('[LocalNotificationService] ringtone asset unavailable, '
           'falling back to haptic-only: $e');
     }
   }

@@ -517,8 +517,8 @@ class _PickupInfo extends ConsumerWidget {
           const Icon(Icons.access_time, size: 14, color: MyShopColors.online),
           const SizedBox(width: 4),
           Text('${ride.estimatedDurationMins} min trip',
-              style: MyShopTypography.body2
-                  .copyWith(color: MyShopColors.online)),
+              style:
+                  MyShopTypography.body2.copyWith(color: MyShopColors.online)),
         ]),
       ),
 

@@ -162,9 +162,7 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
           .read(paymentServiceProvider)
           .verifyPayoutMethodOtp(code: _otpCtl.text.trim());
       // Refresh the user so the dashboard reads the newly-bound payoutMethod.
-      await ref
-          .read(authControllerProvider.notifier)
-          .refreshProfile();
+      await ref.read(authControllerProvider.notifier).refreshProfile();
       if (!mounted) return;
       await _firePayoutRequest();
     } on ApiException catch (e) {
@@ -207,8 +205,7 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
       ref.invalidate(payoutsProvider);
       if (!mounted) return;
       setState(() {
-        _successMessage =
-            'Payout queued. Funds usually arrive in 2–5 minutes.';
+        _successMessage = 'Payout queued. Funds usually arrive in 2–5 minutes.';
         _step = _Step.done;
       });
     } on ApiException catch (e) {
@@ -302,8 +299,7 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
               children: [
                 Text(method,
                     style: const TextStyle(
-                        fontFamily: 'Raleway',
-                        fontWeight: FontWeight.w700)),
+                        fontFamily: 'Raleway', fontWeight: FontWeight.w700)),
                 Text(masked, style: MyShopTypography.body2),
               ],
             ),

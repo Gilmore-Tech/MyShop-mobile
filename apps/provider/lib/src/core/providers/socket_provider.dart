@@ -294,7 +294,8 @@ void _connectAndListen(Ref ref, SocketService socket) {
       final preview = data.toString();
       final trimmed =
           preview.length > 200 ? '${preview.substring(0, 200)}…' : preview;
-      ref.container.read(lastSocketEventProvider.notifier).state = '$event: $trimmed';
+      ref.container.read(lastSocketEventProvider.notifier).state =
+          '$event: $trimmed';
     });
 
     // Listen for incoming ride requests (driver) — new + legacy event names
@@ -390,7 +391,8 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // category/radius eligibility. Drives the read-only artisan-home carousel.
     void handleJobFeed(dynamic data) {
       if (data is! Map<String, dynamic>) {
-        debugPrint('[WS] job:feed:new payload not a Map — got ${data.runtimeType}');
+        debugPrint(
+            '[WS] job:feed:new payload not a Map — got ${data.runtimeType}');
         return;
       }
       try {
@@ -499,7 +501,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
           // Once a job moves past `open`, it can't be picked up from the
           // in-session "New" list any more — drop it so stale entries
           // don't linger after a decision has been made.
-          ref.container.read(pendingIncomingJobsProvider.notifier).remove(jobId);
+          ref.container
+              .read(pendingIncomingJobsProvider.notifier)
+              .remove(jobId);
         }
 
         // If the event is for the currently-active job, push the new
@@ -588,9 +592,8 @@ void _connectAndListen(Ref ref, SocketService socket) {
       debugPrint('[WS] Received rating:prompt: $data');
       if (data is! Map<String, dynamic>) return;
       final bookingType = data['bookingType'] as String?;
-      final bookingId = (data['bookingId'] ??
-          data['rideId'] ??
-          data['jobId']) as String?;
+      final bookingId =
+          (data['bookingId'] ?? data['rideId'] ?? data['jobId']) as String?;
       if (bookingType == null || bookingId == null || bookingId.isEmpty) {
         return;
       }
@@ -600,8 +603,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
       // navigation to /earnings. Without this, both paths fired and
       // stacked two rating modals on top of each other.
       final router = ref.container.read(goRouterProvider);
-      final currentPath =
-          router.routerDelegate.currentConfiguration.uri.path;
+      final currentPath = router.routerDelegate.currentConfiguration.uri.path;
       if (bookingType == 'artisan_job' || bookingType == 'job') {
         if (currentPath == '/active-job') return;
       } else if (bookingType == 'ride') {
@@ -622,9 +624,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
         if (bookingType == 'ride') {
           var firstName = 'Passenger';
           try {
-            final raw = await ref
-                .read(rideServiceProvider)
-                .getRide(bookingId);
+            final raw = await ref.read(rideServiceProvider).getRide(bookingId);
             final ride = Ride.fromJson(raw);
             final name = ride.clientName;
             if (name != null && name.trim().isNotEmpty) {

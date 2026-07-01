@@ -848,8 +848,7 @@ class _ShareBarState extends ConsumerState<_ShareBar> {
                       height: w * 0.051,
                       child: const CircularProgressIndicator(
                         strokeWidth: 2,
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(Colors.white),
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
                     )
                   : Row(

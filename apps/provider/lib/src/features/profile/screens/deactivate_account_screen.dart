@@ -59,8 +59,7 @@ class _DeactivateAccountScreenState
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style:
-                TextButton.styleFrom(foregroundColor: MyShopColors.error),
+            style: TextButton.styleFrom(foregroundColor: MyShopColors.error),
             child: const Text('Delete account'),
           ),
         ],
@@ -165,14 +164,13 @@ class _ErrorBanner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.error_outline,
-              size: 18, color: MyShopColors.error),
+          const Icon(Icons.error_outline, size: 18, color: MyShopColors.error),
           const SizedBox(width: MyShopSpacing.sm),
           Expanded(
             child: Text(
               message,
-              style: MyShopTypography.body2.copyWith(
-                  color: MyShopColors.error, height: 1.4),
+              style: MyShopTypography.body2
+                  .copyWith(color: MyShopColors.error, height: 1.4),
             ),
           ),
         ],

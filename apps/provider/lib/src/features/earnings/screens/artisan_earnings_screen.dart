@@ -240,8 +240,8 @@ class _EarningsContent extends ConsumerWidget {
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0.5,
               ),
+            ),
           ),
-        ),
         const SizedBox(height: MyShopSpacing.md),
         Row(
           children: [
@@ -661,8 +661,7 @@ class _Glyph extends StatelessWidget {
   final Color color;
 
   @override
-  Widget build(BuildContext context) =>
-      Icon(icon, size: 14, color: color);
+  Widget build(BuildContext context) => Icon(icon, size: 14, color: color);
 }
 
 class _ChipText extends StatelessWidget {
@@ -739,4 +738,3 @@ class _MiniStatCard extends StatelessWidget {
     );
   }
 }
-

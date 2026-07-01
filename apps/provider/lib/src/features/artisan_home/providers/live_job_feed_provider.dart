@@ -39,9 +39,7 @@ class LiveJobFeedNotifier extends StateNotifier<List<LiveFeedJob>> {
   void prepend(LiveFeedJob job) {
     if (state.any((j) => j.id == job.id)) return;
     final next = <LiveFeedJob>[job, ...state];
-    state = next.length > _kLiveFeedMax
-        ? next.sublist(0, _kLiveFeedMax)
-        : next;
+    state = next.length > _kLiveFeedMax ? next.sublist(0, _kLiveFeedMax) : next;
   }
 
   /// Pull-to-refresh entry point — re-seeds from REST.

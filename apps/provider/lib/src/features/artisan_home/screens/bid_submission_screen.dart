@@ -159,9 +159,7 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
         ? (widget.initialDurationMinutes ?? 0)
         : (draft?.durationMinutes ?? 0);
     _notes = TextEditingController(
-      text: useEdit
-          ? (widget.initialNotes ?? '')
-          : (draft?.notes ?? ''),
+      text: useEdit ? (widget.initialNotes ?? '') : (draft?.notes ?? ''),
     );
     if (draft != null) {
       for (final path in draft.attachmentPaths) {

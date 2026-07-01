@@ -66,99 +66,100 @@ class FareEstimateScreen extends ConsumerWidget {
         if (didPop) _resetTripState(ref);
       },
       child: Scaffold(
-      backgroundColor: MyShopColors.offWhite,
-      appBar: _buildAppBar(context, ref),
-      body: Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: PickupDestinationFields(
-                      pickupLabel: search.pickup?.name ?? 'Choose pickup',
-                      destinationLabel: search.destination?.name,
-                      onPickupTap: () =>
-                          context.push(AppRoutes.rideSearchPath('pickup')),
-                      onDestinationTap: () =>
-                          context.push(AppRoutes.rideSearchPath('destination')),
-                      onDestinationPinTap: () => context
-                          .push(AppRoutes.ridePinPickerPath('destination')),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  if (!hasPickup || !hasDestination)
-                    _RecentDestinationsSection(
-                      onSelect: (d) =>
-                          ref.read(rideSearchProvider.notifier).setLocation(
-                                RideSearchField.destination,
-                                RideLocation(name: d.label, address: d.address),
-                              ),
-                    ),
-                  if (hasCoords) ...[
-                    if (estimate.valueOrNull?.any((v) => v.surgeActive) ==
-                        true) ...[
-                      const SizedBox(height: 16),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        // Every estimate carries the same multiplier, so
-                        // reading the first surging option is enough.
-                        child: SurgePricingBanner(
-                          multiplier: estimate.valueOrNull!
-                              .firstWhere((v) => v.surgeActive)
-                              .surgeMultiplier,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 20),
+        backgroundColor: MyShopColors.offWhite,
+        appBar: _buildAppBar(context, ref),
+        body: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: _VehicleSelectionSection(estimate: estimate),
+                      child: PickupDestinationFields(
+                        pickupLabel: search.pickup?.name ?? 'Choose pickup',
+                        destinationLabel: search.destination?.name,
+                        onPickupTap: () =>
+                            context.push(AppRoutes.rideSearchPath('pickup')),
+                        onDestinationTap: () => context
+                            .push(AppRoutes.rideSearchPath('destination')),
+                        onDestinationPinTap: () => context
+                            .push(AppRoutes.ridePinPickerPath('destination')),
+                      ),
                     ),
-                    const SizedBox(height: 16),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Divider(color: MyShopColors.divider),
-                    ),
-                    const SizedBox(height: 10),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: _PaymentSection(),
-                    ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
+                    if (!hasPickup || !hasDestination)
+                      _RecentDestinationsSection(
+                        onSelect: (d) => ref
+                            .read(rideSearchProvider.notifier)
+                            .setLocation(
+                              RideSearchField.destination,
+                              RideLocation(name: d.label, address: d.address),
+                            ),
+                      ),
+                    if (hasCoords) ...[
+                      if (estimate.valueOrNull?.any((v) => v.surgeActive) ==
+                          true) ...[
+                        const SizedBox(height: 16),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          // Every estimate carries the same multiplier, so
+                          // reading the first surging option is enough.
+                          child: SurgePricingBanner(
+                            multiplier: estimate.valueOrNull!
+                                .firstWhere((v) => v.surgeActive)
+                                .surgeMultiplier,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _VehicleSelectionSection(estimate: estimate),
+                      ),
+                      const SizedBox(height: 16),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16),
+                        child: Divider(color: MyShopColors.divider),
+                      ),
+                      const SizedBox(height: 10),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16),
+                        child: _PaymentSection(),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
-          ),
-          if (estimateReady)
-            _BottomActions(
-              // No drivers in range → block the confirm path entirely so the
-              // user can't kick off a match that has nobody to match against.
-              enabled: !noDrivers,
-              // What the client pays for the selected vehicle — shown bold
-              // above the Confirm button. Hidden when no drivers are available
-              // (nothing is bookable, so a price would be misleading).
-              fareDisplay: noDrivers ? null : selectedOption?.fareDisplay,
-              onConfirm: () {
-                // Hand the long-running matcher a container instead of
-                // `ref` — the screen disposes on the next line's `go`,
-                // and `WidgetRef` becomes unusable past the next await.
-                requestRideAndMatchDriver(
-                  ProviderScope.containerOf(context, listen: false),
-                );
-                context.go(AppRoutes.rideMatching);
-              },
-              onCancel: () {
-                _resetTripState(ref);
-                context.pop();
-              },
-            ),
-        ],
-      ),
+            if (estimateReady)
+              _BottomActions(
+                // No drivers in range → block the confirm path entirely so the
+                // user can't kick off a match that has nobody to match against.
+                enabled: !noDrivers,
+                // What the client pays for the selected vehicle — shown bold
+                // above the Confirm button. Hidden when no drivers are available
+                // (nothing is bookable, so a price would be misleading).
+                fareDisplay: noDrivers ? null : selectedOption?.fareDisplay,
+                onConfirm: () {
+                  // Hand the long-running matcher a container instead of
+                  // `ref` — the screen disposes on the next line's `go`,
+                  // and `WidgetRef` becomes unusable past the next await.
+                  requestRideAndMatchDriver(
+                    ProviderScope.containerOf(context, listen: false),
+                  );
+                  context.go(AppRoutes.rideMatching);
+                },
+                onCancel: () {
+                  _resetTripState(ref);
+                  context.pop();
+                },
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -388,8 +389,7 @@ class _NoDriversBanner extends StatelessWidget {
       child: const Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.person_off_outlined,
-              size: 18, color: MyShopColors.error),
+          Icon(Icons.person_off_outlined, size: 18, color: MyShopColors.error),
           SizedBox(width: 10),
           Expanded(
             child: Column(

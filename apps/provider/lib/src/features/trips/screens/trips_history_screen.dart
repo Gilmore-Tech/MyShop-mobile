@@ -401,102 +401,104 @@ class _TripCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         child: Container(
-      padding: const EdgeInsets.all(MyShopSpacing.md),
-      decoration: BoxDecoration(
-        color: MyShopColors.surfaceWhite,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: MyShopColors.divider),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+          padding: const EdgeInsets.all(MyShopSpacing.md),
+          decoration: BoxDecoration(
+            color: MyShopColors.surfaceWhite,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: MyShopColors.divider),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  _dateLabel(at),
-                  style: MyShopTypography.body2.copyWith(fontSize: 11),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _dateLabel(at),
+                      style: MyShopTypography.body2.copyWith(fontSize: 11),
+                    ),
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: _statusColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      _statusLabel,
+                      style: TextStyle(
+                        fontFamily: 'Raleway',
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                        color: _statusColor,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              _TripPoint(
+                color: MyShopColors.darkSlate,
+                address:
+                    trip.pickupAddress.isEmpty ? 'Pickup' : trip.pickupAddress,
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: _statusColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  _statusLabel,
-                  style: TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: 9,
-                    fontWeight: FontWeight.w900,
-                    color: _statusColor,
-                    letterSpacing: 0.5,
-                  ),
-                ),
+                margin: const EdgeInsets.only(left: 5, top: 2, bottom: 2),
+                width: 2,
+                height: 14,
+                color: MyShopColors.divider,
+              ),
+              _TripPoint(
+                color: MyShopColors.primaryGold,
+                address: trip.dropoffAddress.isEmpty
+                    ? 'Destination'
+                    : trip.dropoffAddress,
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  if (distance > 0)
+                    _MetaChip(
+                      icon: Icons.straighten,
+                      label: '${distance.toStringAsFixed(1)} km',
+                    ),
+                  if (distance > 0) const SizedBox(width: 8),
+                  if (duration > 0)
+                    _MetaChip(
+                      icon: Icons.access_time,
+                      label: '$duration mins',
+                    ),
+                  const Spacer(),
+                  // Fare is only meaningful when the ride actually completed —
+                  // cancelled rides never charged the rider, so showing a number
+                  // here reads as "you earned this" which is misleading. We
+                  // surface a dash for non-completed terminal states instead.
+                  if (trip.status == RideStatus.completed)
+                    Text(
+                      trip.finalFareDisplay,
+                      style: const TextStyle(
+                        fontFamily: 'Raleway',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: MyShopColors.textPrimary,
+                      ),
+                    )
+                  else
+                    const Text(
+                      '—',
+                      style: TextStyle(
+                        fontFamily: 'Raleway',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: MyShopColors.textSecondary,
+                      ),
+                    ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          _TripPoint(
-            color: MyShopColors.darkSlate,
-            address: trip.pickupAddress.isEmpty ? 'Pickup' : trip.pickupAddress,
-          ),
-          Container(
-            margin: const EdgeInsets.only(left: 5, top: 2, bottom: 2),
-            width: 2,
-            height: 14,
-            color: MyShopColors.divider,
-          ),
-          _TripPoint(
-            color: MyShopColors.primaryGold,
-            address: trip.dropoffAddress.isEmpty
-                ? 'Destination'
-                : trip.dropoffAddress,
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              if (distance > 0)
-                _MetaChip(
-                  icon: Icons.straighten,
-                  label: '${distance.toStringAsFixed(1)} km',
-                ),
-              if (distance > 0) const SizedBox(width: 8),
-              if (duration > 0)
-                _MetaChip(
-                  icon: Icons.access_time,
-                  label: '$duration mins',
-                ),
-              const Spacer(),
-              // Fare is only meaningful when the ride actually completed —
-              // cancelled rides never charged the rider, so showing a number
-              // here reads as "you earned this" which is misleading. We
-              // surface a dash for non-completed terminal states instead.
-              if (trip.status == RideStatus.completed)
-                Text(
-                  trip.finalFareDisplay,
-                  style: const TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: MyShopColors.textPrimary,
-                  ),
-                )
-              else
-                const Text(
-                  '—',
-                  style: TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: MyShopColors.textSecondary,
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
         ),
       ),
     );

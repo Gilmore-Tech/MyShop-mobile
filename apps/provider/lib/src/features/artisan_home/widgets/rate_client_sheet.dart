@@ -64,15 +64,14 @@ class _RateClientSheetState extends ConsumerState<RateClientSheet> {
       _errorMessage = null;
     });
     try {
-      final response =
-          await ref.read(ratingServiceProvider).submitRating(
-                bookingType: 'artisan_job',
-                bookingId: widget.jobId,
-                stars: _stars,
-                comment: _commentController.text.trim().isEmpty
-                    ? null
-                    : _commentController.text.trim(),
-              );
+      final response = await ref.read(ratingServiceProvider).submitRating(
+            bookingType: 'artisan_job',
+            bookingId: widget.jobId,
+            stars: _stars,
+            comment: _commentController.text.trim().isEmpty
+                ? null
+                : _commentController.text.trim(),
+          );
       // Mutual reveal triggered ⇒ the client's rating about us just became
       // counted in our public average. Invalidate the summary so the
       // earnings/home rating tile refetches with the new value instead of

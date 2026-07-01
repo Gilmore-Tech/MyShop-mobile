@@ -384,109 +384,109 @@ class _JobCard extends StatelessWidget {
           horizontal: w * 0.041,
           vertical: h * 0.017,
         ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Title row ──
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Category icon circle
-                  Container(
-                    width: w * 0.103,
-                    height: w * 0.103,
-                    decoration: const BoxDecoration(
-                      color: MyShopColors.surfaceGrey,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      job.categoryIcon,
-                      size: w * 0.051,
-                      color: MyShopColors.textSecondary,
-                    ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Title row ──
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Category icon circle
+                Container(
+                  width: w * 0.103,
+                  height: w * 0.103,
+                  decoration: const BoxDecoration(
+                    color: MyShopColors.surfaceGrey,
+                    shape: BoxShape.circle,
                   ),
-                  SizedBox(width: w * 0.031),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Title + 3-dot menu
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                job.title,
-                                style: TextStyle(
-                                  fontSize: w * 0.041,
-                                  fontWeight: FontWeight.w700,
-                                  color: MyShopColors.textPrimary,
-                                  height: 1.25,
-                                ),
-                              ),
-                            ),
-                            GestureDetector(
-                              onTap: () => _showCardMenu(context, job),
-                              behavior: HitTestBehavior.opaque,
-                              child: Padding(
-                                padding: EdgeInsets.only(left: w * 0.021),
-                                child: Icon(
-                                  Icons.more_vert_rounded,
-                                  size: w * 0.051,
-                                  color: MyShopColors.textSecondary,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: h * 0.005),
-                        // Location + posted time
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.location_on_outlined,
-                              size: w * 0.031,
-                              color: MyShopColors.textHint,
-                            ),
-                            SizedBox(width: w * 0.010),
-                            Expanded(
-                              child: Text(
-                                '${job.location} · ${job.postedAt}',
-                                style: TextStyle(
-                                  fontSize: w * 0.031,
-                                  fontWeight: FontWeight.w400,
-                                  color: MyShopColors.textSecondary,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                  child: Icon(
+                    job.categoryIcon,
+                    size: w * 0.051,
+                    color: MyShopColors.textSecondary,
                   ),
-                ],
-              ),
-
-              SizedBox(height: h * 0.014),
-
-              // ── Status badge row ──
-              Row(
-                children: [
-                  _StatusBadge(status: job.status, w: w),
-                ],
-              ),
-
-              // ── Active bids row (only for ongoing jobs) ──
-              if (job.showBidRow) ...[
-                SizedBox(height: h * 0.012),
-                const Divider(height: 1, color: MyShopColors.divider),
-                SizedBox(height: h * 0.012),
-                _BidRow(job: job, w: w, h: h),
+                ),
+                SizedBox(width: w * 0.031),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Title + 3-dot menu
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              job.title,
+                              style: TextStyle(
+                                fontSize: w * 0.041,
+                                fontWeight: FontWeight.w700,
+                                color: MyShopColors.textPrimary,
+                                height: 1.25,
+                              ),
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: () => _showCardMenu(context, job),
+                            behavior: HitTestBehavior.opaque,
+                            child: Padding(
+                              padding: EdgeInsets.only(left: w * 0.021),
+                              child: Icon(
+                                Icons.more_vert_rounded,
+                                size: w * 0.051,
+                                color: MyShopColors.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: h * 0.005),
+                      // Location + posted time
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.location_on_outlined,
+                            size: w * 0.031,
+                            color: MyShopColors.textHint,
+                          ),
+                          SizedBox(width: w * 0.010),
+                          Expanded(
+                            child: Text(
+                              '${job.location} · ${job.postedAt}',
+                              style: TextStyle(
+                                fontSize: w * 0.031,
+                                fontWeight: FontWeight.w400,
+                                color: MyShopColors.textSecondary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
               ],
+            ),
+
+            SizedBox(height: h * 0.014),
+
+            // ── Status badge row ──
+            Row(
+              children: [
+                _StatusBadge(status: job.status, w: w),
+              ],
+            ),
+
+            // ── Active bids row (only for ongoing jobs) ──
+            if (job.showBidRow) ...[
+              SizedBox(height: h * 0.012),
+              const Divider(height: 1, color: MyShopColors.divider),
+              SizedBox(height: h * 0.012),
+              _BidRow(job: job, w: w, h: h),
             ],
-          ),
+          ],
+        ),
       ),
     );
   }

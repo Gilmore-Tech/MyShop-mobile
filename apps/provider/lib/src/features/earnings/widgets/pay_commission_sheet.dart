@@ -122,8 +122,8 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
 
       setState(() {
         _step = _Step.done;
-        _displayText =
-            (res['displayText'] as String?) ?? 'Authorise the prompt on '
+        _displayText = (res['displayText'] as String?) ??
+            'Authorise the prompt on '
                 'your phone to complete the payment.';
         _surplusPesewas = (res['surplusPesewas'] as num?)?.toInt() ?? 0;
       });
@@ -169,8 +169,8 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-              MyShopSpacing.md, MyShopSpacing.md, MyShopSpacing.md, MyShopSpacing.lg),
+          padding: const EdgeInsets.fromLTRB(MyShopSpacing.md, MyShopSpacing.md,
+              MyShopSpacing.md, MyShopSpacing.lg),
           child: switch (_step) {
             _Step.enter => _buildEnter(),
             _Step.working => _buildWorking(),
@@ -216,8 +216,7 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
         const SizedBox(height: 6),
         TextField(
           controller: _amountCtl,
-          keyboardType:
-              const TextInputType.numberWithOptions(decimal: true),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
           inputFormatters: [
             FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
           ],
@@ -229,13 +228,11 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
               borderSide:
                   const BorderSide(color: MyShopColors.divider, width: 1),
             ),
-            contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12, vertical: 14),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           ),
           style: const TextStyle(
-              fontFamily: 'Raleway',
-              fontSize: 18,
-              fontWeight: FontWeight.w800),
+              fontFamily: 'Raleway', fontSize: 18, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 16),
         const Text(
@@ -277,8 +274,8 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
               borderSide:
                   const BorderSide(color: MyShopColors.divider, width: 1),
             ),
-            contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12, vertical: 14),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           ),
         ),
         if (_errorMessage != null) ...[
@@ -298,8 +295,8 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
             backgroundColor: MyShopColors.primaryGold,
             foregroundColor: MyShopColors.textOnPrimary,
             minimumSize: const Size(double.infinity, 50),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(28)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
           ),
           child: const Text('PAY COMMISSION',
               style: TextStyle(
@@ -341,9 +338,7 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
           'Authorise on your phone',
           textAlign: TextAlign.center,
           style: TextStyle(
-              fontFamily: 'Raleway',
-              fontSize: 20,
-              fontWeight: FontWeight.w900),
+              fontFamily: 'Raleway', fontSize: 20, fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: 8),
         Text(
@@ -351,8 +346,8 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
               'You should receive a MoMo prompt asking you to authorise the '
                   'payment. Once you approve it, your owed balance will update.',
           textAlign: TextAlign.center,
-          style: MyShopTypography.body2.copyWith(
-              color: MyShopColors.textSecondary, height: 1.45),
+          style: MyShopTypography.body2
+              .copyWith(color: MyShopColors.textSecondary, height: 1.45),
         ),
         if (surplus > 0) ...[
           const SizedBox(height: 12),
@@ -391,8 +386,8 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
             backgroundColor: MyShopColors.darkSlate,
             foregroundColor: Colors.white,
             minimumSize: const Size(double.infinity, 50),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(28)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
           ),
           child: const Text('DONE',
               style: TextStyle(
@@ -411,8 +406,7 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
       children: [
         const _GrabHandle(),
         const SizedBox(height: 16),
-        const Icon(Icons.error_outline,
-            color: MyShopColors.error, size: 48),
+        const Icon(Icons.error_outline, color: MyShopColors.error, size: 48),
         const SizedBox(height: 12),
         Text(
           _errorMessage ?? "Something went wrong.",
@@ -426,8 +420,8 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
             backgroundColor: MyShopColors.primaryGold,
             foregroundColor: MyShopColors.textOnPrimary,
             minimumSize: const Size(double.infinity, 48),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           ),
           child: const Text('TRY AGAIN'),
         ),

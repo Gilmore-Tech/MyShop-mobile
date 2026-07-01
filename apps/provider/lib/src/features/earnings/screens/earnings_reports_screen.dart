@@ -145,9 +145,8 @@ class _EarningsReportsScreenState extends ConsumerState<EarningsReportsScreen> {
     // built from null/loading state would just send an empty document.
     final report = reportAsync.valueOrNull;
     final canExport = report != null && !_isExporting;
-    final onExportTap = canExport
-        ? () => _exportPdf(report: report, role: role)
-        : null;
+    final onExportTap =
+        canExport ? () => _exportPdf(report: report, role: role) : null;
 
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,

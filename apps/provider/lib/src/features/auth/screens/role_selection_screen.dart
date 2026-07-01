@@ -127,8 +127,7 @@ class _SignInRoleSelectionScreenState
         return Consumer(
           builder: (context, ref, _) {
             final state = ref.watch(authControllerProvider);
-            final blocked =
-                state is AuthBlockedByOtherDevice ? state : null;
+            final blocked = state is AuthBlockedByOtherDevice ? state : null;
             final recoveryStatus =
                 blocked?.recoveryRequestStatus ?? RecoveryRequestStatus.idle;
             final sendingRecovery =
@@ -163,9 +162,8 @@ class _SignInRoleSelectionScreenState
               ),
               actions: [
                 TextButton(
-                  onPressed: anyInFlight
-                      ? null
-                      : () => controller.forceTakeover(),
+                  onPressed:
+                      anyInFlight ? null : () => controller.forceTakeover(),
                   child: takingOver
                       ? const SizedBox(
                           width: 16,

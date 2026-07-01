@@ -47,8 +47,7 @@ class DriverCarMarker {
       ),
       Paint()
         ..color = Colors.black.withValues(alpha: 0.35)
-        ..maskFilter =
-            MaskFilter.blur(BlurStyle.normal, 5 * devicePixelRatio),
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 5 * devicePixelRatio),
     );
 
     // White body.

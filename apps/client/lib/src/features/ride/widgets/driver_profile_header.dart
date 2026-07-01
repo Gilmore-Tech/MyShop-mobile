@@ -177,9 +177,8 @@ class _RatingRow extends StatelessWidget {
         Icon(
           Icons.star_rounded,
           size: w * 0.038,
-          color: hasRating
-              ? MyShopColors.primaryGold
-              : MyShopColors.textSecondary,
+          color:
+              hasRating ? MyShopColors.primaryGold : MyShopColors.textSecondary,
         ),
         SizedBox(width: w * 0.010),
         Text(
