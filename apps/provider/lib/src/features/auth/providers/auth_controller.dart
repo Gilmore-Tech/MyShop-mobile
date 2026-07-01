@@ -301,6 +301,7 @@ class AuthController extends StateNotifier<AuthState> {
     List<String>? rideCategories,
     String? regionId,
     String? shopCapacity,
+    String? referralCode,
   }) async {
     if (_requesting) return;
     _requesting = true;
@@ -318,6 +319,7 @@ class AuthController extends StateNotifier<AuthState> {
         rideCategories: rideCategories,
         regionId: regionId,
         shopCapacity: shopCapacity,
+        referralCode: referralCode,
       ));
       state = AuthOtpSent(phone: phone, isNewUser: true, role: role);
     } on ApiException catch (e) {
