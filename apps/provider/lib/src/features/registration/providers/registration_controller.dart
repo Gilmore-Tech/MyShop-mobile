@@ -32,6 +32,7 @@ class DriverRegistrationDraft {
     this.vehicleColor = '',
     this.rideCategories = const [],
     this.regionId = '',
+    this.referralCode = '',
   });
 
   final String fullName;
@@ -52,6 +53,11 @@ class DriverRegistrationDraft {
   /// and the backend defaults to the active pilot region.
   final String regionId;
 
+  /// Optional referral code entered at signup. Empty when not provided.
+  /// Forwarded to POST /auth/register and linked fire-and-forget by the
+  /// backend — a bad code is ignored and never blocks registration.
+  final String referralCode;
+
   DriverRegistrationDraft copyWith({
     String? fullName,
     String? email,
@@ -63,6 +69,7 @@ class DriverRegistrationDraft {
     String? vehicleColor,
     List<String>? rideCategories,
     String? regionId,
+    String? referralCode,
   }) =>
       DriverRegistrationDraft(
         fullName: fullName ?? this.fullName,
@@ -75,6 +82,7 @@ class DriverRegistrationDraft {
         vehicleColor: vehicleColor ?? this.vehicleColor,
         rideCategories: rideCategories ?? this.rideCategories,
         regionId: regionId ?? this.regionId,
+        referralCode: referralCode ?? this.referralCode,
       );
 
   /// fullName and at least one ride category are required for POST /auth/register.
@@ -110,6 +118,7 @@ class ArtisanRegistrationDraft {
     this.serviceCategories = const [],
     this.serviceRadiusKm = 5,
     this.regionId = '',
+    this.referralCode = '',
   });
 
   final String fullName;
@@ -126,6 +135,11 @@ class ArtisanRegistrationDraft {
   /// and the backend defaults to the active pilot region.
   final String regionId;
 
+  /// Optional referral code entered at signup. Empty when not provided.
+  /// Forwarded to POST /auth/register and linked fire-and-forget by the
+  /// backend — a bad code is ignored and never blocks registration.
+  final String referralCode;
+
   ArtisanRegistrationDraft copyWith({
     String? fullName,
     String? email,
@@ -136,6 +150,7 @@ class ArtisanRegistrationDraft {
     List<String>? serviceCategories,
     double? serviceRadiusKm,
     String? regionId,
+    String? referralCode,
   }) =>
       ArtisanRegistrationDraft(
         fullName: fullName ?? this.fullName,
@@ -147,6 +162,7 @@ class ArtisanRegistrationDraft {
         serviceCategories: serviceCategories ?? this.serviceCategories,
         serviceRadiusKm: serviceRadiusKm ?? this.serviceRadiusKm,
         regionId: regionId ?? this.regionId,
+        referralCode: referralCode ?? this.referralCode,
       );
 
   /// Only fullName and serviceCategories are required for POST /auth/register.

@@ -316,22 +316,54 @@ class _DriverCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Row(
-            children: [
-              Container(
-                width: w * 0.13,
-                height: w * 0.13,
-                decoration: const BoxDecoration(
-                    color: Color(0xFF2C3E50), shape: BoxShape.circle),
-                child: Icon(Icons.person_rounded,
-                    color: Colors.white, size: w * 0.065),
-              ),
-              SizedBox(width: w * 0.030),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(data.driverName,
+          Container(
+            width: w * 0.13,
+            height: w * 0.13,
+            decoration: const BoxDecoration(
+                color: Color(0xFF2C3E50), shape: BoxShape.circle),
+            child: Icon(Icons.person_rounded,
+                color: Colors.white, size: w * 0.065),
+          ),
+          SizedBox(width: w * 0.030),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(data.driverName,
+                    style: TextStyle(
+                      color: MyShopColors.textPrimary,
+                      fontSize: w * 0.040,
+                      fontWeight: FontWeight.w700,
+                    )),
+                const SizedBox(height: 3),
+                Text(data.vehicleDisplay,
+                    style: TextStyle(
+                        color: MyShopColors.textSecondary,
+                        fontSize: w * 0.032)),
+                // Read-only number, visible only during the 24h post-trip
+                // contact window (gated in the provider). No call button —
+                // this is a history page.
+                if ((data.driverPhone ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    Icon(Icons.phone_rounded,
+                        size: w * 0.034, color: MyShopColors.textSecondary),
+                    SizedBox(width: w * 0.012),
+                    Text(data.driverPhone!,
+                        style: TextStyle(
+                          color: MyShopColors.textPrimary,
+                          fontSize: w * 0.032,
+                          fontWeight: FontWeight.w600,
+                        )),
+                  ]),
+                ],
+                if (data.driverRating > 0) ...[
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    const Icon(Icons.star_rounded,
+                        color: MyShopColors.primaryGold, size: 14),
+                    const SizedBox(width: 3),
+                    Text(data.driverRating.toStringAsFixed(1),
                         style: TextStyle(
                           color: MyShopColors.textPrimary,
                           fontSize: w * 0.040,

@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:api_client/api_client.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_models/shared_models.dart';
 
 import '../../../core/di/providers.dart';
 
@@ -26,9 +27,9 @@ class RideDetailData {
   final double driverRating;
   final String? driverPhotoUrl;
 
-  /// Driver's real, dialable number. Backend only includes it on the ride
-  /// snapshot for 24h after the trip completes, then drops it — so this is
-  /// non-null only inside that post-trip contact window.
+  /// Driver's real number — shown as read-only text (no call button) only
+  /// while the completed ride is inside the 24h post-trip contact window.
+  /// Null otherwise (cancelled, window expired, or backend omitted it).
   final String? driverPhone;
 
   // Trip
@@ -130,6 +131,7 @@ class _RideDetailNotifier
     String dateTimeLabel = '';
     String? pickupTime;
     String? dropoffTime;
+    DateTime? completedAtDt;
 
     if (createdAt != null) {
       final dt = DateTime.tryParse(createdAt);
@@ -143,10 +145,24 @@ class _RideDetailNotifier
     }
     if (completedAt != null) {
       final dt = DateTime.tryParse(completedAt);
-      if (dt != null) dropoffTime = DateFormat.jm().format(dt.toLocal());
+      if (dt != null) {
+        completedAtDt = dt;
+        dropoffTime = DateFormat.jm().format(dt.toLocal());
+      }
     }
 
     final status = ride['status'] as String? ?? 'requested';
+
+    // Only surface the driver's real number while the completed ride is
+    // inside the 24h post-trip contact window. Read-only — history pages
+    // never expose a call button.
+    final rawDriverPhone =
+        (driver['phone'] ?? driver['maskedPhone']) as String?;
+    final driverPhone = status == 'completed' &&
+            isWithinPostTripContactWindow(completedAtDt) &&
+            (rawDriverPhone?.trim().isNotEmpty ?? false)
+        ? rawDriverPhone
+        : null;
 
     return RideDetailData(
       rideId: ride['id'] as String? ?? rideId,
@@ -162,9 +178,7 @@ class _RideDetailNotifier
           ' · ${driver['plateNumber'] ?? ''}',
       driverRating: (driver['rating'] as num?)?.toDouble() ?? 0.0,
       driverPhotoUrl: driver['photoUrl'] as String?,
-      driverPhone: (driver['phone'] as String?)?.isNotEmpty == true
-          ? driver['phone'] as String
-          : null,
+      driverPhone: driverPhone,
       durationMins: (ride['actualDurationMins'] as num?)?.toInt() ??
           (ride['estimatedDurationMins'] as num?)?.toInt() ??
           0,

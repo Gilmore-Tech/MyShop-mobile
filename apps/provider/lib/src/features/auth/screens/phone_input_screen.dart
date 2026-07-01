@@ -126,6 +126,9 @@ class _ProviderPhoneInputScreenState
               ? draft.rideCategories
               : null,
           regionId: draft.regionId.isNotEmpty ? draft.regionId : null,
+          referralCode: draft.referralCode.trim().isNotEmpty
+              ? draft.referralCode.trim()
+              : null,
         );
       } else {
         final draft = ref.read(artisanRegistrationProvider);
@@ -142,6 +145,9 @@ class _ProviderPhoneInputScreenState
               ? draft.serviceCategories
               : null,
           regionId: draft.regionId.isNotEmpty ? draft.regionId : null,
+          referralCode: draft.referralCode.trim().isNotEmpty
+              ? draft.referralCode.trim()
+              : null,
         );
       }
     }

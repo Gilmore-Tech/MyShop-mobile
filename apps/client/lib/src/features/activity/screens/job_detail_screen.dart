@@ -230,6 +230,23 @@ class _ArtisanCard extends StatelessWidget {
                           color: MyShopColors.textSecondary,
                           fontSize: w * 0.032)),
                 ],
+                // Read-only number, visible only during the 24h post-job
+                // contact window (gated in the provider). No call button —
+                // this is a history page.
+                if ((data.artisanPhone ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    Icon(Icons.phone_rounded,
+                        size: w * 0.034, color: MyShopColors.textSecondary),
+                    SizedBox(width: w * 0.012),
+                    Text(data.artisanPhone!,
+                        style: TextStyle(
+                          color: MyShopColors.textPrimary,
+                          fontSize: w * 0.032,
+                          fontWeight: FontWeight.w600,
+                        )),
+                  ]),
+                ],
                 if (data.artisanRating != null) ...[
                   const SizedBox(height: 4),
                   Row(children: [

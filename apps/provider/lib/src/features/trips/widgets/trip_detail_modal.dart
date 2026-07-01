@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -53,6 +54,13 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
   /// as dashes.
   _RideSnapshot? _snapshot;
 
+  /// Passenger identity from the same snapshot. [_clientPhone] is only set
+  /// when the trip is completed and still inside the 24h post-trip contact
+  /// window — shown as read-only text (no call button) so the driver can
+  /// note the rider's number to reconnect. Null otherwise.
+  String? _clientName;
+  String? _clientPhone;
+
   bool get _isCompleted => widget.trip.status.toLowerCase() == 'completed';
 
   @override
@@ -66,7 +74,22 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
       final raw =
           await ref.read(rideServiceProvider).getRide(widget.trip.rideId);
       if (!mounted) return;
-      setState(() => _snapshot = _RideSnapshot.fromJson(raw));
+      final clientObj = raw['client'] as Map<String, dynamic>?;
+      final completedAt = DateTime.tryParse(
+          (raw['completedAt'] ?? raw['completed_at']) as String? ?? '');
+      final rawPhone = (raw['clientPhone'] ??
+          clientObj?['phone'] ??
+          clientObj?['maskedPhone']) as String?;
+      final showContact = _isCompleted &&
+          isWithinPostTripContactWindow(completedAt) &&
+          (rawPhone?.trim().isNotEmpty ?? false);
+      setState(() {
+        _snapshot = _RideSnapshot.fromJson(raw);
+        _clientName = (raw['clientName'] ??
+            clientObj?['name'] ??
+            clientObj?['fullName']) as String?;
+        _clientPhone = showContact ? rawPhone : null;
+      });
     } catch (_) {
       // Network / 404 — leave _snapshot null. The placeholder map + dashes
       // are intentional; a noisy banner on an info-only screen would be
@@ -209,16 +232,14 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
                                   ),
                                   const SizedBox(height: MyShopSpacing.lg),
 
-                                  // ── 5b. Customer contact ──
-                                  // The rider's real number is available for
-                                  // 24h after completion so the driver can
-                                  // reach them (e.g. a forgotten item). The
-                                  // backend stops sending it once the window
-                                  // closes, so this section simply disappears.
-                                  if (_isCompleted &&
-                                      _snapshot?.clientPhone != null) ...[
-                                    _ContactSection(
-                                        phone: _snapshot!.clientPhone!),
+                                  // ── 5b. Passenger number (read-only;
+                                  // 24h post-trip window only) ──
+                                  if ((_clientPhone ?? '').trim().isNotEmpty)
+                                    ...[
+                                    _PassengerContactRow(
+                                      name: _clientName ?? 'Passenger',
+                                      phone: _clientPhone!,
+                                    ),
                                     const SizedBox(height: MyShopSpacing.lg),
                                   ],
                                 ],
@@ -265,6 +286,71 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
     fontWeight: FontWeight.w400,
     color: MyShopColors.textSecondary,
   );
+}
+
+// ─── Passenger contact row ──────────────────────────────────────────────────
+
+/// Read-only rider identity + number shown on a completed trip's detail while
+/// the backend still serves the rider's real number (24h post-trip window).
+/// History is informational only — there's deliberately no call button.
+class _PassengerContactRow extends StatelessWidget {
+  const _PassengerContactRow({required this.name, required this.phone});
+
+  final String name;
+  final String phone;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(MyShopSpacing.sm),
+      decoration: BoxDecoration(
+        color: MyShopColors.surfaceGrey,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const CircleAvatar(
+            radius: 18,
+            backgroundColor: MyShopColors.darkSlate,
+            child: Icon(Icons.person_rounded, color: Colors.white, size: 20),
+          ),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: MyShopColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    const Icon(Icons.phone_rounded,
+                        size: 13, color: MyShopColors.textSecondary),
+                    const SizedBox(width: 5),
+                    Text(
+                      phone,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: MyShopColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ─── Close (X) button ───────────────────────────────────────────────────────
