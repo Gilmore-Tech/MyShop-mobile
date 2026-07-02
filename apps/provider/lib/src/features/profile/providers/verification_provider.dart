@@ -249,6 +249,49 @@ final localProfilePhotoProvider =
   return LocalProfilePhotoNotifier(role);
 });
 
+/// The provider profile photo that is allowed to be displayed in avatar holders.
+///
+/// A provider-uploaded photo is a compliance document, not a free-form avatar:
+/// it may appear publicly only after the active role's `profile_photo` document
+/// is approved. While the current photo document is uploaded/pending/rejected,
+/// hide the URL even if the backend profile row already has `profilePhotoUrl`
+/// from upload confirmation. If there is no document row at all, fall back to
+/// legacy profile URLs so existing approved/backfilled accounts keep their
+/// avatar.
+class ProviderProfilePhotoDisplay {
+  const ProviderProfilePhotoDisplay({this.url, this.localFile});
+
+  final String? url;
+  final File? localFile;
+}
+
+final providerProfilePhotoDisplayProvider =
+    Provider<ProviderProfilePhotoDisplay>((ref) {
+  final role = ref.watch(providerTypeProvider);
+  final roleValue = role.name;
+  final verification = ref.watch(verificationStatusProvider).valueOrNull;
+  final profilePhotoDoc = verification?.documentFor(
+    DocumentType.profilePhoto.value,
+    providerType: roleValue,
+  );
+
+  if (profilePhotoDoc != null) {
+    final url = profilePhotoDoc.fileUrl;
+    return ProviderProfilePhotoDisplay(
+      url: profilePhotoDoc.isApproved && url != null && url.isNotEmpty
+          ? url
+          : null,
+    );
+  }
+
+  final user = ref.watch(currentUserProvider);
+  final local = ref.watch(localProfilePhotoProvider);
+  return ProviderProfilePhotoDisplay(
+    url: user?.profilePhotoUrl ?? local.cloudinaryUrl,
+    localFile: local.localFile,
+  );
+});
+
 // ─── Profile Completion ─────────────────────────────────────────────────────
 
 /// Computes the profile completion percentage from real user data.

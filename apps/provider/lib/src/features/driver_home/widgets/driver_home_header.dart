@@ -21,12 +21,11 @@ class DriverHomeHeader extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final topPadding = MediaQuery.of(context).padding.top;
     final user = ref.watch(currentUserProvider);
-    final backendPhotoUrl = user?.profilePhotoUrl;
-    final photoState = ref.watch(localProfilePhotoProvider);
-    final ImageProvider? avatarImage = photoState.localFile != null
-        ? FileImage(photoState.localFile!)
-        : (backendPhotoUrl ?? photoState.cloudinaryUrl) != null
-            ? NetworkImage(backendPhotoUrl ?? photoState.cloudinaryUrl!)
+    final profilePhoto = ref.watch(providerProfilePhotoDisplayProvider);
+    final ImageProvider? avatarImage = profilePhoto.localFile != null
+        ? FileImage(profilePhoto.localFile!)
+        : profilePhoto.url != null
+            ? NetworkImage(profilePhoto.url!)
             : null;
 
     return ClipRect(
