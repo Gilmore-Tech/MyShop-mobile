@@ -24,8 +24,7 @@ class AuthRepository {
     return saved != null ? AuthRole.fromString(saved) : null;
   }
 
-  Future<({String deviceId, Map<String, dynamic>? deviceInfo})>
-      _deviceContext() async {
+  Future<({String deviceId, String? deviceInfo})> _deviceContext() async {
     final id = await _deviceIdProvider.ensureDeviceId();
     final info = await _deviceIdProvider.readDeviceInfo();
     return (deviceId: id, deviceInfo: info);

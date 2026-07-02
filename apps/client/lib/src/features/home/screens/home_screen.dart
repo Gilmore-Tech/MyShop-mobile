@@ -24,7 +24,7 @@ class HomeScreen extends ConsumerWidget {
     final search = ref.watch(rideSearchProvider);
     final currentLabel = ref.watch(currentLocationLabelProvider).value;
     final String pickupName =
-        search.pickup?.name ?? currentLabel ?? 'Locating...';
+        search.pickup?.name ?? currentLabel ?? 'Current location';
 
     final h = MediaQuery.sizeOf(context).height;
     return Scaffold(

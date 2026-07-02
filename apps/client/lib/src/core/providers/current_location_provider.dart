@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -43,39 +45,54 @@ class CurrentLocationService {
       if (existing != null) return existing;
     }
 
-    final future = _ensureInternal();
+    final future = _ensureInternal(waitForFresh: forceRefresh);
     _inFlight = future;
     return future.whenComplete(() {
       if (identical(_inFlight, future)) _inFlight = null;
     });
   }
 
-  Future<Position?> _ensureInternal() async {
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return null;
-
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.deniedForever) {
-      return null;
-    }
-
-    // Fast path: seed the cache from the OS last-known position so callers
-    // get an immediate answer while the fresh fix is still resolving.
-    Position? bestSoFar;
+  Future<Position?> _ensureInternal({required bool waitForFresh}) async {
     try {
-      final last = await Geolocator.getLastKnownPosition();
-      if (last != null) {
-        bestSoFar = last;
-        _ref.read(currentDevicePositionProvider.notifier).state = last;
-      }
-    } catch (e) {
-      debugPrint('[LOC] getLastKnownPosition failed: $e');
-    }
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return null;
 
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return null;
+      }
+
+      // Fast path: seed the cache from the OS last-known position. Normal
+      // callers return it immediately while a fresh fix updates the shared
+      // cache in the background; map pickers can request forceRefresh=true.
+      Position? bestSoFar;
+      try {
+        final last = await Geolocator.getLastKnownPosition();
+        if (last != null) {
+          bestSoFar = last;
+          _ref.read(currentDevicePositionProvider.notifier).state = last;
+        }
+      } catch (error) {
+        debugPrint('[LOC] getLastKnownPosition failed: $error');
+      }
+
+      if (bestSoFar != null && !waitForFresh) {
+        unawaited(_refreshCurrentPosition(bestSoFar));
+        return bestSoFar;
+      }
+
+      return _refreshCurrentPosition(bestSoFar);
+    } catch (error) {
+      debugPrint('[LOC] location permission/service check failed: $error');
+      return _ref.read(currentDevicePositionProvider);
+    }
+  }
+
+  Future<Position?> _refreshCurrentPosition(Position? fallback) async {
     try {
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
@@ -85,10 +102,10 @@ class CurrentLocationService {
       );
       _ref.read(currentDevicePositionProvider.notifier).state = position;
       return position;
-    } catch (e) {
-      debugPrint('[LOC] getCurrentPosition failed: $e — '
-          'using ${bestSoFar == null ? 'no fallback' : 'last-known'}');
-      return bestSoFar;
+    } catch (error) {
+      debugPrint('[LOC] getCurrentPosition failed: $error — '
+          'using ${fallback == null ? 'no fallback' : 'last-known'}');
+      return fallback;
     }
   }
 }
