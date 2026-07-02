@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../theme/myshop_colors.dart';
@@ -91,10 +92,11 @@ class MediaPickerHelper {
 
     switch (choice) {
       case _DocUploadChoice.camera:
-        return _pickFromSource(ImageSource.camera);
+        return _cropImage(await _pickFromSource(ImageSource.camera));
       case _DocUploadChoice.gallery:
-        return _pickFromSource(ImageSource.gallery);
+        return _cropImage(await _pickFromSource(ImageSource.gallery));
       case _DocUploadChoice.file:
+        // File picks may be PDFs/docs, not images — no crop step.
         return pickDocument(context);
     }
   }
@@ -111,6 +113,34 @@ class MediaPickerHelper {
       maxHeight: 1920,
     );
     return xFile != null ? File(xFile.path) : null;
+  }
+
+  /// Opens the crop editor on a freshly picked image so the user can trim it
+  /// to just the document before uploading. Free aspect ratio — documents vary
+  /// (landscape licence card, portrait certificate). Returns the cropped file,
+  /// or the original if [file] is null or the user backs out of the crop
+  /// screen (the pick is never lost).
+  static Future<File?> _cropImage(File? file) async {
+    if (file == null) return null;
+    final cropped = await ImageCropper().cropImage(
+      sourcePath: file.path,
+      compressQuality: 90,
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Crop Document',
+          toolbarColor: MyShopColors.primaryGold,
+          toolbarWidgetColor: MyShopColors.surfaceWhite,
+          activeControlsWidgetColor: MyShopColors.primaryGold,
+          lockAspectRatio: false,
+        ),
+        IOSUiSettings(
+          title: 'Crop Document',
+          aspectRatioLockEnabled: false,
+          resetAspectRatioEnabled: true,
+        ),
+      ],
+    );
+    return cropped != null ? File(cropped.path) : file;
   }
 
   /// Camera vs Gallery bottom sheet.
