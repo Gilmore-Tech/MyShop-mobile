@@ -52,6 +52,11 @@ class AuthRepository {
       rideCategories: request.rideCategories,
       shopCapacity: request.shopCapacity,
       maxConcurrentJobs: request.maxConcurrentJobs,
+      vehicleMake: request.vehicleMake,
+      vehicleModel: request.vehicleModel,
+      vehicleYear: request.vehicleYear,
+      vehiclePlate: request.vehiclePlate,
+      vehicleColor: request.vehicleColor,
     );
     await _service.register(enriched);
     await _tokenStorage.writePhone(request.phone);

@@ -128,6 +128,18 @@ class _ProviderPhoneInputScreenState
           referralCode: draft.referralCode.trim().isNotEmpty
               ? draft.referralCode.trim()
               : null,
+          vehicleMake:
+              draft.vehicleMake.trim().isNotEmpty ? draft.vehicleMake.trim() : null,
+          vehicleModel: draft.vehicleModel.trim().isNotEmpty
+              ? draft.vehicleModel.trim()
+              : null,
+          vehicleYear: int.tryParse(draft.vehicleYear.trim()),
+          vehiclePlate: draft.vehiclePlate.trim().isNotEmpty
+              ? draft.vehiclePlate.trim()
+              : null,
+          vehicleColor: draft.vehicleColor.trim().isNotEmpty
+              ? draft.vehicleColor.trim()
+              : null,
         );
       } else {
         final draft = ref.read(artisanRegistrationProvider);
