@@ -145,6 +145,7 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
             )
           : ('--', 'No ratings yet'),
     );
+    final profilePhoto = ref.watch(providerProfilePhotoDisplayProvider);
 
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
@@ -161,9 +162,8 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
                   ? categories
                   : 'Ghana',
               hasUnreadNotifications: false,
-              avatarUrl: user?.profilePhotoUrl ??
-                  ref.watch(localProfilePhotoProvider).cloudinaryUrl,
-              localAvatarFile: ref.watch(localProfilePhotoProvider).localFile,
+              avatarUrl: profilePhoto.url,
+              localAvatarFile: profilePhoto.localFile,
               onNotificationsTap: () => context.push('/notifications'),
               onAvatarTap: () {},
             ),

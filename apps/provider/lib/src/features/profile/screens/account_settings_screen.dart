@@ -100,6 +100,7 @@ class AccountSettingsScreen extends ConsumerWidget {
       error: (_, __) => '!',
       data: (r) => r.hasRatings ? r.averageDisplay : 'New',
     );
+    final profilePhoto = ref.watch(providerProfilePhotoDisplayProvider);
 
     // Derive verification status from the user's profile
     final driverProfile = user?.driverProfile;
@@ -195,9 +196,8 @@ class AccountSettingsScreen extends ConsumerWidget {
                 fullName: user?.displayName ?? 'Provider',
                 phone: user?.phone ?? '',
                 email: user?.email ?? '',
-                photoUrl: user?.profilePhotoUrl ??
-                    ref.watch(localProfilePhotoProvider).cloudinaryUrl,
-                localPhoto: ref.watch(localProfilePhotoProvider).localFile,
+                photoUrl: profilePhoto.url,
+                localPhoto: profilePhoto.localFile,
                 verificationStatus: verificationStatus,
               ),
             ),

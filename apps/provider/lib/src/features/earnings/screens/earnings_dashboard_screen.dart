@@ -39,12 +39,11 @@ class EarningsDashboardScreen extends ConsumerWidget {
     final reportAsync = ref.watch(earningsReportProvider(reportQuery));
     final todayCardAsync = ref.watch(todayCardProvider(role));
 
-    final photoState = ref.watch(localProfilePhotoProvider);
-    final backendPhotoUrl = user?.profilePhotoUrl;
-    final ImageProvider? avatarImage = photoState.localFile != null
-        ? FileImage(photoState.localFile!)
-        : (backendPhotoUrl ?? photoState.cloudinaryUrl) != null
-            ? NetworkImage(backendPhotoUrl ?? photoState.cloudinaryUrl!)
+    final profilePhoto = ref.watch(providerProfilePhotoDisplayProvider);
+    final ImageProvider? avatarImage = profilePhoto.localFile != null
+        ? FileImage(profilePhoto.localFile!)
+        : profilePhoto.url != null
+            ? NetworkImage(profilePhoto.url!)
             : null;
 
     final summary = summaryAsync.valueOrNull;
