@@ -83,7 +83,7 @@ class MediaPickerHelper {
     }
   }
 
-  /// Shows a bottom sheet for document upload — Camera or File picker.
+  /// Shows a bottom sheet for document upload — Camera, Gallery, or File.
   /// Used in document verification and profile screens.
   static Future<File?> pickDocumentWithCamera(BuildContext context) async {
     final choice = await _showDocumentUploadSheet(context);
@@ -92,6 +92,8 @@ class MediaPickerHelper {
     switch (choice) {
       case _DocUploadChoice.camera:
         return _pickFromSource(ImageSource.camera);
+      case _DocUploadChoice.gallery:
+        return _pickFromSource(ImageSource.gallery);
       case _DocUploadChoice.file:
         return pickDocument(context);
     }
@@ -164,7 +166,7 @@ class MediaPickerHelper {
     );
   }
 
-  /// Camera or File bottom sheet (for documents).
+  /// Camera, Gallery, or File bottom sheet (for documents).
   static Future<_DocUploadChoice?> _showDocumentUploadSheet(
     BuildContext context,
   ) {
@@ -178,6 +180,11 @@ class MediaPickerHelper {
             icon: Icons.camera_alt_outlined,
             label: 'Take Photo',
             onTap: () => Navigator.pop(context, _DocUploadChoice.camera),
+          ),
+          _PickerOption(
+            icon: Icons.photo_library_outlined,
+            label: 'Gallery',
+            onTap: () => Navigator.pop(context, _DocUploadChoice.gallery),
           ),
           _PickerOption(
             icon: Icons.description_outlined,
@@ -196,7 +203,7 @@ class MediaPickerHelper {
 
 enum _AttachmentChoice { camera, gallery, file }
 
-enum _DocUploadChoice { camera, file }
+enum _DocUploadChoice { camera, gallery, file }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bottom sheet UI
