@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart'
     show
         CameraOptions,
+        CameraViewportState,
         CompassSettings,
         MapWidget,
         MapboxMap,
@@ -59,10 +60,9 @@ class _JobTrackingMapState extends ConsumerState<JobTrackingMap> {
       if (!mounted) return;
       ref.read(trackedJobIdProvider.notifier).state = widget.jobId;
       try {
-        ref.read(socketServiceProvider).emit(
-          'client:track:job',
-          {'jobId': widget.jobId},
-        );
+        ref.read(socketServiceProvider).emit('client:track:job', {
+          'jobId': widget.jobId,
+        });
       } catch (_) {
         // Socket not connected yet; the connection bridge will re-emit
         // once it lands.
@@ -99,21 +99,14 @@ class _JobTrackingMapState extends ConsumerState<JobTrackingMap> {
     final existing = _jobAnnotation;
     if (existing == null) {
       _jobAnnotation = await manager.create(
-        PointAnnotationOptions(
-          geometry: point,
-          textField: '🛠',
-          textSize: 28,
-        ),
+        PointAnnotationOptions(geometry: point, textField: '🛠', textSize: 28),
       );
     } else {
       existing.geometry = point;
       await manager.update(existing);
     }
     await _mapboxMap?.flyTo(
-      CameraOptions(
-        center: Point(coordinates: Position(lng, lat)),
-        zoom: 15.0,
-      ),
+      CameraOptions(center: Point(coordinates: Position(lng, lat)), zoom: 15.0),
       null,
     );
   }
@@ -126,11 +119,7 @@ class _JobTrackingMapState extends ConsumerState<JobTrackingMap> {
     final existing = _artisanAnnotation;
     if (existing == null) {
       _artisanAnnotation = await manager.create(
-        PointAnnotationOptions(
-          geometry: point,
-          textField: '👷',
-          textSize: 28,
-        ),
+        PointAnnotationOptions(geometry: point, textField: '👷', textSize: 28),
       );
     } else {
       existing.geometry = point;
@@ -143,10 +132,9 @@ class _JobTrackingMapState extends ConsumerState<JobTrackingMap> {
     // Best-effort tear-down — we don't await these because dispose runs
     // synchronously and the socket emit / state clear are fire-and-forget.
     try {
-      ref.read(socketServiceProvider).emit(
-        'client:untrack:job',
-        {'jobId': widget.jobId},
-      );
+      ref.read(socketServiceProvider).emit('client:untrack:job', {
+        'jobId': widget.jobId,
+      });
     } catch (_) {}
     try {
       ref.read(trackedJobIdProvider.notifier).state = null;
@@ -161,14 +149,16 @@ class _JobTrackingMapState extends ConsumerState<JobTrackingMap> {
     // Listen for live position fixes — `ref.listen` keeps the marker in
     // step with the socket without rebuilding the map widget itself.
     ref.listen<LiveArtisanPosition?>(
-        liveArtisanPositionProvider, (_, next) => _syncArtisanMarker(next));
+      liveArtisanPositionProvider,
+      (_, next) => _syncArtisanMarker(next),
+    );
 
     final lat = widget.jobLat ?? MapboxConfig.defaultLat;
     final lng = widget.jobLng ?? MapboxConfig.defaultLng;
     return MapWidget(
       key: const ValueKey('jobTrackingMap'),
       styleUri: MapboxConfig.styleUrl,
-      cameraOptions: CameraOptions(
+      viewport: CameraViewportState(
         center: Point(coordinates: Position(lng, lat)),
         zoom: 14.0,
       ),
