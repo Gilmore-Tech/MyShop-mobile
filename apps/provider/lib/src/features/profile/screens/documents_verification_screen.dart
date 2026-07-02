@@ -71,19 +71,23 @@ class _DocumentsVerificationScreenState
     // valueOrNull (not whenOrNull(data:)) keeps the previous list visible while
     // a refresh is in flight, so pull-to-refresh / entry-refresh don't blank the
     // rows back to their fallbacks.
+    final providerType = isArtisan ? 'artisan' : 'driver';
     final backendDocs =
         verificationAsync.valueOrNull?.documents ?? const <DocumentInfo>[];
+    final roleDocs = backendDocs
+        .where((d) => d.providerType == providerType)
+        .toList(growable: false);
 
     final requiredDocs = isArtisan
-        ? _buildArtisanRequired(user, backendDocs, uploadState)
-        : _buildDriverRequired(user, backendDocs, uploadState);
+        ? _buildArtisanRequired(user, roleDocs, uploadState)
+        : _buildDriverRequired(user, roleDocs, uploadState);
     // Artisans must provide the Ghana Card PLUS any one of these trade
     // credentials (not all of them).
     final oneOfDocs = isArtisan
-        ? _buildArtisanOneOf(backendDocs, uploadState)
+        ? _buildArtisanOneOf(roleDocs, uploadState)
         : const <_DocItem>[];
     final optionalDocs = isArtisan
-        ? _buildArtisanOptional(backendDocs, uploadState)
+        ? _buildArtisanOptional(roleDocs, uploadState)
         : const <_DocItem>[];
 
     final uploadedRequired =
@@ -114,56 +118,20 @@ class _DocumentsVerificationScreenState
                     MyShopSpacing.lg,
                   ),
                   children: [
-                  _ProgressCard(
-                    completed: completion.completed,
-                    total: completion.total,
-                    docsCompleted: docsCompleted,
-                    docsTotal: docsTotal,
-                    isArtisan: isArtisan,
-                  ),
-                  const SizedBox(height: MyShopSpacing.lg),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _SectionLabel(
-                          icon: Icons.task_alt,
-                          label: 'REQUIRED DOCUMENTS',
-                          iconColor: MyShopColors.error,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: MyShopColors.errorLight,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          'Mandatory',
-                          style: MyShopTypography.body2.copyWith(
-                            color: MyShopColors.error,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: MyShopSpacing.sm),
-                  _DocsCard(
-                    items: requiredDocs,
-                    providerType: isArtisan ? 'artisan' : 'driver',
-                    ref: ref,
-                  ),
-                  if (oneOfDocs.isNotEmpty) ...[
+                    _ProgressCard(
+                      completed: completion.completed,
+                      total: completion.total,
+                      docsCompleted: docsCompleted,
+                      docsTotal: docsTotal,
+                      isArtisan: isArtisan,
+                    ),
                     const SizedBox(height: MyShopSpacing.lg),
                     Row(
                       children: [
                         Expanded(
                           child: _SectionLabel(
-                            icon: Icons.rule,
-                            label: 'PROVIDE ANY ONE',
+                            icon: Icons.task_alt,
+                            label: 'REQUIRED DOCUMENTS',
                             iconColor: MyShopColors.error,
                           ),
                         ),
@@ -173,80 +141,116 @@ class _DocumentsVerificationScreenState
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: oneOfSatisfied
-                                ? MyShopColors.successLight
-                                : MyShopColors.errorLight,
+                            color: MyShopColors.errorLight,
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
-                            oneOfSatisfied ? 'Done' : 'Pick one',
+                            'Mandatory',
                             style: MyShopTypography.body2.copyWith(
+                              color: MyShopColors.error,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: MyShopSpacing.sm),
+                    _DocsCard(
+                      items: requiredDocs,
+                      providerType: providerType,
+                      ref: ref,
+                    ),
+                    if (oneOfDocs.isNotEmpty) ...[
+                      const SizedBox(height: MyShopSpacing.lg),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _SectionLabel(
+                              icon: Icons.rule,
+                              label: 'PROVIDE ANY ONE',
+                              iconColor: MyShopColors.error,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
                               color: oneOfSatisfied
-                                  ? MyShopColors.success
-                                  : MyShopColors.error,
-                              fontWeight: FontWeight.w800,
+                                  ? MyShopColors.successLight
+                                  : MyShopColors.errorLight,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              oneOfSatisfied ? 'Done' : 'Pick one',
+                              style: MyShopTypography.body2.copyWith(
+                                color: oneOfSatisfied
+                                    ? MyShopColors.success
+                                    : MyShopColors.error,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Upload your Trade Certificate OR Business Registration — '
-                      'whichever you have. One is enough.',
-                      style: MyShopTypography.body2.copyWith(height: 1.5),
-                    ),
-                    const SizedBox(height: MyShopSpacing.sm),
-                    _DocsCard(
-                      items: oneOfDocs,
-                      providerType: 'artisan',
-                      ref: ref,
-                    ),
-                  ],
-                  if (optionalDocs.isNotEmpty) ...[
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Upload your Trade Certificate OR Business Registration — '
+                        'whichever you have. One is enough.',
+                        style: MyShopTypography.body2.copyWith(height: 1.5),
+                      ),
+                      const SizedBox(height: MyShopSpacing.sm),
+                      _DocsCard(
+                        items: oneOfDocs,
+                        providerType: 'artisan',
+                        ref: ref,
+                      ),
+                    ],
+                    if (optionalDocs.isNotEmpty) ...[
+                      const SizedBox(height: MyShopSpacing.lg),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _SectionLabel(
+                              icon: Icons.add_circle_outline,
+                              label: 'OPTIONAL DOCUMENTS',
+                              iconColor: MyShopColors.textSecondary,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: MyShopColors.surfaceGrey,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              'For SMEs',
+                              style: MyShopTypography.body2.copyWith(
+                                color: MyShopColors.textSecondary,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Add these to unlock larger contracts and stand out to enterprise clients.',
+                        style: MyShopTypography.body2.copyWith(height: 1.5),
+                      ),
+                      const SizedBox(height: MyShopSpacing.sm),
+                      _DocsCard(
+                        items: optionalDocs,
+                        providerType: 'artisan',
+                        ref: ref,
+                      ),
+                    ],
                     const SizedBox(height: MyShopSpacing.lg),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _SectionLabel(
-                            icon: Icons.add_circle_outline,
-                            label: 'OPTIONAL DOCUMENTS',
-                            iconColor: MyShopColors.textSecondary,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: MyShopColors.surfaceGrey,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            'For SMEs',
-                            style: MyShopTypography.body2.copyWith(
-                              color: MyShopColors.textSecondary,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Add these to unlock larger contracts and stand out to enterprise clients.',
-                      style: MyShopTypography.body2.copyWith(height: 1.5),
-                    ),
-                    const SizedBox(height: MyShopSpacing.sm),
-                    _DocsCard(
-                      items: optionalDocs,
-                      providerType: 'artisan',
-                      ref: ref,
-                    ),
-                  ],
-                  const SizedBox(height: MyShopSpacing.lg),
-                  const _PolicyNote(),
+                    const _PolicyNote(),
                   ],
                 ),
               ),
@@ -269,15 +273,26 @@ class _DocumentsVerificationScreenState
       _docItemFromBackend(
         docs: docs,
         uploadState: uploadState,
+        type: DocumentType.profilePhoto,
+        icon: Icons.account_circle_outlined,
+        title: 'Profile Photo',
+        fallbackMeta: dp?.profilePhotoUrl != null
+            ? 'Photo saved — awaiting document review'
+            : 'Upload a clear face photo',
+        fallbackStatus: _DocStatus.missing,
+      ),
+      _docItemFromBackend(
+        docs: docs,
+        uploadState: uploadState,
         type: DocumentType.driversLicence,
         icon: Icons.badge_outlined,
         title: "Driver's License",
         fallbackMeta: dp?.licenceExpiry != null
             ? 'Expires: ${dp!.licenceExpiry}'
-            : 'Tap to upload',
-        fallbackStatus: dp?.licenceNumber != null
-            ? _DocStatus.approved
-            : _DocStatus.missing,
+            : dp?.licenceNumber != null
+                ? 'Licence number saved — upload document'
+                : 'Tap to upload',
+        fallbackStatus: _DocStatus.missing,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -304,11 +319,9 @@ class _DocumentsVerificationScreenState
         icon: Icons.credit_card,
         title: 'Ghana Card',
         fallbackMeta: dp?.ghanaCardVerified == true
-            ? 'Verified'
+            ? 'Identity verified — upload document'
             : 'Tap to upload front & back',
-        fallbackStatus: dp?.ghanaCardVerified == true
-            ? _DocStatus.approved
-            : _DocStatus.missing,
+        fallbackStatus: _DocStatus.missing,
       ),
     ];
   }
@@ -325,14 +338,24 @@ class _DocumentsVerificationScreenState
       _docItemFromBackend(
         docs: docs,
         uploadState: uploadState,
+        type: DocumentType.profilePhoto,
+        icon: Icons.account_circle_outlined,
+        title: 'Profile Photo',
+        fallbackMeta: ap?.profilePhotoUrl != null
+            ? 'Photo saved — awaiting document review'
+            : 'Upload a clear face photo',
+        fallbackStatus: _DocStatus.missing,
+      ),
+      _docItemFromBackend(
+        docs: docs,
+        uploadState: uploadState,
         type: DocumentType.ghanaCard,
         icon: Icons.credit_card,
         title: 'Ghana Card',
-        fallbackMeta:
-            ap?.ghanaCardVerified == true ? 'Verified' : 'Tap to upload',
-        fallbackStatus: ap?.ghanaCardVerified == true
-            ? _DocStatus.approved
-            : _DocStatus.missing,
+        fallbackMeta: ap?.ghanaCardVerified == true
+            ? 'Identity verified — upload document'
+            : 'Tap to upload',
+        fallbackStatus: _DocStatus.missing,
       ),
     ];
   }
@@ -396,8 +419,10 @@ class _DocumentsVerificationScreenState
     ];
   }
 
-  /// Merge backend document info with a fallback for when the endpoint
-  /// returns no data (fresh account or endpoint not available).
+  /// Merge backend document info with a fallback for when this active role has
+  /// no document row yet. Profile fields such as a typed licence number or a
+  /// Ghana Card KYC flag are not document approvals; only provider_documents
+  /// rows returned by the backend can mark a document approved.
   static _DocItem _docItemFromBackend({
     required List<DocumentInfo> docs,
     required DocumentUploadState uploadState,
@@ -462,7 +487,11 @@ class _DocumentsVerificationScreenState
         return _DocItem(
           icon: icon,
           title: title,
-          meta: expiry != null ? 'Valid until ${_formatDate(expiry)}' : 'Approved',
+          meta: type == DocumentType.profilePhoto
+              ? 'Approved — contact support to change'
+              : expiry != null
+                  ? 'Valid until ${_formatDate(expiry)}'
+                  : 'Approved',
           status: _DocStatus.approved,
           documentType: type,
         );
