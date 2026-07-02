@@ -50,6 +50,7 @@ class AuthRepository {
       referralCode: request.referralCode,
       categories: request.categories,
       rideCategories: request.rideCategories,
+      regionId: request.regionId,
       shopCapacity: request.shopCapacity,
       maxConcurrentJobs: request.maxConcurrentJobs,
       vehicleMake: request.vehicleMake,
