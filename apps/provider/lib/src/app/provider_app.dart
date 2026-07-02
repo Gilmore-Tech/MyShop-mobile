@@ -12,6 +12,7 @@ import '../features/artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../features/auth/providers/auth_controller.dart';
 import '../features/earnings/providers/earnings_providers.dart';
 import '../features/earnings/providers/ratings_provider.dart';
+import '../features/profile/providers/verification_provider.dart';
 import '../features/trips/providers/driver_trips_provider.dart';
 import 'router.dart';
 
@@ -80,6 +81,10 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
           ref.invalidate(payoutsProvider);
           ref.invalidate(providerRatingsProvider);
           ref.invalidate(driverTripsProvider);
+          // Catch admin document approvals/rejections that landed while the
+          // app was backgrounded — verification status is otherwise cached
+          // for the whole session.
+          ref.invalidate(verificationStatusProvider);
         } catch (_) {
           // Providers may not be mounted on a cold-start resume —
           // harmless, the next subscription will fetch fresh anyway.

@@ -89,6 +89,16 @@ class DocumentUploadNotifier extends StateNotifier<DocumentUploadState> {
 
   bool isUploading(String docType) => state.uploading[docType] == true;
   bool wasUploaded(String docType) => state.uploaded[docType] == true;
+
+  /// Retire the optimistic "uploaded — pending review" flag for a document
+  /// type once the backend reflects it. After this the backend status is the
+  /// single source of truth, so a later admin approval/rejection shows without
+  /// an app restart. Idempotent — a no-op if the flag isn't set.
+  void clearUploaded(String docType) {
+    if (state.uploaded[docType] != true) return;
+    final next = Map<String, bool>.from(state.uploaded)..remove(docType);
+    state = state.copyWith(uploaded: next);
+  }
 }
 
 class DocumentUploadState {
