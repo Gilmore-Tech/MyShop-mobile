@@ -36,7 +36,7 @@ class RegisterRequest {
   final String type; // "client", "driver", or "artisan"
   final bool privacyPolicyAccepted;
   final String deviceId;
-  final Map<String, dynamic>? deviceInfo;
+  final String? deviceInfo;
   final String? displayName; // public-facing name for this role
   final String? businessName; // artisan only — trade/shop name
   final String? email;
@@ -103,7 +103,7 @@ class LoginRequest {
 
   final String phone;
   final String deviceId;
-  final Map<String, dynamic>? deviceInfo;
+  final String? deviceInfo;
   final bool forceLogin;
 
   Map<String, dynamic> toJson() {
@@ -191,7 +191,7 @@ class ProviderVerifyOtpRequest {
   final String phone;
   final String otp;
   final String deviceId;
-  final Map<String, dynamic>? deviceInfo;
+  final String? deviceInfo;
   final bool forceLogin;
 
   Map<String, dynamic> toJson() {

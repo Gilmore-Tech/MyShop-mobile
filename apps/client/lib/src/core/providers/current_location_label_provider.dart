@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../di/providers.dart';
@@ -11,14 +12,19 @@ final currentLocationPlaceProvider =
     name: 'Current location',
     address: 'Kumasi, Ashanti Region',
   );
-  final position = await ref.watch(currentLocationServiceProvider).ensure();
-  if (position == null) return fallback;
-  final places = ref.watch(googlePlacesServiceProvider);
-  return await places.reverseGeocodePlace(
-        position.latitude,
-        position.longitude,
-      ) ??
-      fallback;
+  try {
+    final position = await ref.watch(currentLocationServiceProvider).ensure();
+    if (position == null) return fallback;
+    final places = ref.watch(googlePlacesServiceProvider);
+    return await places.reverseGeocodePlace(
+          position.latitude,
+          position.longitude,
+        ) ??
+        fallback;
+  } catch (error) {
+    debugPrint('[LOC] current-location label failed: $error');
+    return fallback;
+  }
 });
 
 /// Reverse-geocoded label for the device's current position, used in the

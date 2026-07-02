@@ -725,7 +725,7 @@ enum _DocStatus {
   rejected,
   expired,
   expiringSoon,
-  missing
+  missing,
 }
 
 class _DocItem {
@@ -766,11 +766,7 @@ class _DocsCard extends StatelessWidget {
       child: Column(
         children: [
           for (int i = 0; i < items.length; i++) ...[
-            _DocRow(
-              item: items[i],
-              providerType: providerType,
-              ref: ref,
-            ),
+            _DocRow(item: items[i], providerType: providerType, ref: ref),
             if (i < items.length - 1)
               const Divider(
                 height: 1,

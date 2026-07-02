@@ -87,7 +87,7 @@ class _AppBar extends ConsumerWidget {
               Expanded(
                 child: Text(
                   ref.watch(currentLocationLabelProvider).value ??
-                      'Locating...',
+                      'Current location',
                   style: TextStyle(
                     fontSize: w * 0.031,
                     fontWeight: FontWeight.w400,
