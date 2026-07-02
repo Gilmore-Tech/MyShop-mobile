@@ -17,22 +17,62 @@ import '../providers/verification_provider.dart';
 ///   Trade Certificate) plus optional SME documents.
 ///
 /// PRD Reference: PRD 5.5 — provider verification & compliance.
-class DocumentsVerificationScreen extends ConsumerWidget {
+class DocumentsVerificationScreen extends ConsumerStatefulWidget {
   const DocumentsVerificationScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DocumentsVerificationScreen> createState() =>
+      _DocumentsVerificationScreenState();
+}
+
+class _DocumentsVerificationScreenState
+    extends ConsumerState<DocumentsVerificationScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Document decisions happen server-side and the status provider is cached
+    // for the session, so refetch on entry to pick up an admin approval /
+    // rejection without an app restart.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.invalidate(verificationStatusProvider);
+    });
+  }
+
+  Future<void> _refresh() async {
+    ref.invalidate(verificationStatusProvider);
+    await ref.read(verificationStatusProvider.future);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final isArtisan = ref.watch(providerTypeProvider).isArtisan;
     final user = ref.watch(currentUserProvider);
     final completion = ref.watch(profileCompletionProvider);
     final verificationAsync = ref.watch(verificationStatusProvider);
     final uploadState = ref.watch(documentUploadProvider);
 
-    // Build doc lists based on role, using real backend status where available
-    final backendDocs = verificationAsync.whenOrNull(
-          data: (status) => status.documents,
-        ) ??
-        const <DocumentInfo>[];
+    // Once the backend reflects a submission (pending review) or an admin
+    // decision (approved), retire the per-session optimistic "uploaded" flag so
+    // the backend status becomes the single source of truth. Without this the
+    // flag pins the row to "pending review" for the whole session and a later
+    // approval never shows until the app is restarted.
+    ref.listen(verificationStatusProvider, (_, next) {
+      final data = next.valueOrNull;
+      if (data == null) return;
+      final notifier = ref.read(documentUploadProvider.notifier);
+      for (final d in data.documents) {
+        if (d.isCurrent && (d.isPendingReview || d.isApproved)) {
+          notifier.clearUploaded(d.documentType);
+        }
+      }
+    });
+
+    // Build doc lists based on role, using real backend status where available.
+    // valueOrNull (not whenOrNull(data:)) keeps the previous list visible while
+    // a refresh is in flight, so pull-to-refresh / entry-refresh don't blank the
+    // rows back to their fallbacks.
+    final backendDocs =
+        verificationAsync.valueOrNull?.documents ?? const <DocumentInfo>[];
 
     final requiredDocs = isArtisan
         ? _buildArtisanRequired(user, backendDocs, uploadState)
@@ -62,14 +102,18 @@ class DocumentsVerificationScreen extends ConsumerWidget {
           children: [
             _Header(),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(
-                  MyShopSpacing.md,
-                  MyShopSpacing.md,
-                  MyShopSpacing.md,
-                  MyShopSpacing.lg,
-                ),
-                children: [
+              child: RefreshIndicator(
+                onRefresh: _refresh,
+                color: MyShopColors.primaryGold,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(
+                    MyShopSpacing.md,
+                    MyShopSpacing.md,
+                    MyShopSpacing.md,
+                    MyShopSpacing.lg,
+                  ),
+                  children: [
                   _ProgressCard(
                     completed: completion.completed,
                     total: completion.total,
@@ -203,7 +247,8 @@ class DocumentsVerificationScreen extends ConsumerWidget {
                   ],
                   const SizedBox(height: MyShopSpacing.lg),
                   const _PolicyNote(),
-                ],
+                  ],
+                ),
               ),
             ),
           ],
