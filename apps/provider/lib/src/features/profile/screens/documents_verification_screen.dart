@@ -114,56 +114,20 @@ class _DocumentsVerificationScreenState
                     MyShopSpacing.lg,
                   ),
                   children: [
-                  _ProgressCard(
-                    completed: completion.completed,
-                    total: completion.total,
-                    docsCompleted: docsCompleted,
-                    docsTotal: docsTotal,
-                    isArtisan: isArtisan,
-                  ),
-                  const SizedBox(height: MyShopSpacing.lg),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _SectionLabel(
-                          icon: Icons.task_alt,
-                          label: 'REQUIRED DOCUMENTS',
-                          iconColor: MyShopColors.error,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: MyShopColors.errorLight,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          'Mandatory',
-                          style: MyShopTypography.body2.copyWith(
-                            color: MyShopColors.error,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: MyShopSpacing.sm),
-                  _DocsCard(
-                    items: requiredDocs,
-                    providerType: isArtisan ? 'artisan' : 'driver',
-                    ref: ref,
-                  ),
-                  if (oneOfDocs.isNotEmpty) ...[
+                    _ProgressCard(
+                      completed: completion.completed,
+                      total: completion.total,
+                      docsCompleted: docsCompleted,
+                      docsTotal: docsTotal,
+                      isArtisan: isArtisan,
+                    ),
                     const SizedBox(height: MyShopSpacing.lg),
                     Row(
                       children: [
                         Expanded(
                           child: _SectionLabel(
-                            icon: Icons.rule,
-                            label: 'PROVIDE ANY ONE',
+                            icon: Icons.task_alt,
+                            label: 'REQUIRED DOCUMENTS',
                             iconColor: MyShopColors.error,
                           ),
                         ),
@@ -173,80 +137,116 @@ class _DocumentsVerificationScreenState
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: oneOfSatisfied
-                                ? MyShopColors.successLight
-                                : MyShopColors.errorLight,
+                            color: MyShopColors.errorLight,
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
-                            oneOfSatisfied ? 'Done' : 'Pick one',
+                            'Mandatory',
                             style: MyShopTypography.body2.copyWith(
+                              color: MyShopColors.error,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: MyShopSpacing.sm),
+                    _DocsCard(
+                      items: requiredDocs,
+                      providerType: isArtisan ? 'artisan' : 'driver',
+                      ref: ref,
+                    ),
+                    if (oneOfDocs.isNotEmpty) ...[
+                      const SizedBox(height: MyShopSpacing.lg),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _SectionLabel(
+                              icon: Icons.rule,
+                              label: 'PROVIDE ANY ONE',
+                              iconColor: MyShopColors.error,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
                               color: oneOfSatisfied
-                                  ? MyShopColors.success
-                                  : MyShopColors.error,
-                              fontWeight: FontWeight.w800,
+                                  ? MyShopColors.successLight
+                                  : MyShopColors.errorLight,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              oneOfSatisfied ? 'Done' : 'Pick one',
+                              style: MyShopTypography.body2.copyWith(
+                                color: oneOfSatisfied
+                                    ? MyShopColors.success
+                                    : MyShopColors.error,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Upload your Trade Certificate OR Business Registration — '
-                      'whichever you have. One is enough.',
-                      style: MyShopTypography.body2.copyWith(height: 1.5),
-                    ),
-                    const SizedBox(height: MyShopSpacing.sm),
-                    _DocsCard(
-                      items: oneOfDocs,
-                      providerType: 'artisan',
-                      ref: ref,
-                    ),
-                  ],
-                  if (optionalDocs.isNotEmpty) ...[
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Upload your Trade Certificate OR Business Registration — '
+                        'whichever you have. One is enough.',
+                        style: MyShopTypography.body2.copyWith(height: 1.5),
+                      ),
+                      const SizedBox(height: MyShopSpacing.sm),
+                      _DocsCard(
+                        items: oneOfDocs,
+                        providerType: 'artisan',
+                        ref: ref,
+                      ),
+                    ],
+                    if (optionalDocs.isNotEmpty) ...[
+                      const SizedBox(height: MyShopSpacing.lg),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _SectionLabel(
+                              icon: Icons.add_circle_outline,
+                              label: 'OPTIONAL DOCUMENTS',
+                              iconColor: MyShopColors.textSecondary,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: MyShopColors.surfaceGrey,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              'For SMEs',
+                              style: MyShopTypography.body2.copyWith(
+                                color: MyShopColors.textSecondary,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Add these to unlock larger contracts and stand out to enterprise clients.',
+                        style: MyShopTypography.body2.copyWith(height: 1.5),
+                      ),
+                      const SizedBox(height: MyShopSpacing.sm),
+                      _DocsCard(
+                        items: optionalDocs,
+                        providerType: 'artisan',
+                        ref: ref,
+                      ),
+                    ],
                     const SizedBox(height: MyShopSpacing.lg),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _SectionLabel(
-                            icon: Icons.add_circle_outline,
-                            label: 'OPTIONAL DOCUMENTS',
-                            iconColor: MyShopColors.textSecondary,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: MyShopColors.surfaceGrey,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            'For SMEs',
-                            style: MyShopTypography.body2.copyWith(
-                              color: MyShopColors.textSecondary,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Add these to unlock larger contracts and stand out to enterprise clients.',
-                      style: MyShopTypography.body2.copyWith(height: 1.5),
-                    ),
-                    const SizedBox(height: MyShopSpacing.sm),
-                    _DocsCard(
-                      items: optionalDocs,
-                      providerType: 'artisan',
-                      ref: ref,
-                    ),
-                  ],
-                  const SizedBox(height: MyShopSpacing.lg),
-                  const _PolicyNote(),
+                    const _PolicyNote(),
                   ],
                 ),
               ),
@@ -462,7 +462,9 @@ class _DocumentsVerificationScreenState
         return _DocItem(
           icon: icon,
           title: title,
-          meta: expiry != null ? 'Valid until ${_formatDate(expiry)}' : 'Approved',
+          meta: expiry != null
+              ? 'Valid until ${_formatDate(expiry)}'
+              : 'Approved',
           status: _DocStatus.approved,
           documentType: type,
         );
@@ -696,7 +698,7 @@ enum _DocStatus {
   rejected,
   expired,
   expiringSoon,
-  missing
+  missing,
 }
 
 class _DocItem {
@@ -737,11 +739,7 @@ class _DocsCard extends StatelessWidget {
       child: Column(
         children: [
           for (int i = 0; i < items.length; i++) ...[
-            _DocRow(
-              item: items[i],
-              providerType: providerType,
-              ref: ref,
-            ),
+            _DocRow(item: items[i], providerType: providerType, ref: ref),
             if (i < items.length - 1)
               const Divider(
                 height: 1,

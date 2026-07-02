@@ -20,47 +20,54 @@ class DeviceIdProvider {
   final DeviceInfoPlugin _deviceInfo;
 
   String? _cachedId;
-  Map<String, dynamic>? _cachedInfo;
+  String? _cachedInfo;
 
   /// Returns the persisted device ID, generating + storing one on first call.
   Future<String> ensureDeviceId() async {
     if (_cachedId != null) return _cachedId!;
-    final stored = await _storage.readDeviceId();
+    String? stored;
+    try {
+      stored = await _storage.readDeviceId();
+    } catch (_) {
+      // Android can restore encrypted preferences without the matching
+      // Keystore key after a reinstall. Login must still be able to proceed;
+      // SecureTokenStorage will repair its backing store when possible.
+      stored = null;
+    }
     if (stored != null && stored.isNotEmpty) {
       _cachedId = stored;
       return stored;
     }
     final fresh = _uuid.v4();
-    await _storage.writeDeviceId(fresh);
+    try {
+      await _storage.writeDeviceId(fresh);
+    } catch (_) {
+      // Keep the UUID in memory for this session even if persistence is
+      // temporarily unavailable. This avoids failing before the login request.
+    }
     _cachedId = fresh;
     return fresh;
   }
 
-  /// Returns a JSON-serialisable descriptor for the device. Safe to send
-  /// alongside login/register requests. Returns null if collection fails
-  /// (callers should treat the field as optional).
-  Future<Map<String, dynamic>?> readDeviceInfo() async {
+  /// Returns the human-readable descriptor expected by the backend auth DTOs.
+  /// Returns null if collection fails (callers treat the field as optional).
+  Future<String?> readDeviceInfo() async {
     if (_cachedInfo != null) return _cachedInfo;
     try {
       if (Platform.isIOS) {
         final ios = await _deviceInfo.iosInfo;
-        _cachedInfo = {
-          'platform': 'ios',
-          'model': ios.utsname.machine,
-          'osVersion': ios.systemVersion,
-          'name': ios.name,
-        };
+        _cachedInfo = '${ios.utsname.machine} — iOS ${ios.systemVersion}';
       } else if (Platform.isAndroid) {
         final android = await _deviceInfo.androidInfo;
-        _cachedInfo = {
-          'platform': 'android',
-          'model': android.model,
-          'manufacturer': android.manufacturer,
-          'osVersion': android.version.release,
-          'sdkInt': android.version.sdkInt,
-        };
+        final manufacturer = android.manufacturer.trim();
+        final model = android.model.trim();
+        final device = manufacturer.isEmpty ||
+                model.toLowerCase().startsWith(manufacturer.toLowerCase())
+            ? model
+            : '$manufacturer $model';
+        _cachedInfo = '$device — Android ${android.version.release}';
       } else {
-        _cachedInfo = {'platform': Platform.operatingSystem};
+        _cachedInfo = Platform.operatingSystem;
       }
     } catch (_) {
       _cachedInfo = null;

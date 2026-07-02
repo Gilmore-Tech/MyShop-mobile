@@ -128,8 +128,9 @@ class _ProviderPhoneInputScreenState
           referralCode: draft.referralCode.trim().isNotEmpty
               ? draft.referralCode.trim()
               : null,
-          vehicleMake:
-              draft.vehicleMake.trim().isNotEmpty ? draft.vehicleMake.trim() : null,
+          vehicleMake: draft.vehicleMake.trim().isNotEmpty
+              ? draft.vehicleMake.trim()
+              : null,
           vehicleModel: draft.vehicleModel.trim().isNotEmpty
               ? draft.vehicleModel.trim()
               : null,

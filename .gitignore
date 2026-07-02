@@ -5,6 +5,8 @@
 **/.flutter-plugins-dependencies
 **/.packages
 **/pubspec.lock
+!apps/client/pubspec.lock
+!apps/provider/pubspec.lock
 **/.fvm/
 
 # IDE

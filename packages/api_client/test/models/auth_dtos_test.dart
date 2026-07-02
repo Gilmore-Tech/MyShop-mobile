@@ -2,6 +2,28 @@ import 'package:api_client/api_client.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('auth requests serialize deviceInfo using the backend string contract',
+      () {
+    const deviceInfo = 'Google Pixel 8 — Android 16';
+
+    final login = const LoginRequest(
+      phone: '+233241234567',
+      deviceId: 'device-id',
+      deviceInfo: deviceInfo,
+    ).toJson();
+    final registration = const RegisterRequest(
+      phone: '+233241234567',
+      fullName: 'Ama Owusu',
+      type: 'client',
+      privacyPolicyAccepted: true,
+      deviceId: 'device-id',
+      deviceInfo: deviceInfo,
+    ).toJson();
+
+    expect(login['deviceInfo'], deviceInfo);
+    expect(registration['deviceInfo'], deviceInfo);
+  });
+
   group('RegisterRequest.toJson — vehicle details (driver signup)', () {
     test('includes all vehicle fields when set', () {
       final json = const RegisterRequest(
