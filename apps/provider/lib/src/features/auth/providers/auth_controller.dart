@@ -309,6 +309,11 @@ class AuthController extends StateNotifier<AuthState> {
     String? regionId,
     String? shopCapacity,
     String? referralCode,
+    String? vehicleMake,
+    String? vehicleModel,
+    int? vehicleYear,
+    String? vehiclePlate,
+    String? vehicleColor,
   }) async {
     if (_requesting) return;
     _requesting = true;
@@ -327,6 +332,11 @@ class AuthController extends StateNotifier<AuthState> {
         regionId: regionId,
         shopCapacity: shopCapacity,
         referralCode: referralCode,
+        vehicleMake: vehicleMake,
+        vehicleModel: vehicleModel,
+        vehicleYear: vehicleYear,
+        vehiclePlate: vehiclePlate,
+        vehicleColor: vehicleColor,
       ));
       state = AuthOtpSent(phone: phone, isNewUser: true, role: role);
     } on ApiException catch (e) {

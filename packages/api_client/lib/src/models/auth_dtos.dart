@@ -24,6 +24,11 @@ class RegisterRequest {
     this.regionId,
     this.shopCapacity,
     this.maxConcurrentJobs,
+    this.vehicleMake,
+    this.vehicleModel,
+    this.vehicleYear,
+    this.vehiclePlate,
+    this.vehicleColor,
   });
 
   final String phone;
@@ -43,6 +48,11 @@ class RegisterRequest {
       regionId; // provider only — home region UUID from GET /v1/regions
   final String? shopCapacity; // "solo" or "multi"
   final int? maxConcurrentJobs; // 2-3, only when shopCapacity = "multi"
+  final String? vehicleMake; // driver only
+  final String? vehicleModel; // driver only
+  final int? vehicleYear; // driver only
+  final String? vehiclePlate; // driver only
+  final String? vehicleColor; // driver only
 
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{
@@ -64,6 +74,11 @@ class RegisterRequest {
     if (maxConcurrentJobs != null) {
       json['maxConcurrentJobs'] = maxConcurrentJobs;
     }
+    if (vehicleMake != null) json['vehicleMake'] = vehicleMake;
+    if (vehicleModel != null) json['vehicleModel'] = vehicleModel;
+    if (vehicleYear != null) json['vehicleYear'] = vehicleYear;
+    if (vehiclePlate != null) json['vehiclePlate'] = vehiclePlate;
+    if (vehicleColor != null) json['vehicleColor'] = vehicleColor;
     return json;
   }
 }
