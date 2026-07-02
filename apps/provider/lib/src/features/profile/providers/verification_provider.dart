@@ -271,20 +271,23 @@ final profileCompletionProvider = Provider<ProfileCompletion>((ref) {
   final verificationAsync = ref.watch(verificationStatusProvider);
   final isLoadingDocs = verificationAsync.isLoading;
   final docs = verificationAsync.valueOrNull;
+  final providerType = ref.watch(providerTypeProvider);
+  final providerTypeValue = providerType.name;
 
   // An expired document no longer satisfies verification — the provider must
-  // re-upload before it counts towards going online again.
+  // re-upload before it counts towards going online again. /verification/status
+  // returns documents for every provider role on the user, so scope each lookup
+  // to the active role to prevent Driver/Artisan document bleed.
   bool isDocApproved(DocumentType type) {
-    final doc = docs?.documentFor(type.value);
+    final doc = docs?.documentFor(type.value, providerType: providerTypeValue);
     return doc != null && doc.isApproved && !doc.isExpired();
   }
 
-  final providerType = ref.watch(providerTypeProvider);
   if (providerType.isDriver) {
     final dp = user.driverProfile;
     final items = <(bool, String)>[
       (user.fullName.isNotEmpty, 'Full name'),
-      (dp?.profilePhotoUrl != null, 'Profile photo'),
+      (isDocApproved(DocumentType.profilePhoto), 'Profile photo (approved)'),
       (dp?.vehicleMake != null, 'Vehicle information'),
       (isDocApproved(DocumentType.ghanaCard), 'Ghana Card (approved)'),
       (
@@ -304,7 +307,7 @@ final profileCompletionProvider = Provider<ProfileCompletion>((ref) {
   } else {
     final items = <(bool, String)>[
       (user.fullName.isNotEmpty, 'Full name'),
-      (user.artisanProfile?.profilePhotoUrl != null, 'Profile photo'),
+      (isDocApproved(DocumentType.profilePhoto), 'Profile photo (approved)'),
       (
         user.artisanProfile?.serviceCategories != null &&
             user.artisanProfile!.serviceCategories!.isNotEmpty,

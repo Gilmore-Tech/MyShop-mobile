@@ -8,11 +8,13 @@ void main() {
   DocumentInfo doc({
     String status = 'approved',
     String? expiresAt,
+    String providerType = 'driver',
+    String documentType = 'drivers_licence',
   }) {
     return DocumentInfo(
       id: 'doc_1',
-      providerType: 'driver',
-      documentType: DocumentType.driversLicence.value,
+      providerType: providerType,
+      documentType: documentType,
       status: status,
       isCurrent: true,
       createdAt: '2026-01-01T00:00:00Z',
@@ -97,6 +99,64 @@ void main() {
         d.isExpiringSoon(now: now, within: const Duration(days: 7)),
         isFalse,
       );
+    });
+  });
+
+  group('VerificationStatusResponse.documentFor', () {
+    test('can scope lookup to the active provider role', () {
+      final response = VerificationStatusResponse(
+        documents: [
+          doc(
+            providerType: 'artisan',
+            documentType: DocumentType.ghanaCard.value,
+          ),
+          doc(
+            providerType: 'driver',
+            documentType: DocumentType.ghanaCard.value,
+            status: 'pending_review',
+          ),
+        ],
+      );
+
+      expect(
+        response
+            .documentFor(
+              DocumentType.ghanaCard.value,
+              providerType: 'driver',
+            )
+            ?.status,
+        'pending_review',
+      );
+      expect(
+        response
+            .documentFor(
+              DocumentType.ghanaCard.value,
+              providerType: 'artisan',
+            )
+            ?.status,
+        'approved',
+      );
+    });
+
+    test('does not let a sibling role satisfy a missing active-role document',
+        () {
+      final response = VerificationStatusResponse(
+        documents: [
+          doc(
+            providerType: 'artisan',
+            documentType: DocumentType.ghanaCard.value,
+          ),
+        ],
+      );
+
+      expect(
+        response.documentFor(
+          DocumentType.ghanaCard.value,
+          providerType: 'driver',
+        ),
+        isNull,
+      );
+      expect(response.documentFor(DocumentType.ghanaCard.value), isNotNull);
     });
   });
 }

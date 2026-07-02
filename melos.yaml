@@ -19,10 +19,8 @@ scripts:
     description: Check formatting
   
   test:
-    exec: flutter test
+    run: melos exec --dir-exists=test -- "flutter test"
     description: Run tests in all packages
-    packageFilters:
-      dirExists: test
   
   build:client:android:
     exec: flutter build apk --release

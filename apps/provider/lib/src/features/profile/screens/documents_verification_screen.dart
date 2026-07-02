@@ -71,19 +71,23 @@ class _DocumentsVerificationScreenState
     // valueOrNull (not whenOrNull(data:)) keeps the previous list visible while
     // a refresh is in flight, so pull-to-refresh / entry-refresh don't blank the
     // rows back to their fallbacks.
+    final providerType = isArtisan ? 'artisan' : 'driver';
     final backendDocs =
         verificationAsync.valueOrNull?.documents ?? const <DocumentInfo>[];
+    final roleDocs = backendDocs
+        .where((d) => d.providerType == providerType)
+        .toList(growable: false);
 
     final requiredDocs = isArtisan
-        ? _buildArtisanRequired(user, backendDocs, uploadState)
-        : _buildDriverRequired(user, backendDocs, uploadState);
+        ? _buildArtisanRequired(user, roleDocs, uploadState)
+        : _buildDriverRequired(user, roleDocs, uploadState);
     // Artisans must provide the Ghana Card PLUS any one of these trade
     // credentials (not all of them).
     final oneOfDocs = isArtisan
-        ? _buildArtisanOneOf(backendDocs, uploadState)
+        ? _buildArtisanOneOf(roleDocs, uploadState)
         : const <_DocItem>[];
     final optionalDocs = isArtisan
-        ? _buildArtisanOptional(backendDocs, uploadState)
+        ? _buildArtisanOptional(roleDocs, uploadState)
         : const <_DocItem>[];
 
     final uploadedRequired =
@@ -153,7 +157,7 @@ class _DocumentsVerificationScreenState
                     const SizedBox(height: MyShopSpacing.sm),
                     _DocsCard(
                       items: requiredDocs,
-                      providerType: isArtisan ? 'artisan' : 'driver',
+                      providerType: providerType,
                       ref: ref,
                     ),
                     if (oneOfDocs.isNotEmpty) ...[
@@ -269,15 +273,26 @@ class _DocumentsVerificationScreenState
       _docItemFromBackend(
         docs: docs,
         uploadState: uploadState,
+        type: DocumentType.profilePhoto,
+        icon: Icons.account_circle_outlined,
+        title: 'Profile Photo',
+        fallbackMeta: dp?.profilePhotoUrl != null
+            ? 'Photo saved — awaiting document review'
+            : 'Upload a clear face photo',
+        fallbackStatus: _DocStatus.missing,
+      ),
+      _docItemFromBackend(
+        docs: docs,
+        uploadState: uploadState,
         type: DocumentType.driversLicence,
         icon: Icons.badge_outlined,
         title: "Driver's License",
         fallbackMeta: dp?.licenceExpiry != null
             ? 'Expires: ${dp!.licenceExpiry}'
-            : 'Tap to upload',
-        fallbackStatus: dp?.licenceNumber != null
-            ? _DocStatus.approved
-            : _DocStatus.missing,
+            : dp?.licenceNumber != null
+                ? 'Licence number saved — upload document'
+                : 'Tap to upload',
+        fallbackStatus: _DocStatus.missing,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -304,11 +319,9 @@ class _DocumentsVerificationScreenState
         icon: Icons.credit_card,
         title: 'Ghana Card',
         fallbackMeta: dp?.ghanaCardVerified == true
-            ? 'Verified'
+            ? 'Identity verified — upload document'
             : 'Tap to upload front & back',
-        fallbackStatus: dp?.ghanaCardVerified == true
-            ? _DocStatus.approved
-            : _DocStatus.missing,
+        fallbackStatus: _DocStatus.missing,
       ),
     ];
   }
@@ -325,14 +338,24 @@ class _DocumentsVerificationScreenState
       _docItemFromBackend(
         docs: docs,
         uploadState: uploadState,
+        type: DocumentType.profilePhoto,
+        icon: Icons.account_circle_outlined,
+        title: 'Profile Photo',
+        fallbackMeta: ap?.profilePhotoUrl != null
+            ? 'Photo saved — awaiting document review'
+            : 'Upload a clear face photo',
+        fallbackStatus: _DocStatus.missing,
+      ),
+      _docItemFromBackend(
+        docs: docs,
+        uploadState: uploadState,
         type: DocumentType.ghanaCard,
         icon: Icons.credit_card,
         title: 'Ghana Card',
-        fallbackMeta:
-            ap?.ghanaCardVerified == true ? 'Verified' : 'Tap to upload',
-        fallbackStatus: ap?.ghanaCardVerified == true
-            ? _DocStatus.approved
-            : _DocStatus.missing,
+        fallbackMeta: ap?.ghanaCardVerified == true
+            ? 'Identity verified — upload document'
+            : 'Tap to upload',
+        fallbackStatus: _DocStatus.missing,
       ),
     ];
   }
@@ -396,8 +419,10 @@ class _DocumentsVerificationScreenState
     ];
   }
 
-  /// Merge backend document info with a fallback for when the endpoint
-  /// returns no data (fresh account or endpoint not available).
+  /// Merge backend document info with a fallback for when this active role has
+  /// no document row yet. Profile fields such as a typed licence number or a
+  /// Ghana Card KYC flag are not document approvals; only provider_documents
+  /// rows returned by the backend can mark a document approved.
   static _DocItem _docItemFromBackend({
     required List<DocumentInfo> docs,
     required DocumentUploadState uploadState,
@@ -462,9 +487,11 @@ class _DocumentsVerificationScreenState
         return _DocItem(
           icon: icon,
           title: title,
-          meta: expiry != null
-              ? 'Valid until ${_formatDate(expiry)}'
-              : 'Approved',
+          meta: type == DocumentType.profilePhoto
+              ? 'Approved — contact support to change'
+              : expiry != null
+                  ? 'Valid until ${_formatDate(expiry)}'
+                  : 'Approved',
           status: _DocStatus.approved,
           documentType: type,
         );

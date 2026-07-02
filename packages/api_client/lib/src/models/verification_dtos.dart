@@ -234,12 +234,17 @@ class VerificationStatusResponse {
   /// The match is case- and underscore-insensitive so a backend that
   /// emits `documentType: 'driversLicence'` (camelCase) still resolves
   /// against the `'drivers_licence'` enum value the mobile uses.
-  DocumentInfo? documentFor(String type) {
+  DocumentInfo? documentFor(String type, {String? providerType}) {
     String normalize(String s) =>
         s.toLowerCase().replaceAll('_', '').replaceAll('-', '');
     final target = normalize(type);
-    final matches =
-        documents.where((d) => normalize(d.documentType) == target).toList();
+    final matches = documents
+        .where(
+          (d) =>
+              normalize(d.documentType) == target &&
+              (providerType == null || d.providerType == providerType),
+        )
+        .toList();
     if (matches.isEmpty) return null;
     // Preference: current+approved → approved → current → anything.
     int score(DocumentInfo d) {
