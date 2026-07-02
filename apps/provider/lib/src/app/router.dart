@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -31,6 +33,7 @@ import '../features/driver_home/screens/active_ride_screen.dart';
 import '../features/driver_home/screens/driver_home_screen.dart';
 import '../core/providers/nav_badge_provider.dart';
 import '../features/profile/providers/provider_type_provider.dart';
+import '../features/profile/providers/verification_provider.dart';
 import '../features/driver_home/screens/driver_ride_complete_screen.dart';
 import '../features/driver_home/screens/ride_request_screen.dart';
 import '../features/earnings/screens/artisan_earnings_screen.dart';
@@ -494,26 +497,99 @@ class _ProviderEarningsSwitcher extends ConsumerWidget {
 ///
 /// Badge counts are driven by [navBadgeProvider]. When a tab is tapped its
 /// badge is cleared automatically — just like any normal notification badge.
-class _DriverShell extends ConsumerWidget {
+class _DriverShell extends ConsumerStatefulWidget {
   const _DriverShell({required this.child});
 
   final Widget child;
 
+  @override
+  ConsumerState<_DriverShell> createState() => _DriverShellState();
+}
+
+class _DriverShellState extends ConsumerState<_DriverShell>
+    with WidgetsBindingObserver {
   static const _tabs = ['/home', '/earnings', '/trips', '/account'];
 
-  int _currentIndex(BuildContext context) {
-    final location = GoRouterState.of(context).uri.path;
+  String? _lastVerificationRefreshLocation;
+  bool _verificationRefreshQueued = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _scheduleVerificationRefresh(force: true);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _scheduleVerificationRefresh(force: true);
+    }
+  }
+
+  int _currentIndex(String location) {
     final index = _tabs.indexWhere((t) => location.startsWith(t));
     return index >= 0 ? index : 0;
   }
 
-  void _onTabTap(BuildContext context, WidgetRef ref, String path) {
+  void _onTabTap(BuildContext context, String path) {
     ref.read(navBadgeProvider.notifier).clear(path);
+    final location = GoRouterState.of(context).uri.path;
+    if (location == path) {
+      _scheduleVerificationRefresh(force: true);
+    }
     context.go(path);
   }
 
+  void _scheduleVerificationRefresh({String? location, bool force = false}) {
+    if (!force &&
+        location != null &&
+        _lastVerificationRefreshLocation == location) {
+      return;
+    }
+    if (location != null) {
+      _lastVerificationRefreshLocation = location;
+    }
+    if (_verificationRefreshQueued) return;
+
+    _verificationRefreshQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _verificationRefreshQueued = false;
+      if (!mounted) return;
+
+      // Admin-side document/photo decisions happen out-of-band from the
+      // provider app. Refresh the shared verification snapshot whenever a
+      // provider enters a main tab or resumes the app, so approved profile
+      // photos and document statuses appear without visiting Documents first.
+      ref.invalidate(verificationStatusProvider);
+      unawaited(
+        ref
+            .read(verificationStatusProvider.future)
+            .then<void>((_) {})
+            .catchError((_) {}),
+      );
+
+      // Keep role verification chips/profile fields fresh as well. This call
+      // is intentionally fire-and-forget; auth_controller swallows profile
+      // refresh failures and keeps the current session intact.
+      unawaited(
+        ref
+            .read(authControllerProvider.notifier)
+            .refreshProfile()
+            .then<void>((_) {})
+            .catchError((_) {}),
+      );
+    });
+  }
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     // Activate the Socket.IO connection manager — connects/disconnects
     // automatically when the provider toggles online/offline.
     ref.watch(socketConnectionProvider);
@@ -531,12 +607,15 @@ class _DriverShell extends ConsumerWidget {
     // home-screen "HOURS" stat reflects today's real total.
     ref.watch(onlineSessionRecorderProvider);
 
-    final currentIndex = _currentIndex(context);
+    final location = GoRouterState.of(context).uri.path;
+    _scheduleVerificationRefresh(location: location);
+
+    final currentIndex = _currentIndex(location);
     final isArtisan = ref.watch(providerTypeProvider).isArtisan;
     final badges = ref.watch(navBadgeProvider);
 
     return Scaffold(
-      body: IncomingRequestListener(child: child),
+      body: IncomingRequestListener(child: widget.child),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           color: Color(0xF2FFFFFF),
@@ -559,25 +638,25 @@ class _DriverShell extends ConsumerWidget {
                           label: 'Jobs',
                           isActive: currentIndex == 0,
                           badgeCount: badges['/home'],
-                          onTap: () => _onTabTap(context, ref, '/home')),
+                          onTap: () => _onTabTap(context, '/home')),
                       _NavTab(
                           icon: Icons.account_balance_wallet_outlined,
                           label: 'Earnings',
                           isActive: currentIndex == 1,
                           badgeCount: badges['/earnings'],
-                          onTap: () => _onTabTap(context, ref, '/earnings')),
+                          onTap: () => _onTabTap(context, '/earnings')),
                       _NavTab(
                           icon: Icons.assignment_outlined,
                           label: 'My Jobs',
                           isActive: currentIndex == 2,
                           badgeCount: badges['/trips'],
-                          onTap: () => _onTabTap(context, ref, '/trips')),
+                          onTap: () => _onTabTap(context, '/trips')),
                       _NavTab(
                           icon: Icons.account_circle_outlined,
                           label: 'Account',
                           isActive: currentIndex == 3,
                           badgeCount: badges['/account'],
-                          onTap: () => _onTabTap(context, ref, '/account')),
+                          onTap: () => _onTabTap(context, '/account')),
                     ]
                   : [
                       _NavTab(
@@ -585,25 +664,25 @@ class _DriverShell extends ConsumerWidget {
                           label: 'Home',
                           isActive: currentIndex == 0,
                           badgeCount: badges['/home'],
-                          onTap: () => _onTabTap(context, ref, '/home')),
+                          onTap: () => _onTabTap(context, '/home')),
                       _NavTab(
                           icon: Icons.account_balance_wallet_outlined,
                           label: 'Earnings',
                           isActive: currentIndex == 1,
                           badgeCount: badges['/earnings'],
-                          onTap: () => _onTabTap(context, ref, '/earnings')),
+                          onTap: () => _onTabTap(context, '/earnings')),
                       _NavTab(
                           icon: Icons.history,
                           label: 'Trips',
                           isActive: currentIndex == 2,
                           badgeCount: badges['/trips'],
-                          onTap: () => _onTabTap(context, ref, '/trips')),
+                          onTap: () => _onTabTap(context, '/trips')),
                       _NavTab(
                           icon: Icons.account_circle_outlined,
                           label: 'Account',
                           isActive: currentIndex == 3,
                           badgeCount: badges['/account'],
-                          onTap: () => _onTabTap(context, ref, '/account')),
+                          onTap: () => _onTabTap(context, '/account')),
                     ],
             ),
           ),
