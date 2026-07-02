@@ -38,6 +38,7 @@ class DocumentUploadNotifier extends StateNotifier<DocumentUploadState> {
     required String providerType,
     required DocumentType documentType,
     required File file,
+    String? expiresAt,
   }) async {
     state = state.copyWith(
       uploading: {
@@ -50,6 +51,7 @@ class DocumentUploadNotifier extends StateNotifier<DocumentUploadState> {
         providerType: providerType,
         documentType: documentType,
         file: file,
+        expiresAt: expiresAt,
       );
       state = state.copyWith(
         uploading: {
@@ -260,9 +262,11 @@ final profileCompletionProvider = Provider<ProfileCompletion>((ref) {
   final isLoadingDocs = verificationAsync.isLoading;
   final docs = verificationAsync.valueOrNull;
 
+  // An expired document no longer satisfies verification — the provider must
+  // re-upload before it counts towards going online again.
   bool isDocApproved(DocumentType type) {
     final doc = docs?.documentFor(type.value);
-    return doc != null && doc.isApproved;
+    return doc != null && doc.isApproved && !doc.isExpired();
   }
 
   final providerType = ref.watch(providerTypeProvider);
