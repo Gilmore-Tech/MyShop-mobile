@@ -20,6 +20,19 @@ enum DocumentType {
     if (s == null) return null;
     return DocumentType.values.where((e) => e.value == s).firstOrNull;
   }
+
+  /// Whether this document carries a real-world expiry date printed on it,
+  /// which the provider must supply at upload time so the platform can prompt
+  /// a renewal once it lapses. Types without an expiry (photos, trade
+  /// certificate, national ID) never prompt for one.
+  bool get requiresExpiry => switch (this) {
+        DocumentType.driversLicence ||
+        DocumentType.roadworthinessCertificate ||
+        DocumentType.ghanaCard ||
+        DocumentType.businessRegistration =>
+          true,
+        _ => false,
+      };
 }
 
 /// POST /verification/documents — request body.
@@ -159,6 +172,34 @@ class DocumentInfo {
 
   /// True if the document has been received and not rejected.
   bool get isSubmitted => isPendingReview || isApproved;
+
+  /// The parsed expiry date, or `null` when the document never expires or the
+  /// backend value can't be parsed.
+  DateTime? get expiresAtDate =>
+      expiresAt == null ? null : DateTime.tryParse(expiresAt!);
+
+  /// True when this is an approved document whose expiry date has passed.
+  ///
+  /// Expiry is derived on the client — the backend keeps the row `approved`
+  /// but exposes `expiresAt`, so the provider must re-upload once it lapses.
+  /// Pass [now] in tests; defaults to the current time.
+  bool isExpired([DateTime? now]) {
+    final exp = expiresAtDate;
+    if (exp == null || !isApproved) return false;
+    return !(now ?? DateTime.now()).isBefore(exp);
+  }
+
+  /// True when this approved document is valid but expires within [within]
+  /// (30 days by default) — used to prompt an early, proactive re-upload.
+  bool isExpiringSoon({
+    DateTime? now,
+    Duration within = const Duration(days: 30),
+  }) {
+    final exp = expiresAtDate;
+    if (exp == null || !isApproved) return false;
+    final ref = now ?? DateTime.now();
+    return ref.isBefore(exp) && !ref.add(within).isBefore(exp);
+  }
 }
 
 /// GET /verification/status — full response.

@@ -2,6 +2,7 @@ import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/current_user_provider.dart';
@@ -390,11 +391,33 @@ class DocumentsVerificationScreen extends ConsumerWidget {
 
     if (doc != null) {
       if (doc.isApproved) {
+        final expiry = doc.expiresAtDate;
+        // An approved document can still lapse — surface an actionable
+        // re-upload state once it has expired (or is about to).
+        if (doc.isExpired()) {
+          return _DocItem(
+            icon: icon,
+            title: title,
+            meta: expiry != null
+                ? 'Expired ${_formatDate(expiry)} — tap to re-upload'
+                : 'Expired — tap to re-upload',
+            status: _DocStatus.expired,
+            documentType: type,
+          );
+        }
+        if (doc.isExpiringSoon()) {
+          return _DocItem(
+            icon: icon,
+            title: title,
+            meta: 'Expires ${_formatDate(expiry!)} — tap to renew',
+            status: _DocStatus.expiringSoon,
+            documentType: type,
+          );
+        }
         return _DocItem(
           icon: icon,
           title: title,
-          meta:
-              doc.expiresAt != null ? 'Expires: ${doc.expiresAt}' : 'Approved',
+          meta: expiry != null ? 'Valid until ${_formatDate(expiry)}' : 'Approved',
           status: _DocStatus.approved,
           documentType: type,
         );
@@ -435,6 +458,10 @@ class DocumentsVerificationScreen extends ConsumerWidget {
       documentType: type,
     );
   }
+
+  /// Human-friendly expiry date, e.g. "12 Aug 2026".
+  static String _formatDate(DateTime date) =>
+      DateFormat('d MMM yyyy').format(date);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -612,6 +639,8 @@ class _SectionLabel extends StatelessWidget {
 ///   pendingReview → file in storage, awaiting admin review
 ///   approved → admin approved
 ///   rejected → admin rejected
+///   expired → approved but past its expiry date (client-derived, re-uploadable)
+///   expiringSoon → approved and lapsing within 30 days (client-derived)
 ///   uploading → local upload in progress (client-only state)
 ///   missing → no document uploaded yet (client-only state)
 enum _DocStatus {
@@ -620,6 +649,8 @@ enum _DocStatus {
   uploaded,
   uploading,
   rejected,
+  expired,
+  expiringSoon,
   missing
 }
 
@@ -692,23 +723,88 @@ class _DocRow extends StatelessWidget {
   final WidgetRef ref;
 
   bool get _canUpload =>
-      item.status == _DocStatus.missing || item.status == _DocStatus.rejected;
+      item.status == _DocStatus.missing ||
+      item.status == _DocStatus.rejected ||
+      item.status == _DocStatus.expired ||
+      item.status == _DocStatus.expiringSoon;
+
+  /// A re-upload replaces an existing document (rejected/expired/expiring),
+  /// so we confirm before discarding it. A first-time upload goes straight
+  /// to the picker.
+  bool get _isReupload =>
+      item.status == _DocStatus.rejected ||
+      item.status == _DocStatus.expired ||
+      item.status == _DocStatus.expiringSoon;
 
   Future<void> _handleUpload(BuildContext context) async {
     if (item.documentType == null) return;
 
+    if (_isReupload) {
+      final confirmed = await _confirmReplace(context);
+      if (confirmed != true || !context.mounted) return;
+    }
+
     final file = await MediaPickerHelper.pickDocumentWithCamera(context);
     if (file == null || !context.mounted) return;
+
+    // Documents that carry a printed expiry date (licence, roadworthiness,
+    // Ghana Card, business registration) must supply it so the platform can
+    // prompt a renewal before they lapse.
+    String? expiresAt;
+    if (item.documentType!.requiresExpiry) {
+      final expiry = await _pickExpiryDate(context);
+      if (!context.mounted) return;
+      if (expiry == null) {
+        MyShopToast.show(
+          context,
+          message: 'Add the expiry date shown on your document to continue.',
+          type: ToastType.info,
+        );
+        return;
+      }
+      expiresAt = expiry.toIso8601String();
+    }
 
     final error = await ref.read(documentUploadProvider.notifier).upload(
           providerType: providerType,
           documentType: item.documentType!,
           file: file,
+          expiresAt: expiresAt,
         );
 
-    if (error != null && context.mounted) {
+    if (!context.mounted) return;
+    if (error != null) {
       MyShopToast.show(context, message: error, type: ToastType.error);
+    } else {
+      // Pull the fresh document list so the new version's status (and any
+      // updated expiry) replaces the old one on next rebuild.
+      ref.invalidate(verificationStatusProvider);
     }
+  }
+
+  /// Prompts for the expiry date printed on the document. The date must be in
+  /// the future — a renewal always carries a fresh expiry.
+  Future<DateTime?> _pickExpiryDate(BuildContext context) {
+    final today = DateTime.now();
+    final firstDate = DateTime(today.year, today.month, today.day);
+    return showDatePicker(
+      context: context,
+      helpText: 'Expiry date on your ${item.title}',
+      firstDate: firstDate,
+      initialDate: DateTime(today.year + 1, today.month, today.day),
+      lastDate: DateTime(today.year + 20),
+    );
+  }
+
+  Future<bool?> _confirmReplace(BuildContext context) {
+    return showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: MyShopColors.surfaceWhite,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) => _ReplaceDocSheet(title: item.title),
+    );
   }
 
   @override
@@ -769,9 +865,13 @@ class _DocRow extends StatelessWidget {
                         child: Text(
                           item.meta,
                           style: MyShopTypography.body2.copyWith(
-                            color: item.status == _DocStatus.rejected
-                                ? MyShopColors.error
-                                : null,
+                            color: switch (item.status) {
+                              _DocStatus.rejected ||
+                              _DocStatus.expired =>
+                                MyShopColors.error,
+                              _DocStatus.expiringSoon => MyShopColors.warning,
+                              _ => null,
+                            },
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -828,6 +928,18 @@ class _StatusPill extends StatelessWidget {
           'Rejected',
           Icons.cancel_outlined,
         ),
+      _DocStatus.expired => (
+          MyShopColors.errorLight,
+          MyShopColors.error,
+          'Expired',
+          Icons.event_busy_outlined,
+        ),
+      _DocStatus.expiringSoon => (
+          MyShopColors.warningLight,
+          MyShopColors.warning,
+          'Expiring',
+          Icons.event_outlined,
+        ),
       _DocStatus.missing => (
           MyShopColors.surfaceWhite,
           MyShopColors.primaryGold,
@@ -858,6 +970,88 @@ class _StatusPill extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Replace-document confirmation sheet
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Confirms replacing an existing document before opening the file picker.
+/// Shown when re-uploading a rejected, expired, or soon-to-expire document.
+class _ReplaceDocSheet extends StatelessWidget {
+  const _ReplaceDocSheet({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(MyShopSpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: MyShopColors.primaryGoldLight,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.autorenew,
+                    color: MyShopColors.primaryGold,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: MyShopSpacing.sm),
+                Expanded(
+                  child: Text(
+                    'Re-upload $title',
+                    style: MyShopTypography.h3.copyWith(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: MyShopSpacing.md),
+            Text(
+              'Your current document will be replaced with the new one and '
+              'sent back to our compliance team for review. This usually takes '
+              'up to 24 hours.',
+              style: MyShopTypography.body2.copyWith(height: 1.5),
+            ),
+            const SizedBox(height: MyShopSpacing.lg),
+            MyShopPrimaryButton(
+              label: 'Choose new document',
+              icon: Icons.upload_outlined,
+              onPressed: () => Navigator.of(context).pop(true),
+            ),
+            const SizedBox(height: MyShopSpacing.sm),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(
+                  'Cancel',
+                  style: MyShopTypography.body1.copyWith(
+                    color: MyShopColors.textSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

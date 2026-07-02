@@ -138,6 +138,7 @@ class VerificationService {
     required String providerType,
     required DocumentType documentType,
     required File file,
+    String? expiresAt,
   }) async {
     final fileName = file.path.split('/').last;
     final mimeType = _mimeFromExtension(fileName);
@@ -151,6 +152,7 @@ class VerificationService {
         fileName: fileName,
         mimeType: mimeType,
         fileSize: fileSize,
+        expiresAt: expiresAt,
       ),
     );
 
