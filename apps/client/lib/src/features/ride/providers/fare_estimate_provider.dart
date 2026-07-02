@@ -23,18 +23,22 @@ final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
   final pickup = search.pickup;
   final destination = search.destination;
 
-  if (pickup?.lat == null ||
-      pickup?.lng == null ||
-      destination?.lat == null ||
-      destination?.lng == null) {
+  if (pickup == null ||
+      destination == null ||
+      pickup.lat == null ||
+      pickup.lng == null ||
+      destination.lat == null ||
+      destination.lng == null ||
+      !pickup.isPrecise ||
+      !destination.isPrecise) {
     return [];
   }
 
   final rideService = ref.read(rideServiceProvider);
   final result = await rideService.estimate(
-    pickupLat: pickup!.lat!,
+    pickupLat: pickup.lat!,
     pickupLng: pickup.lng!,
-    destinationLat: destination!.lat!,
+    destinationLat: destination.lat!,
     destinationLng: destination.lng!,
   );
 
