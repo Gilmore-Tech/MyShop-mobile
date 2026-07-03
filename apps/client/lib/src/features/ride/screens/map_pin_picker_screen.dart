@@ -56,6 +56,12 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
     final existing = _isPickup ? searchState.pickup : searchState.destination;
     if (existing?.lat != null && existing?.lng != null) {
       _currentCenter = LatLng(existing!.lat!, existing.lng!);
+      _name = existing.name;
+      _address = existing.address;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _reverseGeocode(_currentCenter);
+      });
       return;
     }
     // No prior location — seed from the cached device fix if we have one;
@@ -67,15 +73,26 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
       _currentCenter = _kumasiFallback;
       _centerOnUserOnMapReady = true;
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _centerOnUserOnMapReady) return;
+      _reverseGeocode(_currentCenter);
+    });
   }
 
   Future<void> _goToMyLocation() async {
     final position = await ref
         .read(currentLocationServiceProvider)
         .ensure(forceRefresh: true);
-    if (!mounted || position == null) return;
+    if (!mounted) return;
+    if (position == null) {
+      if (_address.isEmpty) await _reverseGeocode(_currentCenter);
+      return;
+    }
     final target = LatLng(position.latitude, position.longitude);
-    _mapController?.animateCamera(CameraUpdate.newLatLngZoom(target, 16));
+    _currentCenter = target;
+    await _mapController?.animateCamera(CameraUpdate.newLatLngZoom(target, 16));
+    if (!mounted) return;
+    await _reverseGeocode(target);
   }
 
   void _onCameraMove(CameraPosition position) {
