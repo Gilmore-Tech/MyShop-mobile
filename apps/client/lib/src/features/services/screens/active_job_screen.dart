@@ -684,7 +684,7 @@ class _ActionButtonsRow extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
       // Numbers aren't masked during the pilot — let the client call the
       // artisan directly alongside the chat affordance.
-      child: artisanPhone.trim().isEmpty
+      child: !isDialablePhoneNumber(artisanPhone)
           ? chat
           : Row(
               children: [
