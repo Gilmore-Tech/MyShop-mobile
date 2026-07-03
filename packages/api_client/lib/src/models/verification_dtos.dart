@@ -227,6 +227,20 @@ class VerificationStatusResponse {
   final Map<String, dynamic>? artisanData;
   final List<DocumentInfo> documents;
 
+  /// The provider-facing green "Approved" state is only final once the active
+  /// role itself has been approved by the RM/final verification stage. Individual
+  /// document rows can become `approved` earlier during Stage 1 admin review, but
+  /// the provider app should keep showing them as in-review until this returns
+  /// true.
+  bool isProviderFullyApproved(String providerType) {
+    final data = switch (providerType) {
+      'driver' => driverData,
+      'artisan' => artisanData,
+      _ => null,
+    };
+    return data?['verificationStatus']?.toString().toLowerCase() == 'approved';
+  }
+
   /// Find the document for a given type, preferring the latest current
   /// row but falling back to the most recently approved row when the
   /// backend hasn't (or no longer has) any `isCurrent` flag set.
