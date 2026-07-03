@@ -72,6 +72,11 @@ class _DocumentsVerificationScreenState
     // a refresh is in flight, so pull-to-refresh / entry-refresh don't blank the
     // rows back to their fallbacks.
     final providerType = isArtisan ? 'artisan' : 'driver';
+    final isProviderFullyApproved =
+        verificationAsync.valueOrNull?.isProviderFullyApproved(providerType) ??
+            (isArtisan
+                ? user?.artisanProfile?.verificationStatus == 'approved'
+                : user?.driverProfile?.verificationStatus == 'approved');
     final backendDocs =
         verificationAsync.valueOrNull?.documents ?? const <DocumentInfo>[];
     final roleDocs = backendDocs
@@ -79,15 +84,33 @@ class _DocumentsVerificationScreenState
         .toList(growable: false);
 
     final requiredDocs = isArtisan
-        ? _buildArtisanRequired(user, roleDocs, uploadState)
-        : _buildDriverRequired(user, roleDocs, uploadState);
+        ? _buildArtisanRequired(
+            user,
+            roleDocs,
+            uploadState,
+            isProviderFullyApproved,
+          )
+        : _buildDriverRequired(
+            user,
+            roleDocs,
+            uploadState,
+            isProviderFullyApproved,
+          );
     // Artisans must provide the Ghana Card PLUS any one of these trade
     // credentials (not all of them).
     final oneOfDocs = isArtisan
-        ? _buildArtisanOneOf(roleDocs, uploadState)
+        ? _buildArtisanOneOf(
+            roleDocs,
+            uploadState,
+            isProviderFullyApproved,
+          )
         : const <_DocItem>[];
     final optionalDocs = isArtisan
-        ? _buildArtisanOptional(roleDocs, uploadState)
+        ? _buildArtisanOptional(
+            roleDocs,
+            uploadState,
+            isProviderFullyApproved,
+          )
         : const <_DocItem>[];
 
     final uploadedRequired =
@@ -267,6 +290,7 @@ class _DocumentsVerificationScreenState
     AuthUser? user,
     List<DocumentInfo> docs,
     DocumentUploadState uploadState,
+    bool isProviderFullyApproved,
   ) {
     final dp = user?.driverProfile;
     return [
@@ -280,6 +304,7 @@ class _DocumentsVerificationScreenState
             ? 'Photo saved — awaiting document review'
             : 'Upload a clear face photo',
         fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -293,6 +318,7 @@ class _DocumentsVerificationScreenState
                 ? 'Licence number saved — upload document'
                 : 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -302,6 +328,7 @@ class _DocumentsVerificationScreenState
         title: 'Roadworthiness Certificate',
         fallbackMeta: 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -311,6 +338,7 @@ class _DocumentsVerificationScreenState
         title: 'Vehicle Registration',
         fallbackMeta: 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -322,6 +350,7 @@ class _DocumentsVerificationScreenState
             ? 'Identity verified — upload document'
             : 'Tap to upload front & back',
         fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
       ),
     ];
   }
@@ -332,6 +361,7 @@ class _DocumentsVerificationScreenState
     AuthUser? user,
     List<DocumentInfo> docs,
     DocumentUploadState uploadState,
+    bool isProviderFullyApproved,
   ) {
     final ap = user?.artisanProfile;
     return [
@@ -345,6 +375,7 @@ class _DocumentsVerificationScreenState
             ? 'Photo saved — awaiting document review'
             : 'Upload a clear face photo',
         fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -356,6 +387,7 @@ class _DocumentsVerificationScreenState
             ? 'Identity verified — upload document'
             : 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
       ),
     ];
   }
@@ -365,6 +397,7 @@ class _DocumentsVerificationScreenState
   static List<_DocItem> _buildArtisanOneOf(
     List<DocumentInfo> docs,
     DocumentUploadState uploadState,
+    bool isProviderFullyApproved,
   ) {
     return [
       _docItemFromBackend(
@@ -375,6 +408,7 @@ class _DocumentsVerificationScreenState
         title: 'Business Registration Certificate',
         fallbackMeta: 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -384,6 +418,7 @@ class _DocumentsVerificationScreenState
         title: 'Trade Certificate',
         fallbackMeta: 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
       ),
     ];
   }
@@ -391,6 +426,7 @@ class _DocumentsVerificationScreenState
   static List<_DocItem> _buildArtisanOptional(
     List<DocumentInfo> docs,
     DocumentUploadState uploadState,
+    bool isProviderFullyApproved,
   ) {
     return [
       _docItemFromBackend(
@@ -401,6 +437,7 @@ class _DocumentsVerificationScreenState
         title: 'National ID',
         fallbackMeta: 'Recommended for VAT-eligible jobs',
         fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
       ),
       const _DocItem(
         icon: Icons.health_and_safety_outlined,
@@ -421,8 +458,9 @@ class _DocumentsVerificationScreenState
 
   /// Merge backend document info with a fallback for when this active role has
   /// no document row yet. Profile fields such as a typed licence number or a
-  /// Ghana Card KYC flag are not document approvals; only provider_documents
-  /// rows returned by the backend can mark a document approved.
+  /// Ghana Card KYC flag are not document approvals. A document may only render
+  /// as approved when its backend row is approved AND the provider role has
+  /// passed the final RM approval stage.
   static _DocItem _docItemFromBackend({
     required List<DocumentInfo> docs,
     required DocumentUploadState uploadState,
@@ -431,6 +469,7 @@ class _DocumentsVerificationScreenState
     required String title,
     required String fallbackMeta,
     required _DocStatus fallbackStatus,
+    required bool isProviderFullyApproved,
   }) {
     // Check if just uploaded in this session
     if (uploadState.uploaded[type.value] == true) {
@@ -461,6 +500,16 @@ class _DocumentsVerificationScreenState
 
     if (doc != null) {
       if (doc.isApproved) {
+        if (!isProviderFullyApproved) {
+          return _DocItem(
+            icon: icon,
+            title: title,
+            meta: 'In review — awaiting final verification',
+            status: _DocStatus.pendingReview,
+            documentType: type,
+          );
+        }
+
         final expiry = doc.expiresAtDate;
         // An approved document can still lapse — surface an actionable
         // re-upload state once it has expired (or is about to).

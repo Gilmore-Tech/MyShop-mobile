@@ -270,6 +270,12 @@ final providerProfilePhotoDisplayProvider =
   final role = ref.watch(providerTypeProvider);
   final roleValue = role.name;
   final verification = ref.watch(verificationStatusProvider).valueOrNull;
+  final user = ref.watch(currentUserProvider);
+  final isProviderFullyApproved =
+      verification?.isProviderFullyApproved(roleValue) ??
+          (role.isDriver
+              ? user?.driverProfile?.verificationStatus == 'approved'
+              : user?.artisanProfile?.verificationStatus == 'approved');
   final profilePhotoDoc = verification?.documentFor(
     DocumentType.profilePhoto.value,
     providerType: roleValue,
@@ -278,17 +284,21 @@ final providerProfilePhotoDisplayProvider =
   if (profilePhotoDoc != null) {
     final url = profilePhotoDoc.fileUrl;
     return ProviderProfilePhotoDisplay(
-      url: profilePhotoDoc.isApproved && url != null && url.isNotEmpty
+      url: isProviderFullyApproved &&
+              profilePhotoDoc.isApproved &&
+              url != null &&
+              url.isNotEmpty
           ? url
           : null,
     );
   }
 
-  final user = ref.watch(currentUserProvider);
   final local = ref.watch(localProfilePhotoProvider);
   return ProviderProfilePhotoDisplay(
-    url: user?.profilePhotoUrl ?? local.cloudinaryUrl,
-    localFile: local.localFile,
+    url: isProviderFullyApproved
+        ? user?.profilePhotoUrl ?? local.cloudinaryUrl
+        : null,
+    localFile: isProviderFullyApproved ? local.localFile : null,
   );
 });
 
@@ -316,6 +326,11 @@ final profileCompletionProvider = Provider<ProfileCompletion>((ref) {
   final docs = verificationAsync.valueOrNull;
   final providerType = ref.watch(providerTypeProvider);
   final providerTypeValue = providerType.name;
+  final isProviderFullyApproved =
+      docs?.isProviderFullyApproved(providerTypeValue) ??
+          (providerType.isDriver
+              ? user.driverProfile?.verificationStatus == 'approved'
+              : user.artisanProfile?.verificationStatus == 'approved');
 
   // An expired document no longer satisfies verification — the provider must
   // re-upload before it counts towards going online again. /verification/status
@@ -323,7 +338,10 @@ final profileCompletionProvider = Provider<ProfileCompletion>((ref) {
   // to the active role to prevent Driver/Artisan document bleed.
   bool isDocApproved(DocumentType type) {
     final doc = docs?.documentFor(type.value, providerType: providerTypeValue);
-    return doc != null && doc.isApproved && !doc.isExpired();
+    return isProviderFullyApproved &&
+        doc != null &&
+        doc.isApproved &&
+        !doc.isExpired();
   }
 
   if (providerType.isDriver) {
