@@ -84,7 +84,9 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
   void _onArrived() {
     _waitingTimer?.cancel();
     // Reset on entry so a previous arrival's elapsed time doesn't carry over.
-    ref.read(waitingCountdownProvider.notifier).reset();
+    ref
+        .read(waitingCountdownProvider.notifier)
+        .resetFromArrival(ref.read(rideArrivalAnchorProvider));
     _waitingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       ref.read(waitingCountdownProvider.notifier).tick();
@@ -187,6 +189,7 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
         RideTrackingPhase.enRoute;
     ref.read(liveDriverPositionProvider.notifier).state = null;
     ref.read(rideMatchedViaSocketProvider.notifier).state = false;
+    ref.read(rideArrivalAnchorProvider.notifier).state = null;
 
     if (!mounted) {
       _cancellingNow = false;
@@ -222,6 +225,7 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
           _onTripStarted();
         case RideTrackingPhase.completed:
           _waitingTimer?.cancel();
+          ref.read(rideArrivalAnchorProvider.notifier).state = null;
           if (!mounted) return;
           // Route in-app payments through /ride/:id/payment to settle the
           // Paystack charge before the rate sheet + receipt. Cash trips
@@ -252,9 +256,21 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
           ref.read(matchedDriverProvider.notifier).state = null;
           ref.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.enRoute; // reset for next ride
+          ref.read(rideArrivalAnchorProvider.notifier).state = null;
           ref.read(bookingPhaseProvider.notifier).reset();
           context.go(AppRoutes.home);
       }
+    });
+
+    // Fast ride:status and full ride:state can arrive in either order. If the
+    // server arrival timestamp is learned after the phase has already flipped
+    // to arrived, realign the countdown so rider and driver timers match.
+    ref.listen<DateTime?>(rideArrivalAnchorProvider, (prev, next) {
+      if (prev == next) return;
+      if (ref.read(rideTrackingPhaseProvider) != RideTrackingPhase.arrived) {
+        return;
+      }
+      ref.read(waitingCountdownProvider.notifier).resetFromArrival(next);
     });
 
     final phase = ref.watch(rideTrackingPhaseProvider);
