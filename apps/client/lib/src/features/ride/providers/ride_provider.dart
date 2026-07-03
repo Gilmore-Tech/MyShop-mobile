@@ -784,6 +784,11 @@ final rideTrackingPhaseProvider = StateProvider<RideTrackingPhase>(
   (_) => RideTrackingPhase.enRoute,
 );
 
+/// Server timestamp for when the driver reached pickup. The rider waiting
+/// timer uses this instead of "when this device received the event", so delayed
+/// socket delivery doesn't make the client and driver countdowns drift apart.
+final rideArrivalAnchorProvider = StateProvider<DateTime?>((_) => null);
+
 /// ETA countdown (minutes) while the trip is in progress.
 final tripEtaProvider =
     StateNotifierProvider<EtaNotifier, int>((_) => EtaNotifier(12));
@@ -804,6 +809,15 @@ class WaitingCountdownNotifier extends StateNotifier<int> {
   void tick() => state--;
 
   void reset([int seconds = 180]) => state = seconds;
+
+  void resetFromArrival(DateTime? arrivedAt, {int freeWaitSeconds = 180}) {
+    if (arrivedAt == null) {
+      reset(freeWaitSeconds);
+      return;
+    }
+    final elapsed = DateTime.now().difference(arrivedAt).inSeconds;
+    state = freeWaitSeconds - elapsed;
+  }
 }
 
 /// Creates a ride via the backend and polls until a driver is matched.
@@ -830,6 +844,7 @@ Future<void> requestRideAndMatchDriver(ProviderContainer ref) async {
   ref.read(driversNotifiedProvider.notifier).state = 0;
   ref.read(matcherProgressProvider.notifier).state = null;
   ref.read(liveDriverPositionProvider.notifier).state = null;
+  ref.read(rideArrivalAnchorProvider.notifier).state = null;
 
   void failWith(String message) {
     ref.read(bookingFailureMessageProvider.notifier).state = message;
@@ -1052,6 +1067,7 @@ Future<void> _hydrateFromRest(
     if (status == 'completed') {
       read(rideTrackingPhaseProvider.notifier).state =
           RideTrackingPhase.completed;
+      read(rideArrivalAnchorProvider.notifier).state = null;
       read(rideReceiptProvider.notifier).state =
           buildRideReceiptFromSnapshot(json);
       return;
@@ -1141,6 +1157,8 @@ Future<void> _hydrateFromRest(
         read(rideTrackingPhaseProvider.notifier).state =
             RideTrackingPhase.enRoute;
       case 'arrived_at_pickup' || 'arrived':
+        read(rideArrivalAnchorProvider.notifier).state =
+            _dateFromJson(json['arrivedAtPickupAt']);
         read(rideTrackingPhaseProvider.notifier).state =
             RideTrackingPhase.arrived;
       case 'in_progress':
@@ -1199,7 +1217,14 @@ Future<void> cancelInFlightRideRequest(ProviderContainer ref) async {
   ref.read(driversNotifiedProvider.notifier).state = 0;
   ref.read(matcherProgressProvider.notifier).state = null;
   ref.read(liveDriverPositionProvider.notifier).state = null;
+  ref.read(rideArrivalAnchorProvider.notifier).state = null;
   ref.read(bookingPhaseProvider.notifier).reset();
+}
+
+DateTime? _dateFromJson(dynamic value) {
+  if (value is DateTime) return value;
+  if (value is String && value.isNotEmpty) return DateTime.tryParse(value);
+  return null;
 }
 
 /// Tries the wire shapes the backend has used for ride-create responses:
