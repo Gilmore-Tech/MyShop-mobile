@@ -523,7 +523,7 @@ class _ChatRow extends ConsumerWidget {
       peerName: driverFullName,
       peerStatus: 'On your trip',
     );
-    if (phone.trim().isEmpty) return chat;
+    if (!isDialablePhoneNumber(phone)) return chat;
     // Numbers aren't masked during the pilot — let the rider call the driver
     // directly alongside the chat affordance.
     return Row(

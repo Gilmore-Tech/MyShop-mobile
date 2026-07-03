@@ -1328,7 +1328,7 @@ class _PassengerPanel extends StatelessWidget {
                 ),
                 // Numbers aren't masked during the pilot — the driver can
                 // call the passenger directly alongside the chat button.
-                if ((ride.clientPhone ?? '').trim().isNotEmpty) ...[
+                if (isDialablePhoneNumber(ride.clientPhone)) ...[
                   const SizedBox(width: 10),
                   MyShopCallButton(
                     phoneNumber: ride.clientPhone,

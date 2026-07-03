@@ -19,7 +19,7 @@ Future<bool> dialPhoneNumber(
   BuildContext context,
   String? rawNumber,
 ) async {
-  final sanitized = _sanitize(rawNumber);
+  final sanitized = normalizeDialablePhoneNumber(rawNumber);
   if (sanitized.isEmpty) {
     if (context.mounted) {
       MyShopToast.show(
@@ -54,14 +54,28 @@ Future<bool> dialPhoneNumber(
   }
 }
 
-/// Keeps a leading `+` (for the Ghana country code) and digits only — strips
-/// the spaces / dashes / bullet characters numbers are often formatted with.
-String _sanitize(String? raw) {
+/// Returns `true` when [raw] can be safely passed to a `tel:` URI.
+bool isDialablePhoneNumber(String? raw) =>
+    normalizeDialablePhoneNumber(raw).isNotEmpty;
+
+/// Keeps a leading `+` (for country codes) and digits only, stripping spaces
+/// and dashes. Masked display numbers are deliberately rejected so a string
+/// like `+233 ••• ••• 67` never becomes the partial, unusable `+23367`.
+String normalizeDialablePhoneNumber(String? raw) {
   if (raw == null) return '';
-  final trimmed = raw.trim();
+  final trimmed = raw.trim().replaceFirst(
+        RegExp(r'^tel:', caseSensitive: false),
+        '',
+      );
   if (trimmed.isEmpty) return '';
+  if (RegExp(r'[•*xX…]').hasMatch(trimmed)) return '';
+
   final hasPlus = trimmed.startsWith('+');
   final digits = trimmed.replaceAll(RegExp(r'[^0-9]'), '');
   if (digits.isEmpty) return '';
+  if (digits.length < 9) return '';
+  if (!hasPlus && digits.startsWith('00') && digits.length > 10) {
+    return '+${digits.substring(2)}';
+  }
   return hasPlus ? '+$digits' : digits;
 }
