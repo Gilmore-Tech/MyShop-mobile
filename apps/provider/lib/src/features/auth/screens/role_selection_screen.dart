@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../providers/auth_controller.dart';
+import '../widgets/blocked_device_dialog.dart';
 
 /// Shown when a phone number has both driver and artisan accounts.
 /// The user picks which role to sign in as, then OTP is sent.
@@ -22,15 +23,20 @@ class _SignInRoleSelectionScreenState
   Widget build(BuildContext context) {
     final state = ref.watch(authControllerProvider);
 
-    ref.listen<AuthState>(authControllerProvider, (prev, next) {
-      if (next is AuthBlockedByOtherDevice && !_blockedDialogVisible) {
-        _blockedDialogVisible = true;
-        _showBlockedDialog(context, next.phone);
-      } else if (next is! AuthBlockedByOtherDevice && _blockedDialogVisible) {
-        _blockedDialogVisible = false;
-        if (Navigator.canPop(context)) Navigator.pop(context);
-      }
-    });
+    if (state is AuthBlockedByOtherDevice && !_blockedDialogVisible) {
+      _blockedDialogVisible = true;
+      final phone = state.phone;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (ref.read(authControllerProvider) is! AuthBlockedByOtherDevice) {
+          _blockedDialogVisible = false;
+          return;
+        }
+        showBlockedByOtherDeviceDialog(context, ref, phone).whenComplete(() {
+          _blockedDialogVisible = false;
+        });
+      });
+    }
 
     String? error;
     bool isLoading = false;
@@ -115,118 +121,6 @@ class _SignInRoleSelectionScreenState
         ),
       ),
     );
-  }
-
-  Future<void> _showBlockedDialog(BuildContext context, String phone) async {
-    final controller = ref.read(authControllerProvider.notifier);
-    final messenger = ScaffoldMessenger.of(context);
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return Consumer(
-          builder: (context, ref, _) {
-            final state = ref.watch(authControllerProvider);
-            final blocked = state is AuthBlockedByOtherDevice ? state : null;
-            final recoveryStatus =
-                blocked?.recoveryRequestStatus ?? RecoveryRequestStatus.idle;
-            final sendingRecovery =
-                recoveryStatus == RecoveryRequestStatus.sending;
-            final takingOver = blocked?.isTakingOver ?? false;
-            final takeoverError = blocked?.takeoverError;
-            final anyInFlight = sendingRecovery || takingOver;
-            return AlertDialog(
-              title: const Text('Already signed in elsewhere'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'This account ($phone) is signed in on another device. '
-                    'Choose "Sign me in here" to take over the session — '
-                    "we'll send an OTP to confirm it's you and sign out the "
-                    'other device. '
-                    "If you don't recognise the other device, tap "
-                    'Contact support instead.',
-                  ),
-                  if (takeoverError != null) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      takeoverError,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed:
-                      anyInFlight ? null : () => controller.forceTakeover(),
-                  child: takingOver
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Sign me in here'),
-                ),
-                TextButton(
-                  onPressed: anyInFlight
-                      ? null
-                      : () async {
-                          await controller.requestSessionRecovery();
-                          if (!dialogContext.mounted) return;
-                          final after = ref.read(authControllerProvider);
-                          if (after is AuthBlockedByOtherDevice) {
-                            if (after.recoveryRequestStatus ==
-                                RecoveryRequestStatus.sent) {
-                              messenger.showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Support has been notified. '
-                                    "We'll get back to you shortly.",
-                                  ),
-                                ),
-                              );
-                            } else if (after.recoveryRequestStatus ==
-                                RecoveryRequestStatus.failed) {
-                              messenger.showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    "Couldn't reach support. "
-                                    'Please check your connection and try again.',
-                                  ),
-                                ),
-                              );
-                            }
-                          }
-                        },
-                  child: sendingRecovery
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Contact support'),
-                ),
-                TextButton(
-                  onPressed: anyInFlight
-                      ? null
-                      : () {
-                          Navigator.of(dialogContext).pop();
-                          controller.dismissBlockedLogin();
-                        },
-                  child: const Text('Cancel'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-    _blockedDialogVisible = false;
   }
 }
 

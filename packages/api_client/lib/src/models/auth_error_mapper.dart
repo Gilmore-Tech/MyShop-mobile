@@ -81,6 +81,28 @@ class AuthErrorMapper {
     return result;
   }
 
+  /// True when the backend is telling us another device currently owns the
+  /// active session and the user must choose whether to take it over.
+  ///
+  /// Production auth errors may arrive either as the canonical
+  /// `ALREADY_LOGGED_IN_ELSEWHERE` code or as a 409 NestJS message envelope.
+  /// Keep this tolerant so the UI always opens the takeover/support dialog.
+  static bool isAlreadyLoggedInElsewhere(Object error) {
+    if (error is! ApiException) return false;
+    final code = error.errorCode?.toUpperCase();
+    if (code == AuthErrorCodes.alreadyLoggedInElsewhere ||
+        (code?.contains('ALREADY_LOGGED_IN') ?? false)) {
+      return true;
+    }
+    final message = '${error.errorCode ?? ''} ${error.message}'.toLowerCase();
+    return error.statusCode == 409 &&
+        message.contains('already') &&
+        message.contains('logged') &&
+        (message.contains('device') ||
+            message.contains('elsewhere') ||
+            message.contains('session'));
+  }
+
   static String _networkMessage(NetworkException e) {
     if (e.message.contains('timed out')) {
       return 'Connection timed out. Check your internet and try again.';

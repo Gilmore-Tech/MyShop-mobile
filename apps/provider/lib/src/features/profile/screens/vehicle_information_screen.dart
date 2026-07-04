@@ -7,6 +7,7 @@ import 'package:shared_ui/shared_ui.dart';
 import '../../auth/providers/current_user_provider.dart';
 import '../providers/provider_type_provider.dart';
 import '../providers/verification_provider.dart';
+import '../utils/vehicle_display.dart';
 import '../widgets/profile_read_only_note.dart';
 
 /// Vehicle Information screen — driver-only.
@@ -32,13 +33,11 @@ class VehicleInformationScreen extends ConsumerWidget {
     final user = ref.watch(currentUserProvider);
     final dp = user?.driverProfile;
     final completion = ref.watch(profileCompletionProvider);
-    final vehicleName = [dp?.vehicleMake, dp?.vehicleModel]
-        .where((s) => s != null && s.isNotEmpty)
-        .join(' ');
+    final vehicleName = driverVehicleName(dp);
     final plate = dp?.vehiclePlate ?? '--';
     final year = dp?.vehicleYear ?? '--';
     final color = dp?.vehicleColor ?? '--';
-    final hasVehicle = dp?.vehicleMake != null;
+    final hasVehicle = hasDriverVehicleDetails(dp);
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
       appBar: AppBar(

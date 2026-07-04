@@ -225,7 +225,7 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
           phone: phone,
           message: 'No account found for this number. Sign up to get started.',
         );
-      } else if (e.errorCode == AuthErrorCodes.alreadyLoggedInElsewhere) {
+      } else if (AuthErrorMapper.isAlreadyLoggedInElsewhere(e)) {
         state = AuthBlockedByOtherDevice(phone: phone);
       } else {
         state = AuthUnauthenticated(

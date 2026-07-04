@@ -123,8 +123,6 @@ Future<void> _initializeLocalNotifications() async {
 
 Future<void> _warmLocation(ProviderContainer container) async {
   try {
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return;
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -133,6 +131,8 @@ Future<void> _warmLocation(ProviderContainer container) async {
         permission == LocationPermission.deniedForever) {
       return;
     }
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return;
     final position = await Geolocator.getCurrentPosition(
       locationSettings: const LocationSettings(
         timeLimit: Duration(seconds: 10),
