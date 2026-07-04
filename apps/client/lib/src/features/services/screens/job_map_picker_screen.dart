@@ -107,6 +107,7 @@ class _JobMapPickerScreenState extends ConsumerState<JobMapPickerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final hasDeviceFix = ref.watch(currentDevicePositionProvider) != null;
     final topPad = MediaQuery.paddingOf(context).top;
     final bottomPad = MediaQuery.paddingOf(context).bottom;
 
@@ -126,7 +127,7 @@ class _JobMapPickerScreenState extends ConsumerState<JobMapPickerScreen> {
               },
               onCameraMove: _onCameraMove,
               onCameraIdle: _onCameraIdle,
-              myLocationEnabled: true,
+              myLocationEnabled: hasDeviceFix,
               myLocationButtonEnabled: false,
               zoomControlsEnabled: false,
               mapToolbarEnabled: false,

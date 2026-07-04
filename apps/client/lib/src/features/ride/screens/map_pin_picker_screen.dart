@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -89,6 +91,7 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
       return;
     }
     final target = LatLng(position.latitude, position.longitude);
+    _centerOnUserOnMapReady = false;
     _currentCenter = target;
     await _mapController?.animateCamera(CameraUpdate.newLatLngZoom(target, 16));
     if (!mounted) return;
@@ -153,6 +156,18 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final hasDeviceFix = ref.watch(currentDevicePositionProvider) != null;
+    ref.listen(currentDevicePositionProvider, (_, next) {
+      if (!_centerOnUserOnMapReady || next == null || !mounted) return;
+      final target = LatLng(next.latitude, next.longitude);
+      _centerOnUserOnMapReady = false;
+      _currentCenter = target;
+      unawaited(_mapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(target, 16),
+      ));
+      unawaited(_reverseGeocode(target));
+    });
+
     final topPad = MediaQuery.paddingOf(context).top;
     final bottomPad = MediaQuery.paddingOf(context).bottom;
 
@@ -173,7 +188,7 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
               },
               onCameraMove: _onCameraMove,
               onCameraIdle: _onCameraIdle,
-              myLocationEnabled: true,
+              myLocationEnabled: hasDeviceFix,
               myLocationButtonEnabled: false,
               zoomControlsEnabled: false,
               mapToolbarEnabled: false,

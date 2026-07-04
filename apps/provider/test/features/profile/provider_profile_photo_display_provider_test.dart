@@ -94,4 +94,16 @@ void main() {
 
     expect(c.read(providerProfilePhotoDisplayProvider).url, isNull);
   });
+
+  test('hides stale profile photo URL when no verification document exists',
+      () async {
+    final c = container(
+      user: driverUser(profilePhotoUrl: 'https://cdn.example/stale.jpg'),
+      verification: const VerificationStatusResponse(documents: []),
+    );
+
+    await c.read(verificationStatusProvider.future);
+
+    expect(c.read(providerProfilePhotoDisplayProvider).url, isNull);
+  });
 }

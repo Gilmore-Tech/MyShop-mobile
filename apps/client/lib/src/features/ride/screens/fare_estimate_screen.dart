@@ -8,6 +8,7 @@ import '../providers/fare_estimate_provider.dart';
 import '../providers/ride_payment_method_provider.dart';
 import '../providers/ride_provider.dart';
 import '../providers/ride_search_provider.dart';
+import '../utils/ride_error_messages.dart';
 import '../widgets/payment_method_row.dart';
 import '../widgets/pickup_destination_fields.dart';
 import '../widgets/recent_destination_card.dart';
@@ -313,7 +314,8 @@ class _VehicleSelectionSection extends ConsumerWidget {
         const SizedBox(height: 12),
         estimate.when(
           loading: () => const _VehicleLoadingSkeleton(),
-          error: (_, __) => _VehicleEstimateError(
+          error: (error, _) => _VehicleEstimateError(
+            error: error,
             onRetry: () => ref.invalidate(fareEstimateProvider),
           ),
           data: (options) {
@@ -381,37 +383,79 @@ class _VehicleLoadingSkeleton extends StatelessWidget {
 }
 
 class _VehicleEstimateError extends StatelessWidget {
+  final Object error;
   final VoidCallback onRetry;
-  const _VehicleEstimateError({required this.onRetry});
+  const _VehicleEstimateError({
+    required this.error,
+    required this.onRetry,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final copy = rideEstimateErrorCopy(error);
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      alignment: Alignment.center,
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: copy.showRetry
+            ? MyShopColors.errorLight
+            : MyShopColors.warningLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: (copy.showRetry ? MyShopColors.error : MyShopColors.warning)
+              .withValues(alpha: 0.35),
+        ),
+      ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Could not load fare estimate',
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                copy.showRetry
+                    ? Icons.error_outline_rounded
+                    : Icons.info_outline_rounded,
+                size: 20,
+                color:
+                    copy.showRetry ? MyShopColors.error : MyShopColors.warning,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  copy.title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: MyShopColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            copy.message,
             style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+              fontSize: 13,
+              height: 1.35,
               color: MyShopColors.textSecondary,
             ),
           ),
-          const SizedBox(height: 10),
-          TextButton(
-            onPressed: onRetry,
-            child: const Text(
-              'Retry',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: MyShopColors.primaryGold,
+          if (copy.showRetry) ...[
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: onRetry,
+              child: const Text(
+                'Retry',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: MyShopColors.primaryGold,
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );

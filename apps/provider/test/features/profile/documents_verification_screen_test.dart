@@ -75,6 +75,24 @@ void main() {
   );
 
   testWidgets(
+    'still prompts profile photo upload when only the profile URL exists',
+    (tester) async {
+      await tester.pumpWidget(
+        screen(
+          user: driverUser(profilePhotoUrl: 'https://cdn.example/stale.jpg'),
+          verification: const VerificationStatusResponse(documents: []),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Profile Photo'), findsOneWidget);
+      expect(find.text('Upload a clear face photo'), findsOneWidget);
+      expect(find.text('Photo saved — awaiting document review'), findsNothing);
+      expect(find.text('Upload'), findsWidgets);
+    },
+  );
+
+  testWidgets(
     'ignores approved documents from a sibling provider role on the driver screen',
     (tester) async {
       await tester.pumpWidget(
@@ -103,7 +121,7 @@ void main() {
   );
 
   testWidgets(
-    'locks approved profile photo and tells the provider to contact support',
+    'locks approved profile photo immediately after admin approval',
     (tester) async {
       await tester.pumpWidget(
         screen(
@@ -133,6 +151,36 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Choose new document'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'shows final approved profile photo as support-locked after RM verification',
+    (tester) async {
+      await tester.pumpWidget(
+        screen(
+          user: driverUser(profilePhotoUrl: 'https://cdn.example/driver.jpg'),
+          verification: VerificationStatusResponse(
+            driverData: const {'verificationStatus': 'approved'},
+            documents: [
+              DocumentInfo(
+                id: 'driver_profile_photo_1',
+                providerType: 'driver',
+                documentType: DocumentType.profilePhoto.value,
+                status: 'approved',
+                isCurrent: true,
+                createdAt: '2026-07-02T00:00:00Z',
+                fileUrl: 'https://cdn.example/driver.jpg',
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Profile Photo'), findsOneWidget);
+      expect(find.text('Approved — contact support to change'), findsOneWidget);
+      expect(find.text('Approved'), findsOneWidget);
     },
   );
 }

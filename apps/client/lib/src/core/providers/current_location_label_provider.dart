@@ -10,26 +10,41 @@ final currentLocationPlaceProvider =
     FutureProvider<ReverseGeocodePlace>((ref) async {
   const fallback = ReverseGeocodePlace(
     name: 'Current location',
-    address: 'Kumasi, Ashanti Region',
+    address: 'Waiting for GPS signal',
   );
+  var position = ref.watch(currentDevicePositionProvider);
+
   try {
-    final position = await ref.watch(currentLocationServiceProvider).ensure();
-    if (position == null) return fallback;
+    position ??= await ref.watch(currentLocationServiceProvider).ensure();
+  } catch (error) {
+    debugPrint('[LOC] current-location GPS lookup failed: $error');
+  }
+
+  if (position == null) return fallback;
+
+  try {
     final places = ref.watch(googlePlacesServiceProvider);
     return await places.reverseGeocodePlace(
           position.latitude,
           position.longitude,
         ) ??
-        fallback;
+        _gpsFallback(position.latitude, position.longitude);
   } catch (error) {
     debugPrint('[LOC] current-location label failed: $error');
-    return fallback;
+    return _gpsFallback(position.latitude, position.longitude);
   }
 });
 
+ReverseGeocodePlace _gpsFallback(double latitude, double longitude) {
+  return ReverseGeocodePlace(
+    name: 'Using GPS location',
+    address: '${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}',
+  );
+}
+
 /// Reverse-geocoded label for the device's current position, used in the
-/// home greeting and "Artisans" header. Falls back to the pilot-city label
-/// when GPS is unavailable so the UI never shows a blank string.
+/// home greeting and "Artisans" header. Falls back to a GPS/permission status
+/// label when the backend cannot reverse-geocode the coordinate yet.
 final currentLocationLabelProvider = FutureProvider<String>((ref) async {
   return (await ref.watch(currentLocationPlaceProvider.future)).name;
 });

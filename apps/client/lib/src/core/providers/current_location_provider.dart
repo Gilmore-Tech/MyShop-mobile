@@ -25,6 +25,11 @@ class CurrentLocationService {
   /// during the initial build. Sharing a single in-flight Future across
   /// callers collapses the parallel requests into one.
   Future<Position?>? _inFlight;
+  Timer? _coldStartRetryTimer;
+  bool _coldStartRetryInFlight = false;
+  int _coldStartRetryCount = 0;
+
+  static const _maxColdStartRetries = 2;
 
   /// Returns the cached fix if we already have one, otherwise requests
   /// permission (if needed), reads the GPS, caches it, and returns the
@@ -54,9 +59,6 @@ class CurrentLocationService {
 
   Future<Position?> _ensureInternal({required bool waitForFresh}) async {
     try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return null;
-
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -65,6 +67,9 @@ class CurrentLocationService {
           permission == LocationPermission.deniedForever) {
         return null;
       }
+
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return null;
 
       // Fast path: seed the cache from the OS last-known position. Normal
       // callers return it immediately while a fresh fix updates the shared
@@ -101,12 +106,39 @@ class CurrentLocationService {
         ),
       );
       _ref.read(currentDevicePositionProvider.notifier).state = position;
+      _coldStartRetryTimer?.cancel();
+      _coldStartRetryTimer = null;
+      _coldStartRetryCount = 0;
       return position;
     } catch (error) {
       debugPrint('[LOC] getCurrentPosition failed: $error — '
           'using ${fallback == null ? 'no fallback' : 'last-known'}');
+      _scheduleColdStartRetry();
       return fallback;
     }
+  }
+
+  void _scheduleColdStartRetry() {
+    if (_coldStartRetryCount >= _maxColdStartRetries ||
+        _coldStartRetryInFlight ||
+        (_coldStartRetryTimer?.isActive ?? false)) {
+      return;
+    }
+    _coldStartRetryCount += 1;
+    _coldStartRetryTimer = Timer(const Duration(seconds: 3), () {
+      unawaited(_runColdStartRetry());
+    });
+  }
+
+  Future<void> _runColdStartRetry() async {
+    _coldStartRetryInFlight = true;
+    Position? position;
+    try {
+      position = await _refreshCurrentPosition(null);
+    } finally {
+      _coldStartRetryInFlight = false;
+    }
+    if (position == null) _scheduleColdStartRetry();
   }
 }
 

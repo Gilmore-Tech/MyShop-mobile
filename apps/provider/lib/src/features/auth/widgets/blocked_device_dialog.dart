@@ -15,110 +15,131 @@ Future<void> showBlockedByOtherDeviceDialog(
   WidgetRef ref,
   String phone,
 ) {
-  final controller = ref.read(authControllerProvider.notifier);
-  final messenger = ScaffoldMessenger.of(context);
   return showDialog<void>(
     context: context,
+    useRootNavigator: true,
     barrierDismissible: false,
-    builder: (dialogContext) {
-      return Consumer(
-        builder: (context, ref, _) {
-          final state = ref.watch(authControllerProvider);
-          final blocked = state is AuthBlockedByOtherDevice ? state : null;
-          final recoveryStatus =
-              blocked?.recoveryRequestStatus ?? RecoveryRequestStatus.idle;
-          final sendingRecovery =
-              recoveryStatus == RecoveryRequestStatus.sending;
-          final takingOver = blocked?.isTakingOver ?? false;
-          final takeoverError = blocked?.takeoverError;
-          final anyInFlight = sendingRecovery || takingOver;
-          return AlertDialog(
-            title: const Text('Already signed in elsewhere'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'This account ($phone) is signed in on another device. '
-                  'Choose "Sign me in here" to take over the session and sign '
-                  'out the other device. '
-                  "If you don't recognise the other device, tap "
-                  'Contact support instead.',
-                ),
-                if (takeoverError != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    takeoverError,
-                    style:
-                        TextStyle(color: Theme.of(context).colorScheme.error),
-                  ),
-                ],
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed:
-                    anyInFlight ? null : () => controller.forceTakeover(),
-                child: takingOver
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Sign me in here'),
-              ),
-              TextButton(
-                onPressed: anyInFlight
-                    ? null
-                    : () async {
-                        await controller.requestSessionRecovery();
-                        if (!dialogContext.mounted) return;
-                        final after = ref.read(authControllerProvider);
-                        if (after is AuthBlockedByOtherDevice) {
-                          if (after.recoveryRequestStatus ==
-                              RecoveryRequestStatus.sent) {
-                            messenger.showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Support has been notified. '
-                                  "We'll get back to you shortly.",
-                                ),
-                              ),
-                            );
-                          } else if (after.recoveryRequestStatus ==
-                              RecoveryRequestStatus.failed) {
-                            messenger.showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  "Couldn't reach support. "
-                                  'Please check your connection and try again.',
-                                ),
-                              ),
-                            );
-                          }
-                        }
-                      },
-                child: sendingRecovery
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Contact support'),
-              ),
-              TextButton(
-                onPressed: anyInFlight
-                    ? null
-                    : () {
-                        Navigator.of(dialogContext).pop();
-                        controller.dismissBlockedLogin();
-                      },
-                child: const Text('Cancel'),
-              ),
-            ],
-          );
-        },
-      );
-    },
+    builder: (_) => _BlockedByOtherDeviceDialog(phone: phone),
   );
+}
+
+class _BlockedByOtherDeviceDialog extends ConsumerStatefulWidget {
+  const _BlockedByOtherDeviceDialog({required this.phone});
+
+  final String phone;
+
+  @override
+  ConsumerState<_BlockedByOtherDeviceDialog> createState() =>
+      _BlockedByOtherDeviceDialogState();
+}
+
+class _BlockedByOtherDeviceDialogState
+    extends ConsumerState<_BlockedByOtherDeviceDialog> {
+  @override
+  Widget build(BuildContext context) {
+    final controller = ref.read(authControllerProvider.notifier);
+    final messenger = ScaffoldMessenger.of(context);
+
+    final state = ref.watch(authControllerProvider);
+    final blocked = state is AuthBlockedByOtherDevice ? state : null;
+    final recoveryStatus =
+        blocked?.recoveryRequestStatus ?? RecoveryRequestStatus.idle;
+    final sendingRecovery = recoveryStatus == RecoveryRequestStatus.sending;
+    final takingOver = blocked?.isTakingOver ?? false;
+    final takeoverError = blocked?.takeoverError;
+    final anyInFlight = sendingRecovery || takingOver;
+
+    return AlertDialog(
+      title: const Text('Already signed in elsewhere'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'This account (${widget.phone}) is signed in on another device. '
+            'Choose "Sign me in here" to take over the session and sign '
+            'out the other device. '
+            "If you don't recognise the other device, tap "
+            'Contact support instead.',
+          ),
+          if (takeoverError != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              takeoverError,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: anyInFlight
+              ? null
+              : () async {
+                  await controller.forceTakeover();
+                  if (!context.mounted) return;
+                  if (ref.read(authControllerProvider)
+                      is! AuthBlockedByOtherDevice) {
+                    Navigator.of(context, rootNavigator: true).pop();
+                  }
+                },
+          child: takingOver
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Sign me in here'),
+        ),
+        TextButton(
+          onPressed: anyInFlight
+              ? null
+              : () async {
+                  await controller.requestSessionRecovery();
+                  if (!context.mounted) return;
+                  final after = ref.read(authControllerProvider);
+                  if (after is AuthBlockedByOtherDevice) {
+                    if (after.recoveryRequestStatus ==
+                        RecoveryRequestStatus.sent) {
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Support has been notified. '
+                            "We'll get back to you shortly.",
+                          ),
+                        ),
+                      );
+                    } else if (after.recoveryRequestStatus ==
+                        RecoveryRequestStatus.failed) {
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            "Couldn't reach support. "
+                            'Please check your connection and try again.',
+                          ),
+                        ),
+                      );
+                    }
+                  }
+                },
+          child: sendingRecovery
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Contact support'),
+        ),
+        TextButton(
+          onPressed: anyInFlight
+              ? null
+              : () {
+                  Navigator.of(context, rootNavigator: true).pop();
+                  controller.dismissBlockedLogin();
+                },
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
 }

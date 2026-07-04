@@ -11,6 +11,7 @@ import '../../earnings/providers/earnings_providers.dart';
 import '../../earnings/providers/ratings_provider.dart';
 import '../providers/provider_type_provider.dart';
 import '../providers/verification_provider.dart';
+import '../utils/vehicle_display.dart';
 import '../widgets/profile_read_only_note.dart';
 import '../widgets/settings_list_tile.dart';
 import '../widgets/settings_section.dart';
@@ -116,12 +117,10 @@ class AccountSettingsScreen extends ConsumerWidget {
         : (artisanProfile?.policeCheckStatus ?? 'pending');
     final isVerified = verificationStatus == 'approved';
 
-    // Vehicle info subtitle
-    final vehicleSubtitle = driverProfile != null &&
-            driverProfile.vehicleMake != null &&
-            driverProfile.vehiclePlate != null
-        ? '${driverProfile.vehicleMake} ${driverProfile.vehicleModel ?? ''} (${driverProfile.vehiclePlate})'
-        : 'Not set up yet';
+    // Vehicle info subtitle. Show partial vehicle records too; newly-created
+    // prod accounts can have make/model/year before a plate is backfilled or
+    // admin-reviewed.
+    final vehicleSubtitle = driverVehicleSubtitle(driverProfile);
 
     // Payout subtitle
     final payoutSubtitle = (isDriver

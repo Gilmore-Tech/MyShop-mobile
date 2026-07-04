@@ -139,11 +139,6 @@ class AvailabilityController {
   /// permission if it hasn't been asked yet. Returns a user-facing error
   /// message if location can't be used, `null` if all good.
   Future<String?> _checkLocationReady() async {
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      return 'Turn on Location Services to go online.';
-    }
-
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -152,6 +147,10 @@ class AvailabilityController {
         permission == LocationPermission.deniedForever) {
       return 'Location permission is required to go online. '
           'Grant it in Settings and try again.';
+    }
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      return 'Turn on Location Services to go online.';
     }
     return null;
   }
