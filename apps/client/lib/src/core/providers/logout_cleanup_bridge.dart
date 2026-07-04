@@ -62,6 +62,7 @@ final logoutCleanupBridgeProvider = Provider<void>((ref) {
     ref.invalidate(rideEtaProvider);
     ref.invalidate(tripEtaProvider);
     ref.invalidate(waitingCountdownProvider);
+    ref.invalidate(rideArrivalAnchorProvider);
     ref.invalidate(rideTrackingPhaseProvider);
     ref.invalidate(rideMatchedViaSocketProvider);
     ref.invalidate(driversNotifiedProvider);
