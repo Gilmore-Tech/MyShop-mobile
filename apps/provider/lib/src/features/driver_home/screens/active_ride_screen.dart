@@ -713,6 +713,7 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   /// without this flag the very animation that follows the driver would
   /// flip `_followCamera` off and break the next fix.
   bool _programmaticCameraMove = false;
+  Timer? _programmaticCameraMoveTimer;
 
   Set<Marker> _markers = const <Marker>{};
   Set<Polyline> _polylines = const <Polyline>{};
@@ -728,12 +729,11 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
   /// position.
   static const _offRouteThresholdMeters = 65.0;
 
-  /// Camera params for nav mode. Top-down 2D pose with the camera
-  /// rotated to match the direction of travel — same look as Google
-  /// Maps' "Start" mode when the driver toggles off the 3D tilt. Zoom
-  /// 17.5 keeps the next turn comfortably in view at city speeds.
-  static const _navZoom = 17.5;
-  static const _navTilt = 0.0;
+  /// Camera params for nav mode. Tilted, rotated, close-follow pose like
+  /// Google Maps' "Start" mode: the driver chevron remains anchored while the
+  /// map moves/rotates underneath it.
+  static const _navZoom = 18.0;
+  static const _navTilt = 45.0;
 
   /// Spoken turn-by-turn coach — fires "in 200m, turn left" prompts at
   /// the same thresholds Google Maps uses. Owned per-map-state so it
@@ -814,6 +814,7 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
     }
     widget.handle.voiceMuted.removeListener(_onVoiceMuteChanged);
     _voice.dispose();
+    _programmaticCameraMoveTimer?.cancel();
     _mapController?.dispose();
     super.dispose();
   }
@@ -848,11 +849,12 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
         ),
       ),
     );
-    // The Google Maps SDK doesn't expose an "animation finished" callback,
-    // so we drop the guard on the next frame. By then `onCameraMoveStarted`
-    // has fired (it's synchronous-ish with the animation start) and a
-    // genuine user gesture later won't be misattributed.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    // The Google Maps SDK doesn't expose an "animation finished" callback.
+    // Android can fire onCameraMoveStarted after the next frame, so a one-frame
+    // guard is too short and can accidentally disable follow mode. Keep the
+    // guard alive through the native camera animation window.
+    _programmaticCameraMoveTimer?.cancel();
+    _programmaticCameraMoveTimer = Timer(const Duration(milliseconds: 700), () {
       _programmaticCameraMove = false;
     });
   }
@@ -1328,7 +1330,7 @@ class _PassengerPanel extends StatelessWidget {
                 ),
                 // Numbers aren't masked during the pilot — the driver can
                 // call the passenger directly alongside the chat button.
-                if ((ride.clientPhone ?? '').trim().isNotEmpty) ...[
+                if (isDialablePhoneNumber(ride.clientPhone)) ...[
                   const SizedBox(width: 10),
                   MyShopCallButton(
                     phoneNumber: ride.clientPhone,

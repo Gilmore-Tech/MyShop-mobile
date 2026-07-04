@@ -36,8 +36,12 @@ class FareEstimateScreen extends ConsumerWidget {
     final search = ref.watch(rideSearchProvider);
     final hasPickup = search.pickup != null;
     final hasDestination = search.destination != null;
-    final hasCoords =
-        search.pickup?.lat != null && search.destination?.lat != null;
+    final needsExactPoint =
+        (search.pickup != null && !search.pickup!.isPrecise) ||
+            (search.destination != null && !search.destination!.isPrecise);
+    final hasCoords = search.pickup?.lat != null &&
+        search.destination?.lat != null &&
+        !needsExactPoint;
     final estimate = ref.watch(fareEstimateProvider);
     final options = estimate.valueOrNull;
     final estimateReady = options?.isNotEmpty == true;
@@ -89,6 +93,13 @@ class FareEstimateScreen extends ConsumerWidget {
                             .push(AppRoutes.ridePinPickerPath('destination')),
                       ),
                     ),
+                    if (needsExactPoint) ...[
+                      const SizedBox(height: 12),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16),
+                        child: _ExactPointNotice(),
+                      ),
+                    ],
                     const SizedBox(height: 20),
                     if (!hasPickup || !hasDestination)
                       _RecentDestinationsSection(
@@ -187,6 +198,43 @@ class FareEstimateScreen extends ConsumerWidget {
           fontWeight: FontWeight.w700,
           color: MyShopColors.textPrimary,
         ),
+      ),
+    );
+  }
+}
+
+class _ExactPointNotice extends StatelessWidget {
+  const _ExactPointNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: MyShopColors.warning.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: MyShopColors.warning.withValues(alpha: 0.35),
+        ),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.location_searching_rounded,
+              size: 20, color: MyShopColors.warning),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'This is a broad area. Tap the location and choose an exact pin '
+              'before we calculate your fare.',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: MyShopColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

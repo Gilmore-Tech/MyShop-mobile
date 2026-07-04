@@ -1,11 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../../../app/router.dart';
+import '../../../core/di/providers.dart';
 import '../../../core/providers/current_location_label_provider.dart';
 import '../../../core/providers/current_location_provider.dart';
+import '../../../core/services/google_places_service.dart';
 import '../../profile/providers/profile_provider.dart';
 import '../../ride/providers/ride_search_provider.dart';
 import '../providers/home_provider.dart';
@@ -24,7 +29,7 @@ class HomeScreen extends ConsumerWidget {
     final search = ref.watch(rideSearchProvider);
     final currentLabel = ref.watch(currentLocationLabelProvider).value;
     final String pickupName =
-        search.pickup?.name ?? currentLabel ?? 'Locating...';
+        search.pickup?.name ?? currentLabel ?? 'Current location';
 
     final h = MediaQuery.sizeOf(context).height;
     return Scaffold(
@@ -173,8 +178,9 @@ class _ServiceCardsRow extends ConsumerWidget {
           Expanded(
             child: ServiceCard(
               type: ServiceCardType.ride,
-              onTap: () {
-                _seedPickupFromCurrentLocation(ref);
+              onTap: () async {
+                await _seedPickupFromCurrentLocation(ref);
+                if (!context.mounted) return;
                 context.push(AppRoutes.rideEstimate);
               },
             ),
@@ -192,24 +198,81 @@ class _ServiceCardsRow extends ConsumerWidget {
   }
 
   /// Carries the home-screen current location into the ride flow so the user
-  /// doesn't have to pick it again. No-ops when pickup is already set (preserves
-  /// a prior selection) or when the GPS fix isn't ready yet (falls through to
-  /// the existing "Choose pickup" prompt).
-  void _seedPickupFromCurrentLocation(WidgetRef ref) {
+  /// doesn't have to pick it again. If GPS is ready but reverse-geocoding is
+  /// still resolving, seed the precise coordinates immediately and refresh the
+  /// human-readable label as soon as the backend returns it. This prevents the
+  /// pickup from getting permanently stuck as the generic "Current location".
+  Future<void> _seedPickupFromCurrentLocation(WidgetRef ref) async {
     if (ref.read(rideSearchProvider).pickup != null) return;
-    final pos = ref.read(currentDevicePositionProvider);
+    var pos = ref.read(currentDevicePositionProvider);
+    pos ??= await ref
+        .read(currentLocationServiceProvider)
+        .ensure()
+        .timeout(const Duration(seconds: 8), onTimeout: () => null);
     if (pos == null) return;
-    final label = ref.read(currentLocationLabelProvider).valueOrNull ??
-        'Current location';
+
+    final cachedPlace = ref.read(currentLocationPlaceProvider).valueOrNull;
+    final place = _isGenericCurrentPlace(cachedPlace)
+        ? await _reverseGeocodePosition(ref, pos)
+            .timeout(const Duration(seconds: 2), onTimeout: () => null)
+        : cachedPlace;
+
+    _writePickup(ref, pos, place);
+
+    if (_isGenericCurrentPlace(place)) {
+      unawaited(_refreshPickupLabel(ref, pos));
+    }
+  }
+
+  Future<ReverseGeocodePlace?> _reverseGeocodePosition(
+    WidgetRef ref,
+    Position pos,
+  ) {
+    return ref.read(googlePlacesServiceProvider).reverseGeocodePlace(
+          pos.latitude,
+          pos.longitude,
+        );
+  }
+
+  Future<void> _refreshPickupLabel(WidgetRef ref, Position pos) async {
+    final place = await _reverseGeocodePosition(ref, pos);
+    if (_isGenericCurrentPlace(place)) return;
+    final current = ref.read(rideSearchProvider).pickup;
+    if (current == null) return;
+    if (!_sameCoordinate(current.lat, pos.latitude) ||
+        !_sameCoordinate(current.lng, pos.longitude)) {
+      return;
+    }
+    _writePickup(ref, pos, place);
+  }
+
+  void _writePickup(
+    WidgetRef ref,
+    Position pos,
+    ReverseGeocodePlace? place,
+  ) {
+    final label = _isGenericCurrentPlace(place)
+        ? 'Pickup selected from GPS'
+        : place!.name;
     ref.read(rideSearchProvider.notifier).setLocation(
           RideSearchField.pickup,
           RideLocation(
             name: label,
-            address: label,
+            address: _isGenericCurrentPlace(place) ? label : place!.address,
             lat: pos.latitude,
             lng: pos.longitude,
           ),
         );
+  }
+
+  bool _isGenericCurrentPlace(ReverseGeocodePlace? place) {
+    final name = place?.name.trim().toLowerCase();
+    return name == null || name.isEmpty || name == 'current location';
+  }
+
+  bool _sameCoordinate(double? a, double b) {
+    if (a == null) return false;
+    return (a - b).abs() < 0.00001;
   }
 }
 

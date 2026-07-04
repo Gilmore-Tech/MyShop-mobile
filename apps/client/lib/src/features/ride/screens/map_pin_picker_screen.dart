@@ -41,6 +41,7 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
       LatLng(MapboxConfig.defaultLat, MapboxConfig.defaultLng);
 
   late LatLng _currentCenter;
+  String _name = '';
   String _address = '';
   bool _isGeocoding = false;
   bool _centerOnUserOnMapReady = false;
@@ -55,6 +56,12 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
     final existing = _isPickup ? searchState.pickup : searchState.destination;
     if (existing?.lat != null && existing?.lng != null) {
       _currentCenter = LatLng(existing!.lat!, existing.lng!);
+      _name = existing.name;
+      _address = existing.address;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _reverseGeocode(_currentCenter);
+      });
       return;
     }
     // No prior location — seed from the cached device fix if we have one;
@@ -66,15 +73,26 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
       _currentCenter = _kumasiFallback;
       _centerOnUserOnMapReady = true;
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _centerOnUserOnMapReady) return;
+      _reverseGeocode(_currentCenter);
+    });
   }
 
   Future<void> _goToMyLocation() async {
     final position = await ref
         .read(currentLocationServiceProvider)
         .ensure(forceRefresh: true);
-    if (!mounted || position == null) return;
+    if (!mounted) return;
+    if (position == null) {
+      if (_address.isEmpty) await _reverseGeocode(_currentCenter);
+      return;
+    }
     final target = LatLng(position.latitude, position.longitude);
-    _mapController?.animateCamera(CameraUpdate.newLatLngZoom(target, 16));
+    _currentCenter = target;
+    await _mapController?.animateCamera(CameraUpdate.newLatLngZoom(target, 16));
+    if (!mounted) return;
+    await _reverseGeocode(target);
   }
 
   void _onCameraMove(CameraPosition position) {
@@ -88,13 +106,14 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
   Future<void> _reverseGeocode(LatLng position) async {
     setState(() => _isGeocoding = true);
     final places = ref.read(googlePlacesServiceProvider);
-    final result = await places.reverseGeocode(
+    final result = await places.reverseGeocodePlace(
       position.latitude,
       position.longitude,
     );
     if (!mounted) return;
     setState(() {
-      _address = result ?? 'Unknown location';
+      _name = result?.name ?? 'Selected location';
+      _address = result?.address ?? 'Unknown location';
       _isGeocoding = false;
     });
   }
@@ -105,15 +124,24 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
     if (_isStopEdit) {
       final stops = ref.read(tripStopsProvider.notifier);
       if (widget.stopId == kNewStopSentinel) {
-        stops.addIntermediateStop(_address);
+        stops.addIntermediateStop(
+          _address,
+          lat: _currentCenter.latitude,
+          lng: _currentCenter.longitude,
+        );
       } else {
-        stops.updateStopAddress(widget.stopId!, _address);
+        stops.updateStopAddress(
+          widget.stopId!,
+          _address,
+          lat: _currentCenter.latitude,
+          lng: _currentCenter.longitude,
+        );
       }
     } else {
       ref.read(rideSearchProvider.notifier).setLocation(
             widget.field,
             RideLocation(
-              name: _address.split(',').first.trim(),
+              name: _name,
               address: _address,
               lat: _currentCenter.latitude,
               lng: _currentCenter.longitude,

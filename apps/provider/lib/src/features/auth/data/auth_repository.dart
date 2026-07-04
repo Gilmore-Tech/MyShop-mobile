@@ -24,8 +24,7 @@ class AuthRepository {
     return saved != null ? AuthRole.fromString(saved) : null;
   }
 
-  Future<({String deviceId, Map<String, dynamic>? deviceInfo})>
-      _deviceContext() async {
+  Future<({String deviceId, String? deviceInfo})> _deviceContext() async {
     final id = await _deviceIdProvider.ensureDeviceId();
     final info = await _deviceIdProvider.readDeviceInfo();
     return (deviceId: id, deviceInfo: info);
@@ -50,8 +49,14 @@ class AuthRepository {
       referralCode: request.referralCode,
       categories: request.categories,
       rideCategories: request.rideCategories,
+      regionId: request.regionId,
       shopCapacity: request.shopCapacity,
       maxConcurrentJobs: request.maxConcurrentJobs,
+      vehicleMake: request.vehicleMake,
+      vehicleModel: request.vehicleModel,
+      vehicleYear: request.vehicleYear,
+      vehiclePlate: request.vehiclePlate,
+      vehicleColor: request.vehicleColor,
     );
     await _service.register(enriched);
     await _tokenStorage.writePhone(request.phone);

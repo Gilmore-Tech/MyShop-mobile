@@ -86,7 +86,8 @@ class DriverRegistrationDraft {
       );
 
   /// fullName and at least one ride category are required for POST /auth/register.
-  /// Vehicle details are submitted later via profile/verification endpoints.
+  /// Vehicle details are sent with the same register call and persisted on the
+  /// Driver row (admin-editable thereafter).
   bool get isComplete => fullName.isNotEmpty && rideCategories.isNotEmpty;
 }
 

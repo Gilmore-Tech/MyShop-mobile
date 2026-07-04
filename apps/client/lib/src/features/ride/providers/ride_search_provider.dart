@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// Which field the destination-search / pin-picker screen is editing.
 enum RideSearchField { pickup, destination }
 
+enum RideLocationPrecision { point, area }
+
 RideSearchField parseRideSearchField(String? raw) =>
     raw == 'destination' ? RideSearchField.destination : RideSearchField.pickup;
 
@@ -14,13 +16,17 @@ class RideLocation {
   final String address;
   final double? lat;
   final double? lng;
+  final RideLocationPrecision precision;
 
   const RideLocation({
     required this.name,
     required this.address,
     this.lat,
     this.lng,
+    this.precision = RideLocationPrecision.point,
   });
+
+  bool get isPrecise => precision == RideLocationPrecision.point;
 }
 
 class RideSearchState {

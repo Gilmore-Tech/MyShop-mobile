@@ -38,6 +38,7 @@ class DocumentUploadNotifier extends StateNotifier<DocumentUploadState> {
     required String providerType,
     required DocumentType documentType,
     required File file,
+    String? expiresAt,
   }) async {
     state = state.copyWith(
       uploading: {
@@ -50,6 +51,7 @@ class DocumentUploadNotifier extends StateNotifier<DocumentUploadState> {
         providerType: providerType,
         documentType: documentType,
         file: file,
+        expiresAt: expiresAt,
       );
       state = state.copyWith(
         uploading: {
@@ -87,6 +89,16 @@ class DocumentUploadNotifier extends StateNotifier<DocumentUploadState> {
 
   bool isUploading(String docType) => state.uploading[docType] == true;
   bool wasUploaded(String docType) => state.uploaded[docType] == true;
+
+  /// Retire the optimistic "uploaded — pending review" flag for a document
+  /// type once the backend reflects it. After this the backend status is the
+  /// single source of truth, so a later admin approval/rejection shows without
+  /// an app restart. Idempotent — a no-op if the flag isn't set.
+  void clearUploaded(String docType) {
+    if (state.uploaded[docType] != true) return;
+    final next = Map<String, bool>.from(state.uploaded)..remove(docType);
+    state = state.copyWith(uploaded: next);
+  }
 }
 
 class DocumentUploadState {
@@ -237,6 +249,59 @@ final localProfilePhotoProvider =
   return LocalProfilePhotoNotifier(role);
 });
 
+/// The provider profile photo that is allowed to be displayed in avatar holders.
+///
+/// A provider-uploaded photo is a compliance document, not a free-form avatar:
+/// it may appear publicly only after the active role's `profile_photo` document
+/// is approved. While the current photo document is uploaded/pending/rejected,
+/// hide the URL even if the backend profile row already has `profilePhotoUrl`
+/// from upload confirmation. If there is no document row at all, fall back to
+/// legacy profile URLs so existing approved/backfilled accounts keep their
+/// avatar.
+class ProviderProfilePhotoDisplay {
+  const ProviderProfilePhotoDisplay({this.url, this.localFile});
+
+  final String? url;
+  final File? localFile;
+}
+
+final providerProfilePhotoDisplayProvider =
+    Provider<ProviderProfilePhotoDisplay>((ref) {
+  final role = ref.watch(providerTypeProvider);
+  final roleValue = role.name;
+  final verification = ref.watch(verificationStatusProvider).valueOrNull;
+  final user = ref.watch(currentUserProvider);
+  final isProviderFullyApproved =
+      verification?.isProviderFullyApproved(roleValue) ??
+          (role.isDriver
+              ? user?.driverProfile?.verificationStatus == 'approved'
+              : user?.artisanProfile?.verificationStatus == 'approved');
+  final profilePhotoDoc = verification?.documentFor(
+    DocumentType.profilePhoto.value,
+    providerType: roleValue,
+  );
+
+  if (profilePhotoDoc != null) {
+    final url = profilePhotoDoc.fileUrl;
+    return ProviderProfilePhotoDisplay(
+      url: isProviderFullyApproved &&
+              profilePhotoDoc.isApproved &&
+              url != null &&
+              url.isNotEmpty
+          ? url
+          : null,
+    );
+  }
+
+  final local = ref.watch(localProfilePhotoProvider);
+  return ProviderProfilePhotoDisplay(
+    url: isProviderFullyApproved
+        ? user?.profilePhotoUrl ?? local.cloudinaryUrl
+        : null,
+    localFile: isProviderFullyApproved ? local.localFile : null,
+  );
+});
+
 // ─── Profile Completion ─────────────────────────────────────────────────────
 
 /// Computes the profile completion percentage from real user data.
@@ -259,18 +324,31 @@ final profileCompletionProvider = Provider<ProfileCompletion>((ref) {
   final verificationAsync = ref.watch(verificationStatusProvider);
   final isLoadingDocs = verificationAsync.isLoading;
   final docs = verificationAsync.valueOrNull;
+  final providerType = ref.watch(providerTypeProvider);
+  final providerTypeValue = providerType.name;
+  final isProviderFullyApproved =
+      docs?.isProviderFullyApproved(providerTypeValue) ??
+          (providerType.isDriver
+              ? user.driverProfile?.verificationStatus == 'approved'
+              : user.artisanProfile?.verificationStatus == 'approved');
 
+  // An expired document no longer satisfies verification — the provider must
+  // re-upload before it counts towards going online again. /verification/status
+  // returns documents for every provider role on the user, so scope each lookup
+  // to the active role to prevent Driver/Artisan document bleed.
   bool isDocApproved(DocumentType type) {
-    final doc = docs?.documentFor(type.value);
-    return doc != null && doc.isApproved;
+    final doc = docs?.documentFor(type.value, providerType: providerTypeValue);
+    return isProviderFullyApproved &&
+        doc != null &&
+        doc.isApproved &&
+        !doc.isExpired();
   }
 
-  final providerType = ref.watch(providerTypeProvider);
   if (providerType.isDriver) {
     final dp = user.driverProfile;
     final items = <(bool, String)>[
       (user.fullName.isNotEmpty, 'Full name'),
-      (dp?.profilePhotoUrl != null, 'Profile photo'),
+      (isDocApproved(DocumentType.profilePhoto), 'Profile photo (approved)'),
       (dp?.vehicleMake != null, 'Vehicle information'),
       (isDocApproved(DocumentType.ghanaCard), 'Ghana Card (approved)'),
       (
@@ -290,7 +368,7 @@ final profileCompletionProvider = Provider<ProfileCompletion>((ref) {
   } else {
     final items = <(bool, String)>[
       (user.fullName.isNotEmpty, 'Full name'),
-      (user.artisanProfile?.profilePhotoUrl != null, 'Profile photo'),
+      (isDocApproved(DocumentType.profilePhoto), 'Profile photo (approved)'),
       (
         user.artisanProfile?.serviceCategories != null &&
             user.artisanProfile!.serviceCategories!.isNotEmpty,

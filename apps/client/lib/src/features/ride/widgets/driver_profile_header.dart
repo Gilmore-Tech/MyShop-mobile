@@ -291,7 +291,8 @@ class _PhoneChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
     final h = MediaQuery.sizeOf(context).height;
-    if (phone.trim().isEmpty) return const SizedBox.shrink();
+    final dialablePhone = normalizeDialablePhoneNumber(phone);
+    if (dialablePhone.isEmpty) return const SizedBox.shrink();
 
     // Numbers are no longer masked during the pilot — the chip dials the
     // driver's real number so the rider can call directly (e.g. to find
@@ -300,7 +301,7 @@ class _PhoneChip extends StatelessWidget {
       button: true,
       label: 'Call driver',
       child: GestureDetector(
-        onTap: () => dialPhoneNumber(context, phone),
+        onTap: () => dialPhoneNumber(context, dialablePhone),
         child: Container(
           padding: EdgeInsets.symmetric(
             horizontal: w * 0.036,
@@ -320,7 +321,7 @@ class _PhoneChip extends StatelessWidget {
               ),
               SizedBox(width: w * 0.018),
               Text(
-                phone,
+                dialablePhone,
                 style: TextStyle(
                   fontSize: w * 0.033,
                   fontWeight: FontWeight.w600,

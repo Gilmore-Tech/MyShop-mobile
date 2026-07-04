@@ -132,6 +132,12 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // Replaces the legacy `ride:accepted` + `ride:status` listeners and
     // the multi-name `ride:driver_location` / `ride:location` guesses;
     // backend's M-1 spec guarantees one event with a full snapshot.
+    DateTime? parseSocketDate(dynamic value) {
+      if (value is DateTime) return value;
+      if (value is String && value.isNotEmpty) return DateTime.tryParse(value);
+      return null;
+    }
+
     void applyRideSnapshot(Map<String, dynamic> data) {
       final driver =
           data['driver'] as Map<String, dynamic>? ?? <String, dynamic>{};
@@ -209,12 +215,15 @@ void _connectAndListen(Ref ref, SocketService socket) {
           ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.enRoute;
         case 'arrived_at_pickup' || 'arrived':
+          ref.container.read(rideArrivalAnchorProvider.notifier).state =
+              parseSocketDate(data['arrivedAtPickupAt']);
           ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.arrived;
         case 'in_progress':
           ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.inProgress;
         case 'completed':
+          ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
           ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.completed;
           // Build the receipt from the same snapshot before the tracking
@@ -231,6 +240,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
           }
           ref.container.read(navBadgeProvider.notifier).increment('/activity');
         case 'cancelled' || 'no_drivers':
+          ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
           // Flip BOTH provider tracks so wherever the rider is sitting —
           // matching screen (bookingPhase=searching) or tracking screen
           // (rideTrackingPhase=enRoute/arrived/inProgress) — they get
@@ -308,6 +318,68 @@ void _connectAndListen(Ref ref, SocketService socket) {
         }
       });
 
+    // Lightweight, low-latency status event. The backend emits this before the
+    // heavier canonical ride:state snapshot is built. Use it for immediate UI
+    // phase changes (Arrived / Start Trip), then let ride:state reconcile the
+    // full driver/fare/location payload when it lands.
+    void applyFastRideStatus(dynamic data) {
+      if (data is! Map) return;
+      final map = Map<String, dynamic>.from(data);
+      final activeRideId = ref.container.read(activeRideIdProvider);
+      if (activeRideId == null || activeRideId.isEmpty) return;
+
+      final eventRideId = (map['rideId'] ?? map['id']) as String? ?? '';
+      if (eventRideId.isNotEmpty && eventRideId != activeRideId) return;
+
+      final status = map['status'] as String? ?? '';
+      switch (status) {
+        case 'driver_en_route':
+          ref.container.read(bookingPhaseProvider.notifier).accepted();
+          ref.container.read(rideTrackingPhaseProvider.notifier).state =
+              RideTrackingPhase.enRoute;
+        case 'arrived_at_pickup' || 'arrived':
+          ref.container.read(bookingPhaseProvider.notifier).accepted();
+          ref.container.read(rideArrivalAnchorProvider.notifier).state =
+              parseSocketDate(
+                      map['arrivedAtPickupAt'] ?? map['statusChangedAt']) ??
+                  DateTime.now();
+          ref.container.read(rideTrackingPhaseProvider.notifier).state =
+              RideTrackingPhase.arrived;
+        case 'in_progress':
+          ref.container.read(bookingPhaseProvider.notifier).accepted();
+          ref.container.read(rideTrackingPhaseProvider.notifier).state =
+              RideTrackingPhase.inProgress;
+        case 'completed':
+          // Completion needs the full receipt/fare snapshot. Ask REST to hydrate
+          // immediately instead of waiting for the maintainer's next poll, but
+          // let the hydrate path flip the phase after it has populated receipt.
+          unawaited(
+            hydrateActiveRideFromRest(
+              ref.container.read,
+              ref.container.read(rideServiceProvider),
+              activeRideId,
+            ),
+          );
+        case 'cancelled' || 'no_drivers':
+          ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
+          ref.container
+              .read(bookingFailureMessageProvider.notifier)
+              .state = status ==
+                  'no_drivers'
+              ? "We couldn't find a driver nearby. Please try again in a moment."
+              : 'This ride was cancelled.';
+          ref.container.read(rideTrackingPhaseProvider.notifier).state =
+              RideTrackingPhase.cancelled;
+          ref.container.read(bookingPhaseProvider.notifier).fail();
+      }
+    }
+
+    socket
+      ..off('ride:status')
+      ..off('ride:status:changed')
+      ..on('ride:status', applyFastRideStatus)
+      ..on('ride:status:changed', applyFastRideStatus);
+
     // Authoritative cancel signal. The rider only consumes `ride:state` for
     // tracking, so a driver/support cancel could be missed if that snapshot
     // wasn't delivered or the rider isn't on the tracking screen. This handler
@@ -339,6 +411,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
         // user-facing exit, avoiding a snackbar/auto-nav race with the
         // tracking screen.
         ref.container.read(matchedDriverProvider.notifier).state = null;
+        ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
         if (ref.container.exists(bookingPhaseProvider)) {
           ref.container.read(bookingPhaseProvider.notifier).reset();
         }

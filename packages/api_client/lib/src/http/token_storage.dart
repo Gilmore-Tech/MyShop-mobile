@@ -64,8 +64,15 @@ abstract class TokenStorage {
 /// Production implementation backed by Flutter Secure Storage
 /// (Keychain on iOS, EncryptedSharedPreferences on Android).
 class SecureTokenStorage implements TokenStorage {
-  SecureTokenStorage([FlutterSecureStorage? storage])
-      : _storage = storage ?? const FlutterSecureStorage();
+  SecureTokenStorage([
+    FlutterSecureStorage? storage,
+    bool? recoverOnFailure,
+  ])  : _storage = storage ??
+            const FlutterSecureStorage(
+              aOptions: AndroidOptions(resetOnError: true),
+            ),
+        _recoverOnFailure =
+            recoverOnFailure ?? defaultTargetPlatform == TargetPlatform.android;
 
   static const _kAccessToken = 'auth_access_token';
   static const _kRefreshToken = 'auth_refresh_token';
@@ -77,10 +84,50 @@ class SecureTokenStorage implements TokenStorage {
   static const _kDeviceId = 'auth_device_id';
 
   final FlutterSecureStorage _storage;
+  final bool _recoverOnFailure;
+
+  /// Android Auto Backup can restore encrypted preferences without the
+  /// Keystore key that encrypted them. In that state every secure-storage
+  /// access throws before login can reach the API. Clear the unreadable store
+  /// once and retry so the user can establish a fresh session.
+  Future<T> _withRecovery<T>(
+    String operation,
+    Future<T> Function() action,
+  ) async {
+    try {
+      return await action();
+    } catch (error, stackTrace) {
+      if (!_recoverOnFailure) {
+        Error.throwWithStackTrace(error, stackTrace);
+      }
+      debugPrint(
+        '[TokenStorage] $operation failed; clearing unreadable Android '
+        'secure storage and retrying: $error',
+      );
+      try {
+        await _storage.deleteAll();
+      } catch (clearError) {
+        debugPrint('[TokenStorage] recovery deleteAll failed: $clearError');
+        Error.throwWithStackTrace(error, stackTrace);
+      }
+      return action();
+    }
+  }
+
+  Future<String?> _read(String key) =>
+      _withRecovery('read $key', () => _storage.read(key: key));
+
+  Future<void> _write(String key, String value) => _withRecovery(
+        'write $key',
+        () => _storage.write(key: key, value: value),
+      );
+
+  Future<void> _delete(String key) =>
+      _withRecovery('delete $key', () => _storage.delete(key: key));
 
   @override
   Future<String?> readAccessToken() async {
-    final value = await _storage.read(key: _kAccessToken);
+    final value = await _read(_kAccessToken);
     debugPrint(
       '[TokenStorage] read access_token → ${value == null ? 'null' : 'present(${value.length})'}',
     );
@@ -89,7 +136,7 @@ class SecureTokenStorage implements TokenStorage {
 
   @override
   Future<String?> readRefreshToken() async {
-    final value = await _storage.read(key: _kRefreshToken);
+    final value = await _read(_kRefreshToken);
     debugPrint(
       '[TokenStorage] read refresh_token → ${value == null ? 'null' : 'present(${value.length})'}',
     );
@@ -104,21 +151,23 @@ class SecureTokenStorage implements TokenStorage {
     debugPrint(
       '[TokenStorage] writeTokens (access=${accessToken.length} refresh=${refreshToken.length})',
     );
-    await _storage.write(key: _kAccessToken, value: accessToken);
-    await _storage.write(key: _kRefreshToken, value: refreshToken);
-    // Read back to verify the write actually landed. On iOS simulator
-    // keychain can silently swallow writes in some configurations; this
-    // turns that into a loud log line instead of a mysterious logout.
-    final readback = await _storage.read(key: _kAccessToken);
-    debugPrint(
-      '[TokenStorage] writeTokens readback → ${readback == null ? 'NULL (write failed!)' : 'ok'}',
-    );
+    await _withRecovery('write tokens', () async {
+      await _storage.write(key: _kAccessToken, value: accessToken);
+      await _storage.write(key: _kRefreshToken, value: refreshToken);
+      // Read back to verify the write actually landed. On iOS simulator
+      // keychain can silently swallow writes in some configurations; this
+      // turns that into a loud log line instead of a mysterious logout.
+      final readback = await _storage.read(key: _kAccessToken);
+      debugPrint(
+        '[TokenStorage] writeTokens readback → ${readback == null ? 'NULL (write failed!)' : 'ok'}',
+      );
+    });
   }
 
   @override
   Future<void> writeAccessToken(String accessToken) async {
     debugPrint('[TokenStorage] writeAccessToken (len=${accessToken.length})');
-    await _storage.write(key: _kAccessToken, value: accessToken);
+    await _write(_kAccessToken, accessToken);
   }
 
   @override
@@ -126,12 +175,12 @@ class SecureTokenStorage implements TokenStorage {
     debugPrint(
       '[TokenStorage] clearTokens — called from:\n${StackTrace.current}',
     );
-    await _storage.delete(key: _kAccessToken);
-    await _storage.delete(key: _kRefreshToken);
-    await _storage.delete(key: _kPhone);
-    await _storage.delete(key: _kRole);
-    await _storage.delete(key: _kSessionStartedAt);
-    await _storage.delete(key: _kCachedProfile);
+    await _delete(_kAccessToken);
+    await _delete(_kRefreshToken);
+    await _delete(_kPhone);
+    await _delete(_kRole);
+    await _delete(_kSessionStartedAt);
+    await _delete(_kCachedProfile);
     // _kDeviceId is intentionally preserved — stable per install.
     // _kOnboardingSeen is also preserved.
   }
@@ -139,57 +188,52 @@ class SecureTokenStorage implements TokenStorage {
   @override
   Future<void> clearAuthTokensOnly() async {
     debugPrint('[TokenStorage] clearAuthTokensOnly');
-    await _storage.delete(key: _kAccessToken);
-    await _storage.delete(key: _kRefreshToken);
+    await _delete(_kAccessToken);
+    await _delete(_kRefreshToken);
   }
 
   @override
-  Future<String?> readDeviceId() => _storage.read(key: _kDeviceId);
+  Future<String?> readDeviceId() => _read(_kDeviceId);
 
   @override
-  Future<void> writeDeviceId(String deviceId) =>
-      _storage.write(key: _kDeviceId, value: deviceId);
+  Future<void> writeDeviceId(String deviceId) => _write(_kDeviceId, deviceId);
 
   @override
   Future<DateTime?> readSessionStartedAt() async {
-    final value = await _storage.read(key: _kSessionStartedAt);
+    final value = await _read(_kSessionStartedAt);
     if (value == null) return null;
     return DateTime.tryParse(value);
   }
 
   @override
   Future<void> writeSessionStartedAt(DateTime when) =>
-      _storage.write(key: _kSessionStartedAt, value: when.toIso8601String());
+      _write(_kSessionStartedAt, when.toIso8601String());
 
   @override
-  Future<String?> readCachedProfileJson() =>
-      _storage.read(key: _kCachedProfile);
+  Future<String?> readCachedProfileJson() => _read(_kCachedProfile);
 
   @override
   Future<void> writeCachedProfileJson(String json) =>
-      _storage.write(key: _kCachedProfile, value: json);
+      _write(_kCachedProfile, json);
 
   @override
-  Future<String?> readRole() => _storage.read(key: _kRole);
+  Future<String?> readRole() => _read(_kRole);
 
   @override
-  Future<void> writeRole(String role) =>
-      _storage.write(key: _kRole, value: role);
+  Future<void> writeRole(String role) => _write(_kRole, role);
 
   @override
-  Future<String?> readPhone() => _storage.read(key: _kPhone);
+  Future<String?> readPhone() => _read(_kPhone);
 
   @override
-  Future<void> writePhone(String phone) =>
-      _storage.write(key: _kPhone, value: phone);
+  Future<void> writePhone(String phone) => _write(_kPhone, phone);
 
   @override
   Future<bool> hasSeenOnboarding() async {
-    final value = await _storage.read(key: _kOnboardingSeen);
+    final value = await _read(_kOnboardingSeen);
     return value == 'true';
   }
 
   @override
-  Future<void> markOnboardingSeen() =>
-      _storage.write(key: _kOnboardingSeen, value: 'true');
+  Future<void> markOnboardingSeen() => _write(_kOnboardingSeen, 'true');
 }

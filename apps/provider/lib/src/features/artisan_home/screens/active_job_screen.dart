@@ -1356,7 +1356,7 @@ class _BottomPanel extends StatelessWidget {
               ),
               // Numbers aren't masked during the pilot — the artisan can call
               // the client directly alongside the chat button.
-              if ((job.clientPhone ?? '').trim().isNotEmpty) ...[
+              if (isDialablePhoneNumber(job.clientPhone)) ...[
                 const SizedBox(width: 10),
                 MyShopCallButton(
                   phoneNumber: job.clientPhone,

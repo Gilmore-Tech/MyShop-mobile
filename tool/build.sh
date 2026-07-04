@@ -221,12 +221,16 @@ if [[ "$PLATFORM" == "android" || "$PLATFORM" == "android-apk" ]]; then
   # any custom keys. gradle.properties is gitignored and stable.
   GRADLE_PROPS="$APP_DIR/android/gradle.properties"
   if [[ -f "$GRADLE_PROPS" ]]; then
-    sed -i.bak '/^MAPS_API_KEY=/d' "$GRADLE_PROPS"
+    sed -i.bak -e '/^MAPS_API_KEY=/d' -e '/^android\.useAndroidX=/d' "$GRADLE_PROPS"
     rm -f "$GRADLE_PROPS.bak"
     if [[ -n "$(tail -c 1 "$GRADLE_PROPS")" ]]; then
       printf '\n' >> "$GRADLE_PROPS"
     fi
   fi
+  if [[ ! -f "$GRADLE_PROPS" ]] || ! grep -q '^org\.gradle\.jvmargs=' "$GRADLE_PROPS"; then
+    echo 'org.gradle.jvmargs=-Xmx8G -XX:MaxMetaspaceSize=4G -XX:ReservedCodeCacheSize=512m -XX:+HeapDumpOnOutOfMemoryError' >> "$GRADLE_PROPS"
+  fi
+  echo 'android.useAndroidX=true' >> "$GRADLE_PROPS"
   echo "MAPS_API_KEY=$GOOGLE_MAPS_API_KEY" >> "$GRADLE_PROPS"
   echo "→ wrote MAPS_API_KEY to $GRADLE_PROPS"
 fi

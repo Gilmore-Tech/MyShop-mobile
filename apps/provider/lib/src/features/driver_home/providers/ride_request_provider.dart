@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/providers/availability_controller.dart';
 import '../../../core/providers/provider_status_provider.dart';
 import '../../../core/providers/socket_provider.dart';
 import '../../earnings/providers/earnings_providers.dart';
@@ -202,9 +203,15 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
     if (state.isUpdating) return false;
     state = state.copyWith(isUpdating: true, clearError: true);
     try {
+      // Include the freshest cached GPS fix on every lifecycle transition.
+      // The backend uses the in-progress/start and completion fixes as trail
+      // boundaries; live socket heartbeats fill the points between them.
+      final position = _ref.read(lastKnownPositionProvider);
       final json = await _ref.read(rideServiceProvider).updateRideStatus(
             ride.id,
             status: next.toJson(),
+            currentLat: position?.latitude,
+            currentLng: position?.longitude,
           );
       // PATCH response is the full ride snapshot (same shape the
       // `ride:state` socket event carries). Apply it directly so the UI

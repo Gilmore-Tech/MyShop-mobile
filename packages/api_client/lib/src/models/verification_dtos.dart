@@ -20,6 +20,19 @@ enum DocumentType {
     if (s == null) return null;
     return DocumentType.values.where((e) => e.value == s).firstOrNull;
   }
+
+  /// Whether this document carries a real-world expiry date printed on it,
+  /// which the provider must supply at upload time so the platform can prompt
+  /// a renewal once it lapses. Types without an expiry (photos, trade
+  /// certificate, national ID) never prompt for one.
+  bool get requiresExpiry => switch (this) {
+        DocumentType.driversLicence ||
+        DocumentType.roadworthinessCertificate ||
+        DocumentType.ghanaCard ||
+        DocumentType.businessRegistration =>
+          true,
+        _ => false,
+      };
 }
 
 /// POST /verification/documents — request body.
@@ -159,6 +172,34 @@ class DocumentInfo {
 
   /// True if the document has been received and not rejected.
   bool get isSubmitted => isPendingReview || isApproved;
+
+  /// The parsed expiry date, or `null` when the document never expires or the
+  /// backend value can't be parsed.
+  DateTime? get expiresAtDate =>
+      expiresAt == null ? null : DateTime.tryParse(expiresAt!);
+
+  /// True when this is an approved document whose expiry date has passed.
+  ///
+  /// Expiry is derived on the client — the backend keeps the row `approved`
+  /// but exposes `expiresAt`, so the provider must re-upload once it lapses.
+  /// Pass [now] in tests; defaults to the current time.
+  bool isExpired([DateTime? now]) {
+    final exp = expiresAtDate;
+    if (exp == null || !isApproved) return false;
+    return !(now ?? DateTime.now()).isBefore(exp);
+  }
+
+  /// True when this approved document is valid but expires within [within]
+  /// (30 days by default) — used to prompt an early, proactive re-upload.
+  bool isExpiringSoon({
+    DateTime? now,
+    Duration within = const Duration(days: 30),
+  }) {
+    final exp = expiresAtDate;
+    if (exp == null || !isApproved) return false;
+    final ref = now ?? DateTime.now();
+    return ref.isBefore(exp) && !ref.add(within).isBefore(exp);
+  }
 }
 
 /// GET /verification/status — full response.
@@ -186,6 +227,20 @@ class VerificationStatusResponse {
   final Map<String, dynamic>? artisanData;
   final List<DocumentInfo> documents;
 
+  /// The provider-facing green "Approved" state is only final once the active
+  /// role itself has been approved by the RM/final verification stage. Individual
+  /// document rows can become `approved` earlier during Stage 1 admin review, but
+  /// the provider app should keep showing them as in-review until this returns
+  /// true.
+  bool isProviderFullyApproved(String providerType) {
+    final data = switch (providerType) {
+      'driver' => driverData,
+      'artisan' => artisanData,
+      _ => null,
+    };
+    return data?['verificationStatus']?.toString().toLowerCase() == 'approved';
+  }
+
   /// Find the document for a given type, preferring the latest current
   /// row but falling back to the most recently approved row when the
   /// backend hasn't (or no longer has) any `isCurrent` flag set.
@@ -193,12 +248,17 @@ class VerificationStatusResponse {
   /// The match is case- and underscore-insensitive so a backend that
   /// emits `documentType: 'driversLicence'` (camelCase) still resolves
   /// against the `'drivers_licence'` enum value the mobile uses.
-  DocumentInfo? documentFor(String type) {
+  DocumentInfo? documentFor(String type, {String? providerType}) {
     String normalize(String s) =>
         s.toLowerCase().replaceAll('_', '').replaceAll('-', '');
     final target = normalize(type);
-    final matches =
-        documents.where((d) => normalize(d.documentType) == target).toList();
+    final matches = documents
+        .where(
+          (d) =>
+              normalize(d.documentType) == target &&
+              (providerType == null || d.providerType == providerType),
+        )
+        .toList();
     if (matches.isEmpty) return null;
     // Preference: current+approved → approved → current → anything.
     int score(DocumentInfo d) {

@@ -23,16 +23,33 @@ class PlaceSuggestion {
 /// Resolved place with coordinates.
 class PlaceDetail {
   final String placeId;
+  final String name;
   final String address;
   final double latitude;
   final double longitude;
+  final PlacePrecision precision;
+  final List<String> types;
 
   const PlaceDetail({
     required this.placeId,
+    required this.name,
     required this.address,
     required this.latitude,
     required this.longitude,
+    this.precision = PlacePrecision.point,
+    this.types = const [],
   });
+
+  bool get requiresExactPin => precision == PlacePrecision.area;
+}
+
+enum PlacePrecision { point, area }
+
+class ReverseGeocodePlace {
+  final String name;
+  final String address;
+
+  const ReverseGeocodePlace({required this.name, required this.address});
 }
 
 /// Authenticated wrapper around MyShop's server-side Google Places proxy.
@@ -123,9 +140,16 @@ class GooglePlacesService {
       final data = _responseData(response);
       return PlaceDetail(
         placeId: data['placeId'] as String? ?? placeId,
+        name: data['name'] as String? ??
+            (data['address'] as String? ?? '').split(',').first.trim(),
         address: data['address'] as String? ?? '',
         latitude: (data['latitude'] as num).toDouble(),
         longitude: (data['longitude'] as num).toDouble(),
+        precision: data['precision'] == 'area'
+            ? PlacePrecision.area
+            : PlacePrecision.point,
+        types:
+            (data['types'] as List?)?.whereType<String>().toList() ?? const [],
       );
     } catch (e) {
       developer.log('[PLACES] backend place details failed: $e',
@@ -138,6 +162,15 @@ class GooglePlacesService {
 
   /// Reverse-geocode a lat/lng to get the nearest address.
   Future<String?> reverseGeocode(double lat, double lng) async {
+    return (await reverseGeocodePlace(lat, lng))?.address;
+  }
+
+  /// Reverse-geocode an exact point while keeping a short road/place label
+  /// separate from its full address.
+  Future<ReverseGeocodePlace?> reverseGeocodePlace(
+    double lat,
+    double lng,
+  ) async {
     try {
       final response = await _post(
         '/location/reverse-geocode',
@@ -146,7 +179,16 @@ class GooglePlacesService {
           'longitude': lng,
         },
       );
-      return _responseData(response)['address'] as String?;
+      final data = _responseData(response);
+      final address = data['address'] as String?;
+      if (address == null || address.trim().isEmpty) return null;
+      final name = data['name'] as String?;
+      return ReverseGeocodePlace(
+        name: name == null || name.trim().isEmpty
+            ? address.split(',').first.trim()
+            : name.trim(),
+        address: address,
+      );
     } catch (e) {
       developer.log('[PLACES] backend reverse geocoding failed: $e',
           name: 'GooglePlacesService', level: 900);

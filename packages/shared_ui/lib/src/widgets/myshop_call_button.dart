@@ -25,7 +25,7 @@ class MyShopCallButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final number = phoneNumber?.trim() ?? '';
+    final number = normalizeDialablePhoneNumber(phoneNumber);
     if (number.isEmpty) return const SizedBox.shrink();
 
     return Semantics(

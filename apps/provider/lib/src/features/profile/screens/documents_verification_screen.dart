@@ -2,6 +2,7 @@ import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/current_user_provider.dart';
@@ -16,33 +17,100 @@ import '../providers/verification_provider.dart';
 ///   Trade Certificate) plus optional SME documents.
 ///
 /// PRD Reference: PRD 5.5 — provider verification & compliance.
-class DocumentsVerificationScreen extends ConsumerWidget {
+class DocumentsVerificationScreen extends ConsumerStatefulWidget {
   const DocumentsVerificationScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DocumentsVerificationScreen> createState() =>
+      _DocumentsVerificationScreenState();
+}
+
+class _DocumentsVerificationScreenState
+    extends ConsumerState<DocumentsVerificationScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Document decisions happen server-side and the status provider is cached
+    // for the session, so refetch on entry to pick up an admin approval /
+    // rejection without an app restart.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.invalidate(verificationStatusProvider);
+    });
+  }
+
+  Future<void> _refresh() async {
+    ref.invalidate(verificationStatusProvider);
+    await ref.read(verificationStatusProvider.future);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final isArtisan = ref.watch(providerTypeProvider).isArtisan;
     final user = ref.watch(currentUserProvider);
     final completion = ref.watch(profileCompletionProvider);
     final verificationAsync = ref.watch(verificationStatusProvider);
     final uploadState = ref.watch(documentUploadProvider);
 
-    // Build doc lists based on role, using real backend status where available
-    final backendDocs = verificationAsync.whenOrNull(
-          data: (status) => status.documents,
-        ) ??
-        const <DocumentInfo>[];
+    // Once the backend reflects a submission (pending review) or an admin
+    // decision (approved), retire the per-session optimistic "uploaded" flag so
+    // the backend status becomes the single source of truth. Without this the
+    // flag pins the row to "pending review" for the whole session and a later
+    // approval never shows until the app is restarted.
+    ref.listen(verificationStatusProvider, (_, next) {
+      final data = next.valueOrNull;
+      if (data == null) return;
+      final notifier = ref.read(documentUploadProvider.notifier);
+      for (final d in data.documents) {
+        if (d.isCurrent && (d.isPendingReview || d.isApproved)) {
+          notifier.clearUploaded(d.documentType);
+        }
+      }
+    });
+
+    // Build doc lists based on role, using real backend status where available.
+    // valueOrNull (not whenOrNull(data:)) keeps the previous list visible while
+    // a refresh is in flight, so pull-to-refresh / entry-refresh don't blank the
+    // rows back to their fallbacks.
+    final providerType = isArtisan ? 'artisan' : 'driver';
+    final isProviderFullyApproved =
+        verificationAsync.valueOrNull?.isProviderFullyApproved(providerType) ??
+            (isArtisan
+                ? user?.artisanProfile?.verificationStatus == 'approved'
+                : user?.driverProfile?.verificationStatus == 'approved');
+    final backendDocs =
+        verificationAsync.valueOrNull?.documents ?? const <DocumentInfo>[];
+    final roleDocs = backendDocs
+        .where((d) => d.providerType == providerType)
+        .toList(growable: false);
 
     final requiredDocs = isArtisan
-        ? _buildArtisanRequired(user, backendDocs, uploadState)
-        : _buildDriverRequired(user, backendDocs, uploadState);
+        ? _buildArtisanRequired(
+            user,
+            roleDocs,
+            uploadState,
+            isProviderFullyApproved,
+          )
+        : _buildDriverRequired(
+            user,
+            roleDocs,
+            uploadState,
+            isProviderFullyApproved,
+          );
     // Artisans must provide the Ghana Card PLUS any one of these trade
     // credentials (not all of them).
     final oneOfDocs = isArtisan
-        ? _buildArtisanOneOf(backendDocs, uploadState)
+        ? _buildArtisanOneOf(
+            roleDocs,
+            uploadState,
+            isProviderFullyApproved,
+          )
         : const <_DocItem>[];
     final optionalDocs = isArtisan
-        ? _buildArtisanOptional(backendDocs, uploadState)
+        ? _buildArtisanOptional(
+            roleDocs,
+            uploadState,
+            isProviderFullyApproved,
+          )
         : const <_DocItem>[];
 
     final uploadedRequired =
@@ -61,64 +129,32 @@ class DocumentsVerificationScreen extends ConsumerWidget {
           children: [
             _Header(),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(
-                  MyShopSpacing.md,
-                  MyShopSpacing.md,
-                  MyShopSpacing.md,
-                  MyShopSpacing.lg,
-                ),
-                children: [
-                  _ProgressCard(
-                    completed: completion.completed,
-                    total: completion.total,
-                    docsCompleted: docsCompleted,
-                    docsTotal: docsTotal,
-                    isArtisan: isArtisan,
+              child: RefreshIndicator(
+                onRefresh: _refresh,
+                color: MyShopColors.primaryGold,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(
+                    MyShopSpacing.md,
+                    MyShopSpacing.md,
+                    MyShopSpacing.md,
+                    MyShopSpacing.lg,
                   ),
-                  const SizedBox(height: MyShopSpacing.lg),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _SectionLabel(
-                          icon: Icons.task_alt,
-                          label: 'REQUIRED DOCUMENTS',
-                          iconColor: MyShopColors.error,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: MyShopColors.errorLight,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          'Mandatory',
-                          style: MyShopTypography.body2.copyWith(
-                            color: MyShopColors.error,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: MyShopSpacing.sm),
-                  _DocsCard(
-                    items: requiredDocs,
-                    providerType: isArtisan ? 'artisan' : 'driver',
-                    ref: ref,
-                  ),
-                  if (oneOfDocs.isNotEmpty) ...[
+                  children: [
+                    _ProgressCard(
+                      completed: completion.completed,
+                      total: completion.total,
+                      docsCompleted: docsCompleted,
+                      docsTotal: docsTotal,
+                      isArtisan: isArtisan,
+                    ),
                     const SizedBox(height: MyShopSpacing.lg),
                     Row(
                       children: [
                         Expanded(
                           child: _SectionLabel(
-                            icon: Icons.rule,
-                            label: 'PROVIDE ANY ONE',
+                            icon: Icons.task_alt,
+                            label: 'REQUIRED DOCUMENTS',
                             iconColor: MyShopColors.error,
                           ),
                         ),
@@ -128,81 +164,118 @@ class DocumentsVerificationScreen extends ConsumerWidget {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: oneOfSatisfied
-                                ? MyShopColors.successLight
-                                : MyShopColors.errorLight,
+                            color: MyShopColors.errorLight,
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
-                            oneOfSatisfied ? 'Done' : 'Pick one',
+                            'Mandatory',
                             style: MyShopTypography.body2.copyWith(
+                              color: MyShopColors.error,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: MyShopSpacing.sm),
+                    _DocsCard(
+                      items: requiredDocs,
+                      providerType: providerType,
+                      ref: ref,
+                    ),
+                    if (oneOfDocs.isNotEmpty) ...[
+                      const SizedBox(height: MyShopSpacing.lg),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _SectionLabel(
+                              icon: Icons.rule,
+                              label: 'PROVIDE ANY ONE',
+                              iconColor: MyShopColors.error,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
                               color: oneOfSatisfied
-                                  ? MyShopColors.success
-                                  : MyShopColors.error,
-                              fontWeight: FontWeight.w800,
+                                  ? MyShopColors.successLight
+                                  : MyShopColors.errorLight,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              oneOfSatisfied ? 'Done' : 'Pick one',
+                              style: MyShopTypography.body2.copyWith(
+                                color: oneOfSatisfied
+                                    ? MyShopColors.success
+                                    : MyShopColors.error,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Upload your Trade Certificate OR Business Registration — '
-                      'whichever you have. One is enough.',
-                      style: MyShopTypography.body2.copyWith(height: 1.5),
-                    ),
-                    const SizedBox(height: MyShopSpacing.sm),
-                    _DocsCard(
-                      items: oneOfDocs,
-                      providerType: 'artisan',
-                      ref: ref,
-                    ),
-                  ],
-                  if (optionalDocs.isNotEmpty) ...[
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Upload your Trade Certificate OR Business Registration — '
+                        'whichever you have. One is enough.',
+                        style: MyShopTypography.body2.copyWith(height: 1.5),
+                      ),
+                      const SizedBox(height: MyShopSpacing.sm),
+                      _DocsCard(
+                        items: oneOfDocs,
+                        providerType: 'artisan',
+                        ref: ref,
+                      ),
+                    ],
+                    if (optionalDocs.isNotEmpty) ...[
+                      const SizedBox(height: MyShopSpacing.lg),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _SectionLabel(
+                              icon: Icons.add_circle_outline,
+                              label: 'OPTIONAL DOCUMENTS',
+                              iconColor: MyShopColors.textSecondary,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: MyShopColors.surfaceGrey,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              'For SMEs',
+                              style: MyShopTypography.body2.copyWith(
+                                color: MyShopColors.textSecondary,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Add these to unlock larger contracts and stand out to enterprise clients.',
+                        style: MyShopTypography.body2.copyWith(height: 1.5),
+                      ),
+                      const SizedBox(height: MyShopSpacing.sm),
+                      _DocsCard(
+                        items: optionalDocs,
+                        providerType: 'artisan',
+                        ref: ref,
+                      ),
+                    ],
                     const SizedBox(height: MyShopSpacing.lg),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _SectionLabel(
-                            icon: Icons.add_circle_outline,
-                            label: 'OPTIONAL DOCUMENTS',
-                            iconColor: MyShopColors.textSecondary,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: MyShopColors.surfaceGrey,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            'For SMEs',
-                            style: MyShopTypography.body2.copyWith(
-                              color: MyShopColors.textSecondary,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Add these to unlock larger contracts and stand out to enterprise clients.',
-                      style: MyShopTypography.body2.copyWith(height: 1.5),
-                    ),
-                    const SizedBox(height: MyShopSpacing.sm),
-                    _DocsCard(
-                      items: optionalDocs,
-                      providerType: 'artisan',
-                      ref: ref,
-                    ),
+                    const _PolicyNote(),
                   ],
-                  const SizedBox(height: MyShopSpacing.lg),
-                  const _PolicyNote(),
-                ],
+                ),
               ),
             ),
           ],
@@ -217,9 +290,22 @@ class DocumentsVerificationScreen extends ConsumerWidget {
     AuthUser? user,
     List<DocumentInfo> docs,
     DocumentUploadState uploadState,
+    bool isProviderFullyApproved,
   ) {
     final dp = user?.driverProfile;
     return [
+      _docItemFromBackend(
+        docs: docs,
+        uploadState: uploadState,
+        type: DocumentType.profilePhoto,
+        icon: Icons.account_circle_outlined,
+        title: 'Profile Photo',
+        fallbackMeta: dp?.profilePhotoUrl != null
+            ? 'Photo saved — awaiting document review'
+            : 'Upload a clear face photo',
+        fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
+      ),
       _docItemFromBackend(
         docs: docs,
         uploadState: uploadState,
@@ -228,10 +314,11 @@ class DocumentsVerificationScreen extends ConsumerWidget {
         title: "Driver's License",
         fallbackMeta: dp?.licenceExpiry != null
             ? 'Expires: ${dp!.licenceExpiry}'
-            : 'Tap to upload',
-        fallbackStatus: dp?.licenceNumber != null
-            ? _DocStatus.approved
-            : _DocStatus.missing,
+            : dp?.licenceNumber != null
+                ? 'Licence number saved — upload document'
+                : 'Tap to upload',
+        fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -241,6 +328,7 @@ class DocumentsVerificationScreen extends ConsumerWidget {
         title: 'Roadworthiness Certificate',
         fallbackMeta: 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -250,6 +338,7 @@ class DocumentsVerificationScreen extends ConsumerWidget {
         title: 'Vehicle Registration',
         fallbackMeta: 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -258,11 +347,10 @@ class DocumentsVerificationScreen extends ConsumerWidget {
         icon: Icons.credit_card,
         title: 'Ghana Card',
         fallbackMeta: dp?.ghanaCardVerified == true
-            ? 'Verified'
+            ? 'Identity verified — upload document'
             : 'Tap to upload front & back',
-        fallbackStatus: dp?.ghanaCardVerified == true
-            ? _DocStatus.approved
-            : _DocStatus.missing,
+        fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
       ),
     ];
   }
@@ -273,20 +361,33 @@ class DocumentsVerificationScreen extends ConsumerWidget {
     AuthUser? user,
     List<DocumentInfo> docs,
     DocumentUploadState uploadState,
+    bool isProviderFullyApproved,
   ) {
     final ap = user?.artisanProfile;
     return [
       _docItemFromBackend(
         docs: docs,
         uploadState: uploadState,
+        type: DocumentType.profilePhoto,
+        icon: Icons.account_circle_outlined,
+        title: 'Profile Photo',
+        fallbackMeta: ap?.profilePhotoUrl != null
+            ? 'Photo saved — awaiting document review'
+            : 'Upload a clear face photo',
+        fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
+      ),
+      _docItemFromBackend(
+        docs: docs,
+        uploadState: uploadState,
         type: DocumentType.ghanaCard,
         icon: Icons.credit_card,
         title: 'Ghana Card',
-        fallbackMeta:
-            ap?.ghanaCardVerified == true ? 'Verified' : 'Tap to upload',
-        fallbackStatus: ap?.ghanaCardVerified == true
-            ? _DocStatus.approved
-            : _DocStatus.missing,
+        fallbackMeta: ap?.ghanaCardVerified == true
+            ? 'Identity verified — upload document'
+            : 'Tap to upload',
+        fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
       ),
     ];
   }
@@ -296,6 +397,7 @@ class DocumentsVerificationScreen extends ConsumerWidget {
   static List<_DocItem> _buildArtisanOneOf(
     List<DocumentInfo> docs,
     DocumentUploadState uploadState,
+    bool isProviderFullyApproved,
   ) {
     return [
       _docItemFromBackend(
@@ -306,6 +408,7 @@ class DocumentsVerificationScreen extends ConsumerWidget {
         title: 'Business Registration Certificate',
         fallbackMeta: 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -315,6 +418,7 @@ class DocumentsVerificationScreen extends ConsumerWidget {
         title: 'Trade Certificate',
         fallbackMeta: 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
       ),
     ];
   }
@@ -322,6 +426,7 @@ class DocumentsVerificationScreen extends ConsumerWidget {
   static List<_DocItem> _buildArtisanOptional(
     List<DocumentInfo> docs,
     DocumentUploadState uploadState,
+    bool isProviderFullyApproved,
   ) {
     return [
       _docItemFromBackend(
@@ -332,6 +437,7 @@ class DocumentsVerificationScreen extends ConsumerWidget {
         title: 'National ID',
         fallbackMeta: 'Recommended for VAT-eligible jobs',
         fallbackStatus: _DocStatus.missing,
+        isProviderFullyApproved: isProviderFullyApproved,
       ),
       const _DocItem(
         icon: Icons.health_and_safety_outlined,
@@ -350,8 +456,11 @@ class DocumentsVerificationScreen extends ConsumerWidget {
     ];
   }
 
-  /// Merge backend document info with a fallback for when the endpoint
-  /// returns no data (fresh account or endpoint not available).
+  /// Merge backend document info with a fallback for when this active role has
+  /// no document row yet. Profile fields such as a typed licence number or a
+  /// Ghana Card KYC flag are not document approvals. A document may only render
+  /// as approved when its backend row is approved AND the provider role has
+  /// passed the final RM approval stage.
   static _DocItem _docItemFromBackend({
     required List<DocumentInfo> docs,
     required DocumentUploadState uploadState,
@@ -360,6 +469,7 @@ class DocumentsVerificationScreen extends ConsumerWidget {
     required String title,
     required String fallbackMeta,
     required _DocStatus fallbackStatus,
+    required bool isProviderFullyApproved,
   }) {
     // Check if just uploaded in this session
     if (uploadState.uploaded[type.value] == true) {
@@ -390,11 +500,47 @@ class DocumentsVerificationScreen extends ConsumerWidget {
 
     if (doc != null) {
       if (doc.isApproved) {
+        if (!isProviderFullyApproved) {
+          return _DocItem(
+            icon: icon,
+            title: title,
+            meta: 'In review — awaiting final verification',
+            status: _DocStatus.pendingReview,
+            documentType: type,
+          );
+        }
+
+        final expiry = doc.expiresAtDate;
+        // An approved document can still lapse — surface an actionable
+        // re-upload state once it has expired (or is about to).
+        if (doc.isExpired()) {
+          return _DocItem(
+            icon: icon,
+            title: title,
+            meta: expiry != null
+                ? 'Expired ${_formatDate(expiry)} — tap to re-upload'
+                : 'Expired — tap to re-upload',
+            status: _DocStatus.expired,
+            documentType: type,
+          );
+        }
+        if (doc.isExpiringSoon()) {
+          return _DocItem(
+            icon: icon,
+            title: title,
+            meta: 'Expires ${_formatDate(expiry!)} — tap to renew',
+            status: _DocStatus.expiringSoon,
+            documentType: type,
+          );
+        }
         return _DocItem(
           icon: icon,
           title: title,
-          meta:
-              doc.expiresAt != null ? 'Expires: ${doc.expiresAt}' : 'Approved',
+          meta: type == DocumentType.profilePhoto
+              ? 'Approved — contact support to change'
+              : expiry != null
+                  ? 'Valid until ${_formatDate(expiry)}'
+                  : 'Approved',
           status: _DocStatus.approved,
           documentType: type,
         );
@@ -435,6 +581,10 @@ class DocumentsVerificationScreen extends ConsumerWidget {
       documentType: type,
     );
   }
+
+  /// Human-friendly expiry date, e.g. "12 Aug 2026".
+  static String _formatDate(DateTime date) =>
+      DateFormat('d MMM yyyy').format(date);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -612,6 +762,8 @@ class _SectionLabel extends StatelessWidget {
 ///   pendingReview → file in storage, awaiting admin review
 ///   approved → admin approved
 ///   rejected → admin rejected
+///   expired → approved but past its expiry date (client-derived, re-uploadable)
+///   expiringSoon → approved and lapsing within 30 days (client-derived)
 ///   uploading → local upload in progress (client-only state)
 ///   missing → no document uploaded yet (client-only state)
 enum _DocStatus {
@@ -620,7 +772,9 @@ enum _DocStatus {
   uploaded,
   uploading,
   rejected,
-  missing
+  expired,
+  expiringSoon,
+  missing,
 }
 
 class _DocItem {
@@ -661,11 +815,7 @@ class _DocsCard extends StatelessWidget {
       child: Column(
         children: [
           for (int i = 0; i < items.length; i++) ...[
-            _DocRow(
-              item: items[i],
-              providerType: providerType,
-              ref: ref,
-            ),
+            _DocRow(item: items[i], providerType: providerType, ref: ref),
             if (i < items.length - 1)
               const Divider(
                 height: 1,
@@ -692,23 +842,88 @@ class _DocRow extends StatelessWidget {
   final WidgetRef ref;
 
   bool get _canUpload =>
-      item.status == _DocStatus.missing || item.status == _DocStatus.rejected;
+      item.status == _DocStatus.missing ||
+      item.status == _DocStatus.rejected ||
+      item.status == _DocStatus.expired ||
+      item.status == _DocStatus.expiringSoon;
+
+  /// A re-upload replaces an existing document (rejected/expired/expiring),
+  /// so we confirm before discarding it. A first-time upload goes straight
+  /// to the picker.
+  bool get _isReupload =>
+      item.status == _DocStatus.rejected ||
+      item.status == _DocStatus.expired ||
+      item.status == _DocStatus.expiringSoon;
 
   Future<void> _handleUpload(BuildContext context) async {
     if (item.documentType == null) return;
 
+    if (_isReupload) {
+      final confirmed = await _confirmReplace(context);
+      if (confirmed != true || !context.mounted) return;
+    }
+
     final file = await MediaPickerHelper.pickDocumentWithCamera(context);
     if (file == null || !context.mounted) return;
+
+    // Documents that carry a printed expiry date (licence, roadworthiness,
+    // Ghana Card, business registration) must supply it so the platform can
+    // prompt a renewal before they lapse.
+    String? expiresAt;
+    if (item.documentType!.requiresExpiry) {
+      final expiry = await _pickExpiryDate(context);
+      if (!context.mounted) return;
+      if (expiry == null) {
+        MyShopToast.show(
+          context,
+          message: 'Add the expiry date shown on your document to continue.',
+          type: ToastType.info,
+        );
+        return;
+      }
+      expiresAt = expiry.toIso8601String();
+    }
 
     final error = await ref.read(documentUploadProvider.notifier).upload(
           providerType: providerType,
           documentType: item.documentType!,
           file: file,
+          expiresAt: expiresAt,
         );
 
-    if (error != null && context.mounted) {
+    if (!context.mounted) return;
+    if (error != null) {
       MyShopToast.show(context, message: error, type: ToastType.error);
+    } else {
+      // Pull the fresh document list so the new version's status (and any
+      // updated expiry) replaces the old one on next rebuild.
+      ref.invalidate(verificationStatusProvider);
     }
+  }
+
+  /// Prompts for the expiry date printed on the document. The date must be in
+  /// the future — a renewal always carries a fresh expiry.
+  Future<DateTime?> _pickExpiryDate(BuildContext context) {
+    final today = DateTime.now();
+    final firstDate = DateTime(today.year, today.month, today.day);
+    return showDatePicker(
+      context: context,
+      helpText: 'Expiry date on your ${item.title}',
+      firstDate: firstDate,
+      initialDate: DateTime(today.year + 1, today.month, today.day),
+      lastDate: DateTime(today.year + 20),
+    );
+  }
+
+  Future<bool?> _confirmReplace(BuildContext context) {
+    return showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: MyShopColors.surfaceWhite,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) => _ReplaceDocSheet(title: item.title),
+    );
   }
 
   @override
@@ -769,9 +984,13 @@ class _DocRow extends StatelessWidget {
                         child: Text(
                           item.meta,
                           style: MyShopTypography.body2.copyWith(
-                            color: item.status == _DocStatus.rejected
-                                ? MyShopColors.error
-                                : null,
+                            color: switch (item.status) {
+                              _DocStatus.rejected ||
+                              _DocStatus.expired =>
+                                MyShopColors.error,
+                              _DocStatus.expiringSoon => MyShopColors.warning,
+                              _ => null,
+                            },
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -828,6 +1047,18 @@ class _StatusPill extends StatelessWidget {
           'Rejected',
           Icons.cancel_outlined,
         ),
+      _DocStatus.expired => (
+          MyShopColors.errorLight,
+          MyShopColors.error,
+          'Expired',
+          Icons.event_busy_outlined,
+        ),
+      _DocStatus.expiringSoon => (
+          MyShopColors.warningLight,
+          MyShopColors.warning,
+          'Expiring',
+          Icons.event_outlined,
+        ),
       _DocStatus.missing => (
           MyShopColors.surfaceWhite,
           MyShopColors.primaryGold,
@@ -858,6 +1089,88 @@ class _StatusPill extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Replace-document confirmation sheet
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Confirms replacing an existing document before opening the file picker.
+/// Shown when re-uploading a rejected, expired, or soon-to-expire document.
+class _ReplaceDocSheet extends StatelessWidget {
+  const _ReplaceDocSheet({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(MyShopSpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: MyShopColors.primaryGoldLight,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.autorenew,
+                    color: MyShopColors.primaryGold,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: MyShopSpacing.sm),
+                Expanded(
+                  child: Text(
+                    'Re-upload $title',
+                    style: MyShopTypography.h3.copyWith(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: MyShopSpacing.md),
+            Text(
+              'Your current document will be replaced with the new one and '
+              'sent back to our compliance team for review. This usually takes '
+              'up to 24 hours.',
+              style: MyShopTypography.body2.copyWith(height: 1.5),
+            ),
+            const SizedBox(height: MyShopSpacing.lg),
+            MyShopPrimaryButton(
+              label: 'Choose new document',
+              icon: Icons.upload_outlined,
+              onPressed: () => Navigator.of(context).pop(true),
+            ),
+            const SizedBox(height: MyShopSpacing.sm),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(
+                  'Cancel',
+                  style: MyShopTypography.body1.copyWith(
+                    color: MyShopColors.textSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
