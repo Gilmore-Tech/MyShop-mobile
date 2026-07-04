@@ -19,6 +19,7 @@ Future<void> showBlockedByOtherDeviceDialog(
   final messenger = ScaffoldMessenger.of(context);
   return showDialog<void>(
     context: context,
+    useRootNavigator: true,
     barrierDismissible: false,
     builder: (dialogContext) {
       return Consumer(
@@ -57,8 +58,19 @@ Future<void> showBlockedByOtherDeviceDialog(
             ),
             actions: [
               TextButton(
-                onPressed:
-                    anyInFlight ? null : () => controller.forceTakeover(),
+                onPressed: anyInFlight
+                    ? null
+                    : () async {
+                        await controller.forceTakeover();
+                        if (!dialogContext.mounted) return;
+                        if (ref.read(authControllerProvider)
+                            is! AuthBlockedByOtherDevice) {
+                          Navigator.of(
+                            dialogContext,
+                            rootNavigator: true,
+                          ).pop();
+                        }
+                      },
                 child: takingOver
                     ? const SizedBox(
                         width: 16,
@@ -110,7 +122,10 @@ Future<void> showBlockedByOtherDeviceDialog(
                 onPressed: anyInFlight
                     ? null
                     : () {
-                        Navigator.of(dialogContext).pop();
+                        Navigator.of(
+                          dialogContext,
+                          rootNavigator: true,
+                        ).pop();
                         controller.dismissBlockedLogin();
                       },
                 child: const Text('Cancel'),

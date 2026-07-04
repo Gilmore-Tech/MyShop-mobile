@@ -500,7 +500,7 @@ class _DocumentsVerificationScreenState
 
     if (doc != null) {
       if (doc.isApproved) {
-        if (!isProviderFullyApproved) {
+        if (type != DocumentType.profilePhoto && !isProviderFullyApproved) {
           return _DocItem(
             icon: icon,
             title: title,

@@ -284,10 +284,7 @@ final providerProfilePhotoDisplayProvider =
   if (profilePhotoDoc != null) {
     final url = profilePhotoDoc.fileUrl;
     return ProviderProfilePhotoDisplay(
-      url: isProviderFullyApproved &&
-              profilePhotoDoc.isApproved &&
-              url != null &&
-              url.isNotEmpty
+      url: profilePhotoDoc.isApproved && url != null && url.isNotEmpty
           ? url
           : null,
     );
