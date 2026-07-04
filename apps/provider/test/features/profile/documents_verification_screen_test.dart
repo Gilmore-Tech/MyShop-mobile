@@ -121,7 +121,7 @@ void main() {
   );
 
   testWidgets(
-    'keeps approved profile photo in review until final verification and locks upload',
+    'locks approved profile photo immediately after admin approval',
     (tester) async {
       await tester.pumpWidget(
         screen(
@@ -144,10 +144,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Profile Photo'), findsOneWidget);
-      expect(
-          find.text('In review — awaiting final verification'), findsOneWidget);
-      expect(find.text('In Review'), findsOneWidget);
-      expect(find.text('Approved'), findsNothing);
+      expect(find.text('Approved — contact support to change'), findsOneWidget);
+      expect(find.text('Approved'), findsOneWidget);
 
       await tester.tap(find.text('Profile Photo'));
       await tester.pumpAndSettle();

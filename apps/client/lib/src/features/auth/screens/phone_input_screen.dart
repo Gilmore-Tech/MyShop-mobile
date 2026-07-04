@@ -34,14 +34,12 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
       final phone = authState.phone;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
+        if (ref.read(clientAuthControllerProvider)
+            is! AuthBlockedByOtherDevice) {
+          _blockedDialogVisible = false;
+          return;
+        }
         _showBlockedDialog(context, phone);
-      });
-    } else if (authState is! AuthBlockedByOtherDevice &&
-        _blockedDialogVisible) {
-      _blockedDialogVisible = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        if (Navigator.canPop(context)) Navigator.pop(context);
       });
     }
 
@@ -73,6 +71,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
     final messenger = ScaffoldMessenger.of(context);
     await showDialog<void>(
       context: context,
+      useRootNavigator: true,
       barrierDismissible: false,
       builder: (dialogContext) {
         return Consumer(
@@ -113,8 +112,19 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed:
-                      anyInFlight ? null : () => controller.forceTakeover(),
+                  onPressed: anyInFlight
+                      ? null
+                      : () async {
+                          await controller.forceTakeover();
+                          if (!dialogContext.mounted) return;
+                          if (ref.read(clientAuthControllerProvider)
+                              is! AuthBlockedByOtherDevice) {
+                            Navigator.of(
+                              dialogContext,
+                              rootNavigator: true,
+                            ).pop();
+                          }
+                        },
                   child: takingOver
                       ? const SizedBox(
                           width: 16,
@@ -166,7 +176,10 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                   onPressed: anyInFlight
                       ? null
                       : () {
-                          Navigator.of(dialogContext).pop();
+                          Navigator.of(
+                            dialogContext,
+                            rootNavigator: true,
+                          ).pop();
                           controller.dismissBlockedLogin();
                         },
                   child: const Text('Cancel'),

@@ -292,6 +292,13 @@ GoRouter _buildRouter({
         return path == AppRoutes.authOtp ? null : AppRoutes.authOtp;
       }
 
+      // Login was blocked because this account is active on another device.
+      // Keep the phone-login route mounted so the blocking prompt is not
+      // destroyed by a router redirect while the user is choosing an action.
+      if (authState is AuthBlockedByOtherDevice) {
+        return path == AppRoutes.authPhone ? null : AppRoutes.authPhone;
+      }
+
       // Authenticated — gate on onboarding before letting them through.
       //   • First-time users (!hasSeen) must finish onboarding.
       //   • Users who flipped the "Replay Onboarding" pref see it once

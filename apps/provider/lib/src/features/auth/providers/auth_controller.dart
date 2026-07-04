@@ -369,10 +369,14 @@ class AuthController extends StateNotifier<AuthState> {
       // role unknown until post-OTP resolution.
       state = AuthOtpSent(phone: phone, isNewUser: false);
     } on ApiException catch (e) {
-      state = AuthUnauthenticated(
-        error: AuthErrorMapper.message(e),
-        fieldErrors: AuthErrorMapper.fieldErrors(e),
-      );
+      if (e.errorCode == AuthErrorCodes.alreadyLoggedInElsewhere) {
+        state = AuthBlockedByOtherDevice(phone: phone);
+      } else {
+        state = AuthUnauthenticated(
+          error: AuthErrorMapper.message(e),
+          fieldErrors: AuthErrorMapper.fieldErrors(e),
+        );
+      }
     } on AuthException catch (e) {
       state = AuthUnauthenticated(error: e.message);
     } catch (_) {
@@ -788,9 +792,8 @@ class AuthController extends StateNotifier<AuthState> {
             );
         }
       } else {
-        state = const AuthUnauthenticated(
-          error: 'Please sign in again.',
-        );
+        await _repo.providerLogin(current.phone, forceLogin: true);
+        state = AuthOtpSent(phone: current.phone, isNewUser: false);
       }
     } on ApiException catch (e) {
       state = AuthBlockedByOtherDevice(
