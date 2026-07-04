@@ -219,13 +219,23 @@ class RideFareFields {
       taxesPesewas: taxes,
       promoDiscountPesewas: promoDiscount,
       totalFarePesewas: total,
-      distanceKm: _readDouble(
+      distanceKm: _readDistanceKm(
         snapshot,
         const ['actualDistanceKm', 'distanceKm', 'estimatedDistanceKm'],
+        const [
+          'actualDistanceMeters',
+          'distanceMeters',
+          'estimatedDistanceMeters',
+        ],
       ),
-      durationMins: _readInt(
+      durationMins: _readDurationMins(
         snapshot,
         const ['actualDurationMins', 'durationMins', 'estimatedDurationMins'],
+        const [
+          'actualDurationSeconds',
+          'durationSeconds',
+          'estimatedDurationSeconds',
+        ],
       ),
       surgeMultiplier: _readDouble(
         snapshot,
@@ -285,6 +295,46 @@ double _readDouble(
     }
   }
   return fallback;
+}
+
+double _readDistanceKm(
+  Map<String, dynamic> source,
+  List<String> kmKeys,
+  List<String> meterKeys,
+) {
+  final km = _readNullableDouble(source, kmKeys);
+  if (km != null) return km;
+
+  final meters = _readNullableDouble(source, meterKeys);
+  if (meters != null) return meters / 1000;
+
+  return 0;
+}
+
+int _readDurationMins(
+  Map<String, dynamic> source,
+  List<String> minuteKeys,
+  List<String> secondKeys,
+) {
+  final minutes = _readNullableDouble(source, minuteKeys);
+  if (minutes != null) return minutes.toInt();
+
+  final seconds = _readNullableDouble(source, secondKeys);
+  if (seconds != null) return (seconds / 60).round();
+
+  return 0;
+}
+
+double? _readNullableDouble(Map<String, dynamic> source, List<String> keys) {
+  for (final key in keys) {
+    final value = source[key];
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      final parsed = num.tryParse(value);
+      if (parsed != null) return parsed.toDouble();
+    }
+  }
+  return null;
 }
 
 // ── Static mock data ──────────────────────────────────────────────────────────

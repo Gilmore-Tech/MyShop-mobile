@@ -9,6 +9,7 @@ import '../../features/artisan_home/widgets/incoming_job_modal.dart';
 import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../features/driver_home/providers/driver_location_provider.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
+import '../providers/availability_controller.dart';
 import '../providers/nav_badge_provider.dart';
 import '../providers/socket_provider.dart';
 
@@ -167,7 +168,8 @@ class _IncomingRequestListenerState
 
     // Compute distance + straight-line ETA from the artisan's last known
     // GPS fix (best-effort — both fields stay null when no fix yet).
-    final position = ref.read(driverLocationStreamProvider).valueOrNull;
+    final position = ref.read(driverLocationStreamProvider).valueOrNull ??
+        ref.read(lastKnownPositionProvider);
     double? distanceKm;
     int? etaMinutes;
     if (position != null) {
