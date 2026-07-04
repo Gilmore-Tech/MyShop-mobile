@@ -85,5 +85,9 @@ void main() {
       reason: 'Share button should call the share_plus channel',
     );
     expect(shareCalls.first.arguments['text'], contains('AMA10'));
+    expect(
+      shareCalls.first.arguments['text'],
+      contains('https://app.myshop.com.gh/ref/AMA10'),
+    );
   });
 }

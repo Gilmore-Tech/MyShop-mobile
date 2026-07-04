@@ -62,7 +62,12 @@ class ReferralScreen extends ConsumerWidget {
             children: [
               _HeroBanner(w: w, h: h),
               SizedBox(height: h * 0.024),
-              _CodeCard(code: data.code, w: w, h: h),
+              _CodeCard(
+                code: data.code,
+                shareLink: data.shareLink,
+                w: w,
+                h: h,
+              ),
               SizedBox(height: h * 0.024),
               _StatsRow(data: data, w: w, h: h),
               SizedBox(height: h * 0.028),
@@ -141,8 +146,14 @@ class _HeroBanner extends StatelessWidget {
 
 class _CodeCard extends StatelessWidget {
   final String code;
+  final String? shareLink;
   final double w, h;
-  const _CodeCard({required this.code, required this.w, required this.h});
+  const _CodeCard({
+    required this.code,
+    required this.shareLink,
+    required this.w,
+    required this.h,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -202,7 +213,12 @@ class _CodeCard extends StatelessWidget {
               ),
               SizedBox(width: w * 0.030),
               Expanded(
-                child: _ShareCodeButton(code: code, w: w, h: h),
+                child: _ShareCodeButton(
+                  code: code,
+                  shareLink: shareLink,
+                  w: w,
+                  h: h,
+                ),
               ),
             ],
           ),
@@ -218,10 +234,12 @@ class _CodeCard extends StatelessWidget {
 
 class _ShareCodeButton extends StatelessWidget {
   final String code;
+  final String? shareLink;
   final double w, h;
 
   const _ShareCodeButton({
     required this.code,
+    required this.shareLink,
     required this.w,
     required this.h,
   });
@@ -239,6 +257,7 @@ class _ShareCodeButton extends StatelessWidget {
   }
 
   Future<void> _share(BuildContext context) async {
+    final link = _effectiveReferralShareLink(code, shareLink);
     // On iPad the share sheet is a popover that requires a non-zero source
     // rect. Anchor to this button; if the render box is unavailable, fall back
     // to the screen centre so the origin is never null. Other platforms ignore
@@ -259,7 +278,8 @@ class _ShareCodeButton extends StatelessWidget {
     try {
       await Share.share(
         'Join me on MyShop! Use my referral code '
-        '$code to get GHS 0.50 off your first ride or job.',
+        '$code to get GHS 0.50 off your first ride or job.\n\n'
+        'Download MyShop and sign up here:\n$link',
         subject: 'Get GHS 0.50 off MyShop',
         sharePositionOrigin: origin,
       );
@@ -273,6 +293,12 @@ class _ShareCodeButton extends StatelessWidget {
       }
     }
   }
+}
+
+String _effectiveReferralShareLink(String code, String? shareLink) {
+  final cleanLink = shareLink?.trim();
+  if (cleanLink != null && cleanLink.isNotEmpty) return cleanLink;
+  return Uri.https('app.myshop.com.gh', '/ref/$code').toString();
 }
 
 class _ActionBtn extends StatelessWidget {
