@@ -202,9 +202,17 @@ void _connectAndListen(Ref ref, SocketService socket) {
       // Tracking phase (only when the ride is past `accepted`).
       switch (status) {
         case 'driver_en_route':
+          // Fresh leg — drop any anchor from a previous ride so the wait
+          // countdown starts clean when the driver next reports arrival.
+          ref.container.read(rideArrivedAtProvider.notifier).state = null;
           ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.enRoute;
         case 'arrived_at_pickup' || 'arrived':
+          // Lift the server arrival timestamp BEFORE flipping the phase so the
+          // tracking screen's arrived-listener can anchor its countdown to it.
+          final arrivedAtRaw = data['arrivedAtPickupAt'];
+          ref.container.read(rideArrivedAtProvider.notifier).state =
+              arrivedAtRaw is String ? DateTime.tryParse(arrivedAtRaw) : null;
           ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.arrived;
         case 'in_progress':

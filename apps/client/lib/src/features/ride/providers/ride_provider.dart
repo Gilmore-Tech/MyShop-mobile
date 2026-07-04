@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_models/shared_models.dart' show kFreeWaitAtPickupSeconds;
 
 import '../../../core/di/providers.dart';
 import '../../../core/providers/current_location_provider.dart';
@@ -670,22 +671,62 @@ final rideTrackingPhaseProvider = StateProvider<RideTrackingPhase>(
 final tripEtaProvider =
     StateNotifierProvider<EtaNotifier, int>((_) => EtaNotifier(12));
 
+/// Server-reported `arrivedAtPickupAt` for the active ride, lifted off the
+/// `ride:state` snapshot (and the REST hydrate path). The waiting countdown
+/// anchors to this so the rider's free-wait clock matches the driver's to the
+/// second. Null until the driver arrives — or if a snapshot omits the field,
+/// in which case the countdown falls back to a local anchor.
+final rideArrivedAtProvider = StateProvider<DateTime?>((_) => null);
+
 /// Free waiting period (seconds) once the driver has arrived.
-/// Default 180 (3 minutes) matches the "Free cancellation within 3 minutes"
-/// policy surfaced elsewhere in the UI.
+/// Shares [kFreeWaitAtPickupSeconds] with the driver app so both count down
+/// the same window; matches the "Free cancellation within 3 minutes" policy.
 final waitingCountdownProvider =
     StateNotifierProvider<WaitingCountdownNotifier, int>(
-  (_) => WaitingCountdownNotifier(180),
+  (_) => WaitingCountdownNotifier(kFreeWaitAtPickupSeconds),
 );
 
+/// Countdown for the free-wait window at pickup.
+///
+/// Anchors to the server's `arrivedAtPickupAt` timestamp (via [startFrom]) so
+/// the rider sees the same remaining seconds as the driver, and recomputes
+/// from the wall clock on every [tick] — this keeps it correct even if the
+/// 1-second timer is throttled while the app is backgrounded. Falls back to a
+/// local anchor (the moment this device observed the arrival) when the server
+/// timestamp isn't available yet.
 class WaitingCountdownNotifier extends StateNotifier<int> {
-  WaitingCountdownNotifier(super.seconds);
+  WaitingCountdownNotifier(this._freeWaitSeconds) : super(_freeWaitSeconds);
 
-  /// Decrements unbounded — once it passes 0, negative values represent
-  /// overtime (waiting that will be added to the fare).
-  void tick() => state--;
+  final int _freeWaitSeconds;
+  DateTime? _anchor;
 
-  void reset([int seconds = 180]) => state = seconds;
+  /// Start (or restart) the countdown anchored to [serverArrivedAt]. Pass
+  /// null to anchor to the current moment on this device.
+  void startFrom(DateTime? serverArrivedAt) {
+    _anchor = (serverArrivedAt ?? DateTime.now()).toUtc();
+    _recompute();
+  }
+
+  /// Advance the displayed value. Recomputes from the wall clock against the
+  /// arrival anchor so timer jitter can't desync it from the driver; goes
+  /// negative once the free window is exhausted (overtime added to the fare).
+  void tick() => _recompute();
+
+  void _recompute() {
+    final anchor = _anchor;
+    if (anchor == null) {
+      state = _freeWaitSeconds;
+      return;
+    }
+    final elapsed = DateTime.now().toUtc().difference(anchor).inSeconds;
+    state = _freeWaitSeconds - elapsed;
+  }
+
+  /// Reset to a pristine, un-anchored state for the next ride.
+  void reset() {
+    _anchor = null;
+    state = _freeWaitSeconds;
+  }
 }
 
 /// Creates a ride via the backend and polls until a driver is matched.
@@ -1002,9 +1043,17 @@ Future<void> _hydrateFromRest(
     // Map the live tracking phase from the current backend status.
     switch (status) {
       case 'driver_en_route':
+        read(rideArrivedAtProvider.notifier).state = null;
         read(rideTrackingPhaseProvider.notifier).state =
             RideTrackingPhase.enRoute;
       case 'arrived_at_pickup' || 'arrived':
+        // Anchor the wait countdown to the server arrival time before the
+        // phase flip — critical for the recovery case where the rider
+        // reopens the app after the driver already arrived, so their clock
+        // resumes at the real remaining time instead of restarting at full.
+        final arrivedAtRaw = json['arrivedAtPickupAt'];
+        read(rideArrivedAtProvider.notifier).state =
+            arrivedAtRaw is String ? DateTime.tryParse(arrivedAtRaw) : null;
         read(rideTrackingPhaseProvider.notifier).state =
             RideTrackingPhase.arrived;
       case 'in_progress':

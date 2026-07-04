@@ -83,8 +83,13 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
 
   void _onArrived() {
     _waitingTimer?.cancel();
-    // Reset on entry so a previous arrival's elapsed time doesn't carry over.
-    ref.read(waitingCountdownProvider.notifier).reset();
+    // Anchor the countdown to the server's arrival timestamp so the rider's
+    // free-wait clock matches the driver's to the second. The snapshot that
+    // flipped us into `arrived` populated rideArrivedAtProvider first; if it's
+    // still null (timestamp not surfaced yet) startFrom falls back to now.
+    ref
+        .read(waitingCountdownProvider.notifier)
+        .startFrom(ref.read(rideArrivedAtProvider));
     _waitingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       ref.read(waitingCountdownProvider.notifier).tick();
