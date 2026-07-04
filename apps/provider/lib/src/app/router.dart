@@ -115,6 +115,20 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         final otpRoute = auth.isNewUser ? '/signup/otp' : '/signin/otp';
         return loc == otpRoute ? null : otpRoute;
       }
+      // Login was blocked because this account has an active session on
+      // another device. Keep the current auth host route mounted so the
+      // blocking dialog can stay visible until the user chooses takeover,
+      // support, or cancel. Without this, the generic unauthenticated redirect
+      // sends /signin/otp and /signin/role back to /signin/phone, destroying
+      // the dialog as soon as it appears.
+      if (auth is AuthBlockedByOtherDevice) {
+        const blockedAllowed = {
+          '/signin/phone',
+          '/signin/otp',
+          '/signin/role',
+        };
+        return blockedAllowed.contains(loc) ? null : '/signin/phone';
+      }
       // AuthUnauthenticated — decide between onboarding and sign-in.
       //
       // Backing out of the OTP screen calls reset() → AuthUnauthenticated. The

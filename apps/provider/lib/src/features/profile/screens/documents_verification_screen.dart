@@ -300,9 +300,7 @@ class _DocumentsVerificationScreenState
         type: DocumentType.profilePhoto,
         icon: Icons.account_circle_outlined,
         title: 'Profile Photo',
-        fallbackMeta: dp?.profilePhotoUrl != null
-            ? 'Photo saved — awaiting document review'
-            : 'Upload a clear face photo',
+        fallbackMeta: 'Upload a clear face photo',
         fallbackStatus: _DocStatus.missing,
         isProviderFullyApproved: isProviderFullyApproved,
       ),
@@ -371,9 +369,7 @@ class _DocumentsVerificationScreenState
         type: DocumentType.profilePhoto,
         icon: Icons.account_circle_outlined,
         title: 'Profile Photo',
-        fallbackMeta: ap?.profilePhotoUrl != null
-            ? 'Photo saved — awaiting document review'
-            : 'Upload a clear face photo',
+        fallbackMeta: 'Upload a clear face photo',
         fallbackStatus: _DocStatus.missing,
         isProviderFullyApproved: isProviderFullyApproved,
       ),

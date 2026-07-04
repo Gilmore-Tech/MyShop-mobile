@@ -36,16 +36,22 @@ class _ProviderOtpVerificationScreenState
           orElse: () => false,
         );
 
-    ref.listen<AuthState>(authControllerProvider, (prev, next) {
-      if (next is AuthBlockedByOtherDevice && !_blockedDialogVisible) {
-        _blockedDialogVisible = true;
-        showBlockedByOtherDeviceDialog(context, ref, next.phone)
-            .then((_) => _blockedDialogVisible = false);
-      } else if (next is! AuthBlockedByOtherDevice && _blockedDialogVisible) {
-        _blockedDialogVisible = false;
-        if (Navigator.canPop(context)) Navigator.pop(context);
-      }
+    if (state is AuthBlockedByOtherDevice && !_blockedDialogVisible) {
+      _blockedDialogVisible = true;
+      final phone = state.phone;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (ref.read(authControllerProvider) is! AuthBlockedByOtherDevice) {
+          _blockedDialogVisible = false;
+          return;
+        }
+        showBlockedByOtherDeviceDialog(context, ref, phone).whenComplete(() {
+          _blockedDialogVisible = false;
+        });
+      });
+    }
 
+    ref.listen<AuthState>(authControllerProvider, (prev, next) {
       // Stale-cache edge case: the backend rejected the home region at
       // verify-otp. Drop the cached region list so the region step re-fetches
       // GET /v1/regions when the user backs out to re-select.

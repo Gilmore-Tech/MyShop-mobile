@@ -284,21 +284,20 @@ final providerProfilePhotoDisplayProvider =
   if (profilePhotoDoc != null) {
     final url = profilePhotoDoc.fileUrl;
     return ProviderProfilePhotoDisplay(
-      url: isProviderFullyApproved &&
-              profilePhotoDoc.isApproved &&
-              url != null &&
-              url.isNotEmpty
+      url: profilePhotoDoc.isApproved && url != null && url.isNotEmpty
           ? url
           : null,
     );
   }
 
+  if (!isProviderFullyApproved) {
+    return const ProviderProfilePhotoDisplay();
+  }
+
   final local = ref.watch(localProfilePhotoProvider);
   return ProviderProfilePhotoDisplay(
-    url: isProviderFullyApproved
-        ? user?.profilePhotoUrl ?? local.cloudinaryUrl
-        : null,
-    localFile: isProviderFullyApproved ? local.localFile : null,
+    url: user?.profilePhotoUrl ?? local.cloudinaryUrl,
+    localFile: local.localFile,
   );
 });
 

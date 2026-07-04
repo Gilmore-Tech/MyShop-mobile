@@ -22,6 +22,6 @@ void main() {
     final place = await container.read(currentLocationPlaceProvider.future);
 
     expect(place.name, 'Current location');
-    expect(place.address, 'Kumasi, Ashanti Region');
+    expect(place.address, 'Waiting for GPS signal');
   });
 }

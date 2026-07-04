@@ -267,7 +267,10 @@ class _ServiceCardsRow extends ConsumerWidget {
 
   bool _isGenericCurrentPlace(ReverseGeocodePlace? place) {
     final name = place?.name.trim().toLowerCase();
-    return name == null || name.isEmpty || name == 'current location';
+    return name == null ||
+        name.isEmpty ||
+        name == 'current location' ||
+        name == 'using gps location';
   }
 
   bool _sameCoordinate(double? a, double b) {

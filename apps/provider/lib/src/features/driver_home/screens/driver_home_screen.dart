@@ -118,12 +118,6 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
       return;
     }
 
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      debugPrint('[LOC] services disabled — staying on Kumasi fallback');
-      return;
-    }
-
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       // Re-check just before prompting — the warm-up may have answered
@@ -143,6 +137,12 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) {
       debugPrint('[LOC] permission $permission — staying on Kumasi fallback');
+      return;
+    }
+
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      debugPrint('[LOC] services disabled — staying on Kumasi fallback');
       return;
     }
 
@@ -351,6 +351,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
     final initialTarget = cached == null
         ? _kumasiCenter
         : LatLng(cached.latitude, cached.longitude);
+    final showNativeLocationLayer = !isOnline && cached != null;
 
     return Scaffold(
       body: Stack(
@@ -369,7 +370,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
               },
               // When online we represent the driver with a custom car marker,
               // so hide the default blue "my location" dot to avoid overlap.
-              myLocationEnabled: !isOnline,
+              myLocationEnabled: showNativeLocationLayer,
               myLocationButtonEnabled: false,
               zoomControlsEnabled: false,
               mapToolbarEnabled: false,

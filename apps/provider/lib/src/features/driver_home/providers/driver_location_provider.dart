@@ -20,12 +20,6 @@ final driverLocationStreamProvider =
   debugPrint('[LOC] stream provider: online — checking permission');
 
   // Make sure we have permission before subscribing.
-  final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-  if (!serviceEnabled) {
-    debugPrint('[LOC] stream provider: services disabled — bailing');
-    return;
-  }
-
   var permission = await Geolocator.checkPermission();
   if (permission == LocationPermission.denied) {
     permission = await Geolocator.requestPermission();
@@ -33,6 +27,12 @@ final driverLocationStreamProvider =
   if (permission == LocationPermission.denied ||
       permission == LocationPermission.deniedForever) {
     debugPrint('[LOC] stream provider: permission $permission — bailing');
+    return;
+  }
+
+  final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+  if (!serviceEnabled) {
+    debugPrint('[LOC] stream provider: services disabled — bailing');
     return;
   }
 
