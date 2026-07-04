@@ -11,6 +11,7 @@ import '../../../core/di/providers.dart';
 import '../../../core/providers/current_location_label_provider.dart';
 import '../../../core/providers/current_location_provider.dart';
 import '../../../core/services/google_places_service.dart';
+import '../../../core/utils/ride_service_area.dart';
 import '../../profile/providers/profile_provider.dart';
 import '../../ride/providers/ride_search_provider.dart';
 import '../providers/home_provider.dart';
@@ -28,8 +29,14 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final search = ref.watch(rideSearchProvider);
     final currentLabel = ref.watch(currentLocationLabelProvider).value;
+    final currentPosition = ref.watch(currentDevicePositionProvider);
     final String pickupName =
         search.pickup?.name ?? currentLabel ?? 'Current location';
+    final showRideAreaBanner = currentPosition != null &&
+        isLikelyOutsideRideServiceArea(
+          latitude: currentPosition.latitude,
+          longitude: currentPosition.longitude,
+        );
 
     final h = MediaQuery.sizeOf(context).height;
     return Scaffold(
@@ -43,7 +50,15 @@ class HomeScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(height: h * 0.05),
+                    SizedBox(height: h * 0.03),
+                    if (showRideAreaBanner) ...[
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16),
+                        child: _RideServiceAreaBanner(),
+                      ),
+                      SizedBox(height: h * 0.02),
+                    ] else
+                      SizedBox(height: h * 0.02),
                     LocationSearchCard(
                       pickupLabel: pickupName,
                       onPickupTap: () =>
@@ -64,6 +79,63 @@ class HomeScreen extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _RideServiceAreaBanner extends StatelessWidget {
+  const _RideServiceAreaBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: MyShopColors.warningLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: MyShopColors.warning.withValues(alpha: 0.35),
+        ),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.info_outline_rounded,
+            color: MyShopColors.warning,
+            size: 20,
+          ),
+          SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Rides may not be available here yet',
+                  style: TextStyle(
+                    color: MyShopColors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Ride booking currently operates in $rideServiceAreaName. '
+                  'If your pickup or destination is outside the service area, '
+                  'fare estimates will not be available.',
+                  style: TextStyle(
+                    color: MyShopColors.textSecondary,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
