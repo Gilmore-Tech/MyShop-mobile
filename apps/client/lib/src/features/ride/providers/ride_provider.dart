@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_models/shared_models.dart' show kFreeWaitAtPickupSeconds;
 
 import '../../../core/di/providers.dart';
 import '../../../core/providers/current_location_provider.dart';
@@ -843,29 +844,42 @@ final rideArrivalAnchorProvider = StateProvider<DateTime?>((_) => null);
 final tripEtaProvider =
     StateNotifierProvider<EtaNotifier, int>((_) => EtaNotifier(12));
 
-/// Free waiting period (seconds) once the driver has arrived. Default 180
-/// (3 minutes) — the backend's penalty-free cancellation window. This is an
-/// internal timer only; the window is no longer advertised in the UI.
+/// Free waiting period (seconds) once the driver has arrived. Shared with the
+/// driver app so both countdowns stay on the same 3-minute policy window.
 final waitingCountdownProvider =
     StateNotifierProvider<WaitingCountdownNotifier, int>(
-  (_) => WaitingCountdownNotifier(180),
+  (_) => WaitingCountdownNotifier(kFreeWaitAtPickupSeconds),
 );
 
 class WaitingCountdownNotifier extends StateNotifier<int> {
-  WaitingCountdownNotifier(super.seconds);
+  WaitingCountdownNotifier(this._freeWaitSeconds) : super(_freeWaitSeconds);
+
+  final int _freeWaitSeconds;
+  DateTime? _anchor;
 
   /// Decrements unbounded — once it passes 0, negative values represent
-  /// overtime (waiting that will be added to the fare).
-  void tick() => state--;
+  /// overtime (waiting that will be added to the fare). Recompute from the
+  /// arrival anchor so background timer throttling cannot desync the display.
+  void tick() => _recompute();
 
-  void reset([int seconds = 180]) => state = seconds;
+  void reset([int? seconds]) {
+    _anchor = null;
+    state = seconds ?? _freeWaitSeconds;
+  }
 
-  void resetFromArrival(DateTime? arrivedAt, {int freeWaitSeconds = 180}) {
-    if (arrivedAt == null) {
-      reset(freeWaitSeconds);
+  void resetFromArrival(DateTime? arrivedAt, {int? freeWaitSeconds}) {
+    _anchor = (arrivedAt ?? DateTime.now()).toUtc();
+    _recompute(freeWaitSeconds);
+  }
+
+  void _recompute([int? overrideFreeWaitSeconds]) {
+    final anchor = _anchor;
+    final freeWaitSeconds = overrideFreeWaitSeconds ?? _freeWaitSeconds;
+    if (anchor == null) {
+      state = freeWaitSeconds;
       return;
     }
-    final elapsed = DateTime.now().difference(arrivedAt).inSeconds;
+    final elapsed = DateTime.now().toUtc().difference(anchor).inSeconds;
     state = freeWaitSeconds - elapsed;
   }
 }
@@ -1204,11 +1218,15 @@ Future<void> _hydrateFromRest(
     // Map the live tracking phase from the current backend status.
     switch (status) {
       case 'driver_en_route':
+        read(rideArrivalAnchorProvider.notifier).state = null;
         read(rideTrackingPhaseProvider.notifier).state =
             RideTrackingPhase.enRoute;
       case 'arrived_at_pickup' || 'arrived':
+        final arrivedAt = _dateFromJson(
+          json['arrivedAtPickupAt'] ?? json['statusChangedAt'],
+        );
         read(rideArrivalAnchorProvider.notifier).state =
-            _dateFromJson(json['arrivedAtPickupAt']);
+            arrivedAt ?? read(rideArrivalAnchorProvider) ?? DateTime.now();
         read(rideTrackingPhaseProvider.notifier).state =
             RideTrackingPhase.arrived;
       case 'in_progress':

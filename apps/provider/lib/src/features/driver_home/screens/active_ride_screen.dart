@@ -80,8 +80,8 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
   DateTime? _localArrivedAt;
 
   /// Free wait at pickup before the driver can cancel a no-show penalty-free.
-  /// Mirrors the backend `ride_driver_wait_window_secs` config (default 180s).
-  static const int _freeWaitSecs = 180;
+  /// Shared with the client so both apps count down the same window.
+  static const int _freeWaitSecs = kFreeWaitAtPickupSeconds;
 
   @override
   void initState() {

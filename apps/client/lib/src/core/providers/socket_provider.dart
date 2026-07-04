@@ -212,11 +212,17 @@ void _connectAndListen(Ref ref, SocketService socket) {
       // Tracking phase (only when the ride is past `accepted`).
       switch (status) {
         case 'driver_en_route':
+          ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
           ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.enRoute;
         case 'arrived_at_pickup' || 'arrived':
+          final arrivedAt = parseSocketDate(
+            data['arrivedAtPickupAt'] ?? data['statusChangedAt'],
+          );
           ref.container.read(rideArrivalAnchorProvider.notifier).state =
-              parseSocketDate(data['arrivedAtPickupAt']);
+              arrivedAt ??
+                  ref.container.read(rideArrivalAnchorProvider) ??
+                  DateTime.now();
           ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.arrived;
         case 'in_progress':
@@ -335,6 +341,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
       switch (status) {
         case 'driver_en_route':
           ref.container.read(bookingPhaseProvider.notifier).accepted();
+          ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
           ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.enRoute;
         case 'arrived_at_pickup' || 'arrived':
