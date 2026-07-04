@@ -56,4 +56,68 @@ void main() {
     expect(options, isEmpty);
     expect(requestCount, 0);
   });
+
+  test('reads estimate distance from meters when kilometres are absent',
+      () async {
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test/v1'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: options,
+              statusCode: 200,
+              data: {
+                'success': true,
+                'data': {
+                  'distanceMeters': 5400,
+                  'durationSeconds': 732,
+                  'surgeMultiplier': 1.0,
+                  'categories': [
+                    {
+                      'slug': 'regular',
+                      'name': 'Regular',
+                      'estimatedFarePesewas': 2500,
+                    },
+                  ],
+                },
+              },
+            ),
+          );
+        },
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        rideServiceProvider.overrideWithValue(RideService(dio)),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final search = container.read(rideSearchProvider.notifier);
+    search.setLocation(
+      RideSearchField.pickup,
+      const RideLocation(
+        name: 'Current location',
+        address: 'Accra, Ghana',
+        lat: 5.6037,
+        lng: -0.1870,
+      ),
+    );
+    search.setLocation(
+      RideSearchField.destination,
+      const RideLocation(
+        name: 'Kejetia',
+        address: 'Kejetia Market',
+        lat: 6.6930,
+        lng: -1.6100,
+      ),
+    );
+
+    final options = await container.read(fareEstimateProvider.future);
+
+    expect(options, hasLength(1));
+    expect(options.single.distanceKm, 5.4);
+    expect(options.single.durationMins, 12);
+  });
 }
