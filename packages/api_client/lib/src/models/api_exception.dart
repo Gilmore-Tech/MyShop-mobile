@@ -45,11 +45,43 @@ class ApiException implements Exception {
     String message = 'Something went wrong. Please try again.';
     Map<String, dynamic>? details;
 
-    if (data is Map<String, dynamic> && data['error'] != null) {
-      final apiError = ApiError.fromJson(data['error'] as Map<String, dynamic>);
-      errorCode = apiError.code;
-      message = apiError.message;
-      details = apiError.details;
+    if (data is Map) {
+      final envelope = Map<String, dynamic>.from(data);
+      final rawError = envelope['error'];
+      if (rawError is Map) {
+        final apiError = ApiError.fromJson(
+          Map<String, dynamic>.from(rawError),
+        );
+        errorCode = apiError.code;
+        message = apiError.message;
+        details = apiError.details;
+      } else if (rawError is String && rawError.trim().isNotEmpty) {
+        // NestJS HttpException responses commonly use:
+        //   { statusCode: 409, error: 'ALREADY_LOGGED_IN_ELSEWHERE',
+        //     message: 'You are already logged in on another device.' }
+        // The older parser only understood `{ error: { code, message } }`,
+        // so auth conflicts fell through as generic errors and mobile never
+        // entered the blocked-device dialog state.
+        final rawErrorText = rawError.trim();
+        if (_looksLikeMachineErrorCode(rawErrorText)) {
+          errorCode = rawErrorText;
+        }
+      }
+
+      errorCode ??= _nonEmptyString(envelope['errorCode']);
+      errorCode ??= _nonEmptyString(envelope['code']);
+
+      final rawMessage = envelope['message'];
+      if (rawMessage is String && rawMessage.trim().isNotEmpty) {
+        message = rawMessage;
+      } else if (rawMessage is List && rawMessage.isNotEmpty) {
+        message = rawMessage.first.toString();
+      }
+
+      final rawDetails = envelope['details'];
+      if (rawDetails is Map) {
+        details = Map<String, dynamic>.from(rawDetails);
+      }
     }
 
     if (statusCode == 401) {
@@ -110,6 +142,16 @@ class ApiException implements Exception {
 
   @override
   String toString() => 'ApiException($errorCode): $message';
+}
+
+String? _nonEmptyString(Object? value) {
+  if (value is! String) return null;
+  final trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
+}
+
+bool _looksLikeMachineErrorCode(String value) {
+  return value.contains('_') && RegExp(r'^[A-Z0-9_]+$').hasMatch(value);
 }
 
 /// Thrown on 401 — invalid or expired token.

@@ -369,7 +369,7 @@ class AuthController extends StateNotifier<AuthState> {
       // role unknown until post-OTP resolution.
       state = AuthOtpSent(phone: phone, isNewUser: false);
     } on ApiException catch (e) {
-      if (e.errorCode == AuthErrorCodes.alreadyLoggedInElsewhere) {
+      if (AuthErrorMapper.isAlreadyLoggedInElsewhere(e)) {
         state = AuthBlockedByOtherDevice(phone: phone);
       } else {
         state = AuthUnauthenticated(
@@ -408,7 +408,7 @@ class AuthController extends StateNotifier<AuthState> {
       );
       await _completeProviderSession(session);
     } on ApiException catch (e) {
-      if (e.errorCode == AuthErrorCodes.alreadyLoggedInElsewhere) {
+      if (AuthErrorMapper.isAlreadyLoggedInElsewhere(e)) {
         state = AuthBlockedByOtherDevice(
           phone: current.phone,
           role: role == 'artisan' ? ProviderType.artisan : ProviderType.driver,
@@ -507,7 +507,7 @@ class AuthController extends StateNotifier<AuthState> {
           );
       }
     } on ApiException catch (e) {
-      if (e.errorCode == AuthErrorCodes.alreadyLoggedInElsewhere) {
+      if (AuthErrorMapper.isAlreadyLoggedInElsewhere(e)) {
         // Conflict surfaced after OTP — the backend preserved the code, so
         // the takeover retry replays it with forceLogin.
         state = AuthBlockedByOtherDevice(phone: current.phone, otpCode: code);
