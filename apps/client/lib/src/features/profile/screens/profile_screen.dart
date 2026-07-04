@@ -149,7 +149,7 @@ class _ProfileBody extends StatelessWidget {
                     _MenuRow(
                       icon: Icons.share_rounded,
                       title: 'Referral & Earn',
-                      subtitle: 'Invite friends and earn GHS 10 each',
+                      subtitle: 'Invite friends and earn GHS 0.50 each',
                       onTap: () => context.push(AppRoutes.profileReferral),
                       w: w,
                       h: h,
