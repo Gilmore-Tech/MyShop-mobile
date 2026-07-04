@@ -202,43 +202,71 @@ class _CodeCard extends StatelessWidget {
               ),
               SizedBox(width: w * 0.030),
               Expanded(
-                child: _ActionBtn(
-                  icon: Icons.share_rounded,
-                  label: 'Share',
-                  isPrimary: true,
-                  onTap: code.isEmpty
-                      ? null
-                      : () async {
-                          // Anchor the share sheet for iPad (share_plus
-                          // requires a non-zero origin there or it no-ops).
-                          final box = context.findRenderObject() as RenderBox?;
-                          final origin = box != null && box.hasSize
-                              ? box.localToGlobal(Offset.zero) & box.size
-                              : null;
-                          try {
-                            await Share.share(
-                              'Join me on MyShop! Use my referral code '
-                              '$code to get GHS 0.50 off your first ride or job.',
-                              subject: 'Get GHS 0.50 off MyShop',
-                              sharePositionOrigin: origin,
-                            );
-                          } catch (_) {
-                            if (context.mounted) {
-                              MyShopToast.show(context,
-                                  message: 'Could not open the share sheet',
-                                  type: ToastType.error);
-                            }
-                          }
-                        },
-                  w: w,
-                  h: h,
-                ),
+                child: _ShareCodeButton(code: code, w: w, h: h),
               ),
             ],
           ),
         ],
       ),
     );
+  }
+}
+
+// ── Share button ───────────────────────────────────────────────────────────────
+// Opens the native share sheet. Kept as its own widget so the iPad popover
+// anchor is computed from the button's own render box (not the parent card).
+
+class _ShareCodeButton extends StatelessWidget {
+  final String code;
+  final double w, h;
+  const _ShareCodeButton(
+      {required this.code, required this.w, required this.h});
+
+  @override
+  Widget build(BuildContext context) {
+    return _ActionBtn(
+      icon: Icons.share_rounded,
+      label: 'Share',
+      isPrimary: true,
+      onTap: code.isEmpty ? null : () => _share(context),
+      w: w,
+      h: h,
+    );
+  }
+
+  Future<void> _share(BuildContext context) async {
+    // On iPad the share sheet is a popover that REQUIRES a non-zero source
+    // rect — share_plus silently no-ops without one. Anchor to this button;
+    // if the render box is somehow unavailable, fall back to the screen
+    // centre so the origin is never null and iPad never no-ops. iPhone,
+    // Android, web and desktop ignore the rect, so this is safe everywhere.
+    final box = context.findRenderObject() as RenderBox?;
+    final Rect origin;
+    if (box != null && box.hasSize) {
+      origin = box.localToGlobal(Offset.zero) & box.size;
+    } else {
+      final size = MediaQuery.sizeOf(context);
+      origin = Rect.fromCenter(
+        center: Offset(size.width / 2, size.height / 2),
+        width: 1,
+        height: 1,
+      );
+    }
+
+    try {
+      await Share.share(
+        'Join me on MyShop! Use my referral code '
+        '$code to get GHS 0.50 off your first ride or job.',
+        subject: 'Get GHS 0.50 off MyShop',
+        sharePositionOrigin: origin,
+      );
+    } catch (_) {
+      if (context.mounted) {
+        MyShopToast.show(context,
+            message: 'Could not open the share sheet',
+            type: ToastType.error);
+      }
+    }
   }
 }
 
