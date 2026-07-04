@@ -186,31 +186,33 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
     _routeFetchInFlight = true;
     _lastRouteFetchAt = DateTime.now();
     try {
-      final points = await _fetchBackendRoute(origin, target);
-      if (!mounted || points == null || points.length < 2) return;
-      setState(() => _routePolyline = points);
-      _lastRoutedFrom = origin;
+      final route = await ref.read(directionsServiceProvider).fetchRoute(
+            origin: origin,
+            destination: target,
+          );
+      if (!mounted || route.polyline.length < 2) return;
+      if (route.isFallback) {
+        debugPrint(
+          '[LIVE-TRACK] ${route.warningMessage ?? 'Route unavailable.'}',
+        );
+        if (!phaseChanged && _routePolyline.length >= 2) {
+          debugPrint(
+            '[LIVE-TRACK] Keeping previous road route; refresh returned '
+            'direct-line fallback.',
+          );
+          return;
+        }
+      }
+      setState(() => _routePolyline = route.polyline);
+      if (!route.isFallback) {
+        _lastRoutedFrom = origin;
+      }
       _lastRoutedPhase = widget.phase;
     } catch (e) {
       debugPrint('[LIVE-TRACK] Directions fetch failed: $e');
     } finally {
       _routeFetchInFlight = false;
     }
-  }
-
-  /// Calls the authenticated backend route proxy and returns its decoded route
-  /// polyline. The Google Routes key never leaves the backend.
-  Future<List<LatLng>?> _fetchBackendRoute(LatLng origin, LatLng target) async {
-    final route = await ref.read(directionsServiceProvider).fetchRoute(
-          origin: origin,
-          destination: target,
-        );
-    if (route.isFallback) {
-      debugPrint(
-        '[LIVE-TRACK] ${route.warningMessage ?? 'Route unavailable.'}',
-      );
-    }
-    return route.polyline;
   }
 
   /// Great-circle distance in metres — used to throttle route refetches.

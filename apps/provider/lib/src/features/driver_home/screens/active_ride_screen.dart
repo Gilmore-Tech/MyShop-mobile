@@ -891,9 +891,19 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
             destination: widget.target,
           );
       if (!mounted) return;
+      if (route.isFallback && _route != null && !_route!.isFallback) {
+        debugPrint(
+          '[NAV] Route refresh returned direct-line fallback; keeping '
+          'previous road route until a fresh road route is available.',
+        );
+        _publishMetrics();
+        return;
+      }
       setState(() {
         _route = route;
-        _lastRouteOrigin = origin;
+        if (!route.isFallback) {
+          _lastRouteOrigin = origin;
+        }
         _polylines = _buildPolylines();
       });
       // Deliberately NO `_fitCamera` here. The polyline draws itself on
