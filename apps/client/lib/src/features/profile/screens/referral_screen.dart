@@ -298,7 +298,7 @@ class _ShareCodeButton extends StatelessWidget {
 String _effectiveReferralShareLink(String code, String? shareLink) {
   final cleanLink = shareLink?.trim();
   if (cleanLink != null && cleanLink.isNotEmpty) return cleanLink;
-  return Uri.https('https://qr1.me-qr.com/link-list/x9ny4hby/show').toString();
+  return 'https://qr1.me-qr.com/link-list/x9ny4hby/show';
 }
 
 class _ActionBtn extends StatelessWidget {
