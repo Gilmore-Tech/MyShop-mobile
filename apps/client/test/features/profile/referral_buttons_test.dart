@@ -87,7 +87,7 @@ void main() {
     expect(shareCalls.first.arguments['text'], contains('AMA10'));
     expect(
       shareCalls.first.arguments['text'],
-      contains('https://app.myshop.com.gh/ref/AMA10'),
+      contains('https://qr1.me-qr.com/link-list/x9ny4hby/show'),
     );
   });
 }
