@@ -445,7 +445,8 @@ class _HowItWorks extends StatelessWidget {
     (
       icon: Icons.local_offer_rounded,
       title: 'Both of you earn',
-      desc: 'They get GHS 0.50 off their first booking. You earn GHS 0.50 points.',
+      desc:
+          'They get GHS 0.50 off their first booking. You earn GHS 0.50 points.',
     ),
   ];
 
