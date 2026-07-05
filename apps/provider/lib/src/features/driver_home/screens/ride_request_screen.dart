@@ -8,6 +8,7 @@ import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:shared_utils/shared_utils.dart';
 
+import '../../../core/providers/availability_controller.dart';
 import '../../../core/services/local_notification_service.dart';
 import '../../../core/utils/payment_method_label.dart';
 import '../providers/driver_location_provider.dart';
@@ -422,10 +423,12 @@ class _PickupInfo extends ConsumerWidget {
   final Ride ride;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Live driver→pickup ETA derived from the most recent GPS fix. Falls
-    // back to null (chip hidden) when the location stream hasn't emitted
-    // yet — the static trip distance/duration below is unaffected.
-    final position = ref.watch(driverLocationStreamProvider).valueOrNull;
+    // Live driver→pickup ETA derived from the most recent GPS fix. The
+    // location stream can be a few seconds late after launch/reconnect, so
+    // fall back to the cached fix populated by the availability/socket bridge
+    // instead of hiding the km chip.
+    final position = ref.watch(driverLocationStreamProvider).valueOrNull ??
+        ref.watch(lastKnownPositionProvider);
     int? minutesAway;
     double? metersAway;
     if (position != null) {

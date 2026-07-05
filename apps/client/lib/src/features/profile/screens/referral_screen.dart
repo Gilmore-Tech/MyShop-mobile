@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -61,7 +62,12 @@ class ReferralScreen extends ConsumerWidget {
             children: [
               _HeroBanner(w: w, h: h),
               SizedBox(height: h * 0.024),
-              _CodeCard(code: data.code, w: w, h: h),
+              _CodeCard(
+                code: data.code,
+                shareLink: data.shareLink,
+                w: w,
+                h: h,
+              ),
               SizedBox(height: h * 0.024),
               _StatsRow(data: data, w: w, h: h),
               SizedBox(height: h * 0.028),
@@ -114,7 +120,7 @@ class _HeroBanner extends StatelessWidget {
                 color: Colors.white, size: w * 0.068),
           ),
           SizedBox(height: h * 0.016),
-          Text('Give GHS 10, Get GHS 10',
+          Text('Give GHS 0.50, Get GHS 0.50',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: w * 0.048,
@@ -123,8 +129,8 @@ class _HeroBanner extends StatelessWidget {
               )),
           SizedBox(height: h * 0.008),
           Text(
-            'Share your code. Your friend gets GHS 10 off their first ride '
-            'or job, and you earn GHS 10 in loyalty points.',
+            'Share your code. Your friend gets GHS 0.50 off their first ride '
+            'or job, and you earn GHS 0.50 in loyalty points.',
             style: TextStyle(
                 color: Colors.white.withAlpha(210),
                 fontSize: w * 0.033,
@@ -140,8 +146,14 @@ class _HeroBanner extends StatelessWidget {
 
 class _CodeCard extends StatelessWidget {
   final String code;
+  final String? shareLink;
   final double w, h;
-  const _CodeCard({required this.code, required this.w, required this.h});
+  const _CodeCard({
+    required this.code,
+    required this.shareLink,
+    required this.w,
+    required this.h,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -201,11 +213,9 @@ class _CodeCard extends StatelessWidget {
               ),
               SizedBox(width: w * 0.030),
               Expanded(
-                child: _ActionBtn(
-                  icon: Icons.share_rounded,
-                  label: 'Share',
-                  isPrimary: true,
-                  onTap: code.isEmpty ? null : () {},
+                child: _ShareCodeButton(
+                  code: code,
+                  shareLink: shareLink,
                   w: w,
                   h: h,
                 ),
@@ -216,6 +226,79 @@ class _CodeCard extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── Share button ───────────────────────────────────────────────────────────────
+// Opens the native share sheet. Kept as its own widget so the iPad popover
+// anchor is computed from the button's own render box (not the parent card).
+
+class _ShareCodeButton extends StatelessWidget {
+  final String code;
+  final String? shareLink;
+  final double w, h;
+
+  const _ShareCodeButton({
+    required this.code,
+    required this.shareLink,
+    required this.w,
+    required this.h,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _ActionBtn(
+      icon: Icons.share_rounded,
+      label: 'Share',
+      isPrimary: true,
+      onTap: code.isEmpty ? null : () => _share(context),
+      w: w,
+      h: h,
+    );
+  }
+
+  Future<void> _share(BuildContext context) async {
+    final link = _effectiveReferralShareLink(code, shareLink);
+    // On iPad the share sheet is a popover that requires a non-zero source
+    // rect. Anchor to this button; if the render box is unavailable, fall back
+    // to the screen centre so the origin is never null. Other platforms ignore
+    // the rect, so this is safe everywhere.
+    final box = context.findRenderObject() as RenderBox?;
+    final Rect origin;
+    if (box != null && box.hasSize) {
+      origin = box.localToGlobal(Offset.zero) & box.size;
+    } else {
+      final size = MediaQuery.sizeOf(context);
+      origin = Rect.fromCenter(
+        center: Offset(size.width / 2, size.height / 2),
+        width: 1,
+        height: 1,
+      );
+    }
+
+    try {
+      await Share.share(
+        'Join me on MyShop! Use my referral code '
+        '$code to get GHS 0.50 off your first ride or job.\n\n'
+        'Download MyShop and sign up here:\n$link',
+        subject: 'Get GHS 0.50 off MyShop',
+        sharePositionOrigin: origin,
+      );
+    } catch (_) {
+      if (context.mounted) {
+        MyShopToast.show(
+          context,
+          message: 'Could not open the share sheet',
+          type: ToastType.error,
+        );
+      }
+    }
+  }
+}
+
+String _effectiveReferralShareLink(String code, String? shareLink) {
+  final cleanLink = shareLink?.trim();
+  if (cleanLink != null && cleanLink.isNotEmpty) return cleanLink;
+  return 'https://qr1.me-qr.com/link-list/x9ny4hby/show';
 }
 
 class _ActionBtn extends StatelessWidget {
@@ -362,7 +445,8 @@ class _HowItWorks extends StatelessWidget {
     (
       icon: Icons.local_offer_rounded,
       title: 'Both of you earn',
-      desc: 'They get GHS 10 off their first booking. You earn GHS 10 points.',
+      desc:
+          'They get GHS 0.50 off their first booking. You earn GHS 0.50 points.',
     ),
   ];
 

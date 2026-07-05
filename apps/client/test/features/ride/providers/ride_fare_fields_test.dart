@@ -35,6 +35,17 @@ void main() {
     expect(fare.durationMins, 17);
   });
 
+  test('reads distance and duration from meters and seconds snapshots', () {
+    final fare = RideFareFields.fromSnapshot({
+      'estimatedFarePesewas': 2750,
+      'distanceMeters': 5400,
+      'durationSeconds': 732,
+    });
+
+    expect(fare.distanceKm, 5.4);
+    expect(fare.durationMins, 12);
+  });
+
   test('builds receipts with final fare winning over estimate', () {
     final receipt = buildRideReceiptFromSnapshot({
       'id': 'ride-1',

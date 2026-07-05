@@ -30,4 +30,21 @@ void main() {
     expect(ride.finalFarePesewas, 4500);
     expect(ride.finalFareDisplay, 'GHS 45');
   });
+
+  test('reads distance and duration from meter/second payloads', () {
+    final ride = Ride.fromJson({
+      'id': 'ride-3',
+      'status': 'requested',
+      'estimatedFarePesewas': 2500,
+      'pickupAddress': 'KNUST Gate',
+      'dropoffAddress': 'Kejetia Market',
+      'distanceMeters': 5400,
+      'durationSeconds': 732,
+    });
+
+    expect(ride.estimatedDistanceKm, 5.4);
+    expect(ride.estimatedDurationMins, 12);
+    expect(ride.distanceDisplay, '5.4 km');
+    expect(ride.durationDisplay, '12 mins');
+  });
 }

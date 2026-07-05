@@ -55,6 +55,7 @@ String _formatDate(String? iso) {
 
 class ReferralData {
   final String code;
+  final String? shareLink;
   final int totalReferrals;
   final int pendingPesewas;
   final int earnedPesewas;
@@ -62,6 +63,7 @@ class ReferralData {
 
   const ReferralData({
     required this.code,
+    this.shareLink,
     required this.totalReferrals,
     required this.pendingPesewas,
     required this.earnedPesewas,
@@ -76,6 +78,7 @@ class ReferralData {
         .cast<Map<String, dynamic>>();
     return ReferralData(
       code: json['code'] as String? ?? '',
+      shareLink: json['shareLink'] as String?,
       totalReferrals: (json['totalReferrals'] as num?)?.toInt() ?? 0,
       pendingPesewas: (json['pendingPesewas'] as num?)?.toInt() ?? 0,
       earnedPesewas: (json['earnedPesewas'] as num?)?.toInt() ?? 0,
@@ -100,6 +103,7 @@ final referralProvider = FutureProvider.autoDispose<ReferralData>((ref) async {
     }
     return ReferralData(
       code: code,
+      shareLink: null,
       totalReferrals: 0,
       pendingPesewas: 0,
       earnedPesewas: 0,

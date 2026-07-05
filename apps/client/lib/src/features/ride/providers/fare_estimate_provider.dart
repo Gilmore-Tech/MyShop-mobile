@@ -44,8 +44,8 @@ final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
 
   final surgeMultiplier =
       (result['surgeMultiplier'] as num?)?.toDouble() ?? 1.0;
-  final distanceKm = (result['distanceKm'] as num?)?.toDouble() ?? 0.0;
-  final durationMins = (result['durationMins'] as num?)?.toInt() ?? 0;
+  final distanceKm = _distanceKmFromEstimate(result);
+  final durationMins = _durationMinsFromEstimate(result);
   final categories = (result['categories'] as List?) ?? const [];
 
   developer.log(
@@ -81,3 +81,51 @@ final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
     );
   }).toList();
 });
+
+double _distanceKmFromEstimate(Map<String, dynamic> result) {
+  final km = _readNum(
+    result,
+    const ['distanceKm', 'estimatedDistanceKm', 'actualDistanceKm'],
+  );
+  if (km != null) return km.toDouble();
+
+  final meters = _readNum(
+    result,
+    const ['distanceMeters', 'estimatedDistanceMeters', 'actualDistanceMeters'],
+  );
+  if (meters != null) return meters / 1000;
+
+  return 0.0;
+}
+
+int _durationMinsFromEstimate(Map<String, dynamic> result) {
+  final minutes = _readNum(
+    result,
+    const ['durationMins', 'estimatedDurationMins', 'actualDurationMins'],
+  );
+  if (minutes != null) return minutes.toInt();
+
+  final seconds = _readNum(
+    result,
+    const [
+      'durationSeconds',
+      'estimatedDurationSeconds',
+      'actualDurationSeconds',
+    ],
+  );
+  if (seconds != null) return (seconds / 60).round();
+
+  return 0;
+}
+
+double? _readNum(Map<String, dynamic> source, List<String> keys) {
+  for (final key in keys) {
+    final value = source[key];
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      final parsed = num.tryParse(value);
+      if (parsed != null) return parsed.toDouble();
+    }
+  }
+  return null;
+}

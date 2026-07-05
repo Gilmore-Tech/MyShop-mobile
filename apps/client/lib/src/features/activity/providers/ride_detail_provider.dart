@@ -179,13 +179,8 @@ class _RideDetailNotifier
       driverRating: (driver['rating'] as num?)?.toDouble() ?? 0.0,
       driverPhotoUrl: driver['photoUrl'] as String?,
       driverPhone: driverPhone,
-      durationMins: (ride['actualDurationMins'] as num?)?.toInt() ??
-          (ride['estimatedDurationMins'] as num?)?.toInt() ??
-          0,
-      distanceKm: (ride['actualDistanceKm'] as num?)?.toDouble() ??
-          (ride['estimatedDistanceKm'] as num?)?.toDouble() ??
-          (ride['distanceKm'] as num?)?.toDouble() ??
-          0,
+      durationMins: _durationMinsFromSnapshot(ride),
+      distanceKm: _distanceKmFromSnapshot(ride),
       baseFarePesewas: (ride['baseFare'] as num?)?.toInt() ?? 0,
       distanceFarePesewas: (ride['distanceFare'] as num?)?.toInt() ?? 0,
       bookingFeePesewas: (ride['bookingFee'] as num?)?.toInt() ?? 0,
@@ -196,4 +191,52 @@ class _RideDetailNotifier
       paymentMethod: ride['paymentMethod'] as String? ?? 'Cash',
     );
   }
+}
+
+double _distanceKmFromSnapshot(Map<String, dynamic> ride) {
+  final km = _readNum(
+    ride,
+    const ['actualDistanceKm', 'estimatedDistanceKm', 'distanceKm'],
+  );
+  if (km != null) return km.toDouble();
+
+  final meters = _readNum(
+    ride,
+    const ['actualDistanceMeters', 'estimatedDistanceMeters', 'distanceMeters'],
+  );
+  if (meters != null) return meters / 1000;
+
+  return 0;
+}
+
+int _durationMinsFromSnapshot(Map<String, dynamic> ride) {
+  final minutes = _readNum(
+    ride,
+    const ['actualDurationMins', 'estimatedDurationMins', 'durationMins'],
+  );
+  if (minutes != null) return minutes.toInt();
+
+  final seconds = _readNum(
+    ride,
+    const [
+      'actualDurationSeconds',
+      'estimatedDurationSeconds',
+      'durationSeconds',
+    ],
+  );
+  if (seconds != null) return (seconds / 60).round();
+
+  return 0;
+}
+
+double? _readNum(Map<String, dynamic> source, List<String> keys) {
+  for (final key in keys) {
+    final value = source[key];
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      final parsed = num.tryParse(value);
+      if (parsed != null) return parsed.toDouble();
+    }
+  }
+  return null;
 }

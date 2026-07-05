@@ -80,8 +80,8 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
   DateTime? _localArrivedAt;
 
   /// Free wait at pickup before the driver can cancel a no-show penalty-free.
-  /// Mirrors the backend `ride_driver_wait_window_secs` config (default 180s).
-  static const int _freeWaitSecs = 180;
+  /// Shared with the client so both apps count down the same window.
+  static const int _freeWaitSecs = kFreeWaitAtPickupSeconds;
 
   @override
   void initState() {
@@ -891,9 +891,19 @@ class _NavigationMapState extends ConsumerState<_NavigationMap> {
             destination: widget.target,
           );
       if (!mounted) return;
+      if (route.isFallback && _route != null && !_route!.isFallback) {
+        debugPrint(
+          '[NAV] Route refresh returned direct-line fallback; keeping '
+          'previous road route until a fresh road route is available.',
+        );
+        _publishMetrics();
+        return;
+      }
       setState(() {
         _route = route;
-        _lastRouteOrigin = origin;
+        if (!route.isFallback) {
+          _lastRouteOrigin = origin;
+        }
         _polylines = _buildPolylines();
       });
       // Deliberately NO `_fitCamera` here. The polyline draws itself on

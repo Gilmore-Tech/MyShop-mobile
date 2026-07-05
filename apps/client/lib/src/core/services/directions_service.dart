@@ -40,7 +40,10 @@ class DirectionsService {
   DirectionsService(this._dio);
 
   final Dio _dio;
-  static const _requestTimeout = Duration(seconds: 5);
+  // Backend waits up to 8s for Google Routes. Keep the mobile timeout longer
+  // so the app doesn't cancel first and replace a valid road route with the
+  // direct-line fallback while the backend is still computing.
+  static const _requestTimeout = Duration(seconds: 10);
 
   Future<DirectionsRoute> fetchRoute({
     required LatLng origin,

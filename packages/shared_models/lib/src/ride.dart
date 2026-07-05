@@ -47,11 +47,53 @@ class Ride {
   /// createdAt). Those become safe defaults here so the request modal can
   /// still render — full data arrives in the PATCH response after accept.
   factory Ride.fromJson(Map<String, dynamic> json) {
+    double? _optionalNum(dynamic v) {
+      if (v is num) return v.toDouble();
+      if (v is String) return num.tryParse(v)?.toDouble();
+      return null;
+    }
+
     double _num(dynamic v, [double fallback = 0]) =>
-        v is num ? v.toDouble() : fallback;
-    int _int(dynamic v, [int fallback = 0]) => v is num ? v.toInt() : fallback;
-    int? _optionalInt(dynamic v) => v is num ? v.toInt() : null;
+        _optionalNum(v) ?? fallback;
+    int _int(dynamic v, [int fallback = 0]) =>
+        _optionalNum(v)?.toInt() ?? fallback;
+    int? _optionalInt(dynamic v) => _optionalNum(v)?.toInt();
     DateTime? _date(dynamic v) => v is String ? DateTime.tryParse(v) : null;
+    double _distanceKm() {
+      final km = _optionalNum(
+        json['estimatedDistanceKm'] ??
+            json['distanceKm'] ??
+            json['actualDistanceKm'],
+      );
+      if (km != null) return km;
+
+      final meters = _optionalNum(
+        json['estimatedDistanceMeters'] ??
+            json['distanceMeters'] ??
+            json['actualDistanceMeters'],
+      );
+      if (meters != null) return meters / 1000;
+
+      return 0;
+    }
+
+    int _durationMins() {
+      final minutes = _optionalNum(
+        json['estimatedDurationMins'] ??
+            json['durationMins'] ??
+            json['actualDurationMins'],
+      );
+      if (minutes != null) return minutes.toInt();
+
+      final seconds = _optionalNum(
+        json['estimatedDurationSeconds'] ??
+            json['durationSeconds'] ??
+            json['actualDurationSeconds'],
+      );
+      if (seconds != null) return (seconds / 60).round();
+
+      return 0;
+    }
 
     // Backend serves the full ride entity with client info under a nested
     // `client` object (REST `GET /rides/:id`, `PATCH /rides/:id/status`),
@@ -102,6 +144,8 @@ class Ride {
         : null;
     final status =
         RideStatus.fromString(json['status'] as String? ?? 'requested');
+    final actualDistanceMeters = _optionalNum(json['actualDistanceMeters']);
+    final actualDurationSeconds = _optionalNum(json['actualDurationSeconds']);
 
     return Ride(
       id: (json['id'] ?? json['rideId']) as String,
@@ -125,16 +169,14 @@ class Ride {
         json['finalFarePesewas'] ??
             (status == RideStatus.completed ? json['totalFare'] : null),
       ),
-      estimatedDistanceKm: _num(
-        json['estimatedDistanceKm'] ?? json['distanceKm'],
-      ),
-      estimatedDurationMins: _int(
-        json['estimatedDurationMins'] ?? json['durationMins'],
-      ),
-      actualDistanceKm: (json['actualDistanceKm'] as num?)?.toDouble(),
-      actualDurationMins: json['actualDurationMins'] is num
-          ? (json['actualDurationMins'] as num).toInt()
-          : null,
+      estimatedDistanceKm: _distanceKm(),
+      estimatedDurationMins: _durationMins(),
+      actualDistanceKm: _optionalNum(json['actualDistanceKm']) ??
+          (actualDistanceMeters != null ? actualDistanceMeters / 1000 : null),
+      actualDurationMins: _optionalInt(json['actualDurationMins']) ??
+          (actualDurationSeconds != null
+              ? (actualDurationSeconds / 60).round()
+              : null),
       surgeMultiplier: _num(json['surgeMultiplier'], 1.0),
       paymentMethod: json['paymentMethod'] as String? ?? 'cash',
       createdAt: _date(json['createdAt']) ?? DateTime.now(),
