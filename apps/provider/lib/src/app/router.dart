@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../core/providers/background_location_sync_provider.dart';
 import '../core/providers/socket_provider.dart';
 import '../core/widgets/incoming_request_listener.dart';
 import '../features/artisan_home/providers/job_poller_provider.dart';
@@ -611,6 +612,10 @@ class _DriverShellState extends ConsumerState<_DriverShell>
     // Pipe GPS updates into the socket so the backend can match this
     // provider against incoming jobs/rides within their service radius.
     ref.watch(locationSocketBridgeProvider);
+
+    // Durable REST location sync — keeps online heartbeats and active-trip
+    // trails alive when the app is backgrounded and the socket is disconnected.
+    ref.watch(backgroundLocationSyncProvider);
 
     // REST-polling fallback for incoming jobs — covers zombie sockets
     // and missed `job:new` emits. Deduped against the socket path.

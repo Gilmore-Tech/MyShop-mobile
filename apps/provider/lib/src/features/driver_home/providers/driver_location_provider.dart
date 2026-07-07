@@ -4,6 +4,40 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../../core/providers/provider_status_provider.dart';
 
+LocationSettings _streamLocationSettings() {
+  if (defaultTargetPlatform == TargetPlatform.android) {
+    return AndroidSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 1,
+      intervalDuration: const Duration(seconds: 4),
+      foregroundNotificationConfig: const ForegroundNotificationConfig(
+        notificationTitle: 'MyShop Provider is online',
+        notificationText: 'Keeping your location active for jobs and trips.',
+        notificationChannelName: 'Provider location',
+        enableWakeLock: true,
+        setOngoing: true,
+      ),
+    );
+  }
+
+  if (defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.macOS) {
+    return AppleSettings(
+      accuracy: LocationAccuracy.high,
+      activityType: ActivityType.automotiveNavigation,
+      distanceFilter: 1,
+      pauseLocationUpdatesAutomatically: false,
+      showBackgroundLocationIndicator: true,
+      allowBackgroundLocationUpdates: true,
+    );
+  }
+
+  return const LocationSettings(
+    accuracy: LocationAccuracy.high,
+    distanceFilter: 1,
+  );
+}
+
 /// Streams the driver's current [Position] only while they are online (or busy
 /// on an active ride). When the driver toggles offline, the provider auto-
 /// disposes the underlying location stream so we stop draining the battery.
@@ -71,13 +105,11 @@ final driverLocationStreamProvider =
   // follow appear continuous during a live ride, the way Google Maps
   // "Start" mode does. 5m felt choppy on slower urban segments (the
   // marker would freeze for several seconds at a time). Battery cost
-  // is bounded by `LocationAccuracy.high` already issuing a single
-  // hardware request — the filter is a software gate on emission rate,
-  // not the GPS duty cycle.
+  // is bounded by platform-level cadence below. On Android the foreground
+  // notification keeps the location stream prioritized while the app is
+  // backgrounded; on iOS the existing Background Modes location entitlement
+  // and Always permission allow the stream to continue after screen lock.
   yield* Geolocator.getPositionStream(
-    locationSettings: const LocationSettings(
-      accuracy: LocationAccuracy.high,
-      distanceFilter: 1,
-    ),
+    locationSettings: _streamLocationSettings(),
   );
 });
