@@ -122,6 +122,22 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
       if (mounted) context.go(AppRoutes.home);
       return;
     }
+    final phase = ref.read(rideTrackingPhaseProvider);
+    if (phase != RideTrackingPhase.enRoute &&
+        phase != RideTrackingPhase.arrived) {
+      developer.log('[CANCEL] blocked for phase=$phase',
+          name: 'RideTrackingScreen');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'This trip has already started. Please use Help or contact support.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -146,6 +162,21 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
     if (confirmed != true || !mounted) {
       developer.log('[CANCEL] dialog dismissed without confirmation',
           name: 'RideTrackingScreen');
+      return;
+    }
+    final phaseAfterConfirm = ref.read(rideTrackingPhaseProvider);
+    if (phaseAfterConfirm != RideTrackingPhase.enRoute &&
+        phaseAfterConfirm != RideTrackingPhase.arrived) {
+      developer.log(
+          '[CANCEL] blocked after confirmation for phase=$phaseAfterConfirm',
+          name: 'RideTrackingScreen');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'This trip has already started. Please use Help or contact support.',
+          ),
+        ),
+      );
       return;
     }
 

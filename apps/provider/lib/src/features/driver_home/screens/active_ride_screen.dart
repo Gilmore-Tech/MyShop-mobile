@@ -181,11 +181,21 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
     });
   }
 
-  /// Bottom sheet with the "off the happy path" actions — currently just
-  /// "Cancel ride", which is the only reliable way out when the backend's
-  /// status PATCH is failing (e.g. Prisma errors during `complete`) and
-  /// the driver would otherwise be stuck on this screen forever.
+  /// Bottom sheet with pre-trip/off-pickup actions.
+  ///
+  /// Once the passenger is in the vehicle (`in_progress`), normal cancellation
+  /// is intentionally disabled. The driver should complete the trip, use SOS,
+  /// or contact support/admin for exceptional intervention.
   Future<void> _showOverflowMenu(Ride ride) async {
+    if (ride.status == RideStatus.inProgress) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content:
+              Text('Trip has started. End it normally or contact support.'),
+        ),
+      );
+      return;
+    }
     final action = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: MyShopColors.surfaceWhite,
@@ -340,6 +350,15 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
   }
 
   Future<void> _confirmAndCancel(Ride ride) async {
+    if (ride.status == RideStatus.inProgress) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content:
+              Text('Trip has started. End it normally or contact support.'),
+        ),
+      );
+      return;
+    }
     // A driver who has waited out the full free window at pickup is treated
     // as cancelling a rider no-show — penalty-free. Cancelling before that
     // (or before arriving at all) is a driver cancellation that affects their
@@ -354,6 +373,16 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
     final outcome =
         await ref.read(activeRideProvider.notifier).cancelRide(reason: reason);
     if (!mounted) return;
+    if (!outcome.cancelled) {
+      final error = ref.read(activeRideProvider).errorMessage;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:
+              Text(error ?? 'Could not cancel the ride. Please try again.'),
+        ),
+      );
+      return;
+    }
 
     // Surface the outcome before popping. Suspension takes priority — the
     // driver must understand why they can no longer receive requests.
