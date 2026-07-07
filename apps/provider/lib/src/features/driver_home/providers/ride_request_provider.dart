@@ -52,11 +52,15 @@ class ActiveRideState {
 /// rolling 30-day window — the UI should call out both clearly.
 class RideCancelOutcome {
   const RideCancelOutcome({
+    this.cancelled = false,
     this.feePesewas = 0,
     this.driverSuspended = false,
     this.driverNoShow = false,
   });
 
+  /// True only when the backend accepted the cancellation and the local ride
+  /// state has been cleared.
+  final bool cancelled;
   final int feePesewas;
   final bool driverSuspended;
 
@@ -270,11 +274,14 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
     }
   }
 
-  /// Cancel the active ride. Best-effort PATCH so the backend gets a
-  /// proper `cancelled` row, then ALWAYS clear local state — even if the
-  /// backend refuses (data corruption, network drop) the driver should
-  /// still be able to escape the screen rather than be permanently stuck
-  /// on a ride they can't progress.
+  /// Cancel the active ride.
+  ///
+  /// Only clears local state after the backend confirms the ride is cancelled.
+  /// That is deliberate: once a trip is already `in_progress`, the backend now
+  /// rejects normal cancellation, and clearing local state anyway would make the
+  /// driver app *look* cancelled while the rider/backend still have an active
+  /// trip. Real in-trip exceptions should go through completion, SOS/support,
+  /// or admin force-complete/force-cancel.
   ///
   /// Returns a [RideCancelOutcome] describing the fee charged to the driver
   /// and whether the backend just suspended the account for excessive
@@ -286,6 +293,14 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       clearRide();
       return const RideCancelOutcome();
     }
+    if (ride.status == RideStatus.inProgress) {
+      state = state.copyWith(
+        isUpdating: false,
+        errorMessage:
+            'This trip has already started. End the trip normally or contact support.',
+      );
+      return const RideCancelOutcome();
+    }
     state = state.copyWith(isUpdating: true, clearError: true);
     var outcome = const RideCancelOutcome();
     try {
@@ -294,6 +309,7 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
             reason: reason ?? 'driver_cancelled',
           );
       outcome = RideCancelOutcome(
+        cancelled: true,
         feePesewas: (result['cancellationFeePesewas'] as num?)?.toInt() ?? 0,
         driverSuspended: result['driverSuspended'] == true,
         driverNoShow: result['driverNoShow'] == true,
@@ -306,16 +322,23 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
     } on ApiException catch (e) {
       developer.log(
         'cancelRide PATCH failed: ${e.errorCode} — ${e.message} '
-        '(clearing local state anyway)',
+        '(keeping local ride active)',
         name: 'ActiveRide',
         level: 900,
       );
+      state = state.copyWith(isUpdating: false, errorMessage: e.message);
+      return outcome;
     } catch (e) {
       developer.log(
-        'cancelRide crashed: $e (clearing local state anyway)',
+        'cancelRide crashed: $e (keeping local ride active)',
         name: 'ActiveRide',
         level: 1000,
       );
+      state = state.copyWith(
+        isUpdating: false,
+        errorMessage: 'Could not cancel the ride. Please try again.',
+      );
+      return outcome;
     }
     clearRide();
     return outcome;

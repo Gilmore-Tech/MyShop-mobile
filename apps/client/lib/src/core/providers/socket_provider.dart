@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:api_client/api_client.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart' show RideStop;
 
@@ -433,6 +433,37 @@ void _connectAndListen(Ref ref, SocketService socket) {
           ctx,
           message,
           onConfirm: () => router.go(AppRoutes.home),
+        );
+      });
+
+    // Advisory delay signal. This is deliberately NOT treated as a
+    // cancellation: no provider resets, no route changes. It exists so the
+    // backend can stop hard-cancelling delayed-but-still-valid rides while the
+    // rider still gets clear feedback.
+    socket
+      ..off('ride:driver_delayed')
+      ..on('ride:driver_delayed', (data) {
+        if (data is! Map) return;
+        final map = Map<String, dynamic>.from(data);
+        final activeRideId = ref.container.read(activeRideIdProvider);
+        final eventRideId = (map['rideId'] ?? map['id']) as String?;
+        if (eventRideId != null &&
+            activeRideId != null &&
+            eventRideId != activeRideId) {
+          return;
+        }
+        final message = (map['message'] as String?) ??
+            'Your driver is delayed, but the ride is still active.';
+        developer.log('ride:driver_delayed — $message', name: 'WS');
+
+        final router = ref.container.read(routerProvider);
+        final ctx = router.routerDelegate.navigatorKey.currentContext;
+        if (ctx == null) return;
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            duration: const Duration(seconds: 5),
+          ),
         );
       });
 
