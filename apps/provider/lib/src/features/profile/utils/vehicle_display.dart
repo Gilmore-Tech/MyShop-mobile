@@ -40,3 +40,14 @@ bool hasDriverVehicleDetails(DriverProfile? profile) {
       _hasText(profile?.vehiclePlate) ||
       _hasText(profile?.vehicleColor);
 }
+
+/// Online eligibility requires the full vehicle record captured at driver
+/// signup. Keep [hasDriverVehicleDetails] permissive for display so partial
+/// backend records are still visible, but use this stricter helper for gates.
+bool hasCompleteDriverVehicleDetails(DriverProfile? profile) {
+  return _hasText(profile?.vehicleMake) &&
+      _hasText(profile?.vehicleModel) &&
+      _hasText(profile?.vehicleYear) &&
+      _hasText(profile?.vehiclePlate) &&
+      _hasText(profile?.vehicleColor);
+}

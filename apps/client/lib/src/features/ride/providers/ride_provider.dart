@@ -172,6 +172,7 @@ class RideFareFields {
     required this.bookingFeePesewas,
     required this.taxesPesewas,
     required this.promoDiscountPesewas,
+    required this.loyaltyDiscountPesewas,
     required this.totalFarePesewas,
     required this.distanceKm,
     required this.durationMins,
@@ -192,6 +193,10 @@ class RideFareFields {
       snapshot,
       const ['promoDiscountPesewas', 'discountPesewas', 'promoDiscount'],
     );
+    final loyaltyDiscount = _readInt(
+      snapshot,
+      const ['loyaltyDiscountPesewas', 'loyaltyDiscount'],
+    );
     final surgeFare =
         _readInt(snapshot, const ['surgeFarePesewas', 'surgeFare']);
     final componentTotal = baseFare +
@@ -204,9 +209,11 @@ class RideFareFields {
     final total = _readInt(
       snapshot,
       const [
-        'finalFarePesewas',
+        'totalPaidPesewas',
+        'amountPaidPesewas',
         'totalFarePesewas',
         'totalFare',
+        'finalFarePesewas',
         'estimatedFarePesewas',
       ],
       fallback: componentTotal > 0 ? componentTotal : 0,
@@ -219,6 +226,7 @@ class RideFareFields {
       bookingFeePesewas: bookingFee,
       taxesPesewas: taxes,
       promoDiscountPesewas: promoDiscount,
+      loyaltyDiscountPesewas: loyaltyDiscount,
       totalFarePesewas: total,
       distanceKm: _readDistanceKm(
         snapshot,
@@ -246,8 +254,13 @@ class RideFareFields {
       surgeFarePesewas: surgeFare,
       subtotalPesewas: _readInt(
         snapshot,
-        const ['subtotalPesewas', 'subtotal', 'prePromoFarePesewas'],
-        fallback: total,
+        const [
+          'grossFarePesewas',
+          'subtotalPesewas',
+          'subtotal',
+          'prePromoFarePesewas',
+        ],
+        fallback: total + promoDiscount + loyaltyDiscount,
       ),
     );
   }
@@ -258,6 +271,7 @@ class RideFareFields {
   final int bookingFeePesewas;
   final int taxesPesewas;
   final int promoDiscountPesewas;
+  final int loyaltyDiscountPesewas;
   final int totalFarePesewas;
   final double distanceKm;
   final int durationMins;
@@ -427,6 +441,7 @@ class RideReceipt {
 
   /// Positive value — displayed as a deduction (–GHS X.XX)
   final int promoDiscountPesewas;
+  final int loyaltyDiscountPesewas;
   final int totalPaidPesewas;
 
   final String paymentMethod;
@@ -454,6 +469,7 @@ class RideReceipt {
     required this.subtotalPesewas,
     required this.taxesPesewas,
     required this.promoDiscountPesewas,
+    required this.loyaltyDiscountPesewas,
     required this.totalPaidPesewas,
     required this.paymentMethod,
     required this.paymentStatus,
@@ -564,6 +580,7 @@ RideReceipt buildRideReceiptFromSnapshot(Map<String, dynamic> snapshot) {
     subtotalPesewas: fare.subtotalPesewas,
     taxesPesewas: fare.taxesPesewas,
     promoDiscountPesewas: fare.promoDiscountPesewas,
+    loyaltyDiscountPesewas: fare.loyaltyDiscountPesewas,
     totalPaidPesewas: fare.totalFarePesewas,
     paymentMethod: _formatPaymentMethod(paymentMethodRaw),
     paymentStatus: 'SUCCESS',
@@ -897,7 +914,10 @@ class WaitingCountdownNotifier extends StateNotifier<int> {
 /// kicking this off — using the screen's `WidgetRef` past the next
 /// `await` would throw `StateError: Cannot use "ref" after the widget
 /// was disposed`. The container outlives any single widget.
-Future<void> requestRideAndMatchDriver(ProviderContainer ref) async {
+Future<void> requestRideAndMatchDriver(
+  ProviderContainer ref, {
+  List<Map<String, dynamic>> pretripStops = const [],
+}) async {
   final rideService = ref.read(rideServiceProvider);
   final search = ref.read(rideSearchProvider);
 
@@ -937,6 +957,7 @@ Future<void> requestRideAndMatchDriver(ProviderContainer ref) async {
       destinationLng: destination?.lng ?? -1.6300,
       pickupAddress: pickup?.address,
       destinationAddress: destination?.address,
+      stops: pretripStops.isEmpty ? null : pretripStops,
       paymentMethod: selectedMethod.wireValue,
       rideCategory: selectedCategory.isEmpty ? null : selectedCategory,
     );

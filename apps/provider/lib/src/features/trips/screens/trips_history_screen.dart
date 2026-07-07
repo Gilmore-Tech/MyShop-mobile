@@ -104,12 +104,13 @@ class _TripsHistoryScreenState extends ConsumerState<TripsHistoryScreen>
     return out;
   }
 
-  /// Sum of `finalFarePesewas` (or estimated when final is missing) for
+  /// Sum of the amount actually paid (or final/estimated when paid is missing) for
   /// the given trips. Used by the monthly-earnings strip at the bottom.
   int _sumPesewas(Iterable<Ride> rides) {
     var total = 0;
     for (final r in rides) {
-      total += r.finalFarePesewas ?? r.estimatedFarePesewas;
+      total +=
+          r.totalPaidPesewas ?? r.finalFarePesewas ?? r.estimatedFarePesewas;
     }
     return total;
   }
@@ -126,7 +127,8 @@ class _TripsHistoryScreenState extends ConsumerState<TripsHistoryScreen>
       final dayKey = DateTime(at.year, at.month, at.day);
       final delta = today.difference(dayKey).inDays;
       if (delta < 0 || delta >= 7) continue;
-      perDay[6 - delta] += r.finalFarePesewas ?? r.estimatedFarePesewas;
+      perDay[6 - delta] +=
+          r.totalPaidPesewas ?? r.finalFarePesewas ?? r.estimatedFarePesewas;
     }
     final maxVal =
         perDay.fold<int>(0, (m, v) => v > m ? v : m).clamp(1, 1 << 30);

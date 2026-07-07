@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:api_client/api_client.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart' show RideStop;
 
@@ -436,6 +436,37 @@ void _connectAndListen(Ref ref, SocketService socket) {
         );
       });
 
+    // Advisory delay signal. This is deliberately NOT treated as a
+    // cancellation: no provider resets, no route changes. It exists so the
+    // backend can stop hard-cancelling delayed-but-still-valid rides while the
+    // rider still gets clear feedback.
+    socket
+      ..off('ride:driver_delayed')
+      ..on('ride:driver_delayed', (data) {
+        if (data is! Map) return;
+        final map = Map<String, dynamic>.from(data);
+        final activeRideId = ref.container.read(activeRideIdProvider);
+        final eventRideId = (map['rideId'] ?? map['id']) as String?;
+        if (eventRideId != null &&
+            activeRideId != null &&
+            eventRideId != activeRideId) {
+          return;
+        }
+        final message = (map['message'] as String?) ??
+            'Your driver is delayed, but the ride is still active.';
+        developer.log('ride:driver_delayed — $message', name: 'WS');
+
+        final router = ref.container.read(routerProvider);
+        final ctx = router.routerDelegate.navigatorKey.currentContext;
+        if (ctx == null) return;
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      });
+
     // Backend pushes `ride:matcher_progress` on every dispatch attempt —
     // initial broadcast, decline-triggered fast-path, radius expansion.
     // Without surfacing it the rider sees a frozen spinner while the
@@ -525,30 +556,32 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // snapshots. Gated on the active ride id so the rider's marker
     // doesn't jitter from unrelated ride traffic.
     void handleDriverLocation(dynamic data) {
-      if (data is! Map<String, dynamic>) {
+      if (data is! Map) {
         debugPrint('[LIVE-TRACK] driver:location dropped — payload not Map');
         return;
       }
+      final payload = Map<String, dynamic>.from(data);
       final activeRideId = ref.container.read(activeRideIdProvider);
       if (activeRideId == null) {
         debugPrint(
             '[LIVE-TRACK] driver:location dropped — no activeRideId set');
         return;
       }
-      final eventRideId = data['rideId'] as String? ?? data['id'] as String?;
+      final eventRideId =
+          payload['rideId'] as String? ?? payload['id'] as String?;
       if (eventRideId != null && eventRideId != activeRideId) {
         debugPrint('[LIVE-TRACK] driver:location dropped — rideId mismatch '
             '(event=$eventRideId active=$activeRideId)');
         return;
       }
-      final lat = (data['latitude'] ?? data['lat']) as num?;
-      final lng = (data['longitude'] ?? data['lng']) as num?;
+      final lat = (payload['latitude'] ?? payload['lat']) as num?;
+      final lng = (payload['longitude'] ?? payload['lng']) as num?;
       if (lat == null || lng == null) {
         debugPrint(
             '[LIVE-TRACK] driver:location dropped — missing lat/lng in payload');
         return;
       }
-      final heading = (data['heading'] ?? data['bearing']) as num?;
+      final heading = (payload['heading'] ?? payload['bearing']) as num?;
       debugPrint(
           '[LIVE-TRACK] driver:location accepted ($lat, $lng) heading=$heading');
       ref.container.read(liveDriverPositionProvider.notifier).state =

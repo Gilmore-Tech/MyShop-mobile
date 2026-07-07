@@ -88,6 +88,13 @@ class RideTrackingSheet extends StatelessWidget {
                     driverFullName: driver.name,
                   ),
                   SizedBox(height: h * 0.017),
+                  if (isInProgress) ...[
+                    const Divider(
+                        height: 1, thickness: 1, color: MyShopColors.divider),
+                    SizedBox(height: h * 0.017),
+                    const _AddStopButton(),
+                    SizedBox(height: h * 0.017),
+                  ],
                   const _SafetyNotice(),
                   SizedBox(height: h * 0.021),
                   // Cancel Request is only relevant while the driver is
@@ -597,10 +604,42 @@ class _SafetyNotice extends StatelessWidget {
   }
 }
 
-// Multi-stop / "Add a stop" deferred to v1.1 — the visible button is
-// hidden above. The route + screen + REST wrapper are still on disk
-// (`add_stop_screen.dart`, `edit_trip_provider.dart`) so the v1.1
-// reactivation is just turning the entry point back on.
+// ── Add stop ─────────────────────────────────────────────────────────────────
+
+class _AddStopButton extends StatelessWidget {
+  const _AddStopButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: OutlinedButton.icon(
+        onPressed: () => context.push(AppRoutes.rideStops),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: MyShopColors.primaryGoldDark,
+          side: BorderSide(
+            color: MyShopColors.primaryGold.withValues(alpha: 0.55),
+            width: 1.5,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+        icon: const Icon(Icons.add_location_alt_outlined,
+            size: 18, color: MyShopColors.primaryGoldDark),
+        label: const Text(
+          'Add a stop',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: MyShopColors.primaryGoldDark,
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 // ── Cancel request (revealed when the sheet is pulled up) ─────────────────────
 

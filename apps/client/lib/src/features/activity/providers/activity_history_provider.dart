@@ -317,7 +317,9 @@ class ActivityHistoryNotifier extends StateNotifier<ActivityHistoryState> {
       timeLabel: _formatTime(ride.createdAt),
       status: _rideStatusToTransaction(ride.status),
       createdAt: ride.createdAt,
-      amountPesewas: ride.finalFarePesewas ?? ride.estimatedFarePesewas,
+      amountPesewas: ride.totalPaidPesewas ??
+          ride.finalFarePesewas ??
+          ride.estimatedFarePesewas,
     );
   }
 

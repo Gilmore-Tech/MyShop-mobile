@@ -110,52 +110,67 @@ class _ProviderOtpVerificationScreenState
     final freshArtisanSignup = before is AuthOtpSent &&
         before.isNewUser &&
         before.role == ProviderType.artisan;
+    final driverDraft =
+        freshDriverSignup ? ref.read(driverRegistrationProvider) : null;
+    final artisanDraft =
+        freshArtisanSignup ? ref.read(artisanRegistrationProvider) : null;
+    final driverDraftNotifier = freshDriverSignup
+        ? ref.read(driverRegistrationProvider.notifier)
+        : null;
+    final artisanDraftNotifier = freshArtisanSignup
+        ? ref.read(artisanRegistrationProvider.notifier)
+        : null;
 
     await controller.verifyOtp(code);
 
-    if (ref.read(authControllerProvider) is! AuthAuthenticated) return;
-
-    if (freshDriverSignup) {
-      final draft = ref.read(driverRegistrationProvider);
-      final hasVehicle = draft.vehicleMake.isNotEmpty ||
-          draft.vehicleModel.isNotEmpty ||
-          draft.vehicleYear.isNotEmpty ||
-          draft.vehiclePlate.isNotEmpty ||
-          draft.vehicleColor.isNotEmpty;
+    if (driverDraft != null) {
+      final hasVehicle = driverDraft.vehicleMake.trim().isNotEmpty ||
+          driverDraft.vehicleModel.trim().isNotEmpty ||
+          driverDraft.vehicleYear.trim().isNotEmpty ||
+          driverDraft.vehiclePlate.trim().isNotEmpty ||
+          driverDraft.vehicleColor.trim().isNotEmpty;
       if (hasVehicle) {
-        await controller.updateDriverProfile(
+        final error = await controller.updateDriverProfile(
           UpdateDriverProfileRequest(
-            vehicleMake:
-                draft.vehicleMake.isNotEmpty ? draft.vehicleMake : null,
-            vehicleModel:
-                draft.vehicleModel.isNotEmpty ? draft.vehicleModel : null,
-            vehicleYear:
-                draft.vehicleYear.isNotEmpty ? draft.vehicleYear : null,
-            vehiclePlate:
-                draft.vehiclePlate.isNotEmpty ? draft.vehiclePlate : null,
-            vehicleColor:
-                draft.vehicleColor.isNotEmpty ? draft.vehicleColor : null,
+            vehicleMake: driverDraft.vehicleMake.trim().isNotEmpty
+                ? driverDraft.vehicleMake.trim()
+                : null,
+            vehicleModel: driverDraft.vehicleModel.trim().isNotEmpty
+                ? driverDraft.vehicleModel.trim()
+                : null,
+            vehicleYear: driverDraft.vehicleYear.trim().isNotEmpty
+                ? driverDraft.vehicleYear.trim()
+                : null,
+            vehiclePlate: driverDraft.vehiclePlate.trim().isNotEmpty
+                ? driverDraft.vehiclePlate.trim().toUpperCase()
+                : null,
+            vehicleColor: driverDraft.vehicleColor.trim().isNotEmpty
+                ? driverDraft.vehicleColor.trim()
+                : null,
           ),
         );
+        if (error != null) {
+          debugPrint('[Auth] post-signup vehicle sync failed: $error');
+          return;
+        }
       }
-      ref
-          .read(driverRegistrationProvider.notifier)
-          .update(DriverRegistrationDraft());
-    } else if (freshArtisanSignup) {
-      final draft = ref.read(artisanRegistrationProvider);
+      driverDraftNotifier?.update(DriverRegistrationDraft());
+    } else if (artisanDraft != null) {
       // serviceRadiusKm is the only post-register artisan-only field on the
       // draft today. Only push when the user actually changed it from the
       // 5 km default so we don't overwrite a server-side default with one.
-      if (draft.serviceRadiusKm != 5) {
-        await controller.updateArtisanProfile(
+      if (artisanDraft.serviceRadiusKm != 5) {
+        final error = await controller.updateArtisanProfile(
           UpdateArtisanProfileRequest(
-            serviceRadiusKm: draft.serviceRadiusKm,
+            serviceRadiusKm: artisanDraft.serviceRadiusKm,
           ),
         );
+        if (error != null) {
+          debugPrint('[Auth] post-signup artisan sync failed: $error');
+          return;
+        }
       }
-      ref
-          .read(artisanRegistrationProvider.notifier)
-          .update(ArtisanRegistrationDraft());
+      artisanDraftNotifier?.update(ArtisanRegistrationDraft());
     }
   }
 }

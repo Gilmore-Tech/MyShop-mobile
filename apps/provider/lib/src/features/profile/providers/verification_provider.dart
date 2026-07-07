@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/di/providers.dart';
 import '../../auth/providers/current_user_provider.dart';
 import '../providers/provider_type_provider.dart';
+import '../utils/vehicle_display.dart';
 
 /// Provides the [VerificationService] backed by the app's Dio client.
 final verificationServiceProvider = Provider<VerificationService>((ref) {
@@ -348,7 +349,7 @@ final profileCompletionProvider = Provider<ProfileCompletion>((ref) {
     final items = <(bool, String)>[
       (user.fullName.isNotEmpty, 'Full name'),
       (isDocApproved(DocumentType.profilePhoto), 'Profile photo (approved)'),
-      (dp?.vehicleMake != null, 'Vehicle information'),
+      (hasCompleteDriverVehicleDetails(dp), 'Vehicle information'),
       (isDocApproved(DocumentType.ghanaCard), 'Ghana Card (approved)'),
       (
         isDocApproved(DocumentType.driversLicence),

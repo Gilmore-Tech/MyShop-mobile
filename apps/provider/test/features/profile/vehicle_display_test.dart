@@ -37,6 +37,7 @@ void main() {
     expect(driverVehicleSubtitle(profile), 'Toyota Vitz 2021');
     expect(driverVehicleName(profile), 'Toyota Vitz');
     expect(hasDriverVehicleDetails(profile), isTrue);
+    expect(hasCompleteDriverVehicleDetails(profile), isFalse);
   });
 
   test('includes plate when present', () {
@@ -50,11 +51,25 @@ void main() {
     expect(driverVehicleSubtitle(profile), 'Toyota Vitz 2021 (GR-1234-26)');
   });
 
+  test('requires the full signup vehicle record for online eligibility', () {
+    final profile = _driver(
+      make: 'Toyota',
+      model: 'Vitz',
+      year: '2021',
+      plate: 'GR-1234-26',
+      color: 'White',
+    );
+
+    expect(hasDriverVehicleDetails(profile), isTrue);
+    expect(hasCompleteDriverVehicleDetails(profile), isTrue);
+  });
+
   test('falls back only when no vehicle fields exist', () {
     final profile = _driver();
 
     expect(driverVehicleSubtitle(profile), 'Not set up yet');
     expect(driverVehicleName(profile), 'No vehicle added');
     expect(hasDriverVehicleDetails(profile), isFalse);
+    expect(hasCompleteDriverVehicleDetails(profile), isFalse);
   });
 }

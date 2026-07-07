@@ -70,6 +70,11 @@ final rideServiceProvider = Provider<RideService>((ref) {
   return RideService(ref.watch(dioProvider));
 });
 
+/// Runtime platform configuration service for feature flags and business rules.
+final platformConfigServiceProvider = Provider<PlatformConfigService>((ref) {
+  return PlatformConfigService(ref.watch(dioProvider));
+});
+
 /// Job service for artisan marketplace endpoints.
 final jobServiceProvider = Provider<JobService>((ref) {
   return JobService(ref.watch(dioProvider));

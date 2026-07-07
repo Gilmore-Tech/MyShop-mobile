@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myshop_client/src/core/di/providers.dart';
+import 'package:myshop_client/src/features/ride/providers/edit_trip_provider.dart';
 import 'package:myshop_client/src/features/ride/providers/fare_estimate_provider.dart';
 import 'package:myshop_client/src/features/ride/providers/ride_search_provider.dart';
 
@@ -119,5 +120,102 @@ void main() {
     expect(options, hasLength(1));
     expect(options.single.distanceKm, 5.4);
     expect(options.single.durationMins, 12);
+  });
+
+  test('sends ordered stops to estimate when pre-trip multistop is enabled',
+      () async {
+    late RequestOptions estimateRequest;
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test/v1'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          if (options.path == '/config/ride_multistop_pretrip_enabled') {
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: options,
+                statusCode: 200,
+                data: {
+                  'success': true,
+                  'data': {
+                    'key': 'ride_multistop_pretrip_enabled',
+                    'value': 'true',
+                  },
+                },
+              ),
+            );
+            return;
+          }
+
+          estimateRequest = options;
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: options,
+              statusCode: 200,
+              data: {
+                'success': true,
+                'data': {
+                  'distanceKm': 8.1,
+                  'durationMins': 21,
+                  'surgeMultiplier': 1.0,
+                  'categories': [
+                    {
+                      'slug': 'regular',
+                      'name': 'Regular',
+                      'estimatedFarePesewas': 3200,
+                    },
+                  ],
+                },
+              },
+            ),
+          );
+        },
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        rideServiceProvider.overrideWithValue(RideService(dio)),
+        platformConfigServiceProvider.overrideWithValue(
+          PlatformConfigService(dio),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final search = container.read(rideSearchProvider.notifier);
+    search.setLocation(
+      RideSearchField.pickup,
+      const RideLocation(
+        name: 'Current location',
+        address: 'Adum',
+        lat: 6.6885,
+        lng: -1.6244,
+      ),
+    );
+    search.setLocation(
+      RideSearchField.destination,
+      const RideLocation(
+        name: 'Bantama',
+        address: 'Bantama',
+        lat: 6.7094,
+        lng: -1.5917,
+      ),
+    );
+    container.read(tripStopsProvider.notifier).seedPreTrip(
+      pickup: (address: 'Adum', lat: 6.6885, lng: -1.6244),
+      destination: (address: 'Bantama', lat: 6.7094, lng: -1.5917),
+    );
+    container.read(tripStopsProvider.notifier).addIntermediateStop(
+          'KNUST Junction',
+          lat: 6.7012,
+          lng: -1.6168,
+        );
+
+    final options = await container.read(fareEstimateProvider.future);
+
+    expect(options, hasLength(1));
+    expect(estimateRequest.path, '/rides/estimate');
+    expect(estimateRequest.data['stops'], [
+      {'lat': 6.7012, 'lng': -1.6168},
+    ]);
   });
 }

@@ -2,6 +2,36 @@ import 'package:dio/dio.dart';
 
 import '../models/api_exception.dart';
 
+/// One GPS fix captured by the provider app.
+///
+/// Driver batches use this shape so active-trip movement can be persisted even
+/// when the app is backgrounded and Socket.IO is disconnected.
+class DriverLocationSample {
+  const DriverLocationSample({
+    required this.latitude,
+    required this.longitude,
+    this.recordedAt,
+    this.heading,
+    this.speedKmh,
+  });
+
+  final double latitude;
+  final double longitude;
+  final DateTime? recordedAt;
+  final double? heading;
+  final double? speedKmh;
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'latitude': latitude,
+      'longitude': longitude,
+      if (recordedAt != null) 'recordedAt': recordedAt!.toIso8601String(),
+      if (heading != null) 'heading': heading,
+      if (speedKmh != null) 'speedKmh': speedKmh,
+    };
+  }
+}
+
 /// REST endpoints for persisting a provider's real-time location.
 ///
 /// The backend's matcher requires `current_location IS NOT NULL` and
@@ -63,6 +93,27 @@ class LocationService {
           'latitude': latitude,
           'longitude': longitude,
           'status': status,
+        },
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// POST /location/driver/batch — persist one or more driver GPS fixes.
+  ///
+  /// The latest sample updates the driver's matcher location and heartbeat.
+  /// During an in-progress ride the backend appends each accepted sample to the
+  /// trip trail, preserving distance/fare continuity while the screen is off.
+  Future<Map<String, dynamic>> updateDriverLocationBatch({
+    required List<DriverLocationSample> samples,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/location/driver/batch',
+        data: {
+          'samples': samples.map((sample) => sample.toJson()).toList(),
         },
       );
       return _unwrap(response) as Map<String, dynamic>;
