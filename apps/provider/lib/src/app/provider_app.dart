@@ -5,6 +5,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../core/providers/app_lifecycle_provider.dart';
 import '../core/providers/availability_controller.dart';
+import '../core/providers/foreground_display_wake_lock_provider.dart';
 import '../core/providers/provider_status_provider.dart';
 import '../core/providers/socket_provider.dart';
 import '../core/services/fcm_service.dart';
@@ -123,6 +124,11 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(goRouterProvider);
+
+    // Keep the display awake only while the provider is online/busy and the
+    // app is foregrounded. Background location sync continues after this is
+    // released on pause/lock.
+    ref.watch(foregroundDisplayWakeLockProvider);
 
     // Construct FirebaseMessaging only after asynchronous startup has
     // initialized Firebase; doing it on the first frame can throw.

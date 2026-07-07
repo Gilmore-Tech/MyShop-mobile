@@ -44,5 +44,33 @@ import GoogleMaps
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    registerDisplayWakeLockChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
+  }
+
+  private func registerDisplayWakeLockChannel(binaryMessenger: FlutterBinaryMessenger) {
+    let displayChannel = FlutterMethodChannel(
+      name: "com.gilmoretech.myshopprovider/display",
+      binaryMessenger: binaryMessenger
+    )
+    displayChannel.setMethodCallHandler { call, result in
+      switch call.method {
+      case "setKeepScreenOn":
+        guard
+          let args = call.arguments as? [String: Any],
+          let enabled = args["enabled"] as? Bool
+        else {
+          result(FlutterError(
+            code: "INVALID_ARGUMENT",
+            message: "Missing enabled boolean",
+            details: nil
+          ))
+          return
+        }
+        UIApplication.shared.isIdleTimerDisabled = enabled
+        result(nil)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
   }
 }
