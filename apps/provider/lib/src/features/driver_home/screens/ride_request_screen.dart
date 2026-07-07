@@ -525,6 +525,51 @@ class _PickupInfo extends ConsumerWidget {
         ]),
       ),
 
+      // ── Intermediate stops ──────────────────────────────────────────────
+      // When booking-time stops land on the backend, or when a canonical
+      // request snapshot includes them, show drivers the full route before
+      // they accept. This is display-only; the backend remains authoritative
+      // for pricing, ordering, and whether stops exist.
+      for (final stop in ride.stops) ...[
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                  color: MyShopColors.surfaceGrey,
+                  borderRadius: BorderRadius.circular(16)),
+              child: const Icon(Icons.add_location_alt_outlined,
+                  size: 18, color: MyShopColors.warning)),
+          const SizedBox(width: 12),
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text('STOP',
+                    style: MyShopTypography.overline
+                        .copyWith(fontSize: 11, letterSpacing: 0.5)),
+                const SizedBox(height: 4),
+                Text(stop.address,
+                    style: const TextStyle(
+                        fontFamily: 'Raleway',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: MyShopColors.textPrimary)),
+              ])),
+        ]),
+        Padding(
+          padding: const EdgeInsets.only(left: 15, top: 4, bottom: 4),
+          child: Container(
+            width: 2,
+            height: 16,
+            decoration: BoxDecoration(
+              color: MyShopColors.divider,
+              borderRadius: BorderRadius.circular(1),
+            ),
+          ),
+        ),
+      ],
+
       // ── Destination row ──────────────────────────────────────────────
       // The destination was previously not surfaced on the request screen;
       // drivers were accepting blind to where the rider wanted to go.

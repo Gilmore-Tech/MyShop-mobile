@@ -114,6 +114,33 @@ Mobile contract:
 - Return the same locked `surgeMultiplier` plus the locked `estimatedFarePesewas` from `POST /rides` and every `ride:state` / `GET /rides/:id` snapshot.
 - Optional but useful: include `surgeReason` (`"high_demand"`, `"low_supply"`, `"long_eta"`) and `surgeZoneName` so mobile can make the banner more specific. Mobile remains compatible if these are absent.
 
+### 2.7 Destination edit + booking-time multistops
+
+**Problem**: mobile can now safely add mid-ride stops through `PATCH /v1/rides/:id/stops`, but related rider promises must stay backend-led so fare, route, and snapshots remain canonical:
+
+1. **Booking-time multistops** — implemented on backend branch `feature/multistop-route-updates`: `POST /v1/rides` accepts/persists optional ordered `stops`, prices the same pickup → stops → dropoff route as estimate, includes stops in snapshots, and is gated by `ride_multistop_pretrip_enabled`. Not available to users until that backend branch is deployed and the flag is enabled.
+2. **Destination edit** — there is no client endpoint to replace `dropoffLat/dropoffLng/dropoffAddress` on an active ride. This cannot be mobile-only because it must update the canonical ride, recalculate fare via Google Routes, notify driver + rider, refresh snapshots, and preserve final-fare auditability.
+
+**Ask**:
+
+- Deploy/test the backend booking-time multistop branch on staging, then enable `ride_multistop_pretrip_enabled` only for staging validation.
+- Add a dedicated destination-edit endpoint, e.g. `PATCH /v1/rides/:id/destination`, auth client-only, active rides only:
+  ```json
+  {
+    "dropoffLat": 6.7094,
+    "dropoffLng": -1.5917,
+    "dropoffAddress": "Bantama, Kumasi"
+  }
+  ```
+- Endpoint should validate pilot region/service area, recompute route/fare, persist updated dropoff + estimated fare, emit `ride:route_updated`, then emit canonical `ride:state`.
+- Response should include the full updated ride snapshot or at least `{ newFarePesewas, distanceMeters, durationSeconds }`.
+
+**Mobile impact**:
+
+- Pre-trip Add Stop is hidden unless `ride_multistop_pretrip_enabled` is true. When enabled, mobile sends the same ordered stops to estimate and booking.
+- Destination row on the in-trip Add Stop screen must remain read-only until `PATCH /rides/:id/destination` lands.
+- Mobile already treats existing backend stops as read-only and only allows editing/removing newly-added pending stops before confirmation, so the UI does not lie about route/fare state.
+
 ---
 
 ## 3. Mobile-only follow-ups (no backend dep)

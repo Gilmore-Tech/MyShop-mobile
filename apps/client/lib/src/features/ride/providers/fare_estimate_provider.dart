@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
+import 'edit_trip_provider.dart';
 import 'ride_provider.dart';
 import 'ride_search_provider.dart';
 
@@ -14,12 +15,27 @@ import 'ride_search_provider.dart';
 // per entry — the `id` IS the category slug, which the booking flow sends back
 // on POST /rides so pricing and matching stay category-exclusive.
 
+const _pretripMultistopFlagKey = 'ride_multistop_pretrip_enabled';
+
+/// Runtime flag for booking-time multi-stop rides. Defaults closed if the
+/// backend key is missing/unreachable, so production keeps the single-trip flow
+/// stable while staging tests the feature.
+final pretripMultistopEnabledProvider = FutureProvider<bool>((ref) async {
+  final config = ref.read(platformConfigServiceProvider);
+  try {
+    return await config.getBoolean(_pretripMultistopFlagKey) ?? false;
+  } catch (_) {
+    return false;
+  }
+});
+
 /// Calls POST /rides/estimate and returns a priced [VehicleOption] per active
 /// ride category. Automatically re-fetches when pickup or destination
 /// coordinates change. Returns an empty list (no error) until both
 /// coordinates are available.
 final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
   final search = ref.watch(rideSearchProvider);
+  final tripStops = ref.watch(tripStopsProvider);
   final pickup = search.pickup;
   final destination = search.destination;
 
@@ -34,12 +50,26 @@ final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
     return [];
   }
 
+  final candidateStops = tripStops
+      .where(
+        (s) =>
+            s.type == StopType.intermediate && s.lat != null && s.lng != null,
+      )
+      .toList();
+  final multistopEnabled = candidateStops.isNotEmpty
+      ? await ref.watch(pretripMultistopEnabledProvider.future)
+      : false;
+  final pricedStops = multistopEnabled
+      ? candidateStops.map((s) => {'lat': s.lat!, 'lng': s.lng!}).toList()
+      : const <Map<String, double>>[];
+
   final rideService = ref.read(rideServiceProvider);
   final result = await rideService.estimate(
     pickupLat: pickup.lat!,
     pickupLng: pickup.lng!,
     destinationLat: destination.lat!,
     destinationLng: destination.lng!,
+    stops: pricedStops.isEmpty ? null : pricedStops,
   );
 
   final surgeMultiplier =
@@ -50,7 +80,7 @@ final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
 
   developer.log(
     'Estimate: ${categories.length} categories · ${distanceKm}km '
-    '· ${durationMins}min · surge ${surgeMultiplier}x',
+    '· ${durationMins}min · ${pricedStops.length} stops · surge ${surgeMultiplier}x',
     name: 'FareEstimate',
   );
 

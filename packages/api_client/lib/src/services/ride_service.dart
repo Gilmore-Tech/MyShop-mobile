@@ -244,9 +244,9 @@ class RideService {
       final response = await _dio.patch(
         '/rides/$rideId/stops',
         data: {
-          'lat': lat,
-          'lng': lng,
-          if (address != null) 'address': address,
+          'latitude': lat,
+          'longitude': lng,
+          if (address != null) 'addressText': address,
         },
       );
       return _unwrap(response) as Map<String, dynamic>;

@@ -52,4 +52,16 @@ class PlatformConfigService {
     final cleaned = raw.replaceAll('"', '').trim();
     return num.tryParse(cleaned);
   }
+
+  /// Boolean helper for runtime feature flags. Accepts booleans encoded as
+  /// JSON/string values (`true`, `"true"`, `1`, `"1"`). Returns null when the
+  /// key exists but can't be parsed so callers can fall back safely.
+  Future<bool?> getBoolean(String key) async {
+    final raw = await get(key);
+    if (raw == null) return null;
+    final cleaned = raw.replaceAll('"', '').trim().toLowerCase();
+    if (cleaned == 'true' || cleaned == '1') return true;
+    if (cleaned == 'false' || cleaned == '0') return false;
+    return null;
+  }
 }

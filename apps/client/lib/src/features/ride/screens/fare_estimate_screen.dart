@@ -5,13 +5,16 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
 import '../providers/fare_estimate_provider.dart';
+import '../providers/edit_trip_provider.dart';
 import '../providers/ride_payment_method_provider.dart';
 import '../providers/ride_provider.dart';
 import '../providers/ride_search_provider.dart';
+import 'destination_search_screen.dart' show kNewStopSentinel;
 import '../utils/ride_error_messages.dart';
 import '../widgets/payment_method_row.dart';
 import '../widgets/pickup_destination_fields.dart';
 import '../widgets/recent_destination_card.dart';
+import '../widgets/route_stop_list.dart';
 import '../widgets/surge_pricing_banner.dart';
 import '../widgets/vehicle_option_card.dart';
 
@@ -29,7 +32,44 @@ class FareEstimateScreen extends ConsumerWidget {
   /// user reads as "the app remembered a trip I already cancelled".
   void _resetTripState(WidgetRef ref) {
     ref.read(rideSearchProvider.notifier).reset();
+    ref.read(tripStopsProvider.notifier).clear();
     ref.read(selectedVehicleProvider.notifier).state = '';
+  }
+
+  void _seedPreTripStops(WidgetRef ref, RideSearchState search) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(tripStopsProvider.notifier).seedPreTrip(
+        pickup: (
+          address: search.pickup?.address ?? search.pickup?.name,
+          lat: search.pickup?.lat,
+          lng: search.pickup?.lng,
+        ),
+        destination: (
+          address: search.destination?.address ?? search.destination?.name,
+          lat: search.destination?.lat,
+          lng: search.destination?.lng,
+        ),
+      );
+    });
+  }
+
+  List<Map<String, dynamic>> _bookingStops(
+    WidgetRef ref,
+    bool multistopEnabled,
+  ) {
+    if (!multistopEnabled) return const [];
+    return ref
+        .read(tripStopsProvider)
+        .where((s) =>
+            s.type == StopType.intermediate && s.lat != null && s.lng != null)
+        .map(
+          (s) => {
+            'lat': s.lat!,
+            'lng': s.lng!,
+            if (s.address.trim().isNotEmpty) 'addressText': s.address.trim(),
+          },
+        )
+        .toList();
   }
 
   @override
@@ -43,6 +83,11 @@ class FareEstimateScreen extends ConsumerWidget {
     final hasCoords = search.pickup?.lat != null &&
         search.destination?.lat != null &&
         !needsExactPoint;
+    final multistopEnabled =
+        ref.watch(pretripMultistopEnabledProvider).valueOrNull ?? false;
+    if (hasCoords && multistopEnabled) {
+      _seedPreTripStops(ref, search);
+    }
     final estimate = ref.watch(fareEstimateProvider);
     final options = estimate.valueOrNull;
     final estimateReady = options?.isNotEmpty == true;
@@ -99,6 +144,13 @@ class FareEstimateScreen extends ConsumerWidget {
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 16),
                         child: _ExactPointNotice(),
+                      ),
+                    ],
+                    if (hasCoords && multistopEnabled) ...[
+                      const SizedBox(height: 16),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16),
+                        child: _PreTripStopsSection(),
                       ),
                     ],
                     const SizedBox(height: 20),
@@ -160,8 +212,11 @@ class FareEstimateScreen extends ConsumerWidget {
                   // Hand the long-running matcher a container instead of
                   // `ref` — the screen disposes on the next line's `go`,
                   // and `WidgetRef` becomes unusable past the next await.
+                  final container =
+                      ProviderScope.containerOf(context, listen: false);
                   requestRideAndMatchDriver(
-                    ProviderScope.containerOf(context, listen: false),
+                    container,
+                    pretripStops: _bookingStops(ref, multistopEnabled),
                   );
                   context.go(AppRoutes.rideMatching);
                 },
@@ -281,6 +336,66 @@ class _RecentDestinationsSection extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PreTripStopsSection extends ConsumerWidget {
+  const _PreTripStopsSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final stops = ref.watch(tripStopsProvider);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: MyShopColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'TRIP STOPS',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              color: MyShopColors.textSecondary,
+              letterSpacing: 1.4,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Add stops before requesting a driver. Your fare updates with the full route.',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.35,
+              color: MyShopColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          RouteStopList(
+            stops: stops,
+            onReorder: (oldIndex, newIndex) =>
+                ref.read(tripStopsProvider.notifier).reorder(
+                      oldIndex,
+                      newIndex,
+                    ),
+            onRemove: (id) =>
+                ref.read(tripStopsProvider.notifier).removeStop(id),
+            onEditStop: (stop) => context.push(
+              AppRoutes.rideSearchPath('destination'),
+              extra: stop.id,
+            ),
+            onAddStop: () => context.push(
+              AppRoutes.rideSearchPath('destination'),
+              extra: kNewStopSentinel,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
