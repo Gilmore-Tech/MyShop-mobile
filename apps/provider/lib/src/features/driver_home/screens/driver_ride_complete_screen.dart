@@ -62,7 +62,9 @@ class _DriverRideCompleteScreenState
   }
 
   TripSummary _summaryFromRide(Ride ride) {
-    final total = ride.finalFarePesewas ?? ride.estimatedFarePesewas;
+    final total = ride.totalPaidPesewas ??
+        ride.finalFarePesewas ??
+        ride.estimatedFarePesewas;
     final commission = (total * _commissionRate).round();
     final net = total - commission;
     // Backend overwrites the estimated distance/duration columns with the

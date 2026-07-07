@@ -69,4 +69,26 @@ void main() {
     expect(receipt.taxesPesewas, 100);
     expect(receipt.driverName, 'Ama Boateng');
   });
+
+  test('builds receipts with total paid winning over gross final fare', () {
+    final receipt = buildRideReceiptFromSnapshot({
+      'id': 'ride-2',
+      'finalFarePesewas': 5100,
+      'grossFarePesewas': 5100,
+      'totalPaidPesewas': 4300,
+      'loyaltyDiscountPesewas': 800,
+      'estimatedFarePesewas': 4400,
+      'baseFare': 800,
+      'distanceFarePesewas': 3300,
+      'paymentMethod': 'cash',
+      'driver': {
+        'name': 'Kofi Driver',
+      },
+    });
+
+    expect(receipt.totalPaidPesewas, 4300);
+    expect(receipt.loyaltyDiscountPesewas, 800);
+    expect(receipt.subtotalPesewas, 5100);
+    expect(receipt.driverName, 'Kofi Driver');
+  });
 }

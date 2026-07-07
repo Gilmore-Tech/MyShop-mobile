@@ -184,7 +184,9 @@ class _RideDetailNotifier
       baseFarePesewas: (ride['baseFare'] as num?)?.toInt() ?? 0,
       distanceFarePesewas: (ride['distanceFare'] as num?)?.toInt() ?? 0,
       bookingFeePesewas: (ride['bookingFee'] as num?)?.toInt() ?? 0,
-      totalFarePesewas: (ride['totalFare'] as num?)?.toInt() ??
+      totalFarePesewas: (ride['totalPaidPesewas'] as num?)?.toInt() ??
+          (ride['amountPaidPesewas'] as num?)?.toInt() ??
+          (ride['totalFare'] as num?)?.toInt() ??
           (ride['finalFarePesewas'] as num?)?.toInt() ??
           (ride['estimatedFarePesewas'] as num?)?.toInt() ??
           0,

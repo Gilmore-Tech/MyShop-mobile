@@ -1262,7 +1262,7 @@ class _RideSnapshot {
       baseFarePesewas: asInt(json['baseFare']),
       distanceFarePesewas: asInt(json['distanceFare']),
       bookingFeePesewas: asInt(json['bookingFee']),
-      totalFarePesewas: asInt(json['totalFare']),
+      totalFarePesewas: asInt(json['totalPaidPesewas'] ?? json['totalFare']),
       surgeMultiplier: asDouble(json['surgeMultiplier'], 1.0),
     );
   }
