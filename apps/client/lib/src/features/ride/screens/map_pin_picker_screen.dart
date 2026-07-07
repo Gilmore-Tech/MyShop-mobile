@@ -151,7 +151,7 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
             ),
           );
     }
-    if (context.canPop()) context.pop();
+    if (context.canPop()) context.pop(true);
   }
 
   @override
@@ -212,7 +212,7 @@ class _MapPinPickerScreenState extends ConsumerState<MapPinPickerScreen> {
                     shape: const CircleBorder(),
                     elevation: 2,
                     child: IconButton(
-                      onPressed: () => context.pop(),
+                      onPressed: () => context.pop(false),
                       icon: const Icon(Icons.arrow_back_rounded,
                           color: MyShopColors.textPrimary),
                     ),
