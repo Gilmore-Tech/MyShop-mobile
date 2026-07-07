@@ -456,6 +456,24 @@ class _RideBreakdownSection extends StatelessWidget {
             amount: receipt.taxesDisplay,
             w: w,
           ),
+          if (receipt.promoDiscountPesewas > 0) ...[
+            SizedBox(height: h * 0.012),
+            _LineItem(
+              label: 'Promotional Discount',
+              amount: receipt.promoDiscountDisplay,
+              amountColor: MyShopColors.error,
+              w: w,
+            ),
+          ],
+          if (receipt.loyaltyDiscountPesewas > 0) ...[
+            SizedBox(height: h * 0.012),
+            _LineItem(
+              label: 'Loyalty Discount',
+              amount: receipt.loyaltyDiscountDisplay,
+              amountColor: MyShopColors.error,
+              w: w,
+            ),
+          ],
           SizedBox(height: h * 0.019),
           const Divider(height: 2, thickness: 2, color: MyShopColors.divider),
           SizedBox(height: h * 0.019),
@@ -491,8 +509,14 @@ class _RideBreakdownSection extends StatelessWidget {
 class _LineItem extends StatelessWidget {
   final String label;
   final String amount;
+  final Color? amountColor;
   final double w;
-  const _LineItem({required this.label, required this.amount, required this.w});
+  const _LineItem({
+    required this.label,
+    required this.amount,
+    this.amountColor,
+    required this.w,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -512,7 +536,7 @@ class _LineItem extends StatelessWidget {
           style: TextStyle(
             fontSize: w * 0.033,
             fontWeight: FontWeight.w500,
-            color: MyShopColors.textPrimary,
+            color: amountColor ?? MyShopColors.textPrimary,
           ),
         ),
       ],

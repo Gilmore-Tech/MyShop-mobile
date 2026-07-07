@@ -14,6 +14,7 @@ class Ride {
     required this.dropoffLng,
     required this.estimatedFarePesewas,
     this.finalFarePesewas,
+    this.totalPaidPesewas,
     required this.estimatedDistanceKm,
     required this.estimatedDurationMins,
     this.actualDistanceKm,
@@ -169,6 +170,9 @@ class Ride {
         json['finalFarePesewas'] ??
             (status == RideStatus.completed ? json['totalFare'] : null),
       ),
+      totalPaidPesewas: _optionalInt(
+        json['totalPaidPesewas'] ?? json['amountPaidPesewas'],
+      ),
       estimatedDistanceKm: _distanceKm(),
       estimatedDurationMins: _durationMins(),
       actualDistanceKm: _optionalNum(json['actualDistanceKm']) ??
@@ -220,6 +224,7 @@ class Ride {
   final double dropoffLng;
   final int estimatedFarePesewas;
   final int? finalFarePesewas;
+  final int? totalPaidPesewas;
   final double estimatedDistanceKm;
   final int estimatedDurationMins;
   final double? actualDistanceKm;
@@ -254,6 +259,9 @@ class Ride {
   String get finalFareDisplay => finalFarePesewas != null
       ? _formatGhs(finalFarePesewas!)
       : estimatedFareDisplay;
+  String get paidFareDisplay => totalPaidPesewas != null
+      ? _formatGhs(totalPaidPesewas!)
+      : finalFareDisplay;
 
   String get distanceDisplay => '${estimatedDistanceKm.toStringAsFixed(1)} km';
   String get durationDisplay => '$estimatedDurationMins mins';
@@ -275,6 +283,7 @@ class Ride {
       dropoffLng: dropoffLng,
       estimatedFarePesewas: estimatedFarePesewas,
       finalFarePesewas: finalFarePesewas,
+      totalPaidPesewas: totalPaidPesewas,
       estimatedDistanceKm: estimatedDistanceKm,
       estimatedDurationMins: estimatedDurationMins,
       actualDistanceKm: actualDistanceKm,

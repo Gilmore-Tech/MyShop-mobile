@@ -513,6 +513,15 @@ class _FareBreakdownCard extends StatelessWidget {
             amountColor: MyShopColors.error,
             w: w,
           ),
+          if (receipt.loyaltyDiscountPesewas > 0) ...[
+            SizedBox(height: h * 0.012),
+            _FareLineItem(
+              label: 'Loyalty Discount',
+              amount: '- ${_fmtGhs(receipt.loyaltyDiscountPesewas)}',
+              amountColor: MyShopColors.error,
+              w: w,
+            ),
+          ],
           SizedBox(height: h * 0.017),
           const Divider(height: 2, thickness: 2, color: MyShopColors.divider),
           SizedBox(height: h * 0.017),

@@ -33,6 +33,8 @@ class RideReceiptData {
   final int distanceFarePesewas;
   final int bookingFeePesewas;
   final int taxesPesewas;
+  final int promoDiscountPesewas;
+  final int loyaltyDiscountPesewas;
   final int totalPaidPesewas;
 
   final String dateTimeLabel; // "24 May 2024, 14:32"
@@ -51,6 +53,8 @@ class RideReceiptData {
     required this.distanceFarePesewas,
     required this.bookingFeePesewas,
     required this.taxesPesewas,
+    required this.promoDiscountPesewas,
+    required this.loyaltyDiscountPesewas,
     required this.totalPaidPesewas,
     required this.dateTimeLabel,
     required this.paymentMethodLabel,
@@ -63,6 +67,8 @@ class RideReceiptData {
   String get distanceFareDisplay => _fmt(distanceFarePesewas);
   String get bookingFeeDisplay => _fmt(bookingFeePesewas);
   String get taxesDisplay => _fmt(taxesPesewas);
+  String get promoDiscountDisplay => '- ${_fmt(promoDiscountPesewas)}';
+  String get loyaltyDiscountDisplay => '- ${_fmt(loyaltyDiscountPesewas)}';
   String get totalPaidDisplay => _fmt(totalPaidPesewas);
 }
 
@@ -109,6 +115,8 @@ class _RideReceiptNotifier
         distanceFarePesewas: fare.distanceFarePesewas,
         bookingFeePesewas: fare.bookingFeePesewas,
         taxesPesewas: fare.taxesPesewas,
+        promoDiscountPesewas: fare.promoDiscountPesewas,
+        loyaltyDiscountPesewas: fare.loyaltyDiscountPesewas,
         totalPaidPesewas: fare.totalFarePesewas,
         dateTimeLabel: ride['completedAt'] as String? ?? '',
         paymentMethodLabel: paymentLabel,
@@ -119,11 +127,10 @@ class _RideReceiptNotifier
         'getRide receipt failed (${e.statusCode}): ${e.message}',
         name: 'RideReceiptProvider',
       );
-      // Fall back to mock data so the UI is never empty during development
-      return _mockReceipts[rideId] ?? _defaultMock;
+      rethrow;
     } catch (e) {
       developer.log('getRide receipt error: $e', name: 'RideReceiptProvider');
-      return _mockReceipts[rideId] ?? _defaultMock;
+      rethrow;
     }
   }
 
@@ -144,26 +151,3 @@ class _RideReceiptNotifier
     state = await AsyncValue.guard(() => build(arg));
   }
 }
-
-// ── Mock data ──────────────────────────────────────────────────────────────────
-
-const _defaultMock = RideReceiptData(
-  rideId: 'RID-99283-GH',
-  driverName: 'Kojo Mensah',
-  vehicleDisplay: 'Toyota Corolla · GW 1234-21',
-  driverRating: 4.9,
-  pickupAddress: 'Kotoka International Airport (ACC)',
-  dropoffAddress: 'Oxford Street, Osu, Accra',
-  baseFarePesewas: 1000, // GH¢ 10.00
-  distanceKm: 12.4,
-  distanceFarePesewas: 2850, // GH¢ 28.50
-  bookingFeePesewas: 500, // GH¢  5.00
-  taxesPesewas: 200, // GH¢  2.00
-  totalPaidPesewas: 4550, // GH¢ 45.50
-  dateTimeLabel: '24 May 2024, 14:32',
-  paymentMethodLabel: 'MTN Mobile Money',
-  paymentMethodType: PaymentMethodType.mtn,
-);
-
-/// Keyed mock receipts — populate when wiring to real API.
-const _mockReceipts = <String, RideReceiptData>{};
