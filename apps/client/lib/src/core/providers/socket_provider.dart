@@ -525,30 +525,32 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // snapshots. Gated on the active ride id so the rider's marker
     // doesn't jitter from unrelated ride traffic.
     void handleDriverLocation(dynamic data) {
-      if (data is! Map<String, dynamic>) {
+      if (data is! Map) {
         debugPrint('[LIVE-TRACK] driver:location dropped — payload not Map');
         return;
       }
+      final payload = Map<String, dynamic>.from(data);
       final activeRideId = ref.container.read(activeRideIdProvider);
       if (activeRideId == null) {
         debugPrint(
             '[LIVE-TRACK] driver:location dropped — no activeRideId set');
         return;
       }
-      final eventRideId = data['rideId'] as String? ?? data['id'] as String?;
+      final eventRideId =
+          payload['rideId'] as String? ?? payload['id'] as String?;
       if (eventRideId != null && eventRideId != activeRideId) {
         debugPrint('[LIVE-TRACK] driver:location dropped — rideId mismatch '
             '(event=$eventRideId active=$activeRideId)');
         return;
       }
-      final lat = (data['latitude'] ?? data['lat']) as num?;
-      final lng = (data['longitude'] ?? data['lng']) as num?;
+      final lat = (payload['latitude'] ?? payload['lat']) as num?;
+      final lng = (payload['longitude'] ?? payload['lng']) as num?;
       if (lat == null || lng == null) {
         debugPrint(
             '[LIVE-TRACK] driver:location dropped — missing lat/lng in payload');
         return;
       }
-      final heading = (data['heading'] ?? data['bearing']) as num?;
+      final heading = (payload['heading'] ?? payload['bearing']) as num?;
       debugPrint(
           '[LIVE-TRACK] driver:location accepted ($lat, $lng) heading=$heading');
       ref.container.read(liveDriverPositionProvider.notifier).state =
