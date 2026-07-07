@@ -53,9 +53,9 @@ final locationGuardProvider = Provider<void>((ref) {
     // dispatches a job, without burning CPU.
     permissionPoll = Timer.periodic(const Duration(seconds: 15), (_) async {
       final permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        debugPrint('[LocationGuard] permission revoked — forcing offline');
+      if (permission != LocationPermission.always) {
+        debugPrint(
+            '[LocationGuard] background permission lost — forcing offline');
         await ref
             .read(availabilityControllerProvider)
             .forceOfflineDueToLocationLost();

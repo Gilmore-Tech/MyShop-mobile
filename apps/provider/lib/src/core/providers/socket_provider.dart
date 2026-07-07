@@ -88,11 +88,12 @@ final socketConnectionProvider = Provider<void>((ref) {
   }
 });
 
-/// Pipes the location stream into both the socket AND the REST endpoint
-/// so the backend can set `current_location` and `online_status = 'online'`.
+/// Pipes the location stream into the driver socket while Socket.IO is open.
 ///
-/// Socket emit = real-time, low-latency feed for the matcher.
-/// REST call   = durable write to the DB (throttled to avoid spamming).
+/// Socket emit = real-time, low-latency feed for rider/admin maps.
+/// REST writes = owned by the background location sync provider, which runs without
+/// depending on socket connectivity so background/screen-off continuity is not
+/// tied to the foreground WebSocket.
 ///
 /// Watched by the shell — activates whenever the provider is online.
 final locationSocketBridgeProvider = Provider<void>((ref) {
@@ -123,48 +124,15 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   }
 
   final socket = ref.read(socketServiceProvider);
-  final locationService = ref.read(locationServiceProvider);
   final isArtisan = ref.read(providerTypeProvider).isArtisan;
   debugPrint('[LOC] bridge: active (role=${isArtisan ? 'artisan' : 'driver'})'
       ' — listening for fixes');
 
-  Future<void> postLocation(Position position) async {
-    // Dedup against the last successful online POST so bridge re-evals
-    // (status flip, socket reconnect) and the goOnline → status-flip
-    // sequence don't double-post on top of the periodic tick. The
-    // periodic timer fires every 4 s, comfortably outside the 3 s
-    // dedup window, so steady-state heartbeats are never suppressed.
-    if (shouldSkipOnlineLocationPost()) {
-      return;
-    }
-    try {
-      if (isArtisan) {
-        await locationService.updateArtisanLocation(
-          latitude: position.latitude,
-          longitude: position.longitude,
-        );
-      } else {
-        await locationService.updateDriverLocation(
-          latitude: position.latitude,
-          longitude: position.longitude,
-        );
-      }
-      markOnlineLocationPosted();
-      debugPrint(
-        '[LOC] REST updated ${isArtisan ? 'artisan' : 'driver'} '
-        '(${position.latitude}, ${position.longitude})',
-      );
-    } catch (e) {
-      debugPrint('[LOC] REST update failed: $e');
-    }
-  }
-
-  // Driver-only: emit `driver:location:update` over the socket for the
-  // matcher's low-latency path. The backend has no artisan equivalent —
-  // every artisan emit returns DRIVER_PROFILE_REQUIRED, which floods the
-  // socket with exception events. Artisans use the REST path exclusively
-  // (postLocation below), and the matcher reads their position from the
-  // PostGIS table the REST writer updates.
+  // Driver-only: emit `driver:location:update` over the socket for the live
+  // map path. The backend has no artisan equivalent — every artisan emit
+  // returns DRIVER_PROFILE_REQUIRED, which floods the socket with exception
+  // events. Artisans use the REST path exclusively via background sync, and the
+  // matcher reads their position from the PostGIS table the REST writer updates.
   void emitDriverLocation(Position pos) {
     if (isArtisan) return;
     socket.emit('driver:location:update', {
@@ -174,33 +142,22 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
     });
   }
 
-  // Heartbeat: backend's Redis driver entry has a 5-second TTL (EDD §5.3),
-  // so we re-POST the last-known fix every 4s even when the phone is
-  // stationary. Without this, a parked driver gets force-offlined within
-  // ~5s of going online and stops receiving ride broadcasts.
-  // Backend is rate-limited to 1 update per 3s; 4s sits comfortably above.
-  //
-  // The position-stream listener below is intentionally socket-only: doing
-  // a REST POST on every fix (or even on the first fix per re-evaluation)
-  // races the heartbeat and trips the 3s rate limit, which expires the
-  // Redis entry and makes the driver invisible to the matcher.
+  // Socket heartbeat: re-emit the last-known fix every 4s while connected so a
+  // stationary driver still advances foreground rider/admin maps. Durable REST
+  // heartbeat and trip trail persistence live in backgroundLocationSyncProvider.
   final heartbeat = Timer.periodic(const Duration(seconds: 4), (_) {
     final pos = ref.read(lastKnownPositionProvider);
     if (pos == null) return;
     emitDriverLocation(pos);
-    postLocation(pos);
   });
   ref.onDispose(heartbeat.cancel);
 
   // Kick the heartbeat once immediately if we already have a cached fix —
   // otherwise the backend would wait up to 4s before seeing the driver,
   // and the rider's matcher could miss them on a freshly-online driver.
-  // This is the only "first POST" we do; the position-stream listener
-  // below intentionally does NOT post REST (heartbeat owns that channel).
   final cached = ref.read(lastKnownPositionProvider);
   if (cached != null) {
     emitDriverLocation(cached);
-    postLocation(cached);
   } else {
     // No cached fix yet (e.g. recovered into busy on a fresh launch where
     // the warm-up hadn't settled). Pull one synchronously so the matcher
@@ -217,7 +174,6 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
         );
         ref.read(lastKnownPositionProvider.notifier).state = fresh;
         emitDriverLocation(fresh);
-        postLocation(fresh);
       } catch (e) {
         debugPrint('[LOC] bridge: cold-fix fetch failed: $e');
       }

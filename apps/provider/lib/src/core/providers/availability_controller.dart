@@ -143,10 +143,17 @@ class AvailabilityController {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
     }
+    if (permission == LocationPermission.whileInUse) {
+      permission = await Geolocator.requestPermission();
+    }
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) {
       return 'Location permission is required to go online. '
           'Grant it in Settings and try again.';
+    }
+    if (permission != LocationPermission.always) {
+      return 'Set Location permission to Always / Allow all the time '
+          'so MyShop can keep you online when the screen is off.';
     }
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
