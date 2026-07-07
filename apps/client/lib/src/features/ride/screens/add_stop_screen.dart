@@ -2,10 +2,13 @@ import 'package:api_client/api_client.dart' show ApiException;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_models/shared_models.dart' as models;
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../../app/router.dart';
+import '../../../core/di/providers.dart';
 import '../providers/edit_trip_provider.dart';
+import '../providers/ride_provider.dart' show activeRideIdProvider;
 import '../screens/destination_search_screen.dart' show kNewStopSentinel;
 import '../widgets/fare_recalculation_card.dart';
 import '../widgets/route_stop_list.dart';
@@ -31,8 +34,43 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
     // would PATCH bogus addresses to the backend.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      seedTripStopsFromCurrentRide(ref.read);
+      _seedStops();
     });
+  }
+
+  Future<void> _seedStops() async {
+    final rideId = ref.read(activeRideIdProvider);
+    if (rideId != null && rideId.isNotEmpty) {
+      try {
+        final json = await ref.read(rideServiceProvider).getRide(rideId);
+        if (!mounted) return;
+        final stops = (json['stops'] as List<dynamic>?)
+                ?.whereType<Map<String, dynamic>>()
+                .map(models.RideStop.fromJson)
+                .toList() ??
+            const <models.RideStop>[];
+        ref.read(tripStopsProvider.notifier).seed(
+          pickup: (
+            address: json['pickupAddress'] as String?,
+            lat: (json['pickupLat'] as num?)?.toDouble(),
+            lng: (json['pickupLng'] as num?)?.toDouble(),
+          ),
+          destination: (
+            address: json['dropoffAddress'] as String?,
+            lat: (json['dropoffLat'] as num?)?.toDouble(),
+            lng: (json['dropoffLng'] as num?)?.toDouble(),
+          ),
+          existingStops: stops,
+        );
+        return;
+      } catch (_) {
+        // Fall through to local search state. The confirm path still requires
+        // backend coordinates for newly-added stops, so this fallback only
+        // affects what the rider sees before adding a fresh stop.
+      }
+    }
+    if (!mounted) return;
+    seedTripStopsFromCurrentRide(ref.read);
   }
 
   Future<void> _submitChanges() async {
@@ -66,6 +104,7 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
   String _friendlyError(ApiException e) {
     switch (e.errorCode) {
       case 'INVALID_STATUS_TRANSITION':
+      case 'RIDE_NOT_ACTIVE':
         return "You can't add stops once the trip has finished.";
       case 'STOP_OUT_OF_PILOT_REGION':
         return 'That location is outside the pilot service area.';
@@ -78,6 +117,9 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
   Widget build(BuildContext context) {
     final stops = ref.watch(tripStopsProvider);
     final fare = ref.watch(fareRecalculationProvider);
+    final hasProjectedFare = fare.differencePesewas != 0 ||
+        fare.extraMinutes != 0 ||
+        fare.extraKm != 0;
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
@@ -92,7 +134,7 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
                 // ── YOUR ROUTE ───────────────────────────────────────────
                 const _SectionHeader(
                   title: 'YOUR ROUTE',
-                  trailing: 'Drag to reorder',
+                  trailing: 'Add stops before confirming',
                 ),
                 const SizedBox(height: 8),
                 Padding(
@@ -114,9 +156,13 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
                 const SizedBox(height: 10),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: FareRecalculationCard(fare: fare),
+                  child: hasProjectedFare
+                      ? FareRecalculationCard(fare: fare)
+                      : _FareUpdateNotice(
+                          currentFareDisplay: fare.originalFareDisplay,
+                        ),
                 ),
-                if (fare.surgeActive) ...[
+                if (hasProjectedFare && fare.surgeActive) ...[
                   const SizedBox(height: 12),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -125,7 +171,7 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
                 ],
                 const SizedBox(height: 20),
                 // ── FARE SUMMARY (original + difference) ─────────────────
-                _FareSummaryRow(fare: fare),
+                if (hasProjectedFare) _FareSummaryRow(fare: fare),
                 if (_submitError != null) ...[
                   const SizedBox(height: 12),
                   Padding(
@@ -211,6 +257,45 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
     final fieldArg = (stop?.type == StopType.pickup) ? 'pickup' : 'destination';
     final extra = addingIntermediate ? kNewStopSentinel : stop?.id;
     context.push(AppRoutes.rideSearchPath(fieldArg), extra: extra);
+  }
+}
+
+class _FareUpdateNotice extends StatelessWidget {
+  const _FareUpdateNotice({required this.currentFareDisplay});
+
+  final String currentFareDisplay;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: MyShopColors.divider),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline_rounded,
+              size: 20, color: MyShopColors.primaryGold),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Current fare is $currentFareDisplay. After you confirm a new '
+              'stop, MyShop recalculates the road route and updates the fare '
+              'for both you and the driver.',
+              style: const TextStyle(
+                fontSize: 12,
+                height: 1.4,
+                fontWeight: FontWeight.w600,
+                color: MyShopColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

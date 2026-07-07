@@ -13,6 +13,7 @@ class RouteStopList extends StatelessWidget {
   final void Function(String id) onRemove;
   final void Function(TripStop stop) onEditStop;
   final VoidCallback onAddStop;
+  final bool allowEndpointEditing;
 
   const RouteStopList({
     super.key,
@@ -21,6 +22,7 @@ class RouteStopList extends StatelessWidget {
     required this.onRemove,
     required this.onEditStop,
     required this.onAddStop,
+    this.allowEndpointEditing = false,
   });
 
   @override
@@ -50,7 +52,7 @@ class RouteStopList extends StatelessWidget {
       children: [
         _StopCard(
           stop: pickup,
-          onTap: () => onEditStop(pickup),
+          onTap: allowEndpointEditing ? () => onEditStop(pickup) : null,
           showDragHandle: false,
         ),
         SizedBox(height: w * 0.026),
@@ -75,14 +77,16 @@ class RouteStopList extends StatelessWidget {
             itemCount: intermediates.length,
             itemBuilder: (context, index) {
               final stop = intermediates[index];
+              final canEdit = stop.isPendingNewStop;
               return Padding(
                 key: ValueKey(stop.id),
                 padding: EdgeInsets.only(bottom: w * 0.026),
                 child: _StopCard(
                   stop: stop,
-                  onTap: () => onEditStop(stop),
-                  onRemove: () => onRemove(stop.id),
-                  dragIndex: index,
+                  onTap: canEdit ? () => onEditStop(stop) : null,
+                  onRemove: canEdit ? () => onRemove(stop.id) : null,
+                  showDragHandle: canEdit,
+                  dragIndex: canEdit ? index : null,
                 ),
               );
             },
@@ -92,7 +96,7 @@ class RouteStopList extends StatelessWidget {
         SizedBox(height: w * 0.026),
         _StopCard(
           stop: destination,
-          onTap: () => onEditStop(destination),
+          onTap: allowEndpointEditing ? () => onEditStop(destination) : null,
           showDragHandle: false,
         ),
       ],
@@ -104,7 +108,7 @@ class RouteStopList extends StatelessWidget {
 
 class _StopCard extends StatelessWidget {
   final TripStop stop;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final VoidCallback? onRemove;
   final bool showDragHandle;
   final int? dragIndex;

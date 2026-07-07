@@ -897,7 +897,10 @@ class WaitingCountdownNotifier extends StateNotifier<int> {
 /// kicking this off — using the screen's `WidgetRef` past the next
 /// `await` would throw `StateError: Cannot use "ref" after the widget
 /// was disposed`. The container outlives any single widget.
-Future<void> requestRideAndMatchDriver(ProviderContainer ref) async {
+Future<void> requestRideAndMatchDriver(
+  ProviderContainer ref, {
+  List<Map<String, dynamic>> pretripStops = const [],
+}) async {
   final rideService = ref.read(rideServiceProvider);
   final search = ref.read(rideSearchProvider);
 
@@ -937,6 +940,7 @@ Future<void> requestRideAndMatchDriver(ProviderContainer ref) async {
       destinationLng: destination?.lng ?? -1.6300,
       pickupAddress: pickup?.address,
       destinationAddress: destination?.address,
+      stops: pretripStops.isEmpty ? null : pretripStops,
       paymentMethod: selectedMethod.wireValue,
       rideCategory: selectedCategory.isEmpty ? null : selectedCategory,
     );

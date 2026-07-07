@@ -153,6 +153,38 @@ class TripStopsNotifier extends StateNotifier<List<TripStop>> {
     state = [pickupRow, ...intermediates, destinationRow];
   }
 
+  /// Seed/update the booking-time route while preserving intermediate stops
+  /// the rider has already added. Used on the fare estimate screen, before a
+  /// ride id exists, so these stops are later submitted in POST /rides.
+  void seedPreTrip({
+    required ({String? address, double? lat, double? lng}) pickup,
+    required ({String? address, double? lat, double? lng}) destination,
+  }) {
+    final pickupRow = TripStop(
+      id: 'pickup',
+      type: StopType.pickup,
+      address: pickup.address ?? '',
+      lat: pickup.lat,
+      lng: pickup.lng,
+      backendStopId: 'pickup',
+    );
+    final destinationRow = TripStop(
+      id: 'destination',
+      type: StopType.destination,
+      address: destination.address ?? '',
+      lat: destination.lat,
+      lng: destination.lng,
+      backendStopId: 'destination',
+    );
+    final intermediates =
+        state.where((s) => s.type == StopType.intermediate).toList();
+    final next = [pickupRow, ...intermediates, destinationRow];
+    if (_sameStops(state, next)) return;
+    state = next;
+  }
+
+  void clear() => state = const [];
+
   void addIntermediateStop(
     String address, {
     double? lat,
@@ -202,11 +234,32 @@ class TripStopsNotifier extends StateNotifier<List<TripStop>> {
     if (oldIndex == stops.length - 1 || newIndex >= stops.length) {
       return; // never move destination
     }
+    // Only locally-added, not-yet-synced stops can be reordered. Existing
+    // stops need a backend reorder endpoint; moving them locally would make
+    // the UI lie about the real route/fare.
+    if (!stops[oldIndex].isPendingNewStop) return;
 
     if (newIndex > oldIndex) newIndex -= 1;
     final item = stops.removeAt(oldIndex);
     stops.insert(newIndex, item);
     state = stops;
+  }
+
+  bool _sameStops(List<TripStop> a, List<TripStop> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      final left = a[i];
+      final right = b[i];
+      if (left.id != right.id ||
+          left.type != right.type ||
+          left.address != right.address ||
+          left.lat != right.lat ||
+          left.lng != right.lng ||
+          left.backendStopId != right.backendStopId) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Push every locally-added intermediate stop to the backend via
@@ -235,14 +288,17 @@ class TripStopsNotifier extends StateNotifier<List<TripStop>> {
       );
       submitted++;
       developer.log(
-        'addStop OK rideId=$rideId stopId=${result['id']}',
+        'addStop OK rideId=$rideId stopId=${result['stopId'] ?? result['id']}',
         name: 'TripStops',
       );
       // Mark local row as synced so a retry doesn't re-submit.
       state = [
         for (final row in state)
           if (row.id == stop.id)
-            row.copyWith(backendStopId: result['id'] as String? ?? row.id)
+            row.copyWith(
+              backendStopId:
+                  (result['stopId'] ?? result['id']) as String? ?? row.id,
+            )
           else
             row,
       ];
