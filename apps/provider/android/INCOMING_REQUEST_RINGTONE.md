@@ -1,6 +1,6 @@
 # Android incoming-request ringtone
 
-The `incoming_requests` notification channel
+The `incoming_requests_v2` notification channel
 (`lib/src/core/services/local_notification_service.dart` →
 `_incomingRequestChannel`) plays a ringtone for new job/ride requests.
 
@@ -48,7 +48,7 @@ Android locks a channel's sound at creation time — once a user has
 the app installed, the channel's sound URI is permanent until they
 clear app data. A new ringtone needs a new channel id.
 
-The incoming-request channel was created fresh for this reason; the
+The incoming-request channel uses a versioned id for this reason; the
 existing `job_alerts` channel keeps its default sound for
 `bid_accepted` / reminder pings so we don't accidentally retune
 notifications users have already tuned in their settings.

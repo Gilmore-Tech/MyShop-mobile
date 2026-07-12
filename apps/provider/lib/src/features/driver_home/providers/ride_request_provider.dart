@@ -16,6 +16,30 @@ import '../../trips/providers/driver_trips_provider.dart';
 // The incoming ride/job request providers are in
 // core/providers/socket_provider.dart — driven by Socket.IO events.
 
+/// Ride request currently visible on the full-screen request route.
+///
+/// FCM taps, socket events and pending-request recovery can all fire within a
+/// few hundred milliseconds of each other after a background wake. This shared
+/// marker lets those entry points reuse/ignore the existing request screen
+/// instead of stacking duplicate `/ride-request` routes for the same ride.
+final visibleRideRequestIdProvider = StateProvider<String?>((_) => null);
+
+/// Ride request ids currently being hydrated/navigated from a notification tap.
+///
+/// Used as a short-lived guard so the foreground recovery bridge does not
+/// surface the same request while the tap handler is still fetching the full
+/// ride payload.
+final rideRequestNavigationInFlightProvider =
+    StateProvider<Set<String>>((_) => <String>{});
+
+/// Best-known deadline for each incoming ride request.
+///
+/// The backend's pending-request endpoint can return `expiresAt`; FCM/socket
+/// payloads may also carry it. The request screen falls back to
+/// `ride.createdAt + 30s` when no explicit deadline is available.
+final rideRequestDeadlineByIdProvider =
+    StateProvider<Map<String, DateTime>>((_) => <String, DateTime>{});
+
 /// Active-ride snapshot plus the in-flight flag used to disable buttons
 /// while the backend round-trip is pending.
 class ActiveRideState {
@@ -95,7 +119,12 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   /// payload from the request modal is good enough to render the screen.
   Future<bool> acceptRide(Ride ride) async {
     if (state.isUpdating) return false;
-    state = ActiveRideState(ride: ride, isUpdating: true);
+    // Do not expose the pre-acceptance `requested` ride through
+    // [activeRideProvider]. The shell-level recovery listener treats a
+    // non-null ride here as something it may route to /active-ride; putting
+    // a still-requested ride in this slot can bounce the driver to "No active
+    // ride" before the backend has actually assigned them.
+    state = const ActiveRideState(isUpdating: true);
     try {
       final socket = _ref.read(socketServiceProvider);
       final ack = await socket.emitWithAck(
@@ -370,6 +399,17 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       _resumeOnline();
       return;
     }
+    if (current == null && snapshot.status == RideStatus.requested) {
+      // A requested ride is still an offer, not an active ride for this
+      // driver. Keep it out of the active slot so the UI doesn't open the
+      // active-ride screen before the driver has successfully accepted.
+      developer.log(
+        'Ignoring requested ride snapshot for active slot: ${snapshot.id}',
+        name: 'ActiveRide',
+        level: 800,
+      );
+      return;
+    }
     // Backend's `ride:state` payload doesn't yet include `stops`; preserve
     // whatever we already have locally so a snapshot doesn't blow away
     // stops that arrived via `ride:route_updated` REST refetch.
@@ -388,6 +428,14 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   /// shape as [applySnapshot] but also flips the provider status to busy
   /// (recovery means we're definitely on a live ride).
   void restore(Ride ride) {
+    if (!ride.status.isActive) {
+      developer.log(
+        'Ignoring non-active ride restore: ${ride.id} (${ride.status})',
+        name: 'ActiveRide',
+        level: 800,
+      );
+      return;
+    }
     state = ActiveRideState(ride: ride);
     _setBusy();
     // Tag the ride as already surfaced so the request modal doesn't pop

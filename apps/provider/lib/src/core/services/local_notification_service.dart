@@ -198,6 +198,11 @@ class LocalNotificationService {
   /// at creation time, so the only way to give one type of urgent a
   /// different sound is its own channel id.
   ///
+  /// Channel id uses a v2 suffix because Android freezes channel sound and
+  /// importance after first creation. Upgrading the id gives already-installed
+  /// providers the intended request ringtone/sticky behavior instead of
+  /// inheriting old channel settings.
+  ///
   /// Sound resource: `res/raw/incoming_request.mp3` (or `.ogg`/`.wav`).
   /// See `res/raw/README.md` for the file the app expects. If the
   /// resource is missing, Android silently falls back to the default
@@ -205,7 +210,7 @@ class LocalNotificationService {
   /// custom ringtone.
   static const AndroidNotificationChannel _incomingRequestChannel =
       AndroidNotificationChannel(
-    'incoming_requests',
+    'incoming_requests_v2',
     'Incoming Job & Ride Requests',
     description:
         'New job and ride request alerts. Plays the MyShop ringtone for up '
@@ -260,8 +265,9 @@ class LocalNotificationService {
   }
 
   Future<void> _initialize() async {
-    const androidInit =
-        AndroidInitializationSettings('@drawable/ic_notification');
+    const androidInit = AndroidInitializationSettings(
+      '@drawable/ic_notification',
+    );
     const iosInit = DarwinInitializationSettings(
       // Permission belongs to FcmService after the first Flutter frame.
       // Keeping it out of channel initialization prevents an OS dialog from
@@ -407,10 +413,7 @@ class LocalNotificationService {
               : InterruptionLevel.active,
         ),
       ),
-      payload: json.encode({
-        NotificationPayload.keyType: type,
-        ...extras,
-      }),
+      payload: json.encode({NotificationPayload.keyType: type, ...extras}),
     );
   }
 
@@ -489,8 +492,10 @@ class LocalNotificationService {
       await player.play(AssetSource('audio/incoming_request.mp3'));
       debugPrint('[LocalNotificationService] ringtone playing');
     } catch (e) {
-      debugPrint('[LocalNotificationService] ringtone asset unavailable, '
-          'falling back to haptic-only: $e');
+      debugPrint(
+        '[LocalNotificationService] ringtone asset unavailable, '
+        'falling back to haptic-only: $e',
+      );
     }
   }
 

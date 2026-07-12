@@ -7,6 +7,7 @@ import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../core/providers/background_location_sync_provider.dart';
+import '../core/providers/pending_request_recovery_provider.dart';
 import '../core/providers/socket_provider.dart';
 import '../core/widgets/incoming_request_listener.dart';
 import '../features/artisan_home/providers/job_poller_provider.dart';
@@ -123,11 +124,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       // sends /signin/otp and /signin/role back to /signin/phone, destroying
       // the dialog as soon as it appears.
       if (auth is AuthBlockedByOtherDevice) {
-        const blockedAllowed = {
-          '/signin/phone',
-          '/signin/otp',
-          '/signin/role',
-        };
+        const blockedAllowed = {'/signin/phone', '/signin/otp', '/signin/role'};
         return blockedAllowed.contains(loc) ? null : '/signin/phone';
       }
       // AuthUnauthenticated — decide between onboarding and sign-in.
@@ -157,9 +154,8 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/signin/phone',
-        builder: (context, state) => const ProviderPhoneInputScreen(
-          mode: PhoneInputMode.signIn,
-        ),
+        builder: (context, state) =>
+            const ProviderPhoneInputScreen(mode: PhoneInputMode.signIn),
       ),
       GoRoute(
         path: '/signin/role',
@@ -201,27 +197,23 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         routes: [
           GoRoute(
             path: '/home',
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: _ProviderHomeSwitcher(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: _ProviderHomeSwitcher()),
           ),
           GoRoute(
             path: '/earnings',
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: _ProviderEarningsSwitcher(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: _ProviderEarningsSwitcher()),
           ),
           GoRoute(
             path: '/trips',
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: _ProviderTripsSwitcher(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: _ProviderTripsSwitcher()),
           ),
           GoRoute(
             path: '/account',
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: AccountSettingsScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: AccountSettingsScreen()),
           ),
         ],
       ),
@@ -238,10 +230,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       // (/account/edit, /account/vehicle/edit, /account/business/edit) now
       // redirect back to their view screens so deep links can't reach an
       // edit form. Profile changes are made by an admin on request.
-      GoRoute(
-        path: '/account/edit',
-        redirect: (context, state) => '/account',
-      ),
+      GoRoute(path: '/account/edit', redirect: (context, state) => '/account'),
       GoRoute(
         path: '/account/documents',
         builder: (context, state) => const DocumentsVerificationScreen(),
@@ -331,17 +320,15 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: 'help/article/:slug',
-            builder: (context, state) => HelpArticleRouteScreen(
-              slug: state.pathParameters['slug']!,
-            ),
+            builder: (context, state) =>
+                HelpArticleRouteScreen(slug: state.pathParameters['slug']!),
           ),
         ],
       ),
       GoRoute(
         path: '/legal/:slug',
-        builder: (context, state) => LegalDocumentRouteScreen(
-          slug: state.pathParameters['slug']!,
-        ),
+        builder: (context, state) =>
+            LegalDocumentRouteScreen(slug: state.pathParameters['slug']!),
       ),
       GoRoute(
         path: '/account/deactivate',
@@ -415,9 +402,13 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       // Ride flow routes (full-screen, no bottom nav)
       GoRoute(
         path: '/ride-request',
-        builder: (context, state) => RideRequestScreen(
-          ride: state.extra! as Ride,
-        ),
+        builder: (context, state) {
+          final extra = state.extra;
+          if (extra is Ride) {
+            return RideRequestScreen(ride: extra);
+          }
+          return const _InvalidRideRequestScreen();
+        },
       ),
       GoRoute(
         path: '/active-ride',
@@ -460,6 +451,105 @@ class _AuthRouterRefresh extends ChangeNotifier {
     _onboardingSub.close();
     _hasSeenSub.close();
     super.dispose();
+  }
+}
+
+class _InvalidRideRequestScreen extends ConsumerStatefulWidget {
+  const _InvalidRideRequestScreen();
+
+  @override
+  ConsumerState<_InvalidRideRequestScreen> createState() =>
+      _InvalidRideRequestScreenState();
+}
+
+class _InvalidRideRequestScreenState
+    extends ConsumerState<_InvalidRideRequestScreen> {
+  bool _showUnavailable = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _recover();
+    });
+  }
+
+  Future<void> _recover() async {
+    final startedAt = DateTime.now();
+    final ride = await recoverPendingRideRequest(ref);
+    if (!mounted) return;
+
+    if (ride != null) {
+      context.pushReplacement('/ride-request', extra: ride);
+      return;
+    }
+
+    // Avoid a jarring flash of "unavailable" during notification cold-start
+    // handoff. FCM tap hydration often wins within a few hundred milliseconds;
+    // keep this screen in a neutral loading state until that race settles.
+    final elapsed = DateTime.now().difference(startedAt);
+    const minimumLoading = Duration(milliseconds: 1200);
+    if (elapsed < minimumLoading) {
+      await Future<void>.delayed(minimumLoading - elapsed);
+    }
+    if (mounted) setState(() => _showUnavailable = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: MyShopColors.offWhite,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_showUnavailable)
+                  const Icon(
+                    Icons.local_taxi_outlined,
+                    color: MyShopColors.warning,
+                    size: 48,
+                  )
+                else
+                  const SizedBox(
+                    width: 42,
+                    height: 42,
+                    child: CircularProgressIndicator(strokeWidth: 3),
+                  ),
+                const SizedBox(height: 16),
+                Text(
+                  _showUnavailable
+                      ? 'Ride request unavailable'
+                      : 'Opening ride request…',
+                  style: MyShopTypography.h3,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _showUnavailable
+                      ? 'This request may have expired or been assigned already. '
+                          'Go back online to receive the next request.'
+                      : 'Checking if this request is still available.',
+                  style: MyShopTypography.body2.copyWith(
+                    color: MyShopColors.textSecondary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                if (_showUnavailable) ...[
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () => context.go('/home'),
+                    child: const Text('Back to home'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -638,11 +728,15 @@ class _DriverShellState extends ConsumerState<_DriverShell>
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           color: Color(0xF2FFFFFF),
-          border:
-              Border(top: BorderSide(color: MyShopColors.divider, width: 0.5)),
+          border: Border(
+            top: BorderSide(color: MyShopColors.divider, width: 0.5),
+          ),
           boxShadow: [
             BoxShadow(
-                color: Color(0x0D000000), blurRadius: 10, offset: Offset(0, -2))
+              color: Color(0x0D000000),
+              blurRadius: 10,
+              offset: Offset(0, -2),
+            ),
           ],
         ),
         child: SafeArea(
@@ -653,55 +747,63 @@ class _DriverShellState extends ConsumerState<_DriverShell>
               children: isArtisan
                   ? [
                       _NavTab(
-                          icon: Icons.work_outline,
-                          label: 'Jobs',
-                          isActive: currentIndex == 0,
-                          badgeCount: badges['/home'],
-                          onTap: () => _onTabTap(context, '/home')),
+                        icon: Icons.work_outline,
+                        label: 'Jobs',
+                        isActive: currentIndex == 0,
+                        badgeCount: badges['/home'],
+                        onTap: () => _onTabTap(context, '/home'),
+                      ),
                       _NavTab(
-                          icon: Icons.account_balance_wallet_outlined,
-                          label: 'Earnings',
-                          isActive: currentIndex == 1,
-                          badgeCount: badges['/earnings'],
-                          onTap: () => _onTabTap(context, '/earnings')),
+                        icon: Icons.account_balance_wallet_outlined,
+                        label: 'Earnings',
+                        isActive: currentIndex == 1,
+                        badgeCount: badges['/earnings'],
+                        onTap: () => _onTabTap(context, '/earnings'),
+                      ),
                       _NavTab(
-                          icon: Icons.assignment_outlined,
-                          label: 'My Jobs',
-                          isActive: currentIndex == 2,
-                          badgeCount: badges['/trips'],
-                          onTap: () => _onTabTap(context, '/trips')),
+                        icon: Icons.assignment_outlined,
+                        label: 'My Jobs',
+                        isActive: currentIndex == 2,
+                        badgeCount: badges['/trips'],
+                        onTap: () => _onTabTap(context, '/trips'),
+                      ),
                       _NavTab(
-                          icon: Icons.account_circle_outlined,
-                          label: 'Account',
-                          isActive: currentIndex == 3,
-                          badgeCount: badges['/account'],
-                          onTap: () => _onTabTap(context, '/account')),
+                        icon: Icons.account_circle_outlined,
+                        label: 'Account',
+                        isActive: currentIndex == 3,
+                        badgeCount: badges['/account'],
+                        onTap: () => _onTabTap(context, '/account'),
+                      ),
                     ]
                   : [
                       _NavTab(
-                          icon: Icons.dashboard_outlined,
-                          label: 'Home',
-                          isActive: currentIndex == 0,
-                          badgeCount: badges['/home'],
-                          onTap: () => _onTabTap(context, '/home')),
+                        icon: Icons.dashboard_outlined,
+                        label: 'Home',
+                        isActive: currentIndex == 0,
+                        badgeCount: badges['/home'],
+                        onTap: () => _onTabTap(context, '/home'),
+                      ),
                       _NavTab(
-                          icon: Icons.account_balance_wallet_outlined,
-                          label: 'Earnings',
-                          isActive: currentIndex == 1,
-                          badgeCount: badges['/earnings'],
-                          onTap: () => _onTabTap(context, '/earnings')),
+                        icon: Icons.account_balance_wallet_outlined,
+                        label: 'Earnings',
+                        isActive: currentIndex == 1,
+                        badgeCount: badges['/earnings'],
+                        onTap: () => _onTabTap(context, '/earnings'),
+                      ),
                       _NavTab(
-                          icon: Icons.history,
-                          label: 'Trips',
-                          isActive: currentIndex == 2,
-                          badgeCount: badges['/trips'],
-                          onTap: () => _onTabTap(context, '/trips')),
+                        icon: Icons.history,
+                        label: 'Trips',
+                        isActive: currentIndex == 2,
+                        badgeCount: badges['/trips'],
+                        onTap: () => _onTabTap(context, '/trips'),
+                      ),
                       _NavTab(
-                          icon: Icons.account_circle_outlined,
-                          label: 'Account',
-                          isActive: currentIndex == 3,
-                          badgeCount: badges['/account'],
-                          onTap: () => _onTabTap(context, '/account')),
+                        icon: Icons.account_circle_outlined,
+                        label: 'Account',
+                        isActive: currentIndex == 3,
+                        badgeCount: badges['/account'],
+                        onTap: () => _onTabTap(context, '/account'),
+                      ),
                     ],
             ),
           ),
@@ -740,8 +842,10 @@ class _NavTab extends StatelessWidget {
           children: [
             if (badgeCount != null && badgeCount! > 0)
               Badge(
-                label: Text('$badgeCount',
-                    style: const TextStyle(fontSize: 8, color: Colors.white)),
+                label: Text(
+                  '$badgeCount',
+                  style: const TextStyle(fontSize: 8, color: Colors.white),
+                ),
                 backgroundColor: MyShopColors.error,
                 child: Icon(icon, size: 24, color: color),
               )

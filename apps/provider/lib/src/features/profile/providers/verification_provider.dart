@@ -15,14 +15,10 @@ final verificationServiceProvider = Provider<VerificationService>((ref) {
 });
 
 /// Fetches the verification status (document list) from the backend.
-/// Falls back to an empty response if the endpoint is unavailable.
-final verificationStatusProvider =
-    FutureProvider<VerificationStatusResponse>((ref) async {
-  try {
-    return await ref.watch(verificationServiceProvider).getVerificationStatus();
-  } catch (_) {
-    return const VerificationStatusResponse(documents: []);
-  }
+final verificationStatusProvider = FutureProvider<VerificationStatusResponse>((
+  ref,
+) async {
+  return ref.watch(verificationServiceProvider).getVerificationStatus();
 });
 
 /// Manages document upload state.
@@ -42,10 +38,7 @@ class DocumentUploadNotifier extends StateNotifier<DocumentUploadState> {
     String? expiresAt,
   }) async {
     state = state.copyWith(
-      uploading: {
-        ...state.uploading,
-        documentType.value: true,
-      },
+      uploading: {...state.uploading, documentType.value: true},
     );
     try {
       final result = await _service.uploadDocument(
@@ -55,14 +48,8 @@ class DocumentUploadNotifier extends StateNotifier<DocumentUploadState> {
         expiresAt: expiresAt,
       );
       state = state.copyWith(
-        uploading: {
-          ...state.uploading,
-          documentType.value: false,
-        },
-        uploaded: {
-          ...state.uploaded,
-          documentType.value: true,
-        },
+        uploading: {...state.uploading, documentType.value: false},
+        uploaded: {...state.uploaded, documentType.value: true},
         remoteUrls: {
           ...state.remoteUrls,
           if (result.remoteUrl != null) documentType.value: result.remoteUrl!,
@@ -71,18 +58,12 @@ class DocumentUploadNotifier extends StateNotifier<DocumentUploadState> {
       return null;
     } on ApiException catch (e) {
       state = state.copyWith(
-        uploading: {
-          ...state.uploading,
-          documentType.value: false,
-        },
+        uploading: {...state.uploading, documentType.value: false},
       );
       return e.message;
     } catch (e) {
       state = state.copyWith(
-        uploading: {
-          ...state.uploading,
-          documentType.value: false,
-        },
+        uploading: {...state.uploading, documentType.value: false},
       );
       return 'Upload failed: $e';
     }
@@ -211,10 +192,7 @@ class LocalProfilePhotoNotifier extends StateNotifier<ProfilePhotoState> {
   /// Set the Cloudinary URL after a successful upload.
   /// This is the permanent URL that survives app restarts.
   Future<void> setCloudinaryUrl(String url) async {
-    state = ProfilePhotoState(
-      localFile: state.localFile,
-      cloudinaryUrl: url,
-    );
+    state = ProfilePhotoState(localFile: state.localFile, cloudinaryUrl: url);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_photoUrlKey(_role), url);
   }
@@ -317,26 +295,40 @@ final profileCompletionProvider = Provider<ProfileCompletion>((ref) {
   final user = ref.watch(currentUserProvider);
   if (user == null) {
     return const ProfileCompletion(
-        completed: 0, total: 1, missing: ['Sign in']);
+      completed: 0,
+      total: 1,
+      missing: ['Sign in'],
+    );
   }
 
   // Backend document statuses — drives every doc-approval check below.
   final verificationAsync = ref.watch(verificationStatusProvider);
   final isLoadingDocs = verificationAsync.isLoading;
+  final verificationUnavailable = verificationAsync.hasError;
   final docs = verificationAsync.valueOrNull;
   final providerType = ref.watch(providerTypeProvider);
   final providerTypeValue = providerType.name;
+  final profileVerificationApproved = providerType.isDriver
+      ? user.driverProfile?.verificationStatus == 'approved'
+      : user.artisanProfile?.verificationStatus == 'approved';
   final isProviderFullyApproved =
       docs?.isProviderFullyApproved(providerTypeValue) ??
-          (providerType.isDriver
-              ? user.driverProfile?.verificationStatus == 'approved'
-              : user.artisanProfile?.verificationStatus == 'approved');
+          profileVerificationApproved;
 
   // An expired document no longer satisfies verification — the provider must
   // re-upload before it counts towards going online again. /verification/status
   // returns documents for every provider role on the user, so scope each lookup
   // to the active role to prevent Driver/Artisan document bleed.
   bool isDocApproved(DocumentType type) {
+    // If the verification-status endpoint is temporarily unavailable, do not
+    // turn a verified provider into "missing documents". The authenticated
+    // profile snapshot already carries the final RM approval status; use it as
+    // a safe temporary fallback so transient API/network issues don't block
+    // verified drivers/artisans from going online. When the status endpoint is
+    // healthy, the stricter per-document expiry/current checks below remain
+    // the source of truth.
+    if (verificationUnavailable) return profileVerificationApproved;
+
     final doc = docs?.documentFor(type.value, providerType: providerTypeValue);
     return isProviderFullyApproved &&
         doc != null &&
