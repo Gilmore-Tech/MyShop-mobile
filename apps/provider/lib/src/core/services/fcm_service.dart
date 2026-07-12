@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -663,6 +664,51 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       return !DateTime.now().toUtc().isBefore(deadline.toUtc());
     }
 
+    Ride? rideRequestFromPayload(String rideId) {
+      final raw = payload['ridePayload'] ?? payload['ride_payload'];
+      if (raw is! String || raw.isEmpty) return null;
+      try {
+        final decoded = json.decode(raw);
+        if (decoded is! Map<String, dynamic>) return null;
+        final data = Map<String, dynamic>.from(decoded);
+        data['id'] ??= rideId;
+        data['rideId'] ??= rideId;
+        final ride = Ride.fromJson(data);
+        if (ride.id != rideId || ride.status != RideStatus.requested) {
+          return null;
+        }
+        return ride;
+      } catch (e) {
+        debugPrint('[FCM-tap] ride_request payload parse failed: $e');
+        return null;
+      }
+    }
+
+    Future<void> validateOpenedRideRequest(
+      String rideId,
+      DateTime? deadline,
+    ) async {
+      try {
+        final data = await ref
+            .read(rideServiceProvider)
+            .getRide(rideId)
+            .timeout(const Duration(seconds: 6));
+        final ride = Ride.fromJson(data);
+        if (ride.status == RideStatus.requested) return;
+        if (ref.read(visibleRideRequestIdProvider) != rideId) return;
+        debugPrint(
+          '[FCM-tap] opened ride_request $rideId became non-actionable '
+          '(status=${ride.status.toJson()})',
+        );
+        openRideRequestLoader(rideId, deadline);
+      } catch (e) {
+        // Keep the instant screen up on transient network/auth failures.
+        // Accept remains backend-authoritative and will fail safely if the
+        // request is no longer actionable.
+        debugPrint('[FCM-tap] ride_request background validation skipped: $e');
+      }
+    }
+
     switch (type) {
       case NotificationPayload.typeJobRequest:
         // Backend may send the job id under either `jobId` (camel) or
@@ -751,6 +797,13 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             openRideRequest(cachedRide);
             break;
           }
+        }
+        final rideFromPush = rideRequestFromPayload(rideId);
+        if (rideFromPush != null) {
+          debugPrint('[FCM-tap] opening ride_request $rideId from FCM payload');
+          openRideRequest(rideFromPush);
+          unawaited(validateOpenedRideRequest(rideId, deadline));
+          break;
         }
         ref.read(rideRequestNavigationInFlightProvider.notifier).update(
               (s) => {...s, rideId},
