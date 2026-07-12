@@ -7,6 +7,7 @@ import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../core/providers/background_location_sync_provider.dart';
+import '../core/di/providers.dart';
 import '../core/providers/pending_request_recovery_provider.dart';
 import '../core/providers/socket_provider.dart';
 import '../core/widgets/incoming_request_listener.dart';
@@ -31,6 +32,7 @@ import '../features/artisan_home/screens/job_request_screen.dart';
 import '../features/artisan_jobs/screens/artisan_jobs_screen.dart';
 import '../features/artisan_home/widgets/bid_status_banner.dart';
 import '../features/driver_home/providers/online_session_provider.dart';
+import '../features/driver_home/providers/ride_request_provider.dart';
 import '../features/driver_home/screens/active_ride_screen.dart';
 import '../features/driver_home/screens/driver_home_screen.dart';
 import '../core/providers/nav_badge_provider.dart';
@@ -407,6 +409,9 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           if (extra is Ride) {
             return RideRequestScreen(ride: extra);
           }
+          if (extra is RideRequestRouteExtra) {
+            return _RideRequestLoaderScreen(extra: extra);
+          }
           return const _InvalidRideRequestScreen();
         },
       ),
@@ -454,6 +459,170 @@ class _AuthRouterRefresh extends ChangeNotifier {
   }
 }
 
+/// Route payload for notification/deep-link taps where we know the ride id
+/// immediately but still need to hydrate the full request details from REST.
+class RideRequestRouteExtra {
+  const RideRequestRouteExtra({
+    required this.rideId,
+    this.expiresAt,
+  });
+
+  final String rideId;
+  final DateTime? expiresAt;
+}
+
+class _RideRequestLoaderScreen extends ConsumerStatefulWidget {
+  const _RideRequestLoaderScreen({required this.extra});
+
+  final RideRequestRouteExtra extra;
+
+  @override
+  ConsumerState<_RideRequestLoaderScreen> createState() =>
+      _RideRequestLoaderScreenState();
+}
+
+class _RideRequestLoaderScreenState
+    extends ConsumerState<_RideRequestLoaderScreen> {
+  bool _showUnavailable = false;
+  int _generation = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _hydrate();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _RideRequestLoaderScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.extra.rideId != widget.extra.rideId ||
+        oldWidget.extra.expiresAt != widget.extra.expiresAt) {
+      _hydrate();
+    }
+  }
+
+  Future<void> _hydrate() async {
+    final generation = ++_generation;
+    final startedAt = DateTime.now();
+    final rideId = widget.extra.rideId;
+    final deadline = widget.extra.expiresAt;
+
+    setState(() => _showUnavailable = false);
+
+    if (deadline != null) {
+      ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+            (m) => {...m, rideId: deadline},
+          );
+      if (!_isBeforeDeadline(deadline)) {
+        debugPrint('[RideRequestLoader] $rideId expired before hydrate');
+        await _recoverOrShowUnavailable(startedAt, generation);
+        return;
+      }
+    }
+
+    final ride = await _loadFastestActionableRide(rideId);
+    if (!mounted || generation != _generation) return;
+
+    if (ride != null) {
+      context.pushReplacement('/ride-request', extra: ride);
+      return;
+    }
+
+    await _showUnavailableAfterMinimumLoading(startedAt, generation);
+  }
+
+  bool _isBeforeDeadline(DateTime deadline) {
+    return DateTime.now().toUtc().isBefore(deadline.toUtc());
+  }
+
+  Future<Ride?> _loadFastestActionableRide(String rideId) {
+    final completer = Completer<Ride?>();
+    var remaining = 2;
+
+    void completeIfDone() {
+      remaining -= 1;
+      if (remaining <= 0 && !completer.isCompleted) {
+        completer.complete(null);
+      }
+    }
+
+    void track(String source, Future<Ride?> future) {
+      unawaited(
+        future.then((ride) {
+          if (ride != null && !completer.isCompleted) {
+            debugPrint('[RideRequestLoader] $rideId hydrated from $source');
+            completer.complete(ride);
+          }
+        }).catchError((Object e) {
+          debugPrint(
+              '[RideRequestLoader] $source hydrate failed for $rideId: $e');
+        }).whenComplete(completeIfDone),
+      );
+    }
+
+    track('ride snapshot', _fetchRideSnapshot(rideId));
+    track('pending request', recoverPendingRideRequestById(ref, rideId));
+
+    return completer.future.timeout(
+      const Duration(seconds: 10),
+      onTimeout: () {
+        debugPrint('[RideRequestLoader] hydrate timed out for $rideId');
+        return null;
+      },
+    );
+  }
+
+  Future<Ride?> _fetchRideSnapshot(String rideId) async {
+    final data = await ref
+        .read(rideServiceProvider)
+        .getRide(rideId)
+        .timeout(const Duration(seconds: 8));
+    final ride = Ride.fromJson(data);
+    if (ride.status == RideStatus.requested) return ride;
+    debugPrint(
+      '[RideRequestLoader] $rideId no longer actionable '
+      '(status=${ride.status.toJson()})',
+    );
+    return null;
+  }
+
+  Future<void> _recoverOrShowUnavailable(
+    DateTime startedAt,
+    int generation,
+  ) async {
+    final ride = await recoverPendingRideRequest(ref);
+    if (!mounted || generation != _generation) return;
+
+    if (ride != null) {
+      context.pushReplacement('/ride-request', extra: ride);
+      return;
+    }
+
+    await _showUnavailableAfterMinimumLoading(startedAt, generation);
+  }
+
+  Future<void> _showUnavailableAfterMinimumLoading(
+    DateTime startedAt,
+    int generation,
+  ) async {
+    final elapsed = DateTime.now().difference(startedAt);
+    const minimumLoading = Duration(milliseconds: 2500);
+    if (elapsed < minimumLoading) {
+      await Future<void>.delayed(minimumLoading - elapsed);
+    }
+    if (mounted && generation == _generation) {
+      setState(() => _showUnavailable = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _RideRequestOpeningScaffold(showUnavailable: _showUnavailable);
+  }
+}
+
 class _InvalidRideRequestScreen extends ConsumerStatefulWidget {
   const _InvalidRideRequestScreen();
 
@@ -488,12 +657,23 @@ class _InvalidRideRequestScreenState
     // handoff. FCM tap hydration often wins within a few hundred milliseconds;
     // keep this screen in a neutral loading state until that race settles.
     final elapsed = DateTime.now().difference(startedAt);
-    const minimumLoading = Duration(milliseconds: 1200);
+    const minimumLoading = Duration(milliseconds: 2500);
     if (elapsed < minimumLoading) {
       await Future<void>.delayed(minimumLoading - elapsed);
     }
     if (mounted) setState(() => _showUnavailable = true);
   }
+
+  @override
+  Widget build(BuildContext context) {
+    return _RideRequestOpeningScaffold(showUnavailable: _showUnavailable);
+  }
+}
+
+class _RideRequestOpeningScaffold extends StatelessWidget {
+  const _RideRequestOpeningScaffold({required this.showUnavailable});
+
+  final bool showUnavailable;
 
   @override
   Widget build(BuildContext context) {
@@ -506,7 +686,7 @@ class _InvalidRideRequestScreenState
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (_showUnavailable)
+                if (showUnavailable)
                   const Icon(
                     Icons.local_taxi_outlined,
                     color: MyShopColors.warning,
@@ -520,16 +700,16 @@ class _InvalidRideRequestScreenState
                   ),
                 const SizedBox(height: 16),
                 Text(
-                  _showUnavailable
-                      ? 'Ride request unavailable'
+                  showUnavailable
+                      ? 'Request expired or assigned'
                       : 'Opening ride request…',
                   style: MyShopTypography.h3,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _showUnavailable
-                      ? 'This request may have expired or been assigned already. '
+                  showUnavailable
+                      ? 'This request has expired or was assigned already. '
                           'Go back online to receive the next request.'
                       : 'Checking if this request is still available.',
                   style: MyShopTypography.body2.copyWith(
@@ -537,7 +717,7 @@ class _InvalidRideRequestScreenState
                   ),
                   textAlign: TextAlign.center,
                 ),
-                if (_showUnavailable) ...[
+                if (showUnavailable) ...[
                   const SizedBox(height: 24),
                   ElevatedButton(
                     onPressed: () => context.go('/home'),
