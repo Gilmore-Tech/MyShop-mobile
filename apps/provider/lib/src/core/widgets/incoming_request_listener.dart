@@ -81,9 +81,7 @@ class _IncomingRequestListenerState
       // this transient state, then surface the same request UI used by
       // socket/push delivery.
       ref.read(activeRideProvider.notifier).clearRide();
-      if (currentLocation != '/ride-request') {
-        context.push('/ride-request', extra: ride);
-      }
+      _goToRideRequest(context, ride, ref);
       return;
     }
 
@@ -173,6 +171,20 @@ class _IncomingRequestListenerState
   void _goToRideRequest(BuildContext context, Ride ride, WidgetRef ref) {
     // Clear the incoming state so the listener doesn't re-trigger on rebuild.
     ref.read(incomingRideRequestProvider.notifier).state = null;
+    final visibleId = ref.read(visibleRideRequestIdProvider);
+    if (visibleId == ride.id) {
+      debugPrint('[IncomingRequestListener] ride ${ride.id} already visible');
+      return;
+    }
+
+    final currentLocation = GoRouterState.of(context).matchedLocation;
+    if (currentLocation == '/ride-request') {
+      debugPrint('[IncomingRequestListener] replacing ride request with '
+          '${ride.id}');
+      context.pushReplacement('/ride-request', extra: ride);
+      return;
+    }
+
     context.push('/ride-request', extra: ride);
   }
 

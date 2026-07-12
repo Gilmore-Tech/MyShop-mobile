@@ -16,6 +16,30 @@ import '../../trips/providers/driver_trips_provider.dart';
 // The incoming ride/job request providers are in
 // core/providers/socket_provider.dart — driven by Socket.IO events.
 
+/// Ride request currently visible on the full-screen request route.
+///
+/// FCM taps, socket events and pending-request recovery can all fire within a
+/// few hundred milliseconds of each other after a background wake. This shared
+/// marker lets those entry points reuse/ignore the existing request screen
+/// instead of stacking duplicate `/ride-request` routes for the same ride.
+final visibleRideRequestIdProvider = StateProvider<String?>((_) => null);
+
+/// Ride request ids currently being hydrated/navigated from a notification tap.
+///
+/// Used as a short-lived guard so the foreground recovery bridge does not
+/// surface the same request while the tap handler is still fetching the full
+/// ride payload.
+final rideRequestNavigationInFlightProvider =
+    StateProvider<Set<String>>((_) => <String>{});
+
+/// Best-known deadline for each incoming ride request.
+///
+/// The backend's pending-request endpoint can return `expiresAt`; FCM/socket
+/// payloads may also carry it. The request screen falls back to
+/// `ride.createdAt + 30s` when no explicit deadline is available.
+final rideRequestDeadlineByIdProvider =
+    StateProvider<Map<String, DateTime>>((_) => <String, DateTime>{});
+
 /// Active-ride snapshot plus the in-flight flag used to disable buttons
 /// while the backend round-trip is pending.
 class ActiveRideState {

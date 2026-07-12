@@ -11,6 +11,7 @@ import '../../features/artisan_home/providers/active_job_provider.dart';
 import '../../features/artisan_home/providers/job_poller_provider.dart';
 import '../../features/artisan_home/widgets/rate_client_sheet.dart';
 import '../../features/auth/providers/auth_controller.dart';
+import '../../features/driver_home/providers/ride_request_provider.dart';
 import '../../features/driver_home/widgets/rate_passenger_sheet.dart';
 import '../di/providers.dart';
 import '../providers/pending_request_recovery_provider.dart';
@@ -67,8 +68,7 @@ bool _shouldSkipLocalBackgroundRender(RemoteMessage message) {
   final rawType = message.data[NotificationPayload.keyType]?.toString() ?? '';
   final type = NotificationPayload.normaliseType(rawType);
 
-  final shouldUseLocalRequestAlert =
-      Platform.isAndroid &&
+  final shouldUseLocalRequestAlert = Platform.isAndroid &&
       NotificationPayload.fullScreenRequestTypes.contains(type);
   if (shouldUseLocalRequestAlert) {
     debugPrint(
@@ -273,8 +273,8 @@ class FcmService {
       if (type == NotificationPayload.typeNewMessage) {
         final bookingId =
             (message.data[NotificationPayload.keyBookingId] as String?) ??
-            (message.data[NotificationPayload.keyJobId] as String?) ??
-            (message.data[NotificationPayload.keyRideId] as String?);
+                (message.data[NotificationPayload.keyJobId] as String?) ??
+                (message.data[NotificationPayload.keyRideId] as String?);
         if (_isOnChatScreenFor(bookingId)) {
           debugPrint(
             '[FCM] foreground new_message — on chat screen, suppressing',
@@ -549,9 +549,8 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     // direct paths (onMessageOpenedApp + getInitialMessage) hand us the
     // raw `message.data` map — so we have to normalise here too, otherwise
     // every background / cold-start tap fell through to the default case.
-    final type = rawType == null
-        ? null
-        : NotificationPayload.normaliseType(rawType);
+    final type =
+        rawType == null ? null : NotificationPayload.normaliseType(rawType);
     final router = ref.read(goRouterProvider);
     debugPrint('[FCM-tap] type=$type (raw=$rawType)');
 
@@ -560,6 +559,32 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     String? jobIdFromPayload() =>
         (payload[NotificationPayload.keyJobId] as String?) ??
         (payload['job_id'] as String?);
+
+    DateTime? requestDeadlineFromPayload() {
+      for (final key in const [
+        'expiresAt',
+        'expires_at',
+        'acceptanceExpiresAt',
+        'acceptance_expires_at',
+        'requestExpiresAt',
+        'request_expires_at',
+      ]) {
+        final raw = payload[key];
+        if (raw is String && raw.isNotEmpty) {
+          final parsed = DateTime.tryParse(raw);
+          if (parsed != null) return parsed;
+        }
+      }
+
+      final seconds = payload['expiresInSeconds'] ??
+          payload['expires_in_seconds'] ??
+          payload['acceptanceWindowSeconds'] ??
+          payload['acceptance_window_seconds'];
+      if (seconds is num && seconds > 0) {
+        return DateTime.now().toUtc().add(Duration(seconds: seconds.toInt()));
+      }
+      return null;
+    }
 
     // Shared landing path for every job-context tap that drops the user
     // on /active-job (bid accepted, supplement decisions, reminders,
@@ -604,8 +629,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         // Backend may send the job id under either `jobId` (camel) or
         // `job_id` (snake) depending on which emitter wrote the push;
         // accept both so a casing drift doesn't silently route to /home.
-        final jobId =
-            (payload[NotificationPayload.keyJobId] as String?) ??
+        final jobId = (payload[NotificationPayload.keyJobId] as String?) ??
             (payload['job_id'] as String?);
         debugPrint('[FCM-tap] job_request jobId=$jobId payload=$payload');
         if (jobId == null) {
@@ -650,14 +674,23 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       case NotificationPayload.typeRideRequest:
         // Backend may send the ride id under `rideId` (camel) or `ride_id`
         // (snake) depending on which emitter wrote the push.
-        final rideId =
-            (payload[NotificationPayload.keyRideId] as String?) ??
+        final rideId = (payload[NotificationPayload.keyRideId] as String?) ??
             (payload['ride_id'] as String?);
         debugPrint('[FCM-tap] ride_request rideId=$rideId payload=$payload');
         if (rideId == null) {
           router.go('/home');
           debugPrint('[FCM-tap] no rideId in payload — running recovery');
           await recoverPendingRequestsNow(ref);
+          break;
+        }
+        final deadline = requestDeadlineFromPayload();
+        if (deadline != null) {
+          ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+                (m) => {...m, rideId: deadline},
+              );
+        }
+        if (ref.read(visibleRideRequestIdProvider) == rideId) {
+          debugPrint('[FCM-tap] ride_request $rideId already visible');
           break;
         }
         // Suppress the foreground re-broadcast modal for this ride — the
@@ -669,23 +702,36 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         if (ref.read(incomingRideRequestProvider)?.id == rideId) {
           ref.read(incomingRideRequestProvider.notifier).state = null;
         }
-        // Land on /home as a holding view while we hydrate, then push the
-        // ride-request screen with the real Ride. Driving the same screen
-        // the socket listener uses keeps the accept / decline flow on a
-        // single code path.
-        router.go('/home');
+        ref.read(rideRequestNavigationInFlightProvider.notifier).update(
+              (s) => {...s, rideId},
+            );
         try {
           final data = await ref.read(rideServiceProvider).getRide(rideId);
           final ride = Ride.fromJson(data);
-          debugPrint('[FCM-tap] pushing /ride-request for $rideId');
-          router.push('/ride-request', extra: ride);
+          if (ref.read(visibleRideRequestIdProvider) == rideId) {
+            debugPrint('[FCM-tap] ride_request $rideId became visible while '
+                'hydrating');
+            break;
+          }
+          final currentPath =
+              router.routerDelegate.currentConfiguration.uri.path;
+          debugPrint('[FCM-tap] opening /ride-request for $rideId');
+          if (currentPath == '/ride-request') {
+            router.pushReplacement('/ride-request', extra: ride);
+          } else {
+            router.push('/ride-request', extra: ride);
+          }
         } catch (e) {
           debugPrint('[FCM-tap] ride-request hydrate failed for $rideId: $e');
-          // Stay on /home and ask the backend for any still-actionable
-          // provider request. This covers cold-start/process-sleep taps where
-          // the push carried an id but GET /rides/:id raced the dispatch
-          // window or the in-memory socket payload was lost.
+          // Ask the backend for any still-actionable provider request. This
+          // covers cold-start/process-sleep taps where the push carried an id
+          // but GET /rides/:id raced the dispatch window or the in-memory
+          // socket payload was lost.
           await recoverPendingRequestsNow(ref);
+        } finally {
+          ref.read(rideRequestNavigationInFlightProvider.notifier).update(
+                (s) => {...s}..remove(rideId),
+              );
         }
         break;
 
@@ -762,7 +808,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         final jobId = payload[NotificationPayload.keyJobId] as String?;
         final bookingId =
             (payload[NotificationPayload.keyBookingId] as String?) ??
-            (bookingType == ChatBookingType.ride ? rideId : jobId);
+                (bookingType == ChatBookingType.ride ? rideId : jobId);
         if (bookingType == null || bookingId == null || bookingId.isEmpty) {
           router.go('/messages');
           break;
@@ -816,9 +862,9 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             payload[NotificationPayload.keyBookingType] as String?;
         final bookingId =
             (payload[NotificationPayload.keyBookingId] as String?) ??
-            (bookingType == 'ride'
-                ? payload[NotificationPayload.keyRideId] as String?
-                : payload[NotificationPayload.keyJobId] as String?);
+                (bookingType == 'ride'
+                    ? payload[NotificationPayload.keyRideId] as String?
+                    : payload[NotificationPayload.keyJobId] as String?);
         if (bookingId == null || bookingId.isEmpty) {
           router.go('/home');
           break;
