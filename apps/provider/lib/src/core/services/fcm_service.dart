@@ -624,6 +624,45 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       }
     }
 
+    void openRideRequest(Ride ride) {
+      final currentPath = router.routerDelegate.currentConfiguration.uri.path;
+      debugPrint('[FCM-tap] opening /ride-request for ${ride.id}');
+      if (currentPath == '/ride-request') {
+        router.pushReplacement('/ride-request', extra: ride);
+      } else {
+        router.push('/ride-request', extra: ride);
+      }
+    }
+
+    void openRideRequestLoader(String rideId, DateTime? deadline) {
+      final currentPath = router.routerDelegate.currentConfiguration.uri.path;
+      final extra = RideRequestRouteExtra(
+        rideId: rideId,
+        expiresAt: deadline,
+      );
+      debugPrint('[FCM-tap] opening /ride-request loader for $rideId');
+      if (currentPath == '/ride-request') {
+        router.pushReplacement('/ride-request', extra: extra);
+      } else {
+        router.push('/ride-request', extra: extra);
+      }
+    }
+
+    Future<bool> recoverAndOpenPendingRideRequest(String reason) async {
+      debugPrint('[FCM-tap] ride_request recovery: $reason');
+      final recovered = await recoverPendingRideRequestFromRef(ref);
+      if (recovered == null) {
+        debugPrint('[FCM-tap] ride_request recovery found no active request');
+        return false;
+      }
+      openRideRequest(recovered);
+      return true;
+    }
+
+    bool requestDeadlineExpired(DateTime deadline) {
+      return !DateTime.now().toUtc().isBefore(deadline.toUtc());
+    }
+
     switch (type) {
       case NotificationPayload.typeJobRequest:
         // Backend may send the job id under either `jobId` (camel) or
@@ -688,6 +727,12 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           ref.read(rideRequestDeadlineByIdProvider.notifier).update(
                 (m) => {...m, rideId: deadline},
               );
+          if (requestDeadlineExpired(deadline)) {
+            debugPrint('[FCM-tap] ride_request $rideId expired before tap');
+            router.go('/home');
+            await recoverAndOpenPendingRideRequest('payload deadline expired');
+            break;
+          }
         }
         if (ref.read(visibleRideRequestIdProvider) == rideId) {
           debugPrint('[FCM-tap] ride_request $rideId already visible');
@@ -700,39 +745,20 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             .read(surfacedRideIdsProvider.notifier)
             .update((s) => {...s, rideId});
         if (ref.read(incomingRideRequestProvider)?.id == rideId) {
+          final cachedRide = ref.read(incomingRideRequestProvider);
           ref.read(incomingRideRequestProvider.notifier).state = null;
+          if (cachedRide != null && cachedRide.status == RideStatus.requested) {
+            openRideRequest(cachedRide);
+            break;
+          }
         }
         ref.read(rideRequestNavigationInFlightProvider.notifier).update(
               (s) => {...s, rideId},
             );
-        try {
-          final data = await ref.read(rideServiceProvider).getRide(rideId);
-          final ride = Ride.fromJson(data);
-          if (ref.read(visibleRideRequestIdProvider) == rideId) {
-            debugPrint('[FCM-tap] ride_request $rideId became visible while '
-                'hydrating');
-            break;
-          }
-          final currentPath =
-              router.routerDelegate.currentConfiguration.uri.path;
-          debugPrint('[FCM-tap] opening /ride-request for $rideId');
-          if (currentPath == '/ride-request') {
-            router.pushReplacement('/ride-request', extra: ride);
-          } else {
-            router.push('/ride-request', extra: ride);
-          }
-        } catch (e) {
-          debugPrint('[FCM-tap] ride-request hydrate failed for $rideId: $e');
-          // Ask the backend for any still-actionable provider request. This
-          // covers cold-start/process-sleep taps where the push carried an id
-          // but GET /rides/:id raced the dispatch window or the in-memory
-          // socket payload was lost.
-          await recoverPendingRequestsNow(ref);
-        } finally {
-          ref.read(rideRequestNavigationInFlightProvider.notifier).update(
-                (s) => {...s}..remove(rideId),
-              );
-        }
+        openRideRequestLoader(rideId, deadline);
+        ref.read(rideRequestNavigationInFlightProvider.notifier).update(
+              (s) => {...s}..remove(rideId),
+            );
         break;
 
       case NotificationPayload.typeBidAccepted:

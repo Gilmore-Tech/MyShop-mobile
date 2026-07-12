@@ -5,11 +5,13 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../core/providers/app_lifecycle_provider.dart';
 import '../core/providers/availability_controller.dart';
+import '../core/providers/background_location_sync_provider.dart';
 import '../core/providers/foreground_display_wake_lock_provider.dart';
 import '../core/providers/pending_request_recovery_provider.dart';
 import '../core/providers/provider_status_provider.dart';
 import '../core/providers/socket_provider.dart';
 import '../core/services/fcm_service.dart';
+import '../features/driver_home/providers/online_session_provider.dart';
 import '../features/artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../features/auth/providers/auth_controller.dart';
 import '../features/earnings/providers/earnings_providers.dart';
@@ -130,6 +132,20 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
     // app is foregrounded. Background location sync continues after this is
     // released on pause/lock.
     ref.watch(foregroundDisplayWakeLockProvider);
+
+    final auth = ref.watch(authControllerProvider);
+    if (auth is AuthAuthenticated) {
+      // Keep provider availability infrastructure alive across every
+      // authenticated route, not only the bottom-tab shell. Full-screen flows
+      // such as /ride-request, /active-ride, /chat, /notifications and account
+      // subpages sit outside the shell; if these providers are only watched
+      // there, a provider who backgrounds from those screens can lose the
+      // socket/location heartbeat and look offline to the backend.
+      ref.watch(socketConnectionProvider);
+      ref.watch(locationSocketBridgeProvider);
+      ref.watch(backgroundLocationSyncProvider);
+      ref.watch(onlineSessionRecorderProvider);
+    }
 
     // Construct FirebaseMessaging only after asynchronous startup has
     // initialized Firebase; doing it on the first frame can throw.

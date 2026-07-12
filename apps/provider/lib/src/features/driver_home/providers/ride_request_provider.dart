@@ -36,7 +36,7 @@ final rideRequestNavigationInFlightProvider =
 ///
 /// The backend's pending-request endpoint can return `expiresAt`; FCM/socket
 /// payloads may also carry it. The request screen falls back to
-/// `ride.createdAt + 30s` when no explicit deadline is available.
+/// `ride.createdAt + 45s` when no explicit deadline is available.
 final rideRequestDeadlineByIdProvider =
     StateProvider<Map<String, DateTime>>((_) => <String, DateTime>{});
 
@@ -183,7 +183,7 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   /// Decline an incoming ride. Fires `ride:decline` to the backend so the
   /// matcher immediately moves on to the next driver instead of waiting
   /// for the acceptance window to expire. Fire-and-forget — the request
-  /// screen pops regardless of network state, and the 30 s matcher timeout
+  /// screen pops regardless of network state, and the 45 s matcher timeout
   /// is the safety net if the emit never lands.
   void declineRide(String rideId, {String? reason}) {
     try {

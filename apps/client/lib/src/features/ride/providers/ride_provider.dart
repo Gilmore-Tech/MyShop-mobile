@@ -696,6 +696,17 @@ class MatcherProgress {
 
 final matcherProgressProvider = StateProvider<MatcherProgress?>((_) => null);
 
+/// Rider-side worst-case matching wait ceiling.
+///
+/// Backend matching budget with the current config:
+///   initial 45 s driver acceptance window
+///   + 4 radius expansions (3 → 5 → 7 → 9 km) at 45 s each
+///   + 30 s buffer for the 10 s cron jitter / push propagation.
+///
+/// The backend remains the source of truth for the final outcome; this local
+/// ceiling only bounds our socket re-join / REST hydration loop.
+const int kRideMatchingSearchCeilingSeconds = 255;
+
 class BookingPhaseNotifier extends StateNotifier<BookingPhase> {
   BookingPhaseNotifier() : super(BookingPhase.idle);
 
@@ -713,15 +724,15 @@ final matchedDriverProvider = StateProvider<MatchedDriver?>((_) => null);
 final activeRideIdProvider = StateProvider<String?>((_) => null);
 
 /// Countdown timer (seconds remaining during search phase). Sized to cover
-/// the backend's full matching budget: initial 30 s window + 4 radius
-/// expansions (3 → 5 → 7 → 9 km) at 30 s each + a 30 s buffer for the 10 s
-/// cron jitter and the post-dispatch propagation. Without this buffer the
+/// the backend's full matching budget: initial 45 s window + 4 radius
+/// expansions (3 → 5 → 7 → 9 km) at 45 s each + a 30 s buffer for the 10 s
+/// cron jitter and post-dispatch propagation. Without this buffer the
 /// local loop fires `failWith` ahead of the backend's real verdict — the
 /// rider sees a generic "couldn't find a driver in time" while the matcher
 /// is still trying. Keep this in lockstep with `MAX_MATCH_RADIUS_KM`,
 /// `RIDE_RADIUS_EXPANSION_KM`, `RIDE_DRIVER_ACCEPTANCE_WINDOW_SECS`.
 final searchCountdownProvider = StateNotifierProvider<CountdownNotifier, int>(
-  (_) => CountdownNotifier(180),
+  (_) => CountdownNotifier(kRideMatchingSearchCeilingSeconds),
 );
 
 class CountdownNotifier extends StateNotifier<int> {
@@ -731,7 +742,7 @@ class CountdownNotifier extends StateNotifier<int> {
     if (state > 0) state--;
   }
 
-  void reset() => state = 45;
+  void reset() => state = kRideMatchingSearchCeilingSeconds;
 }
 
 /// ETA countdown (minutes) during an active ride
@@ -1043,14 +1054,14 @@ Future<void> requestRideAndMatchDriver(
   //      one-shot at the 10s mark — fine when the driver accepts in <10s,
   //      but if the driver took 11s+ the hydrate saw `status: requested`
   //      and bailed, leaving the rider stranded for the rest of the
-  //      45s window. Polling at 10s intervals (≈ 4 calls per matching
+  //      45s window. Polling at 10s intervals (≈ 5 calls per matching
   //      window) sits well under the backend's 30 req/min throttle.
-  // 180 s == backend matching budget: 30 s initial window + 4 radius
-  // expansions (each waiting 30 s for the cron) + 30 s buffer for jitter.
+  // 255 s == backend matching budget: 45 s initial window + 4 radius
+  // expansions (each waiting 45 s for the cron) + 30 s buffer for jitter.
   // Loop bails early on success, failure, or rider cancel — this is just
   // the worst-case ceiling so we don't outlast the backend's verdict.
   final socket = ref.read(socketServiceProvider);
-  for (var i = 0; i < 180; i++) {
+  for (var i = 0; i < kRideMatchingSearchCeilingSeconds; i++) {
     await Future<void>.delayed(const Duration(seconds: 1));
     if (ref.read(rideMatchedViaSocketProvider)) return;
     if (ref.read(bookingPhaseProvider) == BookingPhase.failed) return;
@@ -1081,7 +1092,8 @@ Future<void> requestRideAndMatchDriver(
   // the REST hydrate at the 10 s cadence above will catch the final
   // state on its next tick.
   developer.log(
-    'Matching loop ceiling reached (180 s) — deferring final state to '
+    'Matching loop ceiling reached ($kRideMatchingSearchCeilingSeconds s) — '
+    'deferring final state to '
     'backend snapshot. phase=${ref.read(bookingPhaseProvider)}',
     name: 'RideProvider',
   );

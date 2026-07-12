@@ -136,7 +136,7 @@ class NotificationPayload {
 
   /// Subset of [urgentTypes] that get the call-style "incoming request"
   /// treatment when delivered to a backgrounded Android app: full-screen
-  /// intent, sticky (`ongoing: true`), and a 40-second `setTimeoutAfter`
+  /// intent, sticky (`ongoing: true`), and a 45-second `setTimeoutAfter`
   /// so the OS auto-dismisses the banner if the provider doesn't act.
   /// Backend pairs this with an Android-data-only push so FCM's auto
   /// banner doesn't fire on top of our local notification (see
@@ -146,11 +146,14 @@ class NotificationPayload {
     typeRideRequest,
   };
 
-  /// Auto-dismiss window for the Android full-screen banner. Mirrors the
-  /// 40 s foreground modal timer in `incoming_job_modal.dart` and
-  /// `ride_request_screen.dart` so the OS-level alert is silenced at
-  /// the same moment the in-app countdown elapses.
-  static const Duration fullScreenRequestTimeout = Duration(seconds: 40);
+  /// Auto-dismiss window for the Android full-screen banner.
+  ///
+  /// Ride requests are only actionable for the backend matcher window
+  /// (`ride_driver_acceptance_window_secs`, currently 45 s). Keeping the
+  /// OS notification alive beyond that creates a dead-tap window where the
+  /// driver can open an already-expired request and land on the unavailable
+  /// fallback screen.
+  static const Duration fullScreenRequestTimeout = Duration(seconds: 45);
 
   /// Types that should render through the dedicated `chat_messages` channel
   /// (Android) / `MESSAGE` category (iOS) so the OS treats them like
@@ -214,7 +217,7 @@ class LocalNotificationService {
     'Incoming Job & Ride Requests',
     description:
         'New job and ride request alerts. Plays the MyShop ringtone for up '
-        'to 30 seconds so you can hear it across the room.',
+        'to 45 seconds so you can hear it across the room.',
     importance: Importance.max,
     playSound: true,
     sound: RawResourceAndroidNotificationSound('incoming_request'),
@@ -348,7 +351,7 @@ class LocalNotificationService {
     final isFullScreenRequest =
         NotificationPayload.fullScreenRequestTypes.contains(type);
     // Order matters: the incoming-request channel is the "most specific"
-    // urgent path (custom ringtone, sticky, 40 s timeout). Falling back
+    // urgent path (custom ringtone, sticky, 45 s timeout). Falling back
     // to _urgentChannel for the rest of the urgent set keeps bid_accepted
     // / reminder pings on the original sound profile users have already
     // tuned.
@@ -391,7 +394,7 @@ class LocalNotificationService {
           // behavior). Incoming-request types additionally stick
           // (`ongoing: true`) so the user can't accidentally swipe the
           // call-style banner away mid-pocket; the OS clears it via
-          // `timeoutAfter` after the 40 s window OR when the user taps.
+          // `timeoutAfter` after the 45 s window OR when the user taps.
           autoCancel: true,
           ongoing: isFullScreenRequest,
           timeoutAfter: isFullScreenRequest
