@@ -183,20 +183,26 @@ class LocalNotificationService {
   /// retuned for users who already installed the app.
   static const AndroidNotificationChannel _urgentChannel =
       AndroidNotificationChannel(
-    'job_alerts',
-    'Job & Ride Requests',
-    description: 'Time-sensitive alerts (bid accepted, job assigned, 2-hour '
-        'reminders). Muting this channel will cause you to miss work.',
-    importance: Importance.max,
-    playSound: true,
-    enableVibration: true,
-  );
+        'job_alerts',
+        'Job & Ride Requests',
+        description:
+            'Time-sensitive alerts (bid accepted, job assigned, 2-hour '
+            'reminders). Muting this channel will cause you to miss work.',
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+      );
 
   /// Dedicated channel for new incoming job/ride requests. Separate from
   /// [_urgentChannel] so a long ringtone on this channel doesn't bleed
   /// into bid-accepted / reminder pings — Android locks channel sound
   /// at creation time, so the only way to give one type of urgent a
   /// different sound is its own channel id.
+  ///
+  /// Channel id uses a v2 suffix because Android freezes channel sound and
+  /// importance after first creation. Upgrading the id gives already-installed
+  /// providers the intended request ringtone/sticky behavior instead of
+  /// inheriting old channel settings.
   ///
   /// Sound resource: `res/raw/incoming_request.mp3` (or `.ogg`/`.wav`).
   /// See `res/raw/README.md` for the file the app expects. If the
@@ -205,29 +211,29 @@ class LocalNotificationService {
   /// custom ringtone.
   static const AndroidNotificationChannel _incomingRequestChannel =
       AndroidNotificationChannel(
-    'incoming_requests',
-    'Incoming Job & Ride Requests',
-    description:
-        'New job and ride request alerts. Plays the MyShop ringtone for up '
-        'to 30 seconds so you can hear it across the room.',
-    importance: Importance.max,
-    playSound: true,
-    sound: RawResourceAndroidNotificationSound('incoming_request'),
-    enableVibration: true,
-  );
+        'incoming_requests_v2',
+        'Incoming Job & Ride Requests',
+        description:
+            'New job and ride request alerts. Plays the MyShop ringtone for up '
+            'to 30 seconds so you can hear it across the room.',
+        importance: Importance.max,
+        playSound: true,
+        sound: RawResourceAndroidNotificationSound('incoming_request'),
+        enableVibration: true,
+      );
 
   /// High importance but non-intrusive — incremental updates like a
   /// cancelled ride or a received payout. Tappable, no full-screen-intent.
   static const AndroidNotificationChannel _timelineChannel =
       AndroidNotificationChannel(
-    'myshop_timeline',
-    'Job & ride updates',
-    description:
-        'Progress updates on your active jobs, rides, payouts and bids.',
-    importance: Importance.high,
-    playSound: true,
-    enableVibration: false,
-  );
+        'myshop_timeline',
+        'Job & ride updates',
+        description:
+            'Progress updates on your active jobs, rides, payouts and bids.',
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: false,
+      );
 
   /// Chat messages — high importance (so the user can hear them) but no
   /// full-screen call-style banner. Same urgency tier the OS uses for
@@ -235,15 +241,15 @@ class LocalNotificationService {
   /// time-sensitive interruption level.
   static const AndroidNotificationChannel _chatChannel =
       AndroidNotificationChannel(
-    'chat_messages',
-    'Chat messages',
-    description:
-        'New messages from drivers, artisans, riders and clients during '
-        'your active bookings.',
-    importance: Importance.high,
-    playSound: true,
-    enableVibration: true,
-  );
+        'chat_messages',
+        'Chat messages',
+        description:
+            'New messages from drivers, artisans, riders and clients during '
+            'your active bookings.',
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+      );
 
   bool _initialised = false;
   Future<void>? _initializing;
@@ -260,8 +266,9 @@ class LocalNotificationService {
   }
 
   Future<void> _initialize() async {
-    const androidInit =
-        AndroidInitializationSettings('@drawable/ic_notification');
+    const androidInit = AndroidInitializationSettings(
+      '@drawable/ic_notification',
+    );
     const iosInit = DarwinInitializationSettings(
       // Permission belongs to FcmService after the first Flutter frame.
       // Keeping it out of channel initialization prevents an OS dialog from
@@ -285,8 +292,10 @@ class LocalNotificationService {
       },
     );
 
-    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
+    final androidPlugin = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
     await androidPlugin?.createNotificationChannel(_urgentChannel);
     await androidPlugin?.createNotificationChannel(_incomingRequestChannel);
     await androidPlugin?.createNotificationChannel(_timelineChannel);
@@ -339,8 +348,8 @@ class LocalNotificationService {
   }) async {
     final isUrgent = NotificationPayload.urgentTypes.contains(type);
     final isChat = NotificationPayload.chatTypes.contains(type);
-    final isFullScreenRequest =
-        NotificationPayload.fullScreenRequestTypes.contains(type);
+    final isFullScreenRequest = NotificationPayload.fullScreenRequestTypes
+        .contains(type);
     // Order matters: the incoming-request channel is the "most specific"
     // urgent path (custom ringtone, sticky, 40 s timeout). Falling back
     // to _urgentChannel for the rest of the urgent set keeps bid_accepted
@@ -349,16 +358,16 @@ class LocalNotificationService {
     final channel = isFullScreenRequest
         ? _incomingRequestChannel
         : isUrgent
-            ? _urgentChannel
-            : isChat
-                ? _chatChannel
-                : _timelineChannel;
+        ? _urgentChannel
+        : isChat
+        ? _chatChannel
+        : _timelineChannel;
 
     final androidCategory = isUrgent
         ? AndroidNotificationCategory.call
         : isChat
-            ? AndroidNotificationCategory.message
-            : AndroidNotificationCategory.status;
+        ? AndroidNotificationCategory.message
+        : AndroidNotificationCategory.status;
 
     await _plugin.show(
       _dedupeId(type, extras),
@@ -407,10 +416,7 @@ class LocalNotificationService {
               : InterruptionLevel.active,
         ),
       ),
-      payload: json.encode({
-        NotificationPayload.keyType: type,
-        ...extras,
-      }),
+      payload: json.encode({NotificationPayload.keyType: type, ...extras}),
     );
   }
 
@@ -489,8 +495,10 @@ class LocalNotificationService {
       await player.play(AssetSource('audio/incoming_request.mp3'));
       debugPrint('[LocalNotificationService] ringtone playing');
     } catch (e) {
-      debugPrint('[LocalNotificationService] ringtone asset unavailable, '
-          'falling back to haptic-only: $e');
+      debugPrint(
+        '[LocalNotificationService] ringtone asset unavailable, '
+        'falling back to haptic-only: $e',
+      );
     }
   }
 
@@ -513,7 +521,8 @@ class LocalNotificationService {
   /// so a status progression REPLACES the previous banner rather than
   /// stacking four notifications for the same job.
   int _dedupeId(String type, Map<String, String> extras) {
-    final primary = extras[NotificationPayload.keyJobId] ??
+    final primary =
+        extras[NotificationPayload.keyJobId] ??
         extras[NotificationPayload.keyRideId] ??
         extras[NotificationPayload.keyBidId] ??
         extras[NotificationPayload.keyChatId] ??

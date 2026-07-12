@@ -39,14 +39,19 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
     'hasNotificationField=${message.notification != null} '
     'data=${message.data}',
   );
-  // Backend now sends a top-level `notification` field on every push so
-  // FCM auto-displays the system tray banner in background/terminated.
-  // Rendering our local notification on top of that produces 2× banners
-  // (one from FCM SDK, one from flutter_local_notifications) — bail when
-  // FCM has already drawn it. Only render manually for true data-only
-  // pushes (no `notification` field present).
-  if (message.notification != null) {
-    debugPrint('[FCM-bg] FCM SDK will auto-display — skipping local render');
+  // FCM auto-displays hybrid pushes (top-level `notification`) while the
+  // app is backgrounded/terminated. For normal timeline/chat pushes that is
+  // exactly what we want because rendering locally as well produces duplicate
+  // banners. Incoming work/ride requests are the exception: on Android they
+  // must use our local request channel so they stay sticky until timeout and
+  // play the MyShop request ringtone. Backend should already send those as
+  // Android data-only pushes, but this defensive branch keeps the provider
+  // alert usable if any backend path still includes a notification field.
+  if (_shouldSkipLocalBackgroundRender(message)) {
+    debugPrint(
+      '[FCM-bg] FCM SDK will auto-display non-request push — '
+      'skipping local render',
+    );
     return;
   }
   // Re-initialise the local notification plugin inside this isolate —
@@ -54,6 +59,26 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
   await LocalNotificationService.instance.init();
   await _renderFromRemote(message);
   debugPrint('[FCM-bg] local notification rendered');
+}
+
+bool _shouldSkipLocalBackgroundRender(RemoteMessage message) {
+  if (message.notification == null) return false;
+
+  final rawType = message.data[NotificationPayload.keyType]?.toString() ?? '';
+  final type = NotificationPayload.normaliseType(rawType);
+
+  final shouldUseLocalRequestAlert =
+      Platform.isAndroid &&
+      NotificationPayload.fullScreenRequestTypes.contains(type);
+  if (shouldUseLocalRequestAlert) {
+    debugPrint(
+      '[FCM-bg] Android incoming request has notification field; '
+      'rendering local sticky request alert anyway',
+    );
+    return false;
+  }
+
+  return true;
 }
 
 Future<void> _renderFromRemote(RemoteMessage message) async {
