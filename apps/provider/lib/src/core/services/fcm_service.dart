@@ -634,6 +634,20 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       }
     }
 
+    void openRideRequestLoader(String rideId, DateTime? deadline) {
+      final currentPath = router.routerDelegate.currentConfiguration.uri.path;
+      final extra = RideRequestRouteExtra(
+        rideId: rideId,
+        expiresAt: deadline,
+      );
+      debugPrint('[FCM-tap] opening /ride-request loader for $rideId');
+      if (currentPath == '/ride-request') {
+        router.pushReplacement('/ride-request', extra: extra);
+      } else {
+        router.push('/ride-request', extra: extra);
+      }
+    }
+
     Future<bool> recoverAndOpenPendingRideRequest(String reason) async {
       debugPrint('[FCM-tap] ride_request recovery: $reason');
       final recovered = await recoverPendingRideRequestFromRef(ref);
@@ -731,47 +745,20 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             .read(surfacedRideIdsProvider.notifier)
             .update((s) => {...s, rideId});
         if (ref.read(incomingRideRequestProvider)?.id == rideId) {
+          final cachedRide = ref.read(incomingRideRequestProvider);
           ref.read(incomingRideRequestProvider.notifier).state = null;
+          if (cachedRide != null && cachedRide.status == RideStatus.requested) {
+            openRideRequest(cachedRide);
+            break;
+          }
         }
         ref.read(rideRequestNavigationInFlightProvider.notifier).update(
               (s) => {...s, rideId},
             );
-        try {
-          final data = await ref.read(rideServiceProvider).getRide(rideId);
-          final ride = Ride.fromJson(data);
-          if (ride.status != RideStatus.requested) {
-            debugPrint(
-              '[FCM-tap] ride_request $rideId no longer actionable '
-              '(status=${ride.status.toJson()})',
+        openRideRequestLoader(rideId, deadline);
+        ref.read(rideRequestNavigationInFlightProvider.notifier).update(
+              (s) => {...s}..remove(rideId),
             );
-            router.go('/home');
-            await recoverAndOpenPendingRideRequest(
-              'ride status is ${ride.status.toJson()}',
-            );
-            break;
-          }
-          if (ref.read(visibleRideRequestIdProvider) == rideId) {
-            debugPrint('[FCM-tap] ride_request $rideId became visible while '
-                'hydrating');
-            break;
-          }
-          openRideRequest(ride);
-        } catch (e) {
-          debugPrint('[FCM-tap] ride-request hydrate failed for $rideId: $e');
-          // Ask the backend directly for a still-actionable ride request and
-          // navigate with the recovered Ride payload. The generic recovery
-          // path intentionally avoids surfacing duplicate requests when the
-          // current route is /ride-request, which is correct for shell-level
-          // polling but wrong for this explicit notification-tap handoff.
-          final opened = await recoverAndOpenPendingRideRequest(
-            'GET /rides/$rideId failed',
-          );
-          if (!opened) router.go('/home');
-        } finally {
-          ref.read(rideRequestNavigationInFlightProvider.notifier).update(
-                (s) => {...s}..remove(rideId),
-              );
-        }
         break;
 
       case NotificationPayload.typeBidAccepted:
