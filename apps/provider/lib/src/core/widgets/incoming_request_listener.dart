@@ -72,6 +72,28 @@ class _IncomingRequestListenerState
     if (_routedForCurrentActiveRide) return;
     if (!mounted) return;
     final currentLocation = GoRouterState.of(context).matchedLocation;
+
+    if (ride.status == RideStatus.requested) {
+      debugPrint('[IncomingRequestListener] requested ride ${ride.id} '
+          'surfaced via active slot — routing to /ride-request');
+      // A requested ride is an offer, not an active ride. Clear the active
+      // slot so the active-ride screen cannot render "No active ride" from
+      // this transient state, then surface the same request UI used by
+      // socket/push delivery.
+      ref.read(activeRideProvider.notifier).clearRide();
+      if (currentLocation != '/ride-request') {
+        context.push('/ride-request', extra: ride);
+      }
+      return;
+    }
+
+    if (!ride.status.isActive) {
+      debugPrint(
+          '[IncomingRequestListener] ignoring non-active ride ${ride.id} '
+          '(status=${ride.status})');
+      return;
+    }
+
     if (currentLocation == '/active-ride' ||
         currentLocation == '/ride-request') {
       // We're already on the right screen — flip the flag so we don't
