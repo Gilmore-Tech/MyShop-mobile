@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_models/shared_models.dart';
 
 import 'availability_controller.dart';
+import 'app_lifecycle_provider.dart';
 import 'provider_status_provider.dart';
 
 /// Listens for location-service and permission changes while the provider
@@ -53,9 +54,23 @@ final locationGuardProvider = Provider<void>((ref) {
     // dispatches a job, without burning CPU.
     permissionPoll = Timer.periodic(const Duration(seconds: 15), (_) async {
       final permission = await Geolocator.checkPermission();
-      if (permission != LocationPermission.always) {
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
         debugPrint(
-            '[LocationGuard] background permission lost — forcing offline');
+          '[LocationGuard] location permission lost — forcing offline',
+        );
+        await ref
+            .read(availabilityControllerProvider)
+            .forceOfflineDueToLocationLost();
+        return;
+      }
+
+      final foregrounded = ref.read(appForegroundedProvider);
+      if (!foregrounded && permission != LocationPermission.always) {
+        debugPrint(
+          '[LocationGuard] app backgrounded without Always '
+          'permission — forcing offline',
+        );
         await ref
             .read(availabilityControllerProvider)
             .forceOfflineDueToLocationLost();
