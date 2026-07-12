@@ -19,7 +19,7 @@ jobs:
           cache: true
       
       - name: Install Melos
-        run: dart pub global activate melos 6.3.2
+        run: dart pub global activate melos 2.9.0
       
       - name: Bootstrap
         run: melos bootstrap
@@ -46,7 +46,7 @@ jobs:
           cache: true
       
       - name: Install Melos
-        run: dart pub global activate melos 6.3.2
+        run: dart pub global activate melos 2.9.0
       
       - name: Bootstrap
         run: melos bootstrap
@@ -67,7 +67,7 @@ jobs:
           cache: true
       
       - name: Install Melos
-        run: dart pub global activate melos 6.3.2
+        run: dart pub global activate melos 2.9.0
       
       - name: Bootstrap
         run: melos bootstrap

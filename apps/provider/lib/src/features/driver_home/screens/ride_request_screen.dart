@@ -9,6 +9,7 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:shared_utils/shared_utils.dart';
 
 import '../../../core/providers/availability_controller.dart';
+import '../../../core/providers/socket_provider.dart';
 import '../../../core/services/local_notification_service.dart';
 import '../../../core/utils/payment_method_label.dart';
 import '../providers/driver_location_provider.dart';
@@ -32,26 +33,105 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
   // Aligned with backend `ride_driver_acceptance_window_secs` (30 s).
   // Keep these in lockstep — if the UI counts past the backend window,
   // an Accept tap will fail with ACCEPTANCE_TIMEOUT.
-  static const _acceptanceWindowSecs = 30;
+  static const _acceptanceWindow = Duration(seconds: 30);
   late int _secondsRemaining;
+  late DateTime _expiresAt;
   Timer? _timer;
   bool _isAccepting = false;
+  bool _expired = false;
+  bool _expiryHandled = false;
 
   @override
   void initState() {
     super.initState();
-    _secondsRemaining = _acceptanceWindowSecs;
+    _mountRequest(widget.ride);
+  }
+
+  @override
+  void didUpdateWidget(covariant RideRequestScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.ride.id != widget.ride.id) {
+      _mountRequest(widget.ride);
+    }
+  }
+
+  void _mountRequest(Ride ride) {
+    _timer?.cancel();
+    _expired = false;
+    _expiryHandled = false;
+    _isAccepting = false;
+    _expiresAt = _deadlineFor(ride);
+    _secondsRemaining = _secondsUntil(_expiresAt);
+    _expired = _secondsRemaining <= 0;
+    _markVisibleAfterBuild(ride.id);
+    if (_expired) {
+      _handleExpiryAfterBuild();
+      return;
+    }
     // Start the looping ringtone the moment this screen mounts. The
     // service is a singleton — both ride and job request flows share
     // it, and we never have both open simultaneously, so a stale
     // timer from a previous session is impossible.
     LocalNotificationService.instance.startIncomingRingtone();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_secondsRemaining > 0) {
-        setState(() => _secondsRemaining--);
-      } else {
-        _decline();
-      }
+      _syncRemaining();
+    });
+  }
+
+  void _markVisibleAfterBuild(String rideId) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || widget.ride.id != rideId) return;
+      ref.read(visibleRideRequestIdProvider.notifier).state = rideId;
+    });
+  }
+
+  void _handleExpiryAfterBuild() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_expired) return;
+      _handleExpiry();
+    });
+  }
+
+  DateTime _deadlineFor(Ride ride) {
+    final explicit = ref.read(rideRequestDeadlineByIdProvider)[ride.id];
+    if (explicit != null) return explicit.toLocal();
+    return ride.createdAt.toLocal().add(_acceptanceWindow);
+  }
+
+  int _secondsUntil(DateTime deadline) {
+    final remainingMs = deadline.difference(DateTime.now()).inMilliseconds;
+    if (remainingMs <= 0) return 0;
+    return (remainingMs / 1000).ceil();
+  }
+
+  void _syncRemaining() {
+    final remaining = _secondsUntil(_expiresAt);
+    if (!mounted) return;
+    setState(() {
+      _secondsRemaining = remaining;
+      _expired = remaining <= 0;
+    });
+    if (remaining <= 0) _handleExpiry();
+  }
+
+  void _handleExpiry() {
+    if (_expiryHandled) return;
+    _expiryHandled = true;
+    _timer?.cancel();
+    LocalNotificationService.instance.stopIncomingRingtone();
+    _clearVisibleMarker();
+    ref.read(incomingRideRequestProvider.notifier).state = null;
+    ref.read(surfacedRideIdsProvider.notifier).update(
+          (s) => {...s, widget.ride.id},
+        );
+    // Best-effort only. The backend may already have timed this provider out;
+    // the UI should close cleanly either way.
+    ref
+        .read(activeRideProvider.notifier)
+        .declineRide(widget.ride.id, reason: 'request_expired');
+    Future<void>.delayed(const Duration(milliseconds: 900), () {
+      if (!mounted || !_expired) return;
+      _closeRequest('expired');
     });
   }
 
@@ -66,14 +146,27 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     super.dispose();
   }
 
+  void _clearVisibleMarker() {
+    final visibleId = ref.read(visibleRideRequestIdProvider);
+    if (visibleId == widget.ride.id) {
+      ref.read(visibleRideRequestIdProvider.notifier).state = null;
+    }
+  }
+
   Future<void> _accept() async {
     if (_isAccepting) return;
+    _syncRemaining();
+    if (_expired) {
+      _handleExpiry();
+      return;
+    }
     _timer?.cancel();
     setState(() => _isAccepting = true);
     final ok =
         await ref.read(activeRideProvider.notifier).acceptRide(widget.ride);
     if (!mounted) return;
     if (ok) {
+      _clearVisibleMarker();
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
           builder: (_) => const ActiveRideScreen(),
@@ -90,6 +183,13 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+    if (_secondsUntil(_expiresAt) <= 0) {
+      _handleExpiry();
+      return;
+    }
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      _syncRemaining();
+    });
   }
 
   void _decline({String reason = 'driver_declined'}) {
@@ -100,13 +200,25 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     ref
         .read(activeRideProvider.notifier)
         .declineRide(widget.ride.id, reason: reason);
-    if (mounted) Navigator.of(context).pop('declined');
+    if (mounted) _closeRequest('declined');
+  }
+
+  void _closeRequest(String result) {
+    if (!mounted) return;
+    _clearVisibleMarker();
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop(result);
+    } else {
+      context.go('/home');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final ride = widget.ride;
-    final progress = _secondsRemaining / _acceptanceWindowSecs;
+    final progress = (_secondsRemaining / _acceptanceWindow.inSeconds)
+        .clamp(0.0, 1.0)
+        .toDouble();
 
     return Scaffold(
       backgroundColor: MyShopColors.surfaceGrey,
@@ -208,7 +320,8 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                         Expanded(
                           flex: 2,
                           child: OutlinedButton.icon(
-                            onPressed: _isAccepting ? null : _decline,
+                            onPressed:
+                                _isAccepting || _expired ? null : _decline,
                             icon: const Icon(Icons.close, size: 18),
                             label: const Text('Decline'),
                             style: OutlinedButton.styleFrom(
@@ -228,7 +341,8 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                         Expanded(
                           flex: 3,
                           child: ElevatedButton(
-                            onPressed: _isAccepting ? null : _accept,
+                            onPressed:
+                                _isAccepting || _expired ? null : _accept,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: MyShopColors.darkSlate,
                               foregroundColor: MyShopColors.textOnPrimary,
@@ -254,12 +368,17 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                                           MyShopColors.textOnPrimary),
                                     ),
                                   )
-                                : const Row(
+                                : Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      Icon(Icons.check, size: 18),
-                                      SizedBox(width: 8),
-                                      Text('Accept'),
+                                      Icon(
+                                        _expired
+                                            ? Icons.timer_off
+                                            : Icons.check,
+                                        size: 18,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(_expired ? 'Expired' : 'Accept'),
                                     ],
                                   ),
                           ),
@@ -269,7 +388,9 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                     const SizedBox(height: MyShopSpacing.md),
 
                     Text(
-                      'Accepting this trip implies agreement with the service terms.\nCancellations may affect your driver rating.',
+                      _expired
+                          ? 'This request has expired. Looking for another driver…'
+                          : 'Accepting this trip implies agreement with the service terms.\nCancellations may affect your driver rating.',
                       textAlign: TextAlign.center,
                       style: MyShopTypography.caption.copyWith(fontSize: 11),
                     ),
