@@ -95,7 +95,12 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   /// payload from the request modal is good enough to render the screen.
   Future<bool> acceptRide(Ride ride) async {
     if (state.isUpdating) return false;
-    state = ActiveRideState(ride: ride, isUpdating: true);
+    // Do not expose the pre-acceptance `requested` ride through
+    // [activeRideProvider]. The shell-level recovery listener treats a
+    // non-null ride here as something it may route to /active-ride; putting
+    // a still-requested ride in this slot can bounce the driver to "No active
+    // ride" before the backend has actually assigned them.
+    state = const ActiveRideState(isUpdating: true);
     try {
       final socket = _ref.read(socketServiceProvider);
       final ack = await socket.emitWithAck(
@@ -370,6 +375,17 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       _resumeOnline();
       return;
     }
+    if (current == null && snapshot.status == RideStatus.requested) {
+      // A requested ride is still an offer, not an active ride for this
+      // driver. Keep it out of the active slot so the UI doesn't open the
+      // active-ride screen before the driver has successfully accepted.
+      developer.log(
+        'Ignoring requested ride snapshot for active slot: ${snapshot.id}',
+        name: 'ActiveRide',
+        level: 800,
+      );
+      return;
+    }
     // Backend's `ride:state` payload doesn't yet include `stops`; preserve
     // whatever we already have locally so a snapshot doesn't blow away
     // stops that arrived via `ride:route_updated` REST refetch.
@@ -388,6 +404,14 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   /// shape as [applySnapshot] but also flips the provider status to busy
   /// (recovery means we're definitely on a live ride).
   void restore(Ride ride) {
+    if (!ride.status.isActive) {
+      developer.log(
+        'Ignoring non-active ride restore: ${ride.id} (${ride.status})',
+        name: 'ActiveRide',
+        level: 800,
+      );
+      return;
+    }
     state = ActiveRideState(ride: ride);
     _setBusy();
     // Tag the ride as already surfaced so the request modal doesn't pop
