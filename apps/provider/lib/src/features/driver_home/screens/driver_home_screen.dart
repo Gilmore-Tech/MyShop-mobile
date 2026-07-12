@@ -67,6 +67,13 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
   /// after each online session (we don't want to fight the user if they pan).
   bool _hasCenteredOnDriver = false;
 
+  /// While online and idle, keep the driver's car visible as they move around.
+  /// If the user manually pans/zooms the map we pause follow mode; tapping the
+  /// recenter control restores it.
+  bool _followDriverCamera = true;
+  bool _programmaticCameraMove = false;
+  Timer? _programmaticCameraMoveTimer;
+
   @override
   void initState() {
     super.initState();
@@ -83,6 +90,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
     _moveController
       ..removeListener(_onAnimationTick)
       ..dispose();
+    _programmaticCameraMoveTimer?.cancel();
     super.dispose();
   }
 
@@ -104,13 +112,10 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
     final cached = ref.read(lastKnownPositionProvider);
     if (cached != null) {
       try {
-        final controller = await _mapController.future;
         if (!mounted) return;
-        await controller.animateCamera(
-          CameraUpdate.newLatLngZoom(
-            LatLng(cached.latitude, cached.longitude),
-            15,
-          ),
+        await _animateCameraTo(
+          LatLng(cached.latitude, cached.longitude),
+          zoom: 15,
         );
       } catch (_) {
         /* map controller may not be ready yet — listener picks it up */
@@ -129,7 +134,8 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
           permission = await Geolocator.requestPermission();
         } catch (e) {
           debugPrint(
-              '[LOC] requestPermission race — letting warm-up finish: $e');
+            '[LOC] requestPermission race — letting warm-up finish: $e',
+          );
           return;
         }
       }
@@ -153,8 +159,10 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
     try {
       position = await Geolocator.getLastKnownPosition();
       if (position != null) {
-        debugPrint('[LOC] using last-known fix '
-            '(${position.latitude}, ${position.longitude})');
+        debugPrint(
+          '[LOC] using last-known fix '
+          '(${position.latitude}, ${position.longitude})',
+        );
       }
     } catch (e) {
       debugPrint('[LOC] getLastKnownPosition failed: $e');
@@ -168,8 +176,10 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
         ),
       );
       position = fresh;
-      debugPrint('[LOC] got fresh fix '
-          '(${fresh.latitude}, ${fresh.longitude})');
+      debugPrint(
+        '[LOC] got fresh fix '
+        '(${fresh.latitude}, ${fresh.longitude})',
+      );
     } catch (e) {
       // Common on iOS when sensor isn't settled — fall back to lastKnown
       // (already loaded above) so the map at least leaves Kumasi.
@@ -185,14 +195,42 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
     // Cache the fix so other screens (edit business info, etc.) can centre
     // their maps on the driver without re-prompting for permission.
     ref.read(lastKnownPositionProvider.notifier).state = position;
+    if (!mounted) return;
+    await _animateCameraTo(
+      LatLng(position.latitude, position.longitude),
+      zoom: 15,
+    );
+  }
+
+  Future<void> _animateCameraTo(LatLng target, {required double zoom}) async {
     final controller = await _mapController.future;
     if (!mounted) return;
-    await controller.animateCamera(
-      CameraUpdate.newLatLngZoom(
-        LatLng(position.latitude, position.longitude),
-        15,
-      ),
-    );
+    _programmaticCameraMove = true;
+    await controller.animateCamera(CameraUpdate.newLatLngZoom(target, zoom));
+    _programmaticCameraMoveTimer?.cancel();
+    _programmaticCameraMoveTimer = Timer(const Duration(milliseconds: 700), () {
+      _programmaticCameraMove = false;
+    });
+  }
+
+  Future<void> _recenterOnDriver() async {
+    _followDriverCamera = true;
+    final current = _currentPos;
+    if (current != null) {
+      await _animateCameraTo(current, zoom: 16.5);
+      return;
+    }
+
+    final cached = ref.read(lastKnownPositionProvider);
+    if (cached != null) {
+      await _animateCameraTo(
+        LatLng(cached.latitude, cached.longitude),
+        zoom: 15,
+      );
+      return;
+    }
+
+    await _goToCurrentLocation();
   }
 
   /// Linearly interpolates between two headings along the short arc, so the
@@ -266,11 +304,8 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
 
       if (!_hasCenteredOnDriver) {
         _hasCenteredOnDriver = true;
-        final controller = await _mapController.future;
         if (!mounted) return;
-        await controller.animateCamera(
-          CameraUpdate.newLatLngZoom(displayPoint, 16.5),
-        );
+        await _animateCameraTo(displayPoint, zoom: 16.5);
       }
       return;
     }
@@ -285,6 +320,10 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
       ..stop()
       ..reset()
       ..forward();
+
+    if (_followDriverCamera) {
+      await _animateCameraTo(displayPoint, zoom: 16.5);
+    }
   }
 
   void _clearDriverMarker() {
@@ -299,6 +338,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
       _currentPos = null;
       _fromPos = null;
       _toPos = null;
+      _followDriverCamera = true;
       _currentRotation = 0;
       _fromRotation = 0;
       _toRotation = 0;
@@ -332,14 +372,8 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
       if (next == null) return;
       if (_hasCenteredOnDriver) return;
       if (prev != null) return;
-      final controller = await _mapController.future;
       if (!mounted) return;
-      await controller.animateCamera(
-        CameraUpdate.newLatLngZoom(
-          LatLng(next.latitude, next.longitude),
-          15,
-        ),
-      );
+      await _animateCameraTo(LatLng(next.latitude, next.longitude), zoom: 15);
     });
 
     final status = ref.watch(providerStatusProvider);
@@ -367,6 +401,16 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
                 if (!_mapController.isCompleted) {
                   _mapController.complete(controller);
                 }
+                final current = _currentPos;
+                if (current != null && isOnline) {
+                  unawaited(_animateCameraTo(current, zoom: 16.5));
+                }
+              },
+              onCameraMoveStarted: () {
+                if (_programmaticCameraMove) return;
+                if (_followDriverCamera) {
+                  setState(() => _followDriverCamera = false);
+                }
               },
               // When online we represent the driver with a custom car marker,
               // so hide the default blue "my location" dot to avoid overlap.
@@ -375,9 +419,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
               zoomControlsEnabled: false,
               mapToolbarEnabled: false,
               compassEnabled: false,
-              markers: {
-                if (isOnline && _driverMarker != null) _driverMarker!,
-              },
+              markers: {if (isOnline && _driverMarker != null) _driverMarker!},
             ),
           ),
 
@@ -407,6 +449,12 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
                 }
               },
             ),
+          ),
+
+          Positioned(
+            top: 219,
+            right: MyShopSpacing.md,
+            child: _MapRecenterButton(onTap: _recenterOnDriver),
           ),
 
           // ── 4. Draggable bottom sheet ──
@@ -440,8 +488,9 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
                         width: 48,
                         height: 6,
                         decoration: BoxDecoration(
-                          color:
-                              MyShopColors.surfaceGrey.withValues(alpha: 0.5),
+                          color: MyShopColors.surfaceGrey.withValues(
+                            alpha: 0.5,
+                          ),
                           borderRadius: BorderRadius.circular(3),
                         ),
                       ),
@@ -460,8 +509,9 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
 
                     // Recent Activity
                     const Padding(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: MyShopSpacing.md,
+                      ),
                       child: RecentActivitySection(),
                     ),
 
@@ -504,16 +554,50 @@ class _TrendingUpButton extends StatelessWidget {
               blurRadius: 7,
               offset: Offset(0, 4),
             ),
-            BoxShadow(
-              color: Color(0x14171A1F),
-              blurRadius: 2,
-            ),
+            BoxShadow(color: Color(0x14171A1F), blurRadius: 2),
           ],
         ),
         child: const Icon(
           Icons.trending_up,
           color: MyShopColors.textPrimary,
           size: 24,
+        ),
+      ),
+    );
+  }
+}
+
+class _MapRecenterButton extends StatelessWidget {
+  const _MapRecenterButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: MyShopColors.surfaceWhite,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: MyShopColors.divider.withValues(alpha: 0.5),
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x21171A1F),
+              blurRadius: 7,
+              offset: Offset(0, 4),
+            ),
+            BoxShadow(color: Color(0x14171A1F), blurRadius: 2),
+          ],
+        ),
+        child: const Icon(
+          Icons.my_location,
+          color: MyShopColors.textPrimary,
+          size: 22,
         ),
       ),
     );

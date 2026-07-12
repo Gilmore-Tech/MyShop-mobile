@@ -6,6 +6,7 @@ import 'package:shared_ui/shared_ui.dart';
 import '../core/providers/app_lifecycle_provider.dart';
 import '../core/providers/availability_controller.dart';
 import '../core/providers/foreground_display_wake_lock_provider.dart';
+import '../core/providers/pending_request_recovery_provider.dart';
 import '../core/providers/provider_status_provider.dart';
 import '../core/providers/socket_provider.dart';
 import '../core/services/fcm_service.dart';
@@ -135,6 +136,11 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
     if (ref.watch(firebaseReadyProvider)) {
       ref.watch(fcmTapBridgeProvider);
     }
+
+    // Best-effort request recovery on app resume/foreground. Keeps provider
+    // request notifications from depending solely on an in-memory socket
+    // payload that can disappear when the process sleeps.
+    ref.watch(pendingRequestRecoveryBridgeProvider);
 
     return MaterialApp.router(
       title: 'MyShop Provider',

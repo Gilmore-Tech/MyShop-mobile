@@ -53,12 +53,14 @@ class _OnlineOfflineToggleState extends ConsumerState<OnlineOfflineToggle> {
               children: [
                 // Animated sliding indicator
                 AnimatedAlign(
-                  alignment:
-                      isOnline ? Alignment.centerLeft : Alignment.centerRight,
+                  alignment: isOnline
+                      ? Alignment.centerLeft
+                      : Alignment.centerRight,
                   duration: const Duration(milliseconds: 200),
                   curve: Curves.easeInOut,
                   child: Container(
-                    width: MediaQuery.of(context).size.width / 2 -
+                    width:
+                        MediaQuery.of(context).size.width / 2 -
                         MyShopSpacing.md -
                         2,
                     height: 44,
@@ -70,10 +72,11 @@ class _OnlineOfflineToggleState extends ConsumerState<OnlineOfflineToggle> {
                       borderRadius: BorderRadius.circular(10),
                       boxShadow: [
                         BoxShadow(
-                          color: (isOnline
-                                  ? MyShopColors.online
-                                  : MyShopColors.darkSlate)
-                              .withValues(alpha: 0.3),
+                          color:
+                              (isOnline
+                                      ? MyShopColors.online
+                                      : MyShopColors.darkSlate)
+                                  .withValues(alpha: 0.3),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -179,7 +182,8 @@ class _OnlineOfflineToggleState extends ConsumerState<OnlineOfflineToggle> {
         ref
             .read(authControllerProvider.notifier)
             .refreshProfile()
-            .then<void>((_) {}),
+            .then<void>((_) {})
+            .catchError((_) {}),
       ]);
 
       final completion = ref.read(profileCompletionProvider);
@@ -192,9 +196,9 @@ class _OnlineOfflineToggleState extends ConsumerState<OnlineOfflineToggle> {
 
       final error = await availability.goOnline();
       if (error != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error)));
       }
     } finally {
       if (mounted) setState(() => _isGoingOnline = false);

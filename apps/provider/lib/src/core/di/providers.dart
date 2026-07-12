@@ -90,6 +90,13 @@ final apiNotificationServiceProvider = Provider<NotificationService>((ref) {
   return NotificationService(ref.watch(dioProvider));
 });
 
+/// Provider-targeted pending ride/job request recovery. Used when an FCM tap,
+/// app resume, or socket reconnect needs to re-surface an actionable request
+/// that arrived while the app process was sleeping.
+final providerRequestServiceProvider = Provider<ProviderRequestService>((ref) {
+  return ProviderRequestService(ref.watch(dioProvider));
+});
+
 /// Chat REST — history fetch + send/markRead fallback paths used by the
 /// orchestrator when the `/chat` socket can't deliver in time.
 final chatServiceProvider = Provider<ChatService>((ref) {

@@ -13,6 +13,7 @@ import '../../features/artisan_home/widgets/rate_client_sheet.dart';
 import '../../features/auth/providers/auth_controller.dart';
 import '../../features/driver_home/widgets/rate_passenger_sheet.dart';
 import '../di/providers.dart';
+import '../providers/pending_request_recovery_provider.dart';
 import '../providers/socket_provider.dart';
 import 'local_notification_service.dart';
 
@@ -32,10 +33,12 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
   // OEM battery optimisation (Xiaomi/Huawei/Samsung kill apps that
   // aren't whitelisted), or `notification.send()` failures on the
   // backend.
-  debugPrint('[FCM-bg] message arrived: '
-      'type=${message.data['type']} '
-      'hasNotificationField=${message.notification != null} '
-      'data=${message.data}');
+  debugPrint(
+    '[FCM-bg] message arrived: '
+    'type=${message.data['type']} '
+    'hasNotificationField=${message.notification != null} '
+    'data=${message.data}',
+  );
   // Backend now sends a top-level `notification` field on every push so
   // FCM auto-displays the system tray banner in background/terminated.
   // Rendering our local notification on top of that produces 2× banners
@@ -218,11 +221,7 @@ class FcmService {
     debugPrint('[FCM] background handler registered');
 
     // Permission prompts (iOS + Android 13+).
-    await _fcm.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
+    await _fcm.requestPermission(alert: true, badge: true, sound: true);
 
     // Ensure tapping a local notification also routes via the same
     // handler the router will set.
@@ -249,11 +248,12 @@ class FcmService {
       if (type == NotificationPayload.typeNewMessage) {
         final bookingId =
             (message.data[NotificationPayload.keyBookingId] as String?) ??
-                (message.data[NotificationPayload.keyJobId] as String?) ??
-                (message.data[NotificationPayload.keyRideId] as String?);
+            (message.data[NotificationPayload.keyJobId] as String?) ??
+            (message.data[NotificationPayload.keyRideId] as String?);
         if (_isOnChatScreenFor(bookingId)) {
           debugPrint(
-              '[FCM] foreground new_message — on chat screen, suppressing');
+            '[FCM] foreground new_message — on chat screen, suppressing',
+          );
           return;
         }
         await _renderFromRemote(message);
@@ -267,7 +267,8 @@ class FcmService {
       // when two alert paths fire for the same booking.
       if (NotificationPayload.fullScreenRequestTypes.contains(type)) {
         debugPrint(
-            '[FCM] foreground $type — handled by in-app modal, skipping banner');
+          '[FCM] foreground $type — handled by in-app modal, skipping banner',
+        );
         return;
       }
       await _renderFromRemote(message);
@@ -312,10 +313,9 @@ class FcmService {
   void _markNotificationRead(Map<String, dynamic> payload) {
     final id = payload[NotificationPayload.keyNotificationId] as String?;
     if (id == null || id.isEmpty) return;
-    _ref
-        .read(apiNotificationServiceProvider)
-        .markAsRead(id)
-        .catchError((Object e) {
+    _ref.read(apiNotificationServiceProvider).markAsRead(id).catchError((
+      Object e,
+    ) {
       debugPrint('[FCM] markAsRead($id) failed: $e');
     });
   }
@@ -341,8 +341,10 @@ class FcmService {
     if (Platform.isIOS) {
       final apnsReady = await _awaitApnsToken();
       if (!apnsReady) {
-        debugPrint('[FCM] APNs not ready within budget — '
-            'onTokenRefresh will register the token when it arrives');
+        debugPrint(
+          '[FCM] APNs not ready within budget — '
+          'onTokenRefresh will register the token when it arrives',
+        );
         return;
       }
     }
@@ -361,8 +363,10 @@ class FcmService {
       await Future<void>.delayed(Duration(seconds: attempt * 2));
     }
     if (token == null) {
-      debugPrint('[FCM] initial getToken exhausted retries — '
-          'relying on onTokenRefresh');
+      debugPrint(
+        '[FCM] initial getToken exhausted retries — '
+        'relying on onTokenRefresh',
+      );
       return;
     }
     debugPrint('[FCM] obtained device token');
@@ -384,7 +388,8 @@ class FcmService {
         return true;
       }
       debugPrint(
-          '[FCM] APNs token not yet available (attempt $attempt/$maxAttempts)');
+        '[FCM] APNs token not yet available (attempt $attempt/$maxAttempts)',
+      );
       await Future<void>.delayed(Duration(seconds: attempt));
     }
     return false;
@@ -402,11 +407,9 @@ class FcmService {
     }
     for (int attempt = 1; attempt <= 3; attempt++) {
       try {
-        await _ref.read(apiNotificationServiceProvider).registerDevice(
-              fcmToken: token,
-              platform: _platform,
-              role: role,
-            );
+        await _ref
+            .read(apiNotificationServiceProvider)
+            .registerDevice(fcmToken: token, platform: _platform, role: role);
         debugPrint('[FCM] token registered (role=$role, attempt $attempt)');
         return;
       } catch (e) {
@@ -521,8 +524,9 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     // direct paths (onMessageOpenedApp + getInitialMessage) hand us the
     // raw `message.data` map — so we have to normalise here too, otherwise
     // every background / cold-start tap fell through to the default case.
-    final type =
-        rawType == null ? null : NotificationPayload.normaliseType(rawType);
+    final type = rawType == null
+        ? null
+        : NotificationPayload.normaliseType(rawType);
     final router = ref.read(goRouterProvider);
     debugPrint('[FCM-tap] type=$type (raw=$rawType)');
 
@@ -575,12 +579,14 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         // Backend may send the job id under either `jobId` (camel) or
         // `job_id` (snake) depending on which emitter wrote the push;
         // accept both so a casing drift doesn't silently route to /home.
-        final jobId = (payload[NotificationPayload.keyJobId] as String?) ??
+        final jobId =
+            (payload[NotificationPayload.keyJobId] as String?) ??
             (payload['job_id'] as String?);
         debugPrint('[FCM-tap] job_request jobId=$jobId payload=$payload');
         if (jobId == null) {
-          debugPrint('[FCM-tap] no jobId in payload — routing to /home');
           router.go('/home');
+          debugPrint('[FCM-tap] no jobId in payload — running recovery');
+          await recoverPendingRequestsNow(ref);
           break;
         }
         // Suppress the foreground modal for this job — the user already
@@ -589,9 +595,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         // The socket/poller's dedup reads [surfacedJobIdsProvider]; the
         // listener's post-frame recovery reads [incomingJobRequestProvider].
         // Clearing both kills every path that could pop a modal on top.
-        ref.read(surfacedJobIdsProvider.notifier).update(
-              (s) => {...s, jobId},
-            );
+        ref.read(surfacedJobIdsProvider.notifier).update((s) => {...s, jobId});
         if (ref.read(incomingJobRequestProvider)?.id == jobId) {
           ref.read(incomingJobRequestProvider.notifier).state = null;
         }
@@ -621,20 +625,22 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       case NotificationPayload.typeRideRequest:
         // Backend may send the ride id under `rideId` (camel) or `ride_id`
         // (snake) depending on which emitter wrote the push.
-        final rideId = (payload[NotificationPayload.keyRideId] as String?) ??
+        final rideId =
+            (payload[NotificationPayload.keyRideId] as String?) ??
             (payload['ride_id'] as String?);
         debugPrint('[FCM-tap] ride_request rideId=$rideId payload=$payload');
         if (rideId == null) {
-          debugPrint('[FCM-tap] no rideId in payload — routing to /home');
           router.go('/home');
+          debugPrint('[FCM-tap] no rideId in payload — running recovery');
+          await recoverPendingRequestsNow(ref);
           break;
         }
         // Suppress the foreground re-broadcast modal for this ride — the
         // user already acknowledged by tapping the notification, so the
         // in-app sheet on top of /ride-request would be redundant.
-        ref.read(surfacedRideIdsProvider.notifier).update(
-              (s) => {...s, rideId},
-            );
+        ref
+            .read(surfacedRideIdsProvider.notifier)
+            .update((s) => {...s, rideId});
         if (ref.read(incomingRideRequestProvider)?.id == rideId) {
           ref.read(incomingRideRequestProvider.notifier).state = null;
         }
@@ -650,8 +656,11 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           router.push('/ride-request', extra: ride);
         } catch (e) {
           debugPrint('[FCM-tap] ride-request hydrate failed for $rideId: $e');
-          // Stay on /home — the socket listener will surface the request
-          // modal as soon as the app reconnects and the matcher re-emits.
+          // Stay on /home and ask the backend for any still-actionable
+          // provider request. This covers cold-start/process-sleep taps where
+          // the push carried an id but GET /rides/:id raced the dispatch
+          // window or the in-memory socket payload was lost.
+          await recoverPendingRequestsNow(ref);
         }
         break;
 
@@ -728,7 +737,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         final jobId = payload[NotificationPayload.keyJobId] as String?;
         final bookingId =
             (payload[NotificationPayload.keyBookingId] as String?) ??
-                (bookingType == ChatBookingType.ride ? rideId : jobId);
+            (bookingType == ChatBookingType.ride ? rideId : jobId);
         if (bookingType == null || bookingId == null || bookingId.isEmpty) {
           router.go('/messages');
           break;
@@ -782,9 +791,9 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             payload[NotificationPayload.keyBookingType] as String?;
         final bookingId =
             (payload[NotificationPayload.keyBookingId] as String?) ??
-                (bookingType == 'ride'
-                    ? payload[NotificationPayload.keyRideId] as String?
-                    : payload[NotificationPayload.keyJobId] as String?);
+            (bookingType == 'ride'
+                ? payload[NotificationPayload.keyRideId] as String?
+                : payload[NotificationPayload.keyJobId] as String?);
         if (bookingId == null || bookingId.isEmpty) {
           router.go('/home');
           break;
