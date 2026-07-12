@@ -68,6 +68,8 @@ class AvailabilityController {
   AvailabilityController(this._ref);
 
   final Ref _ref;
+  Future<String?>? _goOnlineInFlight;
+  Future<void>? _heartbeatRefreshInFlight;
 
   /// Flip to online. Verifies location services + permission first because
   /// an online provider without a GPS fix is invisible to the matcher
@@ -76,7 +78,27 @@ class AvailabilityController {
   /// matcher includes this provider on the very next request.
   ///
   /// Returns `null` on success, or a user-facing error message on failure.
-  Future<String?> goOnline() async {
+  Future<String?> goOnline() {
+    final status = _ref.read(providerStatusProvider);
+    if (!status.isOffline) {
+      debugPrint('[Availability] online requested while status=$status — noop');
+      return Future<String?>.value(null);
+    }
+
+    final inFlight = _goOnlineInFlight;
+    if (inFlight != null) {
+      debugPrint('[Availability] online request already in flight — joining');
+      return inFlight;
+    }
+
+    final future = _goOnline().whenComplete(() {
+      _goOnlineInFlight = null;
+    });
+    _goOnlineInFlight = future;
+    return future;
+  }
+
+  Future<String?> _goOnline() async {
     final gate = await _checkLocationReady();
     if (gate != null) return gate;
 
@@ -173,7 +195,22 @@ class AvailabilityController {
   /// though FCM would have woken them. Refreshing here resets the TTL
   /// to a full window. Fire-and-forget; failures don't roll back local
   /// state — the user is leaving foreground anyway.
-  Future<void> refreshHeartbeat() async {
+  Future<void> refreshHeartbeat() {
+    final inFlight = _heartbeatRefreshInFlight;
+    if (inFlight != null) {
+      debugPrint(
+          '[Availability] heartbeat refresh already in flight — joining');
+      return inFlight;
+    }
+
+    final future = _refreshHeartbeat().whenComplete(() {
+      _heartbeatRefreshInFlight = null;
+    });
+    _heartbeatRefreshInFlight = future;
+    return future;
+  }
+
+  Future<void> _refreshHeartbeat() async {
     if (_ref.read(providerStatusProvider).isOffline) return;
     final pos = _ref.read(lastKnownPositionProvider);
     if (pos == null) return;

@@ -51,22 +51,82 @@ Future<void> recoverPendingRequestsNow(Ref ref) => _recoverPendingRequests(ref);
 /// route during notification/cold-start timing gaps: that route sits outside
 /// the shell, so setting [incomingRideRequestProvider] alone would not surface
 /// the real request.
-Future<Ride?> recoverPendingRideRequest(WidgetRef ref) async {
+Future<Ride?> recoverPendingRideRequest(WidgetRef ref) {
+  return _recoverPendingRideRequest(
+    listPendingRequests: () =>
+        ref.read(providerRequestServiceProvider).listPendingRequests(),
+    fetchRide: ref.read(rideServiceProvider).getRide,
+    storeDeadline: (rideId, deadline) {
+      ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+            (m) => {...m, rideId: deadline},
+          );
+    },
+  );
+}
+
+Future<Ride?> recoverPendingRideRequestById(WidgetRef ref, String rideId) {
+  return _recoverPendingRideRequest(
+    rideId: rideId,
+    listPendingRequests: () =>
+        ref.read(providerRequestServiceProvider).listPendingRequests(),
+    fetchRide: ref.read(rideServiceProvider).getRide,
+    storeDeadline: (rideId, deadline) {
+      ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+            (m) => {...m, rideId: deadline},
+          );
+    },
+  );
+}
+
+/// Same direct ride-request recovery as [recoverPendingRideRequest], but
+/// callable from service providers such as the FCM tap bridge where a
+/// [WidgetRef] is not available.
+Future<Ride?> recoverPendingRideRequestFromRef(Ref ref) {
+  return _recoverPendingRideRequest(
+    listPendingRequests: () =>
+        ref.read(providerRequestServiceProvider).listPendingRequests(),
+    fetchRide: ref.read(rideServiceProvider).getRide,
+    storeDeadline: (rideId, deadline) {
+      ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+            (m) => {...m, rideId: deadline},
+          );
+    },
+  );
+}
+
+Future<Ride?> recoverPendingRideRequestByIdFromRef(Ref ref, String rideId) {
+  return _recoverPendingRideRequest(
+    rideId: rideId,
+    listPendingRequests: () =>
+        ref.read(providerRequestServiceProvider).listPendingRequests(),
+    fetchRide: ref.read(rideServiceProvider).getRide,
+    storeDeadline: (rideId, deadline) {
+      ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+            (m) => {...m, rideId: deadline},
+          );
+    },
+  );
+}
+
+Future<Ride?> _recoverPendingRideRequest({
+  String? rideId,
+  required Future<List<ProviderPendingRequest>> Function() listPendingRequests,
+  required Future<Map<String, dynamic>> Function(String rideId) fetchRide,
+  required void Function(String rideId, DateTime deadline) storeDeadline,
+}) async {
   try {
-    final requests = await ref
-        .read(providerRequestServiceProvider)
-        .listPendingRequests()
-        .timeout(const Duration(seconds: 10));
+    final requests = await listPendingRequests().timeout(
+      const Duration(seconds: 10),
+    );
     for (final request in requests) {
       if (request.kind != ProviderRequestKind.ride) continue;
+      if (rideId != null && request.id != rideId) continue;
       final ride = await _readPendingRide(
         request,
-        ref.read(rideServiceProvider).getRide,
+        fetchRide,
       );
       if (ride != null && request.expiresAt != null) {
-        ref.read(rideRequestDeadlineByIdProvider.notifier).update(
-              (m) => {...m, ride.id: request.expiresAt!},
-            );
+        storeDeadline(ride.id, request.expiresAt!);
       }
       return ride;
     }

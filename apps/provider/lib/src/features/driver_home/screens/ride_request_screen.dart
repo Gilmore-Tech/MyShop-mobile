@@ -30,10 +30,10 @@ class RideRequestScreen extends ConsumerStatefulWidget {
 }
 
 class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
-  // Aligned with backend `ride_driver_acceptance_window_secs` (30 s).
+  // Aligned with backend `ride_driver_acceptance_window_secs` (45 s).
   // Keep these in lockstep — if the UI counts past the backend window,
   // an Accept tap will fail with ACCEPTANCE_TIMEOUT.
-  static const _acceptanceWindow = Duration(seconds: 30);
+  static const _acceptanceWindow = Duration(seconds: 45);
   late int _secondsRemaining;
   late DateTime _expiresAt;
   Timer? _timer;
@@ -195,7 +195,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
   void _decline({String reason = 'driver_declined'}) {
     _timer?.cancel();
     // Tell the matcher to move on immediately — without this, the next
-    // driver in the queue doesn't get the request until the 30 s window
+    // driver in the queue doesn't get the request until the 45 s window
     // expires and the matcher times us out.
     ref
         .read(activeRideProvider.notifier)
