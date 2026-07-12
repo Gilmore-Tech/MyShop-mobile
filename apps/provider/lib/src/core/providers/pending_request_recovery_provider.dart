@@ -59,10 +59,16 @@ Future<Ride?> recoverPendingRideRequest(WidgetRef ref) async {
         .timeout(const Duration(seconds: 10));
     for (final request in requests) {
       if (request.kind != ProviderRequestKind.ride) continue;
-      return _readPendingRide(
+      final ride = await _readPendingRide(
         request,
         ref.read(rideServiceProvider).getRide,
       );
+      if (ride != null && request.expiresAt != null) {
+        ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+              (m) => {...m, ride.id: request.expiresAt!},
+            );
+      }
+      return ride;
     }
   } catch (e) {
     debugPrint('[PendingRequestRecovery] ride lookup failed: $e');
@@ -107,6 +113,11 @@ Future<void> _surfaceRideRequest(
   try {
     final active = ref.read(activeRideProvider).ride;
     if (active != null && active.id == request.id) return;
+    if (ref.read(visibleRideRequestIdProvider) == request.id) return;
+    if (ref.read(rideRequestNavigationInFlightProvider).contains(request.id)) {
+      return;
+    }
+    if (ref.read(surfacedRideIdsProvider).contains(request.id)) return;
 
     final ride = await _readPendingRide(
       request,
@@ -114,6 +125,11 @@ Future<void> _surfaceRideRequest(
     );
     if (ride == null) return;
 
+    if (request.expiresAt != null) {
+      ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+            (m) => {...m, ride.id: request.expiresAt!},
+          );
+    }
     ref.read(surfacedRideIdsProvider.notifier).update((s) => {...s, ride.id});
     ref.read(incomingRideRequestProvider.notifier).state = null;
     ref.read(incomingRideRequestProvider.notifier).state = ride;

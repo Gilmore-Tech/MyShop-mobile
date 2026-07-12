@@ -57,6 +57,33 @@ final incomingRideRequestProvider = StateProvider<Ride?>((ref) => null);
 /// returning driver isn't permanently blind to old ride IDs.
 final surfacedRideIdsProvider = StateProvider<Set<String>>((_) => <String>{});
 
+DateTime? _requestDeadlineFrom(Map<String, dynamic> data) {
+  for (final key in const [
+    'expiresAt',
+    'expires_at',
+    'acceptanceExpiresAt',
+    'acceptance_expires_at',
+    'requestExpiresAt',
+    'request_expires_at',
+  ]) {
+    final raw = data[key];
+    if (raw is String && raw.isNotEmpty) {
+      final parsed = DateTime.tryParse(raw);
+      if (parsed != null) return parsed;
+    }
+  }
+
+  final seconds = data['expiresInSeconds'] ??
+      data['expires_in_seconds'] ??
+      data['acceptanceWindowSeconds'] ??
+      data['acceptance_window_seconds'];
+  if (seconds is num && seconds > 0) {
+    return DateTime.now().toUtc().add(Duration(seconds: seconds.toInt()));
+  }
+
+  return null;
+}
+
 /// Incoming job request for artisans — populated by Socket.IO events.
 final incomingJobRequestProvider = StateProvider<Job?>((ref) => null);
 
@@ -260,6 +287,12 @@ void _connectAndListen(Ref ref, SocketService socket) {
       if (data is Map<String, dynamic>) {
         try {
           final ride = Ride.fromJson(data);
+          final expiresAt = _requestDeadlineFrom(data);
+          if (expiresAt != null) {
+            ref.container.read(rideRequestDeadlineByIdProvider.notifier).update(
+                  (m) => {...m, ride.id: expiresAt},
+                );
+          }
 
           // Drop re-broadcasts for a ride we've already accepted. The backend
           // re-fires `ride:request` / `ride:new` to all notified drivers until
