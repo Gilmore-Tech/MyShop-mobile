@@ -64,6 +64,20 @@ Future<Ride?> recoverPendingRideRequest(WidgetRef ref) {
   );
 }
 
+Future<Ride?> recoverPendingRideRequestById(WidgetRef ref, String rideId) {
+  return _recoverPendingRideRequest(
+    rideId: rideId,
+    listPendingRequests: () =>
+        ref.read(providerRequestServiceProvider).listPendingRequests(),
+    fetchRide: ref.read(rideServiceProvider).getRide,
+    storeDeadline: (rideId, deadline) {
+      ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+            (m) => {...m, rideId: deadline},
+          );
+    },
+  );
+}
+
 /// Same direct ride-request recovery as [recoverPendingRideRequest], but
 /// callable from service providers such as the FCM tap bridge where a
 /// [WidgetRef] is not available.
@@ -80,7 +94,22 @@ Future<Ride?> recoverPendingRideRequestFromRef(Ref ref) {
   );
 }
 
+Future<Ride?> recoverPendingRideRequestByIdFromRef(Ref ref, String rideId) {
+  return _recoverPendingRideRequest(
+    rideId: rideId,
+    listPendingRequests: () =>
+        ref.read(providerRequestServiceProvider).listPendingRequests(),
+    fetchRide: ref.read(rideServiceProvider).getRide,
+    storeDeadline: (rideId, deadline) {
+      ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+            (m) => {...m, rideId: deadline},
+          );
+    },
+  );
+}
+
 Future<Ride?> _recoverPendingRideRequest({
+  String? rideId,
   required Future<List<ProviderPendingRequest>> Function() listPendingRequests,
   required Future<Map<String, dynamic>> Function(String rideId) fetchRide,
   required void Function(String rideId, DateTime deadline) storeDeadline,
@@ -91,6 +120,7 @@ Future<Ride?> _recoverPendingRideRequest({
     );
     for (final request in requests) {
       if (request.kind != ProviderRequestKind.ride) continue;
+      if (rideId != null && request.id != rideId) continue;
       final ride = await _readPendingRide(
         request,
         fetchRide,

@@ -522,32 +522,70 @@ class _RideRequestLoaderScreenState
       }
     }
 
-    try {
-      final data = await ref
-          .read(rideServiceProvider)
-          .getRide(rideId)
-          .timeout(const Duration(seconds: 10));
-      if (!mounted || generation != _generation) return;
+    final ride = await _loadFastestActionableRide(rideId);
+    if (!mounted || generation != _generation) return;
 
-      final ride = Ride.fromJson(data);
-      if (ride.status == RideStatus.requested) {
-        context.pushReplacement('/ride-request', extra: ride);
-        return;
-      }
-
-      debugPrint(
-        '[RideRequestLoader] $rideId no longer actionable '
-        '(status=${ride.status.toJson()})',
-      );
-    } catch (e) {
-      debugPrint('[RideRequestLoader] hydrate failed for $rideId: $e');
+    if (ride != null) {
+      context.pushReplacement('/ride-request', extra: ride);
+      return;
     }
 
-    await _recoverOrShowUnavailable(startedAt, generation);
+    await _showUnavailableAfterMinimumLoading(startedAt, generation);
   }
 
   bool _isBeforeDeadline(DateTime deadline) {
     return DateTime.now().toUtc().isBefore(deadline.toUtc());
+  }
+
+  Future<Ride?> _loadFastestActionableRide(String rideId) {
+    final completer = Completer<Ride?>();
+    var remaining = 2;
+
+    void completeIfDone() {
+      remaining -= 1;
+      if (remaining <= 0 && !completer.isCompleted) {
+        completer.complete(null);
+      }
+    }
+
+    void track(String source, Future<Ride?> future) {
+      unawaited(
+        future.then((ride) {
+          if (ride != null && !completer.isCompleted) {
+            debugPrint('[RideRequestLoader] $rideId hydrated from $source');
+            completer.complete(ride);
+          }
+        }).catchError((Object e) {
+          debugPrint(
+              '[RideRequestLoader] $source hydrate failed for $rideId: $e');
+        }).whenComplete(completeIfDone),
+      );
+    }
+
+    track('ride snapshot', _fetchRideSnapshot(rideId));
+    track('pending request', recoverPendingRideRequestById(ref, rideId));
+
+    return completer.future.timeout(
+      const Duration(seconds: 10),
+      onTimeout: () {
+        debugPrint('[RideRequestLoader] hydrate timed out for $rideId');
+        return null;
+      },
+    );
+  }
+
+  Future<Ride?> _fetchRideSnapshot(String rideId) async {
+    final data = await ref
+        .read(rideServiceProvider)
+        .getRide(rideId)
+        .timeout(const Duration(seconds: 8));
+    final ride = Ride.fromJson(data);
+    if (ride.status == RideStatus.requested) return ride;
+    debugPrint(
+      '[RideRequestLoader] $rideId no longer actionable '
+      '(status=${ride.status.toJson()})',
+    );
+    return null;
   }
 
   Future<void> _recoverOrShowUnavailable(
@@ -562,6 +600,13 @@ class _RideRequestLoaderScreenState
       return;
     }
 
+    await _showUnavailableAfterMinimumLoading(startedAt, generation);
+  }
+
+  Future<void> _showUnavailableAfterMinimumLoading(
+    DateTime startedAt,
+    int generation,
+  ) async {
     final elapsed = DateTime.now().difference(startedAt);
     const minimumLoading = Duration(milliseconds: 2500);
     if (elapsed < minimumLoading) {
