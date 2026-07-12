@@ -488,7 +488,7 @@ class _InvalidRideRequestScreenState
     // handoff. FCM tap hydration often wins within a few hundred milliseconds;
     // keep this screen in a neutral loading state until that race settles.
     final elapsed = DateTime.now().difference(startedAt);
-    const minimumLoading = Duration(milliseconds: 1200);
+    const minimumLoading = Duration(milliseconds: 2500);
     if (elapsed < minimumLoading) {
       await Future<void>.delayed(minimumLoading - elapsed);
     }
@@ -521,7 +521,7 @@ class _InvalidRideRequestScreenState
                 const SizedBox(height: 16),
                 Text(
                   _showUnavailable
-                      ? 'Ride request unavailable'
+                      ? 'Request expired or assigned'
                       : 'Opening ride request…',
                   style: MyShopTypography.h3,
                   textAlign: TextAlign.center,
@@ -529,7 +529,7 @@ class _InvalidRideRequestScreenState
                 const SizedBox(height: 8),
                 Text(
                   _showUnavailable
-                      ? 'This request may have expired or been assigned already. '
+                      ? 'This request has expired or was assigned already. '
                           'Go back online to receive the next request.'
                       : 'Checking if this request is still available.',
                   style: MyShopTypography.body2.copyWith(

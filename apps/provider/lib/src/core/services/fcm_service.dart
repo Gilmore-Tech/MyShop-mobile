@@ -624,6 +624,31 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       }
     }
 
+    void openRideRequest(Ride ride) {
+      final currentPath = router.routerDelegate.currentConfiguration.uri.path;
+      debugPrint('[FCM-tap] opening /ride-request for ${ride.id}');
+      if (currentPath == '/ride-request') {
+        router.pushReplacement('/ride-request', extra: ride);
+      } else {
+        router.push('/ride-request', extra: ride);
+      }
+    }
+
+    Future<bool> recoverAndOpenPendingRideRequest(String reason) async {
+      debugPrint('[FCM-tap] ride_request recovery: $reason');
+      final recovered = await recoverPendingRideRequestFromRef(ref);
+      if (recovered == null) {
+        debugPrint('[FCM-tap] ride_request recovery found no active request');
+        return false;
+      }
+      openRideRequest(recovered);
+      return true;
+    }
+
+    bool requestDeadlineExpired(DateTime deadline) {
+      return !DateTime.now().toUtc().isBefore(deadline.toUtc());
+    }
+
     switch (type) {
       case NotificationPayload.typeJobRequest:
         // Backend may send the job id under either `jobId` (camel) or
@@ -688,6 +713,12 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           ref.read(rideRequestDeadlineByIdProvider.notifier).update(
                 (m) => {...m, rideId: deadline},
               );
+          if (requestDeadlineExpired(deadline)) {
+            debugPrint('[FCM-tap] ride_request $rideId expired before tap');
+            router.go('/home');
+            await recoverAndOpenPendingRideRequest('payload deadline expired');
+            break;
+          }
         }
         if (ref.read(visibleRideRequestIdProvider) == rideId) {
           debugPrint('[FCM-tap] ride_request $rideId already visible');
@@ -708,26 +739,34 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         try {
           final data = await ref.read(rideServiceProvider).getRide(rideId);
           final ride = Ride.fromJson(data);
+          if (ride.status != RideStatus.requested) {
+            debugPrint(
+              '[FCM-tap] ride_request $rideId no longer actionable '
+              '(status=${ride.status.toJson()})',
+            );
+            router.go('/home');
+            await recoverAndOpenPendingRideRequest(
+              'ride status is ${ride.status.toJson()}',
+            );
+            break;
+          }
           if (ref.read(visibleRideRequestIdProvider) == rideId) {
             debugPrint('[FCM-tap] ride_request $rideId became visible while '
                 'hydrating');
             break;
           }
-          final currentPath =
-              router.routerDelegate.currentConfiguration.uri.path;
-          debugPrint('[FCM-tap] opening /ride-request for $rideId');
-          if (currentPath == '/ride-request') {
-            router.pushReplacement('/ride-request', extra: ride);
-          } else {
-            router.push('/ride-request', extra: ride);
-          }
+          openRideRequest(ride);
         } catch (e) {
           debugPrint('[FCM-tap] ride-request hydrate failed for $rideId: $e');
-          // Ask the backend for any still-actionable provider request. This
-          // covers cold-start/process-sleep taps where the push carried an id
-          // but GET /rides/:id raced the dispatch window or the in-memory
-          // socket payload was lost.
-          await recoverPendingRequestsNow(ref);
+          // Ask the backend directly for a still-actionable ride request and
+          // navigate with the recovered Ride payload. The generic recovery
+          // path intentionally avoids surfacing duplicate requests when the
+          // current route is /ride-request, which is correct for shell-level
+          // polling but wrong for this explicit notification-tap handoff.
+          final opened = await recoverAndOpenPendingRideRequest(
+            'GET /rides/$rideId failed',
+          );
+          if (!opened) router.go('/home');
         } finally {
           ref.read(rideRequestNavigationInFlightProvider.notifier).update(
                 (s) => {...s}..remove(rideId),
