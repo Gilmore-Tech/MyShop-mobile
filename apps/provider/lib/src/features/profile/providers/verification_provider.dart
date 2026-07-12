@@ -114,8 +114,8 @@ class DocumentUploadState {
 
 final documentUploadProvider =
     StateNotifierProvider<DocumentUploadNotifier, DocumentUploadState>((ref) {
-      return DocumentUploadNotifier(ref.watch(verificationServiceProvider));
-    });
+  return DocumentUploadNotifier(ref.watch(verificationServiceProvider));
+});
 
 // ─── Local Profile Photo ────────────────────────────────────────────────────
 //
@@ -224,9 +224,9 @@ class LocalProfilePhotoNotifier extends StateNotifier<ProfilePhotoState> {
 
 final localProfilePhotoProvider =
     StateNotifierProvider<LocalProfilePhotoNotifier, ProfilePhotoState>((ref) {
-      final role = ref.watch(providerTypeProvider);
-      return LocalProfilePhotoNotifier(role);
-    });
+  final role = ref.watch(providerTypeProvider);
+  return LocalProfilePhotoNotifier(role);
+});
 
 /// The provider profile photo that is allowed to be displayed in avatar holders.
 ///
@@ -246,39 +246,39 @@ class ProviderProfilePhotoDisplay {
 
 final providerProfilePhotoDisplayProvider =
     Provider<ProviderProfilePhotoDisplay>((ref) {
-      final role = ref.watch(providerTypeProvider);
-      final roleValue = role.name;
-      final verification = ref.watch(verificationStatusProvider).valueOrNull;
-      final user = ref.watch(currentUserProvider);
-      final isProviderFullyApproved =
-          verification?.isProviderFullyApproved(roleValue) ??
+  final role = ref.watch(providerTypeProvider);
+  final roleValue = role.name;
+  final verification = ref.watch(verificationStatusProvider).valueOrNull;
+  final user = ref.watch(currentUserProvider);
+  final isProviderFullyApproved =
+      verification?.isProviderFullyApproved(roleValue) ??
           (role.isDriver
               ? user?.driverProfile?.verificationStatus == 'approved'
               : user?.artisanProfile?.verificationStatus == 'approved');
-      final profilePhotoDoc = verification?.documentFor(
-        DocumentType.profilePhoto.value,
-        providerType: roleValue,
-      );
+  final profilePhotoDoc = verification?.documentFor(
+    DocumentType.profilePhoto.value,
+    providerType: roleValue,
+  );
 
-      if (profilePhotoDoc != null) {
-        final url = profilePhotoDoc.fileUrl;
-        return ProviderProfilePhotoDisplay(
-          url: profilePhotoDoc.isApproved && url != null && url.isNotEmpty
-              ? url
-              : null,
-        );
-      }
+  if (profilePhotoDoc != null) {
+    final url = profilePhotoDoc.fileUrl;
+    return ProviderProfilePhotoDisplay(
+      url: profilePhotoDoc.isApproved && url != null && url.isNotEmpty
+          ? url
+          : null,
+    );
+  }
 
-      if (!isProviderFullyApproved) {
-        return const ProviderProfilePhotoDisplay();
-      }
+  if (!isProviderFullyApproved) {
+    return const ProviderProfilePhotoDisplay();
+  }
 
-      final local = ref.watch(localProfilePhotoProvider);
-      return ProviderProfilePhotoDisplay(
-        url: user?.profilePhotoUrl ?? local.cloudinaryUrl,
-        localFile: local.localFile,
-      );
-    });
+  final local = ref.watch(localProfilePhotoProvider);
+  return ProviderProfilePhotoDisplay(
+    url: user?.profilePhotoUrl ?? local.cloudinaryUrl,
+    localFile: local.localFile,
+  );
+});
 
 // ─── Profile Completion ─────────────────────────────────────────────────────
 
@@ -313,7 +313,7 @@ final profileCompletionProvider = Provider<ProfileCompletion>((ref) {
       : user.artisanProfile?.verificationStatus == 'approved';
   final isProviderFullyApproved =
       docs?.isProviderFullyApproved(providerTypeValue) ??
-      profileVerificationApproved;
+          profileVerificationApproved;
 
   // An expired document no longer satisfies verification — the provider must
   // re-upload before it counts towards going online again. /verification/status

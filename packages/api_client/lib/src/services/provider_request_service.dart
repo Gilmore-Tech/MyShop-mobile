@@ -19,8 +19,7 @@ class ProviderPendingRequest {
           json['type'] as String? ??
           json['bookingType'] as String?,
     );
-    final id =
-        json['id'] as String? ??
+    final id = json['id'] as String? ??
         json['requestId'] as String? ??
         json['rideId'] as String? ??
         json['jobId'] as String? ??
