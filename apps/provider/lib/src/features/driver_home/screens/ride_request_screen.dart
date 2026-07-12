@@ -60,9 +60,14 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     _expired = false;
     _expiryHandled = false;
     _isAccepting = false;
-    ref.read(visibleRideRequestIdProvider.notifier).state = ride.id;
     _expiresAt = _deadlineFor(ride);
-    _syncRemaining();
+    _secondsRemaining = _secondsUntil(_expiresAt);
+    _expired = _secondsRemaining <= 0;
+    _markVisibleAfterBuild(ride.id);
+    if (_expired) {
+      _handleExpiryAfterBuild();
+      return;
+    }
     // Start the looping ringtone the moment this screen mounts. The
     // service is a singleton — both ride and job request flows share
     // it, and we never have both open simultaneously, so a stale
@@ -70,6 +75,20 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     LocalNotificationService.instance.startIncomingRingtone();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       _syncRemaining();
+    });
+  }
+
+  void _markVisibleAfterBuild(String rideId) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || widget.ride.id != rideId) return;
+      ref.read(visibleRideRequestIdProvider.notifier).state = rideId;
+    });
+  }
+
+  void _handleExpiryAfterBuild() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_expired) return;
+      _handleExpiry();
     });
   }
 
@@ -100,6 +119,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     _expiryHandled = true;
     _timer?.cancel();
     LocalNotificationService.instance.stopIncomingRingtone();
+    _clearVisibleMarker();
     ref.read(incomingRideRequestProvider.notifier).state = null;
     ref.read(surfacedRideIdsProvider.notifier).update(
           (s) => {...s, widget.ride.id},
@@ -123,11 +143,14 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     // silence the ring. Without this, accepting a ride would leave
     // the alert chiming on top of the active-ride map.
     LocalNotificationService.instance.stopIncomingRingtone();
+    super.dispose();
+  }
+
+  void _clearVisibleMarker() {
     final visibleId = ref.read(visibleRideRequestIdProvider);
     if (visibleId == widget.ride.id) {
       ref.read(visibleRideRequestIdProvider.notifier).state = null;
     }
-    super.dispose();
   }
 
   Future<void> _accept() async {
@@ -143,6 +166,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
         await ref.read(activeRideProvider.notifier).acceptRide(widget.ride);
     if (!mounted) return;
     if (ok) {
+      _clearVisibleMarker();
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
           builder: (_) => const ActiveRideScreen(),
@@ -181,6 +205,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
 
   void _closeRequest(String result) {
     if (!mounted) return;
+    _clearVisibleMarker();
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop(result);
     } else {
