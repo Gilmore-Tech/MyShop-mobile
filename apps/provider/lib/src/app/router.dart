@@ -7,6 +7,7 @@ import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../core/providers/background_location_sync_provider.dart';
+import '../core/providers/pending_request_recovery_provider.dart';
 import '../core/providers/socket_provider.dart';
 import '../core/widgets/incoming_request_listener.dart';
 import '../features/artisan_home/providers/job_poller_provider.dart';
@@ -453,8 +454,46 @@ class _AuthRouterRefresh extends ChangeNotifier {
   }
 }
 
-class _InvalidRideRequestScreen extends StatelessWidget {
+class _InvalidRideRequestScreen extends ConsumerStatefulWidget {
   const _InvalidRideRequestScreen();
+
+  @override
+  ConsumerState<_InvalidRideRequestScreen> createState() =>
+      _InvalidRideRequestScreenState();
+}
+
+class _InvalidRideRequestScreenState
+    extends ConsumerState<_InvalidRideRequestScreen> {
+  bool _showUnavailable = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _recover();
+    });
+  }
+
+  Future<void> _recover() async {
+    final startedAt = DateTime.now();
+    final ride = await recoverPendingRideRequest(ref);
+    if (!mounted) return;
+
+    if (ride != null) {
+      context.pushReplacement('/ride-request', extra: ride);
+      return;
+    }
+
+    // Avoid a jarring flash of "unavailable" during notification cold-start
+    // handoff. FCM tap hydration often wins within a few hundred milliseconds;
+    // keep this screen in a neutral loading state until that race settles.
+    final elapsed = DateTime.now().difference(startedAt);
+    const minimumLoading = Duration(milliseconds: 1200);
+    if (elapsed < minimumLoading) {
+      await Future<void>.delayed(minimumLoading - elapsed);
+    }
+    if (mounted) setState(() => _showUnavailable = true);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -467,31 +506,44 @@ class _InvalidRideRequestScreen extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  Icons.local_taxi_outlined,
-                  color: MyShopColors.warning,
-                  size: 48,
-                ),
+                if (_showUnavailable)
+                  const Icon(
+                    Icons.local_taxi_outlined,
+                    color: MyShopColors.warning,
+                    size: 48,
+                  )
+                else
+                  const SizedBox(
+                    width: 42,
+                    height: 42,
+                    child: CircularProgressIndicator(strokeWidth: 3),
+                  ),
                 const SizedBox(height: 16),
                 Text(
-                  'Ride request unavailable',
+                  _showUnavailable
+                      ? 'Ride request unavailable'
+                      : 'Opening ride request…',
                   style: MyShopTypography.h3,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'This request may have expired or been assigned already. '
-                  'Go back online to receive the next request.',
+                  _showUnavailable
+                      ? 'This request may have expired or been assigned already. '
+                          'Go back online to receive the next request.'
+                      : 'Checking if this request is still available.',
                   style: MyShopTypography.body2.copyWith(
                     color: MyShopColors.textSecondary,
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: () => context.go('/home'),
-                  child: const Text('Back to home'),
-                ),
+                if (_showUnavailable) ...[
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () => context.go('/home'),
+                    child: const Text('Back to home'),
+                  ),
+                ],
               ],
             ),
           ),
@@ -778,9 +830,8 @@ class _NavTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isActive
-        ? MyShopColors.primaryGold
-        : MyShopColors.textSecondary;
+    final color =
+        isActive ? MyShopColors.primaryGold : MyShopColors.textSecondary;
 
     return Expanded(
       child: GestureDetector(

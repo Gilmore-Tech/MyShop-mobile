@@ -46,6 +46,30 @@ void _schedulePendingRequestRecovery(Ref ref) {
 
 Future<void> recoverPendingRequestsNow(Ref ref) => _recoverPendingRequests(ref);
 
+/// Fetch the first still-actionable pending ride request without relying on
+/// the shell-level IncomingRequestListener. Used by the /ride-request fallback
+/// route during notification/cold-start timing gaps: that route sits outside
+/// the shell, so setting [incomingRideRequestProvider] alone would not surface
+/// the real request.
+Future<Ride?> recoverPendingRideRequest(WidgetRef ref) async {
+  try {
+    final requests = await ref
+        .read(providerRequestServiceProvider)
+        .listPendingRequests()
+        .timeout(const Duration(seconds: 10));
+    for (final request in requests) {
+      if (request.kind != ProviderRequestKind.ride) continue;
+      return _readPendingRide(
+        request,
+        ref.read(rideServiceProvider).getRide,
+      );
+    }
+  } catch (e) {
+    debugPrint('[PendingRequestRecovery] ride lookup failed: $e');
+  }
+  return null;
+}
+
 Future<void> _recoverPendingRequests(Ref ref) async {
   try {
     final requests = await ref
@@ -84,11 +108,11 @@ Future<void> _surfaceRideRequest(
     final active = ref.read(activeRideProvider).ride;
     if (active != null && active.id == request.id) return;
 
-    final payload = request.payload.isNotEmpty
-        ? request.payload
-        : await ref.read(rideServiceProvider).getRide(request.id);
-    final ride = Ride.fromJson(payload);
-    if (ride.status != RideStatus.requested) return;
+    final ride = await _readPendingRide(
+      request,
+      ref.read(rideServiceProvider).getRide,
+    );
+    if (ride == null) return;
 
     ref.read(surfacedRideIdsProvider.notifier).update((s) => {...s, ride.id});
     ref.read(incomingRideRequestProvider.notifier).state = null;
@@ -97,6 +121,18 @@ Future<void> _surfaceRideRequest(
   } catch (e) {
     debugPrint('[PendingRequestRecovery] ride ${request.id} failed: $e');
   }
+}
+
+Future<Ride?> _readPendingRide(
+  ProviderPendingRequest request,
+  Future<Map<String, dynamic>> Function(String rideId) fetchRide,
+) async {
+  final payload = request.payload.isNotEmpty
+      ? request.payload
+      : await fetchRide(request.id);
+  final ride = Ride.fromJson(payload);
+  if (ride.status != RideStatus.requested) return null;
+  return ride;
 }
 
 Future<void> _surfaceJobRequest(Ref ref, ProviderPendingRequest request) async {
