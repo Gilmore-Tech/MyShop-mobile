@@ -656,11 +656,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         '[FCM-tap] opening ride_request ${ride.id} directly from $source '
         '(currentPath=$currentPath)',
       );
-      if (currentPath == '/ride-request') {
-        unawaited(router.pushReplacement('/ride-request', extra: ride));
-      } else {
-        unawaited(router.push('/ride-request', extra: ride));
-      }
+      router.go('/ride-request', extra: ride);
     }
 
     Future<bool> recoverAndOpenPendingRideRequest(String reason) async {
