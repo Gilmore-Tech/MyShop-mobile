@@ -412,6 +412,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           if (extra is RideRequestRouteExtra) {
             return _RideRequestLoaderScreen(extra: extra);
           }
+          debugPrint(
+            '[Router] /ride-request opened without a Ride extra '
+            '(extra=${extra.runtimeType})',
+          );
           return const _InvalidRideRequestScreen();
         },
       ),
@@ -549,16 +553,9 @@ class _RideRequestLoaderScreenState
 
   void _dismissDuplicateFallback(String source, String rideId) {
     debugPrint(
-      '[RideRequestLoader] dismissing duplicate $source for $rideId',
+      '[RideRequestLoader] ignoring duplicate $source for $rideId while '
+      'the real request screen is already opening/visible',
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      } else {
-        context.go('/home');
-      }
-    });
   }
 
   Future<Ride?> _loadFastestActionableRide(String rideId) {
@@ -670,14 +667,9 @@ class _InvalidRideRequestScreenState
   Future<void> _recover() async {
     if (_anyRequestAlreadyOpeningOrVisible()) {
       debugPrint(
-        '[RideRequestInvalid] dismissing duplicate fallback while request '
+        '[RideRequestInvalid] ignoring duplicate fallback while request '
         'screen is already opening/visible',
       );
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      } else {
-        context.go('/home');
-      }
       return;
     }
 
