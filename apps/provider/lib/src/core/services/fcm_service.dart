@@ -651,18 +651,21 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     }
 
     void openRideRequestLoader(String rideId, DateTime? deadline) {
-      holdRideRequestNavigation(rideId);
       final currentPath = router.routerDelegate.currentConfiguration.uri.path;
+      if (currentPath == '/ride-request') {
+        debugPrint(
+          '[FCM-tap] skip loader for $rideId — ride request screen already open',
+        );
+        return;
+      }
+
+      holdRideRequestNavigation(rideId);
       final extra = RideRequestRouteExtra(
         rideId: rideId,
         expiresAt: deadline,
       );
       debugPrint('[FCM-tap] opening /ride-request loader for $rideId');
-      if (currentPath == '/ride-request') {
-        router.pushReplacement('/ride-request', extra: extra);
-      } else {
-        router.push('/ride-request', extra: extra);
-      }
+      router.push('/ride-request', extra: extra);
     }
 
     Future<bool> recoverAndOpenPendingRideRequest(String reason) async {
