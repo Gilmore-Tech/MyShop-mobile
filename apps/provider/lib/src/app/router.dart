@@ -404,19 +404,31 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       // Ride flow routes (full-screen, no bottom nav)
       GoRoute(
         path: '/ride-request',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final extra = state.extra;
           if (extra is Ride) {
-            return RideRequestScreen(ride: extra);
+            return MaterialPage<void>(
+              key: state.pageKey,
+              child: RideRequestScreen(ride: extra),
+            );
           }
+          final Widget child;
           if (extra is RideRequestRouteExtra) {
-            return _RideRequestLoaderScreen(extra: extra);
+            child = _RideRequestLoaderScreen(extra: extra);
+          } else {
+            child = const _InvalidRideRequestScreen();
           }
-          debugPrint(
-            '[Router] /ride-request opened without a Ride extra '
-            '(extra=${extra.runtimeType})',
+          return CustomTransitionPage<void>(
+            key: state.pageKey,
+            opaque: false,
+            barrierColor: const Color(0x2E000000),
+            transitionDuration: const Duration(milliseconds: 120),
+            reverseTransitionDuration: const Duration(milliseconds: 90),
+            transitionsBuilder: (_, animation, __, child) {
+              return FadeTransition(opacity: animation, child: child);
+            },
+            child: child,
           );
-          return const _InvalidRideRequestScreen();
         },
       ),
       GoRoute(
@@ -513,11 +525,6 @@ class _RideRequestLoaderScreenState
     final rideId = widget.extra.rideId;
     final deadline = widget.extra.expiresAt;
 
-    if (_sameRequestAlreadyOpeningOrVisible(rideId)) {
-      _dismissDuplicateFallback('loader', rideId);
-      return;
-    }
-
     setState(() => _showUnavailable = false);
 
     if (deadline != null) {
@@ -544,18 +551,6 @@ class _RideRequestLoaderScreenState
 
   bool _isBeforeDeadline(DateTime deadline) {
     return DateTime.now().toUtc().isBefore(deadline.toUtc());
-  }
-
-  bool _sameRequestAlreadyOpeningOrVisible(String rideId) {
-    return ref.read(visibleRideRequestIdProvider) == rideId ||
-        ref.read(rideRequestNavigationInFlightProvider).contains(rideId);
-  }
-
-  void _dismissDuplicateFallback(String source, String rideId) {
-    debugPrint(
-      '[RideRequestLoader] ignoring duplicate $source for $rideId while '
-      'the real request screen is already opening/visible',
-    );
   }
 
   Future<Ride?> _loadFastestActionableRide(String rideId) {
@@ -665,14 +660,6 @@ class _InvalidRideRequestScreenState
   }
 
   Future<void> _recover() async {
-    if (_anyRequestAlreadyOpeningOrVisible()) {
-      debugPrint(
-        '[RideRequestInvalid] ignoring duplicate fallback while request '
-        'screen is already opening/visible',
-      );
-      return;
-    }
-
     final startedAt = DateTime.now();
     final ride = await recoverPendingRideRequest(ref);
     if (!mounted) return;
@@ -697,11 +684,6 @@ class _InvalidRideRequestScreenState
   Widget build(BuildContext context) {
     return _RideRequestOpeningScaffold(showUnavailable: _showUnavailable);
   }
-
-  bool _anyRequestAlreadyOpeningOrVisible() {
-    return ref.read(visibleRideRequestIdProvider) != null ||
-        ref.read(rideRequestNavigationInFlightProvider).isNotEmpty;
-  }
 }
 
 class _RideRequestOpeningScaffold extends StatelessWidget {
@@ -711,54 +693,73 @@ class _RideRequestOpeningScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: MyShopColors.offWhite,
-      body: SafeArea(
+    return Material(
+      type: MaterialType.transparency,
+      child: SafeArea(
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (showUnavailable)
-                  const Icon(
-                    Icons.local_taxi_outlined,
-                    color: MyShopColors.warning,
-                    size: 48,
-                  )
-                else
-                  const SizedBox(
-                    width: 42,
-                    height: 42,
-                    child: CircularProgressIndicator(strokeWidth: 3),
-                  ),
-                const SizedBox(height: 16),
-                Text(
-                  showUnavailable
-                      ? 'Request expired or assigned'
-                      : 'Opening ride request…',
-                  style: MyShopTypography.h3,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  showUnavailable
-                      ? 'This request has expired or was assigned already. '
-                          'Go back online to receive the next request.'
-                      : 'Checking if this request is still available.',
-                  style: MyShopTypography.body2.copyWith(
-                    color: MyShopColors.textSecondary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                if (showUnavailable) ...[
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: () => context.go('/home'),
-                    child: const Text('Back to home'),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xF0FFFFFF),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x22000000),
+                    blurRadius: 24,
+                    offset: Offset(0, 12),
                   ),
                 ],
-              ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 22,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (showUnavailable)
+                      const Icon(
+                        Icons.local_taxi_outlined,
+                        color: MyShopColors.warning,
+                        size: 44,
+                      )
+                    else
+                      const SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: CircularProgressIndicator(strokeWidth: 3),
+                      ),
+                    const SizedBox(height: 14),
+                    Text(
+                      showUnavailable
+                          ? 'Request expired or assigned'
+                          : 'Please wait…',
+                      style: MyShopTypography.h3,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      showUnavailable
+                          ? 'This request has expired or was assigned already. '
+                              'Go back online to receive the next request.'
+                          : 'Opening the latest request details.',
+                      style: MyShopTypography.body2.copyWith(
+                        color: MyShopColors.textSecondary,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    if (showUnavailable) ...[
+                      const SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: () => context.go('/home'),
+                        child: const Text('Back to home'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
           ),
         ),
