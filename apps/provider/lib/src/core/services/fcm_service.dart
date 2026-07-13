@@ -625,29 +625,32 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       }
     }
 
-    void holdRideRequestNavigation(String rideId) {
-      ref.read(rideRequestNavigationInFlightProvider.notifier).update(
-            (s) => {...s, rideId},
-          );
-      unawaited(
-        Future<void>.delayed(const Duration(seconds: 4), () {
-          ref.read(rideRequestNavigationInFlightProvider.notifier).update(
-                (s) => {...s}..remove(rideId),
-              );
-        }),
-      );
-    }
-
-    void openRideRequest(Ride ride) {
-      holdRideRequestNavigation(ride.id);
-      ref.read(visibleRideRequestIdProvider.notifier).state = ride.id;
-      final currentPath = router.routerDelegate.currentConfiguration.uri.path;
-      debugPrint('[FCM-tap] opening /ride-request for ${ride.id}');
-      if (currentPath == '/ride-request') {
-        router.pushReplacement('/ride-request', extra: ride);
-      } else {
-        router.push('/ride-request', extra: ride);
+    Future<void> surfaceRideRequest(Ride ride, String source) async {
+      if (ref.read(visibleRideRequestIdProvider) == ride.id) {
+        debugPrint(
+          '[FCM-tap] ride_request ${ride.id} already visible from $source',
+        );
+        return;
       }
+
+      final currentPath = router.routerDelegate.currentConfiguration.uri.path;
+      if (currentPath != '/home') {
+        debugPrint(
+          '[FCM-tap] routing to /home so listener owns ride_request '
+          '${ride.id} from $source',
+        );
+        router.go('/home');
+        // Give the shell route a moment to mount IncomingRequestListener
+        // before changing incomingRideRequestProvider. `ref.listen` does not
+        // replay the current value when a listener is created, so setting the
+        // provider before /home is mounted can silently drop the request.
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+      }
+
+      if (ref.read(visibleRideRequestIdProvider) == ride.id) return;
+      debugPrint('[FCM-tap] surfacing ride_request ${ride.id} from $source');
+      ref.read(incomingRideRequestProvider.notifier).state = null;
+      ref.read(incomingRideRequestProvider.notifier).state = ride;
     }
 
     Future<bool> recoverAndOpenPendingRideRequest(String reason) async {
@@ -657,12 +660,11 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         debugPrint('[FCM-tap] ride_request recovery found no active request');
         return false;
       }
-      openRideRequest(recovered);
+      await surfaceRideRequest(recovered, reason);
       return true;
     }
 
     Future<void> recoverAndOpenRideRequestById(String rideId) async {
-      holdRideRequestNavigation(rideId);
       try {
         final recovered = await recoverPendingRideRequestByIdFromRef(
           ref,
@@ -678,7 +680,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             );
             return;
           }
-          openRideRequest(recovered);
+          await surfaceRideRequest(recovered, 'pending-request recovery');
           return;
         }
         debugPrint(
@@ -710,26 +712,6 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       } catch (e) {
         debugPrint('[FCM-tap] ride_request payload parse failed: $e');
         return null;
-      }
-    }
-
-    Future<void> validateOpenedRideRequest(String rideId) async {
-      try {
-        final data = await ref
-            .read(rideServiceProvider)
-            .getRide(rideId)
-            .timeout(const Duration(seconds: 6));
-        final ride = Ride.fromJson(data);
-        if (ride.status == RideStatus.requested) return;
-        debugPrint(
-          '[FCM-tap] opened ride_request $rideId validation saw '
-          'status=${ride.status.toJson()} — keeping current screen',
-        );
-      } catch (e) {
-        // Keep the instant screen up on transient network/auth failures.
-        // Accept remains backend-authoritative and will fail safely if the
-        // request is no longer actionable.
-        debugPrint('[FCM-tap] ride_request background validation skipped: $e');
       }
     }
 
@@ -823,15 +805,13 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           final cachedRide = ref.read(incomingRideRequestProvider);
           ref.read(incomingRideRequestProvider.notifier).state = null;
           if (cachedRide != null && cachedRide.status == RideStatus.requested) {
-            openRideRequest(cachedRide);
+            await surfaceRideRequest(cachedRide, 'cached incoming request');
             break;
           }
         }
         final rideFromPush = rideRequestFromPayload(rideId);
         if (rideFromPush != null) {
-          debugPrint('[FCM-tap] opening ride_request $rideId from FCM payload');
-          openRideRequest(rideFromPush);
-          unawaited(validateOpenedRideRequest(rideId));
+          await surfaceRideRequest(rideFromPush, 'FCM payload');
           break;
         }
         await recoverAndOpenRideRequestById(rideId);
