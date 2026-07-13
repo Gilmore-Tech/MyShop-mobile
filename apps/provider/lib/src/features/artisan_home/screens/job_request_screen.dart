@@ -147,7 +147,7 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
         );
       }
       if (_hydrating) {
-        return const _JobRequestLoadingScreen();
+        return _JobRequestLoadingScreen(requestId: _requestId);
       }
     }
 
@@ -1842,33 +1842,44 @@ class _DeclineButton extends StatelessWidget {
   }
 }
 
-/// Loading skeleton shown while [JobRequestScreen] hydrates a stub Job
+/// Loading state shown while [JobRequestScreen] hydrates a stub Job
 /// (FCM-tap entry path, where the constructor receives only an id).
-/// A simple centered spinner — the previous "render with empty fields"
-/// fallback was visually indistinguishable from a broken screen.
+/// Renders the same Request Details shell (header + request id) as the
+/// hydrated screen with a spinner in the body, so the fetch completing
+/// only swaps the body content in place — the user never perceives a
+/// separate loading screen between two details screens.
 class _JobRequestLoadingScreen extends StatelessWidget {
-  const _JobRequestLoadingScreen();
+  const _JobRequestLoadingScreen({required this.requestId});
+
+  final String requestId;
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       backgroundColor: MyShopColors.offWhite,
       body: SafeArea(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(
-                color: MyShopColors.primaryGold,
-                strokeWidth: 2.4,
+        child: Column(
+          children: [
+            _Header(requestId: requestId),
+            const Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(
+                      color: MyShopColors.primaryGold,
+                      strokeWidth: 2.4,
+                    ),
+                    SizedBox(height: MyShopSpacing.md),
+                    Text(
+                      'Loading job…',
+                      style: MyShopTypography.body2,
+                    ),
+                  ],
+                ),
               ),
-              SizedBox(height: MyShopSpacing.md),
-              Text(
-                'Loading job…',
-                style: MyShopTypography.body2,
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
