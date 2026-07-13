@@ -650,24 +650,6 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       }
     }
 
-    void openRideRequestLoader(String rideId, DateTime? deadline) {
-      final currentPath = router.routerDelegate.currentConfiguration.uri.path;
-      if (currentPath == '/ride-request') {
-        debugPrint(
-          '[FCM-tap] skip loader for $rideId — ride request screen already open',
-        );
-        return;
-      }
-
-      holdRideRequestNavigation(rideId);
-      final extra = RideRequestRouteExtra(
-        rideId: rideId,
-        expiresAt: deadline,
-      );
-      debugPrint('[FCM-tap] opening /ride-request loader for $rideId');
-      router.push('/ride-request', extra: extra);
-    }
-
     Future<bool> recoverAndOpenPendingRideRequest(String reason) async {
       debugPrint('[FCM-tap] ride_request recovery: $reason');
       final recovered = await recoverPendingRideRequestFromRef(ref);
@@ -677,6 +659,34 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       }
       openRideRequest(recovered);
       return true;
+    }
+
+    Future<void> recoverAndOpenRideRequestById(String rideId) async {
+      holdRideRequestNavigation(rideId);
+      try {
+        final recovered = await recoverPendingRideRequestByIdFromRef(
+          ref,
+          rideId,
+        ).timeout(
+          const Duration(seconds: 8),
+          onTimeout: () => null,
+        );
+        if (recovered != null) {
+          if (ref.read(visibleRideRequestIdProvider) == rideId) {
+            debugPrint(
+              '[FCM-tap] ride_request $rideId already visible after recovery',
+            );
+            return;
+          }
+          openRideRequest(recovered);
+          return;
+        }
+        debugPrint(
+          '[FCM-tap] ride_request $rideId recovery found no active request',
+        );
+      } catch (e) {
+        debugPrint('[FCM-tap] ride_request $rideId recovery failed: $e');
+      }
     }
 
     bool requestDeadlineExpired(DateTime deadline) {
@@ -824,7 +834,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           unawaited(validateOpenedRideRequest(rideId));
           break;
         }
-        openRideRequestLoader(rideId, deadline);
+        await recoverAndOpenRideRequestById(rideId);
         break;
 
       case NotificationPayload.typeBidAccepted:
