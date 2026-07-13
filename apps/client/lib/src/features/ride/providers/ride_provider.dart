@@ -1083,19 +1083,56 @@ Future<void> requestRideAndMatchDriver(
     }
   }
 
-  // Loop ceiling reached. The backend is the source of truth for "no
-  // drivers" / "cancelled" / "accepted" — it emits `ride:state` and a
-  // matching `ride.cancelled` push. Don't synthesize a failure here:
-  // earlier versions did, and the rider got a misleading "couldn't find
-  // a driver in time" card while the matcher was still searching. If
-  // the backend really went silent (network partition, server crash),
-  // the REST hydrate at the 10 s cadence above will catch the final
-  // state on its next tick.
+  // Loop ceiling reached. Do one final server read first so a last-second
+  // accept/cancel wins. If the backend is still silent after the full matching
+  // budget, stop the rider UI and best-effort cancel the stale requested ride.
+  // Leaving the phase in searching/driverFound here is what caused production
+  // reports of "searching for driver" staying on screen forever.
+  await _hydrateFromRest(ref.read, rideService, rideId);
+  final phaseAfterFinalHydrate = ref.read(bookingPhaseProvider);
+  if (ref.read(rideMatchedViaSocketProvider) ||
+      phaseAfterFinalHydrate == BookingPhase.accepted ||
+      phaseAfterFinalHydrate == BookingPhase.failed) {
+    return;
+  }
+
   developer.log(
     'Matching loop ceiling reached ($kRideMatchingSearchCeilingSeconds s) — '
-    'deferring final state to '
-    'backend snapshot. phase=${ref.read(bookingPhaseProvider)}',
+    'failing stale request locally. phase=$phaseAfterFinalHydrate',
     name: 'RideProvider',
+  );
+
+  try {
+    await rideService.cancelRide(
+      rideId,
+      reason: 'client_matching_timeout_recovery',
+    );
+  } on ApiException catch (e) {
+    developer.log(
+      'cancel stale matching ride failed (${e.statusCode}): ${e.message}',
+      name: 'RideProvider',
+      level: 800,
+    );
+    // A concurrent driver accept can make cancellation invalid. Re-check once
+    // before surfacing the failure card.
+    await _hydrateFromRest(ref.read, rideService, rideId);
+    final phaseAfterCancelFailure = ref.read(bookingPhaseProvider);
+    if (ref.read(rideMatchedViaSocketProvider) ||
+        phaseAfterCancelFailure == BookingPhase.accepted ||
+        phaseAfterCancelFailure == BookingPhase.failed) {
+      return;
+    }
+  } catch (e) {
+    developer.log(
+      'cancel stale matching ride crashed: $e',
+      name: 'RideProvider',
+      level: 800,
+    );
+  }
+
+  ref.read(matchedDriverProvider.notifier).state = null;
+  failWith(
+    "We couldn't find a driver nearby. Please try again in a moment.",
   );
 }
 
@@ -1133,6 +1170,9 @@ Future<void> _hydrateFromRest(
     developer.log('REST fallback hydrating ride $rideId', name: 'RideProvider');
     final json = await rideService.getRide(rideId);
     final status = json['status'] as String? ?? '';
+    final cancelledBy = json['cancelledBy'] as String?;
+    final cancellationReason =
+        (json['cancellationReason'] ?? json['reason']) as String?;
     // Only fire the hydrate path when the backend has actually moved past
     // `requested` — otherwise we'd push a half-built MatchedDriver.
     if (status == 'requested') return;
@@ -1140,10 +1180,13 @@ Future<void> _hydrateFromRest(
     // providers flip identically. We're not in socket_provider's scope
     // here, but `applyRideSnapshot` is private; instead, push the raw
     // status fields into the public providers.
-    if (status == 'cancelled' || status == 'no_drivers') {
-      final cancelledBy = json['cancelledBy'] as String?;
-      read(bookingFailureMessageProvider.notifier).state = status ==
-              'no_drivers'
+    if (status == 'cancelled' || _isNoDriversTerminal(status)) {
+      final noDrivers = _isNoDriversTerminal(
+        status,
+        reason: cancellationReason,
+        cancelledBy: cancelledBy,
+      );
+      read(bookingFailureMessageProvider.notifier).state = noDrivers
           ? 'No drivers are available nearby right now. Please try again in a moment.'
           : cancelledBy == 'driver'
               ? 'The driver cancelled this ride.'
@@ -1290,6 +1333,23 @@ Future<void> _hydrateFromRest(
     developer.log('REST fallback hydrate crashed: $e',
         name: 'RideProvider', level: 800);
   }
+}
+
+bool _isNoDriversTerminal(
+  String status, {
+  String? reason,
+  String? cancelledBy,
+}) {
+  final normalizedStatus = status.toLowerCase();
+  final normalizedReason = (reason ?? '').toLowerCase();
+  final normalizedCancelledBy = (cancelledBy ?? '').toLowerCase();
+
+  return normalizedStatus == 'no_drivers' ||
+      normalizedStatus == 'no_driver' ||
+      normalizedReason == 'no_drivers_available' ||
+      normalizedReason == 'no_driver_available' ||
+      normalizedReason == 'no_drivers' ||
+      normalizedCancelledBy == 'system';
 }
 
 /// Cancel an in-flight ride request from the matching screen — best-effort
