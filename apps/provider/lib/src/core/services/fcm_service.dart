@@ -634,6 +634,15 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       }
 
       final currentPath = router.routerDelegate.currentConfiguration.uri.path;
+      if (currentPath == '/ride-request') {
+        debugPrint(
+          '[FCM-tap] updating /ride-request directly for ${ride.id} '
+          'from $source',
+        );
+        unawaited(router.pushReplacement('/ride-request', extra: ride));
+        return;
+      }
+
       if (currentPath != '/home') {
         debugPrint(
           '[FCM-tap] routing to /home so listener owns ride_request '
