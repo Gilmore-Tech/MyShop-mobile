@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -635,94 +634,48 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       );
     }
 
-    Future<void> surfaceRideRequest(Ride ride, String source) async {
-      if (ref.read(visibleRideRequestIdProvider) == ride.id) {
+    void openRideRequestLoader(
+      String rideId, {
+      DateTime? deadline,
+      String source = 'notification tap',
+    }) {
+      if (deadline != null) {
+        ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+              (m) => {...m, rideId: deadline},
+            );
+      }
+      ref.read(surfacedRideIdsProvider.notifier).update((s) => {...s, rideId});
+      ref.read(incomingRideRequestProvider.notifier).state = null;
+      final visibleId = ref.read(visibleRideRequestIdProvider);
+      if (visibleId == rideId) {
         debugPrint(
-          '[FCM-tap] ride_request ${ride.id} already visible from $source',
+          '[FCM-tap] ride_request $rideId already visible — keeping details',
         );
         return;
       }
+      ref.read(rideRequestNavigationInFlightProvider.notifier).update(
+            (s) => {...s, rideId},
+          );
+      clearRideRequestInFlightLater(rideId);
 
       final currentPath = router.routerDelegate.currentConfiguration.uri.path;
-      ref.read(surfacedRideIdsProvider.notifier).update((s) => {...s, ride.id});
-      ref.read(incomingRideRequestProvider.notifier).state = null;
-      ref.read(visibleRideRequestIdProvider.notifier).state = ride.id;
-      ref.read(rideRequestNavigationInFlightProvider.notifier).update(
-            (s) => {...s, ride.id},
-          );
-      clearRideRequestInFlightLater(ride.id);
-
+      final routeExtra = RideRequestRouteExtra(
+        rideId: rideId,
+        expiresAt: deadline,
+      );
       debugPrint(
-        '[FCM-tap] opening ride_request ${ride.id} from $source '
+        '[FCM-tap] opening ride_request loader for $rideId from $source '
         '(currentPath=$currentPath)',
       );
       if (currentPath == '/ride-request') {
-        unawaited(router.pushReplacement('/ride-request', extra: ride));
+        unawaited(router.pushReplacement('/ride-request', extra: routeExtra));
       } else {
-        unawaited(router.push('/ride-request', extra: ride));
-      }
-    }
-
-    Future<bool> recoverAndOpenPendingRideRequest(String reason) async {
-      debugPrint('[FCM-tap] ride_request recovery: $reason');
-      final recovered = await recoverPendingRideRequestFromRef(ref);
-      if (recovered == null) {
-        debugPrint('[FCM-tap] ride_request recovery found no active request');
-        return false;
-      }
-      await surfaceRideRequest(recovered, reason);
-      return true;
-    }
-
-    Future<void> recoverAndOpenRideRequestById(String rideId) async {
-      try {
-        final recovered = await recoverPendingRideRequestByIdFromRef(
-          ref,
-          rideId,
-        ).timeout(
-          const Duration(seconds: 8),
-          onTimeout: () => null,
-        );
-        if (recovered != null) {
-          if (ref.read(visibleRideRequestIdProvider) == rideId) {
-            debugPrint(
-              '[FCM-tap] ride_request $rideId already visible after recovery',
-            );
-            return;
-          }
-          await surfaceRideRequest(recovered, 'pending-request recovery');
-          return;
-        }
-        debugPrint(
-          '[FCM-tap] ride_request $rideId recovery found no active request',
-        );
-      } catch (e) {
-        debugPrint('[FCM-tap] ride_request $rideId recovery failed: $e');
+        unawaited(router.push('/ride-request', extra: routeExtra));
       }
     }
 
     bool requestDeadlineExpired(DateTime deadline) {
       return !DateTime.now().toUtc().isBefore(deadline.toUtc());
-    }
-
-    Ride? rideRequestFromPayload(String rideId) {
-      final raw = payload['ridePayload'] ?? payload['ride_payload'];
-      if (raw is! String || raw.isEmpty) return null;
-      try {
-        final decoded = json.decode(raw);
-        if (decoded is! Map<String, dynamic>) return null;
-        final data = Map<String, dynamic>.from(decoded);
-        data['id'] ??= rideId;
-        data['rideId'] ??= rideId;
-        final ride = Ride.fromJson(data);
-        if (ride.id != rideId || ride.status != RideStatus.requested) {
-          return null;
-        }
-        return ride;
-      } catch (e) {
-        debugPrint('[FCM-tap] ride_request payload parse failed: $e');
-        return null;
-      }
     }
 
     switch (type) {
@@ -800,8 +753,11 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
               );
           if (requestDeadlineExpired(deadline)) {
             debugPrint('[FCM-tap] ride_request $rideId expired before tap');
-            router.go('/home');
-            await recoverAndOpenPendingRideRequest('payload deadline expired');
+            openRideRequestLoader(
+              rideId,
+              deadline: deadline,
+              source: 'expired ride_request notification',
+            );
             break;
           }
         }
@@ -809,26 +765,11 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           debugPrint('[FCM-tap] ride_request $rideId already visible');
           break;
         }
-        // Suppress the foreground re-broadcast modal for this ride — the
-        // user already acknowledged by tapping the notification, so the
-        // in-app sheet on top of /ride-request would be redundant.
-        ref
-            .read(surfacedRideIdsProvider.notifier)
-            .update((s) => {...s, rideId});
-        if (ref.read(incomingRideRequestProvider)?.id == rideId) {
-          final cachedRide = ref.read(incomingRideRequestProvider);
-          ref.read(incomingRideRequestProvider.notifier).state = null;
-          if (cachedRide != null && cachedRide.status == RideStatus.requested) {
-            await surfaceRideRequest(cachedRide, 'cached incoming request');
-            break;
-          }
-        }
-        final rideFromPush = rideRequestFromPayload(rideId);
-        if (rideFromPush != null) {
-          await surfaceRideRequest(rideFromPush, 'FCM payload');
-          break;
-        }
-        await recoverAndOpenRideRequestById(rideId);
+        openRideRequestLoader(
+          rideId,
+          deadline: deadline,
+          source: 'ride_request notification',
+        );
         break;
 
       case NotificationPayload.typeBidAccepted:
