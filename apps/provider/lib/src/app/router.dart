@@ -404,31 +404,15 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       // Ride flow routes (full-screen, no bottom nav)
       GoRoute(
         path: '/ride-request',
-        pageBuilder: (context, state) {
+        builder: (context, state) {
           final extra = state.extra;
           if (extra is Ride) {
-            return MaterialPage<void>(
-              key: state.pageKey,
-              child: RideRequestScreen(ride: extra),
-            );
+            return RideRequestScreen(ride: extra);
           }
-          final Widget child;
           if (extra is RideRequestRouteExtra) {
-            child = _RideRequestLoaderScreen(extra: extra);
-          } else {
-            child = const _InvalidRideRequestScreen();
+            return _RideRequestLoaderScreen(extra: extra);
           }
-          return CustomTransitionPage<void>(
-            key: state.pageKey,
-            opaque: false,
-            barrierColor: const Color(0x2E000000),
-            transitionDuration: const Duration(milliseconds: 120),
-            reverseTransitionDuration: const Duration(milliseconds: 90),
-            transitionsBuilder: (_, animation, __, child) {
-              return FadeTransition(opacity: animation, child: child);
-            },
-            child: child,
-          );
+          return const _InvalidRideRequestScreen();
         },
       ),
       GoRoute(
@@ -693,73 +677,52 @@ class _RideRequestOpeningScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      type: MaterialType.transparency,
-      child: SafeArea(
+    return Scaffold(
+      backgroundColor: MyShopColors.offWhite,
+      body: SafeArea(
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: const Color(0xF0FFFFFF),
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x22000000),
-                    blurRadius: 24,
-                    offset: Offset(0, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (showUnavailable)
+                  const Icon(
+                    Icons.local_taxi_outlined,
+                    color: MyShopColors.warning,
+                    size: 48,
+                  )
+                else
+                  const SizedBox(
+                    width: 42,
+                    height: 42,
+                    child: CircularProgressIndicator(strokeWidth: 3),
+                  ),
+                const SizedBox(height: 16),
+                Text(
+                  showUnavailable ? 'Request expired or assigned' : 'Loading…',
+                  style: MyShopTypography.h3,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  showUnavailable
+                      ? 'This request has expired or was assigned already. '
+                          'Go back online to receive the next request.'
+                      : 'Fetching the latest request details.',
+                  style: MyShopTypography.body2.copyWith(
+                    color: MyShopColors.textSecondary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                if (showUnavailable) ...[
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () => context.go('/home'),
+                    child: const Text('Back to home'),
                   ),
                 ],
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 22,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (showUnavailable)
-                      const Icon(
-                        Icons.local_taxi_outlined,
-                        color: MyShopColors.warning,
-                        size: 44,
-                      )
-                    else
-                      const SizedBox(
-                        width: 36,
-                        height: 36,
-                        child: CircularProgressIndicator(strokeWidth: 3),
-                      ),
-                    const SizedBox(height: 14),
-                    Text(
-                      showUnavailable
-                          ? 'Request expired or assigned'
-                          : 'Please wait…',
-                      style: MyShopTypography.h3,
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      showUnavailable
-                          ? 'This request has expired or was assigned already. '
-                              'Go back online to receive the next request.'
-                          : 'Opening the latest request details.',
-                      style: MyShopTypography.body2.copyWith(
-                        color: MyShopColors.textSecondary,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    if (showUnavailable) ...[
-                      const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: () => context.go('/home'),
-                        child: const Text('Back to home'),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+              ],
             ),
           ),
         ),

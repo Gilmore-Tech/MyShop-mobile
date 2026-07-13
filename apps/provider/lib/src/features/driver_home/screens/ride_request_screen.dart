@@ -143,6 +143,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     // silence the ring. Without this, accepting a ride would leave
     // the alert chiming on top of the active-ride map.
     LocalNotificationService.instance.stopIncomingRingtone();
+    _clearVisibleMarker();
     super.dispose();
   }
 
