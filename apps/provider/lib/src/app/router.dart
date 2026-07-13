@@ -509,6 +509,11 @@ class _RideRequestLoaderScreenState
     final rideId = widget.extra.rideId;
     final deadline = widget.extra.expiresAt;
 
+    if (_sameRequestAlreadyOpeningOrVisible(rideId)) {
+      _dismissDuplicateFallback('loader', rideId);
+      return;
+    }
+
     setState(() => _showUnavailable = false);
 
     if (deadline != null) {
@@ -535,6 +540,25 @@ class _RideRequestLoaderScreenState
 
   bool _isBeforeDeadline(DateTime deadline) {
     return DateTime.now().toUtc().isBefore(deadline.toUtc());
+  }
+
+  bool _sameRequestAlreadyOpeningOrVisible(String rideId) {
+    return ref.read(visibleRideRequestIdProvider) == rideId ||
+        ref.read(rideRequestNavigationInFlightProvider).contains(rideId);
+  }
+
+  void _dismissDuplicateFallback(String source, String rideId) {
+    debugPrint(
+      '[RideRequestLoader] dismissing duplicate $source for $rideId',
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      } else {
+        context.go('/home');
+      }
+    });
   }
 
   Future<Ride?> _loadFastestActionableRide(String rideId) {
@@ -644,6 +668,19 @@ class _InvalidRideRequestScreenState
   }
 
   Future<void> _recover() async {
+    if (_anyRequestAlreadyOpeningOrVisible()) {
+      debugPrint(
+        '[RideRequestInvalid] dismissing duplicate fallback while request '
+        'screen is already opening/visible',
+      );
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      } else {
+        context.go('/home');
+      }
+      return;
+    }
+
     final startedAt = DateTime.now();
     final ride = await recoverPendingRideRequest(ref);
     if (!mounted) return;
@@ -667,6 +704,11 @@ class _InvalidRideRequestScreenState
   @override
   Widget build(BuildContext context) {
     return _RideRequestOpeningScaffold(showUnavailable: _showUnavailable);
+  }
+
+  bool _anyRequestAlreadyOpeningOrVisible() {
+    return ref.read(visibleRideRequestIdProvider) != null ||
+        ref.read(rideRequestNavigationInFlightProvider).isNotEmpty;
   }
 }
 
