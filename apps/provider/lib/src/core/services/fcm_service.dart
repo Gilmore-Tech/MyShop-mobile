@@ -774,6 +774,13 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           await recoverPendingRequestsNow(ref);
           break;
         }
+        final currentPath = router.routerDelegate.currentConfiguration.uri.path;
+        if (currentPath == '/ride-request') {
+          debugPrint(
+            '[FCM-tap] ride_request $rideId ignored — request screen already open',
+          );
+          break;
+        }
         final deadline = requestDeadlineFromPayload();
         if (deadline != null) {
           ref.read(rideRequestDeadlineByIdProvider.notifier).update(
