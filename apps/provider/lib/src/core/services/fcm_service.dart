@@ -625,7 +625,22 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       }
     }
 
+    void holdRideRequestNavigation(String rideId) {
+      ref.read(rideRequestNavigationInFlightProvider.notifier).update(
+            (s) => {...s, rideId},
+          );
+      unawaited(
+        Future<void>.delayed(const Duration(seconds: 4), () {
+          ref.read(rideRequestNavigationInFlightProvider.notifier).update(
+                (s) => {...s}..remove(rideId),
+              );
+        }),
+      );
+    }
+
     void openRideRequest(Ride ride) {
+      holdRideRequestNavigation(ride.id);
+      ref.read(visibleRideRequestIdProvider.notifier).state = ride.id;
       final currentPath = router.routerDelegate.currentConfiguration.uri.path;
       debugPrint('[FCM-tap] opening /ride-request for ${ride.id}');
       if (currentPath == '/ride-request') {
@@ -636,6 +651,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     }
 
     void openRideRequestLoader(String rideId, DateTime? deadline) {
+      holdRideRequestNavigation(rideId);
       final currentPath = router.routerDelegate.currentConfiguration.uri.path;
       final extra = RideRequestRouteExtra(
         rideId: rideId,
@@ -695,6 +711,24 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             .timeout(const Duration(seconds: 6));
         final ride = Ride.fromJson(data);
         if (ride.status == RideStatus.requested) return;
+        final recovered = await recoverPendingRideRequestByIdFromRef(
+          ref,
+          rideId,
+        ).timeout(
+          const Duration(seconds: 3),
+          onTimeout: () => null,
+        );
+        if (recovered != null) {
+          if (ref.read(visibleRideRequestIdProvider) == rideId) {
+            debugPrint(
+              '[FCM-tap] validation kept visible ride_request $rideId '
+              'from pending-request recovery',
+            );
+            return;
+          }
+          openRideRequest(recovered);
+          return;
+        }
         if (ref.read(visibleRideRequestIdProvider) != rideId) return;
         debugPrint(
           '[FCM-tap] opened ride_request $rideId became non-actionable '
@@ -784,6 +818,11 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           debugPrint('[FCM-tap] ride_request $rideId already visible');
           break;
         }
+        if (ref.read(rideRequestNavigationInFlightProvider).contains(rideId)) {
+          debugPrint(
+              '[FCM-tap] ride_request $rideId navigation already active');
+          break;
+        }
         // Suppress the foreground re-broadcast modal for this ride — the
         // user already acknowledged by tapping the notification, so the
         // in-app sheet on top of /ride-request would be redundant.
@@ -805,13 +844,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           unawaited(validateOpenedRideRequest(rideId, deadline));
           break;
         }
-        ref.read(rideRequestNavigationInFlightProvider.notifier).update(
-              (s) => {...s, rideId},
-            );
         openRideRequestLoader(rideId, deadline);
-        ref.read(rideRequestNavigationInFlightProvider.notifier).update(
-              (s) => {...s}..remove(rideId),
-            );
         break;
 
       case NotificationPayload.typeBidAccepted:
