@@ -625,6 +625,16 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       }
     }
 
+    void clearRideRequestInFlightLater(String rideId) {
+      unawaited(
+        Future<void>.delayed(const Duration(seconds: 4), () {
+          ref.read(rideRequestNavigationInFlightProvider.notifier).update(
+                (s) => {...s}..remove(rideId),
+              );
+        }),
+      );
+    }
+
     Future<void> surfaceRideRequest(Ride ride, String source) async {
       if (ref.read(visibleRideRequestIdProvider) == ride.id) {
         debugPrint(
@@ -634,32 +644,23 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       }
 
       final currentPath = router.routerDelegate.currentConfiguration.uri.path;
-      if (currentPath == '/ride-request') {
-        debugPrint(
-          '[FCM-tap] updating /ride-request directly for ${ride.id} '
-          'from $source',
-        );
-        unawaited(router.pushReplacement('/ride-request', extra: ride));
-        return;
-      }
-
-      if (currentPath != '/home') {
-        debugPrint(
-          '[FCM-tap] routing to /home so listener owns ride_request '
-          '${ride.id} from $source',
-        );
-        router.go('/home');
-        // Give the shell route a moment to mount IncomingRequestListener
-        // before changing incomingRideRequestProvider. `ref.listen` does not
-        // replay the current value when a listener is created, so setting the
-        // provider before /home is mounted can silently drop the request.
-        await Future<void>.delayed(const Duration(milliseconds: 150));
-      }
-
-      if (ref.read(visibleRideRequestIdProvider) == ride.id) return;
-      debugPrint('[FCM-tap] surfacing ride_request ${ride.id} from $source');
+      ref.read(surfacedRideIdsProvider.notifier).update((s) => {...s, ride.id});
       ref.read(incomingRideRequestProvider.notifier).state = null;
-      ref.read(incomingRideRequestProvider.notifier).state = ride;
+      ref.read(visibleRideRequestIdProvider.notifier).state = ride.id;
+      ref.read(rideRequestNavigationInFlightProvider.notifier).update(
+            (s) => {...s, ride.id},
+          );
+      clearRideRequestInFlightLater(ride.id);
+
+      debugPrint(
+        '[FCM-tap] opening ride_request ${ride.id} from $source '
+        '(currentPath=$currentPath)',
+      );
+      if (currentPath == '/ride-request') {
+        unawaited(router.pushReplacement('/ride-request', extra: ride));
+      } else {
+        unawaited(router.push('/ride-request', extra: ride));
+      }
     }
 
     Future<bool> recoverAndOpenPendingRideRequest(String reason) async {
@@ -783,13 +784,6 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           await recoverPendingRequestsNow(ref);
           break;
         }
-        final currentPath = router.routerDelegate.currentConfiguration.uri.path;
-        if (currentPath == '/ride-request') {
-          debugPrint(
-            '[FCM-tap] ride_request $rideId ignored — request screen already open',
-          );
-          break;
-        }
         final deadline = requestDeadlineFromPayload();
         if (deadline != null) {
           ref.read(rideRequestDeadlineByIdProvider.notifier).update(
@@ -804,11 +798,6 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         }
         if (ref.read(visibleRideRequestIdProvider) == rideId) {
           debugPrint('[FCM-tap] ride_request $rideId already visible');
-          break;
-        }
-        if (ref.read(rideRequestNavigationInFlightProvider).contains(rideId)) {
-          debugPrint(
-              '[FCM-tap] ride_request $rideId navigation already active');
           break;
         }
         // Suppress the foreground re-broadcast modal for this ride — the
