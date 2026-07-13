@@ -6,6 +6,8 @@ export 'src/theme/myshop_spacing.dart';
 export 'src/theme/myshop_radius.dart';
 export 'src/theme/myshop_theme.dart';
 
+export 'src/services/voip_call_bridge_service.dart';
+
 export 'src/widgets/myshop_text_field.dart';
 export 'src/widgets/myshop_primary_button.dart';
 export 'src/widgets/myshop_otp_input.dart';

@@ -113,6 +113,11 @@ final chatServiceProvider = Provider<ChatService>((ref) {
   return ChatService(ref.watch(dioProvider));
 });
 
+/// App-to-app voice call session service.
+final appCallServiceProvider = Provider<AppCallService>((ref) {
+  return AppCallService(ref.watch(dioProvider));
+});
+
 /// Safety/emergency service.
 final safetyServiceProvider = Provider<SafetyService>((ref) {
   return SafetyService(ref.watch(dioProvider));

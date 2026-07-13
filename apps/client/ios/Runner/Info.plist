@@ -77,6 +77,8 @@
 		<key>UIBackgroundModes</key>
 		<array>
 			<string>remote-notification</string>
+			<string>voip</string>
+			<string>audio</string>
 			<string>fetch</string>
 		</array>
 		<!-- FCM foreground presentation — lets our foreground handler render
