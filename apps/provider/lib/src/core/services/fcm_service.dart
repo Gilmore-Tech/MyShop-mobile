@@ -700,10 +700,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       }
     }
 
-    Future<void> validateOpenedRideRequest(
-      String rideId,
-      DateTime? deadline,
-    ) async {
+    Future<void> validateOpenedRideRequest(String rideId) async {
       try {
         final data = await ref
             .read(rideServiceProvider)
@@ -711,30 +708,10 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             .timeout(const Duration(seconds: 6));
         final ride = Ride.fromJson(data);
         if (ride.status == RideStatus.requested) return;
-        final recovered = await recoverPendingRideRequestByIdFromRef(
-          ref,
-          rideId,
-        ).timeout(
-          const Duration(seconds: 3),
-          onTimeout: () => null,
-        );
-        if (recovered != null) {
-          if (ref.read(visibleRideRequestIdProvider) == rideId) {
-            debugPrint(
-              '[FCM-tap] validation kept visible ride_request $rideId '
-              'from pending-request recovery',
-            );
-            return;
-          }
-          openRideRequest(recovered);
-          return;
-        }
-        if (ref.read(visibleRideRequestIdProvider) != rideId) return;
         debugPrint(
-          '[FCM-tap] opened ride_request $rideId became non-actionable '
-          '(status=${ride.status.toJson()})',
+          '[FCM-tap] opened ride_request $rideId validation saw '
+          'status=${ride.status.toJson()} — keeping current screen',
         );
-        openRideRequestLoader(rideId, deadline);
       } catch (e) {
         // Keep the instant screen up on transient network/auth failures.
         // Accept remains backend-authoritative and will fail safely if the
@@ -841,7 +818,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         if (rideFromPush != null) {
           debugPrint('[FCM-tap] opening ride_request $rideId from FCM payload');
           openRideRequest(rideFromPush);
-          unawaited(validateOpenedRideRequest(rideId, deadline));
+          unawaited(validateOpenedRideRequest(rideId));
           break;
         }
         openRideRequestLoader(rideId, deadline);
