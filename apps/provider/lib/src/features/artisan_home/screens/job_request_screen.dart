@@ -14,6 +14,7 @@ import 'package:shared_utils/shared_utils.dart' as geo_utils;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/providers/socket_provider.dart';
 
 import '../../artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../artisan_jobs/providers/pending_incoming_jobs_provider.dart';
@@ -80,7 +81,28 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
   @override
   void initState() {
     super.initState();
+    // Post-frame: modifying a provider synchronously inside initState can
+    // fire rebuilds of widgets that are still building. Mirrors the ride
+    // request screen's visible-marker handshake.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(visibleJobRequestIdProvider.notifier).state = widget.job.id;
+    });
     _hydrateJob();
+  }
+
+  @override
+  void dispose() {
+    // Release the visible marker so the next notification tap for this job
+    // navigates again. Guarded: a replacement screen for the same job may
+    // already own the marker, and the container can be tearing down.
+    try {
+      final visibleId = ref.read(visibleJobRequestIdProvider);
+      if (visibleId == widget.job.id) {
+        ref.read(visibleJobRequestIdProvider.notifier).state = null;
+      }
+    } catch (_) {}
+    super.dispose();
   }
 
   /// Fetch the full job record. Tracks loading + error state so the

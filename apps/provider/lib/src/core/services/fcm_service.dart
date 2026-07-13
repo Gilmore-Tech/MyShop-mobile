@@ -749,6 +749,15 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         if (ref.read(incomingJobRequestProvider)?.id == jobId) {
           ref.read(incomingJobRequestProvider.notifier).state = null;
         }
+        // Details for this job are already on screen (opened in-app via the
+        // modal/socket path before the user backgrounded) — keep it. Without
+        // this guard the tap tears the screen down and re-pushes a stub that
+        // re-fetches the same job, which the artisan experiences as
+        // details → loading → details.
+        if (ref.read(visibleJobRequestIdProvider) == jobId) {
+          debugPrint('[FCM-tap] job_request $jobId already visible — keeping');
+          break;
+        }
         // Land on /home so dismissing /job-request returns to a sane
         // shell, then push the bid details synchronously with a stub
         // Job carrying only the id. JobRequestScreen.initState() calls

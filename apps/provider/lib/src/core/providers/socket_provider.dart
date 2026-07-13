@@ -87,6 +87,16 @@ DateTime? _requestDeadlineFrom(Map<String, dynamic> data) {
 /// Incoming job request for artisans — populated by Socket.IO events.
 final incomingJobRequestProvider = StateProvider<Job?>((ref) => null);
 
+/// Job id currently visible on the full `/job-request` details route.
+///
+/// Mirrors [visibleRideRequestIdProvider] on the driver side: FCM taps,
+/// socket events and the incoming-job modal can all fire within moments of
+/// each other after a background wake. This marker lets the notification-tap
+/// handler keep the already-open details screen instead of tearing it down
+/// and re-pushing a stub that re-fetches the same job (which reads as
+/// details → loading → details to the artisan).
+final visibleJobRequestIdProvider = StateProvider<String?>((_) => null);
+
 /// True while the Socket.IO connection is open.
 /// Useful for showing a live indicator on the home screen.
 final socketConnectedProvider = StateProvider<bool>((ref) => false);
