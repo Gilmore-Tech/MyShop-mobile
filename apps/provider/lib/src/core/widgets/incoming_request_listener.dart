@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -176,6 +178,25 @@ class _IncomingRequestListenerState
       debugPrint('[IncomingRequestListener] ride ${ride.id} already visible');
       return;
     }
+    if (ref.read(rideRequestNavigationInFlightProvider).contains(ride.id)) {
+      debugPrint(
+        '[IncomingRequestListener] ride ${ride.id} navigation already active',
+      );
+      return;
+    }
+
+    ref.read(rideRequestNavigationInFlightProvider.notifier).update(
+          (s) => {...s, ride.id},
+        );
+    ref.read(visibleRideRequestIdProvider.notifier).state = ride.id;
+    unawaited(
+      Future<void>.delayed(const Duration(seconds: 4), () {
+        if (!mounted) return;
+        ref.read(rideRequestNavigationInFlightProvider.notifier).update(
+              (s) => {...s}..remove(ride.id),
+            );
+      }),
+    );
 
     final currentLocation = GoRouterState.of(context).matchedLocation;
     if (currentLocation == '/ride-request') {
