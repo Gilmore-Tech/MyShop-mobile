@@ -405,6 +405,34 @@ void _connectAndListen(Ref ref, SocketService socket) {
         if (rideId.isNotEmpty && !shownCancelledFor.add(rideId)) return;
 
         final reason = (map['reason'] as String?) ?? '';
+        final messageFromPayload = (map['message'] as String?) ?? '';
+        final noDriversMessage = messageFromPayload.isNotEmpty
+            ? messageFromPayload
+            : "We couldn't find a driver nearby. Please try again in a moment.";
+        final noDrivers = _isNoDriversCancellation(
+          reason: reason,
+          cancelledBy: cancelledBy,
+          message: messageFromPayload,
+        );
+        if (noDrivers) {
+          // Backend system expiry emits `ride:cancelled` first, followed by
+          // `ride:status no_drivers` and `ride:state`. If those later packets
+          // are missed, resetting bookingPhase to idle leaves the matching
+          // screen mounted but visually "searching" forever. Treat the
+          // no-driver cancellation as a terminal matching failure immediately.
+          ref.container.read(matchedDriverProvider.notifier).state = null;
+          ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
+          ref.container.read(bookingFailureMessageProvider.notifier).state =
+              noDriversMessage;
+          ref.container.read(bookingPhaseProvider.notifier).fail();
+          ref.container.read(rideTrackingPhaseProvider.notifier).state =
+              RideTrackingPhase.cancelled;
+          if (ref.container.exists(activityHistoryProvider)) {
+            ref.container.read(activityHistoryProvider.notifier).silentReload();
+          }
+          return;
+        }
+
         final message = cancelledBy == 'driver'
             ? 'The driver cancelled this ride.'
             : cancelledBy == 'admin'
@@ -882,4 +910,22 @@ void _connectAndListen(Ref ref, SocketService socket) {
   // apps/provider/lib/src/core/providers/socket_provider.dart.
   socket.onAfterCreate(attachHandlers);
   socket.connect();
+}
+
+bool _isNoDriversCancellation({
+  required String reason,
+  required String cancelledBy,
+  required String message,
+}) {
+  final normalizedReason = reason.toLowerCase();
+  final normalizedCancelledBy = cancelledBy.toLowerCase();
+  final normalizedMessage = message.toLowerCase();
+
+  return normalizedReason == 'no_drivers_available' ||
+      normalizedReason == 'no_driver_available' ||
+      normalizedReason == 'no_drivers' ||
+      normalizedReason == 'no_driver' ||
+      normalizedMessage.contains('no drivers available') ||
+      normalizedMessage.contains('no driver available') ||
+      normalizedCancelledBy == 'system';
 }
