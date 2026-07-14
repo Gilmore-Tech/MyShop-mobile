@@ -12,11 +12,13 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/chat/chat_entry_button.dart';
+import '../../../core/di/providers.dart' show jobServiceProvider;
 import '../../../core/providers/socket_provider.dart' show ratingSheetShownFor;
 import '../../../core/services/directions_service.dart';
 import '../../../core/services/nav_guidance.dart';
 import '../../../core/widgets/nav_arrow_icon.dart';
 import '../../../core/widgets/route_warning_banner.dart';
+import '../../calls/helpers/start_in_app_call.dart';
 import '../../driver_home/providers/driver_location_provider.dart';
 import '../providers/active_job_provider.dart';
 import '../widgets/rate_client_sheet.dart';
@@ -27,7 +29,12 @@ import '../widgets/rate_client_sheet.dart';
 ///
 /// PRD 5.3 — navigate to client, mark arrived/in_progress/complete, chat/call.
 class ActiveJobScreen extends ConsumerStatefulWidget {
-  const ActiveJobScreen({super.key});
+  const ActiveJobScreen({super.key, this.recoveryJobId});
+
+  /// Booking id supplied by a cold-start/deep-link return path. The normal
+  /// foreground artisan flow already seeds [activeJobProvider], but a call can
+  /// wake a terminated app where that in-memory slot is empty.
+  final String? recoveryJobId;
 
   @override
   ConsumerState<ActiveJobScreen> createState() => _ActiveJobScreenState();
@@ -55,6 +62,9 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
   /// the sheet's open animation would queue another sheet underneath, and
   /// the socket reconciler can also re-emit the same status.
   bool _rateSheetShown = false;
+  bool _isRecoveringJob = false;
+  String? _recoveryError;
+  int _recoveryGeneration = 0;
 
   /// Polls `GET /jobs/:id` whenever the screen is parked in a state that
   /// depends on a backend-driven transition we might miss over the
@@ -80,14 +90,78 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
     // Kick off the very first `artisan_en_route` transition when the
     // artisan lands here from the bid-accepted banner. Runs once per mount
     // via a microtask so the state mutation doesn't happen during build.
-    Future.microtask(() {
-      if (!mounted || _hasAutoStartedEnRoute) return;
-      final snapshot = ref.read(activeJobProvider);
-      if (snapshot.hasJob && snapshot.job!.status == JobStatus.confirmed) {
-        _hasAutoStartedEnRoute = true;
-        ref.read(activeJobProvider.notifier).startEnRoute();
+    Future.microtask(_recoverJobAndAutoStart);
+  }
+
+  @override
+  void didUpdateWidget(covariant ActiveJobScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final previousJobId = oldWidget.recoveryJobId?.trim();
+    final nextJobId = widget.recoveryJobId?.trim();
+    if (previousJobId == nextJobId) return;
+
+    // GoRouter may reuse the /active-job page when only its query changes.
+    // Treat the new booking as a fresh recovery instead of leaving the old
+    // State object parked on a hidden cached job.
+    _ackPollTimer?.cancel();
+    _ackPollTimer = null;
+    _hasAutoStartedEnRoute = false;
+    _rateSheetShown = false;
+    _isRecoveringJob = false;
+    _recoveryError = null;
+    // Invalidate any older request before its completion callback can write
+    // the previous booking into this reused State object.
+    _recoveryGeneration += 1;
+    Future.microtask(_recoverJobAndAutoStart);
+  }
+
+  Future<void> _recoverJobAndAutoStart() async {
+    if (!mounted) return;
+    final generation = ++_recoveryGeneration;
+    final jobId = widget.recoveryJobId?.trim();
+    final cached = ref.read(activeJobProvider).job;
+    if (jobId != null && jobId.isNotEmpty && cached?.id != jobId) {
+      setState(() {
+        _isRecoveringJob = true;
+        _recoveryError = null;
+      });
+      try {
+        final raw = await ref.read(jobServiceProvider).getJob(jobId);
+        final job = Job.fromJson(raw);
+        if (!_isCurrentRecovery(generation, jobId)) return;
+        ref.read(activeJobProvider.notifier).setJob(job);
+      } catch (error) {
+        if (!_isCurrentRecovery(generation, jobId)) return;
+        setState(() {
+          _recoveryError = 'Could not restore this active job.';
+        });
+        // Do not auto-start a different job that may still be cached from an
+        // earlier foreground session. The recovery booking ID is the source
+        // of truth for this cold-start return path.
+        return;
+      } finally {
+        if (_isCurrentRecovery(generation, jobId)) {
+          setState(() => _isRecoveringJob = false);
+        }
       }
-    });
+    }
+    if (!_isCurrentRecovery(generation, jobId)) return;
+    _autoStartEnRouteIfNeeded();
+  }
+
+  bool _isCurrentRecovery(int generation, String? jobId) {
+    return mounted &&
+        generation == _recoveryGeneration &&
+        widget.recoveryJobId?.trim() == jobId;
+  }
+
+  void _autoStartEnRouteIfNeeded() {
+    if (!mounted || _hasAutoStartedEnRoute) return;
+    final snapshot = ref.read(activeJobProvider);
+    if (snapshot.hasJob && snapshot.job!.status == JobStatus.confirmed) {
+      _hasAutoStartedEnRoute = true;
+      ref.read(activeJobProvider.notifier).startEnRoute();
+    }
   }
 
   @override
@@ -200,9 +274,24 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(activeJobProvider);
-    final job = state.job;
+    final recoveryJobId = widget.recoveryJobId?.trim();
+    final cachedJob = state.job;
+    // A cold call return may coexist briefly with an older in-memory job.
+    // Never render that different booking while the requested one is being
+    // restored (or after restoration fails).
+    final job = recoveryJobId != null &&
+            recoveryJobId.isNotEmpty &&
+            cachedJob?.id != recoveryJobId
+        ? null
+        : cachedJob;
     if (job == null) {
-      return const _NoActiveJob();
+      if (_isRecoveringJob) return const _RecoveringActiveJob();
+      return _NoActiveJob(
+        errorMessage: _recoveryError,
+        onRetry: widget.recoveryJobId?.trim().isNotEmpty == true
+            ? _recoverJobAndAutoStart
+            : null,
+      );
     }
 
     final destination = LatLng(job.latitude, job.longitude);
@@ -885,7 +974,10 @@ class _NoJobLocation extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────
 
 class _NoActiveJob extends StatelessWidget {
-  const _NoActiveJob();
+  const _NoActiveJob({this.errorMessage, this.onRetry});
+
+  final String? errorMessage;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -912,20 +1004,51 @@ class _NoActiveJob extends StatelessWidget {
                 ),
                 const SizedBox(height: MyShopSpacing.sm),
                 Text(
-                  "You'll land here once you accept a bid and start heading "
-                  'to the client.',
+                  errorMessage ??
+                      "You'll land here once you accept a bid and start heading "
+                          'to the client.',
                   textAlign: TextAlign.center,
                   style: MyShopTypography.body1.copyWith(
                     color: MyShopColors.textSecondary,
                   ),
                 ),
                 const SizedBox(height: MyShopSpacing.lg),
+                if (onRetry != null) ...[
+                  ElevatedButton(
+                    onPressed: onRetry,
+                    child: const Text('Try again'),
+                  ),
+                  const SizedBox(height: MyShopSpacing.sm),
+                ],
                 ElevatedButton(
                   onPressed: () => context.go('/home'),
                   child: const Text('Back to home'),
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RecoveringActiveJob extends StatelessWidget {
+  const _RecoveringActiveJob();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: MyShopColors.surfaceWhite,
+      body: SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: MyShopSpacing.md),
+              Text('Restoring your active job…'),
+            ],
           ),
         ),
       ),
@@ -1278,7 +1401,7 @@ class _MetricChip extends StatelessWidget {
 // Bottom panel — timeline + primary action + message.
 // ─────────────────────────────────────────────────────────────────────────
 
-class _BottomPanel extends StatelessWidget {
+class _BottomPanel extends ConsumerWidget {
   const _BottomPanel({
     required this.job,
     required this.isUpdating,
@@ -1296,7 +1419,7 @@ class _BottomPanel extends StatelessWidget {
   final VoidCallback onRequestSupplement;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final bottomPad = MediaQuery.paddingOf(context).bottom;
     return Container(
       padding: EdgeInsets.fromLTRB(
@@ -1354,16 +1477,22 @@ class _BottomPanel extends StatelessWidget {
                   foreground: MyShopColors.textPrimary,
                 ),
               ),
-              // Numbers aren't masked during the pilot — the artisan can call
-              // the client directly alongside the chat button.
-              if (isDialablePhoneNumber(job.clientPhone)) ...[
-                const SizedBox(width: 10),
-                MyShopCallButton(
-                  phoneNumber: job.clientPhone,
-                  size: 48,
-                  semanticLabel: 'Call client',
-                ),
-              ],
+              const SizedBox(width: 10),
+              MyShopCallButton(
+                phoneNumber: job.clientPhone,
+                size: 48,
+                semanticLabel: 'Call client',
+                onInAppCall: () {
+                  unawaited(
+                    startProviderInAppCall(
+                      context,
+                      ref,
+                      bookingType: 'artisan_job',
+                      bookingId: job.id,
+                    ),
+                  );
+                },
+              ),
             ],
           ),
           if (_supplementAllowed) ...[

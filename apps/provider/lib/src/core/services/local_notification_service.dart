@@ -22,6 +22,8 @@ class NotificationPayload {
   static const keyNotificationId = 'notificationId';
   static const keyBookingType = 'bookingType';
   static const keyBookingId = 'bookingId';
+  static const keyCallId = 'callId';
+  static const keyExpiresAt = 'expiresAt';
 
   /// The backend sends types prefixed by domain with a dot separator
   /// (e.g. `ride.driver_assigned`, `job.bid_accepted`, `chat.message`).
@@ -112,6 +114,14 @@ class NotificationPayload {
   /// Generic / info — routes to notification inbox.
   static const typeGeneric = 'generic';
 
+  /// In-app voice call fallback. iOS should route this through CallKit when
+  /// Flutter receives it; background/locked iOS must still rely on PushKit.
+  static const typeCallIncoming = 'call_incoming';
+
+  /// Control-only push used to dismiss an unanswered incoming call after the
+  /// caller hangs up. It must never render its own notification.
+  static const typeCallEnded = 'call_ended';
+
   // ── Support tickets ──────────────────────────────────────────────────────
   /// New message from a support agent on an open ticket.
   static const typeSupportTicketMessage = 'support_ticket_message';
@@ -127,6 +137,7 @@ class NotificationPayload {
   /// Incoming requests MUST be in this set so the provider sees them on the
   /// lock-screen even when the phone is in a pocket.
   static const Set<String> urgentTypes = {
+    typeCallIncoming,
     typeJobRequest,
     typeRideRequest,
     typeBidAccepted,
@@ -142,6 +153,7 @@ class NotificationPayload {
   /// banner doesn't fire on top of our local notification (see
   /// `apps/api/src/modules/notification/push.service.ts FULL_SCREEN_DATA_TYPES`).
   static const Set<String> fullScreenRequestTypes = {
+    typeCallIncoming,
     typeJobRequest,
     typeRideRequest,
   };
@@ -194,6 +206,27 @@ class LocalNotificationService {
     playSound: true,
     enableVibration: true,
   );
+
+  /// Dedicated voice-call channel using the ringtone selected in Android
+  /// device settings. Calls must not share [_incomingRequestChannel]: that
+  /// channel is for job/ride offers and points at an optional MyShop asset.
+  /// Android freezes channel sound settings after first creation, hence the
+  /// versioned id also repairs already-installed builds.
+  static const AndroidNotificationChannel _incomingCallChannel =
+      AndroidNotificationChannel(
+    'myshop_incoming_calls_v1',
+    'Incoming calls',
+    description: 'Incoming MyShop voice calls. Uses your device ringtone.',
+    importance: Importance.max,
+    playSound: true,
+    sound: UriAndroidNotificationSound('content://settings/system/ringtone'),
+    enableVibration: true,
+    audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+  );
+
+  // android.app.Notification.FLAG_INSISTENT. Repeats the ringtone until the
+  // call notification is explicitly cancelled.
+  static const int _androidFlagInsistent = 4;
 
   /// Dedicated channel for new incoming job/ride requests. Separate from
   /// [_urgentChannel] so a long ringtone on this channel doesn't bleed
@@ -257,8 +290,15 @@ class LocalNotificationService {
   Future<void>? _initializing;
 
   void Function(Map<String, dynamic> payload)? _onTap;
-  set onTap(void Function(Map<String, dynamic> payload)? handler) =>
-      _onTap = handler;
+  Map<String, dynamic>? _pendingTapPayload;
+
+  set onTap(void Function(Map<String, dynamic> payload)? handler) {
+    _onTap = handler;
+    final pending = _pendingTapPayload;
+    if (handler == null || pending == null) return;
+    _pendingTapPayload = null;
+    scheduleMicrotask(() => handler(pending));
+  }
 
   Future<void> init() {
     if (_initialised) return Future<void>.value();
@@ -283,24 +323,38 @@ class LocalNotificationService {
     await _plugin.initialize(
       const InitializationSettings(android: androidInit, iOS: iosInit),
       onDidReceiveNotificationResponse: (response) {
-        final raw = response.payload;
-        if (raw == null || raw.isEmpty) return;
-        try {
-          final decoded = json.decode(raw);
-          if (decoded is Map<String, dynamic>) _onTap?.call(decoded);
-        } catch (e) {
-          debugPrint('[LocalNotificationService] bad payload: $e');
-        }
+        _handleTapPayload(response.payload);
       },
     );
+
+    final launchDetails = await _plugin.getNotificationAppLaunchDetails();
+    if (launchDetails?.didNotificationLaunchApp ?? false) {
+      _handleTapPayload(launchDetails?.notificationResponse?.payload);
+    }
 
     final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     await androidPlugin?.createNotificationChannel(_urgentChannel);
+    await androidPlugin?.createNotificationChannel(_incomingCallChannel);
     await androidPlugin?.createNotificationChannel(_incomingRequestChannel);
     await androidPlugin?.createNotificationChannel(_timelineChannel);
     await androidPlugin?.createNotificationChannel(_chatChannel);
     _initialised = true;
+  }
+
+  Future<bool?> requestFullScreenCallPermission() async {
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    return androidPlugin?.requestFullScreenIntentPermission();
+  }
+
+  /// Remove the Android incoming-call alert using the same stable id used by
+  /// [showTimelineUpdate]. The deterministic hash works across background and
+  /// main isolates, unlike Dart's runtime [String.hashCode] contract.
+  Future<void> cancelIncomingCall(String callId) async {
+    if (callId.isEmpty) return;
+    await init();
+    await _plugin.cancel(_incomingCallNotificationId(callId));
   }
 
   /// Show a persistent banner for an incoming job. Used by FCM background
@@ -345,6 +399,7 @@ class LocalNotificationService {
     required String title,
     required String body,
     Map<String, String> extras = const {},
+    Duration? timeoutAfter,
   }) async {
     final isUrgent = NotificationPayload.urgentTypes.contains(type);
     final isChat = NotificationPayload.chatTypes.contains(type);
@@ -355,13 +410,16 @@ class LocalNotificationService {
     // to _urgentChannel for the rest of the urgent set keeps bid_accepted
     // / reminder pings on the original sound profile users have already
     // tuned.
-    final channel = isFullScreenRequest
-        ? _incomingRequestChannel
-        : isUrgent
-            ? _urgentChannel
-            : isChat
-                ? _chatChannel
-                : _timelineChannel;
+    final isIncomingCall = type == NotificationPayload.typeCallIncoming;
+    final channel = isIncomingCall
+        ? _incomingCallChannel
+        : isFullScreenRequest
+            ? _incomingRequestChannel
+            : isUrgent
+                ? _urgentChannel
+                : isChat
+                    ? _chatChannel
+                    : _timelineChannel;
 
     final androidCategory = isUrgent
         ? AndroidNotificationCategory.call
@@ -381,15 +439,15 @@ class LocalNotificationService {
           importance: isUrgent ? Importance.max : Importance.high,
           priority: isUrgent ? Priority.high : Priority.defaultPriority,
           category: androidCategory,
-          // Full-screen intent is intentionally OFF. The USE_FULL_SCREEN_INTENT
-          // permission is stripped from the merged manifest (Google Play only
-          // auto-grants it to alarm / calling apps on Android 14+, and a
-          // provider app doesn't qualify — see AndroidManifest.xml). Without
-          // the permission the OS ignores this flag anyway, so we set it false
-          // explicitly to keep code and manifest honest. Urgent requests still
-          // alert loudly via the max-importance heads-up banner, custom
-          // ringtone, vibration and WAKE_LOCK above.
-          fullScreenIntent: false,
+          // Only app-to-app voice calls use a full-screen takeover. Job and
+          // ride offers remain heads-up notifications.
+          fullScreenIntent: isIncomingCall,
+          playSound: channel.playSound,
+          sound: channel.sound,
+          audioAttributesUsage: channel.audioAttributesUsage,
+          additionalFlags: isIncomingCall
+              ? Int32List.fromList(<int>[_androidFlagInsistent])
+              : null,
           // Tap dismisses for every type (it's the standard notification
           // behavior). Incoming-request types additionally stick
           // (`ongoing: true`) so the user can't accidentally swipe the
@@ -398,7 +456,11 @@ class LocalNotificationService {
           autoCancel: true,
           ongoing: isFullScreenRequest,
           timeoutAfter: isFullScreenRequest
-              ? NotificationPayload.fullScreenRequestTimeout.inMilliseconds
+              ? _timeoutMilliseconds(
+                  isIncomingCall
+                      ? timeoutAfter
+                      : NotificationPayload.fullScreenRequestTimeout,
+                )
               : null,
           styleInformation: BigTextStyleInformation(body),
         ),
@@ -521,12 +583,53 @@ class LocalNotificationService {
   /// so a status progression REPLACES the previous banner rather than
   /// stacking four notifications for the same job.
   int _dedupeId(String type, Map<String, String> extras) {
+    if (type == NotificationPayload.typeCallIncoming) {
+      final callId = extras[NotificationPayload.keyCallId];
+      if (callId != null && callId.isNotEmpty) {
+        return _incomingCallNotificationId(callId);
+      }
+    }
     final primary = extras[NotificationPayload.keyJobId] ??
         extras[NotificationPayload.keyRideId] ??
         extras[NotificationPayload.keyBidId] ??
         extras[NotificationPayload.keyChatId] ??
         type;
     return ('$type:$primary').hashCode & 0x7fffffff;
+  }
+
+  int _incomingCallNotificationId(String callId) => _stableNotificationId(
+        '${NotificationPayload.typeCallIncoming}:$callId',
+      );
+
+  int _stableNotificationId(String value) {
+    var hash = 0x811c9dc5;
+    for (final codeUnit in value.codeUnits) {
+      hash ^= codeUnit;
+      hash = (hash * 0x01000193) & 0xffffffff;
+    }
+    return hash & 0x7fffffff;
+  }
+
+  int? _timeoutMilliseconds(Duration? timeout) {
+    if (timeout == null) return null;
+    return timeout.inMilliseconds < 1 ? 1 : timeout.inMilliseconds;
+  }
+
+  void _handleTapPayload(String? raw) {
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final decoded = json.decode(raw);
+      if (decoded is! Map) return;
+      final payload = Map<String, dynamic>.from(decoded);
+      final handler = _onTap;
+      if (handler == null) {
+        _pendingTapPayload = payload;
+      } else {
+        handler(payload);
+      }
+    } catch (e) {
+      debugPrint('[LocalNotificationService] bad payload: $e');
+    }
   }
 }
 

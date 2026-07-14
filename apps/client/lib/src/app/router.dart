@@ -1,3 +1,4 @@
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_models/shared_models.dart'
     show ChatBookingType, TicketCategory;
@@ -17,6 +18,7 @@ import '../dev/dev_menu_screen.dart';
 // ── Onboarding ─────────────────────────────────────────────────────────────────
 import '../features/onboarding/screens/onboarding_screen.dart';
 import '../features/onboarding/screens/splash_screen.dart';
+import '../features/calls/screens/in_app_call_screen.dart';
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
 import '../features/auth/screens/phone_input_screen.dart';
@@ -202,10 +204,13 @@ abstract final class AppRoutes {
   static const profileLoyalty = '/profile/loyalty';
 
   // Overlays
+  static const inAppCall = '/calls/:callId';
   static const chat = '/chat';
   static const safetyEmergency = '/safety/emergency';
   static const safetyShare = '/safety/share';
   static const notifications = '/notifications';
+
+  static String inAppCallPath(String callId) => '/calls/$callId';
 
   // Dev
   static const dev = '/dev';
@@ -408,6 +413,16 @@ GoRouter _buildRouter({
       ),
 
       // ── Ride sub-flow (full-screen, above shell) ──────────────────────────────
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: AppRoutes.inAppCall,
+        builder: (_, state) => ClientInAppCallScreen(
+          callId: state.pathParameters['callId']!,
+          initialSession: state.extra is AppCallSession
+              ? state.extra! as AppCallSession
+              : null,
+        ),
+      ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.rideSearch,

@@ -83,4 +83,44 @@ class NotificationService {
       throw ApiException.fromDioException(e);
     }
   }
+
+  /// POST /notifications/register-voip-device — Store the iOS APNs PushKit
+  /// token for CallKit incoming calls.
+  ///
+  /// This is intentionally separate from [registerDevice]. FCM/APNs alert
+  /// tokens use the normal APNs topic, while PushKit VoIP tokens use the
+  /// app's `.voip` topic and are only valid on iOS.
+  Future<void> registerVoipDevice({
+    required String voipToken,
+  }) async {
+    try {
+      await _dio.post(
+        '/notifications/register-voip-device',
+        data: {
+          'voipToken': voipToken,
+          'platform': 'ios',
+        },
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// DELETE /notifications/register-voip-device — Clear the iOS PushKit token
+  /// binding when PushKit invalidates it or the app logs out.
+  Future<void> unregisterVoipDevice({
+    String? voipToken,
+  }) async {
+    try {
+      await _dio.delete(
+        '/notifications/register-voip-device',
+        data: {
+          'platform': 'ios',
+          if (voipToken != null && voipToken.isNotEmpty) 'voipToken': voipToken,
+        },
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
 }

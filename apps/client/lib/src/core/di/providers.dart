@@ -113,6 +113,22 @@ final chatServiceProvider = Provider<ChatService>((ref) {
   return ChatService(ref.watch(dioProvider));
 });
 
+/// App-to-app voice call session service.
+final appCallServiceProvider = Provider<AppCallService>((ref) {
+  return AppCallService(ref.watch(dioProvider));
+});
+
+/// Live `/calls` socket used by the in-app call screen.
+final appCallSocketServiceProvider = Provider<AppCallSocketService>((ref) {
+  final service = AppCallSocketService(
+    config: ref.watch(apiConfigProvider),
+    tokenStorage: ref.watch(appTokenStorageProvider),
+    tokenRefresher: ref.watch(tokenRefresherProvider),
+  );
+  ref.onDispose(service.dispose);
+  return service;
+});
+
 /// Safety/emergency service.
 final safetyServiceProvider = Provider<SafetyService>((ref) {
   return SafetyService(ref.watch(dioProvider));

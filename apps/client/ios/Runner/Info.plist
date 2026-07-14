@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-	<dict>
+<dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>MyShop uses the microphone for voice calls with your driver or artisan.</string>
 		<key>CADisableMinimumFrameDurationOnPhone</key>
 		<true/>
 		<key>CFBundleDevelopmentRegion</key>
@@ -77,6 +79,8 @@
 		<key>UIBackgroundModes</key>
 		<array>
 			<string>remote-notification</string>
+			<string>voip</string>
+			<string>audio</string>
 			<string>fetch</string>
 		</array>
 		<!-- FCM foreground presentation — lets our foreground handler render

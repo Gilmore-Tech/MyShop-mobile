@@ -11,17 +11,12 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <!-- Vibrate is needed for the urgent notification channel. -->
     <uses-permission android:name="android.permission.VIBRATE"/>
-    <!-- USE_FULL_SCREEN_INTENT is declared by `flutter_local_notifications`'s
-         own plugin manifest and would otherwise be merged into ours. The
-         client app does NOT use full-screen-intent notifications in v1.0
-         (calls deferred to v1.2, no alarm feature). `tools:node="remove"`
-         tells the manifest merger to strip it even when a plugin requests
-         it — verified against the previous AAB's merged manifest which
-         contained the permission despite us not declaring it. Without
-         this directive Play asks for a "core functionality" justification
-         on every upload and Maps & Navigation apps don't qualify. -->
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"
-        tools:node="remove"/>
+    <!-- Incoming MyShop voice calls use a call-category full-screen intent. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
 
     <!-- ── Location (map + place picker) ────────────────────────────── -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
@@ -67,6 +62,8 @@
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
             android:windowSoftInputMode="adjustResize">
             <!-- Specifies an Android theme to apply to this Activity as soon as
                  the Android process has started. This theme is visible to the user
