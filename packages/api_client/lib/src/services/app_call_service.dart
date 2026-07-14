@@ -44,7 +44,9 @@ class AppCallSession {
       expiresAt: json['expiresAt'] as String? ?? '',
       endedAt: json['endedAt'] as String?,
       rtcProvider: json['rtcProvider'] as String? ?? '',
-      rtcToken: json['rtcToken'],
+      rtcToken: json['rtcToken'] is Map
+          ? Map<String, dynamic>.from(json['rtcToken'] as Map)
+          : null,
     );
   }
 
@@ -63,7 +65,29 @@ class AppCallSession {
   final String expiresAt;
   final String? endedAt;
   final String rtcProvider;
-  final dynamic rtcToken;
+  final Map<String, dynamic>? rtcToken;
+
+  List<Map<String, dynamic>> get iceServers {
+    final rawServers = rtcToken?['iceServers'];
+    if (rawServers is! List) return const [];
+    final result = <Map<String, dynamic>>[];
+    for (final raw in rawServers) {
+      if (raw is! Map) continue;
+      final server = Map<String, dynamic>.from(raw);
+      final urls = server['urls'];
+      final validUrls = (urls is String && urls.isNotEmpty) ||
+          (urls is List &&
+              urls.isNotEmpty &&
+              urls.every((url) => url is String && url.isNotEmpty));
+      if (!validUrls) continue;
+      result.add({
+        'urls': urls,
+        if (server['username'] is String) 'username': server['username'],
+        if (server['credential'] is String) 'credential': server['credential'],
+      });
+    }
+    return result;
+  }
 
   bool get isRinging => status == 'ringing';
   bool get isAccepted => status == 'accepted';

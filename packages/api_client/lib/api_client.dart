@@ -29,6 +29,8 @@ export 'src/realtime/chat_realtime.dart';
 export 'src/services/category_service.dart';
 export 'src/services/chat_service.dart';
 export 'src/services/app_call_service.dart';
+export 'src/services/app_call_socket_service.dart';
+export 'src/services/app_call_rtc_service.dart';
 export 'src/services/help_service.dart';
 export 'src/services/job_service.dart';
 export 'src/services/legal_service.dart';

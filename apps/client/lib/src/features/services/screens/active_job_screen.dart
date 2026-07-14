@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +8,7 @@ import 'package:shared_models/shared_models.dart' show ChatBookingType;
 
 import '../../../app/router.dart';
 import '../../../core/chat/chat_entry_button.dart';
+import '../../calls/helpers/start_in_app_call.dart';
 import '../providers/active_job_provider.dart';
 
 // ── Timeline step model ───────────────────────────────────────────────────────
@@ -655,7 +658,7 @@ class _ActiveJobMapPainter extends CustomPainter {
 
 // ── Action Buttons Row ────────────────────────────────────────────────────────
 
-class _ActionButtonsRow extends StatelessWidget {
+class _ActionButtonsRow extends ConsumerWidget {
   final String jobId;
   final String artisanName;
   final String artisanPhone;
@@ -670,7 +673,7 @@ class _ActionButtonsRow extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final chat = ChatEntryButton(
       bookingType: ChatBookingType.artisanJob,
       bookingId: jobId,
@@ -682,21 +685,27 @@ class _ActionButtonsRow extends StatelessWidget {
     );
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: w * 0.041),
-      // Numbers aren't masked during the pilot — let the client call the
-      // artisan directly alongside the chat affordance.
-      child: !isDialablePhoneNumber(artisanPhone)
-          ? chat
-          : Row(
-              children: [
-                Expanded(child: chat),
-                const SizedBox(width: 10),
-                MyShopCallButton(
-                  phoneNumber: artisanPhone,
-                  size: 48,
-                  semanticLabel: 'Call artisan',
+      child: Row(
+        children: [
+          Expanded(child: chat),
+          const SizedBox(width: 10),
+          MyShopCallButton(
+            phoneNumber: artisanPhone,
+            size: 48,
+            semanticLabel: 'Call artisan',
+            onInAppCall: () {
+              unawaited(
+                startClientInAppCall(
+                  context,
+                  ref,
+                  bookingType: 'artisan_job',
+                  bookingId: jobId,
                 ),
-              ],
-            ),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }

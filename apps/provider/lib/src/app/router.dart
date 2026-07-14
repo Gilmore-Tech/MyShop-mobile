@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,6 +24,7 @@ import '../features/registration/screens/artisan_registration_screen.dart';
 import '../features/registration/screens/driver_registration_screen.dart';
 import '../features/artisan_home/screens/active_job_screen.dart';
 import '../features/artisan_home/screens/supplement_request_screen.dart';
+import '../features/calls/screens/in_app_call_screen.dart';
 import '../features/chat/screens/chat_screen.dart';
 import '../features/chat/screens/messages_list_screen.dart';
 import '../features/notifications/screens/notifications_list_screen.dart';
@@ -101,6 +103,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             !loc.startsWith('/ride') &&
             !loc.startsWith('/job') &&
             !loc.startsWith('/legal') &&
+            !loc.startsWith('/calls') &&
             !loc.startsWith('/chat') &&
             !loc.startsWith('/messages') &&
             !loc.startsWith('/notifications') &&
@@ -340,11 +343,22 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       // Artisan flow routes (full-screen, no bottom nav)
       GoRoute(
         path: '/active-job',
-        builder: (context, state) => const ActiveJobScreen(),
+        builder: (context, state) => ActiveJobScreen(
+          recoveryJobId: state.uri.queryParameters['jobId'],
+        ),
       ),
       GoRoute(
         path: '/supplement-request',
         builder: (context, state) => const SupplementRequestScreen(),
+      ),
+      GoRoute(
+        path: '/calls/:callId',
+        builder: (context, state) => ProviderInAppCallScreen(
+          callId: state.pathParameters['callId']!,
+          initialSession: state.extra is AppCallSession
+              ? state.extra! as AppCallSession
+              : null,
+        ),
       ),
       GoRoute(
         path: '/chat',

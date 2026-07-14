@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
 import '../../../core/chat/chat_entry_button.dart';
+import '../../calls/helpers/start_in_app_call.dart';
 import '../providers/ride_payment_method_provider.dart';
 import '../providers/ride_provider.dart';
 
@@ -530,15 +533,28 @@ class _ChatRow extends ConsumerWidget {
       peerName: driverFullName,
       peerStatus: 'On your trip',
     );
-    if (!isDialablePhoneNumber(phone)) return chat;
-    // Numbers aren't masked during the pilot — let the rider call the driver
-    // directly alongside the chat affordance.
+    // In-app calling is booking-scoped and remains available even when the
+    // optional public phone number is absent. When a number is present the
+    // call button offers both in-app and regular phone calls.
     return Row(
       children: [
         Expanded(child: chat),
         const SizedBox(width: 10),
         MyShopCallButton(
-            phoneNumber: phone, size: 48, semanticLabel: 'Call driver'),
+          phoneNumber: phone,
+          size: 48,
+          semanticLabel: 'Call driver',
+          onInAppCall: () {
+            unawaited(
+              startClientInAppCall(
+                context,
+                ref,
+                bookingType: 'ride',
+                bookingId: rideId,
+              ),
+            );
+          },
+        ),
       ],
     );
   }

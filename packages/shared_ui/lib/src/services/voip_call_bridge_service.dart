@@ -41,6 +41,7 @@ class VoipCallBridgeEvent {
 
   String? get token => payload['token'] as String?;
   String? get callId => payload['callId'] as String?;
+  String? get actionId => payload['actionId'] as String?;
 }
 
 class VoipCallBridgeService {
@@ -79,5 +80,25 @@ class VoipCallBridgeService {
   Future<void> endCall(String callId) async {
     if (!Platform.isIOS || callId.isEmpty) return;
     await _methodChannel.invokeMethod<void>('endCall', {'callId': callId});
+  }
+
+  /// Requests CallKit's canonical Answer action for an active native call.
+  /// Returns false when this call was never reported to CallKit, allowing the
+  /// Flutter incoming screen to fall back to the REST accept path.
+  Future<bool> answerCall(String callId) async {
+    if (!Platform.isIOS || callId.isEmpty) return false;
+    return await _methodChannel.invokeMethod<bool>(
+          'answerCall',
+          {'callId': callId},
+        ) ??
+        false;
+  }
+
+  Future<void> acknowledgeCallAction(String? actionId) async {
+    if (!Platform.isIOS || actionId == null || actionId.isEmpty) return;
+    await _methodChannel.invokeMethod<void>(
+      'acknowledgeCallAction',
+      {'actionId': actionId},
+    );
   }
 }

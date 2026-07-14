@@ -17,6 +17,7 @@ import '../../../core/services/nav_guidance.dart';
 import '../../../core/widgets/maneuver_banner.dart';
 import '../../../core/widgets/nav_arrow_icon.dart';
 import '../../../core/widgets/route_warning_banner.dart';
+import '../../calls/helpers/start_in_app_call.dart';
 import '../data/external_nav_service.dart';
 import '../providers/driver_location_provider.dart';
 import '../providers/ride_request_provider.dart';
@@ -1234,7 +1235,7 @@ class _SosButton extends StatelessWidget {
 
 // ─── Passenger panel ────────────────────────────────────────────────────────
 
-class _PassengerPanel extends StatelessWidget {
+class _PassengerPanel extends ConsumerWidget {
   const _PassengerPanel({
     required this.ride,
     required this.scrollController,
@@ -1265,7 +1266,7 @@ class _PassengerPanel extends StatelessWidget {
   final int? waitRemainingSecs;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Container(
       decoration: const BoxDecoration(
         color: MyShopColors.surfaceWhite,
@@ -1367,15 +1368,21 @@ class _PassengerPanel extends StatelessWidget {
                   rideId: ride.id,
                   riderName: ride.clientName ?? 'Passenger',
                 ),
-                // Numbers aren't masked during the pilot — the driver can
-                // call the passenger directly alongside the chat button.
-                if (isDialablePhoneNumber(ride.clientPhone)) ...[
-                  const SizedBox(width: 10),
-                  MyShopCallButton(
-                    phoneNumber: ride.clientPhone,
-                    semanticLabel: 'Call passenger',
-                  ),
-                ],
+                const SizedBox(width: 10),
+                MyShopCallButton(
+                  phoneNumber: ride.clientPhone,
+                  semanticLabel: 'Call passenger',
+                  onInAppCall: () {
+                    unawaited(
+                      startProviderInAppCall(
+                        context,
+                        ref,
+                        bookingType: 'ride',
+                        bookingId: ride.id,
+                      ),
+                    );
+                  },
+                ),
               ],
             ),
             const SizedBox(height: MyShopSpacing.lg),

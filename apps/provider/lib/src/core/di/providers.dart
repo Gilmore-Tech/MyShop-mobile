@@ -108,6 +108,17 @@ final appCallServiceProvider = Provider<AppCallService>((ref) {
   return AppCallService(ref.watch(dioProvider));
 });
 
+/// Live `/calls` socket used by the in-app call screen.
+final appCallSocketServiceProvider = Provider<AppCallSocketService>((ref) {
+  final service = AppCallSocketService(
+    config: ref.watch(apiConfigProvider),
+    tokenStorage: ref.watch(appTokenStorageProvider),
+    tokenRefresher: ref.watch(tokenRefresherProvider),
+  );
+  ref.onDispose(service.dispose);
+  return service;
+});
+
 /// Media upload — presigned URL flow for ticket attachments.
 final mediaServiceProvider = Provider<MediaService>((ref) {
   return MediaService(ref.watch(dioProvider));
