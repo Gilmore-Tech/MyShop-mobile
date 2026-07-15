@@ -1,6 +1,6 @@
 # Provider request overlay rollout
 
-Status as of 2026-07-14. Development branches:
+Status as of 2026-07-15. Development branches:
 
 - Mobile: `feature/provider-request-overlay`
 - Backend: `feature/provider-request-overlay`
@@ -98,6 +98,21 @@ Status as of 2026-07-14. Development branches:
   and must not present the existing zero placeholder as a customer budget.
 - [x] Round coordinates in the platform-wide artisan social-proof feed to a
   roughly one-kilometre grid; it remains non-actionable and anonymised.
+
+## Rollout status
+
+- [x] Commit and push both `feature/provider-request-overlay` branches.
+- [x] Open backend PR [#93](https://github.com/Gilmore-Tech/myshop/pull/93)
+  into `staging`.
+- [x] Open draft mobile PR
+  [#82](https://github.com/Gilmore-Tech/MyShop-mobile/pull/82) into `staging`.
+- [ ] Restore GitHub Actions runner availability and rerun both PR checks. The
+  2026-07-15 runs did not start any steps because organization billing failed
+  or the Actions spending limit was reached; this was not a test failure.
+- [ ] Merge backend PR #93 into `staging` after CI passes, then run the staging
+  `Deploy` workflow.
+- [ ] Complete the physical-device matrix, mark mobile PR #82 ready, and merge
+  it into `staging` after acceptance.
 
 ## Physical-device acceptance matrix
 
