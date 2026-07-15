@@ -60,12 +60,14 @@ class IncomingRequestOffer {
     this.customerName,
     this.amount,
     this.distance,
+    this.duration,
     this.pickup,
     this.destination,
     this.category,
     this.location,
     this.description,
     this.photoUrl,
+    this.mapPreviewUrl,
     Map<String, String> payload = const <String, String>{},
   }) : payload = Map<String, String>.unmodifiable(payload) {
     if (offerId.trim().isEmpty) {
@@ -85,12 +87,20 @@ class IncomingRequestOffer {
   final String? customerName;
   final String? amount;
   final String? distance;
+  final String? duration;
   final String? pickup;
   final String? destination;
   final String? category;
   final String? location;
   final String? description;
   final String? photoUrl;
+
+  /// Short-lived, opaque HTTPS image URL authored by the backend.
+  ///
+  /// Native Android renders this only after the device is unlocked. It is a
+  /// dedicated display field rather than part of [payload], so it is never
+  /// persisted with durable action events.
+  final String? mapPreviewUrl;
   final Map<String, String> payload;
 
   @visibleForTesting
@@ -103,12 +113,14 @@ class IncomingRequestOffer {
       if (_present(customerName)) 'customerName': customerName!.trim(),
       if (_present(amount)) 'amount': amount!.trim(),
       if (_present(distance)) 'distance': distance!.trim(),
+      if (_present(duration)) 'duration': duration!.trim(),
       if (_present(pickup)) 'pickup': pickup!.trim(),
       if (_present(destination)) 'destination': destination!.trim(),
       if (_present(category)) 'category': category!.trim(),
       if (_present(location)) 'location': location!.trim(),
       if (_present(description)) 'description': description!.trim(),
       if (_present(photoUrl)) 'photoUrl': photoUrl!.trim(),
+      if (_present(mapPreviewUrl)) 'mapPreviewUrl': mapPreviewUrl!.trim(),
       'payload': payload,
     };
   }

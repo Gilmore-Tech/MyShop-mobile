@@ -8,12 +8,14 @@ data class OfferPayload(
     val customerName: String?,
     val amount: String?,
     val distance: String?,
+    val duration: String?,
     val pickup: String?,
     val destination: String?,
     val category: String?,
     val location: String?,
     val description: String?,
     val photoUrl: String?,
+    val mapPreviewUrl: String?,
     val payload: Map<String, String>,
 ) {
     val identity: String get() = "$offerType:$offerId"
@@ -47,12 +49,14 @@ data class OfferPayload(
                 customerName = raw.string("customerName"),
                 amount = raw.string("amount"),
                 distance = raw.string("distance"),
+                duration = raw.string("duration"),
                 pickup = raw.string("pickup"),
                 destination = raw.string("destination"),
                 category = raw.string("category"),
                 location = raw.string("location"),
                 description = raw.string("description"),
                 photoUrl = raw.string("photoUrl"),
+                mapPreviewUrl = raw.string("mapPreviewUrl"),
                 payload = payload,
             )
         }

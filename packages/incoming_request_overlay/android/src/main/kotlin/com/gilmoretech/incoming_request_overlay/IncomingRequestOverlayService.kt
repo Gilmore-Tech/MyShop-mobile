@@ -28,6 +28,7 @@ import android.os.VibratorManager
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
+import android.view.WindowInsets
 import android.view.WindowManager
 import kotlin.math.min
 
@@ -38,7 +39,8 @@ class IncomingRequestOverlayService : Service() {
     private var currentOffer: OfferPayload? = null
     private val pendingOffers = linkedMapOf<String, OfferPayload>()
     private var cardView: OfferCardView? = null
-    private var lastLockedState: Boolean? = null
+    private var lastRedactedState: Boolean? = null
+    private var forceScreenOffRedaction = false
     private var mediaPlayer: MediaPlayer? = null
     private var vibrator: Vibrator? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -52,9 +54,9 @@ class IncomingRequestOverlayService : Service() {
                 dismissCurrentAndAdvance()
                 return
             }
-            val locked = keyguardManager.isDeviceLocked
-            if (locked != lastLockedState) {
-                renderCard(offer, locked)
+            val redacted = shouldRedact()
+            if (redacted != lastRedactedState) {
+                renderCard(offer, redacted)
             } else {
                 cardView?.updateCountdown()
             }
@@ -64,7 +66,22 @@ class IncomingRequestOverlayService : Service() {
 
     private val privacyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            currentOffer?.let { renderCard(it, keyguardManager.isDeviceLocked) }
+            when (intent?.action) {
+                Intent.ACTION_SCREEN_OFF -> forceScreenOffRedaction = true
+                Intent.ACTION_SCREEN_ON -> {
+                    // Devices without an active keyguard do not emit
+                    // ACTION_USER_PRESENT. Clear the screen-off guard only when
+                    // no lock screen is protecting the private offer details.
+                    if (!keyguardManager.isKeyguardLocked) {
+                        forceScreenOffRedaction = false
+                    }
+                }
+                Intent.ACTION_USER_PRESENT -> forceScreenOffRedaction = false
+            }
+            val redacted = shouldRedact()
+            currentOffer?.let { offer ->
+                if (redacted != lastRedactedState) renderCard(offer, redacted)
+            }
         }
     }
 
@@ -72,6 +89,8 @@ class IncomingRequestOverlayService : Service() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         keyguardManager = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        forceScreenOffRedaction = !powerManager.isInteractive
         registerPrivacyReceiver()
     }
 
@@ -138,25 +157,26 @@ class IncomingRequestOverlayService : Service() {
         currentOffer = offer
         handler.removeCallbacks(ticker)
         stopAlerting()
-        renderCard(offer, keyguardManager.isDeviceLocked)
+        renderCard(offer, shouldRedact())
         acquireWakeLock(offer)
         startAlerting()
         handler.post(ticker)
     }
 
     @Suppress("DEPRECATION")
-    private fun renderCard(offer: OfferPayload, isLocked: Boolean) {
+    private fun renderCard(offer: OfferPayload, isRedacted: Boolean) {
         removeCard()
-        lastLockedState = isLocked
+        lastRedactedState = isRedacted
+        val geometry = overlayGeometry()
         val card = OfferCardView(
             context = this,
             offer = offer,
-            isLocked = isLocked,
+            isLocked = isRedacted,
+            maxHeightPx = geometry.maxHeight,
             onUnlockRequested = ::requestUnlock,
         ).also {
             it.updateCountdown()
         }
-        val horizontalMargin = dp(12)
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -169,12 +189,12 @@ class IncomingRequestOverlayService : Service() {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            x = 0
-            y = dp(36)
-            width = resources.displayMetrics.widthPixels - (horizontalMargin * 2)
+            x = geometry.horizontalOffset
+            y = geometry.topOffset
+            width = geometry.width
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 layoutInDisplayCutoutMode =
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER
             }
         }
         val added = runCatching {
@@ -200,21 +220,23 @@ class IncomingRequestOverlayService : Service() {
     }
 
     private fun requestUnlock() {
-        if (!keyguardManager.isDeviceLocked) {
+        if (!keyguardManager.isKeyguardLocked) {
+            forceScreenOffRedaction = false
             currentOffer?.let { renderCard(it, false) }
             return
         }
         val credentialIntent = keyguardManager.createConfirmDeviceCredentialIntent(
             getString(R.string.incoming_request_overlay_unlock_title),
             getString(R.string.incoming_request_overlay_unlock_description),
-        ) ?: return
-        credentialIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { startActivity(credentialIntent) }
+        )
+        val unlockIntent = credentialIntent ?: packageManager.getLaunchIntentForPackage(packageName)
+        unlockIntent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        unlockIntent?.let { runCatching { startActivity(it) } }
     }
 
     private fun dismissCurrentAndAdvance() {
         currentOffer = null
-        lastLockedState = null
+        lastRedactedState = null
         handler.removeCallbacks(ticker)
         removeCard()
         stopAlerting()
@@ -234,7 +256,7 @@ class IncomingRequestOverlayService : Service() {
     private fun clearAllAndStop() {
         pendingOffers.clear()
         currentOffer = null
-        lastLockedState = null
+        lastRedactedState = null
         handler.removeCallbacks(ticker)
         removeCard()
         stopAlerting()
@@ -418,6 +440,51 @@ class IncomingRequestOverlayService : Service() {
         privacyReceiverRegistered = true
     }
 
+    /**
+     * A screen-off broadcast forces redaction immediately instead of waiting
+     * for the keyguard transition. isKeyguardLocked also covers swipe-only lock
+     * screens, whereas isDeviceLocked only reports credential-secured state.
+     */
+    private fun shouldRedact(): Boolean =
+        forceScreenOffRedaction || keyguardManager.isKeyguardLocked
+
+    @Suppress("DEPRECATION")
+    private fun overlayGeometry(): OverlayGeometry {
+        val margin = dp(12)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val metrics = windowManager.currentWindowMetrics
+            val bounds = metrics.bounds
+            val insets = metrics.windowInsets.getInsetsIgnoringVisibility(
+                WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout(),
+            )
+            val availableWidth = bounds.width() - insets.left - insets.right - (margin * 2)
+            val availableHeight = bounds.height() - insets.top - insets.bottom - (margin * 2)
+            return OverlayGeometry(
+                width = availableWidth.coerceAtLeast(1).coerceAtMost(bounds.width()),
+                maxHeight = min(availableHeight.coerceAtLeast(dp(180)), dp(680)),
+                horizontalOffset = (insets.left - insets.right) / 2,
+                topOffset = insets.top + margin,
+            )
+        }
+
+        val displayMetrics = resources.displayMetrics
+        val statusBarHeight = systemDimension("status_bar_height")
+        val navigationBarHeight = systemDimension("navigation_bar_height")
+        val availableHeight = displayMetrics.heightPixels - statusBarHeight -
+            navigationBarHeight - (margin * 2)
+        return OverlayGeometry(
+            width = (displayMetrics.widthPixels - (margin * 2)).coerceAtLeast(1),
+            maxHeight = min(availableHeight.coerceAtLeast(dp(180)), dp(680)),
+            horizontalOffset = 0,
+            topOffset = statusBarHeight + margin,
+        )
+    }
+
+    private fun systemDimension(name: String): Int {
+        val resourceId = resources.getIdentifier(name, "dimen", "android")
+        return if (resourceId == 0) 0 else resources.getDimensionPixelSize(resourceId)
+    }
+
     private fun stopForegroundAndSelf() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -430,6 +497,13 @@ class IncomingRequestOverlayService : Service() {
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
+
+    private data class OverlayGeometry(
+        val width: Int,
+        val maxHeight: Int,
+        val horizontalOffset: Int,
+        val topOffset: Int,
+    )
 
     companion object {
         private const val ACTION_SHOW =
