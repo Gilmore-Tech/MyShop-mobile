@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:api_client/api_client.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -111,7 +113,15 @@ final activeRideRecoveryBridgeProvider = Provider<void>((ref) {
     final hasActiveRide = ref.read(activeRideProvider).ride != null;
     final isAuthed = ref.read(authControllerProvider) is AuthAuthenticated;
     final isDriver = ref.read(providerTypeProvider).isDriver;
-    if (hasActiveRide || !isAuthed || !isDriver) return;
+    if (!isAuthed || !isDriver) return;
+    if (hasActiveRide) {
+      // Do not skip a populated local slot: it may be stale because the rider
+      // cancelled while this app was backgrounded and its socket disconnected.
+      unawaited(
+        ref.read(activeRideProvider.notifier).reconcileTrackedRide(),
+      );
+      return;
+    }
     debugPrint('[ActiveRideRecovery] socket connected — re-checking');
     tryRecover();
   });

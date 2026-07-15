@@ -505,6 +505,65 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
     }
   }
 
+  /// Apply a slim remote cancellation event when the full `ride:state`
+  /// snapshot is unavailable or arrives later.
+  ///
+  /// The ride-id guard is essential: a delayed push/event for an earlier ride
+  /// must never clear or cancel a newer active ride.
+  bool applyRemoteCancellation(String rideId) {
+    final current = state.ride;
+    if (rideId.isEmpty || current == null || current.id != rideId) return false;
+    if (current.status == RideStatus.cancelled) return true;
+    applySnapshot(current.copyWith(status: RideStatus.cancelled));
+    return true;
+  }
+
+  /// Clear a matching ride after a terminal FCM tap/foreground push.
+  /// Returns whether the supplied id owned the active slot.
+  bool clearRideIfMatches(String? rideId) {
+    final current = state.ride;
+    if (rideId == null || rideId.isEmpty || current?.id != rideId) {
+      return false;
+    }
+    clearRide();
+    return true;
+  }
+
+  /// Refresh the locally-tracked ride from its authoritative REST snapshot.
+  ///
+  /// This runs when Socket.IO reconnects. If a rider cancelled while the app
+  /// was backgrounded, the socket room no longer has a live ride to restore;
+  /// fetching by id still returns the terminal snapshot and lets the UI leave
+  /// the stale active-ride screen without requiring an app restart.
+  Future<void> reconcileTrackedRide() async {
+    final tracked = state.ride;
+    if (tracked == null) return;
+    try {
+      final raw = await _ref.read(rideServiceProvider).getRide(tracked.id);
+      final snapshot = Ride.fromJson(raw);
+      final current = state.ride;
+      if (current == null || current.id != tracked.id) return;
+      if (snapshot.status == RideStatus.requested) return;
+      applySnapshot(snapshot);
+    } on ApiException catch (error) {
+      developer.log(
+        'active ride reconcile failed: ${error.errorCode} — ${error.message}',
+        name: 'ActiveRide',
+        level: 900,
+      );
+      // An assigned ride should remain readable after cancellation. A 404
+      // means the local active slot is definitely stale; drive the same
+      // terminal transition used by socket/FCM cancellation.
+      if (error.statusCode == 404) applyRemoteCancellation(tracked.id);
+    } catch (error) {
+      developer.log(
+        'active ride reconcile crashed: $error',
+        name: 'ActiveRide',
+        level: 900,
+      );
+    }
+  }
+
   /// Restore an active ride from the recovery flow on app start. Same
   /// shape as [applySnapshot] but also flips the provider status to busy
   /// (recovery means we're definitely on a live ride).

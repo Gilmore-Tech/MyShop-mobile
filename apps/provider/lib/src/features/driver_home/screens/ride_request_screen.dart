@@ -16,7 +16,6 @@ import '../../../core/utils/payment_method_label.dart';
 import '../../../core/widgets/incoming_request_map_preview.dart';
 import '../providers/driver_location_provider.dart';
 import '../providers/ride_request_provider.dart';
-import 'active_ride_screen.dart';
 
 /// Full-screen incoming ride request notification.
 ///
@@ -185,11 +184,10 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
       );
       if (!mounted) return;
       _clearVisibleMarker();
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(
-          builder: (_) => const ActiveRideScreen(),
-        ),
-      );
+      // Keep the active ride inside GoRouter's route table. A raw
+      // MaterialPageRoute sits above the router and cannot be removed by
+      // context.go('/home') when the rider cancels remotely.
+      context.pushReplacement('/active-ride');
       return;
     }
     // Acceptance failed — surface the error and let the driver dismiss the
