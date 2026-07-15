@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="incoming_request_overlay_channel_name">Incoming request display</string>
+    <string name="incoming_request_overlay_channel_description">Keeps a time-limited ride or job request visible while you decide.</string>
+    <string name="incoming_request_overlay_service_title">Incoming request active</string>
+    <string name="incoming_request_overlay_service_body">The request closes automatically when its timer ends.</string>
+    <string name="incoming_request_overlay_locked">Unlock your phone to see customer and location details.</string>
+    <string name="incoming_request_overlay_unlock_action">UNLOCK TO RESPOND</string>
+    <string name="incoming_request_overlay_unlock_title">Unlock to respond</string>
+    <string name="incoming_request_overlay_unlock_description">Customer details and request actions stay hidden until your phone is unlocked.</string>
+</resources>

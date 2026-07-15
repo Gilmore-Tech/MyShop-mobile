@@ -24,6 +24,8 @@ import 'provider_status_provider.dart';
 import '../../features/profile/providers/provider_type_provider.dart';
 import 'nav_badge_provider.dart';
 import '../di/providers.dart';
+import '../services/incoming_request_overlay_presenter.dart';
+import '../services/local_notification_service.dart';
 
 /// Provides the [SocketService] singleton for the app.
 ///
@@ -293,7 +295,14 @@ void _connectAndListen(Ref ref, SocketService socket) {
 
     // Listen for incoming ride requests (driver) — new + legacy event names
     void handleRide(dynamic data) {
-      debugPrint('[WS] Received ride event: $data');
+      if (data is Map) {
+        debugPrint(
+          '[WS] Received ride event id=${data['id'] ?? data['rideId']} '
+          'keys=${data.keys.join(',')}',
+        );
+      } else {
+        debugPrint('[WS] Received ride event type=${data.runtimeType}');
+      }
       if (data is Map<String, dynamic>) {
         try {
           final ride = Ride.fromJson(data);
@@ -348,9 +357,46 @@ void _connectAndListen(Ref ref, SocketService socket) {
       ..off('ride:new')
       ..on('ride:new', handleRide);
 
+    // Another driver accepted this offer, or the matcher/cancellation flow
+    // explicitly revoked it. Clear every pre-acceptance surface immediately;
+    // waiting for the local countdown leaves a stale screen ringing after the
+    // backend has already moved on.
+    void handleRideDismissed(dynamic data) {
+      if (data is! Map) return;
+      final rideId = data['rideId']?.toString() ?? data['id']?.toString();
+      if (rideId == null || rideId.isEmpty) return;
+      final current = ref.container.read(incomingRideRequestProvider);
+      if (current?.id == rideId) {
+        ref.container.read(incomingRideRequestProvider.notifier).state = null;
+      }
+      ref.container.read(rideRequestDeadlineByIdProvider.notifier).update(
+            (deadlines) => {...deadlines}..remove(rideId),
+          );
+      unawaited(
+        clearIncomingRequestAlert(
+          type: NotificationPayload.typeRideRequest,
+          requestId: rideId,
+        ),
+      );
+    }
+
+    socket
+      ..off('ride:dismissed')
+      ..on('ride:dismissed', handleRideDismissed);
+
     // Listen for incoming job requests (artisan) — new + legacy event names
     void handleJob(dynamic data) {
-      debugPrint('[WS] Received job event: $data');
+      // Never print the full request: it can contain the customer's name,
+      // exact address, description and photo URLs. Keep only routing metadata
+      // in release/device logs.
+      if (data is Map) {
+        debugPrint(
+          '[WS] Received job event id=${data['id'] ?? data['jobId']} '
+          'keys=${data.keys.join(',')}',
+        );
+      } else {
+        debugPrint('[WS] Received job event type=${data.runtimeType}');
+      }
       if (data is Map<String, dynamic>) {
         try {
           final job = Job.fromJson(data);
@@ -503,6 +549,12 @@ void _connectAndListen(Ref ref, SocketService socket) {
           ref.container
               .read(pendingIncomingJobsProvider.notifier)
               .remove(jobId);
+          unawaited(
+            clearIncomingRequestAlert(
+              type: NotificationPayload.typeJobRequest,
+              requestId: jobId,
+            ),
+          );
         }
 
         // If the event is for the currently-active job, push the new

@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/providers/foreground_display_wake_lock_provider.dart';
 import '../../../core/services/local_notification_service.dart';
 
 class ProviderInAppCallScreen extends ConsumerStatefulWidget {
@@ -48,6 +49,7 @@ class _ProviderInAppCallScreenState
   @override
   void initState() {
     super.initState();
+    unawaited(setCallLockScreenAccess(true));
     _session = widget.initialSession;
     _loading = _session == null;
     _listenForCallState();
@@ -65,6 +67,7 @@ class _ProviderInAppCallScreenState
     final socket = ref.read(appCallSocketServiceProvider);
     socket.leaveCall(widget.callId);
     socket.disconnect();
+    unawaited(setCallLockScreenAccess(false));
     super.dispose();
   }
 

@@ -15,6 +15,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/di/providers.dart';
 import '../../../core/providers/socket_provider.dart';
+import '../../../core/services/incoming_request_overlay_presenter.dart';
+import '../../../core/services/local_notification_service.dart';
 
 import '../../artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../artisan_jobs/providers/pending_incoming_jobs_provider.dart';
@@ -37,11 +39,16 @@ class JobRequestScreen extends ConsumerStatefulWidget {
     required this.job,
     this.bidStatus = BidStatus.none,
     this.submittedBidAmount = 0,
+    this.openBidSheet = false,
   });
 
   final Job job;
   final BidStatus bidStatus;
   final num submittedBidAmount;
+
+  /// True for the native "Submit bid" notification action. The request
+  /// screen hydrates first, then opens the existing bid form once.
+  final bool openBidSheet;
 
   @override
   ConsumerState<JobRequestScreen> createState() => _JobRequestScreenState();
@@ -53,6 +60,8 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
   /// during a status-update cycle, and stacking post-frame callbacks used
   /// to thrash navigation and retain widgets in memory).
   bool _hasRedirectedToActiveJob = false;
+  bool _didAutoOpenBidSheet = false;
+  bool _decliningRequest = false;
 
   /// Full-fat job fetched from `GET /jobs/:id` on mount. The artisan jobs
   /// feed (`GET /jobs`) returns slim records that drop client identity
@@ -123,6 +132,7 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
         _hydratedJob = Job.fromJson(raw);
         _hydrating = false;
       });
+      _scheduleAutoOpenBidSheet();
     } catch (e) {
       debugPrint('[JobRequest] hydrate failed for ${widget.job.id}: $e');
       developer.log(
@@ -135,6 +145,47 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
         _hydrating = false;
         _hydrationError = e.toString();
       });
+      if (_hasUsableSeedData) _scheduleAutoOpenBidSheet();
+    }
+  }
+
+  void _scheduleAutoOpenBidSheet() {
+    if (!widget.openBidSheet || _didAutoOpenBidSheet) return;
+    _didAutoOpenBidSheet = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        BidSubmissionScreen.show(
+          context,
+          job: _sourceJob,
+          distanceKm: 0,
+        ),
+      );
+    });
+  }
+
+  Future<void> _declineRequest(Job job) async {
+    if (_decliningRequest) return;
+    setState(() => _decliningRequest = true);
+    try {
+      await ref.read(jobServiceProvider).declineJobRequest(
+            job.id,
+            reason: 'provider_declined',
+          );
+      ref.read(pendingIncomingJobsProvider.notifier).remove(job.id);
+      await clearIncomingRequestAlert(
+        type: NotificationPayload.typeJobRequest,
+        requestId: job.id,
+      );
+      if (mounted) context.pop();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _decliningRequest = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not decline this request. Please try again.'),
+        ),
+      );
     }
   }
 
@@ -404,12 +455,8 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                       ),
                       const SizedBox(height: MyShopSpacing.md),
                       _DeclineButton(
-                        onTap: () {
-                          ref
-                              .read(pendingIncomingJobsProvider.notifier)
-                              .remove(effectiveJob.id);
-                          context.pop();
-                        },
+                        onTap: () => _declineRequest(effectiveJob),
+                        loading: _decliningRequest,
                       ),
                     ] else
                       _NotBiddableNotice(
@@ -1814,14 +1861,15 @@ class _BidDraftBanner extends StatelessWidget {
 }
 
 class _DeclineButton extends StatelessWidget {
-  const _DeclineButton({required this.onTap});
+  const _DeclineButton({required this.onTap, this.loading = false});
 
   final VoidCallback onTap;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: loading ? null : onTap,
       child: Container(
         height: 56,
         decoration: BoxDecoration(
@@ -1833,23 +1881,30 @@ class _DeclineButton extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                color: MyShopColors.surfaceWhite,
-                shape: BoxShape.circle,
-                border: Border.all(color: MyShopColors.error, width: 1.5),
+            if (loading)
+              const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: MyShopColors.surfaceWhite,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: MyShopColors.error, width: 1.5),
+                ),
+                child: const Icon(
+                  Icons.close,
+                  size: 14,
+                  color: MyShopColors.error,
+                ),
               ),
-              child: const Icon(
-                Icons.close,
-                size: 14,
-                color: MyShopColors.error,
-              ),
-            ),
             const SizedBox(width: MyShopSpacing.sm),
             Text(
-              'Decline',
+              loading ? 'Declining…' : 'Decline',
               style: MyShopTypography.button.copyWith(
                 color: MyShopColors.error,
                 fontWeight: FontWeight.w800,

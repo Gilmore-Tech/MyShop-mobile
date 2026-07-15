@@ -180,6 +180,87 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
     }
   }
 
+  /// Accept an offer selected from a native notification/overlay action.
+  ///
+  /// A terminated-app launch has no connected socket yet, so this uses the
+  /// REST equivalent, then hydrates the authoritative active ride before the
+  /// router opens `/active-ride`.
+  Future<bool> acceptRideFromNotification(String rideId) async {
+    if (state.isUpdating || rideId.isEmpty) return false;
+    state = const ActiveRideState(isUpdating: true);
+    try {
+      final service = _ref.read(rideServiceProvider);
+      await service.acceptRideRequest(rideId);
+      final raw = await service.getMyActiveRide();
+      if (raw == null) {
+        state = const ActiveRideState(
+          errorMessage: 'Ride accepted, but its details are still loading.',
+        );
+        return false;
+      }
+      final ride = Ride.fromJson(raw);
+      if (ride.id != rideId || !ride.status.isActive) {
+        state = const ActiveRideState(
+          errorMessage: 'This ride is no longer available.',
+        );
+        return false;
+      }
+      restore(ride);
+      unawaited(markEnRoute());
+      return true;
+    } on ApiException catch (e) {
+      developer.log(
+        'notification ride accept failed: ${e.errorCode} — ${e.message}',
+        name: 'ActiveRide',
+        level: 900,
+      );
+      state = ActiveRideState(
+        errorMessage: _friendlyAckError(e.errorCode ?? ''),
+      );
+      return false;
+    } catch (e) {
+      developer.log(
+        'notification ride accept crashed: $e',
+        name: 'ActiveRide',
+        level: 1000,
+      );
+      state = const ActiveRideState(
+        errorMessage: 'Could not accept the ride. Please try again.',
+      );
+      return false;
+    }
+  }
+
+  /// Skip an offer from a native notification/overlay action. REST is used so
+  /// the matcher can advance even before Socket.IO reconnects on cold start.
+  Future<bool> declineRideFromNotification(
+    String rideId, {
+    String reason = 'notification_skip',
+  }) async {
+    if (rideId.isEmpty) return false;
+    try {
+      await _ref.read(rideServiceProvider).declineRideRequest(
+            rideId,
+            reason: reason,
+          );
+      return true;
+    } on ApiException catch (e) {
+      developer.log(
+        'notification ride decline failed: ${e.errorCode} — ${e.message}',
+        name: 'ActiveRide',
+        level: 900,
+      );
+      return false;
+    } catch (e) {
+      developer.log(
+        'notification ride decline crashed: $e',
+        name: 'ActiveRide',
+        level: 1000,
+      );
+      return false;
+    }
+  }
+
   /// Decline an incoming ride. Fires `ride:decline` to the backend so the
   /// matcher immediately moves on to the next driver instead of waiting
   /// for the acceptance window to expire. Fire-and-forget — the request

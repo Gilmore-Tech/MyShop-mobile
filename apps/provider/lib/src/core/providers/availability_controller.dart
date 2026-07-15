@@ -1,7 +1,11 @@
+import 'dart:async';
+import 'dart:io' show Platform;
+
 import 'package:api_client/api_client.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:incoming_request_overlay/incoming_request_overlay.dart';
 
 import '../../features/profile/providers/provider_type_provider.dart';
 import '../di/providers.dart';
@@ -20,6 +24,7 @@ final lastKnownPositionProvider = StateProvider<Position?>((_) => null);
 // top of each other and trip the global IP throttler. File-scope so it
 // survives bridge re-evaluations (status flips, socket reconnects).
 DateTime? _lastOnlineLocationPostAt;
+bool _overlayPermissionPromptedThisRun = false;
 
 // Window slightly under the 4 s heartbeat: long enough to absorb a
 // kick-once that fires microseconds after a periodic tick, short enough
@@ -154,7 +159,27 @@ class AvailabilityController {
     }
 
     _ref.read(providerStatusProvider.notifier).goOnline();
+    if (Platform.isAndroid && !_overlayPermissionPromptedThisRun) {
+      _overlayPermissionPromptedThisRun = true;
+      unawaited(_promptForOverlayPermissionIfNeeded());
+    }
     return null;
+  }
+
+  Future<void> _promptForOverlayPermissionIfNeeded() async {
+    try {
+      final overlay = IncomingRequestOverlay.instance;
+      if (!await overlay.isSupported() || await overlay.canDrawOverlays()) {
+        return;
+      }
+      // This follows an explicit "go online" gesture: the provider is asking
+      // to receive work, so this is the least surprising moment to explain and
+      // request the special Android access. Notification Settings remains the
+      // retry path if they decline.
+      await overlay.openOverlaySettings();
+    } catch (error) {
+      debugPrint('[Availability] overlay permission prompt failed: $error');
+    }
   }
 
   /// Verify location services are on and permission is granted. Requests

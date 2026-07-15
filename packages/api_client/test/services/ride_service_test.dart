@@ -141,4 +141,64 @@ void main() {
     expect(result['stopId'], 'stop_123');
     expect(result['newFarePesewas'], 4200);
   });
+
+  test('acceptRideRequest uses the notification-action REST endpoint',
+      () async {
+    late RequestOptions capturedRequest;
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test/v1'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          capturedRequest = options;
+          handler.resolve(
+            Response<Map<String, dynamic>>(
+              requestOptions: options,
+              statusCode: 200,
+              data: {
+                'success': true,
+                'data': {'rideId': 'ride_123', 'status': 'accepted'},
+              },
+            ),
+          );
+        },
+      ),
+    );
+
+    final result = await RideService(dio).acceptRideRequest('ride_123');
+
+    expect(capturedRequest.method, 'POST');
+    expect(capturedRequest.path, '/rides/ride_123/accept');
+    expect(result, {'rideId': 'ride_123', 'status': 'accepted'});
+  });
+
+  test('declineRideRequest sends an optional reason', () async {
+    late RequestOptions capturedRequest;
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test/v1'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          capturedRequest = options;
+          handler.resolve(
+            Response<Map<String, dynamic>>(
+              requestOptions: options,
+              statusCode: 200,
+              data: {
+                'success': true,
+                'data': {'acknowledged': true},
+              },
+            ),
+          );
+        },
+      ),
+    );
+
+    await RideService(dio).declineRideRequest(
+      'ride_123',
+      reason: ' notification_skip ',
+    );
+
+    expect(capturedRequest.method, 'POST');
+    expect(capturedRequest.path, '/rides/ride_123/decline');
+    expect(capturedRequest.data, {'reason': 'notification_skip'});
+  });
 }

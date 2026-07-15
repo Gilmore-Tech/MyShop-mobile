@@ -28,6 +28,7 @@ class Job {
     this.shareToken,
     this.artisansNotified,
     this.createdAt,
+    this.expiresAt,
     this.assignedArtisanId,
     this.assignedByAdmin,
     this.assignedAt,
@@ -100,6 +101,9 @@ class Job {
       shareToken: json['shareToken'] as String?,
       artisansNotified: json['artisansNotified'] as int?,
       createdAt: json['createdAt'] as String?,
+      expiresAt: (json['expiresAt'] ??
+          json['requestExpiresAt'] ??
+          json['expires_at']) as String?,
       assignedArtisanId:
           (json['assignedArtisanId'] ?? json['artisanId']) as String?,
       assignedByAdmin: json['assignedByAdmin'] as String?,
@@ -132,6 +136,10 @@ class Job {
   final String? shareToken;
   final int? artisansNotified;
   final String? createdAt;
+
+  /// Absolute backend deadline for the current invitation/bid window.
+  /// Request surfaces use this instead of starting a fresh client timer.
+  final String? expiresAt;
 
   /// The artisan this job is assigned to (after client pick OR admin assign).
   final String? assignedArtisanId;
@@ -209,6 +217,7 @@ class Job {
     String? shareToken,
     int? artisansNotified,
     String? createdAt,
+    String? expiresAt,
     String? assignedArtisanId,
     String? assignedByAdmin,
     String? assignedAt,
@@ -235,6 +244,7 @@ class Job {
       shareToken: shareToken ?? this.shareToken,
       artisansNotified: artisansNotified ?? this.artisansNotified,
       createdAt: createdAt ?? this.createdAt,
+      expiresAt: expiresAt ?? this.expiresAt,
       assignedArtisanId: assignedArtisanId ?? this.assignedArtisanId,
       assignedByAdmin: assignedByAdmin ?? this.assignedByAdmin,
       assignedAt: assignedAt ?? this.assignedAt,
