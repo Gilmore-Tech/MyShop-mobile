@@ -10,6 +10,7 @@ import 'package:shared_utils/shared_utils.dart';
 
 import '../../../core/providers/availability_controller.dart';
 import '../../../core/providers/socket_provider.dart';
+import '../../../core/services/incoming_request_overlay_presenter.dart';
 import '../../../core/services/local_notification_service.dart';
 import '../../../core/utils/payment_method_label.dart';
 import '../providers/driver_location_provider.dart';
@@ -38,6 +39,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
   late DateTime _expiresAt;
   Timer? _timer;
   bool _isAccepting = false;
+  bool _isDeclining = false;
   bool _expired = false;
   bool _expiryHandled = false;
 
@@ -126,9 +128,18 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
         );
     // Best-effort only. The backend may already have timed this provider out;
     // the UI should close cleanly either way.
-    ref
-        .read(activeRideProvider.notifier)
-        .declineRide(widget.ride.id, reason: 'request_expired');
+    unawaited(
+      ref.read(activeRideProvider.notifier).declineRideFromNotification(
+            widget.ride.id,
+            reason: 'request_expired',
+          ),
+    );
+    unawaited(
+      clearIncomingRequestAlert(
+        type: NotificationPayload.typeRideRequest,
+        requestId: widget.ride.id,
+      ),
+    );
     Future<void>.delayed(const Duration(milliseconds: 900), () {
       if (!mounted || !_expired) return;
       _closeRequest('expired');
@@ -167,6 +178,11 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
         await ref.read(activeRideProvider.notifier).acceptRide(widget.ride);
     if (!mounted) return;
     if (ok) {
+      await clearIncomingRequestAlert(
+        type: NotificationPayload.typeRideRequest,
+        requestId: widget.ride.id,
+      );
+      if (!mounted) return;
       _clearVisibleMarker();
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
@@ -193,14 +209,27 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     });
   }
 
-  void _decline({String reason = 'driver_declined'}) {
+  Future<void> _decline({String reason = 'driver_declined'}) async {
+    if (_isDeclining) return;
     _timer?.cancel();
+    setState(() => _isDeclining = true);
     // Tell the matcher to move on immediately — without this, the next
     // driver in the queue doesn't get the request until the 45 s window
     // expires and the matcher times us out.
-    ref
-        .read(activeRideProvider.notifier)
-        .declineRide(widget.ride.id, reason: reason);
+    final notifier = ref.read(activeRideProvider.notifier);
+    final acknowledged = await notifier.declineRideFromNotification(
+      widget.ride.id,
+      reason: reason,
+    );
+    if (!acknowledged) {
+      // Socket fallback keeps older backends/builds functional. The backend
+      // matcher timeout remains the final safety net if both paths are down.
+      notifier.declineRide(widget.ride.id, reason: reason);
+    }
+    await clearIncomingRequestAlert(
+      type: NotificationPayload.typeRideRequest,
+      requestId: widget.ride.id,
+    );
     if (mounted) _closeRequest('declined');
   }
 
@@ -321,8 +350,9 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                         Expanded(
                           flex: 2,
                           child: OutlinedButton.icon(
-                            onPressed:
-                                _isAccepting || _expired ? null : _decline,
+                            onPressed: _isAccepting || _isDeclining || _expired
+                                ? null
+                                : _decline,
                             icon: const Icon(Icons.close, size: 18),
                             label: const Text('Decline'),
                             style: OutlinedButton.styleFrom(
@@ -342,8 +372,9 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                         Expanded(
                           flex: 3,
                           child: ElevatedButton(
-                            onPressed:
-                                _isAccepting || _expired ? null : _accept,
+                            onPressed: _isAccepting || _isDeclining || _expired
+                                ? null
+                                : _accept,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: MyShopColors.darkSlate,
                               foregroundColor: MyShopColors.textOnPrimary,

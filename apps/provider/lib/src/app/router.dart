@@ -408,6 +408,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
               job: extra.job,
               bidStatus: extra.bidStatus,
               submittedBidAmount: extra.submittedBidAmount,
+              openBidSheet: extra.openBidSheet,
             );
           }
           // No valid payload — bounce back to home rather than render a blank.
@@ -1101,11 +1102,13 @@ class JobRequestRouteExtra {
     required this.job,
     required this.bidStatus,
     this.submittedBidAmount = 0,
+    this.openBidSheet = false,
   });
 
   final Job job;
   final BidStatus bidStatus;
   final num submittedBidAmount;
+  final bool openBidSheet;
 }
 
 /// Fallback rendered when `/job-request` is navigated to without a valid

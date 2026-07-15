@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:api_client/api_client.dart' show AppCallSession;
@@ -13,6 +14,8 @@ import '../../app/router.dart';
 import '../../features/artisan_home/providers/active_job_provider.dart';
 import '../../features/artisan_home/providers/job_poller_provider.dart';
 import '../../features/artisan_home/widgets/rate_client_sheet.dart';
+import '../../features/artisan_home/widgets/bid_status_banner.dart';
+import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../features/auth/providers/auth_controller.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
 import '../../features/driver_home/widgets/rate_passenger_sheet.dart';
@@ -20,6 +23,8 @@ import '../di/providers.dart';
 import '../providers/pending_request_recovery_provider.dart';
 import '../providers/socket_provider.dart';
 import 'local_notification_service.dart';
+import 'incoming_request_action_bridge.dart';
+import 'incoming_request_overlay_presenter.dart';
 
 const _defaultIncomingCallTimeout = Duration(seconds: 60);
 const _terminalCallTombstoneFallback = Duration(minutes: 2);
@@ -83,14 +88,36 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
     '[FCM-bg] message arrived: '
     'type=${message.data['type']} '
     'hasNotificationField=${message.notification != null} '
-    'data=${message.data}',
+    'keys=${message.data.keys.toList()}',
   );
 
+  if (await _handleOfferRevokedFromRemote(
+    message,
+    source: 'background-fcm',
+  )) {
+    return;
+  }
   if (await _handleCallEndedFromRemote(message, source: 'background-fcm')) {
     return;
   }
   if (await _showIncomingCallFromRemote(message, source: 'background-fcm')) {
     return;
+  }
+
+  final backgroundType = _remoteType(message);
+  if (Platform.isAndroid &&
+      (backgroundType == NotificationPayload.typeRideRequest ||
+          backgroundType == NotificationPayload.typeJobRequest)) {
+    final shown = await IncomingRequestOverlayPresenter.instance.showFromPush(
+      Map<String, dynamic>.from(message.data),
+      notificationTitle:
+          message.notification?.title ?? message.data['title']?.toString(),
+    );
+    if (shown) {
+      debugPrint('[FCM-bg] native request overlay displayed: $backgroundType');
+      return;
+    }
+    debugPrint('[FCM-bg] overlay unavailable; using notification fallback');
   }
 
   // FCM auto-displays hybrid pushes (top-level `notification`) while the
@@ -115,6 +142,56 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
   debugPrint('[FCM-bg] local notification rendered');
 }
 
+Future<bool> _handleOfferRevokedFromRemote(
+  RemoteMessage message, {
+  required String source,
+}) async {
+  if (_remoteType(message) != NotificationPayload.typeOfferRevoked) {
+    return false;
+  }
+
+  final offerType = NotificationPayload.normaliseType(
+    message.data['offerType']?.toString() ?? '',
+  );
+  final rideId = message.data[NotificationPayload.keyRideId]?.toString();
+  final jobId = message.data[NotificationPayload.keyJobId]?.toString();
+  final inferredType = offerType == NotificationPayload.typeRideRequest ||
+          offerType == 'ride'
+      ? NotificationPayload.typeRideRequest
+      : offerType == NotificationPayload.typeJobRequest || offerType == 'job'
+          ? NotificationPayload.typeJobRequest
+          : rideId != null && rideId.isNotEmpty
+              ? NotificationPayload.typeRideRequest
+              : jobId != null && jobId.isNotEmpty
+                  ? NotificationPayload.typeJobRequest
+                  : null;
+  final requestId = inferredType == NotificationPayload.typeRideRequest
+      ? rideId
+      : inferredType == NotificationPayload.typeJobRequest
+          ? jobId
+          : null;
+
+  if (inferredType != null && requestId != null && requestId.isNotEmpty) {
+    await clearIncomingRequestAlert(
+      type: inferredType,
+      requestId: requestId,
+      offerId: message.data[NotificationPayload.keyOfferId]?.toString(),
+    );
+    if (Platform.isIOS) {
+      await IncomingRequestActionBridge.removeDeliveredNotification(
+        <String, dynamic>{
+          ...message.data,
+          'requestType': inferredType,
+        },
+      );
+    }
+    debugPrint('[FCM] $source cleared revoked $inferredType $requestId');
+  } else {
+    debugPrint('[FCM] $source offer_revoked missing request identity');
+  }
+  return true;
+}
+
 Future<bool> _showIncomingCallFromRemote(
   RemoteMessage message, {
   required String source,
@@ -124,7 +201,10 @@ Future<bool> _showIncomingCallFromRemote(
 
   final callId = message.data[NotificationPayload.keyCallId]?.toString();
   if (callId == null || callId.isEmpty) {
-    debugPrint('[FCM] $source call_incoming missing callId: ${message.data}');
+    debugPrint(
+      '[FCM] $source call_incoming missing callId; '
+      'keys=${message.data.keys.toList()}',
+    );
     return true;
   }
 
@@ -180,7 +260,10 @@ Future<bool> _handleCallEndedFromRemote(
 
   final callId = message.data[NotificationPayload.keyCallId]?.toString();
   if (callId == null || callId.isEmpty) {
-    debugPrint('[FCM] $source call_ended missing callId: ${message.data}');
+    debugPrint(
+      '[FCM] $source call_ended missing callId; '
+      'keys=${message.data.keys.toList()}',
+    );
     return true;
   }
 
@@ -213,6 +296,29 @@ Duration _remainingCallTimeout(Map<String, dynamic> data) {
   final expiresAt = DateTime.tryParse(rawExpiresAt);
   if (expiresAt == null) return Duration.zero;
   return expiresAt.difference(DateTime.now());
+}
+
+DateTime? _requestDeadlineFromData(Map<String, dynamic> data) {
+  for (final key in const <String>[
+    'expiresAt',
+    'expires_at',
+    'acceptanceExpiresAt',
+    'acceptance_expires_at',
+    'requestExpiresAt',
+    'request_expires_at',
+  ]) {
+    final raw = data[key]?.toString();
+    if (raw == null || raw.isEmpty) continue;
+    final parsed = DateTime.tryParse(raw);
+    if (parsed != null) return parsed.toUtc();
+  }
+  return null;
+}
+
+Duration _remainingRequestTimeout(Map<String, dynamic> data) {
+  final deadline = _requestDeadlineFromData(data);
+  if (deadline == null) return Duration.zero;
+  return deadline.difference(DateTime.now().toUtc());
 }
 
 String get _platformName {
@@ -259,7 +365,9 @@ Future<void> _renderFromRemote(
   Duration? timeoutAfter;
   if (type == NotificationPayload.typeCallIncoming) {
     if (callId == null || callId.isEmpty) {
-      debugPrint('[FCM] call_incoming missing callId: $data');
+      debugPrint(
+        '[FCM] call_incoming missing callId; keys=${data.keys.toList()}',
+      );
       return;
     }
     timeoutAfter = callTimeout ?? _remainingCallTimeout(data);
@@ -268,10 +376,34 @@ Future<void> _renderFromRemote(
       debugPrint('[FCM] ignored stale call_incoming: $callId');
       return;
     }
+  } else if (type == NotificationPayload.typeRideRequest ||
+      type == NotificationPayload.typeJobRequest) {
+    timeoutAfter = _remainingRequestTimeout(data);
+    if (timeoutAfter <= Duration.zero) {
+      final requestId = type == NotificationPayload.typeRideRequest
+          ? data[NotificationPayload.keyRideId]?.toString()
+          : data[NotificationPayload.keyJobId]?.toString();
+      if (requestId != null && requestId.isNotEmpty) {
+        await clearIncomingRequestAlert(
+          type: type,
+          requestId: requestId,
+          offerId: data[NotificationPayload.keyOfferId]?.toString(),
+        );
+      }
+      debugPrint('[FCM] ignored stale $type request');
+      return;
+    }
   }
 
-  final title = message.notification?.title ?? data['title']?.toString() ?? '';
-  final body = message.notification?.body ?? data['body']?.toString() ?? '';
+  var title = message.notification?.title ?? data['title']?.toString() ?? '';
+  var body = message.notification?.body ?? data['body']?.toString() ?? '';
+  if (type == NotificationPayload.typeRideRequest ||
+      type == NotificationPayload.typeJobRequest) {
+    title = type == NotificationPayload.typeRideRequest
+        ? 'New ride request'
+        : 'New job request';
+    body = _privacySafeRequestBody(type, data);
+  }
 
   // Forward every data-key besides title/body/type so the tap handler can
   // read jobId / rideId / bidId / chatId / notificationId without losing
@@ -291,6 +423,74 @@ Future<void> _renderFromRemote(
     extras: extras,
     timeoutAfter: timeoutAfter,
   );
+}
+
+String _privacySafeRequestBody(
+  String type,
+  Map<String, dynamic> data,
+) {
+  Map<String, dynamic> decoded(String key) {
+    final raw = data[key];
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    if (raw is! String || raw.isEmpty) return const <String, dynamic>{};
+    try {
+      final value = json.decode(raw);
+      return value is Map
+          ? Map<String, dynamic>.from(value)
+          : const <String, dynamic>{};
+    } catch (_) {
+      return const <String, dynamic>{};
+    }
+  }
+
+  final details = <String, dynamic>{
+    ...decoded('offerPayload'),
+    ...decoded('ridePayload'),
+    ...decoded('jobPayload'),
+  };
+  String? value(Object? raw) {
+    final text = raw?.toString().trim();
+    return text == null || text.isEmpty ? null : text;
+  }
+
+  num? number(Object? raw) => switch (raw) {
+        final num raw => raw,
+        final Object raw => num.tryParse(raw.toString()),
+        null => null,
+      };
+
+  if (type == NotificationPayload.typeRideRequest) {
+    final fare = number(
+      details['estimatedFarePesewas'] ?? data['estimatedFarePesewas'],
+    );
+    final distance = number(details['distanceKm'] ?? data['distanceKm']);
+    final parts = <String>[
+      if (fare != null) 'GHS ${(fare / 100).toStringAsFixed(2)}',
+      if (distance != null) '${distance.toStringAsFixed(1)} km',
+    ];
+    return parts.isEmpty
+        ? 'Unlock to view pickup and destination.'
+        : '${parts.join(' · ')} · Unlock to view route.';
+  }
+
+  final category = value(details['categoryName'] ?? data['categoryName']);
+  final distanceMeters = number(
+    details['distanceMeters'] ?? data['distanceMeters'],
+  );
+  final minBid = number(
+    details['minBidPesewas'] ??
+        details['minimumBidPesewas'] ??
+        data['minBidPesewas'],
+  );
+  final parts = <String>[
+    if (category != null) category,
+    if (distanceMeters != null)
+      '${(distanceMeters / 1000).toStringAsFixed(1)} km',
+    if (minBid != null) 'Minimum GHS ${(minBid / 100).toStringAsFixed(2)}',
+  ];
+  return parts.isEmpty
+      ? 'Unlock to view description, location, and photos.'
+      : '${parts.join(' · ')} · Unlock to view details.';
 }
 
 String _fallbackTitle(String type) {
@@ -422,7 +622,7 @@ class FcmService {
   /// Called with the payload map when a user taps a push (either from the
   /// background/terminated state or after a foreground message surfaces
   /// through [LocalNotificationService]).
-  void Function(Map<String, dynamic> payload)? onTapMessage;
+  Future<void> Function(Map<String, dynamic> payload)? onTapMessage;
 
   Future<void> init() {
     debugPrint('[FCM] init() called (initialised=$_initialised)');
@@ -445,7 +645,8 @@ class FcmService {
     // handler the router will set.
     LocalNotificationService.instance.onTap = (payload) {
       _markNotificationRead(payload);
-      onTapMessage?.call(payload);
+      final handler = onTapMessage;
+      if (handler != null) unawaited(handler(payload));
     };
 
     // Foreground messages — the in-app modal is driven by the socket in
@@ -462,7 +663,30 @@ class FcmService {
     _foregroundMessageSub ??= FirebaseMessaging.onMessage.listen((
       message,
     ) async {
-      debugPrint('[FCM] foreground message: ${message.data}');
+      debugPrint(
+        '[FCM] foreground message: type=${message.data['type']} '
+        'keys=${message.data.keys.toList()}',
+      );
+      if (await _handleOfferRevokedFromRemote(
+        message,
+        source: 'foreground-fcm',
+      )) {
+        final rideId = message.data[NotificationPayload.keyRideId]?.toString();
+        final jobId = message.data[NotificationPayload.keyJobId]?.toString();
+        if (rideId != null && rideId.isNotEmpty) {
+          _ref.read(incomingRideRequestProvider.notifier).state = null;
+          _ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+                (deadlines) => {...deadlines}..remove(rideId),
+              );
+        }
+        if (jobId != null && jobId.isNotEmpty) {
+          _ref.read(pendingIncomingJobsProvider.notifier).remove(jobId);
+          if (_ref.read(incomingJobRequestProvider)?.id == jobId) {
+            _ref.read(incomingJobRequestProvider.notifier).state = null;
+          }
+        }
+        return;
+      }
       if (await _handleCallEndedFromRemote(
         message,
         source: 'foreground-fcm',
@@ -504,10 +728,15 @@ class FcmService {
       // when two alert paths fire for the same booking.
       if (type != NotificationPayload.typeCallIncoming &&
           NotificationPayload.fullScreenRequestTypes.contains(type)) {
+        if (_ref.read(socketConnectedProvider)) {
+          debugPrint(
+            '[FCM] foreground $type — socket will surface in-app request',
+          );
+          return;
+        }
         debugPrint(
-          '[FCM] foreground $type — handled by in-app modal, skipping banner',
+          '[FCM] foreground $type — socket offline, rendering fallback',
         );
-        return;
       }
       await _renderFromRemote(message);
     });
@@ -516,22 +745,30 @@ class FcmService {
     _openedMessageSub ??= FirebaseMessaging.onMessageOpenedApp.listen((
       message,
     ) {
-      debugPrint('[FCM] opened from background: ${message.data}');
+      debugPrint(
+        '[FCM] opened from background: type=${message.data['type']} '
+        'keys=${message.data.keys.toList()}',
+      );
       final payload = Map<String, dynamic>.from(message.data);
       _markNotificationRead(payload);
-      onTapMessage?.call(payload);
+      final handler = onTapMessage;
+      if (handler != null) unawaited(handler(payload));
     });
 
     // Cold-start tap: app was terminated, user tapped a push to open it.
     final initialMessage = await _fcm.getInitialMessage();
     if (initialMessage != null) {
-      debugPrint('[FCM] initial message: ${initialMessage.data}');
+      debugPrint(
+        '[FCM] initial message: type=${initialMessage.data['type']} '
+        'keys=${initialMessage.data.keys.toList()}',
+      );
       final payload = Map<String, dynamic>.from(initialMessage.data);
       _markNotificationRead(payload);
       // Defer until the router is ready to avoid navigating before the
       // first frame.
       Future<void>.delayed(const Duration(milliseconds: 500), () {
-        onTapMessage?.call(payload);
+        final handler = onTapMessage;
+        if (handler != null) unawaited(handler(payload));
       });
     }
 
@@ -1015,6 +1252,21 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     return false;
   }
 
+  Future<bool> waitForAuthenticatedRequest(
+    Map<String, dynamic> payload,
+  ) async {
+    final explicitDeadline = _requestDeadlineFromData(payload);
+    final deadline = explicitDeadline ??
+        DateTime.now().toUtc().add(const Duration(seconds: 20));
+    while (DateTime.now().toUtc().isBefore(deadline)) {
+      final authState = ref.read(authControllerProvider);
+      if (authState is AuthAuthenticated) return true;
+      if (authState is AuthUnauthenticated) return false;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    return false;
+  }
+
   fcm.onTapMessage = (payload) async {
     final rawType = payload[NotificationPayload.keyType] as String?;
     // Backend emits dotted types ("job.request") in the FCM data payload.
@@ -1024,6 +1276,10 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     // every background / cold-start tap fell through to the default case.
     final type =
         rawType == null ? null : NotificationPayload.normaliseType(rawType);
+    final actionId = payload[NotificationPayload.keyActionId]
+        ?.toString()
+        .trim()
+        .toUpperCase();
     final router = ref.read(goRouterProvider);
     debugPrint('[FCM-tap] type=$type (raw=$rawType)');
 
@@ -1151,11 +1407,154 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       return !DateTime.now().toUtc().isBefore(deadline.toUtc());
     }
 
+    Future<void> openJobRequest({required bool openBidSheet}) async {
+      final jobId = jobIdFromPayload();
+      if (jobId == null || jobId.isEmpty) {
+        router.go('/home');
+        return;
+      }
+      final deadline = requestDeadlineFromPayload();
+      if (deadline != null && requestDeadlineExpired(deadline)) {
+        await clearIncomingRequestAlert(
+          type: NotificationPayload.typeJobRequest,
+          requestId: jobId,
+          offerId: payload[NotificationPayload.keyOfferId]?.toString(),
+        );
+        return;
+      }
+      ref.read(surfacedJobIdsProvider.notifier).update((s) => {...s, jobId});
+      if (ref.read(incomingJobRequestProvider)?.id == jobId) {
+        ref.read(incomingJobRequestProvider.notifier).state = null;
+      }
+      final stub = Job(
+        id: jobId,
+        status: JobStatus.open,
+        categoryId: '',
+        description: '',
+        latitude: 0,
+        longitude: 0,
+        expiresAt: deadline?.toIso8601String(),
+      );
+      router.go('/home');
+      router.push(
+        '/job-request',
+        extra: JobRequestRouteExtra(
+          job: stub,
+          bidStatus: BidStatus.none,
+          openBidSheet: openBidSheet,
+        ),
+      );
+    }
+
+    // Local-notification and native overlay actions all converge here. The
+    // native bridges persist the action first, so this may run during a cold
+    // start after authentication is restored.
+    if (actionId != null && actionId.isNotEmpty) {
+      final deadline = requestDeadlineFromPayload();
+      if (deadline != null && requestDeadlineExpired(deadline)) {
+        final requestId = type == NotificationPayload.typeRideRequest
+            ? payload[NotificationPayload.keyRideId]?.toString()
+            : payload[NotificationPayload.keyJobId]?.toString();
+        if (type != null && requestId != null && requestId.isNotEmpty) {
+          await clearIncomingRequestAlert(
+            type: type,
+            requestId: requestId,
+            offerId: payload[NotificationPayload.keyOfferId]?.toString(),
+          );
+        }
+        debugPrint('[Request-action] ignored expired action=$actionId');
+        return;
+      }
+      if (!await waitForAuthenticatedRequest(payload)) {
+        debugPrint('[Request-action] auth unavailable for action=$actionId');
+        return;
+      }
+
+      switch (actionId) {
+        case NotificationPayload.actionRideAccept:
+          final rideId = payload[NotificationPayload.keyRideId]?.toString();
+          if (rideId == null || rideId.isEmpty) return;
+          final accepted = await ref
+              .read(activeRideProvider.notifier)
+              .acceptRideFromNotification(rideId);
+          if (accepted) {
+            await clearIncomingRequestAlert(
+              type: NotificationPayload.typeRideRequest,
+              requestId: rideId,
+              offerId: payload[NotificationPayload.keyOfferId]?.toString(),
+            );
+            router.go('/active-ride');
+          } else {
+            openRideRequestLoader(
+              rideId,
+              deadline: deadline,
+              source: 'failed native accept',
+            );
+          }
+          return;
+        case NotificationPayload.actionRideSkip:
+          final rideId = payload[NotificationPayload.keyRideId]?.toString();
+          if (rideId == null || rideId.isEmpty) return;
+          final skipped = await ref
+              .read(activeRideProvider.notifier)
+              .declineRideFromNotification(rideId);
+          if (skipped) {
+            await clearIncomingRequestAlert(
+              type: NotificationPayload.typeRideRequest,
+              requestId: rideId,
+              offerId: payload[NotificationPayload.keyOfferId]?.toString(),
+            );
+            ref.read(incomingRideRequestProvider.notifier).state = null;
+            router.go('/home');
+          } else {
+            openRideRequestLoader(
+              rideId,
+              deadline: deadline,
+              source: 'failed native skip',
+            );
+          }
+          return;
+        case NotificationPayload.actionJobSkip:
+          final jobId = jobIdFromPayload();
+          if (jobId == null || jobId.isEmpty) return;
+          try {
+            await ref.read(jobServiceProvider).declineJobRequest(
+                  jobId,
+                  reason: 'notification_skip',
+                );
+            ref.read(pendingIncomingJobsProvider.notifier).remove(jobId);
+            await clearIncomingRequestAlert(
+              type: NotificationPayload.typeJobRequest,
+              requestId: jobId,
+              offerId: payload[NotificationPayload.keyOfferId]?.toString(),
+            );
+            router.go('/home');
+          } catch (error) {
+            debugPrint('[Request-action] job skip failed: $error');
+            // The action notification is already gone. Hand off to the full
+            // request screen so the artisan can retry instead of silently
+            // losing the still-live offer on a transient network failure.
+            await openJobRequest(openBidSheet: false);
+          }
+          return;
+        case NotificationPayload.actionJobSubmitBid:
+          await openJobRequest(openBidSheet: true);
+          return;
+        case NotificationPayload.actionRideView:
+        case NotificationPayload.actionJobView:
+          // Continue into the normal type-based view routing below.
+          break;
+      }
+    }
+
     switch (type) {
       case NotificationPayload.typeCallIncoming:
         final callId = payload['callId'] as String?;
         if (callId == null || callId.isEmpty) {
-          debugPrint('[FCM-tap] call_incoming missing callId: $payload');
+          debugPrint(
+            '[FCM-tap] call_incoming missing callId; '
+            'keys=${payload.keys.toList()}',
+          );
           router.go('/home');
           break;
         }
@@ -1180,7 +1579,10 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         // accept both so a casing drift doesn't silently route to /home.
         final jobId = (payload[NotificationPayload.keyJobId] as String?) ??
             (payload['job_id'] as String?);
-        debugPrint('[FCM-tap] job_request jobId=$jobId payload=$payload');
+        debugPrint(
+          '[FCM-tap] job_request jobId=$jobId '
+          'keys=${payload.keys.toList()}',
+        );
         if (jobId == null) {
           router.go('/home');
           debugPrint('[FCM-tap] no jobId in payload — running recovery');
@@ -1214,19 +1616,8 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         // I/O itself, against its own loading lifecycle, instead of us
         // holding the FCM callback open while a Render cold-start
         // refresh runs to 60 seconds and the user sees nothing happen.
-        router.go('/home');
         debugPrint('[FCM-tap] pushing /job-request stub for $jobId');
-        router.push(
-          '/job-request',
-          extra: Job(
-            id: jobId,
-            status: JobStatus.open,
-            categoryId: '',
-            description: '',
-            latitude: 0,
-            longitude: 0,
-          ),
-        );
+        await openJobRequest(openBidSheet: false);
         break;
 
       case NotificationPayload.typeRideRequest:
@@ -1234,7 +1625,10 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         // (snake) depending on which emitter wrote the push.
         final rideId = (payload[NotificationPayload.keyRideId] as String?) ??
             (payload['ride_id'] as String?);
-        debugPrint('[FCM-tap] ride_request rideId=$rideId payload=$payload');
+        debugPrint(
+          '[FCM-tap] ride_request rideId=$rideId '
+          'keys=${payload.keys.toList()}',
+        );
         if (rideId == null) {
           router.go('/home');
           debugPrint('[FCM-tap] no rideId in payload — running recovery');
@@ -1248,11 +1642,12 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
               );
           if (requestDeadlineExpired(deadline)) {
             debugPrint('[FCM-tap] ride_request $rideId expired before tap');
-            openRideRequestLoader(
-              rideId,
-              deadline: deadline,
-              source: 'expired ride_request notification',
+            await clearIncomingRequestAlert(
+              type: NotificationPayload.typeRideRequest,
+              requestId: rideId,
+              offerId: payload[NotificationPayload.keyOfferId]?.toString(),
             );
+            router.go('/home');
             break;
           }
         }
@@ -1469,6 +1864,17 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         router.go('/home');
     }
   };
+
+  final nativeActionBridge = IncomingRequestActionBridge(
+    handleAction: (payload) async {
+      final handler = fcm.onTapMessage;
+      if (handler != null) await handler(payload);
+    },
+  );
+  unawaited(nativeActionBridge.start());
+  ref.onDispose(() {
+    unawaited(nativeActionBridge.dispose());
+  });
 });
 
 /// Renders a friendly "what is the client up to right now" string for the

@@ -153,6 +153,41 @@ class RideService {
     }
   }
 
+  /// POST /rides/:id/accept — accept the currently assigned ride offer.
+  ///
+  /// This REST path mirrors the `ride:accept` socket acknowledgement and is
+  /// intentionally used by notification/overlay actions, where the socket may
+  /// not be connected yet after a cold start.
+  Future<Map<String, dynamic>> acceptRideRequest(String rideId) async {
+    try {
+      final response = await _dio.post('/rides/$rideId/accept');
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// POST /rides/:id/decline — skip the current ride offer.
+  ///
+  /// The operation is idempotent on the backend. Sending it immediately lets
+  /// the matcher advance instead of waiting for the offer deadline.
+  Future<void> declineRideRequest(
+    String rideId, {
+    String? reason,
+  }) async {
+    try {
+      await _dio.post(
+        '/rides/$rideId/decline',
+        data: {
+          if (reason != null && reason.trim().isNotEmpty)
+            'reason': reason.trim(),
+        },
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   /// GET /drivers/me/active-ride — Driver: fetch the ride this driver is
   /// currently assigned to (status in `accepted | driver_en_route |
   /// arrived_at_pickup | in_progress`), or null if none. Replaces the

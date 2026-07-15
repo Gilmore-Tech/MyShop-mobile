@@ -1,0 +1,33 @@
+plugins {
+    // Versions are supplied by the consuming Flutter application's Gradle
+    // plugin loader. Re-declaring them here conflicts when this package is an
+    // included build and the parent plugin is already on the classpath.
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+}
+
+group = 'com.gilmoretech.incoming_request_overlay'
+version = '0.1.0'
+
+android {
+    namespace = 'com.gilmoretech.incoming_request_overlay'
+    compileSdk = 35
+
+    defaultConfig {
+        minSdk = 23
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+dependencies {
+    implementation 'androidx.annotation:annotation:1.9.1'
+    testImplementation 'junit:junit:4.13.2'
+}

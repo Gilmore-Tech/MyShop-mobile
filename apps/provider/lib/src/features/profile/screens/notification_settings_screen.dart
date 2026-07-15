@@ -1,6 +1,11 @@
+import 'dart:io' show Platform;
+
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:incoming_request_overlay/incoming_request_overlay.dart';
 import 'package:shared_ui/shared_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Notification Settings — channel toggles, safety alerts, preferences.
 ///
@@ -13,8 +18,8 @@ class NotificationSettingsScreen extends StatefulWidget {
       _NotificationSettingsScreenState();
 }
 
-class _NotificationSettingsScreenState
-    extends State<NotificationSettingsScreen> {
+class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
+    with WidgetsBindingObserver {
   bool _push = true;
   bool _sms = false;
   bool _email = true;
@@ -22,6 +27,87 @@ class _NotificationSettingsScreenState
   bool _criticalSystem = true;
   bool _quietHours = false;
   bool _marketing = false;
+  bool _requestPermissionLoading = true;
+  bool _requestPermissionGranted = false;
+  String _requestPermissionSubtitle = 'Checking system settings…';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refreshRequestPermission();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refreshRequestPermission();
+  }
+
+  Future<void> _refreshRequestPermission() async {
+    if (!mounted) return;
+    setState(() => _requestPermissionLoading = true);
+    try {
+      if (Platform.isAndroid) {
+        final supported = await IncomingRequestOverlay.instance.isSupported();
+        final granted = supported &&
+            await IncomingRequestOverlay.instance.canDrawOverlays();
+        if (!mounted) return;
+        setState(() {
+          _requestPermissionGranted = granted;
+          _requestPermissionSubtitle = !supported
+              ? 'Custom request cards are not supported on this device.'
+              : granted
+                  ? 'Custom ride and job cards can appear over other apps.'
+                  : 'Allow Display over other apps to see the custom request card.';
+          _requestPermissionLoading = false;
+        });
+        return;
+      }
+
+      final settings =
+          await FirebaseMessaging.instance.getNotificationSettings();
+      final authorized =
+          settings.authorizationStatus == AuthorizationStatus.authorized ||
+              settings.authorizationStatus == AuthorizationStatus.provisional;
+      final timeSensitive =
+          settings.timeSensitive == AppleNotificationSetting.enabled;
+      if (!mounted) return;
+      setState(() {
+        _requestPermissionGranted = authorized && timeSensitive;
+        _requestPermissionSubtitle = !authorized
+            ? 'Notifications are disabled. Enable them in iOS Settings.'
+            : timeSensitive
+                ? 'Time Sensitive ride and job request alerts are enabled.'
+                : 'Enable Time Sensitive Notifications in iOS Settings.';
+        _requestPermissionLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _requestPermissionGranted = false;
+        _requestPermissionSubtitle =
+            'Could not read the current system notification setting.';
+        _requestPermissionLoading = false;
+      });
+    }
+  }
+
+  Future<void> _openRequestPermission() async {
+    if (Platform.isAndroid) {
+      await IncomingRequestOverlay.instance.openOverlaySettings();
+      return;
+    }
+    await launchUrl(
+      Uri.parse('app-settings:'),
+      mode: LaunchMode.externalApplication,
+    );
+  }
 
   void _resetToDefaults() {
     setState(() {
@@ -87,6 +173,29 @@ class _NotificationSettingsScreenState
                         subtitle: 'Weekly summaries and payment invoices.',
                         value: _email,
                         onChanged: (v) => setState(() => _email = v),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: MyShopSpacing.lg),
+                  _SectionHeader(
+                    icon: Icons.picture_in_picture_alt_outlined,
+                    label: 'INCOMING REQUESTS',
+                    iconColor: MyShopColors.primaryGold,
+                  ),
+                  const SizedBox(height: MyShopSpacing.sm),
+                  _SettingsCard(
+                    rows: [
+                      _PermissionRow(
+                        icon: Platform.isAndroid
+                            ? Icons.layers_outlined
+                            : Icons.notifications_active_outlined,
+                        title: Platform.isAndroid
+                            ? 'Display over other apps'
+                            : 'Time Sensitive alerts',
+                        subtitle: _requestPermissionSubtitle,
+                        granted: _requestPermissionGranted,
+                        loading: _requestPermissionLoading,
+                        onTap: _openRequestPermission,
                       ),
                     ],
                   ),
@@ -285,7 +394,7 @@ class _SectionHeader extends StatelessWidget {
 class _SettingsCard extends StatelessWidget {
   const _SettingsCard({required this.rows, this.footer});
 
-  final List<_SettingRow> rows;
+  final List<Widget> rows;
   final Widget? footer;
 
   @override
@@ -309,6 +418,75 @@ class _SettingsCard extends StatelessWidget {
               ),
           ],
           if (footer != null) footer!,
+        ],
+      ),
+    );
+  }
+}
+
+class _PermissionRow extends StatelessWidget {
+  const _PermissionRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.granted,
+    required this.loading,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool granted;
+  final bool loading;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: MyShopColors.primaryGoldLight,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: MyShopColors.primaryGold, size: 20),
+          ),
+          const SizedBox(width: MyShopSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: MyShopTypography.h3.copyWith(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: MyShopTypography.body2.copyWith(height: 1.45),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: MyShopSpacing.sm),
+          if (loading)
+            const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else if (granted)
+            const Icon(Icons.check_circle, color: MyShopColors.success)
+          else
+            TextButton(onPressed: onTap, child: const Text('Enable')),
         ],
       ),
     );

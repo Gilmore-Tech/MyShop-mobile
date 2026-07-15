@@ -1,5 +1,6 @@
 import Flutter
 import UIKit
+import UserNotifications
 import GoogleMaps
 import PushKit
 import CallKit
@@ -9,6 +10,7 @@ import WebRTC
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var rootVoipBridgeRegistered = false
+  private var rootRequestActionBridgeRegistered = false
   private var rootDisplayChannelRegistered = false
 
   override func application(
@@ -30,6 +32,7 @@ import WebRTC
       application.registerForRemoteNotifications()
     }
     VoipCallBridge.shared.start()
+    IncomingRequestActionBridge.shared.start()
     registerRootFlutterChannels()
     DispatchQueue.main.async { [weak self] in
       self?.registerRootFlutterChannels()
@@ -57,7 +60,29 @@ import WebRTC
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     VoipCallBridge.shared.register(binaryMessenger: engineBridge.applicationRegistrar.messenger())
+    IncomingRequestActionBridge.shared.register(
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
     registerDisplayWakeLockChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
+  }
+
+  override func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    didReceive response: UNNotificationResponse,
+    withCompletionHandler completionHandler: @escaping () -> Void
+  ) {
+    if IncomingRequestActionBridge.shared.handle(response: response, center: center) {
+      completionHandler()
+      return
+    }
+
+    // Preserve FlutterFire / flutter_local_notifications handling for the
+    // default notification tap and for every unrelated notification category.
+    super.userNotificationCenter(
+      center,
+      didReceive: response,
+      withCompletionHandler: completionHandler
+    )
   }
 
   private func registerRootFlutterChannels() {
@@ -71,6 +96,12 @@ import WebRTC
       VoipCallBridge.shared.register(binaryMessenger: messenger)
       rootVoipBridgeRegistered = true
       NSLog("[VoIP] bridge registered on root FlutterViewController")
+    }
+
+    if !rootRequestActionBridgeRegistered {
+      IncomingRequestActionBridge.shared.register(binaryMessenger: messenger)
+      rootRequestActionBridgeRegistered = true
+      NSLog("[RequestAction] bridge registered on root FlutterViewController")
     }
 
     if !rootDisplayChannelRegistered {
@@ -104,6 +135,449 @@ import WebRTC
         result(FlutterMethodNotImplemented)
       }
     }
+  }
+}
+
+/// Bridges actionable iOS ride/job notifications into Dart without depending on
+/// a Flutter engine already being alive. iOS may deliver an action while the app
+/// is terminated, so every action is persisted before the notification-center
+/// completion handler is called and replayed when Flutter attaches.
+private final class IncomingRequestActionBridge: NSObject, FlutterStreamHandler {
+  static let shared = IncomingRequestActionBridge()
+
+  static let rideCategoryIdentifier = "RIDE_REQUEST"
+  static let jobCategoryIdentifier = "JOB_REQUEST"
+
+  static let rideAcceptAction = "RIDE_ACCEPT"
+  static let rideSkipAction = "RIDE_SKIP"
+  static let rideViewAction = "RIDE_VIEW"
+  static let jobSubmitBidAction = "JOB_SUBMIT_BID"
+  static let jobSkipAction = "JOB_SKIP"
+  static let jobViewAction = "JOB_VIEW"
+
+  private static let recognizedActionIdentifiers: Set<String> = [
+    rideAcceptAction,
+    rideSkipAction,
+    rideViewAction,
+    jobSubmitBidAction,
+    jobSkipAction,
+    jobViewAction,
+  ]
+
+  private let pendingActionsKey = "myshop.pendingIncomingRequestActions"
+  private let maximumPendingActions = 20
+  private var pendingActions: [[String: Any]] = []
+  private var loadedPendingActions = false
+  private var started = false
+  private var methodChannel: FlutterMethodChannel?
+  private var eventChannel: FlutterEventChannel?
+  private var eventSink: FlutterEventSink?
+
+  func start() {
+    guard !started else { return }
+    started = true
+    loadPendingActionsIfNeeded()
+    registerNotificationCategories()
+  }
+
+  func register(binaryMessenger: FlutterBinaryMessenger) {
+    start()
+
+    methodChannel = FlutterMethodChannel(
+      name: "com.gilmoretech.myshop/request_action",
+      binaryMessenger: binaryMessenger
+    )
+    methodChannel?.setMethodCallHandler { [weak self] call, result in
+      self?.handleMethodCall(call, result: result)
+    }
+
+    eventChannel = FlutterEventChannel(
+      name: "com.gilmoretech.myshop/request_action/events",
+      binaryMessenger: binaryMessenger
+    )
+    eventChannel?.setStreamHandler(self)
+  }
+
+  /// Returns true only for one of MyShop's explicit request action buttons.
+  /// Default notification taps deliberately return false so FlutterFire keeps
+  /// owning the existing deep-link path.
+  func handle(
+    response: UNNotificationResponse,
+    center: UNUserNotificationCenter
+  ) -> Bool {
+    let actionIdentifier = response.actionIdentifier
+    guard Self.recognizedActionIdentifiers.contains(actionIdentifier) else {
+      return false
+    }
+
+    loadPendingActionsIfNeeded()
+    let payload = normalisePayload(response.notification.request.content.userInfo)
+    let stableIdentifier = stableNotificationIdentifier(from: payload)
+    let deliveredIdentifier = response.notification.request.identifier
+
+    var event = payload
+    if let requestType = payload["type"] as? String {
+      event["requestType"] = requestType
+    }
+    event["type"] = "requestAction"
+    event["action"] = actionIdentifier
+    event["actionIdentifier"] = actionIdentifier
+    event["actionId"] = UUID().uuidString
+    event["notificationIdentifier"] = deliveredIdentifier
+    if let stableIdentifier {
+      event["stableNotificationIdentifier"] = stableIdentifier
+    }
+    event["createdAt"] = ISO8601DateFormatter().string(from: Date())
+
+    // Persist synchronously before AppDelegate completes the OS callback. If
+    // Flutter is not ready yet, onListen replays this exact event later.
+    pendingActions.append(event)
+    if pendingActions.count > maximumPendingActions {
+      pendingActions.removeFirst(pendingActions.count - maximumPendingActions)
+    }
+    persistPendingActions()
+    emitEvent(event)
+
+    var identifiers = [deliveredIdentifier]
+    if let stableIdentifier, stableIdentifier != deliveredIdentifier {
+      identifiers.append(stableIdentifier)
+    }
+    removeNotifications(identifiers, center: center)
+    NSLog(
+      "[RequestAction] queued action=\(actionIdentifier) "
+        + "notification=\(deliveredIdentifier)"
+    )
+    return true
+  }
+
+  private func handleMethodCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    switch call.method {
+    case "getPendingRequestActions":
+      loadPendingActionsIfNeeded()
+      result(pendingActions)
+
+    case "acknowledgeRequestAction":
+      guard
+        let args = call.arguments as? [String: Any],
+        let actionId = args["actionId"] as? String,
+        !actionId.isEmpty
+      else {
+        result(FlutterError(
+          code: "INVALID_ARGUMENT",
+          message: "Missing actionId",
+          details: nil
+        ))
+        return
+      }
+      loadPendingActionsIfNeeded()
+      pendingActions.removeAll { $0["actionId"] as? String == actionId }
+      persistPendingActions()
+      result(nil)
+
+    case "removeDeliveredRequestNotification":
+      guard let args = call.arguments as? [String: Any] else {
+        result(FlutterError(
+          code: "INVALID_ARGUMENT",
+          message: "Missing notification payload",
+          details: nil
+        ))
+        return
+      }
+      var identifiers: [String] = []
+      for key in ["notificationIdentifier", "stableNotificationIdentifier"] {
+        if let identifier = args[key] as? String, !identifier.isEmpty {
+          identifiers.append(identifier)
+        }
+      }
+      if let stableIdentifier = stableNotificationIdentifier(from: args) {
+        identifiers.append(stableIdentifier)
+      }
+      identifiers = Array(Set(identifiers))
+      guard !identifiers.isEmpty || !requestIdentityValues(from: args).isEmpty else {
+        result(FlutterError(
+          code: "INVALID_ARGUMENT",
+          message: "Missing rideId, jobId, offerId, or notification identifier",
+          details: nil
+        ))
+        return
+      }
+      removeDeliveredRequestNotifications(
+        identifiers: identifiers,
+        matching: args,
+        center: UNUserNotificationCenter.current()
+      ) {
+        // Method-channel results must be completed exactly once and only after
+        // the asynchronous delivered-notification query has finished.
+        result(nil)
+      }
+
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  private func registerNotificationCategories() {
+    let foregroundAuthenticated: UNNotificationActionOptions = [
+      .foreground,
+      .authenticationRequired,
+    ]
+
+    let rideActions = [
+      UNNotificationAction(
+        identifier: Self.rideAcceptAction,
+        title: "Accept",
+        options: foregroundAuthenticated
+      ),
+      UNNotificationAction(
+        identifier: Self.rideSkipAction,
+        title: "Skip",
+        options: [.foreground, .authenticationRequired, .destructive]
+      ),
+      UNNotificationAction(
+        identifier: Self.rideViewAction,
+        title: "View details",
+        options: foregroundAuthenticated
+      ),
+    ]
+    let jobActions = [
+      UNNotificationAction(
+        identifier: Self.jobSubmitBidAction,
+        title: "Submit bid",
+        options: foregroundAuthenticated
+      ),
+      UNNotificationAction(
+        identifier: Self.jobSkipAction,
+        title: "Skip",
+        options: [.foreground, .authenticationRequired, .destructive]
+      ),
+      UNNotificationAction(
+        identifier: Self.jobViewAction,
+        title: "View job",
+        options: foregroundAuthenticated
+      ),
+    ]
+
+    let rideCategory = UNNotificationCategory(
+      identifier: Self.rideCategoryIdentifier,
+      actions: rideActions,
+      intentIdentifiers: [],
+      hiddenPreviewsBodyPlaceholder: "Unlock to view ride request details",
+      categorySummaryFormat: nil,
+      options: []
+    )
+    let jobCategory = UNNotificationCategory(
+      identifier: Self.jobCategoryIdentifier,
+      actions: jobActions,
+      intentIdentifiers: [],
+      hiddenPreviewsBodyPlaceholder: "Unlock to view job request details",
+      categorySummaryFormat: nil,
+      options: []
+    )
+
+    let center = UNUserNotificationCenter.current()
+    center.getNotificationCategories { existing in
+      var categories = Set(existing.filter {
+        $0.identifier != Self.rideCategoryIdentifier
+          && $0.identifier != Self.jobCategoryIdentifier
+      })
+      categories.insert(rideCategory)
+      categories.insert(jobCategory)
+      center.setNotificationCategories(categories)
+      NSLog("[RequestAction] ride/job notification categories registered")
+    }
+  }
+
+  /// Contract shared with the backend's `apns-collapse-id`. UUID entity IDs
+  /// keep both values safely below APNs' 64-byte collapse-id limit.
+  private func stableNotificationIdentifier(from payload: [String: Any]) -> String? {
+    if let identifier = payload["stableNotificationIdentifier"] as? String,
+       !identifier.isEmpty {
+      return identifier
+    }
+
+    let rawType = (payload["requestType"] as? String)
+      ?? (payload["type"] as? String)
+      ?? ""
+    let type = rawType.replacingOccurrences(of: ".", with: "_")
+    if (type == "ride_request" || type.isEmpty),
+       let rideId = firstStringValue(in: payload, keys: ["rideId", "ride_id"]),
+       !rideId.isEmpty {
+      return "ride_request:\(rideId)"
+    }
+    if (type == "job_request" || type.isEmpty),
+       let jobId = firstStringValue(in: payload, keys: ["jobId", "job_id"]),
+       !jobId.isEmpty {
+      return "job_request:\(jobId)"
+    }
+    return nil
+  }
+
+  /// APNs does not guarantee that `UNNotificationRequest.identifier` equals
+  /// the provider's collapse ID on every OS/delivery path. Revocation therefore
+  /// scans delivered notification content and removes the actual request IDs
+  /// whose payload identifies the same ride, job, or matching offer.
+  private func removeDeliveredRequestNotifications(
+    identifiers: [String],
+    matching payload: [String: Any],
+    center: UNUserNotificationCenter,
+    completion: @escaping () -> Void
+  ) {
+    let suppliedIdentifiers = Set(identifiers.filter { !$0.isEmpty })
+    let targetIdentity = requestIdentityValues(from: payload)
+
+    center.getDeliveredNotifications { [weak self] notifications in
+      var identifiersToRemove = suppliedIdentifiers
+      if let self {
+        for notification in notifications {
+          let deliveredPayload = self.normalisePayload(
+            notification.request.content.userInfo
+          )
+          let deliveredIdentity = self.requestIdentityValues(from: deliveredPayload)
+          if !targetIdentity.isEmpty
+              && !deliveredIdentity.isDisjoint(with: targetIdentity) {
+            identifiersToRemove.insert(notification.request.identifier)
+          }
+        }
+      }
+
+      let resolvedIdentifiers = Array(identifiersToRemove)
+      if !resolvedIdentifiers.isEmpty {
+        center.removeDeliveredNotifications(withIdentifiers: resolvedIdentifiers)
+        center.removePendingNotificationRequests(withIdentifiers: resolvedIdentifiers)
+      }
+      DispatchQueue.main.async(execute: completion)
+    }
+  }
+
+  private func requestIdentityValues(from payload: [String: Any]) -> Set<String> {
+    var values = Set<String>()
+    for keys in [
+      ["rideId", "ride_id"],
+      ["jobId", "job_id"],
+      ["offerId", "offer_id"],
+    ] {
+      if let value = firstStringValue(in: payload, keys: keys), !value.isEmpty {
+        values.insert(value)
+      }
+    }
+
+    // Some FCM/APNs wrappers nest custom data beneath `data`. Normalise and
+    // inspect that shape too without recursing indefinitely.
+    if let nested = payload["data"] as? [String: Any] {
+      for value in requestIdentityValuesFromFlatPayload(nested) {
+        values.insert(value)
+      }
+    }
+    return values
+  }
+
+  private func requestIdentityValuesFromFlatPayload(
+    _ payload: [String: Any]
+  ) -> Set<String> {
+    var values = Set<String>()
+    for keys in [
+      ["rideId", "ride_id"],
+      ["jobId", "job_id"],
+      ["offerId", "offer_id"],
+    ] {
+      if let value = firstStringValue(in: payload, keys: keys), !value.isEmpty {
+        values.insert(value)
+      }
+    }
+    return values
+  }
+
+  private func firstStringValue(
+    in payload: [String: Any],
+    keys: [String]
+  ) -> String? {
+    for key in keys {
+      if let value = stringValue(payload[key]), !value.isEmpty {
+        return value
+      }
+    }
+    return nil
+  }
+
+  private func removeNotifications(
+    _ identifiers: [String],
+    center: UNUserNotificationCenter
+  ) {
+    let uniqueIdentifiers = Array(Set(identifiers.filter { !$0.isEmpty }))
+    guard !uniqueIdentifiers.isEmpty else { return }
+    center.removeDeliveredNotifications(withIdentifiers: uniqueIdentifiers)
+    center.removePendingNotificationRequests(withIdentifiers: uniqueIdentifiers)
+  }
+
+  private func loadPendingActionsIfNeeded() {
+    guard !loadedPendingActions else { return }
+    pendingActions = UserDefaults.standard.array(forKey: pendingActionsKey)
+      as? [[String: Any]] ?? []
+    loadedPendingActions = true
+  }
+
+  private func persistPendingActions() {
+    UserDefaults.standard.set(pendingActions, forKey: pendingActionsKey)
+  }
+
+  private func emitEvent(_ event: [String: Any]) {
+    DispatchQueue.main.async { [weak self] in
+      self?.eventSink?(event)
+    }
+  }
+
+  private func normalisePayload(_ raw: [AnyHashable: Any]) -> [String: Any] {
+    var result: [String: Any] = [:]
+    for (key, value) in raw {
+      guard let stringKey = key as? String,
+            let normalisedValue = normaliseValue(value)
+      else { continue }
+      result[stringKey] = normalisedValue
+    }
+    return result
+  }
+
+  private func normaliseValue(_ value: Any) -> Any? {
+    switch value {
+    case let value as String:
+      return value
+    case let value as NSNumber:
+      return value
+    case let value as [AnyHashable: Any]:
+      return normalisePayload(value)
+    case let value as [Any]:
+      return value.compactMap(normaliseValue)
+    default:
+      return String(describing: value)
+    }
+  }
+
+  private func stringValue(_ value: Any?) -> String? {
+    switch value {
+    case let string as String:
+      return string
+    case let number as NSNumber:
+      return number.stringValue
+    default:
+      return nil
+    }
+  }
+
+  func onListen(
+    withArguments arguments: Any?,
+    eventSink events: @escaping FlutterEventSink
+  ) -> FlutterError? {
+    eventSink = events
+    loadPendingActionsIfNeeded()
+    for action in pendingActions {
+      emitEvent(action)
+    }
+    return nil
+  }
+
+  func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    eventSink = nil
+    return nil
   }
 }
 

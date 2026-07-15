@@ -20,6 +20,8 @@ dependencies:
     path: ../../packages/shared_ui
   shared_utils:
     path: ../../packages/shared_utils
+  incoming_request_overlay:
+    path: ../../packages/incoming_request_overlay
   
   # Navigation
   go_router: ^15.1.0

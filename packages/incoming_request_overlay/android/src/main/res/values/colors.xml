@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="incoming_request_overlay_navy">#0F1923</color>
+    <color name="incoming_request_overlay_gold">#F4B942</color>
+    <color name="incoming_request_overlay_white">#FFFFFFFF</color>
+    <color name="incoming_request_overlay_muted">#B8C1CC</color>
+    <color name="incoming_request_overlay_danger">#E85C5C</color>
+</resources>

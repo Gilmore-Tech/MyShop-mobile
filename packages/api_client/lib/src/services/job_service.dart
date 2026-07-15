@@ -135,6 +135,28 @@ class JobService {
     }
   }
 
+  /// POST /jobs/:id/decline — skip an incoming artisan job invitation.
+  ///
+  /// This only clears the authenticated artisan's invitation; it never
+  /// cancels the client's job. It is safe for overlay/notification actions
+  /// that are replayed after a terminated-app cold start.
+  Future<void> declineJobRequest(
+    String jobId, {
+    String? reason,
+  }) async {
+    try {
+      await _dio.post(
+        '/jobs/$jobId/decline',
+        data: {
+          if (reason != null && reason.trim().isNotEmpty)
+            'reason': reason.trim(),
+        },
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   /// POST /jobs/:id/bids — Artisan: submit a bid on an open job.
   /// Creates a bid record and notifies the client via socket `job:bid_new`.
   ///
