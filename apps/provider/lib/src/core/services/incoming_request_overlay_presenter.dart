@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:incoming_request_overlay/incoming_request_overlay.dart';
 
 import 'local_notification_service.dart';
+import 'incoming_request_action_bridge.dart';
+import 'live_activity_service.dart';
 
 @visibleForTesting
 String? safeIncomingRequestPreviewUrl(Object? value) {
@@ -29,7 +31,17 @@ Future<void> clearIncomingRequestAlert({
   required String type,
   required String requestId,
   String? offerId,
+  String reason = 'resolved',
 }) async {
+  final notificationIdentity = <String, dynamic>{
+    'requestType': type,
+    if (type == NotificationPayload.typeRideRequest)
+      NotificationPayload.keyRideId: requestId
+    else if (type == NotificationPayload.typeJobRequest)
+      NotificationPayload.keyJobId: requestId,
+    if (offerId != null && offerId.isNotEmpty)
+      NotificationPayload.keyOfferId: offerId,
+  };
   await Future.wait<void>([
     LocalNotificationService.instance.stopIncomingRingtone(),
     LocalNotificationService.instance.cancelIncomingRequest(
@@ -40,6 +52,15 @@ Future<void> clearIncomingRequestAlert({
       type: type,
       requestId: requestId,
       offerId: offerId,
+    ),
+    LiveActivityService.instance.endRequest(
+      requestId: requestId,
+      offerId: offerId,
+      requestType: type,
+      reason: reason,
+    ),
+    IncomingRequestActionBridge.removeDeliveredNotification(
+      notificationIdentity,
     ),
   ]);
 }

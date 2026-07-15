@@ -86,7 +86,7 @@ class _IncomingJobModalState extends ConsumerState<IncomingJobModal> {
     if (_remaining <= Duration.zero) {
       _remaining = Duration.zero;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) Navigator.of(context).maybePop();
+        unawaited(_expireRequest());
       });
       return;
     }
@@ -99,8 +99,7 @@ class _IncomingJobModalState extends ConsumerState<IncomingJobModal> {
     // Auto-dismiss at the server-authored deadline so a buried phone never
     // keeps ringing after the backend bid window has closed.
     _autoDismissTimer = Timer(_remaining, () {
-      if (!mounted) return;
-      Navigator.of(context).maybePop();
+      unawaited(_expireRequest());
     });
     _countdownTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
@@ -111,6 +110,17 @@ class _IncomingJobModalState extends ConsumerState<IncomingJobModal> {
         _remaining = next > Duration.zero ? next : Duration.zero;
       });
     });
+  }
+
+  Future<void> _expireRequest() async {
+    await clearIncomingRequestAlert(
+      type: NotificationPayload.typeJobRequest,
+      requestId: widget.job.id,
+      reason: 'expired',
+    );
+    if (mounted) {
+      await Navigator.of(context).maybePop();
+    }
   }
 
   @override

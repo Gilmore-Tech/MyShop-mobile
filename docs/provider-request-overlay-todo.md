@@ -14,8 +14,8 @@ Status as of 2026-07-15. Development branches:
   overlay foreground service may require a minimal ongoing system notification;
   the offer card itself is the primary UI.
 - iOS does not permit an arbitrary overlay over another app. It uses a Time
-  Sensitive actionable system notification, with the same backend expiry and
-  action lifecycle.
+  Sensitive rich notification plus an ActivityKit Live Activity on the Lock
+  Screen/Dynamic Island, with the same backend expiry and action lifecycle.
 - The backend absolute `expiresAt` is authoritative. Devices must never restart
   a fresh countdown after delayed delivery or a cold start.
 - Locked presentation never contains customer/passenger names, exact addresses,
@@ -80,6 +80,18 @@ Status as of 2026-07-15. Development branches:
 - [x] Use Time Sensitive delivery, privacy-safe copy, APNs expiry, and collapse ID.
 - [x] Remove delivered offers on action/revocation when iOS permits it.
 - [x] Expose real notification/Time Sensitive status and a Settings link.
+- [x] Add Notification Service and Content extensions with branded, privacy-safe
+  expanded request cards and a bundled incoming-request sound.
+- [x] Add ActivityKit Lock Screen and Dynamic Island request surfaces with the
+  authoritative offer countdown and validated Accept/Skip/View/Submit bid links.
+- [x] Encrypt and sync push-to-start and per-activity update tokens, remotely
+  start only the targeted provider's offer, and fall back to the rich push when
+  Live Activities are unavailable.
+- [x] End and purge Live Activities on accept, skip, revocation, expiry, bid
+  submission, logout, account changes, and Live Activities disablement.
+- [ ] Enable Time Sensitive Notifications for the provider app identifier in
+  Apple Developer and regenerate signing profiles for Runner and all three
+  extension identifiers.
 
 ### Modern request redesign and map preview
 
@@ -103,9 +115,11 @@ Status as of 2026-07-15. Development branches:
 
 - [x] Provider `flutter analyze` and full provider Flutter test suite.
 - [x] Android release AAB build and native overlay Kotlin unit tests.
-- [x] Unsigned iOS device build and Swift parser check.
+- [x] Full unsigned iOS device build with all three embedded extensions, native
+  Swift type-checks, plist/project validation, and bundled CAF validation.
 - [x] API client ride/job action tests and overlay package tests.
-- [x] Backend Nest build, TypeScript type-check, and focused regression tests.
+- [x] Backend Prisma validation/generation, Nest type-check, lint/format checks,
+  focused notification tests, and the full 2,254-test API regression suite.
 
 ### Deferred product/data decisions
 
@@ -128,6 +142,8 @@ Status as of 2026-07-15. Development branches:
   2026-07-15 runs did not start any steps because organization billing failed
   or the Actions spending limit was reached; this was not a test failure.
 - [x] Merge backend PR #93 and mobile PR #82 into `staging`.
+- [ ] Deploy the Live Activity token migration and updated API before installing
+  a mobile build that registers ActivityKit tokens.
 - [ ] Commit, push, and open PRs for the redesign branches after local and
   physical-device acceptance.
 
@@ -137,6 +153,8 @@ Status as of 2026-07-15. Development branches:
 - [ ] Android overlay permission granted, denied, revoked, and OEM battery saver.
 - [ ] iOS foreground, background, terminated, screen off, and locked.
 - [ ] iOS Time Sensitive on/off and previews Always/When Unlocked/Never.
+- [ ] iOS Live Activities enabled/disabled, Dynamic Island/standard Lock Screen,
+  exact expiry, remote revocation, logout, and account switching.
 - [ ] Ride Accept/Skip/View; another driver wins; rider cancels; exact expiry.
 - [ ] Job Submit bid/Skip/View; client cancels; bid submitted; exact expiry.
 - [ ] Repeating Android sound/vibration stops on every terminal/action path.

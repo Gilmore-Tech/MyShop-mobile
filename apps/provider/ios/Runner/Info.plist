@@ -26,9 +26,24 @@
 		<string>????</string>
 		<key>CFBundleVersion</key>
 		<string>$(FLUTTER_BUILD_NUMBER)</string>
+		<key>CFBundleURLTypes</key>
+		<array>
+			<dict>
+				<key>CFBundleTypeRole</key>
+				<string>Editor</string>
+				<key>CFBundleURLName</key>
+				<string>com.gilmoretech.myshopprovider.request-action</string>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<string>myshopprovider</string>
+				</array>
+			</dict>
+		</array>
 		<key>GMSApiKey</key>
 		<string>$(GOOGLE_MAPS_API_KEY)</string>
 		<key>LSRequiresIPhoneOS</key>
+		<true/>
+		<key>NSSupportsLiveActivities</key>
 		<true/>
 		<key>UIApplicationSceneManifest</key>
 		<dict>

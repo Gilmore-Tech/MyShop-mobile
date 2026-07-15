@@ -544,6 +544,7 @@ class LocalNotificationService {
           presentAlert: true,
           presentBadge: true,
           presentSound: true,
+          sound: isFullScreenRequest ? 'incoming_request.caf' : null,
           // Pair the iOS category with the appropriate interruption tier:
           //   urgent  → time-sensitive (cuts through Focus modes)
           //   chat    → time-sensitive + MESSAGE (iOS treats it like SMS)
