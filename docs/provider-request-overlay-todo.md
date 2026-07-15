@@ -2,8 +2,8 @@
 
 Status as of 2026-07-15. Development branches:
 
-- Mobile: `feature/provider-request-overlay`
-- Backend: `feature/provider-request-overlay`
+- Mobile: `feature/provider-request-overlay-redesign`
+- Backend: `feature/provider-request-overlay-redesign`
 
 ## Product contract
 
@@ -81,6 +81,24 @@ Status as of 2026-07-15. Development branches:
 - [x] Remove delivered offers on action/revocation when iOS permits it.
 - [x] Expose real notification/Time Sensitive status and a Settings link.
 
+### Modern request redesign and map preview
+
+- [x] Redesign ride and artisan request screens with a clearer amount,
+  countdown, distance/duration, request details, and fixed action hierarchy.
+- [x] Add a non-interactive in-app map for ride pickup/destination and artisan
+  job location, with a neutral fallback when coordinates are unavailable.
+- [x] Add an Android native map/photo hero and keep primary actions pinned below
+  the scrollable request details.
+- [x] Issue an opaque backend `mapPreviewUrl` that expires with the exact offer;
+  exact coordinates and Mapbox credentials remain server-side.
+- [x] Stream the static image with no-store headers, bounded image validation,
+  capability-token log redaction, and HTTPS-only Android loading.
+- [x] Never fetch or display the map/photo while Android is locked. iOS keeps its
+  privacy-safe system notification and shows the map after the app is unlocked.
+- [ ] Confirm the production API `APP_URL` is public HTTPS and that
+  `MAPBOX_ACCESS_TOKEN` can read the configured `MAPBOX_STYLE_URL`.
+- [ ] Complete the redesigned-card physical-device checks below.
+
 ## Automated verification
 
 - [x] Provider `flutter analyze` and full provider Flutter test suite.
@@ -109,10 +127,9 @@ Status as of 2026-07-15. Development branches:
 - [ ] Restore GitHub Actions runner availability and rerun both PR checks. The
   2026-07-15 runs did not start any steps because organization billing failed
   or the Actions spending limit was reached; this was not a test failure.
-- [ ] Merge backend PR #93 into `staging` after CI passes, then run the staging
-  `Deploy` workflow.
-- [ ] Complete the physical-device matrix, mark mobile PR #82 ready, and merge
-  it into `staging` after acceptance.
+- [x] Merge backend PR #93 and mobile PR #82 into `staging`.
+- [ ] Commit, push, and open PRs for the redesign branches after local and
+  physical-device acceptance.
 
 ## Physical-device acceptance matrix
 
@@ -126,3 +143,11 @@ Status as of 2026-07-15. Development branches:
 - [ ] No stale offer appears after an offline device reconnects.
 - [ ] No names, exact addresses, descriptions, or photos appear while locked.
 - [ ] An unrelated provider account receives no actionable offer.
+- [ ] Android unlocked ride card shows the map preview, both route markers, and
+  pinned Accept/View/Skip actions without clipping on a small screen.
+- [ ] Android unlocked job card shows the job-location preview/photo and pinned
+  Submit bid/View/Skip actions without clipping.
+- [ ] Map failure, slow network, expired preview URL, and missing coordinates all
+  degrade to readable request details without delaying offer actions.
+- [ ] Flutter ride/job detail screens show their interactive data only after
+  unlock and preserve Accept/Decline/Submit bid/Skip behavior.

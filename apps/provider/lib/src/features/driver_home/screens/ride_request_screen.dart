@@ -13,6 +13,7 @@ import '../../../core/providers/socket_provider.dart';
 import '../../../core/services/incoming_request_overlay_presenter.dart';
 import '../../../core/services/local_notification_service.dart';
 import '../../../core/utils/payment_method_label.dart';
+import '../../../core/widgets/incoming_request_map_preview.dart';
 import '../providers/driver_location_provider.dart';
 import '../providers/ride_request_provider.dart';
 import 'active_ride_screen.dart';
@@ -296,7 +297,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
               ),
             ),
 
-            // Main card
+            // Main request surface
             Expanded(
               child: Container(
                 margin: const EdgeInsets.only(top: MyShopSpacing.lg),
@@ -304,174 +305,130 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                   color: MyShopColors.surfaceWhite,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
                 ),
-                child: ListView(
-                  padding: const EdgeInsets.all(MyShopSpacing.md),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
                   children: [
-                    const SizedBox(height: MyShopSpacing.sm),
-                    // Header + Timer
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('New Ride Request',
-                                style: MyShopTypography.body2),
-                            const SizedBox(height: 4),
-                            const Text('Immediate Pickup',
-                                style: TextStyle(
-                                    fontFamily: 'Raleway',
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700,
-                                    color: MyShopColors.textPrimary)),
-                          ],
-                        ),
-                        _CountdownTimer(
-                            progress: progress, seconds: _secondsRemaining),
-                      ],
-                    ),
-                    const SizedBox(height: MyShopSpacing.lg),
-
-                    // Client card
-                    _ClientCard(ride: ride),
-                    const SizedBox(height: MyShopSpacing.lg),
-
-                    // Pickup location
-                    _PickupInfo(ride: ride),
-                    const SizedBox(height: MyShopSpacing.lg),
-
-                    // Estimated earnings
-                    _EarningsCard(ride: ride),
-                    const SizedBox(height: MyShopSpacing.xl),
-
-                    // Action buttons
-                    Row(
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: OutlinedButton.icon(
-                            onPressed: _isAccepting || _isDeclining || _expired
-                                ? null
-                                : _decline,
-                            icon: const Icon(Icons.close, size: 18),
-                            label: const Text('Decline'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: MyShopColors.error,
-                              side: const BorderSide(color: MyShopColors.error),
-                              minimumSize: const Size(0, 52),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12)),
-                              textStyle: const TextStyle(
-                                  fontFamily: 'Raleway',
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: MyShopSpacing.md),
-                        Expanded(
-                          flex: 3,
-                          child: ElevatedButton(
-                            onPressed: _isAccepting || _isDeclining || _expired
-                                ? null
-                                : _accept,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: MyShopColors.darkSlate,
-                              foregroundColor: MyShopColors.textOnPrimary,
-                              disabledBackgroundColor:
-                                  MyShopColors.darkSlate.withValues(alpha: 0.6),
-                              disabledForegroundColor:
-                                  MyShopColors.textOnPrimary,
-                              minimumSize: const Size(0, 52),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12)),
-                              textStyle: const TextStyle(
-                                  fontFamily: 'Raleway',
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700),
-                            ),
-                            child: _isAccepting
-                                ? const SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.5,
-                                      valueColor: AlwaysStoppedAnimation(
-                                          MyShopColors.textOnPrimary),
-                                    ),
-                                  )
-                                : Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        _expired
-                                            ? Icons.timer_off
-                                            : Icons.check,
-                                        size: 18,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(_expired ? 'Expired' : 'Accept'),
-                                    ],
-                                  ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: MyShopSpacing.md),
-
-                    Text(
-                      _expired
-                          ? 'This request has expired. Looking for another driver…'
-                          : 'Accepting this trip implies agreement with the service terms.\nCancellations may affect your driver rating.',
-                      textAlign: TextAlign.center,
-                      style: MyShopTypography.caption.copyWith(fontSize: 11),
-                    ),
-                    const SizedBox(height: MyShopSpacing.md),
-
-                    // High demand banner
-                    if (ride.hasSurge)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                            color: MyShopColors.error,
-                            borderRadius: BorderRadius.circular(12)),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.warning_amber,
-                                size: 18, color: MyShopColors.textOnPrimary),
-                            SizedBox(width: 8),
-                            Text('HIGH DEMAND',
-                                style: TextStyle(
-                                    fontFamily: 'Raleway',
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w900,
-                                    color: MyShopColors.textOnPrimary,
-                                    letterSpacing: 0.5)),
-                          ],
-                        ),
-                      ),
-                    const SizedBox(height: MyShopSpacing.md),
-
-                    // Safety notice
-                    Container(
-                      padding: const EdgeInsets.all(MyShopSpacing.md),
-                      decoration: BoxDecoration(
-                          color: MyShopColors.surfaceGrey,
-                          borderRadius: BorderRadius.circular(12)),
-                      child: Row(
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.all(MyShopSpacing.md),
                         children: [
-                          const Icon(Icons.shield_outlined,
-                              size: 20, color: MyShopColors.textSecondary),
-                          const SizedBox(width: 12),
-                          Expanded(
-                              child: Text(
-                                  'For your security, passenger phone numbers are masked. All calls are recorded for safety.',
-                                  style: MyShopTypography.body2
-                                      .copyWith(fontSize: 12))),
+                          const SizedBox(height: MyShopSpacing.sm),
+                          // Request label + authoritative countdown.
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('New Ride Request',
+                                      style: MyShopTypography.body2),
+                                  const SizedBox(height: 4),
+                                  const Text('Immediate Pickup',
+                                      style: TextStyle(
+                                          fontFamily: 'Raleway',
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w800,
+                                          color: MyShopColors.textPrimary)),
+                                ],
+                              ),
+                              _CountdownTimer(
+                                progress: progress,
+                                seconds: _secondsRemaining,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: MyShopSpacing.md),
+
+                          // A non-interactive route snapshot lets the driver
+                          // understand direction and span before accepting.
+                          IncomingRequestMapPreview.route(
+                            pickupLatitude: ride.pickupLat,
+                            pickupLongitude: ride.pickupLng,
+                            destinationLatitude: ride.dropoffLat,
+                            destinationLongitude: ride.dropoffLng,
+                          ),
+                          const SizedBox(height: MyShopSpacing.md),
+
+                          // Put the decision-driving amount before identity and
+                          // the longer address details.
+                          _EarningsCard(ride: ride),
+                          const SizedBox(height: MyShopSpacing.lg),
+
+                          _PickupInfo(ride: ride),
+                          const SizedBox(height: MyShopSpacing.lg),
+
+                          _ClientCard(ride: ride),
+                          const SizedBox(height: MyShopSpacing.md),
+
+                          if (ride.hasSurge) ...[
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                  color: MyShopColors.errorLight,
+                                  borderRadius:
+                                      BorderRadius.circular(MyShopRadius.card),
+                                  border: Border.all(
+                                      color: MyShopColors.error
+                                          .withValues(alpha: 0.35))),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.local_fire_department_outlined,
+                                      size: 18, color: MyShopColors.error),
+                                  SizedBox(width: 8),
+                                  Text('HIGH DEMAND',
+                                      style: TextStyle(
+                                          fontFamily: 'Raleway',
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w900,
+                                          color: MyShopColors.error,
+                                          letterSpacing: 0.5)),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: MyShopSpacing.md),
+                          ],
+
+                          Container(
+                            padding: const EdgeInsets.all(MyShopSpacing.md),
+                            decoration: BoxDecoration(
+                                color: MyShopColors.surfaceGrey,
+                                borderRadius:
+                                    BorderRadius.circular(MyShopRadius.card)),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.shield_outlined,
+                                    size: 20,
+                                    color: MyShopColors.textSecondary),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                    child: Text(
+                                        'Passenger phone numbers stay masked for your security.',
+                                        style: MyShopTypography.body2
+                                            .copyWith(fontSize: 12))),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: MyShopSpacing.md),
+                          Text(
+                            _expired
+                                ? 'This request has expired. Looking for another driver…'
+                                : 'Accepting this trip confirms the service terms. Cancellations may affect your rating.',
+                            textAlign: TextAlign.center,
+                            style:
+                                MyShopTypography.caption.copyWith(fontSize: 11),
+                          ),
+                          const SizedBox(height: MyShopSpacing.sm),
                         ],
                       ),
+                    ),
+                    _RideRequestActionBar(
+                      accepting: _isAccepting,
+                      declining: _isDeclining,
+                      expired: _expired,
+                      onAccept: _accept,
+                      onDecline: _decline,
                     ),
                   ],
                 ),
@@ -500,6 +457,7 @@ class _CountdownTimer extends StatelessWidget {
   final int seconds;
   @override
   Widget build(BuildContext context) {
+    final color = seconds <= 10 ? MyShopColors.error : MyShopColors.primaryGold;
     return SizedBox(
       width: 56,
       height: 56,
@@ -510,14 +468,113 @@ class _CountdownTimer extends StatelessWidget {
               value: progress,
               strokeWidth: 3,
               backgroundColor: MyShopColors.divider,
-              valueColor:
-                  const AlwaysStoppedAnimation(MyShopColors.primaryGold)),
+              valueColor: AlwaysStoppedAnimation(color)),
           Text('${seconds}s',
-              style: const TextStyle(
+              style: TextStyle(
                   fontFamily: 'Raleway',
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
-                  color: MyShopColors.primaryGold)),
+                  color: color)),
+        ],
+      ),
+    );
+  }
+}
+
+class _RideRequestActionBar extends StatelessWidget {
+  const _RideRequestActionBar({
+    required this.accepting,
+    required this.declining,
+    required this.expired,
+    required this.onAccept,
+    required this.onDecline,
+  });
+
+  final bool accepting;
+  final bool declining;
+  final bool expired;
+  final VoidCallback onAccept;
+  final VoidCallback onDecline;
+
+  @override
+  Widget build(BuildContext context) {
+    final disabled = accepting || declining || expired;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        MyShopSpacing.md,
+        MyShopSpacing.sm,
+        MyShopSpacing.md,
+        MyShopSpacing.md,
+      ),
+      decoration: const BoxDecoration(
+        color: MyShopColors.surfaceWhite,
+        border: Border(top: BorderSide(color: MyShopColors.divider)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: OutlinedButton.icon(
+              onPressed: disabled ? null : onDecline,
+              icon: const Icon(Icons.close, size: 18),
+              label: const Text('Decline'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: MyShopColors.error,
+                side: const BorderSide(color: MyShopColors.error),
+                minimumSize: const Size(0, 52),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(MyShopRadius.button),
+                ),
+                textStyle: const TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(
+            flex: 3,
+            child: ElevatedButton(
+              onPressed: disabled ? null : onAccept,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: MyShopColors.buttonPrimary,
+                foregroundColor: MyShopColors.textOnPrimary,
+                disabledBackgroundColor:
+                    MyShopColors.darkSlate.withValues(alpha: 0.6),
+                disabledForegroundColor: MyShopColors.textOnPrimary,
+                minimumSize: const Size(0, 52),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(MyShopRadius.button),
+                ),
+                textStyle: const TextStyle(
+                  fontFamily: 'Raleway',
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              child: accepting
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        valueColor: AlwaysStoppedAnimation(
+                          MyShopColors.textOnPrimary,
+                        ),
+                      ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(expired ? Icons.timer_off : Icons.check, size: 18),
+                        const SizedBox(width: 8),
+                        Text(expired ? 'Expired' : 'Accept ride'),
+                      ],
+                    ),
+            ),
+          ),
         ],
       ),
     );
@@ -771,33 +828,42 @@ class _EarningsCard extends StatelessWidget {
       padding: const EdgeInsets.all(MyShopSpacing.md),
       decoration: BoxDecoration(
           color: MyShopColors.primaryGoldLight,
-          borderRadius: BorderRadius.circular(16)),
+          borderRadius: BorderRadius.circular(MyShopRadius.card),
+          border: Border.all(
+            color: MyShopColors.primaryGold.withValues(alpha: 0.24),
+          )),
       child: Row(children: [
         Container(
             width: 40,
             height: 40,
             decoration: BoxDecoration(
                 color: MyShopColors.primaryGold.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(MyShopRadius.button)),
             child: const Icon(Icons.account_balance_wallet,
                 size: 20, color: MyShopColors.primaryGold)),
         const SizedBox(width: 12),
         Expanded(
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Estimated Earnings', style: MyShopTypography.body2),
+          Text(
+            'ESTIMATED EARNINGS',
+            style: MyShopTypography.overline.copyWith(
+              color: MyShopColors.primaryGoldDark,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 2),
           Text(ride.estimatedFareDisplay,
-              style: const TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: MyShopColors.textPrimary)),
+              style: MyShopTypography.price.copyWith(
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+              )),
         ])),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
               color: MyShopColors.surfaceWhite,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(MyShopRadius.pill),
               border: Border.all(color: MyShopColors.divider)),
           child: Text(paymentMethodLabel(ride.paymentMethod),
               style: MyShopTypography.body2.copyWith(

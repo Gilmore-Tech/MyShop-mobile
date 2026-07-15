@@ -6,6 +6,21 @@ import 'package:incoming_request_overlay/incoming_request_overlay.dart';
 
 import 'local_notification_service.dart';
 
+@visibleForTesting
+String? safeIncomingRequestPreviewUrl(Object? value) {
+  if (value == null) return null;
+  final raw = value.toString().trim();
+  if (raw.isEmpty) return null;
+  final uri = Uri.tryParse(raw);
+  if (uri == null ||
+      uri.scheme.toLowerCase() != 'https' ||
+      uri.host.isEmpty ||
+      uri.userInfo.isNotEmpty) {
+    return null;
+  }
+  return uri.toString();
+}
+
 /// Stops every Android/Flutter alert surface for one incoming request.
 ///
 /// Safe on every platform: the native overlay call is an Android no-op while
@@ -153,6 +168,9 @@ class IncomingRequestOverlayPresenter {
         details['estimatedFarePesewas'] ?? data['estimatedFarePesewas'],
       );
       final distanceKm = _number(details['distanceKm'] ?? data['distanceKm']);
+      final durationMins = _number(
+        details['durationMins'] ?? data['durationMins'],
+      );
       return IncomingRequestOffer(
         offerId: offerId,
         type: type,
@@ -162,9 +180,15 @@ class IncomingRequestOverlayPresenter {
         amount: farePesewas == null ? null : _formatPesewas(farePesewas),
         distance:
             distanceKm == null ? null : '${distanceKm.toStringAsFixed(1)} km',
+        duration: durationMins == null
+            ? null
+            : '${durationMins.round().clamp(1, 999)} min',
         pickup: _string(details['pickupAddress'] ?? data['pickupAddress']),
         destination:
             _string(details['dropoffAddress'] ?? data['dropoffAddress']),
+        mapPreviewUrl: safeIncomingRequestPreviewUrl(
+          details['mapPreviewUrl'] ?? data['mapPreviewUrl'],
+        ),
         payload: routePayload,
       );
     }
@@ -194,6 +218,9 @@ class IncomingRequestOverlayPresenter {
       location: _string(details['addressText'] ?? data['addressText']),
       description: _string(details['description']),
       photoUrl: _firstPhoto(details),
+      mapPreviewUrl: safeIncomingRequestPreviewUrl(
+        details['mapPreviewUrl'] ?? data['mapPreviewUrl'],
+      ),
       customerName: _string(details['clientName']),
       payload: routePayload,
     );

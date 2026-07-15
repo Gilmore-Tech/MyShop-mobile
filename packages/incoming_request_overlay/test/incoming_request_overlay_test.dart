@@ -51,8 +51,10 @@ void main() {
         expiresAt: deadline,
         title: 'New ride request',
         amount: 'GHS 42.00',
+        duration: '18 min',
         pickup: 'Osu',
         destination: 'Airport',
+        mapPreviewUrl: 'https://api.example.com/v1/offers/map/token',
         payload: const <String, String>{'rideId': 'ride-1'},
       ),
     );
@@ -65,6 +67,11 @@ void main() {
     expect(arguments['offerType'], 'ride');
     expect(arguments['expiresAtMillis'], deadline.millisecondsSinceEpoch);
     expect(arguments['pickup'], 'Osu');
+    expect(arguments['duration'], '18 min');
+    expect(
+      arguments['mapPreviewUrl'],
+      'https://api.example.com/v1/offers/map/token',
+    );
     expect(arguments['payload'], <String, String>{'rideId': 'ride-1'});
   });
 

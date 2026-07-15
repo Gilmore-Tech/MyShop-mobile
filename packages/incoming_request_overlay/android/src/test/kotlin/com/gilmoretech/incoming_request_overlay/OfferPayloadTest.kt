@@ -16,6 +16,8 @@ class OfferPayloadTest {
                 "expiresAtMillis" to 9_999_999_999_999L,
                 "title" to "New ride request",
                 "pickup" to "Osu",
+                "duration" to " 18 min ",
+                "mapPreviewUrl" to " https://media.myshop.example/route/ride-1 ",
                 "payload" to mapOf("rideId" to "ride-1", "attempt" to 2),
             ),
         )
@@ -23,6 +25,11 @@ class OfferPayloadTest {
         requireNotNull(offer)
         assertEquals("ride:ride-1", offer.identity)
         assertEquals("Osu", offer.pickup)
+        assertEquals("18 min", offer.duration)
+        assertEquals(
+            "https://media.myshop.example/route/ride-1",
+            offer.mapPreviewUrl,
+        )
         assertEquals("2", offer.payload["attempt"])
         assertFalse(offer.isExpired(1L))
     }

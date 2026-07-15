@@ -17,6 +17,7 @@ import '../../../core/di/providers.dart';
 import '../../../core/providers/socket_provider.dart';
 import '../../../core/services/incoming_request_overlay_presenter.dart';
 import '../../../core/services/local_notification_service.dart';
+import '../../../core/widgets/incoming_request_map_preview.dart';
 
 import '../../artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../artisan_jobs/providers/pending_incoming_jobs_provider.dart';
@@ -293,6 +294,23 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
     final etaMinutes = distanceKm == null
         ? null
         : geo_utils.estimatedEtaMinutes(distanceKm * 1000);
+    final currentUser = ref.watch(currentUserProvider);
+    int? minimumBidPesewas;
+    final categoryLinks = currentUser?.artisanProfile?.serviceCategories;
+    if (categoryLinks != null) {
+      for (final link in categoryLinks) {
+        if (link.categoryId == effectiveJob.categoryId ||
+            link.category.id == effectiveJob.categoryId) {
+          minimumBidPesewas = link.category.minBidPesewas;
+          break;
+        }
+      }
+    }
+    final canPlaceBid = effectiveBidStatus == BidStatus.none &&
+        _isBiddable(
+          effectiveJob,
+          artisanUserId: currentUser?.id,
+        );
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
@@ -363,15 +381,25 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                     ),
                     const SizedBox(height: MyShopSpacing.md),
                   ],
+                  _JobDecisionHero(
+                    title: _title,
+                    minimumBidPesewas: minimumBidPesewas,
+                    distanceKm: distanceKm,
+                    etaMinutes: etaMinutes,
+                    postedAgo: _formatPostedAgo(effectiveJob.createdAt),
+                  ),
+                  const SizedBox(height: MyShopSpacing.md),
+                  _LocationCard(
+                    label: effectiveJob.addressText ?? 'Location pending',
+                    latitude: effectiveJob.latitude,
+                    longitude: effectiveJob.longitude,
+                  ),
+                  const SizedBox(height: MyShopSpacing.md),
                   _ClientSummaryCard(
                     clientName: effectiveJob.clientName ?? 'Client',
                     clientPhotoUrl: effectiveJob.clientPhotoUrl,
-                    clientLocation:
-                        effectiveJob.addressText ?? 'Location pending',
                     distanceKm: distanceKm,
                     etaMinutes: etaMinutes,
-                    title: _title,
-                    postedAgo: _formatPostedAgo(effectiveJob.createdAt),
                   ),
                   const SizedBox(height: MyShopSpacing.lg),
                   const _SectionHeader(
@@ -393,17 +421,6 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                     const SizedBox(height: MyShopSpacing.sm),
                     _PhotosRow(photos: effectiveJob.photos),
                   ],
-                  const SizedBox(height: MyShopSpacing.lg),
-                  const _SectionHeader(
-                    icon: Icons.near_me_outlined,
-                    label: 'LOCATION',
-                  ),
-                  const SizedBox(height: MyShopSpacing.sm),
-                  _LocationCard(
-                    label: effectiveJob.addressText ?? 'Location pending',
-                    latitude: effectiveJob.latitude,
-                    longitude: effectiveJob.longitude,
-                  ),
                   const SizedBox(height: MyShopSpacing.md),
                   if (effectiveBidStatus == BidStatus.none) ...[
                     if (effectiveJob.artisansNotified != null &&
@@ -412,10 +429,7 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                         artisansNotified: effectiveJob.artisansNotified!,
                       ),
                     const SizedBox(height: MyShopSpacing.lg),
-                    if (_isBiddable(
-                      effectiveJob,
-                      artisanUserId: ref.watch(currentUserProvider)?.id,
-                    )) ...[
+                    if (canPlaceBid) ...[
                       // If the artisan started a bid in a previous session
                       // (or got force-killed mid-submit), surface a tappable
                       // banner above PLACE BID. The bid sheet itself
@@ -446,18 +460,6 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                           ),
                         );
                       }),
-                      _PlaceBidButton(
-                        onTap: () => BidSubmissionScreen.show(
-                          context,
-                          job: effectiveJob,
-                          distanceKm: distanceKm ?? 0,
-                        ),
-                      ),
-                      const SizedBox(height: MyShopSpacing.md),
-                      _DeclineButton(
-                        onTap: () => _declineRequest(effectiveJob),
-                        loading: _decliningRequest,
-                      ),
                     ] else
                       _NotBiddableNotice(
                         status: effectiveJob.status,
@@ -491,6 +493,16 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                 ],
               ),
             ),
+            if (canPlaceBid)
+              _JobRequestActionBar(
+                onSubmitBid: () => BidSubmissionScreen.show(
+                  context,
+                  job: effectiveJob,
+                  distanceKm: distanceKm ?? 0,
+                ),
+                onSkip: () => _declineRequest(effectiveJob),
+                skipping: _decliningRequest,
+              ),
           ],
         ),
       ),
@@ -884,27 +896,161 @@ class _Header extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Client summary card
+// Decision summary + client card
 // ─────────────────────────────────────────────────────────────────────────────
+
+class _JobDecisionHero extends StatelessWidget {
+  const _JobDecisionHero({
+    required this.title,
+    required this.minimumBidPesewas,
+    required this.distanceKm,
+    required this.etaMinutes,
+    required this.postedAgo,
+  });
+
+  final String title;
+  final int? minimumBidPesewas;
+  final double? distanceKm;
+  final int? etaMinutes;
+  final String postedAgo;
+
+  @override
+  Widget build(BuildContext context) {
+    final minimumBid = minimumBidPesewas;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      decoration: BoxDecoration(
+        color: MyShopColors.primaryGoldLight,
+        borderRadius: BorderRadius.circular(MyShopRadius.card),
+        border: Border.all(
+          color: MyShopColors.primaryGold.withValues(alpha: 0.24),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: MyShopTypography.h2.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: MyShopSpacing.sm,
+                  vertical: MyShopSpacing.xs,
+                ),
+                decoration: BoxDecoration(
+                  color: MyShopColors.surfaceWhite,
+                  borderRadius: BorderRadius.circular(MyShopRadius.pill),
+                ),
+                child: Text(
+                  'NEW',
+                  style: MyShopTypography.overline.copyWith(
+                    color: MyShopColors.primaryGoldDark,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: MyShopSpacing.md),
+          Text(
+            minimumBid == null ? 'PRICE' : 'MINIMUM BID',
+            style: MyShopTypography.overline.copyWith(
+              color: MyShopColors.primaryGoldDark,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            minimumBid == null
+                ? 'Submit your quote'
+                : 'GHS ${(minimumBid / 100).toStringAsFixed(2)}',
+            style: minimumBid == null
+                ? MyShopTypography.h2.copyWith(fontWeight: FontWeight.w800)
+                : MyShopTypography.price.copyWith(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                  ),
+          ),
+          const SizedBox(height: MyShopSpacing.md),
+          Wrap(
+            spacing: MyShopSpacing.sm,
+            runSpacing: MyShopSpacing.sm,
+            children: [
+              if (distanceKm != null)
+                _DecisionMetric(
+                  icon: Icons.near_me_outlined,
+                  label: '${distanceKm!.toStringAsFixed(1)} km away',
+                ),
+              if (etaMinutes != null && etaMinutes! > 0)
+                _DecisionMetric(
+                  icon: Icons.schedule,
+                  label: '~${geo_utils.formatEtaLabel(etaMinutes!)}',
+                ),
+              _DecisionMetric(
+                icon: Icons.bolt,
+                label: postedAgo,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DecisionMetric extends StatelessWidget {
+  const _DecisionMetric({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: MyShopColors.surfaceWhite,
+        borderRadius: BorderRadius.circular(MyShopRadius.pill),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: MyShopColors.darkSlate),
+          const SizedBox(width: MyShopSpacing.xs),
+          Text(
+            label,
+            style: MyShopTypography.body2.copyWith(
+              color: MyShopColors.textPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _ClientSummaryCard extends StatelessWidget {
   const _ClientSummaryCard({
     required this.clientName,
     required this.clientPhotoUrl,
-    required this.clientLocation,
     required this.distanceKm,
     required this.etaMinutes,
-    required this.title,
-    required this.postedAgo,
   });
 
   final String clientName;
   final String? clientPhotoUrl;
-  final String clientLocation;
   final double? distanceKm;
   final int? etaMinutes;
-  final String title;
-  final String postedAgo;
 
   @override
   Widget build(BuildContext context) {
@@ -925,90 +1071,38 @@ class _ClientSummaryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: MyShopColors.divider),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              _ClientAvatar(photoUrl: clientPhotoUrl),
-              const SizedBox(width: MyShopSpacing.sm),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      clientName,
-                      style: MyShopTypography.h3.copyWith(fontSize: 16),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.location_on,
-                          size: 14,
-                          color: MyShopColors.primaryGold,
-                        ),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Text(
-                            '$clientLocation  •  $distanceText',
-                            style: MyShopTypography.body2.copyWith(
-                              color: MyShopColors.primaryGold,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: MyShopColors.error,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'NOW',
-                  style: MyShopTypography.caption.copyWith(
-                    color: MyShopColors.textOnPrimary,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.6,
-                    fontSize: 11,
+          _ClientAvatar(photoUrl: clientPhotoUrl),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'CUSTOMER',
+                  style: MyShopTypography.overline.copyWith(
+                    color: MyShopColors.textSecondary,
+                    letterSpacing: 0.8,
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: MyShopSpacing.md),
-          const Divider(height: 1, color: MyShopColors.divider),
-          const SizedBox(height: MyShopSpacing.md),
-          Text(
-            title,
-            style: MyShopTypography.h2.copyWith(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              height: 1.3,
+                const SizedBox(height: 2),
+                Text(
+                  clientName,
+                  style: MyShopTypography.h3.copyWith(fontSize: 16),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  distanceText,
+                  style: MyShopTypography.body2.copyWith(
+                    color: MyShopColors.primaryGoldDark,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: MyShopSpacing.sm),
-          Row(
-            children: [
-              const Icon(
-                Icons.access_time,
-                size: 14,
-                color: MyShopColors.textSecondary,
-              ),
-              const SizedBox(width: 4),
-              Text(postedAgo, style: MyShopTypography.body2),
-            ],
           ),
         ],
       ),
@@ -1382,215 +1476,88 @@ class _LocationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () => _openDirections(context),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        decoration: BoxDecoration(
-          color: MyShopColors.surfaceWhite,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: MyShopColors.divider),
+    final hasUsableLocation =
+        IncomingRequestMapPreview.isUsableCoordinate(latitude, longitude);
+    return Column(
+      children: [
+        IncomingRequestMapPreview.location(
+          latitude: latitude,
+          longitude: longitude,
         ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          children: [
-            // Keep this preview code-native. A full GoogleMap costs a large
-            // native GL allocation, while a Static Maps image would expose a
-            // paid web-service key from the app. Tapping opens the real maps
-            // application with these coordinates.
-            SizedBox(
-              height: 160,
-              child: _LocationPreview(
-                latitude: latitude,
-                longitude: longitude,
-                onTap: () => _openDirections(context),
-              ),
+        const SizedBox(height: MyShopSpacing.sm),
+        InkWell(
+          onTap: hasUsableLocation ? () => _openDirections(context) : null,
+          borderRadius: BorderRadius.circular(MyShopRadius.card),
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: MyShopSpacing.md,
+              vertical: MyShopSpacing.sm,
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: MyShopSpacing.md,
-                vertical: MyShopSpacing.sm,
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.location_on,
-                    size: 16,
-                    color: MyShopColors.textPrimary,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      label,
-                      style: MyShopTypography.body1,
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: MyShopColors.primaryGold,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.navigation,
-                          size: 14,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Navigate',
-                          style: MyShopTypography.body2.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+            decoration: BoxDecoration(
+              color: MyShopColors.surfaceWhite,
+              borderRadius: BorderRadius.circular(MyShopRadius.card),
+              border: Border.all(color: MyShopColors.divider),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Key-free location preview. It deliberately does not claim to be a street
-// map; it gives the request card useful spatial affordance without mounting a
-// native map or sending a paid Google web-service key from the mobile app.
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _LocationPreview extends StatelessWidget {
-  const _LocationPreview({
-    required this.latitude,
-    required this.longitude,
-    required this.onTap,
-  });
-
-  final double latitude;
-  final double longitude;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: 'Open job location in maps',
-      child: InkWell(
-        onTap: onTap,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            const ColoredBox(
-              color: Color(0xFFF0F3F1),
-              child: CustomPaint(painter: _LocationPreviewPainter()),
-            ),
-            const Center(
-              child: Icon(
-                Icons.location_on,
-                size: 48,
-                color: MyShopColors.primaryGold,
-                shadows: [
-                  Shadow(
-                    color: Color(0x40000000),
-                    blurRadius: 8,
-                    offset: Offset(0, 3),
-                  ),
-                ],
-              ),
-            ),
-            Positioned(
-              left: 12,
-              bottom: 10,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: MyShopColors.surfaceWhite.withValues(alpha: 0.94),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: const [
-                    BoxShadow(color: Color(0x18000000), blurRadius: 5),
-                  ],
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.location_on_outlined,
+                  size: 18,
+                  color: MyShopColors.primaryGold,
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.open_in_new, size: 14),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Open live map  •  ${latitude.toStringAsFixed(4)}, '
-                      '${longitude.toStringAsFixed(4)}',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
+                const SizedBox(width: MyShopSpacing.sm),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: MyShopTypography.body1,
+                  ),
+                ),
+                const SizedBox(width: MyShopSpacing.sm),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: hasUsableLocation
+                        ? MyShopColors.primaryGoldLight
+                        : MyShopColors.surfaceGrey,
+                    borderRadius: BorderRadius.circular(MyShopRadius.pill),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        hasUsableLocation
+                            ? Icons.open_in_new
+                            : Icons.location_off_outlined,
+                        size: 14,
+                        color: hasUsableLocation
+                            ? MyShopColors.primaryGoldDark
+                            : MyShopColors.textSecondary,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 4),
+                      Text(
+                        hasUsableLocation ? 'Open map' : 'Unavailable',
+                        style: MyShopTypography.body2.copyWith(
+                          color: hasUsableLocation
+                              ? MyShopColors.primaryGoldDark
+                              : MyShopColors.textSecondary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
-}
-
-class _LocationPreviewPainter extends CustomPainter {
-  const _LocationPreviewPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final minorRoad = Paint()
-      ..color = const Color(0xFFD8DFDB)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 5;
-    final majorRoad = Paint()
-      ..color = const Color(0xFFFFFFFF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 10;
-
-    canvas.drawPath(
-      Path()
-        ..moveTo(-20, size.height * 0.78)
-        ..quadraticBezierTo(
-          size.width * 0.3,
-          size.height * 0.35,
-          size.width + 20,
-          size.height * 0.58,
-        ),
-      majorRoad,
-    );
-    canvas.drawPath(
-      Path()
-        ..moveTo(size.width * 0.2, -10)
-        ..lineTo(size.width * 0.38, size.height + 10),
-      minorRoad,
-    );
-    canvas.drawPath(
-      Path()
-        ..moveTo(size.width * 0.78, -10)
-        ..quadraticBezierTo(
-          size.width * 0.58,
-          size.height * 0.45,
-          size.width * 0.84,
-          size.height + 10,
-        ),
-      minorRoad,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1636,35 +1603,69 @@ class _BidStatusCard extends StatelessWidget {
 // Action buttons
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _PlaceBidButton extends StatelessWidget {
-  const _PlaceBidButton({required this.onTap});
+class _JobRequestActionBar extends StatelessWidget {
+  const _JobRequestActionBar({
+    required this.onSubmitBid,
+    required this.onSkip,
+    required this.skipping,
+  });
 
-  final VoidCallback onTap;
+  final VoidCallback onSubmitBid;
+  final VoidCallback onSkip;
+  final bool skipping;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 56,
-        decoration: BoxDecoration(
-          color: MyShopColors.darkSlate,
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x33000000),
-              blurRadius: 14,
-              offset: Offset(0, 6),
-            ),
-          ],
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          'PLACE BID',
-          style: MyShopTypography.button.copyWith(
-            color: MyShopColors.textOnDarkSlate,
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        MyShopSpacing.md,
+        MyShopSpacing.sm,
+        MyShopSpacing.md,
+        MyShopSpacing.md,
+      ),
+      decoration: const BoxDecoration(
+        color: MyShopColors.surfaceWhite,
+        border: Border(top: BorderSide(color: MyShopColors.divider)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: _DeclineButton(onTap: onSkip, loading: skipping),
+          ),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(
+            flex: 3,
+            child: _PlaceBidButton(onTap: skipping ? null : onSubmitBid),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlaceBidButton extends StatelessWidget {
+  const _PlaceBidButton({required this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 52,
+      child: ElevatedButton.icon(
+        onPressed: onTap,
+        icon: const Icon(Icons.edit_note, size: 19),
+        label: const Text('Submit bid'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: MyShopColors.buttonPrimary,
+          foregroundColor: MyShopColors.textOnDarkSlate,
+          disabledBackgroundColor: MyShopColors.disabled,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(MyShopRadius.button),
+          ),
+          textStyle: MyShopTypography.button.copyWith(
             fontWeight: FontWeight.w800,
-            letterSpacing: 0.8,
             fontSize: 15,
           ),
         ),
@@ -1868,51 +1869,29 @@ class _DeclineButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: loading ? null : onTap,
-      child: Container(
-        height: 56,
-        decoration: BoxDecoration(
-          color: MyShopColors.surfaceWhite,
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: MyShopColors.divider),
-        ),
-        alignment: Alignment.center,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (loading)
-              const SizedBox(
-                width: 22,
-                height: 22,
+    return SizedBox(
+      height: 52,
+      child: OutlinedButton.icon(
+        onPressed: loading ? null : onTap,
+        icon: loading
+            ? const SizedBox(
+                width: 18,
+                height: 18,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-            else
-              Container(
-                width: 22,
-                height: 22,
-                decoration: BoxDecoration(
-                  color: MyShopColors.surfaceWhite,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: MyShopColors.error, width: 1.5),
-                ),
-                child: const Icon(
-                  Icons.close,
-                  size: 14,
-                  color: MyShopColors.error,
-                ),
-              ),
-            const SizedBox(width: MyShopSpacing.sm),
-            Text(
-              loading ? 'Declining…' : 'Decline',
-              style: MyShopTypography.button.copyWith(
-                color: MyShopColors.error,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.4,
-                fontSize: 15,
-              ),
-            ),
-          ],
+            : const Icon(Icons.close, size: 18),
+        label: Text(loading ? 'Skipping…' : 'Skip'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: MyShopColors.error,
+          side: const BorderSide(color: MyShopColors.error),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(MyShopRadius.button),
+          ),
+          textStyle: MyShopTypography.button.copyWith(
+            color: MyShopColors.error,
+            fontWeight: FontWeight.w800,
+            fontSize: 15,
+          ),
         ),
       ),
     );
