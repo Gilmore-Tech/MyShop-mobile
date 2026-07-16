@@ -13,21 +13,26 @@ stopped on dispose.
 apps/provider/assets/audio/incoming_request.mp3
 ```
 
-This is the **same audio file** you should also use for:
+This file is the canonical source. Keep byte-identical MP3 copies at:
 
-- Android channel ringtone — copy to
-  `apps/provider/android/app/src/main/res/raw/incoming_request.mp3`.
-- iOS push sound — convert to CAF and drop into
-  `apps/provider/ios/Runner/Sounds/incoming_request.caf` (then add to
-  Xcode "Copy Bundle Resources" — see the README in that directory).
+- `apps/provider/android/app/src/main/res/raw/incoming_request.mp3` for the
+  fallback notification channel.
+- `packages/incoming_request_overlay/android/src/main/res/raw/incoming_request.mp3`
+  for the native overlay service.
+- `apps/provider/ios/Runner/Sounds/incoming_request.mp3` as the checked-in iOS
+  conversion source.
 
-One source file → three locations. Same ringtone heard whether the
+Convert the same MP3 to
+`apps/provider/ios/Runner/Sounds/incoming_request.caf` for APNs; iOS system
+notification sounds cannot use MP3 directly.
+
+One source file → all packaged variants. The same ringtone is heard whether the
 artisan/driver is foreground, Android-backgrounded, or iOS-backgrounded.
 
 ### Requirements
 
-- Length: **20–30 seconds** (the foreground modal also auto-dismisses
-  at 40 s, so anything longer gets cut off).
+- Length: **under 30 seconds** for iOS compatibility. Foreground and Android
+  overlay playback loop until the authoritative offer deadline.
 - Format: MP3 is the easiest cross-platform choice. WAV / OGG also
   work for the Dart asset but the Android channel is happier with
   MP3 and iOS needs CAF separately.

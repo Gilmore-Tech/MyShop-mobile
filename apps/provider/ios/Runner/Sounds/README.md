@@ -2,53 +2,42 @@
 
 ## `incoming_request.caf`
 
-Referenced by the backend's `buildApnsConfig` (in
-`apps/api/src/modules/notification/push.service.ts`) — the FCM/APNs
-payload sets `aps.sound = 'incoming_request.caf'` for `job_request`
-and `ride_request` notifications. iOS looks the file up by name
-inside the bundled app — it MUST be a "Copy Bundle Resources"
-build-phase entry in the Runner target.
+The Notification Service Extension selects this sound for mutable
+`ride_request` and `job_request` pushes. iOS looks the file up by name inside
+the bundled app, and `Runner.xcodeproj` includes it in Runner's **Copy Bundle
+Resources** phase.
 
 ### Requirements
 
-- Format: **`.caf`** (Core Audio Format) — Apple's preferred
-  notification format. AAC inside CAF works well.
+- Format: **`.caf`** (Core Audio Format). The checked-in file is 48 kHz,
+  stereo, signed 16-bit linear PCM.
 - Length: **maximum 30 seconds**. iOS truncates anything longer.
 - Filename: exactly `incoming_request.caf` (the backend hardcodes
   this name).
+- Source: exactly the same audio as
+  `apps/provider/assets/audio/incoming_request.mp3`. A synchronized MP3 copy is
+  kept beside the CAF to make provenance easy to verify.
 
 ### Convert an MP3 to CAF
 
-If you have a 25–30 s MP3 ringtone (same file you drop into Android's
-`res/raw/incoming_request.mp3`), convert it with macOS's `afconvert`:
+Export the canonical MP3 to PCM WAV in an audio editor, then convert it with
+macOS's `afconvert`:
 
 ```bash
-afconvert -f caff -d aac incoming_request.mp3 incoming_request.caf
+afconvert -f caff -d LEI16 incoming_request.wav incoming_request.caf
+afinfo incoming_request.caf
 ```
 
-### Add to Xcode (one-time)
+### Xcode wiring
 
-1. Drop `incoming_request.caf` into this folder
-   (`apps/provider/ios/Runner/Sounds/`).
-2. Open `apps/provider/ios/Runner.xcworkspace` in Xcode.
-3. In the Project Navigator, right-click on the **Runner** target
-   (the yellow folder icon) → **Add Files to "Runner"...**.
-4. Select `Sounds/incoming_request.caf`.
-5. In the dialog, ensure:
-   - "**Copy items if needed**" — leave UNchecked (the file is
-     already in the right place).
-   - "**Create groups**" — selected.
-   - "**Add to targets**" → tick **Runner**.
-6. Click **Add**.
-7. Verify under Runner target → Build Phases → **Copy Bundle
-   Resources** that `incoming_request.caf` is listed.
+No manual Xcode step is required. Keep the filename and the Copy Bundle
+Resources entry unchanged if the sound is replaced later.
 
 ### Behaviour if the file is missing
 
-The APNs payload still sends `sound: 'incoming_request.caf'`. iOS
-can't find the file → falls back to the **default** notification
-sound. No crash, no error. **Add the file when you have one; no
-code changes are needed.**
+iOS falls back to the default notification sound if the named resource is
+missing. There is no crash, so always verify the built Runner.app contains the
+CAF during release QA.
 
 ### Suggested CC0 / royalty-free sources
 

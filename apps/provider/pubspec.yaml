@@ -50,8 +50,8 @@ dependencies:
   file_picker: ^8.1.0
   # Foreground ringtone for incoming job/ride requests. Pure-Dart, no
   # native plumbing. The asset path lives under
-  # `assets/audio/incoming_request.mp3` — until the file is dropped,
-  # LocalNotificationService falls back to haptic-only.
+  # `assets/audio/incoming_request.mp3`; LocalNotificationService falls back
+  # to haptic-only if decoding or audio-route setup fails at runtime.
   audioplayers: ^6.0.0
   
   # Communication

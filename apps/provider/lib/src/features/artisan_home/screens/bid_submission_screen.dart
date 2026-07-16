@@ -15,6 +15,8 @@ import 'package:uuid/uuid.dart';
 
 import '../../../app/router.dart' show JobRequestRouteExtra;
 import '../../../core/di/providers.dart';
+import '../../../core/services/incoming_request_overlay_presenter.dart';
+import '../../../core/services/local_notification_service.dart';
 import '../../artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../artisan_jobs/providers/submitted_bids_provider.dart';
@@ -482,6 +484,11 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     // Bid is now on the backend — drop the job from the in-session
     // "New" list so the artisan doesn't see it as pending anymore.
     ref.read(pendingIncomingJobsProvider.notifier).remove(widget.job.id);
+    await clearIncomingRequestAlert(
+      type: NotificationPayload.typeJobRequest,
+      requestId: widget.job.id,
+      reason: 'bid_submitted',
+    );
 
     // Pull fresh server state so `artisanJobsProvider.entries` picks up
     // the new bid (and `myBid.status`) — the job-request screen and the

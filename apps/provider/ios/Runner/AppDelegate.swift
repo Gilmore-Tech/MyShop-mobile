@@ -11,6 +11,7 @@ import WebRTC
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var rootVoipBridgeRegistered = false
   private var rootRequestActionBridgeRegistered = false
+  private var rootLiveActivityBridgeRegistered = false
   private var rootDisplayChannelRegistered = false
 
   override func application(
@@ -33,6 +34,7 @@ import WebRTC
     }
     VoipCallBridge.shared.start()
     IncomingRequestActionBridge.shared.start()
+    RequestLiveActivityBridge.shared.start()
     registerRootFlutterChannels()
     DispatchQueue.main.async { [weak self] in
       self?.registerRootFlutterChannels()
@@ -63,7 +65,21 @@ import WebRTC
     IncomingRequestActionBridge.shared.register(
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
     )
+    RequestLiveActivityBridge.shared.register(
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
     registerDisplayWakeLockChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
+  }
+
+  override func application(
+    _ app: UIApplication,
+    open url: URL,
+    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+  ) -> Bool {
+    if IncomingRequestActionBridge.shared.handle(url: url) {
+      return true
+    }
+    return super.application(app, open: url, options: options)
   }
 
   override func userNotificationCenter(
@@ -104,6 +120,12 @@ import WebRTC
       NSLog("[RequestAction] bridge registered on root FlutterViewController")
     }
 
+    if !rootLiveActivityBridgeRegistered {
+      RequestLiveActivityBridge.shared.register(binaryMessenger: messenger)
+      rootLiveActivityBridgeRegistered = true
+      NSLog("[LiveActivity] bridge registered on root FlutterViewController")
+    }
+
     if !rootDisplayChannelRegistered {
       registerDisplayWakeLockChannel(binaryMessenger: messenger)
       rootDisplayChannelRegistered = true
@@ -142,7 +164,7 @@ import WebRTC
 /// a Flutter engine already being alive. iOS may deliver an action while the app
 /// is terminated, so every action is persisted before the notification-center
 /// completion handler is called and replayed when Flutter attaches.
-private final class IncomingRequestActionBridge: NSObject, FlutterStreamHandler {
+final class IncomingRequestActionBridge: NSObject, FlutterStreamHandler {
   static let shared = IncomingRequestActionBridge()
 
   static let rideCategoryIdentifier = "RIDE_REQUEST"
@@ -231,12 +253,7 @@ private final class IncomingRequestActionBridge: NSObject, FlutterStreamHandler 
 
     // Persist synchronously before AppDelegate completes the OS callback. If
     // Flutter is not ready yet, onListen replays this exact event later.
-    pendingActions.append(event)
-    if pendingActions.count > maximumPendingActions {
-      pendingActions.removeFirst(pendingActions.count - maximumPendingActions)
-    }
-    persistPendingActions()
-    emitEvent(event)
+    queue(event)
 
     var identifiers = [deliveredIdentifier]
     if let stableIdentifier, stableIdentifier != deliveredIdentifier {
@@ -248,6 +265,62 @@ private final class IncomingRequestActionBridge: NSObject, FlutterStreamHandler 
         + "notification=\(deliveredIdentifier)"
     )
     return true
+  }
+
+  /// Handles authenticated links from the Live Activity. The link only queues
+  /// the same durable action contract as a notification button; Dart remains
+  /// responsible for auth checks, server validation, and navigation.
+  func handle(url: URL) -> Bool {
+    guard url.scheme?.lowercased() == "myshopprovider",
+          url.host?.lowercased() == "request-action",
+          let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+    else { return false }
+
+    var query: [String: String] = [:]
+    for item in components.queryItems ?? [] {
+      if let value = item.value, !value.isEmpty { query[item.name] = value }
+    }
+    guard let action = query["action"],
+          Self.recognizedActionIdentifiers.contains(action),
+          let requestId = query["requestId"],
+          !requestId.isEmpty
+    else { return false }
+
+    let rawType = query["requestType"]?.lowercased() ?? ""
+    let isRide = rawType.contains("ride") || action.hasPrefix("RIDE_")
+    let requestType = isRide ? "ride_request" : "job_request"
+    guard RequestLiveActivityBridge.shared.isActiveRequestAction(
+      requestId: requestId,
+      offerId: query["offerId"],
+      requestType: requestType
+    ) else {
+      NSLog("[RequestAction] ignored stale or unauthorised Live Activity link")
+      return true
+    }
+    var event: [String: Any] = [
+      "type": "requestAction",
+      "requestType": requestType,
+      "action": action,
+      "actionIdentifier": action,
+      "actionId": UUID().uuidString,
+      "createdAt": ISO8601DateFormatter().string(from: Date()),
+    ]
+    event[isRide ? "rideId" : "jobId"] = requestId
+    if let offerId = query["offerId"] { event["offerId"] = offerId }
+    if let expiresAt = query["expiresAt"] { event["expiresAt"] = expiresAt }
+    queue(event)
+    NSLog("[RequestAction] queued Live Activity action=\(action) request=\(requestId)")
+    return true
+  }
+
+  private func queue(_ event: [String: Any]) {
+    loadPendingActionsIfNeeded()
+    pendingActions.append(event)
+    if pendingActions.count > maximumPendingActions {
+      pendingActions.removeFirst(pendingActions.count - maximumPendingActions)
+    }
+    persistPendingActions()
+    emitEvent(event)
   }
 
   private func handleMethodCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

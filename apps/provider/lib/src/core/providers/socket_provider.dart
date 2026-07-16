@@ -86,6 +86,21 @@ DateTime? _requestDeadlineFrom(Map<String, dynamic> data) {
   return null;
 }
 
+@visibleForTesting
+String? rideCancellationIdFromEvent(
+  Object? data, {
+  bool requireCancelledStatus = false,
+}) {
+  if (data is! Map) return null;
+  final rideId = (data['rideId'] ?? data['id'])?.toString().trim();
+  if (rideId == null || rideId.isEmpty) return null;
+  if (requireCancelledStatus &&
+      data['status']?.toString().trim().toLowerCase() != 'cancelled') {
+    return null;
+  }
+  return rideId;
+}
+
 /// Incoming job request for artisans — populated by Socket.IO events.
 final incomingJobRequestProvider = StateProvider<Job?>((ref) => null);
 
@@ -495,6 +510,29 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('ride:state')
       ..on('ride:state', handleRideState);
+
+    // The canonical full snapshot is preferred, but cancellation also has a
+    // slim dedicated event and a legacy status event. Listening to both keeps
+    // the provider UI terminal even if snapshot generation fails or is late.
+    void applyRideCancellation(dynamic data, {bool requireStatus = false}) {
+      final rideId = rideCancellationIdFromEvent(
+        data,
+        requireCancelledStatus: requireStatus,
+      );
+      if (rideId == null) return;
+      ref.container
+          .read(activeRideProvider.notifier)
+          .applyRemoteCancellation(rideId);
+    }
+
+    socket
+      ..off('ride:cancelled')
+      ..off('ride:status')
+      ..on('ride:cancelled', (data) => applyRideCancellation(data))
+      ..on(
+        'ride:status',
+        (data) => applyRideCancellation(data, requireStatus: true),
+      );
 
     // Backend fires `ride:route_updated` when the rider adds or declines
     // a stop. The event itself only carries a thin `{rideId, …}` shape,

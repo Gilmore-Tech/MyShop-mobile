@@ -123,4 +123,95 @@ class NotificationService {
       throw ApiException.fromDioException(e);
     }
   }
+
+  /// POST /notifications/register-live-activity-device — Bind the iOS
+  /// ActivityKit push-to-start token to the authenticated provider's current
+  /// FCM device registration.
+  ///
+  /// ActivityKit rotates this token independently of FCM, so callers should
+  /// invoke this on login and whenever the native token update stream emits.
+  Future<void> registerLiveActivityDevice({
+    required String pushToStartToken,
+  }) async {
+    try {
+      await _dio.post(
+        '/notifications/register-live-activity-device',
+        data: {
+          'platform': 'ios',
+          'pushToStartToken': pushToStartToken,
+        },
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// DELETE /notifications/register-live-activity-device — Remove the current
+  /// provider/device push-to-start binding on logout or native invalidation.
+  Future<void> unregisterLiveActivityDevice({
+    String? pushToStartToken,
+  }) async {
+    try {
+      await _dio.delete(
+        '/notifications/register-live-activity-device',
+        data: {
+          'platform': 'ios',
+          if (pushToStartToken != null && pushToStartToken.isNotEmpty)
+            'pushToStartToken': pushToStartToken,
+        },
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// POST /notifications/register-live-activity — Register the per-activity
+  /// ActivityKit update token that the backend must use to end an offer card.
+  /// The push-to-start token cannot update or end an already-started activity.
+  Future<void> registerLiveActivity({
+    required String activityId,
+    required String updateToken,
+    required String offerId,
+    required String requestType,
+    required String requestId,
+    required DateTime expiresAt,
+  }) async {
+    try {
+      await _dio.post(
+        '/notifications/register-live-activity',
+        data: {
+          'platform': 'ios',
+          'activityId': activityId,
+          'updateToken': updateToken,
+          'offerId': offerId,
+          'requestType': requestType,
+          'requestId': requestId,
+          'expiresAt': expiresAt.toUtc().toIso8601String(),
+        },
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// DELETE /notifications/register-live-activity — Remove one stale
+  /// per-activity update token after ActivityKit reports that it ended.
+  Future<void> unregisterLiveActivity({
+    required String activityId,
+    String? updateToken,
+  }) async {
+    try {
+      await _dio.delete(
+        '/notifications/register-live-activity',
+        data: {
+          'platform': 'ios',
+          'activityId': activityId,
+          if (updateToken != null && updateToken.isNotEmpty)
+            'updateToken': updateToken,
+        },
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
 }
