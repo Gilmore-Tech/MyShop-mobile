@@ -56,6 +56,9 @@ Status as of 2026-07-15. Development branches:
 - [x] Add `ride:dismissed`/job terminal cleanup for foreground request surfaces.
 - [x] Add the native action queue controller with cold-start replay and ack.
 - [x] Cancel overlay, notification, ringtone, and in-app request state together.
+- [x] Use the canonical custom incoming-request audio across foreground Flutter,
+  Android overlay/notification fallback, and the iOS CAF notification sound;
+  verify packaged copies with an automated asset test.
 - [x] Route ride accept to the authoritative active ride.
 - [x] Route job Submit bid through hydrated job details into the bid sheet.
 
@@ -158,6 +161,8 @@ Status as of 2026-07-15. Development branches:
 - [ ] Ride Accept/Skip/View; another driver wins; rider cancels; exact expiry.
 - [ ] Job Submit bid/Skip/View; client cancels; bid submitted; exact expiry.
 - [ ] Repeating Android sound/vibration stops on every terminal/action path.
+- [ ] The custom request sound is audible for ride and job offers in foreground,
+  background, terminated, and locked-device scenarios on Android and iOS.
 - [ ] No stale offer appears after an offline device reconnects.
 - [ ] No names, exact addresses, descriptions, or photos appear while locked.
 - [ ] An unrelated provider account receives no actionable offer.

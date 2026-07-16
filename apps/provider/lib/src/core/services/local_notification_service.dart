@@ -248,15 +248,15 @@ class LocalNotificationService {
   /// at creation time, so the only way to give one type of urgent a
   /// different sound is its own channel id.
   ///
-  /// Channel id uses a v2 suffix because Android freezes channel sound and
+  /// Channel id uses a v3 suffix because Android freezes channel sound and
   /// importance after first creation. Upgrading the id gives already-installed
   /// providers the intended request ringtone/sticky behavior instead of
-  /// inheriting old channel settings.
+  /// inheriting the previous packaged tone from v2.
   ///
   /// Sound resource: `res/raw/incoming_request.mp3`.
   static const AndroidNotificationChannel _incomingRequestChannel =
       AndroidNotificationChannel(
-    'incoming_requests_v2',
+    'incoming_requests_v3',
     'Incoming Job & Ride Requests',
     description:
         'New job and ride request alerts. Plays the MyShop ringtone for up '
@@ -587,6 +587,10 @@ class LocalNotificationService {
   AudioPlayer? _ringtonePlayer;
   Timer? _ringtoneTimer;
   bool _ringtoneActive = false;
+  int _ringtoneGeneration = 0;
+
+  bool _isCurrentRingtoneSession(int generation) =>
+      _ringtoneActive && _ringtoneGeneration == generation;
 
   /// Start a continuous "incoming request" ringtone. Idempotent — a second
   /// call while the ringtone is already playing is a no-op. Used by the
@@ -594,13 +598,17 @@ class LocalNotificationService {
   Future<void> startIncomingRingtone() async {
     if (_ringtoneActive) return;
     _ringtoneActive = true;
+    final generation = ++_ringtoneGeneration;
 
     // Haptic loop fires regardless of audio outcome — it's the
     // single signal we know works on every device the asset path
     // doesn't (Samsung silent mode, missing asset, etc.).
     await HapticFeedback.heavyImpact();
+    if (!_isCurrentRingtoneSession(generation)) return;
     _ringtoneTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) {
-      HapticFeedback.heavyImpact();
+      if (_isCurrentRingtoneSession(generation)) {
+        HapticFeedback.heavyImpact();
+      }
     });
 
     // Audio loop is best-effort; decoder/audio-route failures fall back to
@@ -608,6 +616,7 @@ class LocalNotificationService {
     try {
       final player = _ringtonePlayer ??= AudioPlayer();
       await player.setReleaseMode(ReleaseMode.loop);
+      if (!_isCurrentRingtoneSession(generation)) return;
       // Notification stream so the OS volume keys / silent switch
       // behave the way users expect for a ringtone-class alert.
       // (audioplayers picks a sensible default if this fails on iOS.)
@@ -633,7 +642,15 @@ class LocalNotificationService {
       } catch (e) {
         debugPrint('[LocalNotificationService] audio context setup failed: $e');
       }
+      if (!_isCurrentRingtoneSession(generation)) return;
       await player.play(AssetSource('audio/incoming_request.mp3'));
+      // The request may have been accepted/dismissed while the native player
+      // was still preparing. Stop again after the await so an old start can
+      // never resurrect the ringtone after its request surface has closed.
+      if (!_isCurrentRingtoneSession(generation)) {
+        await player.stop();
+        return;
+      }
       debugPrint('[LocalNotificationService] ringtone playing');
     } catch (e) {
       debugPrint(
@@ -649,6 +666,7 @@ class LocalNotificationService {
   Future<void> stopIncomingRingtone() async {
     if (!_ringtoneActive) return;
     _ringtoneActive = false;
+    _ringtoneGeneration++;
     _ringtoneTimer?.cancel();
     _ringtoneTimer = null;
     try {

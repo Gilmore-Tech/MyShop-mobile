@@ -14,10 +14,14 @@ Resources** phase.
 - Length: **maximum 30 seconds**. iOS truncates anything longer.
 - Filename: exactly `incoming_request.caf` (the backend hardcodes
   this name).
+- Source: exactly the same audio as
+  `apps/provider/assets/audio/incoming_request.mp3`. A synchronized MP3 copy is
+  kept beside the CAF to make provenance easy to verify.
 
 ### Convert an MP3 to CAF
 
-Convert a PCM WAV export of the ringtone with macOS's `afconvert`:
+Export the canonical MP3 to PCM WAV in an audio editor, then convert it with
+macOS's `afconvert`:
 
 ```bash
 afconvert -f caff -d LEI16 incoming_request.wav incoming_request.caf

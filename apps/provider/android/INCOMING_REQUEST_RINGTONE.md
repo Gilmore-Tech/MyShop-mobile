@@ -1,6 +1,6 @@
 # Android incoming-request ringtone
 
-The `incoming_requests_v2` notification channel
+The `incoming_requests_v3` notification channel
 (`lib/src/core/services/local_notification_service.dart` →
 `_incomingRequestChannel`) plays a ringtone for new job/ride requests.
 
@@ -12,7 +12,15 @@ Place a single audio file at:
 apps/provider/android/app/src/main/res/raw/incoming_request.mp3
 ```
 
-(`.ogg` or `.wav` also work — keep the basename `incoming_request`.)
+The native overlay plugin has its own Android resource bundle, so keep the
+same bytes at:
+
+```
+packages/incoming_request_overlay/android/src/main/res/raw/incoming_request.mp3
+```
+
+Both MP3 copies must match the canonical
+`apps/provider/assets/audio/incoming_request.mp3` used by foreground Flutter.
 
 > **Do NOT put a README or `.gitkeep` inside `res/raw/`** — Android's
 > resource compiler rejects any filename in there that isn't all
@@ -21,10 +29,9 @@ apps/provider/android/app/src/main/res/raw/incoming_request.mp3
 
 ## Requirements
 
-- Length: **20–30 seconds** (longer ringtone = more chance the
-  artisan/driver hears it across the room before the 40 s window
-  closes).
-- Format: MP3, OGG, or WAV. MP3 is fine.
+- Length: **under 30 seconds** so the same source can be converted for iOS.
+  The native overlay and foreground player loop it until the offer closes.
+- Format: MP3. The automated asset test requires byte-identical MP3 copies.
 - Filename: lowercase + underscores only, no spaces or dashes
   (Android resource naming rule). The extension is dropped when
   referencing — Dart code says `'incoming_request'`, no `.mp3`.
@@ -48,7 +55,8 @@ Android locks a channel's sound at creation time — once a user has
 the app installed, the channel's sound URI is permanent until they
 clear app data. A new ringtone needs a new channel id.
 
-The incoming-request channel uses a versioned id for this reason; the
+The incoming-request channel uses a versioned id for this reason. It moved to
+`v3` when the canonical custom ringtone replaced the earlier packaged tone; the
 existing `job_alerts` channel keeps its default sound for
 `bid_accepted` / reminder pings so we don't accidentally retune
 notifications users have already tuned in their settings.
