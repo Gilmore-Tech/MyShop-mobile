@@ -53,8 +53,10 @@ class UserService {
     }
   }
 
-  /// DELETE /users/me — Permanently delete the authenticated user's account.
-  /// Backend cascades to bookings/payments/etc. per its retention policy.
+  /// DELETE /users/me — Soft-delete the authenticated exact-role account.
+  /// The backend retains it for the approved 90-day window and preserves
+  /// records required for legal, accounting, payment, dispute, safety, and
+  /// audit purposes. Sibling role accounts are unaffected.
   /// Caller is responsible for clearing local tokens and routing to the
   /// auth screen on success.
   Future<void> deleteAccount() async {
@@ -68,7 +70,7 @@ class UserService {
   /// POST /users/me/ghana-card — Submit Ghana Card for client KYC review.
   ///
   /// Caller must first upload the card image via [MediaService.uploadImage]
-  /// (`purpose: 'profile_photo'` per the backend DTO) and pass the resulting
+  /// (`purpose: 'client_ghana_card'` per the backend DTO) and pass the resulting
   /// hosted URL as [documentImageUrl]. The card number must match the
   /// `GHA-XXXXXXXXX-X` pattern — the backend rejects anything else.
   ///

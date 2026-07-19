@@ -1,4 +1,5 @@
-import 'package:api_client/api_client.dart' show ApiException;
+import 'package:api_client/api_client.dart'
+    show ApiException, userSafeApiErrorMessage;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +7,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../../core/di/providers.dart';
 import '../../auth/providers/auth_controller.dart';
+import '../account_deletion_policy.dart';
 
 /// Deactivate Account confirmation screen — explains consequences,
 /// surfaces blocking status checks, and offers Continue / Keep My
@@ -38,7 +40,7 @@ class _DeactivateAccountScreenState
 
     // Two-step confirmation — the dialog is the second deliberate
     // tap. Without it, an accidental brush against the red "Continue"
-    // button would wipe the account. Apple doesn't require the dialog
+    // button would deactivate the role. Apple doesn't require the dialog
     // but every other ride-hailing/marketplace app uses one and
     // App Review's reviewers expect it.
     final confirmed = await showDialog<bool>(
@@ -47,10 +49,7 @@ class _DeactivateAccountScreenState
       builder: (ctx) => AlertDialog(
         title: const Text('Delete account?'),
         content: const Text(
-          'This permanently disables your provider profile and '
-          'removes your access. The action cannot be undone. '
-          'Type-DEL identity records are retained for 90 days for '
-          'dispute resolution, then purged.',
+          providerAccountDeletionNotice,
         ),
         actions: [
           TextButton(
@@ -78,9 +77,12 @@ class _DeactivateAccountScreenState
       if (!mounted) return;
       setState(() {
         _isDeleting = false;
-        _errorMessage = e.message.isNotEmpty
-            ? e.message
-            : "Couldn't delete your account. Please try again.";
+        _errorMessage = userSafeApiErrorMessage(
+          e,
+          fallback: "Couldn't delete your account. Please try again.",
+          conflictMessage:
+              'Your account state changed. Sign in again before retrying.',
+        );
       });
       return;
     } catch (_) {
@@ -92,7 +94,7 @@ class _DeactivateAccountScreenState
       return;
     }
 
-    // Server confirms account is gone. Clear local auth state so the
+    // Server confirms role access is removed. Clear local auth state so the
     // router redirect drops us at the auth screen.
     try {
       await ref.read(authControllerProvider.notifier).logout();
@@ -254,7 +256,7 @@ class _WarningHero extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.lg),
           child: Text(
-            'This will permanently disable your provider profile and remove your access.',
+            'This will immediately deactivate this provider role and remove its access.',
             textAlign: TextAlign.center,
             style: MyShopTypography.body1.copyWith(
               color: MyShopColors.textSecondary,
@@ -300,28 +302,24 @@ class _ConsequencesCard extends StatelessWidget {
   Widget build(BuildContext context) {
     const items = [
       _Consequence(
-        icon: Icons.history,
-        title: 'Loss of Work History',
-        body:
-            'Your track record of 450+ completed jobs will be permanently deleted.',
+        icon: Icons.no_accounts_outlined,
+        title: 'Provider Access',
+        body: providerAccountDeactivationAccessConsequence,
       ),
       _Consequence(
         icon: Icons.star_border,
-        title: 'Reputation Wipe',
-        body:
-            'Your 4.9-star rating and all 128 verified customer reviews will disappear.',
+        title: 'Profile and Work History',
+        body: providerAccountDeactivationHistoryConsequence,
       ),
       _Consequence(
         icon: Icons.gpp_maybe_outlined,
         title: 'Verification Status',
-        body:
-            'Your KYC and Police Clearance status will be revoked. Re-applying requires full fees.',
+        body: providerAccountDeactivationVerificationConsequence,
       ),
       _Consequence(
         icon: Icons.account_balance_wallet_outlined,
         title: 'Financial History',
-        body:
-            'You will lose access to your historical earnings reports and tax documents.',
+        body: providerAccountDeactivationFinancialConsequence,
       ),
     ];
 
@@ -443,7 +441,7 @@ class _DataRetentionNote extends StatelessWidget {
           const SizedBox(width: MyShopSpacing.sm),
           Expanded(
             child: Text(
-              'Data retention policy: We retain certain financial records for up to 7 years to comply with Ghanaian tax laws and regulatory audit requirements.',
+              providerAccountDeletionRetentionNotice,
               style: MyShopTypography.body2.copyWith(height: 1.5),
             ),
           ),

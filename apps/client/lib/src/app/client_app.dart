@@ -4,6 +4,9 @@ import 'package:shared_ui/shared_ui.dart';
 
 import 'router.dart';
 import 'theme_provider.dart';
+import '../core/providers/app_update_provider.dart';
+import '../core/providers/provider_location_notice_provider.dart';
+import '../core/widgets/provider_location_notice_banner.dart';
 
 /// Root widget for the MyShop Client App.
 /// PRD Reference: Section 4 (Client App)
@@ -23,6 +26,8 @@ class _MyShopMaterialApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
     final themeMode = ref.watch(themeNotifierProvider);
+    final updateRequirement = ref.watch(appUpdateRequirementProvider);
+    final providerLocationNotice = ref.watch(providerLocationNoticeProvider);
 
     return MaterialApp.router(
       title: 'MyShop',
@@ -31,6 +36,28 @@ class _MyShopMaterialApp extends ConsumerWidget {
       darkTheme: MyShopTheme.dark,
       themeMode: themeMode,
       routerConfig: router,
+      builder: (context, child) {
+        if (updateRequirement != null) {
+          return MandatoryAppUpdateScreen(
+            message: updateRequirement.message,
+            storeUrl: updateRequirement.storeUrl,
+          );
+        }
+        return Stack(
+          children: [
+            child ?? const SizedBox.shrink(),
+            if (providerLocationNotice != null)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: ProviderLocationNoticeBanner(
+                  notice: providerLocationNotice,
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

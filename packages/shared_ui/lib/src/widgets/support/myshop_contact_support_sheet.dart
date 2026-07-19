@@ -8,29 +8,27 @@ import 'support_channels.dart';
 
 const Color _kWhatsappGreen = Color(0xFF25D366);
 
-/// Bottom sheet exposing the four support contact channels:
-/// WhatsApp, phone, email, in-app ticket form.
+/// Bottom sheet exposing only verified support contact channels.
 ///
 /// Caller wires:
-///   - [whatsappNumber] / [supportPhone] / [supportEmail] — copy + dial info
+///   - [whatsappNumber] / [supportEmail] — external contact destinations
 ///   - [onNewTicket] — navigate to the new-ticket form (caller closes sheet)
 ///
-/// The sheet itself launches WhatsApp / tel: / mailto: directly via
+/// The sheet itself launches WhatsApp / mailto: directly via
 /// [SupportChannels]; only the in-app ticket button delegates to the
 /// caller because that one needs router access.
 class MyShopContactSupportSheet extends StatelessWidget {
   const MyShopContactSupportSheet({
     super.key,
-    required this.whatsappNumber,
-    required this.supportPhone,
     required this.supportEmail,
     required this.onNewTicket,
+    this.whatsappNumber,
     this.whatsappPrefill,
     this.emailSubjectPrefill,
   });
 
-  final String whatsappNumber;
-  final String supportPhone;
+  /// Exact E.164 digits without `+`. Null or malformed values are not shown.
+  final String? whatsappNumber;
   final String supportEmail;
   final VoidCallback onNewTicket;
 
@@ -44,10 +42,9 @@ class MyShopContactSupportSheet extends StatelessWidget {
   /// boilerplate. Call from any onTap.
   static Future<void> show(
     BuildContext context, {
-    required String whatsappNumber,
-    required String supportPhone,
     required String supportEmail,
     required VoidCallback onNewTicket,
+    String? whatsappNumber,
     String? whatsappPrefill,
     String? emailSubjectPrefill,
   }) {
@@ -57,7 +54,6 @@ class MyShopContactSupportSheet extends StatelessWidget {
       isScrollControlled: true,
       builder: (_) => MyShopContactSupportSheet(
         whatsappNumber: whatsappNumber,
-        supportPhone: supportPhone,
         supportEmail: supportEmail,
         onNewTicket: onNewTicket,
         whatsappPrefill: whatsappPrefill,
@@ -69,6 +65,9 @@ class MyShopContactSupportSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final verifiedWhatsApp = SupportChannels.validWhatsAppNumber(
+      whatsappNumber,
+    );
     return SafeArea(
       top: false,
       child: Padding(
@@ -109,27 +108,29 @@ class MyShopContactSupportSheet extends StatelessWidget {
                 style: MyShopTypography.body2,
               ),
               const SizedBox(height: MyShopSpacing.md),
-              _ChannelTile(
-                icon: Icons.chat_outlined,
-                iconBg: _kWhatsappGreen,
-                iconColor: MyShopColors.surfaceWhite,
-                title: 'WhatsApp',
-                subtitle: '+$whatsappNumber',
-                onTap: () async {
-                  Navigator.of(context).pop();
-                  final ok = await SupportChannels.openWhatsApp(
-                    number: whatsappNumber,
-                    message: whatsappPrefill,
-                  );
-                  if (!ok && context.mounted) {
-                    MyShopToast.show(
-                      context,
-                      message: 'WhatsApp not installed. Try another channel.',
+              if (verifiedWhatsApp != null) ...[
+                _ChannelTile(
+                  icon: Icons.chat_outlined,
+                  iconBg: _kWhatsappGreen,
+                  iconColor: MyShopColors.surfaceWhite,
+                  title: 'WhatsApp',
+                  subtitle: '+$verifiedWhatsApp',
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    final ok = await SupportChannels.openWhatsApp(
+                      number: verifiedWhatsApp,
+                      message: whatsappPrefill,
                     );
-                  }
-                },
-              ),
-              const SizedBox(height: MyShopSpacing.sm),
+                    if (!ok && context.mounted) {
+                      MyShopToast.show(
+                        context,
+                        message: 'WhatsApp not installed. Try another channel.',
+                      );
+                    }
+                  },
+                ),
+                const SizedBox(height: MyShopSpacing.sm),
+              ],
               _ChannelTile(
                 icon: Icons.flag_outlined,
                 iconBg: MyShopColors.darkSlate,

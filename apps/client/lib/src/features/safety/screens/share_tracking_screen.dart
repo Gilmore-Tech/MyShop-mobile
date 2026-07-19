@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:api_client/api_client.dart' show ApiException;
+import 'package:api_client/api_client.dart'
+    show ApiException, userSafeApiErrorMessage;
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -66,7 +67,14 @@ class _ShareTrackingScreenState extends ConsumerState<ShareTrackingScreen> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _isGenerating = false);
-      MyShopToast.show(context, message: e.message, type: ToastType.error);
+      MyShopToast.show(
+        context,
+        message: userSafeApiErrorMessage(
+          e,
+          fallback: "Couldn't generate the tracking link. Please try again.",
+        ),
+        type: ToastType.error,
+      );
     } catch (_) {
       if (!mounted) return;
       setState(() => _isGenerating = false);

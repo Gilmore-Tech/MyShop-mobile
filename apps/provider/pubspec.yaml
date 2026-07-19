@@ -1,7 +1,9 @@
 name: myshop_provider
 description: MyShop Provider App — Drive or offer artisan services in Ghana
 publish_to: 'none'
-version: 1.3.11+20
+# Marketing version approved in BR-65. Store builds must override the local
+# build-number floor through tool/build.sh after checking both private consoles.
+version: 1.4.1+20
 
 environment:
   sdk: ^3.6.0
@@ -10,6 +12,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # Flutter's adaptive Cupertino widgets reference this icon font even when
+  # most screens use Material components. Keep it packaged in release builds.
+  cupertino_icons: ^1.0.9
   
   # Shared packages
   api_client:

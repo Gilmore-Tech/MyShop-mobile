@@ -123,12 +123,12 @@ Future<void> _initializeLocalNotifications() async {
 
 Future<void> _warmLocation(ProviderContainer container) async {
   try {
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
+    final permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) {
+      // Permission prompts must follow the provider's explicit Go Online or
+      // map-recenter action and the required background-location disclosure.
+      // Never surprise a user with a sensitive permission dialog at startup.
       return;
     }
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();

@@ -3,7 +3,10 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/services/data/pending_payment_store.dart';
+import '../../features/ride/data/ride_booking_attempt_store.dart';
+import '../../features/ride/data/ride_booking_coordinator.dart';
 import '../providers/current_location_provider.dart';
+import '../providers/app_update_provider.dart';
 import '../services/google_places_service.dart';
 import 'force_logout_handler.dart';
 
@@ -41,6 +44,9 @@ final dioClientProvider = Provider<DioClient>((ref) {
   return createDioClient(
     config: config,
     tokenStorage: tokenStorage,
+    appKind: MobileAppKind.client,
+    onAppUpdateRequired:
+        ref.read(appUpdateRequirementProvider.notifier).requireUpdate,
     onForceLogout: handler.call,
   );
 });
@@ -68,6 +74,20 @@ final categoryServiceProvider = Provider<CategoryService>((ref) {
 /// Ride service for ride-hailing endpoints.
 final rideServiceProvider = Provider<RideService>((ref) {
   return RideService(ref.watch(dioProvider));
+});
+
+/// Privacy-minimal durable handle for an ambiguous ride-create response.
+final rideBookingAttemptStoreProvider = Provider<RideBookingAttemptStore>(
+  (_) => RideBookingAttemptStore(),
+);
+
+/// Single-flight coordinator that must resolve a prior key before POST /rides.
+final rideBookingCoordinatorProvider = Provider<RideBookingCoordinator>((ref) {
+  final rideService = ref.watch(rideServiceProvider);
+  return RideBookingCoordinator(
+    store: ref.watch(rideBookingAttemptStoreProvider),
+    lookup: rideService.lookupBookingAttempt,
+  );
 });
 
 /// Runtime platform configuration service for feature flags and business rules.

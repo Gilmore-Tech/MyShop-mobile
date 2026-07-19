@@ -76,8 +76,7 @@ final driverLocationStreamProvider =
   try {
     final last = await Geolocator.getLastKnownPosition();
     if (last != null) {
-      debugPrint('[LOC] stream provider: yielding last-known '
-          '(${last.latitude}, ${last.longitude})');
+      debugPrint('[LOC] stream provider: yielding last-known location fix');
       yield last;
     }
   } catch (e) {
@@ -93,8 +92,7 @@ final driverLocationStreamProvider =
         timeLimit: Duration(seconds: 8),
       ),
     );
-    debugPrint('[LOC] stream provider: yielding fresh '
-        '(${initial.latitude}, ${initial.longitude})');
+    debugPrint('[LOC] stream provider: yielding fresh location fix');
     yield initial;
   } catch (e) {
     debugPrint('[LOC] stream provider: getCurrentPosition failed: $e — '

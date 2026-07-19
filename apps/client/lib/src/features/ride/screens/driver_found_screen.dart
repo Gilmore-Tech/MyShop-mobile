@@ -1,4 +1,3 @@
-import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +5,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../../app/router.dart';
 import '../../../core/di/providers.dart';
+import '../data/ride_cancellation_coordinator.dart';
 import '../providers/ride_provider.dart';
 import '../widgets/driver_profile_header.dart';
 import '../widgets/fare_breakdown_card.dart';
@@ -87,24 +87,31 @@ class DriverFoundScreen extends ConsumerWidget {
     if (confirmed != true || !context.mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
-    String message = 'Ride cancelled.';
-    try {
-      final result = await ref.read(rideServiceProvider).cancelRide(
-            rideId,
-            reason: 'rider_cancelled',
-          );
-      final feePesewas =
-          (result['cancellationFeePesewas'] as num?)?.toInt() ?? 0;
-      if (feePesewas > 0) {
-        final fee = (feePesewas / 100).toStringAsFixed(2);
-        message = 'Ride cancelled. Cancellation fee: GHS $fee';
+    final cancellation = await cancelRideWithAuthority(
+      rideService: ref.read(rideServiceProvider),
+      rideId: rideId,
+      reason: 'rider_cancelled',
+    );
+    if (!cancellation.confirmedCancelled) {
+      if (context.mounted) {
+        messenger.showSnackBar(SnackBar(content: Text(cancellation.message)));
       }
-    } on ApiException catch (e) {
-      message = e.message;
-    } catch (_) {
-      message = 'Could not cancel the ride. Please try again.';
+      return;
     }
 
+    await ref.read(rideBookingAttemptStoreProvider).clear();
+    final result = cancellation.response;
+    final feePesewas = (result['cancellationFeePesewas'] as num?)?.toInt() ?? 0;
+    var message = cancellation.message;
+    if (result['cancellationConsequencesApplied'] == false) {
+      message = result['notice'] as String? ??
+          'Ride cancelled. Automatic fees and penalties are temporarily paused.';
+    } else if (feePesewas > 0) {
+      final fee = (feePesewas / 100).toStringAsFixed(2);
+      message = 'Ride cancelled. Cancellation fee: GHS $fee';
+    }
+
+    // Never hide an active backend ride after a failed or ambiguous request.
     ref.read(activeRideIdProvider.notifier).state = null;
     ref.read(matchedDriverProvider.notifier).state = null;
     ref.read(bookingPhaseProvider.notifier).reset();

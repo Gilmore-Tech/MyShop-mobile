@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io' show Platform;
 
-import 'package:api_client/api_client.dart' show ApiException;
+import 'package:api_client/api_client.dart'
+    show ApiException, userSafeApiErrorMessage;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -135,9 +136,9 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
       });
       _scheduleAutoOpenBidSheet();
     } catch (e) {
-      debugPrint('[JobRequest] hydrate failed for ${widget.job.id}: $e');
+      debugPrint('[JobRequest] hydration failed: ${e.runtimeType}');
       developer.log(
-        'Job hydration failed for ${widget.job.id}: $e',
+        'Job hydration failed: ${e.runtimeType}',
         name: 'JobRequest',
         level: 800,
       );
@@ -215,8 +216,6 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
     if (!_hasUsableSeedData && _hydratedJob == null) {
       if (_hydrationError != null) {
         return _JobRequestLoadFailureScreen(
-          jobId: widget.job.id,
-          error: _hydrationError!,
           onRetry: _hydrateJob,
         );
       }
@@ -478,15 +477,10 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                     const SizedBox(height: MyShopSpacing.sm),
                     _SubmittedBidCard(
                       total: effectiveBidAmount,
-                      // Commission rate sourced from platform_config so an
-                      // admin tweak (e.g. promo rate during pilot) lands
-                      // in the bid-summary card without a release. Falls
-                      // back to the PRD-default 20% inside the provider
-                      // when the config endpoint is unreachable.
-                      feePercent: ref
-                              .watch(commissionRatePercentProvider)
-                              .valueOrNull ??
-                          20,
+                      // Estimate only; the backend snapshots the authoritative
+                      // rate when money is finalized. Never invent a fallback.
+                      feePercent:
+                          ref.watch(commissionRatePercentProvider).valueOrNull,
                     ),
                   ],
                   const SizedBox(height: MyShopSpacing.lg),
@@ -613,9 +607,12 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
       case 'NOT_BID_OWNER':
         return 'Only the bid owner can withdraw it.';
       default:
-        return e.message.isNotEmpty
-            ? e.message
-            : "Couldn't withdraw the bid. Please try again.";
+        return userSafeApiErrorMessage(
+          e,
+          fallback: "Couldn't withdraw the bid. Please try again.",
+          conflictMessage:
+              'The bid changed before it could be withdrawn. Refresh and try again.',
+        );
     }
   }
 }
@@ -1682,12 +1679,13 @@ class _SubmittedBidCard extends StatelessWidget {
   const _SubmittedBidCard({required this.total, required this.feePercent});
 
   final num total;
-  final num feePercent;
+  final num? feePercent;
 
   @override
   Widget build(BuildContext context) {
-    final fee = (total * feePercent) / 100;
-    final net = total - fee;
+    final rate = feePercent;
+    final fee = rate == null ? null : (total * rate) / 100;
+    final net = fee == null ? null : total - fee;
     return DottedBorderBox(
       child: Padding(
         padding: const EdgeInsets.all(MyShopSpacing.md),
@@ -1714,48 +1712,57 @@ class _SubmittedBidCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: MyShopSpacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Platform Fee (${feePercent.toInt()}%)',
-                    style: MyShopTypography.body1.copyWith(
-                      color: MyShopColors.textSecondary,
-                      fontWeight: FontWeight.w400,
+            if (rate != null && fee != null)
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Estimated Platform Fee (${rate.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '')}%)',
+                      style: MyShopTypography.body1.copyWith(
+                        color: MyShopColors.textSecondary,
+                        fontWeight: FontWeight.w400,
+                      ),
                     ),
                   ),
-                ),
-                Text(
-                  '-GHS ${fee.toStringAsFixed(2)}',
-                  style: MyShopTypography.body1.copyWith(
-                    color: MyShopColors.error,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: MyShopSpacing.sm),
-            const Divider(height: 1, color: MyShopColors.divider),
-            const SizedBox(height: MyShopSpacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Estimated Net',
+                  Text(
+                    '-GHS ${fee.toStringAsFixed(2)}',
                     style: MyShopTypography.body1.copyWith(
+                      color: MyShopColors.error,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
+                ],
+              )
+            else
+              Text(
+                'The fee estimate is temporarily unavailable. Your final earnings will use the rate recorded by the server.',
+                style: MyShopTypography.body2.copyWith(
+                  color: MyShopColors.textSecondary,
                 ),
-                Text(
-                  'GHS ${net.toStringAsFixed(2)}',
-                  style: MyShopTypography.h3.copyWith(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
+              ),
+            const SizedBox(height: MyShopSpacing.sm),
+            const Divider(height: 1, color: MyShopColors.divider),
+            const SizedBox(height: MyShopSpacing.sm),
+            if (net != null)
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Estimated Net',
+                      style: MyShopTypography.body1.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
-                ),
-              ],
-            ),
+                  Text(
+                    'GHS ${net.toStringAsFixed(2)}',
+                    style: MyShopTypography.h3.copyWith(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
           ],
         ),
       ),
@@ -1949,13 +1956,9 @@ class _JobRequestLoadingScreen extends StatelessWidget {
 /// or back out to /home.
 class _JobRequestLoadFailureScreen extends StatelessWidget {
   const _JobRequestLoadFailureScreen({
-    required this.jobId,
-    required this.error,
     required this.onRetry,
   });
 
-  final String jobId;
-  final String error;
   final VoidCallback onRetry;
 
   @override
@@ -1982,7 +1985,7 @@ class _JobRequestLoadFailureScreen extends StatelessWidget {
               ),
               const SizedBox(height: MyShopSpacing.sm),
               Text(
-                'Job ${jobId.length >= 8 ? jobId.substring(0, 8).toUpperCase() : jobId}\n$error',
+                'Check your connection and try again. If the job is no longer available, return to requests.',
                 style: MyShopTypography.body2.copyWith(
                   color: MyShopColors.textSecondary,
                 ),

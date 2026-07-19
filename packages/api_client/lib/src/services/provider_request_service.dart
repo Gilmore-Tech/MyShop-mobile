@@ -10,10 +10,15 @@ class ProviderPendingRequest {
     required this.kind,
     required this.id,
     this.expiresAt,
+    this.serverExpiresAt,
+    this.offerId,
     this.payload = const <String, dynamic>{},
   });
 
-  factory ProviderPendingRequest.fromJson(Map<String, dynamic> json) {
+  factory ProviderPendingRequest.fromJson(
+    Map<String, dynamic> json, {
+    Duration transportElapsed = Duration.zero,
+  }) {
     final kind = _kindFromWire(
       json['kind'] as String? ??
           json['type'] as String? ??
@@ -26,19 +31,35 @@ class ProviderPendingRequest {
         '';
     final payloadRaw =
         json['payload'] ?? json['ride'] ?? json['job'] ?? json['booking'];
+    final payload = payloadRaw is Map<String, dynamic>
+        ? Map<String, dynamic>.from(payloadRaw)
+        : const <String, dynamic>{};
+    final serverExpiresAt = _parseDate(
+      json['expiresAt'] ?? json['expires_at'],
+    );
+    final serverNow = _parseDate(
+      json['serverNow'] ?? json['server_now'] ?? payload['serverNow'],
+    );
+    final expiresAt = _projectDeadlineToDeviceClock(
+      serverExpiresAt: serverExpiresAt,
+      serverNow: serverNow,
+      transportElapsed: transportElapsed,
+    );
     return ProviderPendingRequest(
       kind: kind,
       id: id,
-      expiresAt: _parseDate(json['expiresAt'] ?? json['expires_at']),
-      payload: payloadRaw is Map<String, dynamic>
-          ? Map<String, dynamic>.from(payloadRaw)
-          : const <String, dynamic>{},
+      expiresAt: expiresAt,
+      serverExpiresAt: serverExpiresAt,
+      offerId: (json['offerId'] ?? json['offer_id'])?.toString(),
+      payload: payload,
     );
   }
 
   final ProviderRequestKind kind;
   final String id;
   final DateTime? expiresAt;
+  final DateTime? serverExpiresAt;
+  final String? offerId;
 
   /// Full ride/job payload when the backend has it available. The mobile app
   /// falls back to GET /rides/:id or GET /jobs/:id when this is empty.
@@ -69,6 +90,20 @@ class ProviderPendingRequest {
     if (raw is String && raw.isNotEmpty) return DateTime.tryParse(raw);
     return null;
   }
+
+  static DateTime? _projectDeadlineToDeviceClock({
+    required DateTime? serverExpiresAt,
+    required DateTime? serverNow,
+    required Duration transportElapsed,
+  }) {
+    if (serverExpiresAt == null) return null;
+    if (serverNow == null) return serverExpiresAt;
+    final elapsed =
+        transportElapsed.isNegative ? Duration.zero : transportElapsed;
+    final remaining =
+        serverExpiresAt.toUtc().difference(serverNow.toUtc()) - elapsed;
+    return DateTime.now().toUtc().add(remaining);
+  }
 }
 
 /// REST contract for robust provider request recovery.
@@ -95,13 +130,20 @@ class ProviderRequestService {
   /// GET /providers/me/pending-requests — returns ride/job requests that the
   /// authenticated driver/artisan can still act on.
   Future<List<ProviderPendingRequest>> listPendingRequests() async {
+    final transport = Stopwatch()..start();
     try {
       final response = await _dio.get('/providers/me/pending-requests');
+      transport.stop();
       final data = _unwrap(response);
       final raw = _extractList(data);
       return raw
           .whereType<Map<String, dynamic>>()
-          .map(ProviderPendingRequest.fromJson)
+          .map(
+            (json) => ProviderPendingRequest.fromJson(
+              json,
+              transportElapsed: transport.elapsed,
+            ),
+          )
           .where((r) => r.id.isNotEmpty && !r.isExpired)
           .toList(growable: false);
     } on DioException catch (e) {

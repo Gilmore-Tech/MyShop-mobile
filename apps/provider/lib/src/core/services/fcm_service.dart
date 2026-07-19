@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 
-import 'package:api_client/api_client.dart' show AppCallSession;
+import 'package:api_client/api_client.dart' show ApiException, AppCallSession;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,14 +22,22 @@ import '../../features/driver_home/widgets/rate_passenger_sheet.dart';
 import '../di/providers.dart';
 import '../providers/pending_request_recovery_provider.dart';
 import '../providers/socket_provider.dart';
+import '../providers/nav_badge_provider.dart';
 import 'local_notification_service.dart';
 import 'incoming_request_action_bridge.dart';
 import 'incoming_request_overlay_presenter.dart';
 import 'live_activity_service.dart';
+import 'ride_offer_receipt_service.dart';
 
 const _defaultIncomingCallTimeout = Duration(seconds: 60);
 const _terminalCallTombstoneFallback = Duration(minutes: 2);
 const _terminalCallTombstonePrefix = 'myshop.call_terminal.';
+
+@visibleForTesting
+bool notificationAuthorizationAllowsOnline(AuthorizationStatus status) {
+  return status == AuthorizationStatus.authorized ||
+      status == AuthorizationStatus.provisional;
+}
 
 Future<void> _recordTerminalCallTombstone(
   String callId,
@@ -106,11 +114,20 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
   }
 
   final backgroundType = _remoteType(message);
+  var requestData = Map<String, dynamic>.from(message.data);
+  if (backgroundType == NotificationPayload.typeRideRequest) {
+    final received = await acknowledgeRideOfferFromBackground(requestData);
+    if (received == null) {
+      debugPrint('[FCM-bg] ride offer receipt failed; request not surfaced');
+      return;
+    }
+    requestData = received.payload;
+  }
   if (Platform.isAndroid &&
       (backgroundType == NotificationPayload.typeRideRequest ||
           backgroundType == NotificationPayload.typeJobRequest)) {
     final shown = await IncomingRequestOverlayPresenter.instance.showFromPush(
-      Map<String, dynamic>.from(message.data),
+      requestData,
       notificationTitle:
           message.notification?.title ?? message.data['title']?.toString(),
     );
@@ -139,7 +156,7 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
   // Re-initialise the local notification plugin inside this isolate —
   // state from the main isolate is NOT shared.
   await LocalNotificationService.instance.init();
-  await _renderFromRemote(message);
+  await _renderFromRemote(message, dataOverride: requestData);
   debugPrint('[FCM-bg] local notification rendered');
 }
 
@@ -343,10 +360,13 @@ bool _shouldSkipLocalBackgroundRender(RemoteMessage message) {
 Future<void> _renderFromRemote(
   RemoteMessage message, {
   Duration? callTimeout,
+  Map<String, dynamic>? dataOverride,
 }) async {
-  final data = message.data;
-  final type = _remoteType(message);
-  if (type == null) return;
+  final data = dataOverride ?? message.data;
+  final type = NotificationPayload.normaliseType(
+    data[NotificationPayload.keyType]?.toString() ?? '',
+  );
+  if (type.isEmpty) return;
 
   final callId = data[NotificationPayload.keyCallId]?.toString();
   if (type == NotificationPayload.typeCallEnded) {
@@ -538,6 +558,22 @@ String _fallbackTitle(String type) {
       return 'New reply from support';
     case NotificationPayload.typeSupportTicketStatusChanged:
       return 'Ticket update';
+    case NotificationPayload.typeProviderDocumentUploadConfirmed:
+      return 'Document upload confirmed';
+    case NotificationPayload.typeProviderDocumentExpiryNotice:
+      return 'Document expires soon';
+    case NotificationPayload.typeProviderDocumentExpiry72h:
+      return 'Document invalid in 72 hours';
+    case NotificationPayload.typeProviderDocumentExpiry24h:
+      return 'Document invalid in 24 hours';
+    case NotificationPayload.typeProviderDocumentExpiry2h:
+      return 'Document invalid in 2 hours';
+    case NotificationPayload.typeProviderDocumentExpired:
+      return 'Document expired';
+    case NotificationPayload.typeProviderDocumentReplacementGraceStarted:
+      return 'Replacement awaiting review';
+    case NotificationPayload.typeProviderDocumentReplacementGraceExpired:
+      return 'Document action required';
     default:
       return 'MyShop';
   }
@@ -559,7 +595,7 @@ String _fallbackBody(String type) {
     case NotificationPayload.typeRideCancelled:
       return 'The client cancelled this ride.';
     case NotificationPayload.typeJobPaymentReleasing:
-      return 'Your earnings are being released to your wallet.';
+      return 'Your earnings settlement is being processed. Check Earnings for status.';
     case NotificationPayload.typeJobManuallyAssigned:
       return 'Tap to review and place your bid.';
     case NotificationPayload.typeJobNoBidsEscalated:
@@ -582,6 +618,19 @@ String _fallbackBody(String type) {
       return 'Tap to read and reply.';
     case NotificationPayload.typeSupportTicketStatusChanged:
       return 'Tap to see the latest status.';
+    case NotificationPayload.typeProviderDocumentUploadConfirmed:
+      return 'Open Documents & Verification to view its independent review status.';
+    case NotificationPayload.typeProviderDocumentExpiryNotice:
+    case NotificationPayload.typeProviderDocumentExpiry72h:
+    case NotificationPayload.typeProviderDocumentExpiry24h:
+    case NotificationPayload.typeProviderDocumentExpiry2h:
+      return 'Open Documents & Verification to review the renewal instructions.';
+    case NotificationPayload.typeProviderDocumentExpired:
+      return 'Finish any active trip, then replace the expired document before going online again.';
+    case NotificationPayload.typeProviderDocumentReplacementGraceStarted:
+      return 'Your existing approved document remains valid only until the stated review deadline.';
+    case NotificationPayload.typeProviderDocumentReplacementGraceExpired:
+      return 'Finish any active trip, then complete document review before going online again.';
     default:
       return 'Open MyShop to see the latest update.';
   }
@@ -633,8 +682,9 @@ class FcmService {
     FirebaseMessaging.onBackgroundMessage(fcmBackgroundHandler);
     debugPrint('[FCM] background handler registered');
 
-    // Permission prompts (iOS + Android 13+).
-    await _fcm.requestPermission(alert: true, badge: true, sound: true);
+    // Do not show an OS permission prompt during startup. The explicit
+    // Go Online action owns the contextual request through
+    // ensureOnlineNotificationReachability().
 
     // Ensure tapping a local notification also routes via the same
     // handler the router will set.
@@ -701,6 +751,46 @@ class FcmService {
 
       final rawType = message.data[NotificationPayload.keyType] as String?;
       final type = NotificationPayload.normaliseType(rawType ?? '');
+      if (type == NotificationPayload.typeRideRequest) {
+        final received = await acknowledgeRideOfferWithSocket(
+          payload: Map<String, dynamic>.from(message.data),
+          socket: _ref.read(socketServiceProvider),
+          rides: _ref.read(rideServiceProvider),
+        );
+        if (received == null) {
+          debugPrint('[FCM] foreground ride offer receipt failed');
+          return;
+        }
+        _ref.read(rideOfferIdByRideProvider.notifier).update(
+              (offers) => {
+                ...offers,
+                received.rideId: received.offerId,
+              },
+            );
+        _ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+              (deadlines) => {
+                ...deadlines,
+                received.rideId: received.decisionExpiresAt,
+              },
+            );
+        final active = _ref.read(activeRideProvider).ride;
+        if (active?.id == received.rideId ||
+            _ref.read(surfacedRideIdsProvider).contains(received.rideId)) {
+          return;
+        }
+        try {
+          final ride = Ride.fromJson(received.payload);
+          _ref.read(surfacedRideIdsProvider.notifier).update(
+                (ids) => {...ids, ride.id},
+              );
+          _ref.read(incomingRideRequestProvider.notifier).state = null;
+          _ref.read(incomingRideRequestProvider.notifier).state = ride;
+          _ref.read(navBadgeProvider.notifier).increment('/home');
+        } catch (error) {
+          debugPrint('[FCM] foreground ride offer parse failed: $error');
+        }
+        return;
+      }
       if (type == NotificationPayload.typeRideCancelled) {
         final rideId = (message.data[NotificationPayload.keyRideId] ??
                 message.data['ride_id'])
@@ -781,11 +871,9 @@ class FcmService {
       });
     }
 
-    // Defense in depth: the auth bridge fires syncToken when state hits
-    // AuthAuthenticated, but on cold start that can fire BEFORE init()
-    // has requested permission — getToken() then returns null and the
-    // single-shot bridge never re-fires. Kick it again now that perms
-    // are granted; syncToken is idempotent (registerDevice is an upsert).
+    // Defense in depth: the auth bridge can fire before Firebase setup has
+    // finished. Kick token sync again after initialisation; registration is
+    // idempotent, and display permission is checked contextually at Go Online.
     final authState = _ref.read(authControllerProvider);
     if (authState is AuthAuthenticated) {
       unawaited(syncToken());
@@ -811,6 +899,57 @@ class FcmService {
   /// Fetch the FCM token and POST it to the backend so we can receive
   /// pushes. Call once the user is authenticated (needs JWT on the Dio
   /// client). Also subscribes to token refresh events.
+  Future<String?> ensureOnlineNotificationReachability({
+    bool requestPermissionIfNeeded = true,
+  }) async {
+    if (!_ref.read(firebaseReadyProvider)) {
+      return 'Notifications are still starting. Check your connection and try again.';
+    }
+
+    try {
+      if (!_initialised) {
+        await init().timeout(const Duration(seconds: 10));
+      }
+
+      var settings = await _fcm
+          .getNotificationSettings()
+          .timeout(const Duration(seconds: 5));
+      if (settings.authorizationStatus == AuthorizationStatus.notDetermined &&
+          requestPermissionIfNeeded) {
+        settings = await _fcm
+            .requestPermission(alert: true, badge: true, sound: true)
+            .timeout(const Duration(seconds: 15));
+      }
+      if (!notificationAuthorizationAllowsOnline(
+        settings.authorizationStatus,
+      )) {
+        return 'Enable notifications in Settings before going online so you can receive requests.';
+      }
+
+      if (Platform.isIOS) {
+        final apnsToken =
+            await _fcm.getAPNSToken().timeout(const Duration(seconds: 5));
+        if (apnsToken == null || apnsToken.isEmpty) {
+          return 'This device is not ready for notifications yet. Check your connection and try again.';
+        }
+      }
+
+      final token = await _fcm.getToken().timeout(const Duration(seconds: 8));
+      if (token == null || token.isEmpty) {
+        return 'This device could not register for notifications. Check your connection and try again.';
+      }
+      final registered =
+          await _register(token).timeout(const Duration(seconds: 15));
+      if (!registered) {
+        return 'MyShop could not register this device for requests. Check your connection and try again.';
+      }
+      return null;
+    } catch (error) {
+      debugPrint('[FCM] online reachability check failed: $error');
+      return 'MyShop could not verify notification access. Check Settings and your connection, then try again.';
+    }
+  }
+
   Future<void> syncToken() async {
     debugPrint('[FCM] syncToken() entered');
 
@@ -905,15 +1044,18 @@ class FcmService {
     return false;
   }
 
-  Future<void> _register(String token) async {
-    // Pull active role from secure storage. The backend keys
-    // device_tokens on (userId, role, platform) — passing the wrong
-    // role here silently routes another role's pushes to this device.
-    // No role stored = no authenticated session, so skip registration.
-    final role = await _ref.read(appTokenStorageProvider).readRole();
+  Future<bool> _register(String token) async {
+    // Prefer the authenticated in-memory role. Secure storage can lag during a
+    // fresh login on Keychain/EncryptedSharedPreferences; previously a null
+    // read made registration exit permanently, leaving that session without
+    // background ride/job pushes until a future token refresh.
+    final authState = _ref.read(authControllerProvider);
+    final role = authState is AuthAuthenticated
+        ? authState.user.role.name
+        : await _ref.read(appTokenStorageProvider).readRole();
     if (role == null || role.isEmpty) {
       debugPrint('[FCM] no active role — skipping device registration');
-      return;
+      return false;
     }
     for (int attempt = 1; attempt <= 3; attempt++) {
       try {
@@ -924,7 +1066,35 @@ class FcmService {
         if (Platform.isIOS) {
           await _syncLiveActivityTokensOnce();
         }
-        return;
+        return true;
+      } on ApiException catch (e) {
+        // Mobile-first rollout compatibility: the currently deployed backend
+        // rejects unknown DTO fields. Register without the capability marker
+        // there so this provider build can ship first; after the upgraded
+        // backend is deployed, normal startup/token sync advertises v1.
+        if (e.statusCode == 400 &&
+            e.message.toLowerCase().contains('offerreceiptversion')) {
+          try {
+            await _ref.read(apiNotificationServiceProvider).registerDevice(
+                  fcmToken: token,
+                  platform: _platform,
+                  role: role,
+                  offerReceiptVersion: null,
+                );
+            debugPrint(
+              '[FCM] token registered against legacy backend; receipt capability will sync after backend upgrade',
+            );
+            return true;
+          } catch (legacyError) {
+            debugPrint(
+              '[FCM] legacy-backend registration fallback failed: $legacyError',
+            );
+          }
+        }
+        debugPrint('[FCM] register attempt $attempt/3 failed: $e');
+        if (attempt < 3) {
+          await Future<void>.delayed(Duration(seconds: attempt * 2));
+        }
       } catch (e) {
         debugPrint('[FCM] register attempt $attempt/3 failed: $e');
         if (attempt < 3) {
@@ -933,6 +1103,7 @@ class FcmService {
       }
     }
     debugPrint('[FCM] register exhausted retries — token NOT registered');
+    return false;
   }
 
   void _wireVoipBridge() {
@@ -1359,6 +1530,26 @@ final fcmServiceProvider = Provider<FcmService>((ref) {
   return FcmService(ref);
 });
 
+typedef OnlineNotificationReachabilityCheck = Future<String?> Function();
+
+final onlineNotificationReachabilityCheckProvider =
+    Provider<OnlineNotificationReachabilityCheck>((ref) {
+  final fcm = ref.read(fcmServiceProvider);
+  return fcm.ensureOnlineNotificationReachability;
+});
+
+/// BR-32 relaunch recovery must never make an OS permission prompt appear on
+/// its own. A prior Online intent can reuse an existing notification grant,
+/// but a missing grant leaves the provider Offline with actionable copy until
+/// they explicitly tap Go Online.
+final onlineNotificationRestoreReachabilityCheckProvider =
+    Provider<OnlineNotificationReachabilityCheck>((ref) {
+  final fcm = ref.read(fcmServiceProvider);
+  return () => fcm.ensureOnlineNotificationReachability(
+        requestPermissionIfNeeded: false,
+      );
+});
+
 /// Watches the auth state and synchronises the FCM token with the backend
 /// as soon as the user reaches `AuthAuthenticated`. On logout it clears
 /// the device token so the next account on this device registers a fresh
@@ -1456,6 +1647,12 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     final router = ref.read(goRouterProvider);
     debugPrint('[FCM-tap] type=$type (raw=$rawType)');
 
+    final lifecycleRoute = providerLifecycleNotificationRoute(type ?? '');
+    if (lifecycleRoute != null) {
+      router.go(lifecycleRoute);
+      return;
+    }
+
     // Backend may send the job id under either `jobId` (camel) or
     // `job_id` (snake) depending on which emitter wrote the push.
     String? jobIdFromPayload() =>
@@ -1541,6 +1738,12 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       DateTime? deadline,
       String source = 'notification tap',
     }) {
+      final offerId = payload[NotificationPayload.keyOfferId]?.toString();
+      if (offerId != null && offerId.isNotEmpty) {
+        ref.read(rideOfferIdByRideProvider.notifier).update(
+              (offers) => {...offers, rideId: offerId},
+            );
+      }
       if (deadline != null) {
         ref.read(rideRequestDeadlineByIdProvider.notifier).update(
               (m) => {...m, rideId: deadline},
@@ -1649,7 +1852,10 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           if (rideId == null || rideId.isEmpty) return;
           final accepted = await ref
               .read(activeRideProvider.notifier)
-              .acceptRideFromNotification(rideId);
+              .acceptRideFromNotification(
+                rideId,
+                offerId: payload[NotificationPayload.keyOfferId]?.toString(),
+              );
           if (accepted) {
             await clearIncomingRequestAlert(
               type: NotificationPayload.typeRideRequest,
@@ -1670,7 +1876,10 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           if (rideId == null || rideId.isEmpty) return;
           final skipped = await ref
               .read(activeRideProvider.notifier)
-              .declineRideFromNotification(rideId);
+              .declineRideFromNotification(
+                rideId,
+                offerId: payload[NotificationPayload.keyOfferId]?.toString(),
+              );
           if (skipped) {
             await clearIncomingRequestAlert(
               type: NotificationPayload.typeRideRequest,

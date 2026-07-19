@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:api_client/api_client.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_models/shared_models.dart';
 
 import '../../artisan_home/providers/bid_drafts_provider.dart';
 import '../../artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../artisan_jobs/providers/submitted_bids_provider.dart';
 import '../../profile/providers/provider_type_provider.dart';
 import '../data/auth_repository.dart';
+import '../../../core/providers/provider_online_intent.dart';
 
 // ---------------------------------------------------------------------------
 // Auth states
@@ -30,6 +32,8 @@ class AuthUnauthenticated extends AuthState {
     this.error,
     this.fieldErrors = const {},
     this.isLoading = false,
+    this.requiresRoleRecoverySupport = false,
+    this.requiresLegalRefresh = false,
   });
 
   final String? error;
@@ -39,6 +43,8 @@ class AuthUnauthenticated extends AuthState {
 
   /// True while an API call (register/login) is in flight.
   final bool isLoading;
+  final bool requiresRoleRecoverySupport;
+  final bool requiresLegalRefresh;
 }
 
 /// Phone has both roles — user must pick which to sign in as. Reached AFTER
@@ -91,6 +97,7 @@ class AuthOtpSent extends AuthState {
 class AuthBlockedByOtherDevice extends AuthState {
   const AuthBlockedByOtherDevice({
     required this.phone,
+    this.recoveryChallenge,
     this.role,
     this.otpCode,
     this.selectionToken,
@@ -100,6 +107,7 @@ class AuthBlockedByOtherDevice extends AuthState {
   });
 
   final String phone;
+  final String? recoveryChallenge;
 
   /// The role being taken over. Null in the post-OTP single-role flow where
   /// the backend resolves the role itself on the forceLogin retry.
@@ -134,6 +142,15 @@ enum RecoveryRequestStatus { idle, sending, sent, failed }
 class AuthAuthenticated extends AuthState {
   const AuthAuthenticated(this.user);
   final AuthUser user;
+}
+
+ProviderType? _roleFromSessionConflict(ApiException error) {
+  final role = error.details?['role'];
+  return switch (role) {
+    'driver' => ProviderType.driver,
+    'artisan' => ProviderType.artisan,
+    _ => null,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -174,10 +191,10 @@ final authControllerProvider =
   final controller = AuthController(
     ref.watch(authRepositoryProvider),
     tokenStorage: ref.watch(tokenStorageProvider),
-    onAuthenticated: (AuthUser user, ProviderType? intendedRole) {
+    onAuthenticated: (AuthUser user, ProviderType? intendedRole) async {
       // Mark onboarding as seen whenever a user successfully authenticates.
       final storage = ref.read(tokenStorageProvider);
-      storage.markOnboardingSeen();
+      await storage.markOnboardingSeen();
       ref.read(hasSeenOnboardingProvider.notifier).state = true;
       // Use the intended role if provided (sign-up/sign-in choice).
       // When intendedRole is null (e.g. refreshProfile, updateProfile),
@@ -186,19 +203,31 @@ final authControllerProvider =
       if (intendedRole != null) {
         ref.read(providerTypeProvider.notifier).state = intendedRole;
         // Persist so bootstrap restores the correct role after restart
-        storage.writeRole(intendedRole.name);
+        await storage.writeRole(intendedRole.name);
       }
     },
-    onLocalStateClear: () async {
+    onLocalStateClear: (AuthUser? exitingUser) async {
       // Wipe per-account artisan caches that live outside TokenStorage.
       // Without this, "BID SENT" entries (artisan_submitted_bids) and
       // in-progress drafts (artisan_bid_drafts_v1) leak across logouts and
       // across backend DB resets. Awaited so SharedPreferences writes
       // flush before the router redirects away from the screen.
-      await Future.wait([
+      final cacheCleanup = <Future<void>>[
         ref.read(submittedBidsProvider.notifier).clear(),
         ref.read(bidDraftsProvider.notifier).clear(),
-      ]);
+      ];
+      if (exitingUser != null) {
+        try {
+          final identity = ProviderOnlineIntentIdentity.fromUser(exitingUser);
+          await ref.read(providerOnlineIntentStoreProvider).write(
+                identity,
+                shouldBeOnline: false,
+              );
+        } catch (error) {
+          debugPrint('[Auth] Online intent cleanup failed: $error');
+        }
+      }
+      await Future.wait(cacheCleanup);
       ref.read(pendingIncomingJobsProvider.notifier).clear();
     },
   );
@@ -245,7 +274,7 @@ class AuthController extends StateNotifier<AuthState> {
   /// Called when authentication succeeds. [intendedRole] is the role the user
   /// chose during sign-up or sign-in (from [AuthOtpSent.role]). When restoring
   /// a session via [bootstrap], it is null — derive from the profile instead.
-  final void Function(AuthUser user, ProviderType? intendedRole)?
+  final FutureOr<void> Function(AuthUser user, ProviderType? intendedRole)?
       onAuthenticated;
 
   /// Called when the session ends (explicit logout or force-logout from the
@@ -257,7 +286,7 @@ class AuthController extends StateNotifier<AuthState> {
   /// writes flush before the user navigates away. The interceptor path is
   /// sync and fires-and-forgets — safe because the next app start re-runs
   /// the same wipe via [bootstrap]'s 401 path.
-  final Future<void> Function()? onLocalStateClear;
+  final Future<void> Function(AuthUser? exitingUser)? onLocalStateClear;
   bool _requesting = false;
 
   /// Try to restore session from stored tokens.
@@ -268,28 +297,35 @@ class AuthController extends StateNotifier<AuthState> {
   /// (only the 401 interceptor may force a logout).
   Future<void> bootstrap() async {
     try {
-      final user = await _repo
-          .bootstrap()
-          .timeout(const Duration(seconds: 8), onTimeout: () => null);
+      AuthUser? user;
+      try {
+        user = await _repo.bootstrap().timeout(const Duration(seconds: 8));
+      } on TimeoutException {
+        debugPrint('[Auth] bootstrap timed out after 8 seconds');
+      }
       if (user != null) {
         final savedRole = await _tokenStorage.readRole();
         final restoredRole = savedRole != null
             ? ProviderType.values.where((e) => e.name == savedRole).firstOrNull
             : null;
-        onAuthenticated?.call(user, restoredRole);
+        await onAuthenticated?.call(user, restoredRole);
+        if (!mounted) return;
         state = AuthAuthenticated(user);
         unawaited(_refreshInBackground());
       } else {
+        if (!mounted) return;
         state = const AuthUnauthenticated();
       }
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint('[Auth] bootstrap failed: $error\n$stackTrace');
+      if (!mounted) return;
       state = const AuthUnauthenticated();
     }
   }
 
   Future<void> _refreshInBackground() async {
     final fresh = await _repo.refreshProfileQuiet();
-    if (fresh != null && state is AuthAuthenticated) {
+    if (mounted && fresh != null && state is AuthAuthenticated) {
       state = AuthAuthenticated(fresh);
     }
   }
@@ -299,7 +335,7 @@ class AuthController extends StateNotifier<AuthState> {
     required String phone,
     required String fullName,
     required String type,
-    required bool privacyPolicyAccepted,
+    required List<LegalAcceptanceSelection> legalAcceptances,
     ProviderType? role,
     String? displayName,
     String? businessName,
@@ -323,7 +359,7 @@ class AuthController extends StateNotifier<AuthState> {
         phone: phone,
         fullName: fullName,
         type: type,
-        privacyPolicyAccepted: privacyPolicyAccepted,
+        legalAcceptances: legalAcceptances,
         displayName: displayName,
         businessName: businessName,
         email: email,
@@ -340,10 +376,24 @@ class AuthController extends StateNotifier<AuthState> {
       ));
       state = AuthOtpSent(phone: phone, isNewUser: true, role: role);
     } on ApiException catch (e) {
-      state = AuthUnauthenticated(
-        error: AuthErrorMapper.message(e),
-        fieldErrors: AuthErrorMapper.fieldErrors(e),
-      );
+      if (AuthErrorMapper.hasActiveOtp(e)) {
+        // The registration OTP was stored before delivery was attempted. Keep
+        // the delayed code usable and expose resend of that exact code.
+        state = AuthOtpSent(
+          phone: phone,
+          isNewUser: true,
+          role: role,
+          error: AuthErrorMapper.message(e),
+        );
+      } else {
+        state = AuthUnauthenticated(
+          error: AuthErrorMapper.message(e),
+          fieldErrors: AuthErrorMapper.fieldErrors(e),
+          requiresRoleRecoverySupport:
+              AuthErrorMapper.requiresRoleRecoverySupport(e),
+          requiresLegalRefresh: e.errorCode == 'LEGAL_DOCUMENT_CHANGED',
+        );
+      }
     } on AuthException catch (e) {
       state = AuthUnauthenticated(error: e.message);
     } catch (_) {
@@ -370,7 +420,11 @@ class AuthController extends StateNotifier<AuthState> {
       state = AuthOtpSent(phone: phone, isNewUser: false);
     } on ApiException catch (e) {
       if (AuthErrorMapper.isAlreadyLoggedInElsewhere(e)) {
-        state = AuthBlockedByOtherDevice(phone: phone);
+        state = AuthBlockedByOtherDevice(
+          phone: phone,
+          role: _roleFromSessionConflict(e),
+          recoveryChallenge: AuthErrorMapper.sessionRecoveryChallenge(e),
+        );
       } else {
         state = AuthUnauthenticated(
           error: AuthErrorMapper.message(e),
@@ -413,6 +467,7 @@ class AuthController extends StateNotifier<AuthState> {
           phone: current.phone,
           role: role == 'artisan' ? ProviderType.artisan : ProviderType.driver,
           selectionToken: current.selectionToken,
+          recoveryChallenge: AuthErrorMapper.sessionRecoveryChallenge(e),
         );
       } else {
         state = AuthRoleSelection(
@@ -453,7 +508,7 @@ class AuthController extends StateNotifier<AuthState> {
     // showing up on a driver login.
     final user =
         await _repo.fetchProfile(activeRole: _authRoleFor(providerType));
-    onAuthenticated?.call(user, providerType);
+    await onAuthenticated?.call(user, providerType);
     state = AuthAuthenticated(user);
   }
 
@@ -472,6 +527,7 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> verifyOtp(String code) async {
     final current = state;
     if (current is! AuthOtpSent) return;
+    if (current.isVerifying) return;
 
     state = AuthOtpSent(
       phone: current.phone,
@@ -489,7 +545,7 @@ class AuthController extends StateNotifier<AuthState> {
         // before onAuthenticated persists it.
         final user =
             await _repo.fetchProfile(activeRole: _authRoleFor(current.role));
-        onAuthenticated?.call(user, current.role);
+        await onAuthenticated?.call(user, current.role);
         state = AuthAuthenticated(user);
         return;
       }
@@ -510,7 +566,12 @@ class AuthController extends StateNotifier<AuthState> {
       if (AuthErrorMapper.isAlreadyLoggedInElsewhere(e)) {
         // Conflict surfaced after OTP — the backend preserved the code, so
         // the takeover retry replays it with forceLogin.
-        state = AuthBlockedByOtherDevice(phone: current.phone, otpCode: code);
+        state = AuthBlockedByOtherDevice(
+          phone: current.phone,
+          role: _roleFromSessionConflict(e),
+          otpCode: code,
+          recoveryChallenge: AuthErrorMapper.sessionRecoveryChallenge(e),
+        );
       } else {
         // INVALID_REGION is a stale-cache edge case: the region step re-fetches
         // GET /v1/regions when the user backs out to re-select (the OTP screen
@@ -531,12 +592,12 @@ class AuthController extends StateNotifier<AuthState> {
         role: current.role,
         error: e.message,
       );
-    } catch (e) {
+    } catch (_) {
       state = AuthOtpSent(
         phone: current.phone,
         isNewUser: current.isNewUser,
         role: current.role,
-        error: 'Verification failed: $e',
+        error: 'Verification failed. Please try again.',
       );
     }
   }
@@ -607,7 +668,7 @@ class AuthController extends StateNotifier<AuthState> {
     if (state is! AuthAuthenticated) return 'Not authenticated';
     try {
       final user = await _repo.fetchProfile();
-      onAuthenticated?.call(user, null);
+      await onAuthenticated?.call(user, null);
       state = AuthAuthenticated(user);
       return null;
     } catch (_) {
@@ -676,6 +737,10 @@ class AuthController extends StateNotifier<AuthState> {
   /// wipes local state.
   Future<void> logout() async {
     debugPrint('[AuthController] logout() called from ${state.runtimeType}');
+    final exitingUser = switch (state) {
+      AuthAuthenticated(:final user) => user,
+      _ => null,
+    };
     try {
       await _repo.logout().timeout(const Duration(seconds: 8));
       debugPrint('[AuthController] _repo.logout() returned');
@@ -691,7 +756,7 @@ class AuthController extends StateNotifier<AuthState> {
       } catch (_) {}
     }
     try {
-      await onLocalStateClear?.call();
+      await onLocalStateClear?.call(exitingUser);
     } catch (_) {
       // Cache wipe is best-effort — never block logout on storage errors.
     }
@@ -716,17 +781,35 @@ class AuthController extends StateNotifier<AuthState> {
     final current = state;
     if (current is! AuthBlockedByOtherDevice) return;
     if (current.recoveryRequestStatus == RecoveryRequestStatus.sending) return;
+    final role = current.role;
+    final challenge = current.recoveryChallenge;
+    // Recovery is an exact role-account action. Older/ambiguous server
+    // conflicts do not provide a safe target, so never guess between Driver
+    // and Artisan from a shared phone identity.
+    if (role == null || challenge == null) {
+      state = AuthBlockedByOtherDevice(
+        phone: current.phone,
+        recoveryChallenge: current.recoveryChallenge,
+        role: current.role,
+        otpCode: current.otpCode,
+        selectionToken: current.selectionToken,
+        recoveryRequestStatus: RecoveryRequestStatus.failed,
+      );
+      return;
+    }
     state = AuthBlockedByOtherDevice(
       phone: current.phone,
+      recoveryChallenge: challenge,
       role: current.role,
       otpCode: current.otpCode,
       selectionToken: current.selectionToken,
       recoveryRequestStatus: RecoveryRequestStatus.sending,
     );
     try {
-      await _repo.requestSessionRecovery(current.phone);
+      await _repo.requestSessionRecovery(current.phone, role.name, challenge);
       state = AuthBlockedByOtherDevice(
         phone: current.phone,
+        recoveryChallenge: challenge,
         role: current.role,
         otpCode: current.otpCode,
         selectionToken: current.selectionToken,
@@ -735,6 +818,7 @@ class AuthController extends StateNotifier<AuthState> {
     } catch (_) {
       state = AuthBlockedByOtherDevice(
         phone: current.phone,
+        recoveryChallenge: challenge,
         role: current.role,
         otpCode: current.otpCode,
         selectionToken: current.selectionToken,
@@ -758,6 +842,7 @@ class AuthController extends StateNotifier<AuthState> {
     if (current.isTakingOver) return;
     state = AuthBlockedByOtherDevice(
       phone: current.phone,
+      recoveryChallenge: current.recoveryChallenge,
       role: current.role,
       otpCode: current.otpCode,
       selectionToken: current.selectionToken,
@@ -798,6 +883,7 @@ class AuthController extends StateNotifier<AuthState> {
     } on ApiException catch (e) {
       state = AuthBlockedByOtherDevice(
         phone: current.phone,
+        recoveryChallenge: current.recoveryChallenge,
         role: current.role,
         otpCode: current.otpCode,
         selectionToken: current.selectionToken,
@@ -807,6 +893,7 @@ class AuthController extends StateNotifier<AuthState> {
     } on AuthException catch (e) {
       state = AuthBlockedByOtherDevice(
         phone: current.phone,
+        recoveryChallenge: current.recoveryChallenge,
         role: current.role,
         otpCode: current.otpCode,
         selectionToken: current.selectionToken,
@@ -816,6 +903,7 @@ class AuthController extends StateNotifier<AuthState> {
     } catch (_) {
       state = AuthBlockedByOtherDevice(
         phone: current.phone,
+        recoveryChallenge: current.recoveryChallenge,
         role: current.role,
         otpCode: current.otpCode,
         selectionToken: current.selectionToken,
@@ -836,7 +924,11 @@ class AuthController extends StateNotifier<AuthState> {
   /// interceptor wipes tokens, but the UI stays stuck on splash.
   void onForceLogoutFromInterceptor() {
     if (state is AuthUnauthenticated) return;
-    final clear = onLocalStateClear?.call();
+    final exitingUser = switch (state) {
+      AuthAuthenticated(:final user) => user,
+      _ => null,
+    };
+    final clear = onLocalStateClear?.call(exitingUser);
     if (clear != null) unawaited(clear);
     state = const AuthUnauthenticated(
       error: 'Your session ended. Please sign in again.',

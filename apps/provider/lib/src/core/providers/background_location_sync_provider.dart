@@ -11,13 +11,18 @@ import '../../features/driver_home/providers/driver_location_provider.dart';
 import '../../features/profile/providers/provider_type_provider.dart';
 import '../di/providers.dart';
 import 'availability_controller.dart';
+import 'availability_reconciliation_controller.dart';
 import 'provider_status_provider.dart';
+import 'provider_location_session_provider.dart';
 
 const int _maxDriverSamplesPerBatch = 120;
 const int _maxQueuedDriverSamples = 360;
 const Duration _driverBusyCadence = Duration(seconds: 5);
 const Duration _artisanBusyCadence = Duration(seconds: 20);
-const Duration _idleCadence = Duration(seconds: 60);
+// BR-30 requires a matching fix no older than 30 seconds. Fifteen seconds
+// leaves one full missed cycle for ordinary scheduler/network jitter while
+// the server still fails closed if the OS stops delivering real GPS fixes.
+const Duration _idleCadence = Duration(seconds: 15);
 const Duration _busySampleMinAge = Duration(seconds: 4);
 const double _busySampleMinMeters = 10;
 const double _idleHeartbeatMinMeters = 50;
@@ -54,6 +59,7 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
   DateTime? lastSyncAt;
   var flushInFlight = false;
   var disposed = false;
+  String? queuedSessionId;
 
   bool movedEnough(Position? from, Position to, double meters) {
     if (from == null) return true;
@@ -94,20 +100,42 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
     flushInFlight = true;
     var sent = false;
     try {
+      final locationSession = ref.read(providerLocationSessionProvider);
+      if (locationSession == null) {
+        debugPrint('[LOC] background sync: no server location epoch — waiting');
+        return;
+      }
       if (isArtisan) {
         if (shouldSkipOnlineLocationPost()) return;
+        final sampleSequence =
+            ref.read(providerLocationSessionProvider.notifier).nextSequence();
         await locationService.updateArtisanLocation(
           latitude: latest.latitude,
           longitude: latest.longitude,
+          accuracyMeters: latest.accuracy,
+          recordedAt: latest.timestamp,
           status: 'online',
+          onlineSessionId: locationSession.onlineSessionId,
+          sampleSequence: sampleSequence,
         );
       } else {
         if (!status.isBusy && shouldSkipOnlineLocationPost()) return;
-        final samples = status.isBusy
-            ? driverQueue.take(_maxDriverSamplesPerBatch).toList()
-            : <DriverLocationSample>[_sampleFromPosition(latest)];
+        if (queuedSessionId != locationSession.onlineSessionId) {
+          driverQueue.clear();
+          queuedSessionId = locationSession.onlineSessionId;
+          driverQueue.add(
+            _sampleFromPosition(
+              latest,
+              ref.read(providerLocationSessionProvider.notifier).nextSequence(),
+            ),
+          );
+        }
+        final samples = driverQueue.take(_maxDriverSamplesPerBatch).toList();
         if (samples.isEmpty) return;
-        await locationService.updateDriverLocationBatch(samples: samples);
+        await locationService.updateDriverLocationBatch(
+          samples: samples,
+          onlineSessionId: locationSession.onlineSessionId,
+        );
         if (status.isBusy) {
           driverQueue.removeRange(0, samples.length);
         } else {
@@ -121,10 +149,20 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
       lastSyncedPosition = latest;
       debugPrint(
         '[LOC] background sync: sent ${isArtisan ? 'artisan' : 'driver'} '
-        'location (${latest.latitude}, ${latest.longitude})',
+        'location update',
       );
     } on ApiException catch (e) {
       debugPrint('[LOC] background sync failed: $e');
+      if (e.errorCode == 'PROVIDER_LOCATION_SESSION_REQUIRED' ||
+          e.errorCode == 'DRIVER_ONLINE_SESSION_REQUIRED' ||
+          e.errorCode == 'ARTISAN_ONLINE_SESSION_REQUIRED') {
+        ref.read(providerLocationSessionProvider.notifier).clear();
+        unawaited(
+          ref
+              .read(availabilityReconciliationControllerProvider)
+              .reconcile(trigger: 'location_epoch_rejected'),
+        );
+      }
     } catch (e) {
       debugPrint('[LOC] background sync error: $e');
     } finally {
@@ -144,16 +182,32 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
     ref.read(lastKnownPositionProvider.notifier).state = position;
 
     if (!isArtisan) {
+      final locationSession = ref.read(providerLocationSessionProvider);
+      if (locationSession == null) return;
+      if (queuedSessionId != locationSession.onlineSessionId) {
+        driverQueue.clear();
+        queuedSessionId = locationSession.onlineSessionId;
+      }
       if (status.isBusy) {
         if (busySampleDue(position)) {
-          driverQueue.add(_sampleFromPosition(position));
+          driverQueue.add(
+            _sampleFromPosition(
+              position,
+              ref.read(providerLocationSessionProvider.notifier).nextSequence(),
+            ),
+          );
           lastQueuedDriverPosition = position;
           capDriverQueue();
         }
       } else {
         driverQueue
           ..clear()
-          ..add(_sampleFromPosition(position));
+          ..add(
+            _sampleFromPosition(
+              position,
+              ref.read(providerLocationSessionProvider.notifier).nextSequence(),
+            ),
+          );
         lastQueuedDriverPosition = position;
       }
     }
@@ -183,7 +237,8 @@ Duration _syncCadence(DriverStatus status, {required bool isArtisan}) {
   return isArtisan ? _artisanBusyCadence : _driverBusyCadence;
 }
 
-DriverLocationSample _sampleFromPosition(Position position) {
+DriverLocationSample _sampleFromPosition(
+    Position position, int sampleSequence) {
   final heading = position.heading.isFinite &&
           position.heading >= 0 &&
           position.heading <= 360
@@ -196,6 +251,8 @@ DriverLocationSample _sampleFromPosition(Position position) {
   return DriverLocationSample(
     latitude: position.latitude,
     longitude: position.longitude,
+    accuracyMeters: position.accuracy,
+    sampleSequence: sampleSequence,
     recordedAt: position.timestamp,
     heading: heading,
     speedKmh: speedKmh,

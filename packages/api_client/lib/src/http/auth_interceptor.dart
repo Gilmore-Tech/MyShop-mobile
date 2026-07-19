@@ -68,7 +68,6 @@ class AuthInterceptor extends Interceptor {
     // spurious "session is over" before they ever hit the wire.
     '/auth/provider/',
     '/auth/refresh',
-    '/auth/recover',
     '/auth/request-session-recovery',
     '/config/',
     '/surge/current',

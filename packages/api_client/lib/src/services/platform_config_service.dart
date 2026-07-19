@@ -44,8 +44,8 @@ class PlatformConfigService {
 
   /// Numeric helper for the common case (commission rate, batch hour,
   /// payout thresholds…). Returns null when the key is missing or the
-  /// value can't be parsed — callers should pair with a hard-coded
-  /// fallback rather than blocking on a config fetch.
+  /// value can't be parsed. Callers must choose behavior appropriate to the
+  /// rule; financial callers must not silently substitute a local percentage.
   Future<num?> getNumber(String key) async {
     final raw = await get(key);
     if (raw == null) return null;

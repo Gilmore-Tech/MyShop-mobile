@@ -1,15 +1,21 @@
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../app/router.dart';
+import '../../../core/di/providers.dart';
+
 // ── Screen ─────────────────────────────────────────────────────────────────────
-// PRD § 4.8.1 — Client disputes a ride fare within 2 hours of completion.
+// Client disputes a ride fare within 24 hours of ride.completedAt.
 // Admin reviews GPS trail vs optimal Google Maps route.
 // EDD: POST /v1/rides/:id/dispute
 
 class RideDisputeScreen extends ConsumerStatefulWidget {
-  const RideDisputeScreen({super.key});
+  const RideDisputeScreen({required this.rideId, super.key});
+
+  final String rideId;
 
   @override
   ConsumerState<RideDisputeScreen> createState() => _RideDisputeScreenState();
@@ -20,6 +26,10 @@ class _RideDisputeScreenState extends ConsumerState<RideDisputeScreen> {
   String? _selectedReason;
   bool _isSubmitting = false;
   bool _submitted = false;
+  bool _refundDestinationRequired = false;
+  bool _refundDestinationVerified = false;
+  String? _disputeId;
+  String? _error;
 
   static const _reasons = [
     'Route was longer than expected',
@@ -42,14 +52,77 @@ class _RideDisputeScreenState extends ConsumerState<RideDisputeScreen> {
 
   Future<void> _submit() async {
     if (!_canSubmit || _isSubmitting) return;
-    setState(() => _isSubmitting = true);
-    // TODO: POST /v1/rides/:id/dispute { reason, details }
-    await Future.delayed(const Duration(milliseconds: 900));
-    if (!mounted) return;
     setState(() {
-      _isSubmitting = false;
-      _submitted = true;
+      _isSubmitting = true;
+      _error = null;
     });
+    final selectedReason = _selectedReason!;
+    final details = _detailsController.text.trim();
+    try {
+      final result = await ref.read(rideServiceProvider).disputeRide(
+            widget.rideId,
+            reason: selectedReason == 'Other' ? details : selectedReason,
+            details: selectedReason != 'Other' && details.isNotEmpty
+                ? details
+                : null,
+          );
+      if (!mounted) return;
+      final disputeId = result['disputeId'] as String?;
+      final destinationRequired = result['refundDestinationRequired'] == true;
+      setState(() {
+        _submitted = true;
+        _disputeId = disputeId;
+        _refundDestinationRequired = destinationRequired;
+      });
+      if (destinationRequired && disputeId != null && mounted) {
+        final verified = await context.push<bool>(
+          AppRoutes.cashRefundDestinationPath(disputeId),
+        );
+        if (mounted && verified == true) {
+          setState(() => _refundDestinationVerified = true);
+        }
+      }
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      if (await _resumeExistingDispute(error)) return;
+      setState(() => _error = _disputeErrorMessage(error));
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  Future<bool> _resumeExistingDispute(ApiException error) async {
+    if (error.errorCode != 'DISPUTE_ALREADY_OPEN') return false;
+    final disputeId = error.details?['disputeId'];
+    if (disputeId is! String || disputeId.isEmpty) return false;
+    final destinationRequired =
+        error.details?['refundDestinationRequired'] == true;
+    setState(() {
+      _submitted = true;
+      _disputeId = disputeId;
+      _refundDestinationRequired = destinationRequired;
+      _error = null;
+    });
+    if (destinationRequired && mounted) {
+      final verified = await context.push<bool>(
+        AppRoutes.cashRefundDestinationPath(disputeId),
+      );
+      if (mounted && verified == true) {
+        setState(() => _refundDestinationVerified = true);
+      }
+    }
+    return true;
+  }
+
+  Future<void> _verifyRefundDestination() async {
+    final disputeId = _disputeId;
+    if (disputeId == null) return;
+    final verified = await context.push<bool>(
+      AppRoutes.cashRefundDestinationPath(disputeId),
+    );
+    if (mounted && verified == true) {
+      setState(() => _refundDestinationVerified = true);
+    }
   }
 
   @override
@@ -76,7 +149,14 @@ class _RideDisputeScreenState extends ConsumerState<RideDisputeScreen> {
         centerTitle: false,
       ),
       body: _submitted
-          ? _SuccessBody(w: w, h: h, onDone: () => context.pop())
+          ? _SuccessBody(
+              w: w,
+              h: h,
+              onDone: () => context.pop(),
+              refundDestinationRequired: _refundDestinationRequired,
+              refundDestinationVerified: _refundDestinationVerified,
+              onVerifyRefundDestination: _verifyRefundDestination,
+            )
           : Column(
               children: [
                 Expanded(
@@ -118,12 +198,25 @@ class _RideDisputeScreenState extends ConsumerState<RideDisputeScreen> {
                 Padding(
                   padding: EdgeInsets.fromLTRB(
                       w * 0.05, 0, w * 0.05, bot + h * 0.028),
-                  child: _SubmitButton(
-                    enabled: _canSubmit,
-                    loading: _isSubmitting,
-                    onTap: _submit,
-                    w: w,
-                    h: h,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_error != null) ...[
+                        Text(
+                          _error!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: MyShopColors.error),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      _SubmitButton(
+                        enabled: _canSubmit,
+                        loading: _isSubmitting,
+                        onTap: _submit,
+                        w: w,
+                        h: h,
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -158,7 +251,7 @@ class _InfoBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                    'Disputes must be raised within 2 hours of ride completion.',
+                    'Disputes must be raised within 24 hours of ride completion.',
                     style: TextStyle(
                       color: MyShopColors.error,
                       fontSize: w * 0.034,
@@ -314,8 +407,7 @@ class _PolicyNote extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(
-      'If the route exceeded the optimal path by more than 30%, '
-      'a partial refund will be issued automatically.',
+      'Our team will compare the recorded route with the expected route when reviewing your dispute.',
       style: TextStyle(
           color: MyShopColors.textSecondary, fontSize: w * 0.030, height: 1.6),
     );
@@ -378,7 +470,17 @@ class _SubmitButton extends StatelessWidget {
 class _SuccessBody extends StatelessWidget {
   final double w, h;
   final VoidCallback onDone;
-  const _SuccessBody({required this.w, required this.h, required this.onDone});
+  final bool refundDestinationRequired;
+  final bool refundDestinationVerified;
+  final VoidCallback onVerifyRefundDestination;
+  const _SuccessBody({
+    required this.w,
+    required this.h,
+    required this.onDone,
+    required this.refundDestinationRequired,
+    required this.refundDestinationVerified,
+    required this.onVerifyRefundDestination,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -406,14 +508,48 @@ class _SuccessBody extends StatelessWidget {
               )),
           SizedBox(height: h * 0.012),
           Text(
-            'Our team will review the GPS data and respond within 24 hours. '
-            'You\'ll be notified via the app.',
+            'Our team will review the GPS data. You\'ll be notified via the app after the review.',
             textAlign: TextAlign.center,
             style: TextStyle(
                 color: MyShopColors.textSecondary,
                 fontSize: w * 0.036,
                 height: 1.6),
           ),
+          if (refundDestinationRequired) ...[
+            SizedBox(height: h * 0.024),
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.all(w * 0.04),
+              decoration: BoxDecoration(
+                color: refundDestinationVerified
+                    ? MyShopColors.successLight
+                    : MyShopColors.primaryGold.withAlpha(20),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    refundDestinationVerified
+                        ? 'Refund MoMo destination verified'
+                        : 'Refund MoMo verification required',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  if (!refundDestinationVerified) ...[
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Because this ride was paid in cash, verify where any approved digital refund should be sent.',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 10),
+                    TextButton(
+                      onPressed: onVerifyRefundDestination,
+                      child: const Text('Verify refund MoMo'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
           SizedBox(height: h * 0.048),
           SizedBox(
             width: double.infinity,
@@ -436,4 +572,24 @@ class _SuccessBody extends StatelessWidget {
       ),
     );
   }
+}
+
+String _disputeErrorMessage(ApiException error) {
+  return switch (error.errorCode) {
+    'DISPUTE_WINDOW_EXPIRED' =>
+      'The 24-hour dispute window for this ride has ended.',
+    'DISPUTE_ALREADY_OPEN' =>
+      'A dispute has already been submitted for this ride.',
+    'PAYMENT_NOT_READY' ||
+    'PAYMENT_NOT_SETTLED' =>
+      'The ride payment is still being confirmed. Please try again shortly.',
+    'RIDE_NOT_COMPLETED' => 'This ride is not marked complete yet.',
+    'NOT_YOUR_RIDE' => 'This ride does not belong to this client account.',
+    _ => userSafeApiErrorMessage(
+        error,
+        fallback: "Couldn't submit the dispute. Please try again.",
+        conflictMessage:
+            'The ride or dispute state changed. Refresh and try again.',
+      ),
+  };
 }

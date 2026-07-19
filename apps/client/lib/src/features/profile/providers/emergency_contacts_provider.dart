@@ -1,5 +1,6 @@
 import 'dart:developer' as developer;
 
+import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
@@ -93,7 +94,7 @@ class EmergencyContactsNotifier extends StateNotifier<EmergencyContactsState> {
           name: 'EmergencyContacts');
       state = state.copyWith(
         isLoading: false,
-        errorMessage: 'Could not load emergency contacts',
+        errorMessage: _emergencyContactsError(e),
       );
     }
   }
@@ -151,6 +152,18 @@ class EmergencyContactsNotifier extends StateNotifier<EmergencyContactsState> {
       );
     }
   }
+}
+
+String _emergencyContactsError(Object error) {
+  if (error is ApiException &&
+      const {
+        'ROLE_OWNERSHIP_MAPPING_REQUIRED',
+        'ROLE_OWNERSHIP_MIGRATION_REQUIRED',
+        'EMERGENCY_CONTACT_ROLE_OWNERSHIP_REQUIRED',
+      }.contains(error.errorCode)) {
+    return 'Your saved contacts need a secure account review. Contact support before relying on in-app emergency alerts.';
+  }
+  return 'Could not load emergency contacts. Please try again.';
 }
 
 final emergencyContactsProvider = StateNotifierProvider.autoDispose<

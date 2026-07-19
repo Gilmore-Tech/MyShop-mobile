@@ -122,11 +122,11 @@ class _EarningsReportsScreenState extends ConsumerState<EarningsReportsScreen> {
         bytes: bytes,
         filename: _exportFilename(role),
       );
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Couldn't export report: $e"),
+        const SnackBar(
+          content: Text("Couldn't export the report. Please try again."),
           backgroundColor: MyShopColors.error,
         ),
       );
@@ -364,7 +364,7 @@ class _ReportBody extends StatelessWidget {
               child: _SummaryCard(
                   label: 'COMMISSION',
                   value: 'GHS ${_fmtGhs(report.commissionChargedPesewas)}',
-                  delta: '20% rate')),
+                  delta: 'Recorded total')),
         ]),
         const SizedBox(height: MyShopSpacing.sm),
         Row(children: [

@@ -9,6 +9,9 @@ import '../../features/profile/providers/provider_type_provider.dart';
 import '../../features/profile/providers/verification_provider.dart';
 import 'provider_status_provider.dart';
 import 'socket_provider.dart';
+import 'location_degradation_provider.dart';
+import 'provider_location_session_provider.dart';
+import 'provider_online_intent.dart';
 
 /// Bridge that watches auth state and tears down session-scoped state on
 /// logout (or any transition out of [AuthAuthenticated]).
@@ -28,6 +31,11 @@ final logoutCleanupBridgeProvider = Provider<void>((ref) {
     if (!wasAuthed || isAuthed) return;
 
     debugPrint('[Logout] tearing down session-scoped state');
+
+    // AuthController owns exact-role Online-intent deletion; this bridge owns
+    // only the in-memory identity and notice teardown.
+    ref.read(availabilityRestoreNoticeProvider.notifier).state = null;
+    ref.read(currentProviderOnlineIntentIdentityProvider.notifier).state = null;
 
     // Tear down the socket so the old JWT isn't used for any further
     // emits. Invalidating disposes the SocketService via ref.onDispose
@@ -49,6 +57,8 @@ final logoutCleanupBridgeProvider = Provider<void>((ref) {
     // Reset online status — the next user starts offline on the home
     // screen regardless of what the previous user had set.
     ref.read(providerStatusProvider.notifier).goOffline();
+    ref.read(providerLocationSessionProvider.notifier).clear();
+    ref.invalidate(providerLocationDegradationProvider);
 
     // Reset role to the default. The next sign-in's onAuthenticated
     // hook will overwrite this with the chosen role; resetting first

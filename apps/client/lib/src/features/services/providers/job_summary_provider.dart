@@ -46,10 +46,11 @@ class JobSummaryArtisan {
 }
 
 // ── Job Summary Data ──────────────────────────────────────────────────────────
-// API: GET /v1/jobs/:id  (after dual confirmation / auto-finalization)
+// API: GET /v1/jobs/:id after authoritative completion.
 // Money fields are in pesewas (int) per EDD § Money Storage rules.
-// totalPaidPesewas is the agreed price including any approved supplement;
-// the 20% commission is deducted from the artisan payout — not added here.
+// totalPaidPesewas is the job total including any approved supplement. It is
+// not provider-payout authority; commission is snapshotted from admin-owned
+// configuration and settlement status must come from the payment API.
 
 class JobSummaryData {
   final String jobId;
@@ -225,17 +226,19 @@ class RatingNotifier extends StateNotifier<RatingState> {
           return 'The job is still being finalized. Wait a moment and try '
               'again — you can also rate later from your Activity.';
         }
-        return 'This job is still in "$status" — ratings only open once '
-            'the job is fully completed. Try again once the artisan and '
-            'payment have both settled.';
+        return 'This job is not fully completed yet. Wait for the artisan '
+            'and payment steps to finish, then try again.';
       case 'ALREADY_RATED':
         return "You've already rated this job.";
       case 'RATING_WINDOW_CLOSED':
         return 'The rating window for this job has closed.';
       default:
-        return e.message.isNotEmpty
-            ? e.message
-            : "Couldn't submit your rating. Please try again.";
+        return userSafeApiErrorMessage(
+          e,
+          fallback: "Couldn't submit your rating. Please try again.",
+          conflictMessage:
+              'This rating state changed. Refresh the job and try again.',
+        );
     }
   }
 }

@@ -201,7 +201,7 @@ class EarningsReportPdf {
       _SummaryCellData(
         label: 'Commission',
         value: 'GHS ${_fmtGhs(report.commissionChargedPesewas)}',
-        sub: '20% rate',
+        sub: 'Recorded total',
       ),
       // Tips cell removed — no tip surface in the rider app yet, so the
       // backend's `tipsEarnedPesewas` is always 0 for rides.

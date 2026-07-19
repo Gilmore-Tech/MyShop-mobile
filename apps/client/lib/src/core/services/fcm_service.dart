@@ -72,7 +72,7 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
     '[FCM-bg] message arrived: '
     'type=${message.data[NotificationPayload.keyType]} '
     'hasNotificationField=${message.notification != null} '
-    'data=${message.data}',
+    'keys=${message.data.keys.toList()}',
   );
 
   if (await _handleCallEndedFromRemote(message, source: 'background-fcm')) {
@@ -102,7 +102,7 @@ Future<bool> _showIncomingCallFromRemote(
 
   final callId = message.data[NotificationPayload.keyCallId]?.toString();
   if (callId == null || callId.isEmpty) {
-    debugPrint('[FCM] $source call_incoming missing callId: ${message.data}');
+    debugPrint('[FCM] $source call_incoming missing required call identifier');
     return true;
   }
 
@@ -158,7 +158,7 @@ Future<bool> _handleCallEndedFromRemote(
 
   final callId = message.data[NotificationPayload.keyCallId]?.toString();
   if (callId == null || callId.isEmpty) {
-    debugPrint('[FCM] $source call_ended missing callId: ${message.data}');
+    debugPrint('[FCM] $source call_ended missing required call identifier');
     return true;
   }
 
@@ -218,7 +218,7 @@ Future<void> _renderFromRemote(
   Duration? timeoutAfter;
   if (type == NotificationPayload.typeCallIncoming) {
     if (callId == null || callId.isEmpty) {
-      debugPrint('[FCM] call_incoming missing callId: $data');
+      debugPrint('[FCM] call_incoming missing required call identifier');
       return;
     }
     timeoutAfter = callTimeout ?? _remainingCallTimeout(data);
@@ -411,7 +411,7 @@ class FcmService {
     _foregroundMessageSub ??= FirebaseMessaging.onMessage.listen((
       message,
     ) async {
-      debugPrint('[FCM] foreground message: ${message.data}');
+      debugPrint('[FCM] foreground message received');
       if (await _handleCallEndedFromRemote(
         message,
         source: 'foreground-fcm',
@@ -450,7 +450,7 @@ class FcmService {
     _openedMessageSub ??= FirebaseMessaging.onMessageOpenedApp.listen((
       message,
     ) {
-      debugPrint('[FCM] opened from background: ${message.data}');
+      debugPrint('[FCM] app opened from a background notification');
       final payload = Map<String, dynamic>.from(message.data);
       _markNotificationRead(payload);
       onTapMessage?.call(payload);
@@ -459,7 +459,7 @@ class FcmService {
     // Cold-start: app was terminated, launched by a push tap.
     final initialMessage = await _fcm.getInitialMessage();
     if (initialMessage != null) {
-      debugPrint('[FCM] initial message: ${initialMessage.data}');
+      debugPrint('[FCM] initial notification received');
       final payload = Map<String, dynamic>.from(initialMessage.data);
       _markNotificationRead(payload);
       // Defer so the router is mounted before we try to navigate.

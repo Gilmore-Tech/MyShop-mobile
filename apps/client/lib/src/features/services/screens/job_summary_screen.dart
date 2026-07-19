@@ -5,9 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/job_summary_provider.dart';
 
 // ── Screen ────────────────────────────────────────────────────────────────────
-// Shown after dual confirmation or 3-hour auto-finalization (PRD 4.8.2 / beta).
-// Presents transaction receipt, instant payout confirmation, and the blind
-// 24-hour rating form (EDD § Rating Module).
+// Shown after the backend authoritatively reports job completion. Presents the
+// job receipt and rating form without inventing a provider-settlement state.
 // API: GET /v1/jobs/:id  |  POST /v1/ratings
 
 class JobSummaryScreen extends ConsumerWidget {
@@ -77,8 +76,8 @@ class _JobSummaryBody extends ConsumerWidget {
                 _SubmitButton(jobId: summary.jobId, w: w, h: h),
                 SizedBox(height: h * 0.019),
 
-                // ── Beta guarantee footer ──
-                _BetaGuaranteeFooter(w: w, h: h),
+                // ── Approved dispute-window footer ──
+                _DisputeWindowFooter(w: w, h: h),
                 SizedBox(height: h * 0.019),
               ],
             ),
@@ -198,7 +197,7 @@ class _HeroSection extends StatelessWidget {
         SizedBox(height: h * 0.006),
 
         Text(
-          'Funds have been safely released to the provider',
+          'Your completed job receipt is ready',
           style: TextStyle(
             fontSize: w * 0.033,
             fontWeight: FontWeight.w400,
@@ -434,7 +433,7 @@ class _TransactionSummaryCard extends StatelessWidget {
           ),
           SizedBox(height: h * 0.017),
 
-          // ── Instant payout info box ──
+          // ── Provider-settlement truth box ──
           Container(
             padding: EdgeInsets.symmetric(
               horizontal: w * 0.031,
@@ -447,7 +446,7 @@ class _TransactionSummaryCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.bolt_rounded,
+                Icon(Icons.receipt_long_outlined,
                     size: w * 0.041, color: MyShopColors.primaryGold),
                 SizedBox(width: w * 0.018),
                 Expanded(
@@ -455,7 +454,7 @@ class _TransactionSummaryCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Instant Payout Successful',
+                        'Receipt recorded',
                         style: TextStyle(
                           fontSize: w * 0.033,
                           fontWeight: FontWeight.w700,
@@ -464,8 +463,9 @@ class _TransactionSummaryCard extends StatelessWidget {
                       ),
                       SizedBox(height: h * 0.004),
                       Text(
-                        "Funds arrived in ${a.firstName}'s MoMo wallet "
-                        'instantly.'
+                        'This receipt shows the job total. It does not confirm '
+                        "that ${a.firstName}'s provider payout has been "
+                        'transferred.'
                         '${summary.tipIncluded ? ' No commission was charged on the artisan\'s tip.' : ''}',
                         style: TextStyle(
                           fontSize: w * 0.028,
@@ -788,14 +788,13 @@ class _SubmitButton extends ConsumerWidget {
   }
 }
 
-// ── Beta Guarantee Footer ─────────────────────────────────────────────────────
-// Beta: jobs auto-finalize after the 3-hour safe period if no issues are
-// reported. Dispute centre remains open for 48 hours after auto-finalization.
+// ── Dispute Window Footer ─────────────────────────────────────────────────────
+// The approved 24-hour clock begins at client-confirmed completion.
 
-class _BetaGuaranteeFooter extends StatelessWidget {
+class _DisputeWindowFooter extends StatelessWidget {
   final double w;
   final double h;
-  const _BetaGuaranteeFooter({required this.w, required this.h});
+  const _DisputeWindowFooter({required this.w, required this.h});
 
   @override
   Widget build(BuildContext context) {
@@ -825,7 +824,7 @@ class _BetaGuaranteeFooter extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'BETA GUARANTEE',
+                      'DISPUTE WINDOW',
                       style: TextStyle(
                         fontSize: w * 0.023,
                         fontWeight: FontWeight.w900,
@@ -835,9 +834,8 @@ class _BetaGuaranteeFooter extends StatelessWidget {
                     ),
                     SizedBox(height: h * 0.005),
                     Text(
-                      'This job was automatically finalized as no issues '
-                      'were reported during the 3-hour safe period. Our '
-                      'dispute center remains available for 48 hours.',
+                      'If you need to dispute this job, use the in-app dispute '
+                      'flow within 24 hours after you confirmed completion.',
                       style: TextStyle(
                         fontSize: w * 0.028,
                         fontWeight: FontWeight.w400,

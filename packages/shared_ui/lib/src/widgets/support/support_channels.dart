@@ -1,6 +1,6 @@
 import 'package:url_launcher/url_launcher.dart';
 
-/// Helpers for launching the four support contact channels.
+/// Helpers for launching reviewed support contact channels.
 ///
 /// Used by [MyShopContactSupportSheet]; exposed publicly so per-app code
 /// (e.g. a payout-locked banner with "Contact support" inline) can hit
@@ -15,13 +15,23 @@ class SupportChannels {
     required String number,
     String? message,
   }) async {
-    final digits = number.replaceAll(RegExp(r'\D'), '');
-    if (digits.isEmpty) return false;
+    final digits = validWhatsAppNumber(number);
+    if (digits == null) return false;
     final uri = Uri.parse(
       'https://wa.me/$digits'
       '${message != null ? '?text=${Uri.encodeComponent(message)}' : ''}',
     );
     return _launch(uri);
+  }
+
+  /// Returns an E.164 WhatsApp destination without `+`, or null for malformed
+  /// placeholder-looking input. Do not silently repair spaces, a domestic
+  /// trunk `0`, or other punctuation into a different live destination.
+  static String? validWhatsAppNumber(String? number) {
+    if (number == null || !RegExp(r'^[1-9]\d{7,14}$').hasMatch(number)) {
+      return null;
+    }
+    return number;
   }
 
   /// `tel:` deeplink — Android dials immediately on tap, iOS prompts.

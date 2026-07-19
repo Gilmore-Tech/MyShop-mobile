@@ -384,8 +384,8 @@ class _BidStatusBannerState extends State<BidStatusBanner> {
       icon: Icons.cancel_outlined,
       pillLabel: 'Cancelled',
       title: 'Job cancelled',
-      body: 'This job was cancelled. If you were already assigned, any '
-          'cancellation fee the client owed has been credited to your wallet.',
+      body: 'This job was cancelled. Automatic cancellation fees, transfers, '
+          'and penalties are temporarily paused.',
     );
   }
 

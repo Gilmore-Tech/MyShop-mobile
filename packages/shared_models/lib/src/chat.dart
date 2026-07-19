@@ -226,16 +226,16 @@ class ChatReadReceipt {
     return ChatReadReceipt(
       messageId: json['messageId'] as String,
       readAt: _parseDate(json['readAt']) ?? DateTime.now().toUtc(),
-      readBy: json['readBy'] as String? ?? '',
+      readBy: (json['readByRoleAccountId'] ?? json['readBy']) as String? ?? '',
     );
   }
 
   final String messageId;
   final DateTime readAt;
 
-  /// User id of the reader. Used for multi-device dedupe — one of the
-  /// reader's devices flips first, the others get notified via this event
-  /// and skip re-emitting.
+  /// Public role-account id of the reader. `readBy` is retained as the local
+  /// property name for source compatibility; the private phone-auth identity
+  /// must never be sent to a peer.
   final String readBy;
 }
 
@@ -263,7 +263,7 @@ class ChatTypingUpdate {
       bookingType: ChatBookingType.fromWire(json['bookingType'] as String?) ??
           ChatBookingType.ride,
       bookingId: json['bookingId'] as String? ?? '',
-      userId: json['userId'] as String? ?? '',
+      userId: (json['roleAccountId'] ?? json['userId']) as String? ?? '',
       isTyping: json['isTyping'] as bool? ?? false,
     );
   }
@@ -271,10 +271,9 @@ class ChatTypingUpdate {
   final ChatBookingType bookingType;
   final String bookingId;
 
-  /// User id of the typist. Mobile filters out updates where this matches
-  /// the local user (multi-device defensive — the backend already excludes
-  /// the sending socket but a second device on the same account would
-  /// still receive the broadcast).
+  /// Public role-account id of the typist. `userId` is retained as the local
+  /// property name for source compatibility. Mobile filters out updates where
+  /// this matches the current exact role account (multi-device defensive).
   final String userId;
 
   final bool isTyping;

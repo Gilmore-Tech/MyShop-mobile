@@ -107,17 +107,51 @@ class RealAuthService implements AuthService {
 
   @override
   Future<void> requestSessionRecovery({
+    required String challenge,
     required String phone,
     required String deviceId,
+    required String role,
   }) async {
     try {
       await _dio.post(
         '/auth/request-session-recovery',
         data: SessionRecoveryRequest(
+          challenge: challenge,
           phone: phone,
           deviceId: deviceId,
+          role: role,
         ).toJson(),
       );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  @override
+  Future<void> requestRoleAccountRecoveryOtp(
+    RequestRoleAccountRecoveryOtpRequest request,
+  ) async {
+    try {
+      await _dio.post(
+        '/auth/role-account-recovery/request-otp',
+        data: request.toJson(),
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  @override
+  Future<RoleAccountRecoveryResult> verifyRoleAccountRecoveryOtp(
+    VerifyRoleAccountRecoveryOtpRequest request,
+  ) async {
+    try {
+      final response = await _dio.post(
+        '/auth/role-account-recovery/verify-otp',
+        data: request.toJson(),
+      );
+      final data = _unwrap(response) as Map<String, dynamic>;
+      return RoleAccountRecoveryResult.fromJson(data);
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
     }

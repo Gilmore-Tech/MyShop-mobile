@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../../core/constants/support_contacts.dart';
+
 import '../providers/payment_provider.dart';
 
 // PRD § 7.2 / 4.6 — payment receipt artifact.
@@ -46,9 +48,9 @@ Future<Uint8List> buildPaymentReceiptPdf(PaymentConfirmation c) async {
           _sectionLabel('NOTES'),
           pw.SizedBox(height: 8),
           pw.Text(
-            'Funds are held in escrow and released to the provider after dual '
-            'confirmation. Keep this receipt for your records — it is the '
-            'reference for any dispute or refund request.',
+            'This receipt confirms the client payment record, not provider '
+            'payout transfer. Keep it for your records — it is the reference '
+            'for any dispute or refund request.',
             style: const pw.TextStyle(
               fontSize: 10,
               color: _textSecondary,
@@ -273,7 +275,7 @@ pw.Widget _footer(PaymentConfirmation c) {
       ),
       pw.SizedBox(height: 2),
       pw.Text(
-        'Support: support@myshop.com.gh   ·   myshop.com.gh',
+        'Support: $clientSupportEmail   ·   myshop.com.gh',
         style: const pw.TextStyle(fontSize: 8, color: _textSecondary),
       ),
     ],

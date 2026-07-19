@@ -149,9 +149,12 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
       case 'INVALID_AMOUNT':
         return 'Enter an amount greater than 0.';
       default:
-        return e.message.isNotEmpty
-            ? e.message
-            : "Couldn't start the payment. Please try again.";
+        return userSafeApiErrorMessage(
+          e,
+          fallback: "Couldn't start the payment. Please try again.",
+          conflictMessage:
+              'The commission balance changed. Refresh it before trying again.',
+        );
     }
   }
 

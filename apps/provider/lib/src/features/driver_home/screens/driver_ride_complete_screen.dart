@@ -34,9 +34,6 @@ class DriverRideCompleteScreen extends ConsumerStatefulWidget {
 
 class _DriverRideCompleteScreenState
     extends ConsumerState<DriverRideCompleteScreen> {
-  /// Platform commission rate (PRD: 20% on every transaction).
-  static const _commissionRate = 0.20;
-
   /// One-shot guard so we only auto-show the rate-passenger sheet once
   /// per landing on the screen — without it a rebuild during the sheet's
   /// open animation would queue another sheet underneath.
@@ -65,8 +62,6 @@ class _DriverRideCompleteScreenState
     final total = ride.totalPaidPesewas ??
         ride.finalFarePesewas ??
         ride.estimatedFarePesewas;
-    final commission = (total * _commissionRate).round();
-    final net = total - commission;
     // Backend overwrites the estimated distance/duration columns with the
     // ACTUAL values (computed from the GPS trail + start→complete time)
     // when the ride flips to `completed`, so reading them directly here
@@ -94,8 +89,9 @@ class _DriverRideCompleteScreenState
       taxesPesewas: 0,
       promoPesewas: 0,
       totalFarePesewas: total,
-      commissionPesewas: commission,
-      netEarningsPesewas: net,
+      commissionPesewas: ride.commissionPesewas,
+      commissionRatePercent: ride.commissionRatePercent,
+      netEarningsPesewas: ride.netPayoutPesewas,
       payoutMethod: 'MoMo Payout',
       payoutStatus: 'PROCESSING',
     );
@@ -385,7 +381,7 @@ class _DriverRideCompleteScreenState
                 const Icon(Icons.info_outline,
                     size: 16, color: MyShopColors.primaryGold),
                 const SizedBox(width: 8),
-                Text('Platform Commission (20%)',
+                Text(s.commissionLabel,
                     style: MyShopTypography.body1.copyWith(fontSize: 13)),
                 const Spacer(),
                 Text(s.commissionDisplay,
@@ -397,7 +393,9 @@ class _DriverRideCompleteScreenState
               ]),
               const SizedBox(height: 4),
               Text(
-                  'Commission supports local artisan verification and 24/7 police-check monitoring.',
+                  s.commissionPesewas == null
+                      ? 'The authoritative commission is still being recorded. Check your earnings shortly.'
+                      : 'This is the rate and amount recorded for this trip.',
                   style: MyShopTypography.caption.copyWith(fontSize: 10)),
             ]),
           ),
@@ -408,17 +406,7 @@ class _DriverRideCompleteScreenState
             const Icon(Icons.credit_card,
                 size: 18, color: MyShopColors.textSecondary),
             const SizedBox(width: 8),
-            Text('Cash', style: MyShopTypography.body1),
-            const Spacer(),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                  color: MyShopColors.successLight,
-                  borderRadius: BorderRadius.circular(6)),
-              child: Text('SUCCESS',
-                  style: MyShopTypography.overline
-                      .copyWith(fontSize: 9, color: MyShopColors.success)),
-            ),
+            Text(s.paymentMethod, style: MyShopTypography.body1),
           ]),
           const SizedBox(height: MyShopSpacing.md),
 

@@ -16,17 +16,16 @@ import '../../profile/providers/provider_type_provider.dart';
 /// 1. Driver/artisan presses + HOLDS the big red button for 3 seconds.
 ///    Accidental taps are filtered out — only a deliberate hold opens
 ///    the confirm dialog.
-/// 2. Confirm dialog → fires `POST /v1/emergency` with the active
-///    booking + GPS, then deeplinks to `tel:191` so the OS dialer takes
-///    over and the user can talk to police. The platform alert fires
+/// 2. The completed hold fires `POST /v1/emergency` with any available active
+///    booking and GPS context, then opens `tel:191`. The user must still place the call. The alert fires
 ///    FIRST because handing off to the dialer can freeze the Flutter
 ///    isolate momentarily — losing the alert at that instant defeats
 ///    the whole feature.
 ///
 /// `bookingType` is derived from the active role: drivers send `'ride'`,
 /// artisans send `'job'`. The active booking id comes from the role's
-/// in-flight notifier; if neither is set we still dial 191 but the
-/// platform alert is skipped (with a SnackBar explaining why).
+/// in-flight notifier. A missing booking or GPS fix never suppresses the
+/// platform alert.
 class ProviderEmergencyScreen extends ConsumerStatefulWidget {
   const ProviderEmergencyScreen({super.key});
 
@@ -41,6 +40,9 @@ class _ProviderEmergencyScreenState
   late final AnimationController _holdCtrl;
   bool _sosTriggered = false;
   bool _isSending = false;
+  bool _platformAlertSent = false;
+  bool _policeDialOpened = false;
+  int? _contactsNotified;
 
   @override
   void initState() {
@@ -66,7 +68,7 @@ class _ProviderEmergencyScreenState
   /// dialog. The hold itself is the deliberate gesture that filters out
   /// pocket-taps; making the user tap a second "Send SOS" button before
   /// anything actually fires is a real risk in a real emergency. Fire
-  /// the platform alert + 191 dial immediately.
+  /// the platform alert and open the 191 dialer immediately.
   void _onHoldComplete() {
     _holdCtrl.reset();
     _triggerSos();
@@ -83,9 +85,12 @@ class _ProviderEmergencyScreenState
     final bookingId = isDriver
         ? ref.read(activeRideProvider).ride?.id
         : ref.read(activeJobProvider).job?.id;
+    var platformAlertSent = false;
+    var policeDialOpened = false;
+    int? contactsNotified;
 
     // GPS — geolocator is fast on a fresh fix; if it errors we still
-    // dial 191 below. Use 5s timeout so we don't hang the user.
+    // open the 191 dialer below. Use 5s timeout so we don't hang the user.
     Position? pos;
     try {
       pos = await Geolocator.getCurrentPosition(
@@ -98,39 +103,41 @@ class _ProviderEmergencyScreenState
       pos = await Geolocator.getLastKnownPosition();
     }
 
-    if (bookingId != null && pos != null) {
-      try {
-        await ref.read(safetyServiceProvider).triggerEmergency(
-              bookingType: bookingType,
-              bookingId: bookingId,
-              latitude: pos.latitude,
-              longitude: pos.longitude,
-            );
-      } on ApiException catch (e) {
-        if (mounted) {
-          messenger.showSnackBar(
-            SnackBar(content: Text('Platform alert failed: ${e.message}')),
+    try {
+      final result = await ref.read(safetyServiceProvider).triggerEmergency(
+            bookingType: bookingId == null ? null : bookingType,
+            bookingId: bookingId,
+            latitude: pos?.latitude,
+            longitude: pos?.longitude,
           );
-        }
-      } catch (_) {
-        if (mounted) {
-          messenger.showSnackBar(
-            const SnackBar(content: Text("Couldn't send platform alert.")),
-          );
-        }
+      platformAlertSent = true;
+      contactsNotified = (result['contactsNotified'] as num?)?.toInt();
+    } on ApiException catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              userSafeApiErrorMessage(
+                e,
+                fallback:
+                    "Couldn't send the platform alert. Continue with the emergency call.",
+              ),
+            ),
+          ),
+        );
       }
-    } else if (mounted) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text(
-              'No active booking or GPS fix — calling 191 only, no platform alert.'),
-        ),
-      );
+    } catch (_) {
+      if (mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text("Couldn't send platform alert.")),
+        );
+      }
     }
 
     final dialUri = Uri.parse('tel:191');
     if (await canLaunchUrl(dialUri)) {
-      await launchUrl(dialUri, mode: LaunchMode.externalApplication);
+      policeDialOpened =
+          await launchUrl(dialUri, mode: LaunchMode.externalApplication);
     } else if (mounted) {
       messenger.showSnackBar(
         const SnackBar(content: Text("Couldn't open the phone dialer.")),
@@ -141,6 +148,9 @@ class _ProviderEmergencyScreenState
     setState(() {
       _isSending = false;
       _sosTriggered = true;
+      _platformAlertSent = platformAlertSent;
+      _policeDialOpened = policeDialOpened;
+      _contactsNotified = contactsNotified;
     });
   }
 
@@ -181,7 +191,8 @@ class _ProviderEmergencyScreenState
               const SizedBox(height: 8),
               const Text(
                 'We will share your live location with MyShop support and '
-                'open the phone dialer for Ghana Police Service (191).',
+                'open the Ghana Police Service 191 dialer. You must still tap '
+                'Call in the phone app.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 13,
@@ -265,20 +276,33 @@ class _ProviderEmergencyScreenState
                 Container(
                   padding: const EdgeInsets.all(MyShopSpacing.md),
                   decoration: BoxDecoration(
-                    color: MyShopColors.success.withValues(alpha: 0.1),
+                    color: (_platformAlertSent
+                            ? MyShopColors.success
+                            : MyShopColors.error)
+                        .withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                        color: MyShopColors.success.withValues(alpha: 0.4)),
+                      color: (_platformAlertSent
+                              ? MyShopColors.success
+                              : MyShopColors.error)
+                          .withValues(alpha: 0.4),
+                    ),
                   ),
                   child: Row(
-                    children: const [
-                      Icon(Icons.check_circle_rounded,
-                          color: MyShopColors.success),
-                      SizedBox(width: 12),
+                    children: [
+                      Icon(
+                        _platformAlertSent
+                            ? Icons.check_circle_rounded
+                            : Icons.warning_amber_rounded,
+                        color: _platformAlertSent
+                            ? MyShopColors.success
+                            : MyShopColors.error,
+                      ),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'SOS sent. Stay on the line with police if connected.',
-                          style: TextStyle(
+                          _sosStatusText(),
+                          style: const TextStyle(
                             color: MyShopColors.textPrimary,
                             fontWeight: FontWeight.w600,
                           ),
@@ -293,5 +317,22 @@ class _ProviderEmergencyScreenState
         ),
       ),
     );
+  }
+
+  String _sosStatusText() {
+    final dialStatus = _policeDialOpened
+        ? 'The police dialer was opened.'
+        : 'The police dialer did not open; call 191 manually.';
+    if (!_platformAlertSent) {
+      return 'The MyShop platform alert was not confirmed. $dialStatus';
+    }
+    if (_contactsNotified == null) {
+      return 'MyShop recorded your SOS. Contact-provider status was not returned. $dialStatus';
+    }
+    if (_contactsNotified == 0) {
+      return 'MyShop recorded your SOS. No contact SMS was accepted by the messaging provider. $dialStatus';
+    }
+    final label = _contactsNotified == 1 ? 'contact' : 'contacts';
+    return 'MyShop recorded your SOS. The messaging provider accepted an SMS request for $_contactsNotified emergency $label; handset delivery is not guaranteed. $dialStatus';
   }
 }

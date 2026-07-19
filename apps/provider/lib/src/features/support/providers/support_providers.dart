@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:api_client/api_client.dart';
@@ -30,6 +31,18 @@ final helpServiceProvider = Provider<HelpService>((ref) {
 
 final legalServiceProvider = Provider<LegalService>((ref) {
   return LegalService(ref.watch(dioProvider));
+});
+
+final legalConsentStatusProvider =
+    FutureProvider<LegalConsentStatus>((ref) async {
+  ref.keepAlive();
+  final status = await ref.read(legalServiceProvider).getConsentStatus();
+  Timer? refresh;
+  if (status.requiresConsent && status.hasActiveWork) {
+    refresh = Timer(const Duration(seconds: 60), ref.invalidateSelf);
+  }
+  ref.onDispose(() => refresh?.cancel());
+  return status;
 });
 
 final helpCategoriesProvider =

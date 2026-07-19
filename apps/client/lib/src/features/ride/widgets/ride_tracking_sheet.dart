@@ -579,8 +579,9 @@ class _SafetyNotice extends StatelessWidget {
             SizedBox(width: w * 0.021),
             Expanded(
               child: Text(
-                'Your safety is our priority. In-app recording is active for this trip. '
-                'Share your live location with family for extra peace of mind.',
+                'Your safety is our priority. Use SOS to record an emergency alert '
+                'and open the phone dialer. Share your live location with family '
+                'for extra peace of mind.',
                 style: TextStyle(
                   fontSize: w * 0.028,
                   fontWeight: FontWeight.w400,

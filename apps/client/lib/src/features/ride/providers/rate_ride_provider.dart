@@ -109,8 +109,10 @@ class RideRatingNotifier extends StateNotifier<RideRatingState> {
         stars: state.selectedStars,
         comment: state.note.isNotEmpty ? state.note : null,
       );
-      developer.log('Rating submitted for ride $rideId — $result',
-          name: 'RideRating');
+      developer.log(
+        'Rating submission accepted: revealed=${result['revealed'] == true}',
+        name: 'RideRating',
+      );
       // Only bust the cached ride receipt when the backend confirms
       // mutual reveal — `revealed=true` means the driver already rated
       // (or the 24h window elapsed) and the rating average now reflects
@@ -154,9 +156,12 @@ class RideRatingNotifier extends StateNotifier<RideRatingState> {
       case 'RATING_WINDOW_CLOSED':
         return 'The rating window for this trip has closed.';
       default:
-        return e.message.isNotEmpty
-            ? e.message
-            : "Couldn't submit your rating. Please try again.";
+        return userSafeApiErrorMessage(
+          e,
+          fallback: "Couldn't submit your rating. Please try again.",
+          conflictMessage:
+              'This rating state changed. Refresh the trip and try again.',
+        );
     }
   }
 

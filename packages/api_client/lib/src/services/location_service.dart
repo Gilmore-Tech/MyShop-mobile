@@ -2,6 +2,16 @@ import 'package:dio/dio.dart';
 
 import '../models/api_exception.dart';
 
+enum LocationUnavailableReason {
+  permissionLost('permission_lost'),
+  serviceDisabled('service_disabled'),
+  backgroundPermissionLost('background_permission_lost'),
+  gpsUnavailable('gps_unavailable');
+
+  const LocationUnavailableReason(this.wireValue);
+  final String wireValue;
+}
+
 /// One GPS fix captured by the provider app.
 ///
 /// Driver batches use this shape so active-trip movement can be persisted even
@@ -10,6 +20,8 @@ class DriverLocationSample {
   const DriverLocationSample({
     required this.latitude,
     required this.longitude,
+    required this.accuracyMeters,
+    required this.sampleSequence,
     this.recordedAt,
     this.heading,
     this.speedKmh,
@@ -17,6 +29,8 @@ class DriverLocationSample {
 
   final double latitude;
   final double longitude;
+  final double accuracyMeters;
+  final int sampleSequence;
   final DateTime? recordedAt;
   final double? heading;
   final double? speedKmh;
@@ -25,6 +39,8 @@ class DriverLocationSample {
     return <String, dynamic>{
       'latitude': latitude,
       'longitude': longitude,
+      'accuracyMeters': accuracyMeters,
+      'sampleSequence': sampleSequence,
       if (recordedAt != null) 'recordedAt': recordedAt!.toIso8601String(),
       if (heading != null) 'heading': heading,
       if (speedKmh != null) 'speedKmh': speedKmh,
@@ -61,6 +77,10 @@ class LocationService {
   Future<Map<String, dynamic>> updateArtisanLocation({
     required double latitude,
     required double longitude,
+    required double accuracyMeters,
+    required DateTime recordedAt,
+    String? onlineSessionId,
+    int? sampleSequence,
     String status = 'online',
   }) async {
     try {
@@ -69,6 +89,10 @@ class LocationService {
         data: {
           'latitude': latitude,
           'longitude': longitude,
+          'accuracyMeters': accuracyMeters,
+          'recordedAt': recordedAt.toIso8601String(),
+          if (onlineSessionId != null) 'onlineSessionId': onlineSessionId,
+          if (sampleSequence != null) 'sampleSequence': sampleSequence,
           'status': status,
         },
       );
@@ -84,6 +108,11 @@ class LocationService {
   Future<Map<String, dynamic>> updateDriverLocation({
     required double latitude,
     required double longitude,
+    required double accuracyMeters,
+    required DateTime recordedAt,
+    String? onlineSessionId,
+    int? sampleSequence,
+    String? vehicleId,
     String status = 'online',
   }) async {
     try {
@@ -92,6 +121,11 @@ class LocationService {
         data: {
           'latitude': latitude,
           'longitude': longitude,
+          'accuracyMeters': accuracyMeters,
+          'recordedAt': recordedAt.toIso8601String(),
+          if (onlineSessionId != null) 'onlineSessionId': onlineSessionId,
+          if (sampleSequence != null) 'sampleSequence': sampleSequence,
+          if (vehicleId != null) 'vehicleId': vehicleId,
           'status': status,
         },
       );
@@ -108,13 +142,31 @@ class LocationService {
   /// trip trail, preserving distance/fare continuity while the screen is off.
   Future<Map<String, dynamic>> updateDriverLocationBatch({
     required List<DriverLocationSample> samples,
+    required String onlineSessionId,
   }) async {
     try {
       final response = await _dio.post(
         '/location/driver/batch',
         data: {
+          'onlineSessionId': onlineSessionId,
           'samples': samples.map((sample) => sample.toJson()).toList(),
         },
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// POST /location/unavailable — durably removes this provider from new
+  /// dispatch while allowing already-active work to follow the server policy.
+  Future<Map<String, dynamic>> reportUnavailable(
+    LocationUnavailableReason reason,
+  ) async {
+    try {
+      final response = await _dio.post(
+        '/location/unavailable',
+        data: {'reason': reason.wireValue},
       );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {

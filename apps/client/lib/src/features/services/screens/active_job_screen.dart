@@ -116,9 +116,9 @@ List<_TLStep> _buildSteps(ActiveJobData job) {
             : 'Processing Payment',
         status: phase == ActiveJobPhase.completed ? isCompleted : isActive,
         description: phase == ActiveJobPhase.completed
-            ? 'Payment released to ${job.artisan.firstName}. '
-                'Tap into Activity to leave a rating.'
-            : "We're settling the payment with ${job.artisan.firstName}.",
+            ? 'Job completion is confirmed. Provider settlement is tracked '
+                'separately. Tap into Activity to leave a rating.'
+            : "We're confirming the payment record for ${job.artisan.firstName}.",
       ),
   ];
 }
@@ -188,7 +188,7 @@ class _ActiveJobBody extends ConsumerWidget {
                 SizedBox(height: h * 0.014),
                 _CostCard(job: job, w: w, h: h),
                 SizedBox(height: h * 0.014),
-                _SafetyCard(w: w, h: h),
+                _SafetyCard(jobId: job.jobId, w: w, h: h),
                 SizedBox(height: h * 0.028),
               ],
             ),
@@ -1170,53 +1170,69 @@ class _CostRow extends StatelessWidget {
 // ── Safety Card ───────────────────────────────────────────────────────────────
 
 class _SafetyCard extends StatelessWidget {
+  final String jobId;
   final double w;
   final double h;
-  const _SafetyCard({required this.w, required this.h});
+  const _SafetyCard({
+    required this.jobId,
+    required this.w,
+    required this.h,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: w * 0.041),
-      padding: EdgeInsets.all(w * 0.041),
-      decoration: BoxDecoration(
-        color: MyShopColors.surfaceWhite,
-        borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: MyShopColors.divider),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => context.push(
+        AppRoutes.safetyEmergencyForBooking(
+          bookingType: 'job',
+          bookingId: jobId,
+        ),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.shield_outlined,
-              size: w * 0.051, color: MyShopColors.success),
-          SizedBox(width: w * 0.026),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Safety First',
-                  style: TextStyle(
-                    fontSize: w * 0.036,
-                    fontWeight: FontWeight.w700,
-                    color: MyShopColors.textPrimary,
+      child: Container(
+        margin: EdgeInsets.symmetric(horizontal: w * 0.041),
+        padding: EdgeInsets.all(w * 0.041),
+        decoration: BoxDecoration(
+          color: MyShopColors.surfaceWhite,
+          borderRadius: BorderRadius.circular(w * 0.031),
+          border: Border.all(color: MyShopColors.divider),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.shield_outlined,
+                size: w * 0.051, color: MyShopColors.success),
+            SizedBox(width: w * 0.026),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Safety & SOS',
+                    style: TextStyle(
+                      fontSize: w * 0.036,
+                      fontWeight: FontWeight.w700,
+                      color: MyShopColors.textPrimary,
+                    ),
                   ),
-                ),
-                SizedBox(height: h * 0.005),
-                Text(
-                  'For your protection, only pay through the app. All artisans '
-                  'are background-verified and monitored via GPS.',
-                  style: TextStyle(
-                    fontSize: w * 0.028,
-                    fontWeight: FontWeight.w400,
-                    color: MyShopColors.textSecondary,
-                    height: 1.4,
+                  SizedBox(height: h * 0.005),
+                  Text(
+                    'Only pay through the app. Tap here to raise an SOS linked '
+                    'to this job and open the Ghana Police 191 dialer.',
+                    style: TextStyle(
+                      fontSize: w * 0.028,
+                      fontWeight: FontWeight.w400,
+                      color: MyShopColors.textSecondary,
+                      height: 1.4,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+            SizedBox(width: w * 0.02),
+            const Icon(Icons.sos_rounded, color: MyShopColors.error),
+          ],
+        ),
       ),
     );
   }
@@ -1314,9 +1330,9 @@ class _BottomBar extends ConsumerWidget {
         ActiveJobPhase.awaitingApproval =>
           'Review the work, then confirm to pay and release escrow.',
         ActiveJobPhase.pendingPayment =>
-          "We're processing your payment — this usually takes a few seconds.",
+          "We're confirming your payment. Keep this screen open.",
         ActiveJobPhase.completed =>
-          'Job complete. Payment released to the artisan.',
+          'Job complete. Provider settlement status is tracked separately.',
       };
 
   bool _isCtaEnabled(ActiveJobPhase phase) => switch (phase) {

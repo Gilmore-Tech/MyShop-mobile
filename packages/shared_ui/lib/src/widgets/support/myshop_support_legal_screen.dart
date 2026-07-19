@@ -57,7 +57,7 @@ class MyShopSupportLegalScreen extends StatelessWidget {
                     icon: Icons.chat_bubble_outline,
                     iconColor: MyShopColors.textOnPrimary,
                     title: 'Contact Support',
-                    subtitle: 'WhatsApp, call, email, or open a ticket',
+                    subtitle: 'Email us or open a tracked ticket',
                     background: MyShopColors.primaryGoldLight,
                     border: MyShopColors.primaryGold,
                     onTap: config.onOpenContactSheet,
