@@ -7,6 +7,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/current_user_provider.dart';
 import '../providers/provider_type_provider.dart';
+import '../providers/provider_vehicle_provider.dart';
 import '../providers/verification_provider.dart';
 
 /// Documents & Verification — adapts to the active provider role.
@@ -27,6 +28,8 @@ class DocumentsVerificationScreen extends ConsumerStatefulWidget {
 
 class _DocumentsVerificationScreenState
     extends ConsumerState<DocumentsVerificationScreen> {
+  String? _selectedVehicleId;
+
   @override
   void initState() {
     super.initState();
@@ -40,6 +43,7 @@ class _DocumentsVerificationScreenState
 
   Future<void> _refresh() async {
     ref.invalidate(verificationStatusProvider);
+    ref.invalidate(providerVehiclesProvider);
     await ref.read(verificationStatusProvider.future);
   }
 
@@ -62,7 +66,7 @@ class _DocumentsVerificationScreenState
       final notifier = ref.read(documentUploadProvider.notifier);
       for (final d in data.documents) {
         if (d.isCurrent && (d.isPendingReview || d.isApproved)) {
-          notifier.clearUploaded(d.documentType);
+          notifier.clearUploaded(d.documentType, vehicleId: d.vehicleId);
         }
       }
     });
@@ -72,52 +76,56 @@ class _DocumentsVerificationScreenState
     // a refresh is in flight, so pull-to-refresh / entry-refresh don't blank the
     // rows back to their fallbacks.
     final providerType = isArtisan ? 'artisan' : 'driver';
-    final isProviderFullyApproved =
-        verificationAsync.valueOrNull?.isProviderFullyApproved(providerType) ??
-            (isArtisan
-                ? user?.artisanProfile?.verificationStatus == 'approved'
-                : user?.driverProfile?.verificationStatus == 'approved');
     final backendDocs =
         verificationAsync.valueOrNull?.documents ?? const <DocumentInfo>[];
     final roleDocs = backendDocs
         .where((d) => d.providerType == providerType)
         .toList(growable: false);
 
-    final requiredDocs = isArtisan
-        ? _buildArtisanRequired(
-            user,
-            roleDocs,
-            uploadState,
-            isProviderFullyApproved,
+    final vehicleAsync = isArtisan ? null : ref.watch(providerVehiclesProvider);
+    final vehicleData = vehicleAsync?.valueOrNull;
+    final selectableVehicles = vehicleData?.vehicles
+            .where(
+              (vehicle) =>
+                  vehicle.approvalStatus !=
+                  ProviderVehicleApprovalStatus.retired,
+            )
+            .toList(growable: false) ??
+        const <ProviderVehicle>[];
+    final selectedVehicleId = selectableVehicles.any(
+      (vehicle) => vehicle.id == _selectedVehicleId,
+    )
+        ? _selectedVehicleId
+        : selectableVehicles.any(
+            (vehicle) => vehicle.id == vehicleData?.activeVehicleId,
           )
+            ? vehicleData?.activeVehicleId
+            : selectableVehicles.firstOrNull?.id;
+
+    final requiredDocs = isArtisan
+        ? _buildArtisanRequired(user, roleDocs, uploadState)
         : _buildDriverRequired(
             user,
             roleDocs,
             uploadState,
-            isProviderFullyApproved,
+            selectedVehicleId,
           );
-    // Artisans must provide the Ghana Card PLUS any one of these trade
-    // credentials (not all of them).
+    // Artisans must provide the Ghana Card plus exactly one trade credential.
     final oneOfDocs = isArtisan
-        ? _buildArtisanOneOf(
-            roleDocs,
-            uploadState,
-            isProviderFullyApproved,
-          )
+        ? _buildArtisanOneOf(roleDocs, uploadState)
         : const <_DocItem>[];
     final optionalDocs = isArtisan
-        ? _buildArtisanOptional(
-            roleDocs,
-            uploadState,
-            isProviderFullyApproved,
-          )
+        ? _buildArtisanOptional(roleDocs, uploadState)
         : const <_DocItem>[];
 
     final uploadedRequired =
         requiredDocs.where((d) => d.status != _DocStatus.missing).length;
-    final oneOfSatisfied = oneOfDocs.any((d) => d.status != _DocStatus.missing);
-    // The "any one of" group counts as a single requirement towards progress:
-    // satisfied as soon as one credential is uploaded.
+    final selectedCredentialCount =
+        oneOfDocs.where((d) => d.status != _DocStatus.missing).length;
+    final oneOfSatisfied = selectedCredentialCount == 1;
+    final oneOfConflict = selectedCredentialCount > 1;
+    // The mutually exclusive group counts as one requirement only when exactly
+    // one credential is present.
     final docsCompleted =
         uploadedRequired + (oneOfDocs.isEmpty ? 0 : (oneOfSatisfied ? 1 : 0));
     final docsTotal = requiredDocs.length + (oneOfDocs.isEmpty ? 0 : 1);
@@ -148,6 +156,19 @@ class _DocumentsVerificationScreenState
                       docsTotal: docsTotal,
                       isArtisan: isArtisan,
                     ),
+                    if (!isArtisan) ...[
+                      const SizedBox(height: MyShopSpacing.md),
+                      _VehicleDocumentSelector(
+                        vehicles: selectableVehicles,
+                        selectedVehicleId: selectedVehicleId,
+                        loading: vehicleAsync?.isLoading == true,
+                        hasError: vehicleAsync?.hasError == true,
+                        onRetry: () => ref.invalidate(providerVehiclesProvider),
+                        onChanged: (value) {
+                          setState(() => _selectedVehicleId = value);
+                        },
+                      ),
+                    ],
                     const SizedBox(height: MyShopSpacing.lg),
                     Row(
                       children: [
@@ -190,7 +211,7 @@ class _DocumentsVerificationScreenState
                           Expanded(
                             child: _SectionLabel(
                               icon: Icons.rule,
-                              label: 'PROVIDE ANY ONE',
+                              label: 'PROVIDE EXACTLY ONE',
                               iconColor: MyShopColors.error,
                             ),
                           ),
@@ -206,7 +227,11 @@ class _DocumentsVerificationScreenState
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
-                              oneOfSatisfied ? 'Done' : 'Pick one',
+                              oneOfSatisfied
+                                  ? 'Done'
+                                  : oneOfConflict
+                                      ? 'Keep one only'
+                                      : 'Pick one',
                               style: MyShopTypography.body2.copyWith(
                                 color: oneOfSatisfied
                                     ? MyShopColors.success
@@ -219,8 +244,8 @@ class _DocumentsVerificationScreenState
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Upload your Trade Certificate OR Business Registration — '
-                        'whichever you have. One is enough.',
+                        'Upload either your Trade Certificate or Business Registration — '
+                        'never both.',
                         style: MyShopTypography.body2.copyWith(height: 1.5),
                       ),
                       const SizedBox(height: MyShopSpacing.sm),
@@ -237,7 +262,7 @@ class _DocumentsVerificationScreenState
                           Expanded(
                             child: _SectionLabel(
                               icon: Icons.add_circle_outline,
-                              label: 'OPTIONAL DOCUMENTS',
+                              label: 'OPTIONAL PROFILE & DOCUMENTS',
                               iconColor: MyShopColors.textSecondary,
                             ),
                           ),
@@ -251,7 +276,7 @@ class _DocumentsVerificationScreenState
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
-                              'For SMEs',
+                              'Does not block online',
                               style: MyShopTypography.body2.copyWith(
                                 color: MyShopColors.textSecondary,
                                 fontWeight: FontWeight.w800,
@@ -262,7 +287,7 @@ class _DocumentsVerificationScreenState
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Add these to unlock larger contracts and stand out to enterprise clients.',
+                        'These items are reviewed independently but are not required to go online.',
                         style: MyShopTypography.body2.copyWith(height: 1.5),
                       ),
                       const SizedBox(height: MyShopSpacing.sm),
@@ -290,7 +315,7 @@ class _DocumentsVerificationScreenState
     AuthUser? user,
     List<DocumentInfo> docs,
     DocumentUploadState uploadState,
-    bool isProviderFullyApproved,
+    String? vehicleId,
   ) {
     final dp = user?.driverProfile;
     return [
@@ -302,7 +327,6 @@ class _DocumentsVerificationScreenState
         title: 'Profile Photo',
         fallbackMeta: 'Upload a clear face photo',
         fallbackStatus: _DocStatus.missing,
-        isProviderFullyApproved: isProviderFullyApproved,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -316,7 +340,6 @@ class _DocumentsVerificationScreenState
                 ? 'Licence number saved — upload document'
                 : 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
-        isProviderFullyApproved: isProviderFullyApproved,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -326,17 +349,17 @@ class _DocumentsVerificationScreenState
         title: 'Roadworthiness Certificate',
         fallbackMeta: 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
-        isProviderFullyApproved: isProviderFullyApproved,
+        vehicleId: vehicleId,
       ),
       _docItemFromBackend(
         docs: docs,
         uploadState: uploadState,
-        type: DocumentType.vehicleRegistration,
+        type: DocumentType.vehicleInsurance,
         icon: Icons.shield_outlined,
-        title: 'Vehicle Registration',
+        title: 'Insurance Certificate',
         fallbackMeta: 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
-        isProviderFullyApproved: isProviderFullyApproved,
+        vehicleId: vehicleId,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -348,31 +371,20 @@ class _DocumentsVerificationScreenState
             ? 'Identity verified — upload document'
             : 'Tap to upload front & back',
         fallbackStatus: _DocStatus.missing,
-        isProviderFullyApproved: isProviderFullyApproved,
       ),
     ];
   }
 
   /// Strictly mandatory artisan documents — only the Ghana Card. The trade
-  /// credential is a separate "provide any one" group (see [_buildArtisanOneOf]).
+  /// credential is a separate "provide exactly one" group (see
+  /// [_buildArtisanOneOf]).
   static List<_DocItem> _buildArtisanRequired(
     AuthUser? user,
     List<DocumentInfo> docs,
     DocumentUploadState uploadState,
-    bool isProviderFullyApproved,
   ) {
     final ap = user?.artisanProfile;
     return [
-      _docItemFromBackend(
-        docs: docs,
-        uploadState: uploadState,
-        type: DocumentType.profilePhoto,
-        icon: Icons.account_circle_outlined,
-        title: 'Profile Photo',
-        fallbackMeta: 'Upload a clear face photo',
-        fallbackStatus: _DocStatus.missing,
-        isProviderFullyApproved: isProviderFullyApproved,
-      ),
       _docItemFromBackend(
         docs: docs,
         uploadState: uploadState,
@@ -383,17 +395,15 @@ class _DocumentsVerificationScreenState
             ? 'Identity verified — upload document'
             : 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
-        isProviderFullyApproved: isProviderFullyApproved,
       ),
     ];
   }
 
-  /// The trade credential — an artisan must supply **any one** of these
-  /// alongside the Ghana Card (not all of them).
+  /// The trade credential — an artisan must supply exactly one of these
+  /// alongside the Ghana Card.
   static List<_DocItem> _buildArtisanOneOf(
     List<DocumentInfo> docs,
     DocumentUploadState uploadState,
-    bool isProviderFullyApproved,
   ) {
     return [
       _docItemFromBackend(
@@ -404,7 +414,6 @@ class _DocumentsVerificationScreenState
         title: 'Business Registration Certificate',
         fallbackMeta: 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
-        isProviderFullyApproved: isProviderFullyApproved,
       ),
       _docItemFromBackend(
         docs: docs,
@@ -414,7 +423,6 @@ class _DocumentsVerificationScreenState
         title: 'Trade Certificate',
         fallbackMeta: 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
-        isProviderFullyApproved: isProviderFullyApproved,
       ),
     ];
   }
@@ -422,9 +430,17 @@ class _DocumentsVerificationScreenState
   static List<_DocItem> _buildArtisanOptional(
     List<DocumentInfo> docs,
     DocumentUploadState uploadState,
-    bool isProviderFullyApproved,
   ) {
     return [
+      _docItemFromBackend(
+        docs: docs,
+        uploadState: uploadState,
+        type: DocumentType.profilePhoto,
+        icon: Icons.account_circle_outlined,
+        title: 'Profile Photo',
+        fallbackMeta: 'Optional · reviewed independently',
+        fallbackStatus: _DocStatus.missing,
+      ),
       _docItemFromBackend(
         docs: docs,
         uploadState: uploadState,
@@ -433,7 +449,6 @@ class _DocumentsVerificationScreenState
         title: 'National ID',
         fallbackMeta: 'Recommended for VAT-eligible jobs',
         fallbackStatus: _DocStatus.missing,
-        isProviderFullyApproved: isProviderFullyApproved,
       ),
       const _DocItem(
         icon: Icons.health_and_safety_outlined,
@@ -455,8 +470,9 @@ class _DocumentsVerificationScreenState
   /// Merge backend document info with a fallback for when this active role has
   /// no document row yet. Profile fields such as a typed licence number or a
   /// Ghana Card KYC flag are not document approvals. A document may only render
-  /// as approved when its backend row is approved AND the provider role has
-  /// passed the final RM approval stage.
+  /// render as approved only when its own backend row is independently approved.
+  /// Aggregate provider eligibility is a separate state and must never rewrite
+  /// an administrator's document-level decision.
   static _DocItem _docItemFromBackend({
     required List<DocumentInfo> docs,
     required DocumentUploadState uploadState,
@@ -465,50 +481,49 @@ class _DocumentsVerificationScreenState
     required String title,
     required String fallbackMeta,
     required _DocStatus fallbackStatus,
-    required bool isProviderFullyApproved,
+    String? vehicleId,
   }) {
+    final uploadKey = documentUploadKey(type, vehicleId: vehicleId);
     // Check if just uploaded in this session
-    if (uploadState.uploaded[type.value] == true) {
+    if (uploadState.uploaded[uploadKey] == true) {
       return _DocItem(
         icon: icon,
         title: title,
         meta: 'Uploaded — pending review',
         status: _DocStatus.uploaded,
         documentType: type,
+        vehicleId: vehicleId,
       );
     }
 
     // Check if uploading right now
-    if (uploadState.uploading[type.value] == true) {
+    if (uploadState.uploading[uploadKey] == true) {
       return _DocItem(
         icon: icon,
         title: title,
         meta: 'Uploading...',
         status: _DocStatus.uploading,
         documentType: type,
+        vehicleId: vehicleId,
       );
     }
 
     // Check backend documents list
     final doc = docs
-        .where((d) => d.documentType == type.value && d.isCurrent)
+        .where(
+          (d) =>
+              d.documentType == type.value &&
+              d.isCurrent &&
+              (!type.isVehicleScoped || d.vehicleId == vehicleId),
+        )
         .firstOrNull;
 
     if (doc != null) {
       if (doc.isApproved) {
-        if (type != DocumentType.profilePhoto && !isProviderFullyApproved) {
-          return _DocItem(
-            icon: icon,
-            title: title,
-            meta: 'In review — awaiting final verification',
-            status: _DocStatus.pendingReview,
-            documentType: type,
-          );
-        }
-
         final expiry = doc.expiresAtDate;
-        // An approved document can still lapse — surface an actionable
-        // re-upload state once it has expired (or is about to).
+        // An approved document can still lapse. Provider-controlled upload is
+        // deliberately closed until the exact GMT invalidity boundary; an
+        // expiring-soon row is therefore a notice, not a renewal control.
         if (doc.isExpired()) {
           return _DocItem(
             icon: icon,
@@ -518,15 +533,18 @@ class _DocumentsVerificationScreenState
                 : 'Expired — tap to re-upload',
             status: _DocStatus.expired,
             documentType: type,
+            vehicleId: vehicleId,
           );
         }
         if (doc.isExpiringSoon()) {
           return _DocItem(
             icon: icon,
             title: title,
-            meta: 'Expires ${_formatDate(expiry!)} — tap to renew',
+            meta:
+                'Valid through ${_formatDate(expiry!)} · upload opens after expiry',
             status: _DocStatus.expiringSoon,
             documentType: type,
+            vehicleId: vehicleId,
           );
         }
         return _DocItem(
@@ -539,6 +557,7 @@ class _DocumentsVerificationScreenState
                   : 'Approved',
           status: _DocStatus.approved,
           documentType: type,
+          vehicleId: vehicleId,
         );
       } else if (doc.isRejected) {
         return _DocItem(
@@ -547,6 +566,7 @@ class _DocumentsVerificationScreenState
           meta: doc.rejectionReason ?? 'Rejected — please re-upload',
           status: _DocStatus.rejected,
           documentType: type,
+          vehicleId: vehicleId,
         );
       } else if (doc.isPendingReview) {
         return _DocItem(
@@ -555,6 +575,7 @@ class _DocumentsVerificationScreenState
           meta: 'Pending admin review',
           status: _DocStatus.pendingReview,
           documentType: type,
+          vehicleId: vehicleId,
         );
       } else {
         // uploaded — file not yet in storage
@@ -564,6 +585,7 @@ class _DocumentsVerificationScreenState
           meta: 'Processing upload…',
           status: _DocStatus.uploaded,
           documentType: type,
+          vehicleId: vehicleId,
         );
       }
     }
@@ -575,6 +597,7 @@ class _DocumentsVerificationScreenState
       meta: fallbackMeta,
       status: fallbackStatus,
       documentType: type,
+      vehicleId: vehicleId,
     );
   }
 
@@ -714,6 +737,80 @@ class _ProgressCard extends StatelessWidget {
   }
 }
 
+class _VehicleDocumentSelector extends StatelessWidget {
+  const _VehicleDocumentSelector({
+    required this.vehicles,
+    required this.selectedVehicleId,
+    required this.loading,
+    required this.hasError,
+    required this.onRetry,
+    required this.onChanged,
+  });
+
+  final List<ProviderVehicle> vehicles;
+  final String? selectedVehicleId;
+  final bool loading;
+  final bool hasError;
+  final VoidCallback onRetry;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      decoration: BoxDecoration(
+        color: MyShopColors.infoLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: MyShopColors.info.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Vehicle for roadworthiness and insurance',
+              style: MyShopTypography.body1),
+          const SizedBox(height: MyShopSpacing.xs),
+          Text(
+            'These two documents are reviewed separately for each vehicle.',
+            style: MyShopTypography.body2,
+          ),
+          const SizedBox(height: MyShopSpacing.sm),
+          if (loading)
+            const LinearProgressIndicator(color: MyShopColors.primaryGold)
+          else if (hasError)
+            TextButton(onPressed: onRetry, child: const Text('Retry vehicles'))
+          else if (vehicles.isEmpty)
+            Text(
+              'Add a vehicle before uploading its documents.',
+              style: MyShopTypography.body2.copyWith(
+                color: MyShopColors.error,
+              ),
+            )
+          else
+            DropdownButtonFormField<String>(
+              initialValue: selectedVehicleId,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                filled: true,
+                fillColor: MyShopColors.surfaceWhite,
+              ),
+              items: vehicles
+                  .map(
+                    (vehicle) => DropdownMenuItem(
+                      value: vehicle.id,
+                      child: Text('${vehicle.displayName} · ${vehicle.plate}'),
+                    ),
+                  )
+                  .toList(growable: false),
+              onChanged: onChanged,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Section label
 // ─────────────────────────────────────────────────────────────────────────────
@@ -780,6 +877,7 @@ class _DocItem {
     required this.meta,
     required this.status,
     this.documentType,
+    this.vehicleId,
   });
 
   final IconData icon;
@@ -787,6 +885,7 @@ class _DocItem {
   final String meta;
   final _DocStatus status;
   final DocumentType? documentType;
+  final String? vehicleId;
 }
 
 class _DocsCard extends StatelessWidget {
@@ -837,19 +936,21 @@ class _DocRow extends StatelessWidget {
   final String providerType;
   final WidgetRef ref;
 
-  bool get _canUpload =>
-      item.status == _DocStatus.missing ||
-      item.status == _DocStatus.rejected ||
-      item.status == _DocStatus.expired ||
-      item.status == _DocStatus.expiringSoon;
+  bool get _canUpload {
+    final type = item.documentType;
+    if (type == null || (type.isVehicleScoped && item.vehicleId == null)) {
+      return false;
+    }
+    return item.status == _DocStatus.missing ||
+        item.status == _DocStatus.rejected ||
+        item.status == _DocStatus.expired;
+  }
 
-  /// A re-upload replaces an existing document (rejected/expired/expiring),
+  /// A re-upload replaces an existing document (rejected or expired),
   /// so we confirm before discarding it. A first-time upload goes straight
   /// to the picker.
   bool get _isReupload =>
-      item.status == _DocStatus.rejected ||
-      item.status == _DocStatus.expired ||
-      item.status == _DocStatus.expiringSoon;
+      item.status == _DocStatus.rejected || item.status == _DocStatus.expired;
 
   Future<void> _handleUpload(BuildContext context) async {
     if (item.documentType == null) return;
@@ -862,9 +963,9 @@ class _DocRow extends StatelessWidget {
     final file = await MediaPickerHelper.pickDocumentWithCamera(context);
     if (file == null || !context.mounted) return;
 
-    // Documents that carry a printed expiry date (licence, roadworthiness,
-    // Ghana Card, business registration) must supply it so the platform can
-    // prompt a renewal before they lapse.
+    // Documents that carry a printed expiry date (driver's licence,
+    // roadworthiness and insurance) must supply it so the platform can prompt
+    // renewal before they lapse.
     String? expiresAt;
     if (item.documentType!.requiresExpiry) {
       final expiry = await _pickExpiryDate(context);
@@ -877,13 +978,17 @@ class _DocRow extends StatelessWidget {
         );
         return;
       }
-      expiresAt = expiry.toIso8601String();
+      // The API contract is a calendar date, not a timestamp. Keeping it
+      // date-only also prevents device timezone conversion from shifting the
+      // printed expiry day.
+      expiresAt = DateFormat('yyyy-MM-dd').format(expiry);
     }
 
     final error = await ref.read(documentUploadProvider.notifier).upload(
           providerType: providerType,
           documentType: item.documentType!,
           file: file,
+          vehicleId: item.vehicleId,
           expiresAt: expiresAt,
         );
 
@@ -1095,7 +1200,7 @@ class _StatusPill extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Confirms replacing an existing document before opening the file picker.
-/// Shown when re-uploading a rejected, expired, or soon-to-expire document.
+/// Shown when re-uploading a rejected or expired document.
 class _ReplaceDocSheet extends StatelessWidget {
   const _ReplaceDocSheet({required this.title});
 

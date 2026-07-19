@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_models/shared_models.dart';
 
 import '../../profile/providers/provider_type_provider.dart';
+import '../../support/providers/support_providers.dart';
 
 /// Tracks which role the user picked at signup; null until role picker.
 final pendingRoleProvider = StateProvider<ProviderType?>((_) => null);
@@ -11,9 +13,19 @@ final pendingRoleProvider = StateProvider<ProviderType?>((_) => null);
 /// navigating to the next step.
 final showRegistrationErrorsProvider = StateProvider<bool>((_) => false);
 
-/// Whether the user has accepted the privacy policy and terms of service
-/// on the review step. Must be `true` before "Create Account" is allowed.
-final policyAcceptedProvider = StateProvider<bool>((_) => false);
+final termsAcceptedProvider = StateProvider<bool>((_) => false);
+final privacyAcceptedProvider = StateProvider<bool>((_) => false);
+
+/// Both exact documents must be accepted independently.
+final policyAcceptedProvider = Provider<bool>((ref) =>
+    ref.watch(termsAcceptedProvider) && ref.watch(privacyAcceptedProvider));
+
+final registrationLegalDocumentsProvider =
+    FutureProvider.family<RequiredLegalDocuments, ProviderType>((ref, role) {
+  return ref.watch(legalServiceProvider).getRequired(
+        role: role == ProviderType.driver ? 'driver' : 'artisan',
+      );
+});
 
 /// Driver registration draft.
 ///

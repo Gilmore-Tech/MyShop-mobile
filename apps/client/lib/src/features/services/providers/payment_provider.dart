@@ -173,27 +173,15 @@ String? _findPaystackReference(Object? node) {
   return null;
 }
 
-/// User-facing prompt that came back from Paystack ("Enter the OTP sent
-/// to your phone", "Authorize on your phone", etc.). Surfaced under the
-/// OTP sheet title and used as the snackbar text on failures.
-String? _findDisplayText(Object? node) {
-  if (node is Map) {
-    for (final key in const [
-      'displayText',
-      'display_text',
-      'paystackMessage',
-      'paystack_message',
-      'message',
-    ]) {
-      final v = node[key];
-      if (v is String && v.isNotEmpty) return v;
-    }
-    for (final v in node.values) {
-      final hit = _findDisplayText(v);
-      if (hit != null) return hit;
-    }
-  }
-  return null;
+String? _safePaymentPrompt(String? chargeStatus) {
+  return switch (chargeStatus) {
+    'send_otp' => 'Enter the payment code sent to your phone.',
+    'pay_offline' ||
+    'pending' ||
+    'processing' =>
+      'Approve the payment prompt on your phone, then wait for confirmation.',
+    _ => null,
+  };
 }
 
 // ── Payment Method ────────────────────────────────────────────────────────────
@@ -335,7 +323,8 @@ class PaymentSummary {
 
 // ── Payment Confirmation ──────────────────────────────────────────────────────
 // Populated from the POST /v1/payments/initiate response on success.
-// PRD 7.2: confirms funds are escrowed; released on dual confirmation.
+// This confirms the client payment record only. Provider settlement remains
+// separate server authority and must not be inferred from this response.
 
 class PaymentConfirmation {
   /// Job UUID — needed by the success dialog so its "Rate & Review
@@ -652,14 +641,11 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     required String bookingId,
   }) async {
     try {
-      final res = await _paymentService.abandonByBooking(
+      await _paymentService.abandonByBooking(
         bookingType: bookingType,
         bookingId: bookingId,
       );
-      developer.log(
-        'abandonByBooking($bookingType:$bookingId) → $res',
-        name: 'Payment',
-      );
+      developer.log('abandonByBooking completed', name: 'Payment');
     } on ApiException catch (e) {
       developer.log(
         'abandonByBooking failed: ${e.errorCode} — ${e.message}',
@@ -723,9 +709,13 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         );
         state = state.copyWith(
           phase: PaymentPhase.idle,
-          errorMessage: e.message.isNotEmpty
-              ? e.message
-              : "We couldn't confirm cash with the artisan. Please try again.",
+          errorMessage: userSafeApiErrorMessage(
+            e,
+            fallback:
+                "We couldn't confirm cash with the artisan. Please try again.",
+            conflictMessage:
+                'The job payment state changed. Refresh the job and check its status.',
+          ),
         );
         return;
       } catch (e) {
@@ -778,19 +768,17 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         momoPhone: method.requiresMomoPhone ? momoPhone!.trim() : null,
         cardToken: method.isCard ? cardToken : null,
       );
-      // Log the raw response so it's visible in the dev console. Paystack
-      // responses differ across channels (MoMo / card / saved auth) and
-      // across backend wrappers — keep this around until the flow is
-      // battle-tested on prod data.
-      developer.log(
-        'initiatePayment response: $result',
-        name: 'Payment',
-      );
       final authUrl = _findCheckoutUrl(result);
       final paymentId = _findPaymentId(result);
       final paystackReference = _findPaystackReference(result);
       final chargeStatus = _findChargeStatus(result);
-      final displayText = _findDisplayText(result);
+      final displayText = _safePaymentPrompt(chargeStatus);
+      developer.log(
+        'initiatePayment accepted: hasPaymentId=${paymentId != null} '
+        'hasReference=${paystackReference != null} '
+        'hasCheckout=${authUrl != null} status=${chargeStatus ?? 'pending'}',
+        name: 'Payment',
+      );
 
       // Persist the paymentId as soon as we have one — survives an app
       // kill mid-flow so Retry on next launch can hit /abandon-by-booking
@@ -838,11 +826,16 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
           paymentId: paymentId,
           paystackReference: paystackReference,
         );
+        _startSettlementPolling(
+          paymentId: paymentId,
+          jobId: jobId,
+          summary: summary,
+        );
         await confirmCompletion(jobId: jobId, summary: summary);
         return;
       }
 
-      // ── failed / abandoned → real failure; surface Paystack's text
+      // ── failed / abandoned → real failure with stable app-owned copy
       if (chargeStatus == 'failed' || chargeStatus == 'abandoned') {
         await _pendingStore.clear(
           bookingType: _kBookingType,
@@ -850,8 +843,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         );
         state = state.copyWith(
           phase: PaymentPhase.failed,
-          errorMessage:
-              displayText ?? 'The payment was declined. Please try again.',
+          errorMessage: 'The payment was declined. Please try again.',
           paymentId: paymentId,
           paystackReference: paystackReference,
         );
@@ -1007,15 +999,15 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
             "in a minute or two, the previous attempt will time out and "
             'you can retry.';
       case 'PAYMENT_GATEWAY_ERROR':
-        // The backend currently surfaces every Paystack error with the
-        // top-level message string ("Charge attempted"), which is unhelpful
-        // — the real reason lives in the inner `data.message`. Until the
-        // backend forwards that, give the user the most likely cause.
-        return 'The payment was declined. If you are testing, use one of '
-            "Paystack's test mobile-money numbers (e.g. 0551234987 for "
-            'MTN). Otherwise check the number and balance and try again.';
+        return 'The payment was declined. Check the number and balance '
+            'and try again.';
       default:
-        return e.message;
+        return userSafeApiErrorMessage(
+          e,
+          fallback: "Couldn't start the payment. Please try again.",
+          conflictMessage:
+              'The payment state changed. Refresh the job before trying again.',
+        );
     }
   }
 
@@ -1028,16 +1020,36 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   }) async {
     if (state.phase == PaymentPhase.settled) return;
     try {
-      await _jobService.confirmJobCompletion(jobId);
+      var completion = await _jobService.confirmJobCompletion(jobId);
+      if (!_isAuthoritativeCompletedJob(completion, jobId)) {
+        completion = await _jobService.getJob(jobId);
+      }
+      if (!_isAuthoritativeCompletedJob(completion, jobId)) {
+        state = state.copyWith(
+          errorMessage:
+              "We couldn't confirm completion yet. Keep the job open while we check again.",
+        );
+        return;
+      }
     } on ApiException catch (e) {
       // PAYMENT_NOT_SETTLED means the socket event was a false start — keep
       // waiting. Any other code is a real error worth surfacing.
       if (e.errorCode == 'PAYMENT_NOT_SETTLED') return;
-      state = state.copyWith(errorMessage: e.message);
+      state = state.copyWith(
+        errorMessage: userSafeApiErrorMessage(
+          e,
+          fallback:
+              "We couldn't confirm completion yet. Keep the job open and try again.",
+          conflictMessage:
+              'The job payment state changed. Refresh and check its status.',
+        ),
+      );
       return;
     } catch (_) {
-      // Treat unexpected errors as non-fatal — the socket will drive us
-      // back through here on the next status tick.
+      state = state.copyWith(
+        errorMessage:
+            "We couldn't confirm completion yet. Keep the job open while we check again.",
+      );
       return;
     }
     _stopSettlementPolling();
@@ -1049,8 +1061,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       phase: PaymentPhase.settled,
       confirmation: PaymentConfirmation(
         jobId: summary.jobId,
-        transactionRef: state.paymentId ??
-            '#TXN-${summary.jobId.hashCode.abs() % 9000 + 1000}',
+        transactionRef: state.paymentId ?? 'Available in Activity',
         artisanName: summary.artisanName,
         jobTitle: summary.jobTitle,
         amountPesewas: summary.totalPesewas,
@@ -1067,7 +1078,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   /// Branches on the response:
   ///   - `send_otp` again       → wrong OTP, stay on the sheet
   ///   - `success`              → settle inline via PATCH /confirm
-  ///   - `failed` / `abandoned` → mark failed, surface displayText
+  ///   - `failed` / `abandoned` → mark failed with stable copy
   ///   - anything else          → wait on the webhook (awaitingSettlement)
   ///
   /// And on error codes (per the backend contract):
@@ -1090,16 +1101,21 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     try {
       final result =
           await _paymentService.submitOtp(reference: reference, otp: otp);
-      developer.log('submitOtp response: $result', name: 'Payment');
       final chargeStatus = _findChargeStatus(result);
-      final displayText = _findDisplayText(result);
+      final displayText = _safePaymentPrompt(chargeStatus);
+      developer.log(
+        'submitOtp accepted: status=${chargeStatus ?? 'pending'} '
+        'hasCheckout=${_findCheckoutUrl(result) != null}',
+        name: 'Payment',
+      );
 
       switch (chargeStatus) {
         case 'send_otp':
           // Paystack asked again — typically means the user fat-fingered.
           state = state.copyWith(
             phase: PaymentPhase.awaitingOtp,
-            errorMessage: displayText ?? "That OTP didn't work. Try again.",
+            errorMessage:
+                'That payment code was not accepted. Check it and try again.',
             displayText: displayText,
           );
           return;
@@ -1116,8 +1132,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
           );
           state = state.copyWith(
             phase: PaymentPhase.failed,
-            errorMessage:
-                displayText ?? 'The payment was declined. Please try again.',
+            errorMessage: 'The payment was declined. Please try again.',
             clearAuthorizationUrl: true,
           );
           return;
@@ -1143,12 +1158,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       );
       switch (e.errorCode) {
         case 'OTP_SUBMISSION_FAILED':
-          // Backend's catch-all for Paystack rejecting the OTP — most
-          // commonly a wrong code. Keep the sheet open with the inline
-          // gateway message.
           state = state.copyWith(
             phase: PaymentPhase.awaitingOtp,
-            errorMessage: e.message,
+            errorMessage:
+                'That payment code was not accepted. Check it and try again.',
           );
           return;
         case 'PAYMENT_NOT_AWAITING_OTP':
@@ -1295,8 +1308,12 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     );
     try {
       final result = await _paymentService.retryPayment(pid);
-      developer.log('retryPayment(job=$jobId pid=$pid) → $result',
-          name: 'Payment');
+      developer.log(
+        'job payment retry accepted: '
+        'status=${_findChargeStatus(result) ?? 'pending'} '
+        'hasCheckout=${_findCheckoutUrl(result) != null}',
+        name: 'Payment',
+      );
       // Backend flips the payment to processing and re-sends the MoMo
       // prompt — same downstream state as a fresh /initiate that landed
       // on `pay_offline`. Poll for settlement.
@@ -1329,7 +1346,12 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       }
       state = state.copyWith(
         phase: PaymentPhase.failed,
-        errorMessage: e.message,
+        errorMessage: userSafeApiErrorMessage(
+          e,
+          fallback: 'Could not retry the payment. Please try again.',
+          conflictMessage:
+              'The payment state changed. Refresh the job before trying again.',
+        ),
       );
     } catch (e) {
       developer.log('job retryPayment crashed: $e',
@@ -1341,42 +1363,26 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     }
   }
 
-  /// Manual "I've completed the payment" tap from the awaiting-settlement
-  /// screen. Bypasses the backend confirmation step and flips straight to
-  /// `settled` with a [PaymentConfirmation] so the success dialog fires —
-  /// the user has just told us, in person, that the USSD prompt was
-  /// approved on their phone. We trust them.
-  ///
-  /// Use case: the Paystack webhook chain (or socket) didn't surface the
-  /// settlement to us — common in dev when no public tunnel is set up,
-  /// and occasionally in prod when the webhook is delayed. The polling
-  /// fallback would eventually catch it, but waiting up to 5 minutes
-  /// staring at a spinner is a bad UX. This is the user's escape hatch.
-  ///
-  /// Caveat: this does not run PATCH /jobs/:id/confirm. If the webhook
-  /// is genuinely never going to land, the backend job stays in
-  /// `pending_payment` until something else nudges it. The receipt the
-  /// user sees is real (their money moved on Paystack's side); the
-  /// cleanup of the booking record is the part we can't guarantee here.
-  void markPaymentSettledLocally({required PaymentSummary summary}) {
-    if (state.phase == PaymentPhase.settled) return;
-    _stopSettlementPolling();
-    unawaited(_pendingStore.clear(
-      bookingType: _kBookingType,
-      bookingId: summary.jobId,
-    ));
-    state = state.copyWith(
-      phase: PaymentPhase.settled,
-      confirmation: PaymentConfirmation(
-        jobId: summary.jobId,
-        transactionRef: state.paymentId ??
-            '#TXN-${summary.jobId.hashCode.abs() % 9000 + 1000}',
-        artisanName: summary.artisanName,
-        jobTitle: summary.jobTitle,
-        amountPesewas: summary.totalPesewas,
-        method: state.selectedMethod,
-        dateTimeLabel: _formatNow(),
-      ),
+  /// User-triggered refresh for a delayed digital payment. This performs the
+  /// same authoritative status read as the background poll; it can never
+  /// create a receipt from local state or from the client's assertion.
+  Future<void> checkPaymentStatusNow({required PaymentSummary summary}) async {
+    if (state.phase != PaymentPhase.awaitingSettlement ||
+        state.selectedMethod.isCash) {
+      return;
+    }
+    final paymentId = state.paymentId;
+    if (paymentId == null || paymentId.isEmpty) {
+      state = state.copyWith(
+        errorMessage:
+            "We can't check this payment yet. Keep the job open while confirmation arrives.",
+      );
+      return;
+    }
+    await _pollSettlementOnce(
+      paymentId: paymentId,
+      jobId: summary.jobId,
+      summary: summary,
     );
   }
 
@@ -1404,6 +1410,14 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   }
 }
 
+bool _isAuthoritativeCompletedJob(
+  Map<String, dynamic> response,
+  String expectedJobId,
+) {
+  final id = response['jobId'] ?? response['id'];
+  return id == expectedJobId && response['status'] == 'completed';
+}
+
 final paymentNotifierProvider =
     StateNotifierProvider.autoDispose<PaymentNotifier, PaymentState>(
   (ref) => PaymentNotifier(
@@ -1426,11 +1440,10 @@ class _PaymentSummaryNotifier
   Future<PaymentSummary> build(String jobId) async {
     final jobService = ref.watch(jobServiceProvider);
     final data = await jobService.getJob(jobId);
-    // Log the raw shape so it's visible in the dev console — backends
-    // tend to drift between `selectedBid` / `acceptedBid` / `bid` for
-    // the chosen offer, and the cost field naming has been a moving
-    // target. Keeps debugging "amount is GHS 0.00" trivially fast.
-    developer.log('getJob($jobId) → $data', name: 'PaymentSummary');
+    developer.log(
+      'payment summary loaded: status=${data['status'] ?? 'unknown'}',
+      name: 'PaymentSummary',
+    );
     return _parsePaymentSummary(data);
   }
 

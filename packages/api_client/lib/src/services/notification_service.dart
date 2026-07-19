@@ -65,6 +65,7 @@ class NotificationService {
     required String fcmToken,
     required String platform,
     required String role,
+    int? offerReceiptVersion = 1,
   }) async {
     try {
       await _dio.post(
@@ -72,6 +73,8 @@ class NotificationService {
         data: {
           'fcmToken': fcmToken,
           'platform': platform,
+          if (offerReceiptVersion != null)
+            'offerReceiptVersion': offerReceiptVersion,
           // role omitted from the body — backend reads it from the
           // bearer JWT (`@CurrentUser('role')`). Including it here would
           // be a noop server-side and risk drift if the JWT and body

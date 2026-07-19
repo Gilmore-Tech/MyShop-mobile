@@ -13,6 +13,7 @@ import '../core/providers/pending_request_recovery_provider.dart';
 import '../core/providers/socket_provider.dart';
 import '../core/widgets/incoming_request_listener.dart';
 import '../features/artisan_home/providers/job_poller_provider.dart';
+import '../features/artisan_home/providers/active_job_provider.dart';
 import '../features/auth/providers/auth_controller.dart';
 import '../features/auth/screens/otp_verification_screen.dart';
 import '../features/auth/screens/phone_input_screen.dart';
@@ -50,6 +51,7 @@ import '../features/profile/screens/availability_schedule_screen.dart';
 import '../features/profile/screens/business_information_screen.dart';
 import '../features/profile/screens/deactivate_account_screen.dart';
 import '../features/profile/screens/documents_verification_screen.dart';
+import '../features/profile/screens/emergency_contacts_screen.dart';
 import '../features/profile/screens/notification_settings_screen.dart';
 import '../features/profile/screens/payout_methods_screen.dart';
 import '../features/profile/screens/privacy_security_screen.dart';
@@ -57,6 +59,9 @@ import '../features/support/screens/help_article_route_screen.dart';
 import '../features/support/screens/help_category_route_screen.dart';
 import '../features/support/screens/help_search_route_screen.dart';
 import '../features/support/screens/legal_document_route_screen.dart';
+import '../features/support/screens/legal_consent_route_screen.dart';
+import '../features/support/providers/support_providers.dart'
+    show legalConsentStatusProvider;
 import '../features/support/screens/new_ticket_route_screen.dart';
 import '../features/support/screens/support_legal_route_screen.dart';
 import '../features/support/screens/ticket_detail_route_screen.dart';
@@ -70,6 +75,12 @@ import '../features/trips/screens/trips_history_screen.dart';
 /// Full-screen routes (ride request, active ride, trip complete) are outside the shell.
 final goRouterProvider = Provider<GoRouter>((ref) {
   final refresh = _AuthRouterRefresh(ref);
+  final authState = ref.watch(authControllerProvider);
+  final legalConsent = authState is AuthAuthenticated
+      ? ref.watch(legalConsentStatusProvider)
+      : null;
+  final hasActiveWork = ref.watch(activeRideProvider).hasRide ||
+      ref.watch(activeJobProvider).hasJob;
   return GoRouter(
     initialLocation: '/splash',
     refreshListenable: refresh,
@@ -95,6 +106,22 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       };
 
       if (auth is AuthAuthenticated) {
+        final consentRequiresReview =
+            legalConsent?.valueOrNull?.requiresConsent == true ||
+                legalConsent?.hasError == true;
+        final consentExemptRoute = loc == '/legal-consent' ||
+            loc.startsWith('/legal/') ||
+            loc.startsWith('/active-ride') ||
+            loc.startsWith('/active-job') ||
+            loc.startsWith('/safety/') ||
+            loc.startsWith('/account/support');
+        if (consentRequiresReview &&
+            !hasActiveWork &&
+            legalConsent?.valueOrNull?.hasActiveWork != true &&
+            !consentExemptRoute) {
+          return '/legal-consent';
+        }
+        if (!consentRequiresReview && loc == '/legal-consent') return '/home';
         if (!loc.startsWith('/home') &&
             !loc.startsWith('/account') &&
             !loc.startsWith('/earnings') &&
@@ -113,6 +140,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         }
         return null;
       }
+      if (loc.startsWith('/legal/')) return null;
       // Both roles found — force user to the role selection screen.
       if (auth is AuthRoleSelection) {
         return loc == '/signin/role' ? null : '/signin/role';
@@ -191,6 +219,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             signUpRole: role,
           );
         },
+      ),
+      GoRoute(
+        path: '/legal-consent',
+        builder: (context, state) => const LegalConsentRouteScreen(),
       ),
       GoRoute(
         path: '/signup/otp',
@@ -276,6 +308,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/account/notifications',
         builder: (context, state) => const NotificationSettingsScreen(),
+      ),
+      GoRoute(
+        path: '/account/emergency-contacts',
+        builder: (context, state) => const ProviderEmergencyContactsScreen(),
       ),
       GoRoute(
         path: '/account/privacy',

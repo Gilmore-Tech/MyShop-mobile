@@ -1,5 +1,19 @@
 import 'package:api_client/api_client.dart';
 import 'package:test/test.dart';
+import 'package:shared_models/shared_models.dart';
+
+const legalAcceptances = <LegalAcceptanceSelection>[
+  LegalAcceptanceSelection(
+    slug: 'terms',
+    documentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    version: '1.4.1',
+  ),
+  LegalAcceptanceSelection(
+    slug: 'privacy',
+    documentId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    version: '1.4.1',
+  ),
+];
 
 void main() {
   test('auth requests serialize deviceInfo using the backend string contract',
@@ -15,7 +29,7 @@ void main() {
       phone: '+233241234567',
       fullName: 'Ama Owusu',
       type: 'client',
-      privacyPolicyAccepted: true,
+      legalAcceptances: legalAcceptances,
       deviceId: 'device-id',
       deviceInfo: deviceInfo,
     ).toJson();
@@ -30,7 +44,7 @@ void main() {
         phone: '+233241234567',
         fullName: 'Kofi Mensah',
         type: 'driver',
-        privacyPolicyAccepted: true,
+        legalAcceptances: legalAcceptances,
         rideCategories: ['regular'],
         vehicleMake: 'Toyota',
         vehicleModel: 'Corolla',
@@ -51,7 +65,7 @@ void main() {
         phone: '+233241234567',
         fullName: 'Ama Owusu',
         type: 'client',
-        privacyPolicyAccepted: true,
+        legalAcceptances: legalAcceptances,
       ).toJson();
 
       expect(json.containsKey('vehicleMake'), isFalse);
@@ -60,5 +74,65 @@ void main() {
       expect(json.containsKey('vehiclePlate'), isFalse);
       expect(json.containsKey('vehicleColor'), isFalse);
     });
+  });
+
+  test('session recovery always serializes its exact target role', () {
+    final json = const SessionRecoveryRequest(
+      challenge: 'opaque-recovery-challenge-1234567890',
+      phone: '+233241234567',
+      deviceId: 'new-device',
+      role: 'driver',
+    ).toJson();
+
+    expect(json, {
+      'challenge': 'opaque-recovery-challenge-1234567890',
+      'phone': '+233241234567',
+      'deviceId': 'new-device',
+      'role': 'driver',
+    });
+  });
+
+  test(
+      'deleted-role recovery binds request and verify payloads to one role and device',
+      () {
+    const base = RequestRoleAccountRecoveryOtpRequest(
+      phone: '+233241234567',
+      role: 'artisan',
+      deviceId: 'install-device-id',
+    );
+    const verify = VerifyRoleAccountRecoveryOtpRequest(
+      phone: '+233241234567',
+      role: 'artisan',
+      deviceId: 'install-device-id',
+      otp: '123456',
+      requestKey: '11111111-1111-4111-8111-111111111111',
+    );
+
+    expect(base.toJson(), {
+      'phone': '+233241234567',
+      'role': 'artisan',
+      'deviceId': 'install-device-id',
+    });
+    expect(verify.toJson(), {
+      'phone': '+233241234567',
+      'role': 'artisan',
+      'deviceId': 'install-device-id',
+      'otp': '123456',
+      'requestKey': '11111111-1111-4111-8111-111111111111',
+    });
+  });
+
+  test('deleted-role recovery response keeps the exact role and deadline', () {
+    final result = RoleAccountRecoveryResult.fromJson({
+      'requestId': '11111111-1111-4111-8111-111111111111',
+      'role': 'client',
+      'status': 'pending_operations',
+      'recoveryDeadline': '2026-10-17T12:00:00.000Z',
+      'requestedAt': '2026-07-19T12:00:00.000Z',
+    });
+
+    expect(result.role, 'client');
+    expect(result.status, 'pending_operations');
+    expect(result.recoveryDeadline.toUtc(), DateTime.utc(2026, 10, 17, 12));
   });
 }

@@ -138,8 +138,23 @@ class VerificationService {
     required String providerType,
     required DocumentType documentType,
     required File file,
+    String? vehicleId,
     String? expiresAt,
   }) async {
+    if (documentType.isVehicleScoped && vehicleId == null) {
+      throw ArgumentError.value(
+        vehicleId,
+        'vehicleId',
+        'is required for vehicle evidence',
+      );
+    }
+    if (!documentType.isVehicleScoped && vehicleId != null) {
+      throw ArgumentError.value(
+        vehicleId,
+        'vehicleId',
+        'is forbidden for identity and artisan documents',
+      );
+    }
     final fileName = file.path.split('/').last;
     final mimeType = _mimeFromExtension(fileName);
     final fileSize = await file.length();
@@ -152,6 +167,7 @@ class VerificationService {
         fileName: fileName,
         mimeType: mimeType,
         fileSize: fileSize,
+        vehicleId: vehicleId,
         expiresAt: expiresAt,
       ),
     );
@@ -163,14 +179,14 @@ class VerificationService {
       mimeType: mimeType,
     );
 
-    // Step 3: Confirm upload — this writes the URL to the document record
-    // and for profile_photo, updates the role's profilePhotoUrl
-    if (remoteUrl != null) {
-      await confirmUpload(
-        documentId: uploadInfo.documentId,
-        remoteUrl: remoteUrl,
-      );
-    }
+    // Step 3 must run for every storage provider. Cloudinary returns a public
+    // URL; an S3 presigned PUT has no response body, so the backend-issued
+    // storage key is the canonical reference. Skipping this call leaves S3
+    // documents permanently in `uploaded` and invisible to the review queue.
+    await confirmUpload(
+      documentId: uploadInfo.documentId,
+      remoteUrl: remoteUrl ?? uploadInfo.storageKey,
+    );
 
     return UploadResult(
       documentId: uploadInfo.documentId,

@@ -661,7 +661,8 @@ class _PolicyNote extends StatelessWidget {
         Expanded(
           child: Text(
             'If approved, the additional amount will be added to the escrow '
-            'and released to the artisan after you confirm job completion.',
+            'and included in the normal provider-settlement process after you '
+            'confirm job completion.',
             style: TextStyle(
                 color: MyShopColors.textSecondary,
                 fontSize: w * 0.030,

@@ -109,6 +109,61 @@ class PaymentService {
     }
   }
 
+  /// Send a code to the client-entered MoMo destination for a cash-origin
+  /// dispute. The backend reuses the active code when the user explicitly
+  /// changes between SMS and WhatsApp.
+  Future<Map<String, dynamic>> requestCashRefundDestinationOtp({
+    required String disputeId,
+    required String method,
+    required String accountNumber,
+    required String channel,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/payments/refund-destination/request-otp',
+        data: {
+          'disputeId': disputeId,
+          'method': method,
+          'accountNumber': accountNumber,
+          'channel': channel,
+        },
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// Verify the six-digit code and snapshot the exact refund destination.
+  Future<Map<String, dynamic>> verifyCashRefundDestinationOtp({
+    required String disputeId,
+    required String code,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/payments/refund-destination/verify-otp',
+        data: {'disputeId': disputeId, 'code': code},
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// Read only the masked destination state; the raw number is never returned.
+  Future<Map<String, dynamic>> getCashRefundDestinationStatus(
+    String disputeId,
+  ) async {
+    try {
+      final response = await _dio.get(
+        '/payments/refund-destination/$disputeId',
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   /// GET /payments/:id/status — Payment status check.
   Future<Map<String, dynamic>> getPaymentStatus(String paymentId) async {
     try {

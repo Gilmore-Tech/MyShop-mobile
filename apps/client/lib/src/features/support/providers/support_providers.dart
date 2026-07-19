@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:api_client/api_client.dart';
@@ -24,6 +25,28 @@ final helpServiceProvider = Provider<HelpService>((ref) {
 
 final legalServiceProvider = Provider<LegalService>((ref) {
   return LegalService(ref.watch(dioProvider));
+});
+
+/// Exact current Terms and Privacy documents required before client signup.
+///
+/// Keeping this request behind a provider makes the fail-closed registration
+/// gate independently testable without replacing the application's HTTP
+/// client.
+final clientRegistrationLegalDocumentsProvider =
+    FutureProvider<RequiredLegalDocuments>((ref) {
+  return ref.watch(legalServiceProvider).getRequired(role: 'client');
+});
+
+final legalConsentStatusProvider =
+    FutureProvider<LegalConsentStatus>((ref) async {
+  ref.keepAlive();
+  final status = await ref.read(legalServiceProvider).getConsentStatus();
+  Timer? refresh;
+  if (status.requiresConsent && status.hasActiveWork) {
+    refresh = Timer(const Duration(seconds: 60), ref.invalidateSelf);
+  }
+  ref.onDispose(() => refresh?.cancel());
+  return status;
 });
 
 // ── Help categories (support home) ───────────────────────────────────────────

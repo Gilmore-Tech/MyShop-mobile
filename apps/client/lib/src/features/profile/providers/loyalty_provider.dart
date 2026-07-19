@@ -1,5 +1,6 @@
 import 'dart:developer' as developer;
 
+import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
@@ -158,11 +159,25 @@ class LoyaltyData {
 // history is longer than `limit`, the number understates — that's
 // acceptable for an MVP marketing surface.
 
+const _roleOwnershipErrorCodes = {
+  'ROLE_OWNERSHIP_MAPPING_REQUIRED',
+  'ROLE_OWNERSHIP_MIGRATION_REQUIRED',
+};
+
+bool isRoleOwnershipMappingError(Object error) =>
+    error is ApiException && _roleOwnershipErrorCodes.contains(error.errorCode);
+
 final loyaltyProvider = FutureProvider.autoDispose<LoyaltyData>((ref) async {
   final authState = ref.watch(clientAuthControllerProvider);
   final balance = authState is AuthAuthenticated
-      ? (authState.profile.client?.loyaltyPointsBalance ?? 0)
-      : 0;
+      ? authState.profile.client?.loyaltyPointsBalance
+      : null;
+  if (balance == null) {
+    throw const ApiException(
+      message: 'Loyalty data is temporarily unavailable for this account.',
+      errorCode: 'ROLE_OWNERSHIP_MAPPING_REQUIRED',
+    );
+  }
 
   List<LedgerEntry> ledger = const [];
   int lifetime = balance;
@@ -182,6 +197,9 @@ final loyaltyProvider = FutureProvider.autoDispose<LoyaltyData>((ref) async {
         );
     if (earned > lifetime) lifetime = earned;
   } catch (e) {
+    // A quarantined legacy balance must never be presented as an empty ledger
+    // or a fabricated zero. Let the screen show the secure-review state.
+    if (isRoleOwnershipMappingError(e)) rethrow;
     // History fetch failed (offline, or first launch with no transactions
     // yet). Fall through with an empty ledger — the screen still renders
     // balance + tier + earn-tutorial + redeem-tutorial sections.

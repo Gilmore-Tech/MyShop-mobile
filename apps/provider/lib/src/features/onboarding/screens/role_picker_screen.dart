@@ -71,13 +71,13 @@ class _RolePickerScreenState extends ConsumerState<RolePickerScreen> {
   String get _subhead => switch (_selected) {
         ProviderType.driver => widget.isSignIn
             ? "We'll send a code to your registered phone number."
-            : 'Quick rides, live navigation, and fares paid the moment a trip ends.',
+            : 'Quick rides, live navigation, and earnings recorded when a trip ends.',
         ProviderType.artisan => widget.isSignIn
             ? "We'll send a code to your registered phone number."
-            : 'Win jobs in your trade, bid on requests, and get paid the moment a job is done.',
+            : 'Win jobs in your trade, bid on requests, and track completed-work earnings.',
         null => widget.isSignIn
             ? 'Select your account type to continue.'
-            : 'Choose the type of account you want to create. You can only have one role per phone number.',
+            : 'Choose the separate role account you want to create. One phone number may have one driver and one artisan account.',
       };
 
   @override
@@ -491,7 +491,7 @@ class _EmptyHint extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            'You can change your role only by creating a new account.',
+            'Each role stays separate, even when it uses the same phone number.',
             textAlign: TextAlign.center,
             style: MyShopTypography.caption,
           ),
@@ -514,13 +514,13 @@ class _RoleDetail extends StatelessWidget {
   static const _driverFeatures = [
     ('Live navigation', Icons.navigation_rounded),
     ('Surge pricing alerts', Icons.trending_up_rounded),
-    ('Instant MoMo payouts', Icons.payments_rounded),
+    ('Earnings and payout status', Icons.payments_rounded),
   ];
 
   static const _artisanFeatures = [
     ('Bid on jobs in your trade', Icons.gavel_rounded),
     ('In-app chat with clients', Icons.chat_bubble_outline_rounded),
-    ('Instant MoMo payouts', Icons.payments_rounded),
+    ('Earnings and payout status', Icons.payments_rounded),
   ];
 
   @override

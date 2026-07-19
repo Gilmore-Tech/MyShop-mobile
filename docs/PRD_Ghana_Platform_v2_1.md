@@ -7,6 +7,11 @@
 **Date:** March 2026  
 **Status:** CONFIDENTIAL — FOR INTERNAL USE ONLY
 
+> **Release-authority notice (July 2026):** This March 2026 planning document
+> contains superseded assumptions and is not release authority. Use
+> `docs/production-release-audit-checklist.md` for every approved business rule,
+> containment decision, release gate, and current implementation status.
+
 ---
 
 ## Table of Contents
@@ -721,7 +726,7 @@ Flutterwave serves as the primary payment gateway, providing a unified API for a
 
 - Suspend or ban any user (client or provider) with a mandatory reason note.
 - Suspended provider accounts do not affect the same person's client account.
-- Soft delete: deleted accounts are deactivated and data retained for 90 days before permanent purge. A 24-hour recovery window is available.
+- Exact-role soft delete: the requested role is deactivated immediately and its personal/profile data is retained for 90×24 hours. Recovery is support-assisted, phone-verified, and approval-gated; sibling roles remain untouched. Permanent purge execution remains disabled until its approved legal-hold, retained-record, object-storage, notification, and backup contracts are proved.
 - Re-verification can be triggered for any provider based on complaints or rating drops.
 - Rating threshold enforcement: below 3.5 stars triggers an automatic warning. Below 3.0 stars triggers automatic suspension pending admin review (minimum 15 completed jobs before thresholds apply).
 

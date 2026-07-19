@@ -138,7 +138,7 @@ class EarningsService {
         return body['data'] as Map<String, dynamic>;
       }
       developer.log(
-        'GET $path → unexpected envelope: $body',
+        'GET $path returned an unexpected response envelope',
         name: 'Earnings.$tag',
         level: 900,
       );
@@ -156,7 +156,7 @@ class EarningsService {
     } on DioException catch (e) {
       developer.log(
         'GET $path failed: status=${e.response?.statusCode} '
-        'body=${e.response?.data} message=${e.message}',
+        'type=${e.type.name}',
         name: 'Earnings.$tag',
         level: 1000,
       );

@@ -7,6 +7,7 @@ import '../providers/profile_provider.dart';
 import '../providers/privacy_security_provider.dart';
 import '../providers/my_ratings_provider.dart';
 import '../../auth/providers/auth_controller.dart';
+import '../account_deletion_policy.dart';
 import '../../../app/router.dart' show AppRoutes;
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -111,6 +112,15 @@ class _ProfileBody extends StatelessWidget {
                       w: w,
                       h: h,
                     ),
+                    _RowDivider(w: w),
+                    _MenuRow(
+                      icon: Icons.sos_rounded,
+                      title: 'Emergency SOS',
+                      subtitle: 'Raise an alert and open the 191 dialer',
+                      onTap: () => context.push(AppRoutes.safetyEmergency),
+                      w: w,
+                      h: h,
+                    ),
                   ],
                 ),
                 SizedBox(height: h * 0.022),
@@ -140,7 +150,7 @@ class _ProfileBody extends StatelessWidget {
                     _MenuRow(
                       icon: Icons.star_outline_rounded,
                       title: 'Loyalty Points',
-                      subtitle: 'Earn points on every ride and job',
+                      subtitle: 'Balance and history — programme paused',
                       onTap: () => context.push(AppRoutes.profileLoyalty),
                       w: w,
                       h: h,
@@ -148,8 +158,8 @@ class _ProfileBody extends StatelessWidget {
                     _RowDivider(w: w),
                     _MenuRow(
                       icon: Icons.share_rounded,
-                      title: 'Referral & Earn',
-                      subtitle: 'Invite friends and earn GHS 0.50 each',
+                      title: 'Referrals',
+                      subtitle: 'Temporarily paused for this release',
                       onTap: () => context.push(AppRoutes.profileReferral),
                       w: w,
                       h: h,
@@ -756,7 +766,8 @@ class _SignOutRow extends ConsumerWidget {
 }
 
 // ── Deactivate Link ───────────────────────────────────────────────────────────
-// EDD § User Module: soft-delete — data retained 90 days, 24-hour recovery.
+// Exact-role soft delete with 90-day retention. Recovery is support-assisted
+// and remains unavailable as a self-service in-app workflow in this release.
 // DELETE /v1/users/me
 
 class _DeactivateLink extends ConsumerWidget {
@@ -801,8 +812,7 @@ class _DeactivateLink extends ConsumerWidget {
           ),
         ),
         content: Text(
-          'Your account will be deactivated. Data is retained for 90 days '
-          'and you can recover within 24 hours.',
+          clientAccountDeletionNotice,
           style: TextStyle(
             fontSize: w * 0.033,
             color: MyShopColors.textSecondary,

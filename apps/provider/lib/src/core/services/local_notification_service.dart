@@ -55,11 +55,12 @@ class NotificationPayload {
   /// attribute the cancellation in copy.
   static const typeJobCancelledByClient = 'job_cancelled_by_client';
 
-  /// Client confirmed the artisan's "marked complete" — payment released.
+  /// Client confirmed the artisan's "marked complete" state. This event is
+  /// not provider-payout authority.
   static const typeJobConfirmedComplete = 'job_confirmed_complete';
 
-  /// Backend has flagged this job as ready for payout — funds being
-  /// released to the artisan's wallet.
+  /// Backend has flagged this job for settlement processing. The notification
+  /// must not claim wallet transfer without authoritative payout status.
   static const typeJobPaymentReleasing = 'job_payment_releasing';
 
   /// Admin manually assigned this artisan to a job (urgent — needs
@@ -115,6 +116,26 @@ class NotificationPayload {
 
   /// Generic / info — routes to notification inbox.
   static const typeGeneric = 'generic';
+
+  // Provider-document lifecycle alerts. These route to the corrective
+  // Documents & Verification screen instead of silently falling back Home.
+  static const typeProviderDocumentUploadConfirmed =
+      'provider_document_upload_confirmed';
+  static const typeProviderDocumentExpiryNotice =
+      'provider_document_expiry_notice';
+  static const typeProviderDocumentExpiry72h = 'provider_document_expiry_72h';
+  static const typeProviderDocumentExpiry24h = 'provider_document_expiry_24h';
+  static const typeProviderDocumentExpiry2h = 'provider_document_expiry_2h';
+  static const typeProviderDocumentExpired = 'provider_document_expired';
+  static const typeProviderDocumentReplacementGraceStarted =
+      'provider_document_replacement_grace_started';
+  static const typeProviderDocumentReplacementGraceExpired =
+      'provider_document_replacement_grace_expired';
+
+  /// Per-vehicle ride category decisions. The destination is derived locally;
+  /// a remote `route` value is never trusted for these events.
+  static const typeRideCategoryApproved = 'ride_category_approved';
+  static const typeRideCategoryRejected = 'ride_category_rejected';
 
   /// In-app voice call fallback. iOS should route this through CallKit when
   /// Flutter receives it; background/locked iOS must still rely on PushKit.
@@ -185,6 +206,39 @@ class NotificationPayload {
   /// (Android) / `MESSAGE` category (iOS) so the OS treats them like
   /// conversational pings — time-sensitive but not call-style.
   static const Set<String> chatTypes = {typeNewMessage};
+}
+
+/// Returns the only corrective destination accepted for provider-document
+/// lifecycle notifications. Routing is derived from a known event type rather
+/// than an arbitrary server-supplied path.
+String? providerDocumentLifecycleRoute(String rawType) {
+  return switch (NotificationPayload.normaliseType(rawType)) {
+    NotificationPayload.typeProviderDocumentUploadConfirmed ||
+    NotificationPayload.typeProviderDocumentExpiryNotice ||
+    NotificationPayload.typeProviderDocumentExpiry72h ||
+    NotificationPayload.typeProviderDocumentExpiry24h ||
+    NotificationPayload.typeProviderDocumentExpiry2h ||
+    NotificationPayload.typeProviderDocumentExpired ||
+    NotificationPayload.typeProviderDocumentReplacementGraceStarted ||
+    NotificationPayload.typeProviderDocumentReplacementGraceExpired =>
+      '/account/documents',
+    _ => null,
+  };
+}
+
+/// Returns a locally allowlisted destination for provider vehicle/category and
+/// document lifecycle events. Unknown types return null even if their payload
+/// contains a route-like string.
+String? providerLifecycleNotificationRoute(String rawType) {
+  final normalized = NotificationPayload.normaliseType(rawType);
+  final documentRoute = providerDocumentLifecycleRoute(normalized);
+  if (documentRoute != null) return documentRoute;
+  return switch (normalized) {
+    NotificationPayload.typeRideCategoryApproved ||
+    NotificationPayload.typeRideCategoryRejected =>
+      '/account/vehicle',
+    _ => null,
+  };
 }
 
 /// Wraps `flutter_local_notifications` for the provider app. Responsibilities:

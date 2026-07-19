@@ -13,8 +13,6 @@ class SupportLegalConfig {
     required this.appVersion,
     required this.copyright,
     required this.supportEmail,
-    required this.supportPhone,
-    required this.whatsappNumber,
     required this.onOpenTickets,
     required this.onNewTicket,
     required this.onOpenCategory,
@@ -34,13 +32,10 @@ class SupportLegalConfig {
   final String appVersion;
   final String copyright;
 
-  /// Support contact channels.
-  ///
-  /// [whatsappNumber] is in E.164 form WITHOUT the leading `+` —
-  /// `https://wa.me/<digits>` rejects the plus sign.
+  /// The reviewed support email shown by this surface. Optional channels must
+  /// be passed directly to the contact sheet only after their destination is
+  /// operationally verified.
   final String supportEmail;
-  final String supportPhone;
-  final String whatsappNumber;
 
   // Navigation callbacks. The widgets do no routing themselves — each app
   // wires these to its GoRouter.
@@ -67,8 +62,7 @@ class SupportLegalConfig {
   /// User tapped a legal-document row.
   final void Function(String slug) onOpenLegal;
 
-  /// User tapped "Contact Support" — open the bottom sheet that exposes
-  /// WhatsApp / phone / email / new-ticket.
+  /// User tapped "Contact Support" — open the configured support channels.
   final void Function() onOpenContactSheet;
 
   /// Path to the host app's logo asset (declared in the app's pubspec).

@@ -15,6 +15,9 @@ class Ride {
     required this.estimatedFarePesewas,
     this.finalFarePesewas,
     this.totalPaidPesewas,
+    this.commissionPesewas,
+    this.commissionRatePercent,
+    this.netPayoutPesewas,
     required this.estimatedDistanceKm,
     required this.estimatedDurationMins,
     this.actualDistanceKm,
@@ -173,6 +176,9 @@ class Ride {
       totalPaidPesewas: _optionalInt(
         json['totalPaidPesewas'] ?? json['amountPaidPesewas'],
       ),
+      commissionPesewas: _optionalInt(json['commissionPesewas']),
+      commissionRatePercent: _optionalNum(json['commissionRatePercent']),
+      netPayoutPesewas: _optionalInt(json['netPayoutPesewas']),
       estimatedDistanceKm: _distanceKm(),
       estimatedDurationMins: _durationMins(),
       actualDistanceKm: _optionalNum(json['actualDistanceKm']) ??
@@ -225,6 +231,9 @@ class Ride {
   final int estimatedFarePesewas;
   final int? finalFarePesewas;
   final int? totalPaidPesewas;
+  final int? commissionPesewas;
+  final double? commissionRatePercent;
+  final int? netPayoutPesewas;
   final double estimatedDistanceKm;
   final int estimatedDurationMins;
   final double? actualDistanceKm;
@@ -284,6 +293,9 @@ class Ride {
       estimatedFarePesewas: estimatedFarePesewas,
       finalFarePesewas: finalFarePesewas,
       totalPaidPesewas: totalPaidPesewas,
+      commissionPesewas: commissionPesewas,
+      commissionRatePercent: commissionRatePercent,
+      netPayoutPesewas: netPayoutPesewas,
       estimatedDistanceKm: estimatedDistanceKm,
       estimatedDurationMins: estimatedDurationMins,
       actualDistanceKm: actualDistanceKm,
@@ -412,8 +424,9 @@ class TripSummary {
     this.taxesPesewas = 0,
     this.promoPesewas = 0,
     required this.totalFarePesewas,
-    required this.commissionPesewas,
-    required this.netEarningsPesewas,
+    this.commissionPesewas,
+    this.commissionRatePercent,
+    this.netEarningsPesewas,
     required this.payoutMethod,
     required this.payoutStatus,
   });
@@ -434,14 +447,29 @@ class TripSummary {
   final int taxesPesewas;
   final int promoPesewas;
   final int totalFarePesewas;
-  final int commissionPesewas;
-  final int netEarningsPesewas;
+  final int? commissionPesewas;
+  final double? commissionRatePercent;
+  final int? netEarningsPesewas;
   final String payoutMethod;
   final String payoutStatus;
 
   String get totalFareDisplay => _formatGhs(totalFarePesewas);
-  String get commissionDisplay => _formatGhs(commissionPesewas);
-  String get netEarningsDisplay => _formatGhs(netEarningsPesewas);
+  String get commissionDisplay =>
+      commissionPesewas == null ? 'Pending' : _formatGhs(commissionPesewas!);
+  String get netEarningsDisplay =>
+      netEarningsPesewas == null ? 'Pending' : _formatGhs(netEarningsPesewas!);
+
+  String get commissionLabel {
+    final rate = commissionRatePercent;
+    if (rate == null) return 'Platform Commission';
+    final formatted = rate == rate.roundToDouble()
+        ? rate.toInt().toString()
+        : rate
+            .toStringAsFixed(2)
+            .replaceFirst(RegExp(r'0+$'), '')
+            .replaceFirst(RegExp(r'\.$'), '');
+    return 'Platform Commission ($formatted%)';
+  }
 }
 
 /// Payout record for the earnings dashboard.

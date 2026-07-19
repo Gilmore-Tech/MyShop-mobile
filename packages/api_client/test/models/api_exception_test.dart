@@ -3,6 +3,36 @@ import 'package:dio/dio.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('unknown auth errors never expose backend prose', () {
+    const exception = ApiException(
+      message: 'SQLSTATE 23505 internal_auth_identity_phone_key',
+      statusCode: 400,
+      errorCode: 'UNRECOGNISED_AUTH_FAILURE',
+    );
+
+    final message = AuthErrorMapper.message(exception);
+
+    expect(message, 'Something went wrong. Please try again.');
+    expect(message, isNot(contains('SQLSTATE')));
+  });
+
+  test('auth validation details are converted to app-owned field copy', () {
+    const exception = ValidationException(
+      message: 'phone must match private validator /prod-v2',
+      errorCode: 'VALIDATION_ERROR',
+      details: <String, dynamic>{
+        'phone': <String>['phone must match private validator /prod-v2'],
+        'internalField': <String>['database rule details'],
+      },
+    );
+
+    final fields = AuthErrorMapper.fieldErrors(exception);
+
+    expect(fields['phone'], 'Enter a valid 9-digit Ghana phone number.');
+    expect(fields['internalField'], 'Check this field and try again.');
+    expect(AuthErrorMapper.message(exception), fields['phone']);
+  });
+
   test('parses NestJS string error envelopes as ApiException errorCode', () {
     final exception = ApiException.fromDioException(
       DioException(
@@ -15,6 +45,7 @@ void main() {
             'error': 'ALREADY_LOGGED_IN_ELSEWHERE',
             'message': 'You are already logged in on another device.',
             'details': {
+              'recoveryChallenge': 'opaque-recovery-challenge-1234567890',
               'activeDevice': {'deviceInfo': 'Pixel 8'},
             },
           },
@@ -28,6 +59,20 @@ void main() {
     expect(exception.message, 'You are already logged in on another device.');
     expect(exception.details?['activeDevice'], isA<Map<String, dynamic>>());
     expect(AuthErrorMapper.isAlreadyLoggedInElsewhere(exception), isTrue);
+    expect(
+      AuthErrorMapper.sessionRecoveryChallenge(exception),
+      'opaque-recovery-challenge-1234567890',
+    );
+  });
+
+  test('rejects malformed recovery capabilities from error details', () {
+    const exception = ConflictException(
+      message: 'Already signed in.',
+      errorCode: AuthErrorCodes.alreadyLoggedInElsewhere,
+      details: {'recoveryChallenge': 'too-short'},
+    );
+
+    expect(AuthErrorMapper.sessionRecoveryChallenge(exception), isNull);
   });
 
   test('detects already-logged-in conflict from tolerant message fallback', () {
@@ -60,5 +105,162 @@ void main() {
     expect(exception, isA<ConflictException>());
     expect(exception.errorCode, AuthErrorCodes.alreadyLoggedInElsewhere);
     expect(AuthErrorMapper.isAlreadyLoggedInElsewhere(exception), isTrue);
+  });
+
+  test('preserves active-OTP details on 503 delivery failure', () {
+    final exception = ApiException.fromDioException(
+      DioException(
+        requestOptions: RequestOptions(path: '/auth/login/client'),
+        response: Response(
+          requestOptions: RequestOptions(path: '/auth/login/client'),
+          statusCode: 503,
+          data: const {
+            'statusCode': 503,
+            'error': 'OTP_DELIVERY_FAILED',
+            'message': 'Carrier detail that must not reach the UI.',
+            'details': {
+              'channel': 'sms',
+              'retryAfterSecs': null,
+              'otpActive': true,
+            },
+          },
+        ),
+        type: DioExceptionType.badResponse,
+      ),
+    );
+
+    expect(exception, isA<ServerException>());
+    expect(exception.errorCode, 'OTP_DELIVERY_FAILED');
+    expect(exception.details?['otpActive'], isTrue);
+    expect(AuthErrorMapper.hasActiveOtp(exception), isTrue);
+    expect(
+      AuthErrorMapper.message(exception),
+      'We couldn\'t confirm SMS delivery. Your code is still active. '
+      'Wait for it or use resend.',
+    );
+  });
+
+  test('never infers an active OTP from a 429 or truthy string', () {
+    const cooldown = ApiException(
+      message: 'Please wait.',
+      statusCode: 429,
+      errorCode: 'OTP_COOLDOWN',
+      details: {'retryAfterSecs': 18},
+    );
+    const malformedDelivery = ApiException(
+      message: 'Failed.',
+      statusCode: 503,
+      errorCode: 'OTP_DELIVERY_FAILED',
+      details: {'otpActive': 'true'},
+    );
+
+    expect(AuthErrorMapper.hasActiveOtp(cooldown), isFalse);
+    expect(AuthErrorMapper.hasActiveOtp(malformedDelivery), isFalse);
+    expect(
+      AuthErrorMapper.message(cooldown),
+      'Please wait before requesting another code.',
+    );
+  });
+
+  test('maps only the stable retained-role code to recovery support', () {
+    const retained = ApiException(
+      message: 'backend detail must not be shown',
+      statusCode: 409,
+      errorCode: AuthErrorCodes.roleAccountRetained,
+    );
+    const duplicate = ApiException(
+      message: 'contact support maybe',
+      statusCode: 409,
+      errorCode: 'DRIVER_ACCOUNT_EXISTS',
+    );
+
+    expect(AuthErrorMapper.requiresRoleRecoverySupport(retained), isTrue);
+    expect(AuthErrorMapper.requiresRoleRecoverySupport(duplicate), isFalse);
+    expect(
+      AuthErrorMapper.message(retained),
+      'This role was previously deleted and cannot be registered again. '
+      'Contact support if you want to request recovery.',
+    );
+  });
+
+  test('maps resend quota and provider channel errors to safe app copy', () {
+    const resendLimit = ApiException(
+      message: 'raw resend response',
+      statusCode: 400,
+      errorCode: 'OTP_RESEND_LIMIT',
+    );
+    const channelUnavailable = ServerException(
+      message: 'credential detail',
+      statusCode: 503,
+      errorCode: 'CHANNEL_UNAVAILABLE',
+    );
+
+    expect(
+      AuthErrorMapper.message(resendLimit),
+      'You\'ve reached the resend limit for this code. Enter the current '
+      'code or go back and request a new one later.',
+    );
+    expect(
+      AuthErrorMapper.message(channelUnavailable),
+      'That delivery option is unavailable. Please try another channel.',
+    );
+  });
+
+  test('expired OTP tells the user to request rather than resend a code', () {
+    const expired = UnauthorizedException(
+      message: 'raw expired response',
+      errorCode: 'OTP_EXPIRED',
+    );
+
+    expect(
+      AuthErrorMapper.message(expired),
+      'This code has expired. Go back and request a new code.',
+    );
+  });
+
+  test('maps Redis-authority failures without exposing infrastructure details',
+      () {
+    const verificationUnavailable = ServerException(
+      message: 'redis://user:secret@example.invalid',
+      statusCode: 503,
+      errorCode: 'OTP_VERIFICATION_CONTROL_UNAVAILABLE',
+    );
+
+    expect(
+      AuthErrorMapper.message(verificationUnavailable),
+      'Code verification is temporarily unavailable. Please try again shortly.',
+    );
+  });
+
+  test('preserves only machine-readable provider eligibility reason codes', () {
+    final exception = ApiException.fromDioException(
+      DioException(
+        requestOptions: RequestOptions(path: '/location/driver/update'),
+        response: Response(
+          requestOptions: RequestOptions(path: '/location/driver/update'),
+          statusCode: 403,
+          data: const {
+            'statusCode': 403,
+            'error': 'PROVIDER_NOT_ELIGIBLE',
+            'message': 'Internal eligibility detail.',
+            'reasonCodes': [
+              'DOCUMENT_EXPIRED_DRIVERS_LICENCE',
+              'DOCUMENT_EXPIRED_DRIVERS_LICENCE',
+              'not a machine code',
+              42,
+            ],
+            'details': {'correlationId': 'safe-test-id'},
+          },
+        ),
+        type: DioExceptionType.badResponse,
+      ),
+    );
+
+    expect(exception.errorCode, 'PROVIDER_NOT_ELIGIBLE');
+    expect(exception.details?['correlationId'], 'safe-test-id');
+    expect(
+      exception.details?['reasonCodes'],
+      ['DOCUMENT_EXPIRED_DRIVERS_LICENCE'],
+    );
   });
 }

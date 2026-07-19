@@ -105,6 +105,11 @@ class BidSubmissionScreen extends ConsumerStatefulWidget {
 }
 
 class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
+  // BR-61: bid files have no server-side upload/provenance consumer yet. Keep
+  // the notes field available but do not create or restore local attachment
+  // copies until that end-to-end contract is implemented and approved.
+  static const _bidAttachmentsEnabled = false;
+
   late final TextEditingController _labour;
   late final TextEditingController _eta;
   late final TextEditingController _notes;
@@ -163,7 +168,7 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     _notes = TextEditingController(
       text: useEdit ? (widget.initialNotes ?? '') : (draft?.notes ?? ''),
     );
-    if (draft != null) {
+    if (_bidAttachmentsEnabled && draft != null) {
       for (final path in draft.attachmentPaths) {
         final f = File(path);
         if (f.existsSync()) _attachments.add(f);
@@ -309,8 +314,8 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     return null;
   }
 
-  /// Turn the raw backend error into a human-friendly explanation.
-  /// Falls back to the server's own message when the code isn't recognised.
+  /// Turn the structured backend error into a human-friendly explanation.
+  /// Unknown server prose is never shown.
   String _friendlyBidError(ApiException e) {
     switch (e.errorCode) {
       case 'JOB_NOT_OPEN':
@@ -325,7 +330,12 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
         return 'Your bid is below the minimum for this category. '
             'Increase the amount and try again.';
       default:
-        return e.message;
+        return userSafeApiErrorMessage(
+          e,
+          fallback: "Couldn't submit the bid. Please try again.",
+          conflictMessage:
+              'This job changed before the bid was submitted. Refresh and try again.',
+        );
     }
   }
 
@@ -662,6 +672,7 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
                 child: _NotesField(
                   controller: _notes,
                   attachments: _attachments,
+                  attachmentsEnabled: _bidAttachmentsEnabled,
                   onFilePicked: (file) async {
                     // Copy into app docs so the file survives a cold start.
                     // Picker temp files get aggressively reaped on iOS.
@@ -1317,11 +1328,13 @@ class _NotesField extends StatelessWidget {
   const _NotesField({
     required this.controller,
     required this.attachments,
+    required this.attachmentsEnabled,
     required this.onFilePicked,
   });
 
   final TextEditingController controller;
   final List<File> attachments;
+  final bool attachmentsEnabled;
   final ValueChanged<File> onFilePicked;
 
   @override
@@ -1358,7 +1371,7 @@ class _NotesField extends StatelessWidget {
               ),
             ),
           ),
-          if (attachments.isNotEmpty) ...[
+          if (attachmentsEnabled && attachments.isNotEmpty) ...[
             const SizedBox(height: MyShopSpacing.sm),
             Wrap(
               spacing: MyShopSpacing.sm,
@@ -1378,26 +1391,35 @@ class _NotesField extends StatelessWidget {
             ),
           ],
           const SizedBox(height: MyShopSpacing.sm),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              _IconBubble(
-                icon: Icons.camera_alt_outlined,
-                onTap: () async {
-                  final file = await MediaPickerHelper.pickImage(context);
-                  if (file != null) onFilePicked(file);
-                },
+          if (attachmentsEnabled)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                _IconBubble(
+                  icon: Icons.camera_alt_outlined,
+                  onTap: () async {
+                    final file = await MediaPickerHelper.pickImage(context);
+                    if (file != null) onFilePicked(file);
+                  },
+                ),
+                const SizedBox(width: MyShopSpacing.sm),
+                _IconBubble(
+                  icon: Icons.attach_file,
+                  onTap: () async {
+                    final file =
+                        await MediaPickerHelper.pickAttachment(context);
+                    if (file != null) onFilePicked(file);
+                  },
+                ),
+              ],
+            )
+          else
+            Text(
+              'Photo and file attachments are temporarily unavailable. Your notes will still be sent.',
+              style: MyShopTypography.caption.copyWith(
+                color: MyShopColors.textSecondary,
               ),
-              const SizedBox(width: MyShopSpacing.sm),
-              _IconBubble(
-                icon: Icons.attach_file,
-                onTap: () async {
-                  final file = await MediaPickerHelper.pickAttachment(context);
-                  if (file != null) onFilePicked(file);
-                },
-              ),
-            ],
-          ),
+            ),
         ],
       ),
     );

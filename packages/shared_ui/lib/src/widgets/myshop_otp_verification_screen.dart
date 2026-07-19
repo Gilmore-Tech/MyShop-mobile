@@ -90,85 +90,99 @@ class _MyShopOtpVerificationScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: MyShopColors.surfaceWhite,
-      appBar: AppBar(
+    return PopScope(
+      // The auth state machine owns OTP navigation. If the host supplied an
+      // explicit back action, route system-back through it as well as the app
+      // bar so Android back/gestures cannot pop and be redirected straight
+      // back to a stale OTP screen.
+      canPop: widget.onBack == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) widget.onBack?.call();
+      },
+      child: Scaffold(
         backgroundColor: MyShopColors.surfaceWhite,
-        elevation: 0,
-        foregroundColor: MyShopColors.textPrimary,
-        leading: widget.onBack != null
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: widget.onBack,
-              )
-            : null,
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 16),
-              const Text('Enter verification code', style: MyShopTypography.h1),
-              const SizedBox(height: 8),
-              Text(
-                'We sent a 6-digit code to ${widget.phone}.',
-                style: MyShopTypography.body2,
-              ),
-              const SizedBox(height: 32),
-              MyShopOtpInput(
-                onChanged: (v) {
-                  setState(() => _code = v);
-                  if (widget.errorText != null) {
-                    widget.onErrorCleared?.call();
-                  }
-                },
-                onCompleted: (_) => _verify(),
-                hasError: widget.errorText != null,
-              ),
-              if (widget.errorText != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  widget.errorText!,
-                  style: MyShopTypography.caption
-                      .copyWith(color: MyShopColors.error),
+        appBar: AppBar(
+          backgroundColor: MyShopColors.surfaceWhite,
+          elevation: 0,
+          foregroundColor: MyShopColors.textPrimary,
+          leading: widget.onBack != null
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: widget.onBack,
+                )
+              : null,
+        ),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 16),
+                const Text(
+                  'Enter verification code',
+                  style: MyShopTypography.h1,
                 ),
-              ],
-              const SizedBox(height: 24),
-              Center(
-                child: _resendIn > 0
-                    ? Text(
-                        'Resend code in $_resendIn s',
-                        style: MyShopTypography.body2,
-                      )
-                    : Wrap(
-                        alignment: WrapAlignment.center,
-                        spacing: 8,
-                        runSpacing: 4,
-                        children: [
-                          TextButton(
-                            onPressed: _resend,
-                            child: const Text('Resend SMS'),
-                          ),
-                          if (widget.onResendWhatsApp != null)
-                            TextButton.icon(
-                              onPressed: _resendViaWhatsApp,
-                              icon: const Icon(Icons.chat_outlined, size: 18),
-                              label: const Text('Send via WhatsApp'),
+                const SizedBox(height: 8),
+                Text(
+                  'Enter the 6-digit code for ${widget.phone}. '
+                  'It may take a moment to arrive.',
+                  style: MyShopTypography.body2,
+                ),
+                const SizedBox(height: 32),
+                MyShopOtpInput(
+                  onChanged: (v) {
+                    setState(() => _code = v);
+                    if (widget.errorText != null) {
+                      widget.onErrorCleared?.call();
+                    }
+                  },
+                  onCompleted: (_) => _verify(),
+                  hasError: widget.errorText != null,
+                ),
+                if (widget.errorText != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    widget.errorText!,
+                    style: MyShopTypography.caption
+                        .copyWith(color: MyShopColors.error),
+                  ),
+                ],
+                const SizedBox(height: 24),
+                Center(
+                  child: _resendIn > 0
+                      ? Text(
+                          'Resend code in $_resendIn s',
+                          style: MyShopTypography.body2,
+                        )
+                      : Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: [
+                            TextButton(
+                              onPressed: _resend,
+                              child: const Text('Resend SMS'),
                             ),
-                        ],
-                      ),
-              ),
-              const Spacer(),
-              MyShopPrimaryButton(
-                label: widget.buttonLabel,
-                isLoading: widget.isVerifying,
-                onPressed:
-                    _code.length == 6 && !widget.isVerifying ? _verify : null,
-              ),
-              const SizedBox(height: 24),
-            ],
+                            if (widget.onResendWhatsApp != null)
+                              TextButton.icon(
+                                onPressed: _resendViaWhatsApp,
+                                icon: const Icon(Icons.chat_outlined, size: 18),
+                                label: const Text('Send via WhatsApp'),
+                              ),
+                          ],
+                        ),
+                ),
+                const Spacer(),
+                MyShopPrimaryButton(
+                  label: widget.buttonLabel,
+                  isLoading: widget.isVerifying,
+                  onPressed:
+                      _code.length == 6 && !widget.isVerifying ? _verify : null,
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
           ),
         ),
       ),

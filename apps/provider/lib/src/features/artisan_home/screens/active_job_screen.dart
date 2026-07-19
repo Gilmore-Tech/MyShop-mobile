@@ -394,6 +394,7 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
                           onRecenter: () => _mapHandle.recenter?.call(),
                           onOpenInMaps: () =>
                               _launchExternalNavigation(destination),
+                          onEmergency: () => context.push('/safety/emergency'),
                           onToggleVoice: () => _mapHandle.voiceMuted.value =
                               !_mapHandle.voiceMuted.value,
                         ),
@@ -1071,6 +1072,7 @@ class _NavHeader extends StatelessWidget {
     required this.onBack,
     required this.onRecenter,
     required this.onOpenInMaps,
+    required this.onEmergency,
     required this.onToggleVoice,
   });
 
@@ -1097,6 +1099,7 @@ class _NavHeader extends StatelessWidget {
   final VoidCallback onBack;
   final VoidCallback onRecenter;
   final VoidCallback onOpenInMaps;
+  final VoidCallback onEmergency;
   final VoidCallback onToggleVoice;
 
   @override
@@ -1166,6 +1169,11 @@ class _NavHeader extends StatelessWidget {
               _CircleIconButton(
                 icon: voiceMuted ? Icons.volume_off : Icons.volume_up,
                 onTap: onToggleVoice,
+              ),
+              const SizedBox(width: MyShopSpacing.xs),
+              _CircleIconButton(
+                icon: Icons.sos_rounded,
+                onTap: onEmergency,
               ),
               const SizedBox(width: MyShopSpacing.xs),
               _CircleIconButton(
@@ -2093,13 +2101,12 @@ class _CompletionOverlay extends StatelessWidget {
         return "$clientFirstName has chosen Cash. If they've handed you "
             'the money, tap "Yes, I received payment" to settle the job.';
       case JobStatus.pendingPayment:
-        return "$clientFirstName's Paystack charge is settling. Hang "
-            'tight — your earnings release automatically once the bank '
-            "confirms (usually a few seconds). You don't need to do "
-            'anything here.';
+        return "$clientFirstName's Paystack charge is being confirmed. "
+            'No action is needed from you. Check Earnings for the '
+            'authoritative settlement status.';
       case JobStatus.completed:
-        return 'Payment has been released to your wallet. Check your '
-            'earnings to see the breakdown.';
+        return 'Job completion is confirmed. Check Earnings for the '
+            'authoritative settlement status and breakdown.';
       default:
         return "You've marked the job done. $clientFirstName needs to "
             'review and pay before your earnings release.';

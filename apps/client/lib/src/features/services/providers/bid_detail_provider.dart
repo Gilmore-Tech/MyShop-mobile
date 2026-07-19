@@ -5,6 +5,7 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
+import '../data/job_cancellation_coordinator.dart';
 import 'bid_list_provider.dart';
 import 'job_detail_provider.dart';
 
@@ -295,13 +296,36 @@ class BidDetailNotifier extends StateNotifier<BidDetailActionState> {
       _ref.invalidate(jobDetailProvider(jobId));
       _ref.invalidate(bidsForJobProvider(jobId));
     } on ApiException catch (e) {
-      state = state.copyWith(isAccepting: false, errorMessage: e.message);
+      state = state.copyWith(
+        isAccepting: false,
+        errorMessage: _safeBidSelectionError(e),
+      );
     } catch (_) {
       state = state.copyWith(
         isAccepting: false,
         errorMessage: 'Failed to accept bid. Please try again.',
       );
     }
+  }
+
+  String _safeBidSelectionError(ApiException error) {
+    return switch (error.errorCode) {
+      'JOB_NOT_OPEN' =>
+        "This job isn't accepting bids anymore. Refresh to see its current status.",
+      'BID_NOT_FOUND' =>
+        'This bid is no longer available. Refresh and choose another bid.',
+      'BID_NOT_PENDING' =>
+        'This bid is no longer pending. Refresh to see the latest bids.',
+      'CLIENT_PROFILE_REQUIRED' ||
+      'NOT_JOB_OWNER' =>
+        "This client account isn't allowed to select a bid for this job.",
+      _ => userSafeApiErrorMessage(
+          error,
+          fallback: 'Failed to accept the bid. Please try again.',
+          conflictMessage:
+              'The bid changed before it could be accepted. Refresh and try again.',
+        ),
+    };
   }
 
   /// Declines / ignores the bid — client simply does not call select-bid.
@@ -319,15 +343,17 @@ class BidDetailNotifier extends StateNotifier<BidDetailActionState> {
   Future<void> cancelJobRequest({required String jobId}) async {
     if (state.isBusy) return;
     state = state.copyWith(isDeclining: true, clearError: true);
-    try {
-      await _jobService.cancelJob(jobId);
+    final cancellation = await cancelJobWithAuthority(
+      jobService: _jobService,
+      jobId: jobId,
+      reason: 'client_cancelled',
+    );
+    if (cancellation.confirmedCancelled) {
       state = state.copyWith(isDeclining: false, isAwaitingConfirmation: false);
-    } on ApiException catch (e) {
-      state = state.copyWith(isDeclining: false, errorMessage: e.message);
-    } catch (_) {
+    } else {
       state = state.copyWith(
         isDeclining: false,
-        errorMessage: 'Failed to cancel. Please try again.',
+        errorMessage: cancellation.message,
       );
     }
   }

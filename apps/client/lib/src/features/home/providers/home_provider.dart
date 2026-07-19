@@ -35,26 +35,10 @@ final specialOffersProvider =
 class SpecialOffersNotifier extends AsyncNotifier<List<SpecialOffer>> {
   @override
   Future<List<SpecialOffer>> build() async {
-    // TODO: Replace with GET /config/promos when backend supports it.
-    // For pilot, static offers are fine per PRD §13.3 (no ads/listings).
-    return const [
-      SpecialOffer(
-        id: '1',
-        tag: 'SPECIAL OFFER',
-        title: '20% Off Your First Ride',
-        subtitle: 'Use code: AKWAABA',
-        promoCode: 'AKWAABA',
-        backgroundColor: Color(0xFF8B1E1E),
-      ),
-      SpecialOffer(
-        id: '2',
-        tag: 'LIMITED TIME',
-        title: 'GHS 10 Off Artisan Services',
-        subtitle: 'Use code: CRAFT10',
-        promoCode: 'CRAFT10',
-        backgroundColor: Color(0xFF1F4E3D),
-      ),
-    ];
+    // Emergency release containment: do not advertise static codes while the
+    // server-side promo redemption path is suspended. Re-enable from an
+    // authoritative runtime endpoint only after atomic reservation is proven.
+    return const [];
   }
 }
 

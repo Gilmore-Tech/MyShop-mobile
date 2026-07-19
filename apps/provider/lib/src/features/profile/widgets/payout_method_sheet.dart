@@ -139,6 +139,20 @@ class _PayoutMethodSheetState extends ConsumerState<_PayoutMethodSheet> {
       _startCooldown(result.retryAfterSeconds!);
     }
 
+    // A provider timeout can lose only the HTTP acknowledgement while the SMS
+    // is already on its way. The backend explicitly marks that code active;
+    // let the provider enter it instead of trapping them on the form screen.
+    if (result.otpActive) {
+      _startCooldown(result.retryAfterSeconds ?? 60);
+      setState(() {
+        _isSending = false;
+        _step = _SheetStep.otp;
+        _serverError = result.message ??
+            'We could not confirm delivery. Enter the code if it arrives.';
+      });
+      return;
+    }
+
     setState(() {
       _isSending = false;
       _serverError = result.message ?? 'Could not send code.';

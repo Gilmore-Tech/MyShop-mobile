@@ -1,5 +1,6 @@
 /// DTOs for the auth endpoints.
 /// Matches the contract in `docs/mobile-api-endpoints.md`.
+import 'package:shared_models/shared_models.dart';
 
 /// POST /auth/register request body.
 ///
@@ -12,7 +13,7 @@ class RegisterRequest {
     required this.phone,
     required this.fullName,
     required this.type,
-    required this.privacyPolicyAccepted,
+    required this.legalAcceptances,
     this.deviceId = '',
     this.deviceInfo,
     this.displayName,
@@ -34,7 +35,7 @@ class RegisterRequest {
   final String phone;
   final String fullName;
   final String type; // "client", "driver", or "artisan"
-  final bool privacyPolicyAccepted;
+  final List<LegalAcceptanceSelection> legalAcceptances;
   final String deviceId;
   final String? deviceInfo;
   final String? displayName; // public-facing name for this role
@@ -59,7 +60,9 @@ class RegisterRequest {
       'phone': phone,
       'fullName': fullName,
       'type': type,
-      'privacyPolicyAccepted': privacyPolicyAccepted,
+      'legalAcceptances': legalAcceptances
+          .map((acceptance) => acceptance.toJson())
+          .toList(growable: false),
       'deviceId': deviceId,
     };
     if (deviceInfo != null) json['deviceInfo'] = deviceInfo;
@@ -119,21 +122,27 @@ class LoginRequest {
 
 /// POST /auth/request-session-recovery request body.
 ///
-/// Sent when the user can't reach the device that's currently holding the
-/// session (lost phone, etc.). Backend records the request and notifies
-/// support so the operator can manually revoke the active session.
+/// Sent only with the short-lived one-time capability returned by the exact
+/// blocked-session conflict. The capability is kept in memory and never
+/// inferred or persisted.
 class SessionRecoveryRequest {
   const SessionRecoveryRequest({
+    required this.challenge,
     required this.phone,
     required this.deviceId,
+    required this.role,
   });
 
+  final String challenge;
   final String phone;
   final String deviceId;
+  final String role;
 
   Map<String, dynamic> toJson() => {
+        'challenge': challenge,
         'phone': phone,
         'deviceId': deviceId,
+        'role': role,
       };
 }
 
@@ -144,6 +153,79 @@ class PhoneOnlyRequest {
   final String phone;
 
   Map<String, dynamic> toJson() => {'phone': phone};
+}
+
+/// POST /auth/role-account-recovery/request-otp.
+///
+/// This is deliberately separate from lost-device session recovery. The
+/// backend binds the OTP to the exact retained role account and this install.
+class RequestRoleAccountRecoveryOtpRequest {
+  const RequestRoleAccountRecoveryOtpRequest({
+    required this.phone,
+    required this.role,
+    required this.deviceId,
+  });
+
+  final String phone;
+  final String role;
+  final String deviceId;
+
+  Map<String, dynamic> toJson() => {
+        'phone': phone,
+        'role': role,
+        'deviceId': deviceId,
+      };
+}
+
+/// POST /auth/role-account-recovery/verify-otp.
+///
+/// [requestKey] is generated once per dialog and reused after a lost HTTP
+/// response, so a consumed OTP cannot create a duplicate request.
+class VerifyRoleAccountRecoveryOtpRequest
+    extends RequestRoleAccountRecoveryOtpRequest {
+  const VerifyRoleAccountRecoveryOtpRequest({
+    required super.phone,
+    required super.role,
+    required super.deviceId,
+    required this.otp,
+    required this.requestKey,
+  });
+
+  final String otp;
+  final String requestKey;
+
+  @override
+  Map<String, dynamic> toJson() => {
+        ...super.toJson(),
+        'otp': otp,
+        'requestKey': requestKey,
+      };
+}
+
+class RoleAccountRecoveryResult {
+  const RoleAccountRecoveryResult({
+    required this.requestId,
+    required this.role,
+    required this.status,
+    required this.recoveryDeadline,
+    required this.requestedAt,
+  });
+
+  factory RoleAccountRecoveryResult.fromJson(Map<String, dynamic> json) {
+    return RoleAccountRecoveryResult(
+      requestId: json['requestId'] as String,
+      role: json['role'] as String,
+      status: json['status'] as String,
+      recoveryDeadline: DateTime.parse(json['recoveryDeadline'] as String),
+      requestedAt: DateTime.parse(json['requestedAt'] as String),
+    );
+  }
+
+  final String requestId;
+  final String role;
+  final String status;
+  final DateTime recoveryDeadline;
+  final DateTime requestedAt;
 }
 
 /// POST /auth/verify-otp request body.

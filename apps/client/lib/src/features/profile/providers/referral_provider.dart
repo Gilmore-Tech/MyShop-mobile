@@ -3,7 +3,6 @@ import 'dart:developer' as developer;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
-import '../../auth/providers/auth_controller.dart';
 
 // ── Referral entry ────────────────────────────────────────────────────────────
 
@@ -95,19 +94,8 @@ final referralProvider = FutureProvider.autoDispose<ReferralData>((ref) async {
     return ReferralData.fromJson(json);
   } catch (e) {
     developer.log('getReferral error: $e', name: 'ReferralProvider');
-    // Fallback: use referral code already in the auth state.
-    final authState = ref.read(clientAuthControllerProvider);
-    String code = '';
-    if (authState is AuthAuthenticated) {
-      code = authState.profile.client?.referralCode ?? '';
-    }
-    return ReferralData(
-      code: code,
-      shareLink: null,
-      totalReferrals: 0,
-      pendingPesewas: 0,
-      earnedPesewas: 0,
-      recentReferrals: const [],
-    );
+    // Never convert an unavailable or quarantined role-owned referral ledger
+    // into a plausible-looking zero history. The screen must report failure.
+    rethrow;
   }
 });

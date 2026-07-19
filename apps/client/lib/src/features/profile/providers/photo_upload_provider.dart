@@ -143,9 +143,12 @@ class ProfilePhotoUploadNotifier
       return null;
     } on ApiException catch (e) {
       if (mounted) state = state.copyWith(isUploading: false);
-      return e.message.isNotEmpty
-          ? e.message
-          : 'Upload failed. Please try again.';
+      return userSafeApiErrorMessage(
+        e,
+        fallback: 'Upload failed. Please try again.',
+        validationMessage:
+            'Choose a supported photo and make sure the file is not too large.',
+      );
     } catch (_) {
       if (mounted) state = state.copyWith(isUploading: false);
       return 'Upload failed. Please try again.';

@@ -14,7 +14,7 @@ class AccountProfile {
   final String maskedPhone;
   final bool isKycVerified;
   final String? avatarUrl;
-  final int loyaltyPointsBalance;
+  final int? loyaltyPointsBalance;
   final String? referralCode;
 
   const AccountProfile({
@@ -24,7 +24,7 @@ class AccountProfile {
     required this.maskedPhone,
     required this.isKycVerified,
     this.avatarUrl,
-    this.loyaltyPointsBalance = 0,
+    this.loyaltyPointsBalance,
     this.referralCode,
   });
 
@@ -49,7 +49,7 @@ class AccountProfile {
       maskedPhone: _maskPhone(phone),
       isKycVerified: client?.ghanaCardVerified ?? false,
       avatarUrl: client?.profilePhotoUrl,
-      loyaltyPointsBalance: client?.loyaltyPointsBalance ?? 0,
+      loyaltyPointsBalance: client?.loyaltyPointsBalance,
       referralCode: client?.referralCode,
     );
   }

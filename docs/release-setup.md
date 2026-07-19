@@ -378,18 +378,24 @@ git tag -d v0.99.0-rc.1
 Once Part 5 passes, every release is:
 
 ```bash
-# 1. Bump version in both pubspec.yaml files
-$EDITOR apps/client/pubspec.yaml      # version: 1.0.1+2
-$EDITOR apps/provider/pubspec.yaml    # version: 1.0.1+2
+# 1. Confirm the highest private build number for this app in BOTH App Store
+#    Connect and Play Console. Choose a number greater than both values. Client
+#    and provider are checked independently; never infer a console value.
 
-# 2. Commit + tag + push
-git commit -am "chore(release): v1.0.1"
-git tag v1.0.1
+# 2. The approved marketing version lives in both pubspec.yaml files. The
+#    production build command requires the console-verified build number and
+#    passes both values explicitly to Flutter.
+RELEASE_BUILD_NUMBER=<greater-than-both-console-values> tool/build.sh client android
+RELEASE_BUILD_NUMBER=<greater-than-both-console-values> tool/build.sh client ios
+
+# 3. Commit + tag + push only after the exact artifacts pass staging/device QA
+git commit -am "chore(release): v1.4.1"
+git tag v1.4.1
 git push && git push --tags
 ```
 
 The workflows fire on tag push, produce signed builds, upload to Internal tracks. You receive:
-- **TestFlight Internal** email within ~5 min ("Build 1.0.1 (2) is now available").
+- **TestFlight Internal** email within ~5 min (for example, "Build 1.4.1 (21) is now available").
 - **Play Console Internal Testing** link within ~30 min (or longer first time).
 
 Smoke-test on internal devices.

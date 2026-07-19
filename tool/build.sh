@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Build a MyShop mobile app for production.
 #
-#   tool/build.sh client android         # AAB at apps/client/build/app/outputs/bundle/release/  (Play Store)
-#   tool/build.sh client android-apk     # fat APK at apps/client/build/app/outputs/flutter-apk/ (sideload / alpha)
-#   tool/build.sh client ios             # archive that opens in Xcode for App Store upload
-#   tool/build.sh provider android
-#   tool/build.sh provider android-apk
-#   tool/build.sh provider ios
+#   RELEASE_BUILD_NUMBER=21 tool/build.sh client android
+#   RELEASE_BUILD_NUMBER=21 tool/build.sh client android-apk
+#   RELEASE_BUILD_NUMBER=21 tool/build.sh client ios
+#   RELEASE_BUILD_NUMBER=21 tool/build.sh provider android
+#   RELEASE_BUILD_NUMBER=21 tool/build.sh provider android-apk
+#   RELEASE_BUILD_NUMBER=21 tool/build.sh provider ios
 #   tool/build.sh provider android --validate-only  # config check, no build
 #
 # Reads `.env.prod` (gitignored — copy from `.env.prod.example` and fill in
@@ -53,7 +53,7 @@ cd "$(dirname "$0")/.."
 REPO_ROOT="$(pwd)"
 
 if [[ $# -lt 2 ]]; then
-  echo "usage: tool/build.sh <client|provider> <android|android-apk|ios> [extra flutter args...]" >&2
+  echo "usage: RELEASE_BUILD_NUMBER=<console-verified integer> tool/build.sh <client|provider> <android|android-apk|ios> [extra flutter args...]" >&2
   exit 2
 fi
 
@@ -210,6 +210,23 @@ if [[ "$VALIDATE_ONLY" == true ]]; then
 fi
 
 APP_DIR="$REPO_ROOT/apps/$APP"
+for EXTRA_ARG in "$@"; do
+  case "$EXTRA_ARG" in
+    --build-name|--build-name=*|--build-number|--build-number=*)
+      echo "error: do not pass $EXTRA_ARG directly; set RELEASE_BUILD_NUMBER after checking both private store consoles" >&2
+      exit 2
+      ;;
+    *MYSHOP_MARKETING_VERSION*)
+      echo "error: do not override MYSHOP_MARKETING_VERSION; it is pinned by resolve-release-version.sh" >&2
+      exit 2
+      ;;
+  esac
+done
+
+RELEASE_VERSION_ARGS=()
+while IFS= read -r VERSION_ARG; do
+  RELEASE_VERSION_ARGS+=("$VERSION_ARG")
+done < <(bash "$REPO_ROOT/tool/resolve-release-version.sh" "$APP")
 
 if [[ "$PLATFORM" == "android" || "$PLATFORM" == "android-apk" ]]; then
   # Native Maps SDK reads MAPS_API_KEY via the `${MAPS_API_KEY}`
@@ -253,13 +270,13 @@ cd "$APP_DIR"
 case "$PLATFORM" in
   android)
     echo "→ flutter build appbundle (release) for apps/$APP with ${#DEFINES[@]} dart-defines"
-    exec flutter build appbundle --release "${DEFINES[@]}" "$@"
+    exec flutter build appbundle --release "${RELEASE_VERSION_ARGS[@]}" "${DEFINES[@]}" "$@"
     ;;
   android-apk)
     echo "→ flutter build apk (release, fat APK) for apps/$APP with ${#DEFINES[@]} dart-defines"
     echo "  Output: $APP_DIR/build/app/outputs/flutter-apk/app-release.apk"
     echo "  Install on a phone with: adb install -r <path>/app-release.apk"
-    exec flutter build apk --release "${DEFINES[@]}" "$@"
+    exec flutter build apk --release "${RELEASE_VERSION_ARGS[@]}" "${DEFINES[@]}" "$@"
     ;;
   ios)
     echo "→ flutter build ipa (release) for apps/$APP with ${#DEFINES[@]} dart-defines"
@@ -268,6 +285,6 @@ case "$PLATFORM" in
     echo "  build/ios/ipa/ — upload with Transporter."
     exec flutter build ipa --release \
       --export-options-plist "$REPO_ROOT/ExportOptions.plist" \
-      "${DEFINES[@]}" "$@"
+      "${RELEASE_VERSION_ARGS[@]}" "${DEFINES[@]}" "$@"
     ;;
 esac

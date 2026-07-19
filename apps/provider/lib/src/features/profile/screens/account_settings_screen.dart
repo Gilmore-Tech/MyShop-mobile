@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../core/constants/app_version.dart';
+
 import '../../auth/providers/auth_controller.dart';
 import '../../auth/providers/current_user_provider.dart';
 import '../../earnings/providers/earnings_providers.dart';
@@ -109,12 +111,6 @@ class AccountSettingsScreen extends ConsumerWidget {
     final verificationStatus = isDriver
         ? (driverProfile?.verificationStatus ?? 'pending')
         : (artisanProfile?.verificationStatus ?? 'pending');
-    final kycStatus = isDriver
-        ? (driverProfile?.kycStatus ?? 'pending')
-        : (artisanProfile?.kycStatus ?? 'pending');
-    final policeCheckStatus = isDriver
-        ? (driverProfile?.policeCheckStatus ?? 'pending')
-        : (artisanProfile?.policeCheckStatus ?? 'pending');
     final isVerified = verificationStatus == 'approved';
 
     // Vehicle info subtitle. Show partial vehicle records too; newly-created
@@ -130,13 +126,16 @@ class AccountSettingsScreen extends ConsumerWidget {
         ? '${isDriver ? driverProfile?.payoutMethod ?? 'MoMo' : artisanProfile?.payoutMethod ?? 'MoMo'}: ••• ${(isDriver ? driverProfile!.payoutAccountNumber! : artisanProfile!.payoutAccountNumber!).substring((isDriver ? driverProfile!.payoutAccountNumber! : artisanProfile!.payoutAccountNumber!).length > 4 ? (isDriver ? driverProfile!.payoutAccountNumber! : artisanProfile!.payoutAccountNumber!).length - 4 : 0)}'
         : 'Not set up yet';
 
-    // KYC button label and style
-    final kycLabel = kycStatus == 'approved'
-        ? 'KYC: Verified'
-        : 'KYC: ${_capitalize(kycStatus)}';
-    final kycColor =
-        kycStatus == 'approved' ? MyShopColors.success : MyShopColors.warning;
-    final kycBg = kycStatus == 'approved'
+    // V1 uses MyShop's manual coordinator -> Regional Manager review. Smile
+    // Identity automation is intentionally deferred, so this surface reflects
+    // the authoritative provider verification status instead of kycStatus.
+    final verificationLabel = verificationStatus == 'approved'
+        ? 'Verification: Approved'
+        : 'Verification: ${_capitalize(verificationStatus)}';
+    final verificationColor = verificationStatus == 'approved'
+        ? MyShopColors.success
+        : MyShopColors.warning;
+    final verificationBg = verificationStatus == 'approved'
         ? MyShopColors.successLight
         : MyShopColors.warningLight;
 
@@ -211,11 +210,11 @@ class AccountSettingsScreen extends ConsumerWidget {
               child: OutlinedButton.icon(
                 onPressed: () => context.push('/account/documents'),
                 icon: const Icon(Icons.shield_outlined, size: 14),
-                label: Text(kycLabel),
+                label: Text(verificationLabel),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: kycColor,
-                  side: BorderSide(color: kycColor),
-                  backgroundColor: kycBg,
+                  foregroundColor: verificationColor,
+                  side: BorderSide(color: verificationColor),
+                  backgroundColor: verificationBg,
                   minimumSize: const Size(double.infinity, 44),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10)),
@@ -264,7 +263,7 @@ class AccountSettingsScreen extends ConsumerWidget {
                   SettingsListTile(
                     icon: Icons.shield_outlined,
                     title: 'Documents & Verification',
-                    subtitle: 'KYC, Police Check, ID-Cards',
+                    subtitle: 'Manual document review and approvals',
                     trailingChipLabel: !isVerified ? '1 Action' : null,
                     trailingChipColor: MyShopColors.error,
                     onTap: () => context.push('/account/documents'),
@@ -307,6 +306,18 @@ class AccountSettingsScreen extends ConsumerWidget {
                     title: 'Notifications',
                     subtitle: 'Push, SMS, and Email',
                     onTap: () => context.push('/account/notifications'),
+                  ),
+                  SettingsListTile(
+                    icon: Icons.emergency_outlined,
+                    title: 'Emergency Contacts',
+                    subtitle: 'Separate contacts for this provider role',
+                    onTap: () => context.push('/account/emergency-contacts'),
+                  ),
+                  SettingsListTile(
+                    icon: Icons.sos_rounded,
+                    title: 'Emergency SOS',
+                    subtitle: 'Raise an alert and open the 191 dialer',
+                    onTap: () => context.push('/safety/emergency'),
                   ),
                   SettingsListTile(
                     icon: Icons.lock_outline,
@@ -353,8 +364,7 @@ class AccountSettingsScreen extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
               child: _ComplianceSummary(
-                kycStatus: kycStatus,
-                policeCheckStatus: policeCheckStatus,
+                identityReviewStatus: verificationStatus,
               ),
             ),
             const SizedBox(height: MyShopSpacing.md),
@@ -402,7 +412,7 @@ class AccountSettingsScreen extends ConsumerWidget {
                           color: MyShopColors.textPrimary)),
                 ]),
                 const SizedBox(height: 4),
-                Text('Version 1.0.0',
+                Text(appVersionLabel,
                     style: MyShopTypography.caption.copyWith(fontSize: 10)),
                 Text('© 2026 Gilmore Tech. All Rights Reserved.',
                     style: MyShopTypography.caption.copyWith(fontSize: 10)),
@@ -544,12 +554,24 @@ class _VerificationBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isPending = verificationStatus == 'pending';
-    final statusText = isPending
-        ? 'Your documents are awaiting review. Please complete any remaining steps.'
-        : 'Your KYC and Police Check are currently being reviewed. Results are expected within 24-48 hours.';
-    final title =
-        isPending ? 'Verification Required' : 'Verification in Progress';
+    final (title, statusText) = switch (verificationStatus.toLowerCase()) {
+      'pending' => (
+          'Verification Required',
+          'Your documents are awaiting review. Please complete any remaining steps.',
+        ),
+      'rejected' => (
+          'Verification Needs Attention',
+          'One or more requirements were not approved. Open Documents & Verification for the exact notice and next step.',
+        ),
+      'suspended' => (
+          'Account Suspended',
+          'This provider role cannot go online. Review your account notice or contact support.',
+        ),
+      _ => (
+          'Verification in Progress',
+          'Your documents are in the manual Coordinator and Regional Manager review process. Check the verification screen for current status.',
+        ),
+    };
 
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),
@@ -692,11 +714,9 @@ class _PerfDivider extends StatelessWidget {
 
 class _ComplianceSummary extends StatelessWidget {
   const _ComplianceSummary({
-    required this.kycStatus,
-    required this.policeCheckStatus,
+    required this.identityReviewStatus,
   });
-  final String kycStatus;
-  final String policeCheckStatus;
+  final String identityReviewStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -733,21 +753,12 @@ class _ComplianceSummary extends StatelessWidget {
               ]),
               const SizedBox(height: MyShopSpacing.sm),
               _ComplianceRow(
-                icon: Icons.fingerprint,
-                title: 'KYC Identity',
-                subtitle: 'Smile Identity Verification',
-                status: kycStatus.toUpperCase(),
-                statusColor: _statusColor(kycStatus),
-                statusBg: _statusBg(kycStatus),
-              ),
-              const SizedBox(height: 8),
-              _ComplianceRow(
-                icon: Icons.local_police_outlined,
-                title: 'Police Background',
-                subtitle: 'Ghana Police Service Check',
-                status: policeCheckStatus.toUpperCase(),
-                statusColor: _statusColor(policeCheckStatus),
-                statusBg: _statusBg(policeCheckStatus),
+                icon: Icons.fact_check_outlined,
+                title: 'Provider Verification',
+                subtitle: 'Manual Coordinator → Regional Manager review',
+                status: identityReviewStatus.toUpperCase(),
+                statusColor: _statusColor(identityReviewStatus),
+                statusBg: _statusBg(identityReviewStatus),
               ),
             ],
           ),

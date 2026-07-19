@@ -86,7 +86,20 @@ class _SupplementRequestScreenState
       if (!mounted) return;
       setState(() {
         _submitting = false;
-        _errorMessage = e.message;
+        _errorMessage = switch (e.errorCode) {
+          'SUPPLEMENT_TOO_LATE' =>
+            'A supplement can no longer be requested after work has started.',
+          'NOT_ASSIGNED_ARTISAN' =>
+            'Only the assigned artisan can request a supplement.',
+          'ARTISAN_PROFILE_REQUIRED' =>
+            'Complete your artisan profile before requesting a supplement.',
+          _ => userSafeApiErrorMessage(
+              e,
+              fallback: 'Could not send the request. Try again.',
+              conflictMessage:
+                  'The job changed before the request was sent. Refresh and try again.',
+            ),
+        };
       });
     } catch (_) {
       if (!mounted) return;

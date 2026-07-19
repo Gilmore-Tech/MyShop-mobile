@@ -1402,7 +1402,9 @@ class _TimingCard extends StatelessWidget {
                       ),
                       SizedBox(height: h * 0.004),
                       Text(
-                        'When do you need the help?',
+                        kScheduledJobCreationEnabled
+                            ? 'When do you need the help?'
+                            : 'Scheduling is temporarily unavailable',
                         style: TextStyle(
                           fontSize: w * 0.024,
                           fontWeight: FontWeight.w400,
@@ -1416,6 +1418,7 @@ class _TimingCard extends StatelessWidget {
                 _TimingToggle(
                   isImmediate: isImmediate,
                   onToggle: onToggle,
+                  allowLater: kScheduledJobCreationEnabled,
                   w: w,
                   h: h,
                 ),
@@ -1427,7 +1430,7 @@ class _TimingCard extends StatelessWidget {
           AnimatedSize(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeInOut,
-            child: isImmediate
+            child: isImmediate || !kScheduledJobCreationEnabled
                 ? const SizedBox.shrink()
                 : Column(
                     children: [
@@ -1622,11 +1625,13 @@ class _PickerButton extends StatelessWidget {
 class _TimingToggle extends StatelessWidget {
   final bool isImmediate;
   final void Function(bool) onToggle;
+  final bool allowLater;
   final double w;
   final double h;
   const _TimingToggle({
     required this.isImmediate,
     required this.onToggle,
+    required this.allowLater,
     required this.w,
     required this.h,
   });
@@ -1645,13 +1650,14 @@ class _TimingToggle extends StatelessWidget {
             w: w,
             h: h,
           ),
-          _ToggleOption(
-            label: 'Later',
-            isSelected: !isImmediate,
-            onTap: () => onToggle(false),
-            w: w,
-            h: h,
-          ),
+          if (allowLater)
+            _ToggleOption(
+              label: 'Later',
+              isSelected: !isImmediate,
+              onTap: () => onToggle(false),
+              w: w,
+              h: h,
+            ),
         ],
       ),
     );
@@ -1806,7 +1812,7 @@ class _SafetyInfoCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Police Check & KYC Verified',
+                  'Manually Reviewed Providers',
                   style: TextStyle(
                     fontSize: w * 0.036,
                     fontWeight: FontWeight.w700,
@@ -1815,7 +1821,7 @@ class _SafetyInfoCard extends StatelessWidget {
                 ),
                 SizedBox(height: h * 0.004),
                 Text(
-                  'All bidders are screened via Ghana Police background checks and Smile Identity KYC.',
+                  'Provider documents are reviewed by a MyShop coordinator, with final approval by a Regional Manager.',
                   style: TextStyle(
                     fontSize: w * 0.028,
                     fontWeight: FontWeight.w400,

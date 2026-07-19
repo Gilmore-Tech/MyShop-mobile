@@ -29,6 +29,38 @@ void main() {
     service = NotificationService(dio);
   });
 
+  test('registers receipt capability with the provider device token', () async {
+    await service.registerDevice(
+      fcmToken: 'fcm-token',
+      platform: 'android',
+      role: 'driver',
+    );
+
+    expect(capturedRequest.method, 'POST');
+    expect(capturedRequest.path, '/notifications/register-device');
+    expect(capturedRequest.data, {
+      'fcmToken': 'fcm-token',
+      'platform': 'android',
+      'offerReceiptVersion': 1,
+    });
+  });
+
+  test(
+      'can omit the capability marker for a mobile-first legacy-backend rollout',
+      () async {
+    await service.registerDevice(
+      fcmToken: 'fcm-token',
+      platform: 'android',
+      role: 'driver',
+      offerReceiptVersion: null,
+    );
+
+    expect(capturedRequest.data, {
+      'fcmToken': 'fcm-token',
+      'platform': 'android',
+    });
+  });
+
   test('registers the ActivityKit push-to-start token', () async {
     await service.registerLiveActivityDevice(
       pushToStartToken: 'push-to-start-token',

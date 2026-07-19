@@ -95,11 +95,14 @@ class _ProviderOtpVerificationScreenState
     );
   }
 
-  /// Verify the OTP, then push any role-specific draft fields that
-  /// `POST /auth/register` couldn't carry (vehicle details for driver,
-  /// service radius for artisan) via the role's profile-update endpoint.
-  /// Without this, the driver row lands with null vehicle columns and the
-  /// account screen shows "Vehicle information: Not set up yet" forever.
+  /// Verify the OTP, clear the driver draft created by the now-complete
+  /// registration transaction, then push the one artisan-only draft field
+  /// that `POST /auth/register` does not currently carry.
+  ///
+  /// Driver vehicle details and category slugs are part of registration. The
+  /// backend atomically creates the explicit pending vehicle and its pending
+  /// per-vehicle category rows. Re-sending legacy flattened vehicle fields to
+  /// the profile endpoint is both redundant and forbidden after registration.
   Future<void> _verifyAndFlushDraft(WidgetRef ref, String code) async {
     final controller = ref.read(authControllerProvider.notifier);
 
@@ -110,8 +113,6 @@ class _ProviderOtpVerificationScreenState
     final freshArtisanSignup = before is AuthOtpSent &&
         before.isNewUser &&
         before.role == ProviderType.artisan;
-    final driverDraft =
-        freshDriverSignup ? ref.read(driverRegistrationProvider) : null;
     final artisanDraft =
         freshArtisanSignup ? ref.read(artisanRegistrationProvider) : null;
     final driverDraftNotifier = freshDriverSignup
@@ -123,37 +124,7 @@ class _ProviderOtpVerificationScreenState
 
     await controller.verifyOtp(code);
 
-    if (driverDraft != null) {
-      final hasVehicle = driverDraft.vehicleMake.trim().isNotEmpty ||
-          driverDraft.vehicleModel.trim().isNotEmpty ||
-          driverDraft.vehicleYear.trim().isNotEmpty ||
-          driverDraft.vehiclePlate.trim().isNotEmpty ||
-          driverDraft.vehicleColor.trim().isNotEmpty;
-      if (hasVehicle) {
-        final error = await controller.updateDriverProfile(
-          UpdateDriverProfileRequest(
-            vehicleMake: driverDraft.vehicleMake.trim().isNotEmpty
-                ? driverDraft.vehicleMake.trim()
-                : null,
-            vehicleModel: driverDraft.vehicleModel.trim().isNotEmpty
-                ? driverDraft.vehicleModel.trim()
-                : null,
-            vehicleYear: driverDraft.vehicleYear.trim().isNotEmpty
-                ? driverDraft.vehicleYear.trim()
-                : null,
-            vehiclePlate: driverDraft.vehiclePlate.trim().isNotEmpty
-                ? driverDraft.vehiclePlate.trim().toUpperCase()
-                : null,
-            vehicleColor: driverDraft.vehicleColor.trim().isNotEmpty
-                ? driverDraft.vehicleColor.trim()
-                : null,
-          ),
-        );
-        if (error != null) {
-          debugPrint('[Auth] post-signup vehicle sync failed: $error');
-          return;
-        }
-      }
+    if (freshDriverSignup) {
       driverDraftNotifier?.update(DriverRegistrationDraft());
     } else if (artisanDraft != null) {
       // serviceRadiusKm is the only post-register artisan-only field on the

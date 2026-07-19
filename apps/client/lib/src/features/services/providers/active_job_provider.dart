@@ -295,11 +295,18 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobActionState> {
     } on ApiException catch (e) {
       state = state.copyWith(
         isConfirmingArrival: false,
-        errorMessage: e.message,
+        errorMessage: userSafeApiErrorMessage(
+          e,
+          fallback: "Couldn't confirm the job update. Please try again.",
+          conflictMessage:
+              'The job changed before the update completed. Refresh and try again.',
+        ),
       );
     } catch (_) {
-      // Fallback: treat as success during development
-      state = state.copyWith(isConfirmingArrival: false);
+      state = state.copyWith(
+        isConfirmingArrival: false,
+        errorMessage: "Couldn't confirm the job update. Please try again.",
+      );
     }
   }
 
@@ -318,10 +325,18 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobActionState> {
     } on ApiException catch (e) {
       state = state.copyWith(
         isMarkingComplete: false,
-        errorMessage: e.message,
+        errorMessage: userSafeApiErrorMessage(
+          e,
+          fallback: "Couldn't confirm completion. Please try again.",
+          conflictMessage:
+              'The job changed before completion was confirmed. Refresh and try again.',
+        ),
       );
     } catch (_) {
-      state = state.copyWith(isMarkingComplete: false);
+      state = state.copyWith(
+        isMarkingComplete: false,
+        errorMessage: "Couldn't confirm completion. Please try again.",
+      );
     }
   }
 }
@@ -404,9 +419,12 @@ class SupplementResponseNotifier
       state = state.copyWith(
         isApproving: false,
         isDeclining: false,
-        errorMessage: e.message.isNotEmpty
-            ? e.message
-            : "We couldn't send your response. Please try again.",
+        errorMessage: userSafeApiErrorMessage(
+          e,
+          fallback: "We couldn't send your response. Please try again.",
+          conflictMessage:
+              'This request has already changed. Refresh the job and check its status.',
+        ),
       );
       return false;
     } catch (_) {

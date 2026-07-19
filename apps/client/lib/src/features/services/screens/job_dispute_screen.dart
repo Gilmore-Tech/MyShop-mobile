@@ -1,7 +1,11 @@
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../../app/router.dart';
+import '../../../core/di/providers.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD § 4.8 — Client disputes a completed artisan job.
@@ -9,7 +13,9 @@ import 'package:go_router/go_router.dart';
 // EDD: POST /v1/jobs/:id/dispute  { reason, details }
 
 class JobDisputeScreen extends ConsumerStatefulWidget {
-  const JobDisputeScreen({super.key});
+  const JobDisputeScreen({required this.jobId, super.key});
+
+  final String jobId;
 
   @override
   ConsumerState<JobDisputeScreen> createState() => _JobDisputeScreenState();
@@ -20,6 +26,10 @@ class _JobDisputeScreenState extends ConsumerState<JobDisputeScreen> {
   String? _selectedReason;
   bool _isSubmitting = false;
   bool _submitted = false;
+  bool _refundDestinationRequired = false;
+  bool _refundDestinationVerified = false;
+  String? _disputeId;
+  String? _error;
 
   static const _reasons = [
     'Work quality was poor or incomplete',
@@ -43,14 +53,77 @@ class _JobDisputeScreenState extends ConsumerState<JobDisputeScreen> {
 
   Future<void> _submit() async {
     if (!_canSubmit || _isSubmitting) return;
-    setState(() => _isSubmitting = true);
-    // TODO: POST /v1/jobs/:id/dispute { reason, details }
-    await Future.delayed(const Duration(milliseconds: 900));
-    if (!mounted) return;
     setState(() {
-      _isSubmitting = false;
-      _submitted = true;
+      _isSubmitting = true;
+      _error = null;
     });
+    final selectedReason = _selectedReason!;
+    final details = _detailsController.text.trim();
+    try {
+      final result = await ref.read(jobServiceProvider).disputeJob(
+            widget.jobId,
+            reason: selectedReason == 'Other' ? details : selectedReason,
+            details: selectedReason != 'Other' && details.isNotEmpty
+                ? details
+                : null,
+          );
+      if (!mounted) return;
+      final disputeId = result['disputeId'] as String?;
+      final destinationRequired = result['refundDestinationRequired'] == true;
+      setState(() {
+        _submitted = true;
+        _disputeId = disputeId;
+        _refundDestinationRequired = destinationRequired;
+      });
+      if (destinationRequired && disputeId != null && mounted) {
+        final verified = await context.push<bool>(
+          AppRoutes.cashRefundDestinationPath(disputeId),
+        );
+        if (mounted && verified == true) {
+          setState(() => _refundDestinationVerified = true);
+        }
+      }
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      if (await _resumeExistingDispute(error)) return;
+      setState(() => _error = _jobDisputeErrorMessage(error));
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  Future<bool> _resumeExistingDispute(ApiException error) async {
+    if (error.errorCode != 'DISPUTE_ALREADY_OPEN') return false;
+    final disputeId = error.details?['disputeId'];
+    if (disputeId is! String || disputeId.isEmpty) return false;
+    final destinationRequired =
+        error.details?['refundDestinationRequired'] == true;
+    setState(() {
+      _submitted = true;
+      _disputeId = disputeId;
+      _refundDestinationRequired = destinationRequired;
+      _error = null;
+    });
+    if (destinationRequired && mounted) {
+      final verified = await context.push<bool>(
+        AppRoutes.cashRefundDestinationPath(disputeId),
+      );
+      if (mounted && verified == true) {
+        setState(() => _refundDestinationVerified = true);
+      }
+    }
+    return true;
+  }
+
+  Future<void> _verifyRefundDestination() async {
+    final disputeId = _disputeId;
+    if (disputeId == null) return;
+    final verified = await context.push<bool>(
+      AppRoutes.cashRefundDestinationPath(disputeId),
+    );
+    if (mounted && verified == true) {
+      setState(() => _refundDestinationVerified = true);
+    }
   }
 
   @override
@@ -77,7 +150,14 @@ class _JobDisputeScreenState extends ConsumerState<JobDisputeScreen> {
         centerTitle: false,
       ),
       body: _submitted
-          ? _SuccessBody(w: w, h: h, onDone: () => context.pop())
+          ? _SuccessBody(
+              w: w,
+              h: h,
+              onDone: () => context.pop(),
+              refundDestinationRequired: _refundDestinationRequired,
+              refundDestinationVerified: _refundDestinationVerified,
+              onVerifyRefundDestination: _verifyRefundDestination,
+            )
           : Column(
               children: [
                 Expanded(
@@ -117,12 +197,25 @@ class _JobDisputeScreenState extends ConsumerState<JobDisputeScreen> {
                 Padding(
                   padding: EdgeInsets.fromLTRB(
                       w * 0.05, 0, w * 0.05, bot + h * 0.028),
-                  child: _SubmitButton(
-                    enabled: _canSubmit,
-                    loading: _isSubmitting,
-                    onTap: _submit,
-                    w: w,
-                    h: h,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_error != null) ...[
+                        Text(
+                          _error!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: MyShopColors.error),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      _SubmitButton(
+                        enabled: _canSubmit,
+                        loading: _isSubmitting,
+                        onTap: _submit,
+                        w: w,
+                        h: h,
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -165,8 +258,7 @@ class _InfoBanner extends StatelessWidget {
                     )),
                 const SizedBox(height: 4),
                 Text(
-                  'Our team reviews the job record and artisan\'s account. '
-                  'We will respond within 48 hours.',
+                  'Our team reviews the job record and both parties\' accounts. You will be notified after the review.',
                   style: TextStyle(
                       color: MyShopColors.error.withAlpha(180),
                       fontSize: w * 0.030,
@@ -315,8 +407,7 @@ class _PolicyNote extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(
-      'If the dispute is upheld, your escrow payment will be fully or '
-      'partially refunded within 3 business days.',
+      'If a refund is approved, you will be notified when the digital refund has been sent.',
       style: TextStyle(
           color: MyShopColors.textSecondary, fontSize: w * 0.030, height: 1.6),
     );
@@ -379,7 +470,17 @@ class _SubmitButton extends StatelessWidget {
 class _SuccessBody extends StatelessWidget {
   final double w, h;
   final VoidCallback onDone;
-  const _SuccessBody({required this.w, required this.h, required this.onDone});
+  final bool refundDestinationRequired;
+  final bool refundDestinationVerified;
+  final VoidCallback onVerifyRefundDestination;
+  const _SuccessBody({
+    required this.w,
+    required this.h,
+    required this.onDone,
+    required this.refundDestinationRequired,
+    required this.refundDestinationVerified,
+    required this.onVerifyRefundDestination,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -405,14 +506,48 @@ class _SuccessBody extends StatelessWidget {
               )),
           SizedBox(height: h * 0.012),
           Text(
-            'Our team will review the job and respond within 48 hours. '
-            'You\'ll be notified via the app.',
+            'Our team will review the job. You\'ll be notified via the app after the review.',
             textAlign: TextAlign.center,
             style: TextStyle(
                 color: MyShopColors.textSecondary,
                 fontSize: w * 0.036,
                 height: 1.6),
           ),
+          if (refundDestinationRequired) ...[
+            SizedBox(height: h * 0.024),
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.all(w * 0.04),
+              decoration: BoxDecoration(
+                color: refundDestinationVerified
+                    ? MyShopColors.successLight
+                    : MyShopColors.primaryGold.withAlpha(20),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    refundDestinationVerified
+                        ? 'Refund MoMo destination verified'
+                        : 'Refund MoMo verification required',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  if (!refundDestinationVerified) ...[
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Because this job was paid in cash, verify where any approved digital refund should be sent.',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 10),
+                    TextButton(
+                      onPressed: onVerifyRefundDestination,
+                      child: const Text('Verify refund MoMo'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
           SizedBox(height: h * 0.048),
           SizedBox(
             width: double.infinity,
@@ -435,4 +570,26 @@ class _SuccessBody extends StatelessWidget {
       ),
     );
   }
+}
+
+String _jobDisputeErrorMessage(ApiException error) {
+  return switch (error.errorCode) {
+    'DISPUTE_WINDOW_EXPIRED' =>
+      'The 24-hour dispute window for this job has ended.',
+    'DISPUTE_ALREADY_OPEN' =>
+      'A dispute has already been submitted for this job.',
+    'PAYMENT_NOT_FOUND' ||
+    'PAYMENT_NOT_SETTLED' =>
+      'The job payment is still being confirmed. Please try again shortly.',
+    'JOB_NOT_COMPLETED' ||
+    'BOOKING_NOT_COMPLETED' =>
+      'This job is not confirmed complete yet.',
+    'NOT_YOUR_JOB' => 'This job does not belong to this client account.',
+    _ => userSafeApiErrorMessage(
+        error,
+        fallback: "Couldn't submit the dispute. Please try again.",
+        conflictMessage:
+            'The job or dispute state changed. Refresh and try again.',
+      ),
+  };
 }

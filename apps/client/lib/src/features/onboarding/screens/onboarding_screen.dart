@@ -31,7 +31,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       description:
           'Verified providers, emergency button, masked calls, and live trip sharing with family — built in.',
       socialProof: '200+ verified providers',
-      footnote: 'Smile Identity KYC Verified',
+      footnote: 'Provider documents manually reviewed',
       gradient: [Color(0xFF1F2A35), Color(0xFF46535D)],
     ),
     _OnboardingPage(
@@ -50,16 +50,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     ),
     _OnboardingPage(
       pillIcon: Icons.bolt_rounded,
-      pillLabel: 'Loyalty Rewards',
+      pillLabel: 'Rewards Update',
       heroIcon: Icons.workspace_premium_rounded,
       imagePath: 'assets/images/onboarding_spend.jpg',
-      heroAccentLabel: 'EARN AS YOU',
-      heroAccentValue: 'Ride & Hire',
-      title: 'Earn While You Spend',
+      heroAccentLabel: 'BALANCES STAY',
+      heroAccentValue: 'Safely Stored',
+      title: 'Rewards Are Temporarily Paused',
       description:
-          'Loyalty points on every ride and job, referral bonuses, and redeem for instant discounts.',
+          'Existing points and reward history remain safely stored while earning, redemption, and referrals are paused.',
       socialProof: '50k+ satisfied riders',
-      footnote: 'Cedis-native rewards • No expiry',
+      footnote: 'No points are deducted during the pause',
       gradient: [Color(0xFF3F2A12), Color(0xFFD48E1A)],
     ),
   ];

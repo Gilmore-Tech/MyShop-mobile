@@ -73,10 +73,10 @@ class UserProfile {
 class ClientProfile {
   const ClientProfile({
     required this.id,
-    required this.loyaltyPointsBalance,
     required this.ghanaCardVerified,
     required this.kycStatus,
     required this.languagePref,
+    this.loyaltyPointsBalance,
     this.legalName,
     this.email,
     this.privacyPolicyAcceptedAt,
@@ -96,7 +96,11 @@ class ClientProfile {
       privacyPolicyAcceptedAt: _asString(json['privacyPolicyAcceptedAt']),
       displayName: _asString(json['displayName']),
       profilePhotoUrl: _asString(json['profilePhotoUrl']),
-      loyaltyPointsBalance: json['loyaltyPointsBalance'] as int? ?? 0,
+      // Missing is deliberately different from zero. During the role-account
+      // ownership cutover the API omits a balance that cannot be attributed to
+      // this Client account safely. Treating omission as 0 would falsely tell
+      // the customer that their points disappeared.
+      loyaltyPointsBalance: json['loyaltyPointsBalance'] as int?,
       referralCode: _asString(json['referralCode']),
       preferredPaymentMethod: _asString(json['preferredPaymentMethod']),
       ghanaCardVerified: json['ghanaCardVerified'] as bool? ?? false,
@@ -113,7 +117,7 @@ class ClientProfile {
   /// Per-role legal name (Phase 3 strict separation, CLAUDE.md §1, §8).
   /// A phone holding multiple role accounts edits each profile
   /// independently — this name only ever applies on the Client app.
-  /// Falls back to [UserProfile.fullName] during the Phase 3 grace period.
+  /// It never falls back to a sibling or private phone-auth identity.
   final String? legalName;
 
   /// Per-role email (unique within role, not across roles).
@@ -132,7 +136,7 @@ class ClientProfile {
   /// Profile photo specific to the client role.
   final String? profilePhotoUrl;
 
-  final int loyaltyPointsBalance;
+  final int? loyaltyPointsBalance;
   final String? referralCode;
   final String? preferredPaymentMethod;
   final bool ghanaCardVerified;
@@ -335,7 +339,7 @@ class ArtisanProfile {
   final String? displayName;
 
   /// The artisan's trade/business name (e.g. "Bright Spark Electrical").
-  /// Distinct from [UserProfile.fullName] which is the person's legal name.
+  /// Distinct from the role's legal name.
   final String? businessName;
 
   /// Public business address shown to clients. Distinct from any pickup or

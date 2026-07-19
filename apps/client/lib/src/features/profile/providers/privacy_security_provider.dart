@@ -7,10 +7,8 @@ import '../../../core/di/providers.dart';
 import '../../auth/providers/auth_controller.dart';
 
 // ── KYC Status ────────────────────────────────────────────────────────────────
-// EDD § Verification Module: Smile Identity webhook drives this status.
-// Clients are not required to verify at registration — KYC is optional but
-// incentivised (ID Verified badge visible to artisans, higher transaction
-// limits). PRD § 9.6 & edge case #4.
+// V1 identity submissions are reviewed manually by MyShop. Smile Identity
+// automation is intentionally deferred beyond this release.
 
 enum KycStatus { unverified, pending, verified, rejected }
 
@@ -158,7 +156,7 @@ class PrivacySecurityNotifier extends StateNotifier<PrivacySecurityState> {
 
   /// End-to-end Ghana Card submission:
   ///   1. Upload [imageFile] via /media/upload-url + /media/confirm (purpose
-  ///      'profile_photo' — the backend reuses that purpose for KYC images).
+  ///      'client_ghana_card', bound to this client role and consumer).
   ///   2. POST /users/me/ghana-card with the resulting URL + [cardNumber].
   ///   3. Refresh the auth profile so kycStatus flips to 'pending_review'
   ///      throughout the app.
@@ -178,12 +176,15 @@ class PrivacySecurityNotifier extends StateNotifier<PrivacySecurityState> {
     try {
       hostedUrl = await _ref
           .read(mediaServiceProvider)
-          .uploadProfilePhoto(imageFile.path);
+          .uploadClientGhanaCard(imageFile.path);
     } on ApiException catch (e) {
       state = state.copyWith(isSubmittingKyc: false);
-      return e.message.isNotEmpty
-          ? e.message
-          : "Couldn't upload the Ghana Card image. Please try again.";
+      return userSafeApiErrorMessage(
+        e,
+        fallback: "Couldn't upload the Ghana Card image. Please try again.",
+        validationMessage:
+            'Choose a clear, supported Ghana Card image and try again.',
+      );
     } catch (_) {
       state = state.copyWith(isSubmittingKyc: false);
       return "Couldn't upload the Ghana Card image. Please try again.";
@@ -223,9 +224,14 @@ class PrivacySecurityNotifier extends StateNotifier<PrivacySecurityState> {
       case 'CLIENT_PROFILE_REQUIRED':
         return "This account isn't set up as a client. Contact support.";
       default:
-        return e.message.isNotEmpty
-            ? e.message
-            : "Couldn't submit your Ghana Card. Please try again.";
+        return userSafeApiErrorMessage(
+          e,
+          fallback: "Couldn't submit your Ghana Card. Please try again.",
+          conflictMessage:
+              'Your verification state changed. Refresh and check its status.',
+          validationMessage:
+              'Check the Ghana Card number and image, then try again.',
+        );
     }
   }
 
@@ -234,7 +240,7 @@ class PrivacySecurityNotifier extends StateNotifier<PrivacySecurityState> {
     _load();
   }
 
-  /// Permanently deletes the account.
+  /// Soft-deletes the authenticated client role account.
   /// DELETE /v1/users/me. On success clears local tokens and flips
   /// [PrivacySecurityState.isAccountDeleted] to true; the calling screen
   /// listens for that to route the user to the auth screen.
@@ -250,9 +256,12 @@ class PrivacySecurityNotifier extends StateNotifier<PrivacySecurityState> {
     } on ApiException catch (e) {
       state = state.copyWith(
         isDeletingAccount: false,
-        errorMessage: e.message.isNotEmpty
-            ? e.message
-            : "Couldn't delete your account. Please try again.",
+        errorMessage: userSafeApiErrorMessage(
+          e,
+          fallback: "Couldn't delete your account. Please try again.",
+          conflictMessage:
+              'Your account state changed. Sign in again before retrying.',
+        ),
       );
       return;
     } catch (_) {
@@ -263,7 +272,7 @@ class PrivacySecurityNotifier extends StateNotifier<PrivacySecurityState> {
       return;
     }
 
-    // Server-side gone. Clear tokens + flip auth state to unauthenticated
+    // Server-side role access removed. Clear tokens + flip auth state to unauthenticated
     // so the router redirect drops the user back to the auth screen.
     await _ref.read(clientAuthControllerProvider.notifier).logout();
     if (!mounted) return;

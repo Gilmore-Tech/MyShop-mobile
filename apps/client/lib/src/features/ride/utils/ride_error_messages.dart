@@ -34,7 +34,11 @@ RideEstimateErrorCopy rideEstimateErrorCopy(Object error) {
   if (error is ApiException) {
     return RideEstimateErrorCopy(
       title: 'Could not load fare estimate',
-      message: error.message,
+      message: userSafeApiErrorMessage(
+        error,
+        fallback: 'Please check the trip details and try again.',
+        validationMessage: 'Check the pickup and destination, then try again.',
+      ),
     );
   }
 

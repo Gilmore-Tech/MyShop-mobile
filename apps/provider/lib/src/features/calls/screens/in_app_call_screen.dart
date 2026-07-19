@@ -381,8 +381,13 @@ class _ProviderInAppCallScreenState
   }
 
   String _callErrorMessage(Object error) {
-    if (error is ApiException && error.message.isNotEmpty) {
-      return error.message;
+    if (error is ApiException) {
+      return userSafeApiErrorMessage(
+        error,
+        fallback: 'Call could not connect. Please try again.',
+        conflictMessage:
+            'This call is no longer available. Return to the booking and try again.',
+      );
     }
     return 'Call could not connect. Please try again.';
   }

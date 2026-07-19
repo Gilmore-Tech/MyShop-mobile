@@ -26,6 +26,7 @@ class MyShopNewTicketScreen extends StatefulWidget {
     this.preselectedCategory,
     this.referenceType,
     this.referenceId,
+    this.attachmentsEnabled = false,
   });
 
   final SupportAudience audience;
@@ -36,6 +37,10 @@ class MyShopNewTicketScreen extends StatefulWidget {
   /// agent console can surface the underlying record.
   final String? referenceType;
   final String? referenceId;
+
+  /// BR-61 release containment. Keep false until the private attachment read,
+  /// retention and cleanup contract has passed release evidence.
+  final bool attachmentsEnabled;
 
   /// Fired when the user taps Submit and validation passes. Returns
   /// `true` to dismiss the screen, `false` to keep it open (e.g. to let
@@ -129,7 +134,9 @@ class _MyShopNewTicketScreenState extends State<MyShopNewTicketScreen> {
         category: _category,
         subject: subject,
         description: description,
-        attachments: List.unmodifiable(_attachments),
+        attachments: widget.attachmentsEnabled
+            ? List.unmodifiable(_attachments)
+            : const <File>[],
       );
       if (dismissed && mounted) Navigator.of(context).maybePop();
     } finally {
@@ -224,28 +231,46 @@ class _MyShopNewTicketScreenState extends State<MyShopNewTicketScreen> {
                     ),
                   ),
                   const SizedBox(height: MyShopSpacing.lg),
-                  Row(
-                    children: [
-                      Text(
-                        'ATTACHMENTS',
-                        style: MyShopTypography.overline.copyWith(
+                  if (widget.attachmentsEnabled) ...[
+                    Row(
+                      children: [
+                        Text(
+                          'ATTACHMENTS',
+                          style: MyShopTypography.overline.copyWith(
+                            color: MyShopColors.textSecondary,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${_attachments.length}/$_maxAttachments',
+                          style: MyShopTypography.caption,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: MyShopSpacing.sm),
+                    _AttachmentsRow(
+                      files: _attachments,
+                      onAdd: _addAttachment,
+                      onRemove: (i) => setState(() => _attachments.removeAt(i)),
+                      maxAttachments: _maxAttachments,
+                    ),
+                  ] else
+                    Container(
+                      key:
+                          const ValueKey('support-attachments-disabled-notice'),
+                      padding: const EdgeInsets.all(MyShopSpacing.md),
+                      decoration: BoxDecoration(
+                        color: MyShopColors.surfaceWhite,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: MyShopColors.divider),
+                      ),
+                      child: Text(
+                        'Attachments are temporarily unavailable. Describe the issue here and you can still submit your ticket.',
+                        style: MyShopTypography.body2.copyWith(
                           color: MyShopColors.textSecondary,
                         ),
                       ),
-                      const Spacer(),
-                      Text(
-                        '${_attachments.length}/$_maxAttachments',
-                        style: MyShopTypography.caption,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: MyShopSpacing.sm),
-                  _AttachmentsRow(
-                    files: _attachments,
-                    onAdd: _addAttachment,
-                    onRemove: (i) => setState(() => _attachments.removeAt(i)),
-                    maxAttachments: _maxAttachments,
-                  ),
+                    ),
                 ],
               ),
             ),

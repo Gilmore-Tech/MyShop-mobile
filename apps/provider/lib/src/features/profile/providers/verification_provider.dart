@@ -7,7 +7,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/di/providers.dart';
 import '../../auth/providers/current_user_provider.dart';
 import '../providers/provider_type_provider.dart';
-import '../utils/vehicle_display.dart';
 
 /// Provides the [VerificationService] backed by the app's Dio client.
 final verificationServiceProvider = Provider<VerificationService>((ref) {
@@ -35,37 +34,53 @@ class DocumentUploadNotifier extends StateNotifier<DocumentUploadState> {
     required String providerType,
     required DocumentType documentType,
     required File file,
+    String? vehicleId,
     String? expiresAt,
   }) async {
+    final uploadKey = documentUploadKey(documentType, vehicleId: vehicleId);
     state = state.copyWith(
-      uploading: {...state.uploading, documentType.value: true},
+      uploading: {...state.uploading, uploadKey: true},
     );
     try {
       final result = await _service.uploadDocument(
         providerType: providerType,
         documentType: documentType,
         file: file,
+        vehicleId: vehicleId,
         expiresAt: expiresAt,
       );
       state = state.copyWith(
-        uploading: {...state.uploading, documentType.value: false},
-        uploaded: {...state.uploaded, documentType.value: true},
+        uploading: {...state.uploading, uploadKey: false},
+        uploaded: {...state.uploaded, uploadKey: true},
         remoteUrls: {
           ...state.remoteUrls,
-          if (result.remoteUrl != null) documentType.value: result.remoteUrl!,
+          if (result.remoteUrl != null) uploadKey: result.remoteUrl!,
         },
       );
       return null;
     } on ApiException catch (e) {
       state = state.copyWith(
-        uploading: {...state.uploading, documentType.value: false},
+        uploading: {...state.uploading, uploadKey: false},
       );
-      return e.message;
-    } catch (e) {
+      if (e.errorCode == 'DOCUMENT_REPLACEMENT_NOT_OPEN') {
+        return 'This approved document can be replaced only after it expires.';
+      }
+      if (e.errorCode == 'PROFILE_PHOTO_ADMIN_CHANGE_REQUIRED') {
+        return 'An approved profile photo can only be changed by an administrator.';
+      }
+      return userSafeApiErrorMessage(
+        e,
+        fallback: 'Upload failed. Please try again.',
+        conflictMessage:
+            'This document changed before the upload completed. Refresh and try again.',
+        validationMessage:
+            'Check the document type, expiry date, and file, then try again.',
+      );
+    } catch (_) {
       state = state.copyWith(
-        uploading: {...state.uploading, documentType.value: false},
+        uploading: {...state.uploading, uploadKey: false},
       );
-      return 'Upload failed: $e';
+      return 'Upload failed. Please try again.';
     }
   }
 
@@ -76,12 +91,16 @@ class DocumentUploadNotifier extends StateNotifier<DocumentUploadState> {
   /// type once the backend reflects it. After this the backend status is the
   /// single source of truth, so a later admin approval/rejection shows without
   /// an app restart. Idempotent — a no-op if the flag isn't set.
-  void clearUploaded(String docType) {
-    if (state.uploaded[docType] != true) return;
-    final next = Map<String, bool>.from(state.uploaded)..remove(docType);
+  void clearUploaded(String docType, {String? vehicleId}) {
+    final key = vehicleId == null ? docType : '$docType:$vehicleId';
+    if (state.uploaded[key] != true) return;
+    final next = Map<String, bool>.from(state.uploaded)..remove(key);
     state = state.copyWith(uploaded: next);
   }
 }
+
+String documentUploadKey(DocumentType type, {String? vehicleId}) =>
+    vehicleId == null ? type.value : '${type.value}:$vehicleId';
 
 class DocumentUploadState {
   const DocumentUploadState({
@@ -250,11 +269,13 @@ final providerProfilePhotoDisplayProvider =
   final roleValue = role.name;
   final verification = ref.watch(verificationStatusProvider).valueOrNull;
   final user = ref.watch(currentUserProvider);
-  final isProviderFullyApproved =
-      verification?.isProviderFullyApproved(roleValue) ??
-          (role.isDriver
-              ? user?.driverProfile?.verificationStatus == 'approved'
-              : user?.artisanProfile?.verificationStatus == 'approved');
+  final profileVerificationApproved = role.isDriver
+      ? user?.driverProfile?.verificationStatus == 'approved'
+      : user?.artisanProfile?.verificationStatus == 'approved';
+  final responseStatus = verification?.providerVerificationStatus(roleValue);
+  final isProviderFullyApproved = responseStatus == null
+      ? profileVerificationApproved
+      : responseStatus == 'approved';
   final profilePhotoDoc = verification?.documentFor(
     DocumentType.profilePhoto.value,
     providerType: roleValue,
@@ -286,11 +307,14 @@ final providerProfilePhotoDisplayProvider =
 /// Tracks which specific items are missing so the UI can tell the user
 /// exactly what they need to complete before going online.
 ///
-/// **Driver**: full name, photo, vehicle info, plus 4 required documents
-/// (Ghana Card, Driver's Licence, Vehicle Registration, Roadworthiness)
-/// approved.
-/// **Artisan**: full name, photo, categories, plus 3 required documents
-/// (Ghana Card, Business Registration, Trade Certificate) approved.
+/// **Driver**: full name plus the three provider-scoped identity documents
+/// (profile photo, Ghana Card and driver's licence) approved. Vehicle details,
+/// per-vehicle categories, roadworthiness and insurance are deliberately not
+/// flattened into this role-level result; the server-authoritative vehicle
+/// preflight validates the exact vehicle selected for each online session.
+/// **Artisan**: full name, categories, Ghana Card, plus exactly one of Business
+/// Registration or Trade Certificate approved. A profile photo is reviewed
+/// independently but is not a dispatch prerequisite under BR-02.
 final profileCompletionProvider = Provider<ProfileCompletion>((ref) {
   final user = ref.watch(currentUserProvider);
   if (user == null) {
@@ -311,56 +335,62 @@ final profileCompletionProvider = Provider<ProfileCompletion>((ref) {
   final profileVerificationApproved = providerType.isDriver
       ? user.driverProfile?.verificationStatus == 'approved'
       : user.artisanProfile?.verificationStatus == 'approved';
-  final isProviderFullyApproved =
-      docs?.isProviderFullyApproved(providerTypeValue) ??
-          profileVerificationApproved;
+  final responseStatus = docs?.providerVerificationStatus(providerTypeValue);
+  final isProviderFullyApproved = responseStatus == null
+      ? profileVerificationApproved
+      : responseStatus == 'approved';
+
+  if (verificationUnavailable) {
+    return const ProfileCompletion(
+      completed: 0,
+      total: 1,
+      missing: [
+        "We couldn't verify your documents. Check your connection and try again.",
+      ],
+      verificationUnavailable: true,
+    );
+  }
 
   // An expired document no longer satisfies verification — the provider must
   // re-upload before it counts towards going online again. /verification/status
-  // returns documents for every provider role on the user, so scope each lookup
-  // to the active role to prevent Driver/Artisan document bleed.
+  // returns only the authenticated provider role. Keep the role filter as
+  // defence-in-depth so a stale or legacy response cannot bleed sibling data.
   bool isDocApproved(DocumentType type) {
-    // If the verification-status endpoint is temporarily unavailable, do not
-    // turn a verified provider into "missing documents". The authenticated
-    // profile snapshot already carries the final RM approval status; use it as
-    // a safe temporary fallback so transient API/network issues don't block
-    // verified drivers/artisans from going online. When the status endpoint is
-    // healthy, the stricter per-document expiry/current checks below remain
-    // the source of truth.
-    if (verificationUnavailable) return profileVerificationApproved;
-
     final doc = docs?.documentFor(type.value, providerType: providerTypeValue);
-    return isProviderFullyApproved &&
-        doc != null &&
-        doc.isApproved &&
-        !doc.isExpired();
+    return doc != null && doc.isApproved && !doc.isExpired();
   }
 
+  final providerApprovalLabel = switch (responseStatus) {
+    'rejected' => 'Provider verification was rejected — review the notice',
+    'suspended' => 'Account is suspended — review the notice',
+    _ => 'Final provider verification is pending',
+  };
+
   if (providerType.isDriver) {
-    final dp = user.driverProfile;
     final items = <(bool, String)>[
       (user.fullName.isNotEmpty, 'Full name'),
       (isDocApproved(DocumentType.profilePhoto), 'Profile photo (approved)'),
-      (hasCompleteDriverVehicleDetails(dp), 'Vehicle information'),
       (isDocApproved(DocumentType.ghanaCard), 'Ghana Card (approved)'),
       (
         isDocApproved(DocumentType.driversLicence),
         "Driver's Licence (approved)",
       ),
-      (
-        isDocApproved(DocumentType.vehicleRegistration),
-        'Vehicle Registration (approved)',
-      ),
-      (
-        isDocApproved(DocumentType.roadworthinessCertificate),
-        'Roadworthiness Certificate (approved)',
-      ),
+      (isProviderFullyApproved, providerApprovalLabel),
     ];
     return ProfileCompletion.fromChecks(items, isLoading: isLoadingDocs);
   } else {
+    final hasApprovedBusinessRegistration =
+        isDocApproved(DocumentType.businessRegistration);
+    final hasApprovedTradeCertificate =
+        isDocApproved(DocumentType.tradeCertificate);
+    final hasExactlyOneApprovedTradeCredential =
+        hasApprovedBusinessRegistration != hasApprovedTradeCertificate;
+    final tradeCredentialLabel =
+        hasApprovedBusinessRegistration && hasApprovedTradeCertificate
+            ? 'Keep exactly one approved trade credential (contact support)'
+            : 'Business Registration or Trade Certificate (approved)';
     final items = <(bool, String)>[
       (user.fullName.isNotEmpty, 'Full name'),
-      (isDocApproved(DocumentType.profilePhoto), 'Profile photo (approved)'),
       (
         user.artisanProfile?.serviceCategories != null &&
             user.artisanProfile!.serviceCategories!.isNotEmpty,
@@ -368,13 +398,10 @@ final profileCompletionProvider = Provider<ProfileCompletion>((ref) {
       ),
       (isDocApproved(DocumentType.ghanaCard), 'Ghana Card (approved)'),
       (
-        isDocApproved(DocumentType.businessRegistration),
-        'Business Registration (approved)',
+        hasExactlyOneApprovedTradeCredential,
+        tradeCredentialLabel,
       ),
-      (
-        isDocApproved(DocumentType.tradeCertificate),
-        'Trade Certificate (approved)',
-      ),
+      (isProviderFullyApproved, providerApprovalLabel),
     ];
     return ProfileCompletion.fromChecks(items, isLoading: isLoadingDocs);
   }
@@ -386,6 +413,7 @@ class ProfileCompletion {
     required this.total,
     this.missing = const [],
     this.isLoading = false,
+    this.verificationUnavailable = false,
   });
 
   factory ProfileCompletion.fromChecks(
@@ -413,6 +441,12 @@ class ProfileCompletion {
   /// True while verification data is still being fetched from the backend.
   /// The go-online toggle should wait instead of showing the incomplete sheet.
   final bool isLoading;
+
+  /// True when document readiness could not be loaded. This is a connectivity
+  /// or server-state problem, not evidence that already-approved documents are
+  /// missing, so online controls must show a retry message instead of an upload
+  /// checklist.
+  final bool verificationUnavailable;
 
   double get progress => total == 0 ? 0 : completed / total;
   int get percentage => (progress * 100).round();

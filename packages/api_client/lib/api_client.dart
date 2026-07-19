@@ -7,6 +7,7 @@ export 'src/config/api_config.dart';
 export 'src/http/auth_interceptor.dart';
 export 'src/http/dio_client.dart';
 export 'src/http/logging_interceptor.dart';
+export 'src/http/mobile_client_interceptor.dart';
 export 'src/http/token_refresher.dart';
 export 'src/http/token_storage.dart';
 
@@ -18,6 +19,7 @@ export 'src/models/auth_error_mapper.dart';
 export 'src/models/region_dtos.dart';
 export 'src/models/support_dtos.dart';
 export 'src/models/user_dtos.dart';
+export 'src/models/user_safe_api_error.dart';
 export 'src/models/verification_dtos.dart';
 
 // Realtime
@@ -40,7 +42,9 @@ export 'src/services/media_service.dart';
 export 'src/services/notification_service.dart';
 export 'src/services/payment_service.dart';
 export 'src/services/platform_config_service.dart';
+export 'src/services/provider_availability_service.dart';
 export 'src/services/provider_request_service.dart';
+export 'src/services/provider_vehicle_service.dart';
 export 'src/services/rating_service.dart';
 export 'src/services/region_service.dart';
 export 'src/services/ride_service.dart';

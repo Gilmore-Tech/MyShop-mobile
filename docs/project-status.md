@@ -45,7 +45,7 @@
 | `/auth/verify-otp` | POST | Provider App |
 | `/auth/refresh` | POST | Provider App (auto via interceptor) |
 | `/auth/check-phone` | POST | Provider App |
-| `/auth/recover` | POST | api_client (service method exists, no UI) |
+| `/auth/recover` | POST | Obsolete phone-only route removed; BR-63 requires a new OTP-verified request and authorized review workflow |
 | `/users/me` | GET | Provider App (bootstrap + post-login + all screens) |
 | `/users/me` | PUT | Provider App (edit profile screen — name & email) |
 | `/payments/earnings` | GET | Provider App (home + earnings dashboard + account settings) |

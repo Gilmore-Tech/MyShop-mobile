@@ -226,9 +226,9 @@ class _RidePaymentScreenState extends ConsumerState<RidePaymentScreen> {
                         momoPhone: phone.isEmpty ? null : phone,
                       );
                 },
-                onMarkPaid: () => ref
+                onCheckStatus: () => ref
                     .read(ridePaymentNotifierProvider.notifier)
-                    .markSettledLocally(rideId: widget.rideId),
+                    .checkPaymentStatusNow(),
               ),
             ],
           ),
@@ -297,7 +297,7 @@ class _PhaseBody extends StatelessWidget {
     required this.onSubmitOtp,
     required this.onCancel,
     required this.onRetry,
-    required this.onMarkPaid,
+    required this.onCheckStatus,
   });
 
   final RidePaymentState state;
@@ -307,7 +307,7 @@ class _PhaseBody extends StatelessWidget {
   final VoidCallback onSubmitOtp;
   final VoidCallback onCancel;
   final VoidCallback onRetry;
-  final VoidCallback onMarkPaid;
+  final VoidCallback onCheckStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -331,7 +331,7 @@ class _PhaseBody extends StatelessWidget {
       case RidePaymentPhase.awaitingSettlement:
         return _AwaitingSettlement(
           displayText: state.displayText,
-          onMarkPaid: onMarkPaid,
+          onCheckStatus: onCheckStatus,
           onCancel: onCancel,
         );
       case RidePaymentPhase.settled:
@@ -615,12 +615,12 @@ class _OtpFormState extends State<_OtpForm> {
 class _AwaitingSettlement extends StatelessWidget {
   const _AwaitingSettlement({
     required this.displayText,
-    required this.onMarkPaid,
+    required this.onCheckStatus,
     required this.onCancel,
   });
 
   final String? displayText;
-  final VoidCallback onMarkPaid;
+  final VoidCallback onCheckStatus;
   final VoidCallback onCancel;
 
   @override
@@ -649,7 +649,7 @@ class _AwaitingSettlement extends StatelessWidget {
           width: double.infinity,
           height: 52,
           child: OutlinedButton(
-            onPressed: onMarkPaid,
+            onPressed: onCheckStatus,
             style: OutlinedButton.styleFrom(
               side: const BorderSide(color: MyShopColors.divider),
               shape: RoundedRectangleBorder(
@@ -657,7 +657,7 @@ class _AwaitingSettlement extends StatelessWidget {
               ),
             ),
             child: const Text(
-              "I've completed the payment",
+              'Check payment status',
               style: TextStyle(
                 fontFamily: 'Raleway',
                 fontSize: 14,

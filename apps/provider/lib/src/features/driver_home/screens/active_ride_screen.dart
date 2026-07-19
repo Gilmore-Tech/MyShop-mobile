@@ -304,10 +304,10 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
               padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
               child: Text(
                 isFreeNoShow
-                    ? "You've waited the full 3 minutes — treated as a rider "
-                        'no-show, no penalty.'
-                    : "The rider's 3-minute wait hasn't elapsed — cancelling "
-                        'now affects your rating.',
+                    ? "You've waited the full 3 minutes and can report a rider no-show. "
+                        'Automatic cancellation penalties are currently paused.'
+                    : 'Automatic cancellation fees, ratings, and counter penalties '
+                        'are temporarily paused.',
                 style: const TextStyle(
                   fontFamily: 'Raleway',
                   fontSize: 12,
@@ -387,7 +387,16 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
 
     // Surface the outcome before popping. Suspension takes priority — the
     // driver must understand why they can no longer receive requests.
-    if (outcome.driverSuspended) {
+    if (outcome.cancellationConsequencesApplied == false) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            outcome.notice ??
+                'Ride cancelled. Automatic fees and penalties are temporarily paused.',
+          ),
+        ),
+      );
+    } else if (outcome.driverSuspended) {
       await showDialog<void>(
         context: context,
         barrierDismissible: false,
@@ -1631,8 +1640,8 @@ class _WaitCountdownBanner extends StatelessWidget {
     final timeLabel = elapsed ? '+${_fmt(remainingSecs)}' : _fmt(remainingSecs);
     final title = elapsed ? 'WAIT TIME COMPLETE' : 'FREE WAITING TIME';
     final subtitle = elapsed
-        ? 'Rider no-show — you can cancel with no penalty.'
-        : 'Cancelling before this ends affects your rating.';
+        ? 'Rider no-show window reached. Automatic penalties are paused.'
+        : 'Wait time is tracked, but automatic penalties are temporarily paused.';
 
     return Container(
       padding: const EdgeInsets.symmetric(

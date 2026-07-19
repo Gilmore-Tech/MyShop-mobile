@@ -126,7 +126,7 @@ class _BodyState extends ConsumerState<_Body> {
                       fontWeight: FontWeight.w800,
                     )),
                 SizedBox(height: h * 0.008),
-                Text('Payment released from escrow.',
+                Text('Provider settlement is processed separately.',
                     style: TextStyle(
                         color: MyShopColors.textSecondary,
                         fontSize: w * 0.036)),

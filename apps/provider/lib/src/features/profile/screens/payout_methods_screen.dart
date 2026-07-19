@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../core/constants/app_version.dart';
+
 import '../../auth/providers/current_user_provider.dart';
 import '../providers/provider_type_provider.dart';
 import '../widgets/payout_method_sheet.dart';
@@ -297,7 +299,7 @@ class PayoutMethodsScreen extends ConsumerWidget {
           const SizedBox(height: 6),
           Center(
             child: Text(
-              'Version 1.0.0  •  © 2026 MyShop Provider App',
+              '$appVersionLabel  •  © 2026 MyShop Provider App',
               style: MyShopTypography.caption
                   .copyWith(fontSize: 10, color: MyShopColors.textSecondary),
             ),

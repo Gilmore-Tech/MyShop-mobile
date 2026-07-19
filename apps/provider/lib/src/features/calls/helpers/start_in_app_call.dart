@@ -49,8 +49,13 @@ Future<void> startProviderInAppCall(
 }
 
 String _callStartErrorMessage(Object error) {
-  if (error is ApiException && error.message.isNotEmpty) {
-    return error.message;
+  if (error is ApiException) {
+    return userSafeApiErrorMessage(
+      error,
+      fallback: 'Could not start in-app call. Please try again.',
+      conflictMessage:
+          'This call is no longer available. Refresh the booking and try again.',
+    );
   }
   return 'Could not start in-app call. Please try again.';
 }

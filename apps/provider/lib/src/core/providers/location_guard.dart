@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:api_client/api_client.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -42,10 +43,10 @@ final locationGuardProvider = Provider<void>((ref) {
     // 1. Service-enabled changes emit on this stream on both platforms.
     serviceSub = Geolocator.getServiceStatusStream().listen((status) {
       if (status == ServiceStatus.disabled) {
-        debugPrint('[LocationGuard] services disabled — forcing offline');
-        ref
-            .read(availabilityControllerProvider)
-            .forceOfflineDueToLocationLost();
+        debugPrint('[LocationGuard] services disabled — reporting loss');
+        ref.read(availabilityControllerProvider).reportLocationUnavailable(
+              LocationUnavailableReason.serviceDisabled,
+            );
       }
     });
 
@@ -57,11 +58,13 @@ final locationGuardProvider = Provider<void>((ref) {
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
         debugPrint(
-          '[LocationGuard] location permission lost — forcing offline',
+          '[LocationGuard] location permission lost — reporting loss',
         );
         await ref
             .read(availabilityControllerProvider)
-            .forceOfflineDueToLocationLost();
+            .reportLocationUnavailable(
+              LocationUnavailableReason.permissionLost,
+            );
         return;
       }
 
@@ -69,11 +72,13 @@ final locationGuardProvider = Provider<void>((ref) {
       if (!foregrounded && permission != LocationPermission.always) {
         debugPrint(
           '[LocationGuard] app backgrounded without Always '
-          'permission — forcing offline',
+          'permission — reporting loss',
         );
         await ref
             .read(availabilityControllerProvider)
-            .forceOfflineDueToLocationLost();
+            .reportLocationUnavailable(
+              LocationUnavailableReason.backgroundPermissionLost,
+            );
       }
     });
   });

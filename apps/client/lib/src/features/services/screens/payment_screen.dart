@@ -321,9 +321,8 @@ class _PaymentBody extends ConsumerWidget {
           context,
           ref,
           summary: summary,
-          // Prefer the inline error (e.g. "Wrong OTP") on a retry; fall
-          // back to Paystack's displayText ("Enter the OTP we sent…") on
-          // the first open.
+          // Prefer the inline error on a retry; otherwise use the app-owned
+          // stable instruction for the first open.
           errorMessage: next.errorMessage ?? next.displayText,
         );
       }
@@ -802,9 +801,9 @@ class _PaymentSummaryCard extends StatelessWidget {
                     SizedBox(width: w * 0.018),
                     Expanded(
                       child: Text(
-                        'Your money is safe. Payment is only released to '
-                        '${summary.artisanFirstName} once you mark the job '
-                        "as 'Completed'.",
+                        "After you mark the job 'Completed', the payment enters "
+                        'server-controlled settlement. Provider payout is held '
+                        'for two hours and its status is tracked separately.',
                         style: TextStyle(
                           fontSize: w * 0.028,
                           fontWeight: FontWeight.w400,
@@ -1350,22 +1349,22 @@ class _BottomBarState extends ConsumerState<_BottomBar> {
             ),
           ),
 
-          // ── Manual "I've paid" fallback ──
-          // Shown only during the USSD-push wait (awaitingSettlement with no
-          // checkout URL). Lets the user dismiss the spinner and surface the
-          // receipt themselves when the webhook → socket chain is slow or
-          // outright broken — they've just authorized on their phone, so
-          // we trust them. The polling fallback still runs in parallel; this
-          // is purely an escape hatch from a stuck UI.
+          // ── Authoritative payment-status refresh ──
+          // A client tap never marks money settled. This button performs the
+          // same backend status read as the background poll and is unavailable
+          // for cash, where only the artisan's receipt confirmation completes
+          // the job.
           if (state.phase == PaymentPhase.awaitingSettlement &&
-              state.authorizationUrl == null) ...[
+              state.authorizationUrl == null &&
+              !state.selectedMethod.isCash &&
+              state.paymentId != null) ...[
             SizedBox(height: h * 0.010),
             SizedBox(
               width: double.infinity,
               child: TextButton(
                 onPressed: () => ref
                     .read(paymentNotifierProvider.notifier)
-                    .markPaymentSettledLocally(summary: summary),
+                    .checkPaymentStatusNow(summary: summary),
                 style: TextButton.styleFrom(
                   padding: EdgeInsets.symmetric(vertical: h * 0.012),
                   shape: RoundedRectangleBorder(
@@ -1373,7 +1372,7 @@ class _BottomBarState extends ConsumerState<_BottomBar> {
                   ),
                 ),
                 child: Text(
-                  "I've completed the payment",
+                  'Check payment status',
                   style: TextStyle(
                     fontSize: w * 0.036,
                     fontWeight: FontWeight.w700,

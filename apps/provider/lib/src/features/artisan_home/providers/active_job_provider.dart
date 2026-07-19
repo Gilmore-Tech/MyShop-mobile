@@ -7,10 +7,14 @@ import 'package:shared_models/shared_models.dart';
 
 import '../../../core/di/providers.dart';
 import '../../artisan_jobs/providers/artisan_jobs_provider.dart';
+import '../../../core/providers/availability_controller.dart';
 import '../../../core/providers/provider_status_provider.dart';
+import '../../../core/providers/location_degradation_provider.dart';
+import '../../../core/providers/availability_reconciliation_controller.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../../earnings/providers/earnings_providers.dart';
 import '../../earnings/providers/ratings_provider.dart';
+import '../../../core/services/lifecycle_location_service.dart';
 
 /// Snapshot of the artisan's currently-active job — populated when the
 /// artisan taps "Accept & Start Job" on an accepted bid, cleared when the
@@ -119,7 +123,7 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
   void clear() {
     state = const ActiveJobState();
     try {
-      _ref.read(providerStatusProvider.notifier).resumeAfterJob();
+      _finishActiveWork();
     } catch (_) {
       // Provider may not be mounted (tests) — safe to ignore.
     }
@@ -140,7 +144,7 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
     state = state.copyWith(job: job.copyWith(status: next));
     if (next == JobStatus.completed) {
       try {
-        _ref.read(providerStatusProvider.notifier).resumeAfterJob();
+        _finishActiveWork();
       } catch (_) {}
       // Bust the earnings caches so the dashboard, today-card, performance
       // chart, detailed report, and payouts list all refetch with the
@@ -190,14 +194,14 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
   /// fire whether the transition came from the socket or this poll —
   /// without that, a poll-detected `completed` would leave the dashboard
   /// staring at stale earnings.
-  Future<void> refreshFromServer() async {
+  Future<Job?> refreshFromServer() async {
     final job = state.job;
-    if (job == null) return;
+    if (job == null) return null;
     try {
       final raw = await _ref.read(jobServiceProvider).getJob(job.id);
       final fresh = Job.fromJson(raw);
       final current = state.job;
-      if (current == null || current.id != job.id) return;
+      if (current == null || current.id != job.id) return fresh;
       state = state.copyWith(
         job: current.copyWith(
           // Prefer the backend-authoritative job timestamps once they're
@@ -215,12 +219,14 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
       // when landing as `completed`) run even when the poll — not the
       // socket — caught the transition.
       applyRemoteStatus(fresh.status);
+      return fresh;
     } catch (e) {
       developer.log(
         'refreshFromServer failed: $e',
         name: 'ActiveJob',
         level: 800,
       );
+      return null;
     }
   }
 
@@ -237,13 +243,33 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
     state = state.copyWith(isUpdating: true, clearError: true);
     bool success = false;
     try {
-      await _ref.read(jobServiceProvider).artisanConfirmCash(job.id);
-      // Optimistic flip — the socket event the backend emits will arrive
-      // shortly after and reconcile any drift.
-      state = state.copyWith(job: job.copyWith(status: JobStatus.completed));
+      final raw =
+          await _ref.read(jobServiceProvider).artisanConfirmCash(job.id);
+      var fresh = _safeParseJob(raw);
+      if (fresh == null ||
+          fresh.id != job.id ||
+          fresh.status != JobStatus.completed) {
+        developer.log(
+          'Cash confirmation response was not authoritative for ${job.id}; '
+          'reading the job back before showing completion',
+          name: 'ActiveJob',
+          level: 900,
+        );
+        fresh = await refreshFromServer();
+      }
+      if (fresh == null ||
+          fresh.id != job.id ||
+          fresh.status != JobStatus.completed) {
+        state = state.copyWith(
+          errorMessage:
+              "We couldn't confirm the payment completion. Keep this job open while we check again.",
+        );
+        return false;
+      }
+      state = state.copyWith(job: fresh);
       success = true;
       try {
-        _ref.read(providerStatusProvider.notifier).resumeAfterJob();
+        _finishActiveWork();
         if (_ref.exists(artisanJobsProvider)) {
           _ref.read(artisanJobsProvider.notifier).silentReload();
         }
@@ -284,6 +310,19 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
     return success;
   }
 
+  void _finishActiveWork() {
+    final locationRecoveryRequired =
+        _ref.read(providerLocationDegradationProvider).isDegraded;
+    _ref.read(providerStatusProvider.notifier).finishActiveWork(
+          locationRecoveryRequired: locationRecoveryRequired,
+        );
+    unawaited(
+      _ref
+          .read(availabilityReconciliationControllerProvider)
+          .reconcile(trigger: 'artisan_work_finished'),
+    );
+  }
+
   /// Maps the backend's structured error codes for
   /// `POST /jobs/:id/artisan-confirm-cash` into messages the artisan can
   /// act on. Codes match docs/architecture.md.
@@ -320,6 +359,7 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
   /// auth state on success and the home screen rebuilds reactively.
   void _refreshUserProfile() {
     try {
+      if (!_ref.exists(authControllerProvider)) return;
       unawaited(_ref.read(authControllerProvider.notifier).refreshProfile());
     } catch (_) {
       // Auth controller may not be mounted (tests); harmless.
@@ -348,9 +388,24 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
         return "We can't find the agreed price for this job. Contact "
             'support so it can be reconciled manually.';
       default:
-        return e.message.isNotEmpty
-            ? e.message
-            : "Couldn't confirm the payment.";
+        return userSafeApiErrorMessage(
+          e,
+          fallback: "Couldn't confirm the payment. Please try again.",
+          conflictMessage:
+              'The payment state changed. Refresh the job before trying again.',
+        );
+    }
+  }
+
+  Job? _safeParseJob(Map<String, dynamic> json) {
+    if ((json['jobId'] is! String && json['id'] is! String) ||
+        json['status'] is! String) {
+      return null;
+    }
+    try {
+      return Job.fromJson(json);
+    } catch (_) {
+      return null;
     }
   }
 
@@ -378,9 +433,46 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
     if (state.isUpdating) return false;
     state = state.copyWith(isUpdating: true, clearError: true);
     try {
-      await _ref
-          .read(jobServiceProvider)
-          .updateJobStatus(job.id, status: next.toJson());
+      final needsLifecycleFix = next == JobStatus.arrived ||
+          next == JobStatus.inProgress ||
+          next == JobStatus.artisanMarkedComplete;
+      final position = needsLifecycleFix
+          ? await _ref
+              .read(lifecycleLocationServiceProvider)
+              .obtain(_ref.read(lastKnownPositionProvider))
+          : null;
+      if (position != null) {
+        _ref.read(lastKnownPositionProvider.notifier).state = position;
+      }
+      final acknowledgement =
+          await _ref.read(jobServiceProvider).updateJobStatus(
+                job.id,
+                status: next.toJson(),
+                currentLat: position?.latitude,
+                currentLng: position?.longitude,
+                accuracyMeters: position?.accuracy,
+                capturedAt: position?.timestamp,
+              );
+      if (acknowledgement['status']?.toString() != next.toJson()) {
+        developer.log(
+          'Job transition response was not authoritative for ${job.id}; '
+          'reading the job back before changing local status',
+          name: 'ActiveJob',
+          level: 900,
+        );
+        final fresh = await refreshFromServer();
+        if (fresh == null || !_hasReachedJobStatus(fresh.status, next)) {
+          state = state.copyWith(
+            isUpdating: false,
+            errorMessage: fresh?.status == JobStatus.cancelled
+                ? 'This job was cancelled before the update could finish.'
+                : "We couldn't confirm the job update. Keep this job open while we check again.",
+          );
+          return false;
+        }
+        state = state.copyWith(isUpdating: false);
+        return true;
+      }
       // Local fallback for the on-the-job duration ticker. Backend is the
       // source of truth (`started_at` / `completed_at` come back on the
       // next GET /jobs/:id and are merged in via [refreshFromServer]),
@@ -414,6 +506,12 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
         }
       } catch (_) {}
       return true;
+    } on LifecycleLocationException catch (e) {
+      state = state.copyWith(
+        isUpdating: false,
+        errorMessage: e.message,
+      );
+      return false;
     } on ApiException catch (e) {
       developer.log(
         'updateJobStatus failed: ${e.message}',
@@ -445,8 +543,19 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
         return "This job can't move to the next step right now.";
       case 'NOT_ASSIGNED_ARTISAN':
         return 'Only the assigned artisan can update this job.';
+      case 'LIFECYCLE_LOCATION_REQUIRED':
+        return 'Get your current GPS location before updating this job.';
+      case 'GPS_FIX_STALE':
+        return 'MyShop needs a GPS fix from the last 15 seconds. Try again.';
+      case 'GPS_ACCURACY_REQUIRED':
+        return 'GPS accuracy is too low. Move to an open area and try again.';
       default:
-        return e.message;
+        return userSafeApiErrorMessage(
+          e,
+          fallback: 'Could not update the job. Please try again.',
+          conflictMessage:
+              'The job changed before the update completed. Refresh and try again.',
+        );
     }
   }
 }
@@ -474,6 +583,20 @@ JobStatus? _nextStatusFor(JobStatus current) {
     case JobStatus.cancelled:
       return null;
   }
+}
+
+bool _hasReachedJobStatus(JobStatus current, JobStatus target) {
+  if (current == JobStatus.cancelled) return false;
+  const rank = <JobStatus, int>{
+    JobStatus.confirmed: 0,
+    JobStatus.artisanEnRoute: 1,
+    JobStatus.arrived: 2,
+    JobStatus.inProgress: 3,
+    JobStatus.artisanMarkedComplete: 4,
+    JobStatus.pendingPayment: 5,
+    JobStatus.completed: 6,
+  };
+  return (rank[current] ?? -1) >= (rank[target] ?? 999);
 }
 
 final activeJobProvider =

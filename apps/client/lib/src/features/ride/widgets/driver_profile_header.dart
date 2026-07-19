@@ -41,25 +41,14 @@ class _ArrivalHeadline extends StatelessWidget {
           ),
         ),
         SizedBox(height: h * 0.007),
-        RichText(
+        Text(
+          'Your driver accepted the ride. Check the map for live arrival progress.',
           textAlign: TextAlign.center,
-          text: TextSpan(
-            style: TextStyle(
-              fontSize: w * 0.033,
-              fontWeight: FontWeight.w400,
-              color: MyShopColors.textSecondary,
-              height: 1.4,
-            ),
-            children: const [
-              TextSpan(text: "We've found a highly-rated driver near\n"),
-              TextSpan(
-                text: 'Kumasi Central Market',
-                style: TextStyle(
-                  color: MyShopColors.primaryGold,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+          style: TextStyle(
+            fontSize: w * 0.033,
+            fontWeight: FontWeight.w400,
+            color: MyShopColors.textSecondary,
+            height: 1.4,
           ),
         ),
       ],
@@ -102,10 +91,7 @@ class _DriverIdentityCard extends StatelessWidget {
           SizedBox(height: h * 0.007),
           _RatingRow(rating: driver.rating, tripCount: driver.tripCount),
           SizedBox(height: h * 0.017),
-          _BadgeRow(
-            isVerified: driver.isVerified,
-            isPoliceChecked: driver.isPoliceChecked,
-          ),
+          _BadgeRow(isVerified: driver.isVerified),
           SizedBox(height: h * 0.017),
           _PhoneChip(phone: driver.phone),
         ],
@@ -212,27 +198,18 @@ class _RatingRow extends StatelessWidget {
 
 class _BadgeRow extends StatelessWidget {
   final bool isVerified;
-  final bool isPoliceChecked;
-  const _BadgeRow({required this.isVerified, required this.isPoliceChecked});
+  const _BadgeRow({required this.isVerified});
 
   @override
   Widget build(BuildContext context) {
-    final w = MediaQuery.sizeOf(context).width;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         if (isVerified)
           const _OutlinedBadge(
-            label: 'Verified',
+            label: 'RM Approved',
             icon: Icons.check_circle_rounded,
             color: MyShopColors.success,
-          ),
-        if (isVerified && isPoliceChecked) SizedBox(width: w * 0.021),
-        if (isPoliceChecked)
-          const _OutlinedBadge(
-            label: 'Police Checked',
-            icon: Icons.shield_rounded,
-            color: MyShopColors.textPrimary,
           ),
       ],
     );

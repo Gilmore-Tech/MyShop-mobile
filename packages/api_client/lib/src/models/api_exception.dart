@@ -82,6 +82,26 @@ class ApiException implements Exception {
       if (rawDetails is Map) {
         details = Map<String, dynamic>.from(rawDetails);
       }
+
+      // Provider eligibility failures use a stable top-level `reasonCodes`
+      // array. Preserve only well-formed machine codes so mobile can present
+      // approved actionable copy without ever surfacing arbitrary backend
+      // messages or fields.
+      final rawReasonCodes = envelope['reasonCodes'];
+      if (rawReasonCodes is List) {
+        final reasonCodes = rawReasonCodes
+            .whereType<String>()
+            .map((value) => value.trim())
+            .where(_looksLikeMachineErrorCode)
+            .toSet()
+            .toList(growable: false);
+        if (reasonCodes.isNotEmpty) {
+          details = <String, dynamic>{
+            ...?details,
+            'reasonCodes': reasonCodes,
+          };
+        }
+      }
     }
 
     if (statusCode == 401) {
@@ -113,6 +133,7 @@ class ApiException implements Exception {
         message: message,
         statusCode: statusCode,
         errorCode: errorCode,
+        details: details,
       );
     }
 
@@ -192,5 +213,6 @@ class ServerException extends ApiException {
     required super.message,
     super.statusCode,
     super.errorCode,
+    super.details,
   });
 }

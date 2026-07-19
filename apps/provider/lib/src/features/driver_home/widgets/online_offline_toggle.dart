@@ -1,11 +1,16 @@
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../core/di/providers.dart';
 import '../../../core/providers/availability_controller.dart';
 import '../../../core/providers/provider_status_provider.dart';
+import '../../../core/widgets/background_location_disclosure.dart';
+import '../../../core/widgets/availability_restore_notice.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../../profile/providers/verification_provider.dart';
+import '../../profile/providers/provider_type_provider.dart';
 import '../../profile/widgets/incomplete_profile_sheet.dart';
 
 /// Segmented Online/Offline toggle at the top of the bottom sheet.
@@ -34,131 +39,142 @@ class _OnlineOfflineToggleState extends ConsumerState<OnlineOfflineToggle> {
     final isOnline = status.isOnline || status.isBusy;
     final isLocked = status.isBusy || _isGoingOnline;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: MyShopSpacing.md,
-        vertical: MyShopSpacing.sm,
-      ),
-      child: Opacity(
-        opacity: status.isBusy ? 0.5 : 1.0,
-        child: GestureDetector(
-          onTap: isLocked ? null : () => _handleToggle(isOnline),
-          child: Container(
-            height: 48,
-            decoration: BoxDecoration(
-              color: MyShopColors.surfaceGrey,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Stack(
-              children: [
-                // Animated sliding indicator
-                AnimatedAlign(
-                  alignment:
-                      isOnline ? Alignment.centerLeft : Alignment.centerRight,
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeInOut,
-                  child: Container(
-                    width: MediaQuery.of(context).size.width / 2 -
-                        MyShopSpacing.md -
-                        2,
-                    height: 44,
-                    margin: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      color: isOnline
-                          ? MyShopColors.online
-                          : MyShopColors.darkSlate,
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: [
-                        BoxShadow(
-                          color: (isOnline
-                                  ? MyShopColors.online
-                                  : MyShopColors.darkSlate)
-                              .withValues(alpha: 0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const AvailabilityRestoreNoticeBanner(),
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: MyShopSpacing.md,
+            vertical: MyShopSpacing.sm,
+          ),
+          child: Opacity(
+            opacity: status.isBusy ? 0.5 : 1.0,
+            child: GestureDetector(
+              onTap: isLocked ? null : () => _handleToggle(isOnline),
+              child: Container(
+                height: 48,
+                decoration: BoxDecoration(
+                  color: MyShopColors.surfaceGrey,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Stack(
+                  children: [
+                    // Animated sliding indicator
+                    AnimatedAlign(
+                      alignment: isOnline
+                          ? Alignment.centerLeft
+                          : Alignment.centerRight,
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeInOut,
+                      child: Container(
+                        width: MediaQuery.of(context).size.width / 2 -
+                            MyShopSpacing.md -
+                            2,
+                        height: 44,
+                        margin: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: isOnline
+                              ? MyShopColors.online
+                              : MyShopColors.darkSlate,
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: [
+                            BoxShadow(
+                              color: (isOnline
+                                      ? MyShopColors.online
+                                      : MyShopColors.darkSlate)
+                                  .withValues(alpha: 0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // Labels row
+                    Row(
+                      children: [
+                        // Online segment
+                        Expanded(
+                          child: Center(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _OnlineSegmentLeading(
+                                  isActive: isOnline,
+                                  isWorking: _isGoingOnline,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  _isGoingOnline ? 'Checking…' : 'Online',
+                                  style: TextStyle(
+                                    fontFamily: 'Raleway',
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: isOnline || _isGoingOnline
+                                        ? MyShopColors.textOnPrimary
+                                        : MyShopColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        // Offline segment
+                        Expanded(
+                          child: Center(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.power_settings_new,
+                                  size: 18,
+                                  color: !isOnline
+                                      ? MyShopColors.textOnPrimary
+                                      : MyShopColors.textSecondary,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Offline',
+                                  style: TextStyle(
+                                    fontFamily: 'Raleway',
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: !isOnline
+                                        ? MyShopColors.textOnPrimary
+                                        : MyShopColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                ),
-
-                // Labels row
-                Row(
-                  children: [
-                    // Online segment
-                    Expanded(
-                      child: Center(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _OnlineSegmentLeading(
-                              isActive: isOnline,
-                              isWorking: _isGoingOnline,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              _isGoingOnline ? 'Checking…' : 'Online',
-                              style: TextStyle(
-                                fontFamily: 'Raleway',
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: isOnline || _isGoingOnline
-                                    ? MyShopColors.textOnPrimary
-                                    : MyShopColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    // Offline segment
-                    Expanded(
-                      child: Center(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.power_settings_new,
-                              size: 18,
-                              color: !isOnline
-                                  ? MyShopColors.textOnPrimary
-                                  : MyShopColors.textSecondary,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Offline',
-                              style: TextStyle(
-                                fontFamily: 'Raleway',
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: !isOnline
-                                    ? MyShopColors.textOnPrimary
-                                    : MyShopColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
-      ),
+      ],
     );
   }
 
   Future<void> _handleToggle(bool isOnline) async {
     final availability = ref.read(availabilityControllerProvider);
 
-    // Going offline: flip local state + fire backend offline POST so the
-    // matcher stops dispatching. Fire-and-forget — the user shouldn't wait
-    // on the network for an offline transition.
+    // Going offline: wait for the authoritative server transition so an
+    // active-work rejection or network failure cannot falsely show offline.
     if (isOnline) {
-      availability.goOffline();
+      final error = await availability.goOffline();
+      if (error != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error)),
+        );
+      }
       return;
     }
 
@@ -186,21 +202,243 @@ class _OnlineOfflineToggleState extends ConsumerState<OnlineOfflineToggle> {
       final completion = ref.read(profileCompletionProvider);
       if (!mounted) return;
 
+      if (completion.verificationUnavailable) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(completion.missing.first)),
+        );
+        return;
+      }
+
       if (!completion.isComplete) {
         showIncompleteProfileSheet(context, completion: completion);
         return;
       }
 
-      final error = await availability.goOnline();
+      String? selectedVehicleId;
+      if (!ref.read(providerTypeProvider).isArtisan) {
+        selectedVehicleId = await _selectVehicleForOnline();
+        if (selectedVehicleId == null || !mounted) return;
+      }
+
+      final disclosureAccepted =
+          await confirmBackgroundLocationDisclosure(context);
+      if (!disclosureAccepted || !mounted) return;
+
+      final error = await availability.goOnline(
+        backgroundLocationDisclosureAccepted: true,
+        vehicleId: selectedVehicleId,
+      );
       if (error != null && mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(error)));
+        final recoveryShown = await showLocationRecoveryIfNeeded(context);
+        if (!recoveryShown && mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(error)));
+        }
       }
     } finally {
       if (mounted) setState(() => _isGoingOnline = false);
     }
   }
+
+  Future<String?> _selectVehicleForOnline() async {
+    ProviderVehiclePreflight preflight;
+    try {
+      preflight =
+          await ref.read(providerAvailabilityServiceProvider).getMyVehicles();
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(friendlyAvailabilityApiError(error))),
+        );
+      }
+      return null;
+    } on FormatException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              "We couldn't verify your vehicles. Refresh and try again.",
+            ),
+          ),
+        );
+      }
+      return null;
+    }
+
+    if (!mounted) return null;
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _VehicleSelectionSheet(preflight: preflight),
+    );
+  }
+}
+
+class _VehicleSelectionSheet extends StatefulWidget {
+  const _VehicleSelectionSheet({required this.preflight});
+
+  final ProviderVehiclePreflight preflight;
+
+  @override
+  State<_VehicleSelectionSheet> createState() => _VehicleSelectionSheetState();
+}
+
+class _VehicleSelectionSheetState extends State<_VehicleSelectionSheet> {
+  String? _selectedVehicleId;
+
+  @override
+  Widget build(BuildContext context) {
+    final vehicles = widget.preflight.vehicles;
+    final hasEligibleVehicle = vehicles.any((vehicle) => vehicle.eligible);
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        MyShopSpacing.lg,
+        MyShopSpacing.lg,
+        MyShopSpacing.lg,
+        MediaQuery.viewInsetsOf(context).bottom + MyShopSpacing.lg,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Select your vehicle',
+            style: TextStyle(
+              fontFamily: 'Raleway',
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: MyShopColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: MyShopSpacing.xs),
+          const Text(
+            'Choose the one vehicle you will use during this online session.',
+            style: TextStyle(color: MyShopColors.textSecondary),
+          ),
+          const SizedBox(height: MyShopSpacing.md),
+          if (vehicles.isEmpty || !hasEligibleVehicle)
+            _VehicleUnavailableNotice(
+              legacyBackfillRequired: widget.preflight.legacyBackfillRequired,
+              vehicles: vehicles,
+            )
+          else
+            Flexible(
+              child: RadioGroup<String>(
+                groupValue: _selectedVehicleId,
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _selectedVehicleId = value);
+                  }
+                },
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: vehicles.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, index) {
+                    final vehicle = vehicles[index];
+                    final details = [
+                      if (vehicle.plate != null) vehicle.plate!,
+                      if (vehicle.year != null) vehicle.year.toString(),
+                      if (vehicle.color != null) vehicle.color!,
+                    ].join(' • ');
+                    return RadioListTile<String>(
+                      value: vehicle.id,
+                      enabled: vehicle.eligible,
+                      title: Text(
+                        vehicle.displayName,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      subtitle: Text(
+                        vehicle.eligible
+                            ? (details.isEmpty
+                                ? 'Eligible to go online'
+                                : details)
+                            : _vehicleEligibilityMessage(vehicle.reasonCodes),
+                      ),
+                      activeColor: MyShopColors.online,
+                    );
+                  },
+                ),
+              ),
+            ),
+          const SizedBox(height: MyShopSpacing.md),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _selectedVehicleId == null
+                  ? null
+                  : () => Navigator.of(context).pop(_selectedVehicleId),
+              child: const Text('Use this vehicle'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VehicleUnavailableNotice extends StatelessWidget {
+  const _VehicleUnavailableNotice({
+    required this.legacyBackfillRequired,
+    required this.vehicles,
+  });
+
+  final bool legacyBackfillRequired;
+  final List<ProviderVehicleSummary> vehicles;
+
+  @override
+  Widget build(BuildContext context) {
+    final reason = vehicles.isEmpty
+        ? legacyBackfillRequired
+            ? 'Your existing vehicle record must be updated by support before you can go online.'
+            : 'No vehicle is available for this driver profile.'
+        : _vehicleEligibilityMessage(vehicles.first.reasonCodes);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      decoration: BoxDecoration(
+        color: MyShopColors.errorLight,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(reason, style: const TextStyle(color: MyShopColors.error)),
+    );
+  }
+}
+
+String _vehicleEligibilityMessage(List<String> reasonCodes) {
+  final codes = reasonCodes.toSet();
+  if (codes.contains('LEGACY_VEHICLE_BACKFILL_REQUIRED')) {
+    return 'Support must update this vehicle record before it can be selected.';
+  }
+  if (codes.contains('VEHICLE_DOCUMENT_EXPIRED_ROADWORTHINESS')) {
+    return 'The roadworthiness certificate has expired.';
+  }
+  if (codes.contains('VEHICLE_DOCUMENT_EXPIRED_INSURANCE')) {
+    return 'The insurance certificate has expired.';
+  }
+  if (codes.any((code) => code.contains('ROADWORTHINESS'))) {
+    return 'An approved roadworthiness certificate is required.';
+  }
+  if (codes.any((code) => code.contains('INSURANCE'))) {
+    return 'An approved insurance certificate is required.';
+  }
+  if (codes.contains('VEHICLE_RIDE_CATEGORY_NOT_APPROVED')) {
+    return 'This vehicle needs at least one approved ride category.';
+  }
+  if (codes.contains('OFFER_RECEIPT_CAPABILITY_REQUIRED')) {
+    return 'Notification delivery must be ready before you can go online. Refresh the app and try again.';
+  }
+  if (codes.contains('VEHICLE_NOT_AVAILABLE')) {
+    return 'This vehicle is not available.';
+  }
+  if (codes.contains('RM_FINAL_APPROVAL_REQUIRED') ||
+      codes.contains('PROVIDER_APPROVAL_REQUIRED')) {
+    return 'Regional Manager approval is required.';
+  }
+  return 'This vehicle is not currently eligible. Review Documents & Verification.';
 }
 
 class _OnlineSegmentLeading extends StatelessWidget {

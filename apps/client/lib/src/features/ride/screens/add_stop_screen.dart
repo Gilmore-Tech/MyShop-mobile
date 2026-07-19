@@ -1,4 +1,5 @@
-import 'package:api_client/api_client.dart' show ApiException;
+import 'package:api_client/api_client.dart'
+    show ApiException, userSafeApiErrorMessage;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -109,7 +110,12 @@ class _AddStopScreenState extends ConsumerState<AddStopScreen> {
       case 'STOP_OUT_OF_PILOT_REGION':
         return 'That location is outside the pilot service area.';
       default:
-        return e.message;
+        return userSafeApiErrorMessage(
+          e,
+          fallback: "Couldn't add the stop. Please try again.",
+          conflictMessage:
+              'The ride changed before the stop was added. Refresh and try again.',
+        );
     }
   }
 

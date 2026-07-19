@@ -140,7 +140,7 @@ class EarningsTodayCard {
   /// Drives the headline figure on the home dashboard card.
   final int grossEarningsPesewas;
 
-  /// Platform's 20% take across today's bookings — for the breakdown row
+  /// Platform commission recorded across today's bookings.
   /// next to gross.
   final int commissionPesewas;
 

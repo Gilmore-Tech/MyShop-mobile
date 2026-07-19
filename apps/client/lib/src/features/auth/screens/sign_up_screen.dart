@@ -1,14 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl_phone_field/countries.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:intl_phone_field/phone_number.dart';
+import 'package:api_client/api_client.dart';
 import 'package:shared_ui/shared_ui.dart';
+import 'package:uuid/uuid.dart';
+import 'package:shared_models/shared_models.dart';
 
 import '../../../app/router.dart';
+import '../../../core/constants/support_contacts.dart';
 import '../../../core/deep_links/referral_deep_link.dart';
 import '../providers/auth_controller.dart';
+import '../../support/providers/support_providers.dart';
 
 /// PRD § 4.1 — Client registration requires: full name + phone.
 /// Email is optional.
@@ -22,7 +29,6 @@ class SignUpScreen extends ConsumerStatefulWidget {
 class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
-  final _referralController = TextEditingController();
   final _nameFocus = FocusNode();
 
   // Phone state — IntlPhoneField manages its own text controller; we just
@@ -31,6 +37,12 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   bool _isValidPhone = false;
   String _initialCountryCode = 'GH';
   String _initialPhoneValue = '';
+  RequiredLegalDocuments? _requiredLegal;
+  Object? _legalLoadError;
+  bool _loadingLegal = true;
+  bool _termsAccepted = false;
+  bool _privacyAccepted = false;
+  bool _legalRefreshScheduled = false;
 
   @override
   void initState() {
@@ -45,25 +57,31 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       final parsed = _splitE164(prefill);
       _initialCountryCode = parsed.iso;
       _initialPhoneValue = parsed.national;
-    }
-
-    // Prefill the referral code if the user arrived via a referral deep link
-    // (myshop://refer?code=…) captured before they reached this screen.
-    final pendingReferral = ref.read(pendingReferralCodeProvider);
-    if (pendingReferral != null && pendingReferral.isNotEmpty) {
-      _referralController.text = pendingReferral;
+      final country = countries.firstWhere(
+        (candidate) => candidate.code == parsed.iso,
+        orElse: () => countries.firstWhere(
+          (candidate) => candidate.code == 'GH',
+        ),
+      );
+      final phone = PhoneNumber(
+        countryISOCode: country.code,
+        countryCode: '+${country.fullCountryCode}',
+        number: parsed.national,
+      );
+      _phone = phone;
+      _isValidPhone = _safeIsValidPhone(phone);
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _nameFocus.requestFocus();
     });
+    unawaited(_loadLegal());
   }
 
   @override
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
-    _referralController.dispose();
     _nameFocus.dispose();
     super.dispose();
   }
@@ -71,6 +89,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(clientAuthControllerProvider);
+    final pendingReferralCode = ref.watch(pendingReferralCodeProvider);
     final w = MediaQuery.sizeOf(context).width;
     final h = MediaQuery.sizeOf(context).height;
 
@@ -80,11 +99,24 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     bool isLoading = false;
     String? error;
     String? infoMessage;
+    bool requiresRoleRecoverySupport = false;
 
     if (authState is AuthNeedsRegistration) {
       isLoading = authState.isLoading;
       error = authState.error;
       infoMessage = authState.message;
+      requiresRoleRecoverySupport = authState.requiresRoleRecoverySupport;
+      if (authState.requiresLegalRefresh && !_legalRefreshScheduled) {
+        _legalRefreshScheduled = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          setState(() {
+            _termsAccepted = false;
+            _privacyAccepted = false;
+          });
+          unawaited(_loadLegal(refresh: true));
+        });
+      }
     } else if (authState is AuthUnauthenticated) {
       isLoading = authState.isLoading;
       error = authState.error;
@@ -177,6 +209,28 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                     ),
                   ),
                 ],
+                if (pendingReferralCode != null) ...[
+                  SizedBox(height: h * 0.015),
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(w * 0.035),
+                    decoration: BoxDecoration(
+                      color: MyShopColors.warning.withAlpha(20),
+                      borderRadius: BorderRadius.circular(w * 0.02),
+                      border: Border.all(
+                        color: MyShopColors.warning.withAlpha(70),
+                      ),
+                    ),
+                    child: Text(
+                      'Referral code $pendingReferralCode was not applied. Referrals are temporarily paused, but you can continue signing up.',
+                      style: TextStyle(
+                        fontSize: w * 0.032,
+                        color: MyShopColors.warning,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
                 SizedBox(height: h * 0.025),
 
                 // ── Form fields ──
@@ -254,19 +308,6 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                         ),
                         SizedBox(height: h * 0.022),
 
-                        // Referral code (optional) — auto-filled when the user
-                        // arrives via a myshop://refer?code=… deep link.
-                        _FieldLabel(
-                            label: 'Referral Code', w: w, optional: true),
-                        SizedBox(height: h * 0.008),
-                        _StyledTextField(
-                          controller: _referralController,
-                          hint: 'e.g. AMA10',
-                          textCapitalization: TextCapitalization.characters,
-                          w: w,
-                          h: h,
-                        ),
-
                         // Error message
                         if (error != null) ...[
                           SizedBox(height: h * 0.015),
@@ -277,12 +318,45 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                               color: MyShopColors.error.withAlpha(20),
                               borderRadius: BorderRadius.circular(w * 0.02),
                             ),
-                            child: Text(
-                              error,
-                              style: TextStyle(
-                                fontSize: w * 0.032,
-                                color: MyShopColors.error,
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  error,
+                                  style: TextStyle(
+                                    fontSize: w * 0.032,
+                                    color: MyShopColors.error,
+                                  ),
+                                ),
+                                if (requiresRoleRecoverySupport) ...[
+                                  SizedBox(height: h * 0.008),
+                                  Wrap(
+                                    spacing: w * 0.025,
+                                    children: [
+                                      TextButton.icon(
+                                        onPressed: _startRoleRecovery,
+                                        style: TextButton.styleFrom(
+                                          foregroundColor: MyShopColors.error,
+                                          padding: EdgeInsets.zero,
+                                        ),
+                                        icon: const Icon(Icons.restore),
+                                        label: const Text(
+                                          'Request account recovery',
+                                        ),
+                                      ),
+                                      TextButton.icon(
+                                        onPressed: _contactRecoverySupport,
+                                        style: TextButton.styleFrom(
+                                          foregroundColor: MyShopColors.error,
+                                          padding: EdgeInsets.zero,
+                                        ),
+                                        icon: const Icon(Icons.support_agent),
+                                        label: const Text('Contact support'),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
                         ],
@@ -292,18 +366,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                 ),
 
                 // ── Bottom section ──
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: w * 0.02),
-                  child: Text(
-                    'By creating an account, you agree to our Terms of Service and Privacy Policy.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: w * 0.028,
-                      color: MyShopColors.textHint,
-                      height: 1.4,
-                    ),
-                  ),
-                ),
+                _buildLegalAcceptance(w, h),
                 SizedBox(height: h * 0.012),
 
                 // Submit button
@@ -350,8 +413,8 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                   behavior: HitTestBehavior.opaque,
                   child: Padding(
                     padding: EdgeInsets.symmetric(vertical: h * 0.012),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    child: Wrap(
+                      alignment: WrapAlignment.center,
                       children: [
                         Text(
                           'Already have an account? ',
@@ -384,21 +447,202 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   bool get _canSubmit =>
       _nameController.text.trim().length >= 2 &&
       _isValidPhone &&
-      _phone != null;
+      _phone != null &&
+      !_loadingLegal &&
+      _requiredLegal?.documents.length == 2 &&
+      _termsAccepted &&
+      _privacyAccepted;
 
   void _submit() {
+    final legal = _requiredLegal;
+    if (legal == null || !_termsAccepted || !_privacyAccepted) return;
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
-    final referral = _referralController.text.trim();
     ref.read(clientAuthControllerProvider.notifier).register(
           phone: _phone!.completeNumber,
           fullName: name,
+          legalAcceptances: legal.selections,
           email: email.isNotEmpty ? email : null,
-          referralCode: referral.isNotEmpty ? referral : null,
+          referralCode: null,
         );
     // One-shot: clear the captured code so it can't bleed into a later,
     // unrelated registration on the same install.
     ref.read(pendingReferralCodeProvider.notifier).state = null;
+  }
+
+  Future<void> _loadLegal({bool refresh = false}) async {
+    if (mounted) {
+      setState(() {
+        _loadingLegal = true;
+        _legalLoadError = null;
+      });
+    }
+    try {
+      final documents = refresh
+          ? await ref.refresh(clientRegistrationLegalDocumentsProvider.future)
+          : await ref.read(clientRegistrationLegalDocumentsProvider.future);
+      final slugs =
+          documents.documents.map((document) => document.slug).toSet();
+      if (documents.documents.length != 2 ||
+          !slugs.contains(LegalSlugs.terms) ||
+          !slugs.contains(LegalSlugs.privacy) ||
+          documents.documents.any((document) => document.documentId.isEmpty)) {
+        throw const ApiException(
+          message: 'The current legal documents are incomplete. Please retry.',
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        _requiredLegal = documents;
+        _loadingLegal = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _requiredLegal = null;
+        _legalLoadError = error;
+        _loadingLegal = false;
+        _termsAccepted = false;
+        _privacyAccepted = false;
+      });
+    }
+  }
+
+  Widget _buildLegalAcceptance(double w, double h) {
+    if (_loadingLegal) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 10),
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    }
+    if (_legalLoadError != null) {
+      return Column(
+        children: [
+          Text(
+            'Terms and Privacy could not be loaded. Registration is paused until they are available.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: w * 0.03, color: MyShopColors.error),
+          ),
+          TextButton(
+            onPressed: () => unawaited(_loadLegal(refresh: true)),
+            child: const Text('Retry'),
+          ),
+        ],
+      );
+    }
+    final terms = _documentFor(LegalSlugs.terms);
+    final privacy = _documentFor(LegalSlugs.privacy);
+    return Column(
+      children: [
+        _legalRow(
+          value: _termsAccepted,
+          label: 'I accept the Terms of Service v${terms?.version ?? ''}',
+          onChanged: (value) => setState(() => _termsAccepted = value),
+          onOpen: terms == null
+              ? null
+              : () => context.push(AppRoutes.legalDocumentPath(terms.slug)),
+          w: w,
+        ),
+        SizedBox(height: h * 0.004),
+        _legalRow(
+          value: _privacyAccepted,
+          label: 'I acknowledge the Privacy Notice v${privacy?.version ?? ''}',
+          onChanged: (value) => setState(() => _privacyAccepted = value),
+          onOpen: privacy == null
+              ? null
+              : () => context.push(AppRoutes.legalDocumentPath(privacy.slug)),
+          w: w,
+        ),
+      ],
+    );
+  }
+
+  LegalDocument? _documentFor(String slug) {
+    for (final document
+        in _requiredLegal?.documents ?? const <LegalDocument>[]) {
+      if (document.slug == slug) return document;
+    }
+    return null;
+  }
+
+  Widget _legalRow({
+    required bool value,
+    required String label,
+    required ValueChanged<bool> onChanged,
+    required VoidCallback? onOpen,
+    required double w,
+  }) {
+    return Row(
+      children: [
+        Checkbox(
+          value: value,
+          onChanged: (next) => onChanged(next ?? false),
+          activeColor: MyShopColors.primaryGold,
+        ),
+        Expanded(
+          child: TextButton(
+            onPressed: onOpen,
+            style: TextButton.styleFrom(
+              alignment: Alignment.centerLeft,
+              padding: EdgeInsets.symmetric(horizontal: w * 0.01),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: w * 0.03,
+                color: MyShopColors.primaryGoldDark,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _contactRecoverySupport() async {
+    final opened = await SupportChannels.openEmail(
+      to: clientSupportEmail,
+      subject: 'Client role recovery request',
+    );
+    if (!opened && mounted) {
+      MyShopToast.show(
+        context,
+        message: 'Email $clientSupportEmail for recovery help.',
+        duration: const Duration(seconds: 5),
+      );
+    }
+  }
+
+  Future<void> _startRoleRecovery() async {
+    final auth = ref.read(clientAuthControllerProvider);
+    final phone = _phone?.completeNumber ??
+        (auth is AuthNeedsRegistration ? auth.phone : null);
+    if (phone == null || phone.isEmpty) {
+      MyShopToast.show(
+        context,
+        message: 'Enter the phone number that owned the deleted client role.',
+      );
+      return;
+    }
+    final repository = ref.read(clientAuthRepositoryProvider);
+    await showMyShopRoleAccountRecoveryDialog(
+      context: context,
+      phone: phone,
+      role: 'client',
+      requestKey: const Uuid().v4(),
+      requestOtp: () => repository.requestRoleAccountRecoveryOtp(phone),
+      verifyOtp: (otp, requestKey) async {
+        await repository.verifyRoleAccountRecoveryOtp(
+          phone: phone,
+          code: otp,
+          requestKey: requestKey,
+        );
+      },
+      errorMessage: (error) => error is ApiException
+          ? AuthErrorMapper.message(error)
+          : 'Recovery could not be requested. Please try again.',
+    );
   }
 }
 
@@ -420,12 +664,18 @@ bool _safeIsValidPhone(PhoneNumber phone) {
 ({String iso, String national}) _splitE164(String e164) {
   if (!e164.startsWith('+')) return (iso: 'GH', national: e164);
   final digits = e164.substring(1);
-  // Match longest dial code first so '+1xxx' doesn't beat '+1xxx' regions etc.
-  final sorted = [...countries]
-    ..sort((a, b) => b.dialCode.length.compareTo(a.dialCode.length));
+  // Match the longest full country code first. This includes region codes for
+  // countries sharing a dial prefix, so a redirected number is reconstructed
+  // exactly instead of silently changing country.
+  final sorted = [...countries]..sort(
+      (a, b) => b.fullCountryCode.length.compareTo(a.fullCountryCode.length),
+    );
   for (final c in sorted) {
-    if (digits.startsWith(c.dialCode)) {
-      return (iso: c.code, national: digits.substring(c.dialCode.length));
+    if (digits.startsWith(c.fullCountryCode)) {
+      return (
+        iso: c.code,
+        national: digits.substring(c.fullCountryCode.length),
+      );
     }
   }
   return (iso: 'GH', national: digits);

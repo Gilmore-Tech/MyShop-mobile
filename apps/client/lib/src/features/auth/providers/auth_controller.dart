@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:api_client/api_client.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_models/shared_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/di/force_logout_handler.dart';
@@ -40,6 +43,8 @@ class AuthNeedsRegistration extends ClientAuthState {
     this.error,
     this.message,
     this.isLoading = false,
+    this.requiresRoleRecoverySupport = false,
+    this.requiresLegalRefresh = false,
   });
 
   final String phone;
@@ -48,6 +53,8 @@ class AuthNeedsRegistration extends ClientAuthState {
   /// Non-error info message shown at the top (e.g. "No account found").
   final String? message;
   final bool isLoading;
+  final bool requiresRoleRecoverySupport;
+  final bool requiresLegalRefresh;
 }
 
 /// OTP has been sent. Waiting for user input.
@@ -73,12 +80,14 @@ class AuthOtpSent extends ClientAuthState {
 class AuthBlockedByOtherDevice extends ClientAuthState {
   const AuthBlockedByOtherDevice({
     required this.phone,
+    this.recoveryChallenge,
     this.recoveryRequestStatus = RecoveryRequestStatus.idle,
     this.isTakingOver = false,
     this.takeoverError,
   });
 
   final String phone;
+  final String? recoveryChallenge;
 
   /// Tracks the in-flight state of the "request session recovery" call so
   /// the dialog can show a spinner / success / failure.
@@ -182,15 +191,19 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
   /// Try to restore session from stored tokens.
   Future<void> bootstrap() async {
     try {
-      final profile = await _repo
-          .bootstrap()
-          .timeout(const Duration(seconds: 8), onTimeout: () => null);
+      UserProfile? profile;
+      try {
+        profile = await _repo.bootstrap().timeout(const Duration(seconds: 8));
+      } on TimeoutException {
+        debugPrint('[Auth] client bootstrap timed out after 8 seconds');
+      }
       if (profile != null) {
         state = AuthAuthenticated(profile);
       } else {
         state = const AuthUnauthenticated();
       }
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint('[Auth] client bootstrap failed: $error\n$stackTrace');
       state = const AuthUnauthenticated();
     }
   }
@@ -226,7 +239,19 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
           message: 'No account found for this number. Sign up to get started.',
         );
       } else if (AuthErrorMapper.isAlreadyLoggedInElsewhere(e)) {
-        state = AuthBlockedByOtherDevice(phone: phone);
+        state = AuthBlockedByOtherDevice(
+          phone: phone,
+          recoveryChallenge: AuthErrorMapper.sessionRecoveryChallenge(e),
+        );
+      } else if (AuthErrorMapper.hasActiveOtp(e)) {
+        // Initial delivery failed after the backend stored the code. Keep the
+        // user in the OTP flow so a delayed SMS remains usable and fallback
+        // resend channels can re-deliver the same active code.
+        state = AuthOtpSent(
+          phone: phone,
+          isNewUser: false,
+          error: AuthErrorMapper.message(e),
+        );
       } else {
         state = AuthUnauthenticated(
           error: AuthErrorMapper.message(e),
@@ -266,6 +291,7 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
   Future<void> register({
     required String phone,
     required String fullName,
+    required List<LegalAcceptanceSelection> legalAcceptances,
     String? email,
     String? referralCode,
   }) async {
@@ -276,28 +302,45 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
       await _repo.register(
         phone: phone,
         fullName: fullName,
-        privacyPolicyAccepted: true,
+        legalAcceptances: legalAcceptances,
         email: email,
         referralCode: referralCode,
       );
       state = AuthOtpSent(phone: phone, isNewUser: true);
     } on ApiException catch (e) {
-      // If already registered, try login instead
-      if (e.errorCode == 'PHONE_ALREADY_REGISTERED' ||
+      if (AuthErrorMapper.hasActiveOtp(e)) {
+        state = AuthOtpSent(
+          phone: phone,
+          isNewUser: true,
+          error: AuthErrorMapper.message(e),
+        );
+        // If already registered, try login instead.
+      } else if (e.errorCode == 'PHONE_ALREADY_REGISTERED' ||
           e.errorCode == 'USER_ALREADY_EXISTS') {
         try {
           await _repo.loginClient(phone);
           state = AuthOtpSent(phone: phone, isNewUser: false);
         } on ApiException catch (loginError) {
-          state = AuthNeedsRegistration(
-            phone: phone,
-            error: AuthErrorMapper.message(loginError),
-          );
+          if (AuthErrorMapper.hasActiveOtp(loginError)) {
+            state = AuthOtpSent(
+              phone: phone,
+              isNewUser: false,
+              error: AuthErrorMapper.message(loginError),
+            );
+          } else {
+            state = AuthNeedsRegistration(
+              phone: phone,
+              error: AuthErrorMapper.message(loginError),
+            );
+          }
         }
       } else {
         state = AuthNeedsRegistration(
           phone: phone,
           error: AuthErrorMapper.message(e),
+          requiresRoleRecoverySupport:
+              AuthErrorMapper.requiresRoleRecoverySupport(e),
+          requiresLegalRefresh: e.errorCode == 'LEGAL_DOCUMENT_CHANGED',
         );
       }
     } on AuthException catch (e) {
@@ -316,6 +359,7 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
   Future<void> verifyOtp(String code) async {
     final current = state;
     if (current is! AuthOtpSent) return;
+    if (current.isVerifying) return;
 
     state = AuthOtpSent(
       phone: current.phone,
@@ -356,6 +400,8 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
   Future<void> resendOtp({String channel = 'sms'}) async {
     final current = state;
     if (current is! AuthOtpSent) return;
+    if (_requesting) return;
+    _requesting = true;
     try {
       await _repo.resendOtp(phone: current.phone, channel: channel);
       // Success — clear any prior error so the screen reflects the new send.
@@ -374,6 +420,8 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
         isNewUser: current.isNewUser,
         error: 'Could not resend the code. Please try again.',
       );
+    } finally {
+      _requesting = false;
     }
   }
 
@@ -451,19 +499,30 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
     final current = state;
     if (current is! AuthBlockedByOtherDevice) return;
     if (current.recoveryRequestStatus == RecoveryRequestStatus.sending) return;
+    final challenge = current.recoveryChallenge;
+    if (challenge == null) {
+      state = AuthBlockedByOtherDevice(
+        phone: current.phone,
+        recoveryRequestStatus: RecoveryRequestStatus.failed,
+      );
+      return;
+    }
     state = AuthBlockedByOtherDevice(
       phone: current.phone,
+      recoveryChallenge: challenge,
       recoveryRequestStatus: RecoveryRequestStatus.sending,
     );
     try {
-      await _repo.requestSessionRecovery(current.phone);
+      await _repo.requestSessionRecovery(current.phone, challenge);
       state = AuthBlockedByOtherDevice(
         phone: current.phone,
+        recoveryChallenge: challenge,
         recoveryRequestStatus: RecoveryRequestStatus.sent,
       );
     } catch (_) {
       state = AuthBlockedByOtherDevice(
         phone: current.phone,
+        recoveryChallenge: challenge,
         recoveryRequestStatus: RecoveryRequestStatus.failed,
       );
     }
@@ -484,6 +543,7 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
     if (current.isTakingOver) return;
     state = AuthBlockedByOtherDevice(
       phone: current.phone,
+      recoveryChallenge: current.recoveryChallenge,
       recoveryRequestStatus: current.recoveryRequestStatus,
       isTakingOver: true,
     );
@@ -493,12 +553,14 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
     } on ApiException catch (e) {
       state = AuthBlockedByOtherDevice(
         phone: current.phone,
+        recoveryChallenge: current.recoveryChallenge,
         recoveryRequestStatus: current.recoveryRequestStatus,
-        takeoverError: e.message,
+        takeoverError: AuthErrorMapper.message(e),
       );
     } catch (_) {
       state = AuthBlockedByOtherDevice(
         phone: current.phone,
+        recoveryChallenge: current.recoveryChallenge,
         recoveryRequestStatus: current.recoveryRequestStatus,
         takeoverError: 'Could not sign in. Please try again.',
       );
