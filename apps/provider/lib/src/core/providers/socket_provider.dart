@@ -160,6 +160,9 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
 
   final socket = ref.read(socketServiceProvider);
   final isArtisan = ref.read(providerTypeProvider).isArtisan;
+  final container = ref.container;
+  var disposed = false;
+  ref.onDispose(() => disposed = true);
   debugPrint('[LOC] bridge: active (role=${isArtisan ? 'artisan' : 'driver'})'
       ' — listening for fixes');
 
@@ -169,11 +172,11 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   // events. Artisans use the REST path exclusively via background sync, and the
   // matcher reads their position from the PostGIS table the REST writer updates.
   void emitDriverLocation(Position pos) {
-    if (isArtisan) return;
-    final locationSession = ref.read(providerLocationSessionProvider);
+    if (disposed || isArtisan) return;
+    final locationSession = container.read(providerLocationSessionProvider);
     if (locationSession == null) return;
     final sampleSequence =
-        ref.read(providerLocationSessionProvider.notifier).nextSequence();
+        container.read(providerLocationSessionProvider.notifier).nextSequence();
     socket.emit('driver:location:update', {
       'latitude': pos.latitude,
       'longitude': pos.longitude,
@@ -188,7 +191,8 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   // stationary driver still advances foreground rider/admin maps. Durable REST
   // heartbeat and trip trail persistence live in backgroundLocationSyncProvider.
   final heartbeat = Timer.periodic(const Duration(seconds: 4), (_) {
-    final pos = ref.read(lastKnownPositionProvider);
+    if (disposed) return;
+    final pos = container.read(lastKnownPositionProvider);
     if (pos == null) return;
     emitDriverLocation(pos);
   });
@@ -197,9 +201,14 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   // Kick the heartbeat once immediately if we already have a cached fix —
   // otherwise the backend would wait up to 4s before seeing the driver,
   // and the rider's matcher could miss them on a freshly-online driver.
-  final cached = ref.read(lastKnownPositionProvider);
+  final cached = container.read(lastKnownPositionProvider);
   if (cached != null) {
-    emitDriverLocation(cached);
+    // This provider may itself be created during a widget/provider build. A
+    // synchronous emit reserves a sequence by mutating
+    // providerLocationSessionProvider while Riverpod is still initializing
+    // this bridge, which is forbidden and crashes the first Online frame.
+    // Defer the cached-fix emit until the current provider build has completed.
+    Timer.run(() => emitDriverLocation(cached));
   } else {
     // No cached fix yet (e.g. recovered into busy on a fresh launch where
     // the warm-up hadn't settled). Pull one synchronously so the matcher
@@ -214,7 +223,8 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
             timeLimit: Duration(seconds: 8),
           ),
         );
-        ref.read(lastKnownPositionProvider.notifier).state = fresh;
+        if (disposed) return;
+        container.read(lastKnownPositionProvider.notifier).state = fresh;
         emitDriverLocation(fresh);
       } catch (e) {
         debugPrint('[LOC] bridge: cold-fix fetch failed: $e');
@@ -233,7 +243,8 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   ref.listen<AsyncValue<Position>>(driverLocationStreamProvider, (_, next) {
     next.when(
       data: (position) {
-        ref.read(lastKnownPositionProvider.notifier).state = position;
+        if (disposed) return;
+        container.read(lastKnownPositionProvider.notifier).state = position;
 
         // Socket emit on every fix is cheap and gives the matcher fresh
         // coords between heartbeat ticks while the driver is moving.
