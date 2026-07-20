@@ -405,18 +405,10 @@ class _VehicleSelectionSection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
+        const Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Container(
-              width: 4,
-              height: 18,
-              decoration: BoxDecoration(
-                color: MyShopColors.primaryGold,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(width: 8),
-            const Text(
+            Text(
               'Select Vehicle',
               style: TextStyle(
                 fontSize: 16,
@@ -694,36 +686,26 @@ class _BottomActions extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (fareDisplay != null) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: MyShopColors.primaryGoldLight,
-                borderRadius: BorderRadius.circular(MyShopRadius.card),
-                border: Border.all(
-                  color: MyShopColors.primaryGold.withValues(alpha: 0.35),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Total to pay',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: MyShopColors.textSecondary,
+                  ),
                 ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Total to pay',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: MyShopColors.textSecondary,
-                    ),
+                Text(
+                  fareDisplay!,
+                  style: const TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w900,
+                    color: MyShopColors.darkSlate,
                   ),
-                  Text(
-                    fareDisplay!,
-                    style: const TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w900,
-                      color: MyShopColors.darkText,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
           ],
@@ -735,12 +717,12 @@ class _BottomActions extends StatelessWidget {
               // user can't dispatch a ride when no driver is available.
               onPressed: enabled ? onConfirm : null,
               style: ElevatedButton.styleFrom(
-                backgroundColor: MyShopColors.primaryGold,
-                foregroundColor: MyShopColors.textOnPrimary,
+                backgroundColor: MyShopColors.darkSlate,
+                foregroundColor: Colors.white,
                 disabledBackgroundColor: MyShopColors.divider,
                 disabledForegroundColor: MyShopColors.textSecondary,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(MyShopRadius.button),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 elevation: 0,
               ),
