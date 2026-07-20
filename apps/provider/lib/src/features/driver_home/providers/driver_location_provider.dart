@@ -4,11 +4,16 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../../core/providers/provider_status_provider.dart';
 
-LocationSettings _streamLocationSettings() {
-  if (defaultTargetPlatform == TargetPlatform.android) {
+LocationSettings onlineStreamLocationSettings(TargetPlatform platform) {
+  if (platform == TargetPlatform.android) {
     return AndroidSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 1,
+      // Matching requires a genuinely new device fix every 30 seconds. A
+      // positive distance filter can suppress updates indefinitely while the
+      // driver is stationary; replaying that old sample as a heartbeat cannot
+      // truthfully refresh its capture timestamp. Request periodic fixes even
+      // at zero movement and let the REST writer retain its 15-second cadence.
+      distanceFilter: 0,
       intervalDuration: const Duration(seconds: 4),
       foregroundNotificationConfig: const ForegroundNotificationConfig(
         notificationTitle: 'MyShop Provider is online',
@@ -20,12 +25,11 @@ LocationSettings _streamLocationSettings() {
     );
   }
 
-  if (defaultTargetPlatform == TargetPlatform.iOS ||
-      defaultTargetPlatform == TargetPlatform.macOS) {
+  if (platform == TargetPlatform.iOS || platform == TargetPlatform.macOS) {
     return AppleSettings(
       accuracy: LocationAccuracy.high,
       activityType: ActivityType.automotiveNavigation,
-      distanceFilter: 1,
+      distanceFilter: 0,
       pauseLocationUpdatesAutomatically: false,
       showBackgroundLocationIndicator: true,
       allowBackgroundLocationUpdates: true,
@@ -34,7 +38,7 @@ LocationSettings _streamLocationSettings() {
 
   return const LocationSettings(
     accuracy: LocationAccuracy.high,
-    distanceFilter: 1,
+    distanceFilter: 0,
   );
 }
 
@@ -99,15 +103,13 @@ final driverLocationStreamProvider =
         'continuing to position stream');
   }
 
-  // 1m distance filter — fine enough that the driver marker + camera
-  // follow appear continuous during a live ride, the way Google Maps
-  // "Start" mode does. 5m felt choppy on slower urban segments (the
-  // marker would freeze for several seconds at a time). Battery cost
-  // is bounded by platform-level cadence below. On Android the foreground
-  // notification keeps the location stream prioritized while the app is
-  // backgrounded; on iOS the existing Background Modes location entitlement
-  // and Always permission allow the stream to continue after screen lock.
+  // A zero distance filter is intentional: an idle online driver must still
+  // receive newly captured fixes. The server rejects replayed timestamps and
+  // dispatch requires a fix no older than 30 seconds. Battery/network cost is
+  // bounded by platform cadence and the separate 15-second REST writer. On
+  // Android the foreground notification keeps the stream prioritized while
+  // backgrounded; on iOS Background Modes + Always permission cover lock.
   yield* Geolocator.getPositionStream(
-    locationSettings: _streamLocationSettings(),
+    locationSettings: onlineStreamLocationSettings(defaultTargetPlatform),
   );
 });

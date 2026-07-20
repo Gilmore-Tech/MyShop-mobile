@@ -49,11 +49,9 @@ class VehicleOption {
   /// instead of an ambient warning the user can't size up.
   final double surgeMultiplier;
 
-  /// `false` when the backend found no online, non-busy driver within the max
-  /// match radius — [estimatedTime] is then a fallback number, not a real ETA.
-  /// The vehicle cards show "No drivers available", gray out, and become
-  /// non-selectable; the Confirm CTA is disabled. Route-level, so every option
-  /// in a single estimate carries the same value (mirrors [surgeActive]).
+  /// `false` when the backend found no eligible driver for this ride category
+  /// within the maximum match radius. Availability is category-specific: one
+  /// tier may remain bookable while another is disabled.
   final bool driversAvailable;
 
   const VehicleOption({
@@ -75,6 +73,30 @@ class VehicleOption {
     final ghs = farePesewas / 100;
     return 'GH₵ ${ghs.toStringAsFixed(2)}';
   }
+}
+
+/// Availability is category-specific. A route remains bookable when at least
+/// one category has a dispatchable driver, even if the default/cheapest tier
+/// does not.
+bool hasAvailableRideOption(Iterable<VehicleOption> options) {
+  return options.any((option) => option.driversAvailable);
+}
+
+VehicleOption? firstAvailableRideOption(Iterable<VehicleOption> options) {
+  for (final option in options) {
+    if (option.driversAvailable) return option;
+  }
+  return null;
+}
+
+VehicleOption? availableRideOptionById(
+  Iterable<VehicleOption> options,
+  String optionId,
+) {
+  for (final option in options) {
+    if (option.id == optionId && option.driversAvailable) return option;
+  }
+  return null;
 }
 
 class RecentDestination {
