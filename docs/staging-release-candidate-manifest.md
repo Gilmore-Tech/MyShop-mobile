@@ -4,6 +4,13 @@ Snapshot time: **2026-07-19 18:52:55 GMT**
 Status: **packaged as three local staging-parent candidates; not pushed,
 deployed, merged, or production-approved**
 
+> **Superseded 2026-07-20:** the approved legacy-driver vehicle remediation
+> added one backend migration plus backend/admin workflow changes after this
+> snapshot. The SHAs, fingerprints, image digest, migration count and full-gate
+> claims below are historical and must not be used for deployment. Recompute a
+> 196-migration manifest after the new backend/admin commits are frozen and the
+> complete gates are rerun.
+
 This manifest freezes the current source candidate closely enough to detect any
 subsequent workspace drift before packaging. Production remains **NO-GO** until
 the checklist gates pass.

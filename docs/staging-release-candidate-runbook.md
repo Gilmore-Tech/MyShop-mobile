@@ -153,7 +153,7 @@ weaken their guards or point them at staging/production.
    `20260718275000_provider_location_session_sequence` intentionally raises
    `PROVIDER_LOCATION_SESSION_CUTOVER_BLOCKED` before any DDL if either role is
    still Online; any non-zero count or that error is a hard stop.
-3. Apply all **195** reviewed migrations with `prisma migrate deploy`.
+3. Apply all **196** reviewed migrations with `prisma migrate deploy`.
 4. Run the schema-drift verifier against the isolated release database.
 5. Re-run the Paystack-refund-routing preflight and verify the unique index is
    present.
@@ -255,6 +255,30 @@ Use internal-track/TestFlight builds with unused private build numbers.
    Regional Manager approval, expired/replacement document behavior, two
    vehicles with separate insurance/roadworthiness, mandatory fresh selection,
    notification reachability, and authoritative Offline.
+   - Open Admin → Vehicle Verification. For every **Legacy migrations** row,
+     compare the previous make/model/year/plate/colour with the stored evidence,
+     open every listed current roadworthiness/insurance document, select all
+     evidence that belongs to that exact vehicle, and tick the explicit
+     ownership confirmation. If the driver has already submitted an explicit
+     vehicle, select that exact target and bind the retained evidence without
+     changing any vehicle/category state. Otherwise choose its requested ride
+     categories and create the pending vehicle. Never use this flow to infer
+     missing ownership or approve a document, vehicle, category, or expiry.
+   - Coordinator forwards the migrated vehicle, Regional Manager finalizes it,
+     and each vehicle category is approved separately. Missing/expired evidence
+     is uploaded against the new vehicle through the normal review path. Re-run
+     an aggregate-only `driver_vehicle_backfill_preflight` count and require
+     `backfill_required = 0` before reopening rides. A non-zero result is a
+     release stop; do not print driver/document identifiers into shared logs.
+   - On the installed provider build, pull to refresh **My Vehicles**, confirm
+     the migrated car is displayed without the legacy-migration notice, select
+     it during Go Online, and prove the driver becomes matchable only after all
+     document, vehicle, category, notification and location checks pass.
+   - Leave the driver home map visible while profile, legal-consent, socket/FCM,
+     Online/Offline and active-work state refresh. Require one stable native map
+     controller, no visible blinking and no repeated startup
+     `getCurrentPosition` calls. Then force one genuine GPS timeout and verify
+     the last-known fix remains visible without remounting the map.
    - Keep `PILOT_REGION_CHECK_DISABLED=false`. With a valid fix no more than
      30 seconds old and no worse than 50 metres, prove driver and artisan Online
      succeeds inside the current boundary and returns `OUTSIDE_PILOT_REGION`

@@ -75,17 +75,17 @@ import '../features/trips/screens/trips_history_screen.dart';
 /// Full-screen routes (ride request, active ride, trip complete) are outside the shell.
 final goRouterProvider = Provider<GoRouter>((ref) {
   final refresh = _AuthRouterRefresh(ref);
-  final authState = ref.watch(authControllerProvider);
-  final legalConsent = authState is AuthAuthenticated
-      ? ref.watch(legalConsentStatusProvider)
-      : null;
-  final hasActiveWork = ref.watch(activeRideProvider).hasRide ||
-      ref.watch(activeJobProvider).hasJob;
   return GoRouter(
     initialLocation: '/splash',
     refreshListenable: refresh,
     redirect: (context, state) {
       final auth = ref.read(authControllerProvider);
+      final legalConsent = auth is AuthAuthenticated
+          ? ref.read(legalConsentStatusProvider)
+          : null;
+      final hasActiveWork = auth is AuthAuthenticated &&
+          (ref.read(activeRideProvider).hasRide ||
+              ref.read(activeJobProvider).hasJob);
       final onboardingFlagLoaded = ref.read(onboardingFlagLoadedProvider);
       final loc = state.matchedLocation;
 
@@ -500,7 +500,10 @@ class _AuthRouterRefresh extends ChangeNotifier {
   _AuthRouterRefresh(this._ref) {
     _authSub = _ref.listen<AuthState>(
       authControllerProvider,
-      (_, __) => notifyListeners(),
+      (_, next) {
+        _syncAuthenticatedDependencies(next);
+        notifyListeners();
+      },
     );
     _onboardingSub = _ref.listen<bool>(
       onboardingFlagLoadedProvider,
@@ -510,18 +513,50 @@ class _AuthRouterRefresh extends ChangeNotifier {
       hasSeenOnboardingProvider,
       (_, __) => notifyListeners(),
     );
+    _syncAuthenticatedDependencies(_ref.read(authControllerProvider));
   }
 
   final Ref _ref;
   late final ProviderSubscription<AuthState> _authSub;
   late final ProviderSubscription<bool> _onboardingSub;
   late final ProviderSubscription<bool> _hasSeenSub;
+  ProviderSubscription<AsyncValue<LegalConsentStatus>>? _legalConsentSub;
+  ProviderSubscription<bool>? _activeRideSub;
+  ProviderSubscription<bool>? _activeJobSub;
+
+  void _syncAuthenticatedDependencies(AuthState auth) {
+    if (auth is AuthAuthenticated) {
+      _legalConsentSub ??= _ref.listen<AsyncValue<LegalConsentStatus>>(
+        legalConsentStatusProvider,
+        (_, __) => notifyListeners(),
+      );
+      _activeRideSub ??= _ref.listen<bool>(
+        activeRideProvider.select((state) => state.hasRide),
+        (_, __) => notifyListeners(),
+      );
+      _activeJobSub ??= _ref.listen<bool>(
+        activeJobProvider.select((state) => state.hasJob),
+        (_, __) => notifyListeners(),
+      );
+      return;
+    }
+
+    _legalConsentSub?.close();
+    _legalConsentSub = null;
+    _activeRideSub?.close();
+    _activeRideSub = null;
+    _activeJobSub?.close();
+    _activeJobSub = null;
+  }
 
   @override
   void dispose() {
     _authSub.close();
     _onboardingSub.close();
     _hasSeenSub.close();
+    _legalConsentSub?.close();
+    _activeRideSub?.close();
+    _activeJobSub?.close();
     super.dispose();
   }
 }
