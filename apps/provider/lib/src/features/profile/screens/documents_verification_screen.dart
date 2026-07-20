@@ -592,6 +592,24 @@ class _DocumentsVerificationScreenState
           documentType: type,
           vehicleId: vehicleId,
         );
+      } else if (doc.isAdminVerified) {
+        return _DocItem(
+          icon: icon,
+          title: title,
+          meta: 'Admin verified — awaiting category Coordinator',
+          status: _DocStatus.adminVerified,
+          documentType: type,
+          vehicleId: vehicleId,
+        );
+      } else if (doc.isCoordinatorValidated) {
+        return _DocItem(
+          icon: icon,
+          title: title,
+          meta: 'Coordinator validated — awaiting Regional Manager',
+          status: _DocStatus.coordinatorValidated,
+          documentType: type,
+          vehicleId: vehicleId,
+        );
       } else {
         // uploaded — file not yet in storage
         return _DocItem(
@@ -868,7 +886,9 @@ class _SectionLabel extends StatelessWidget {
 /// Maps to the backend document status flow:
 ///   uploaded → presigned URL given, file not yet in storage
 ///   pendingReview → file in storage, awaiting admin review
-///   approved → admin approved
+///   adminVerified → Admin accepted; awaiting category Coordinator
+///   coordinatorValidated → Coordinator accepted; awaiting Regional Manager
+///   approved → Regional Manager gave final approval
 ///   rejected → admin rejected
 ///   expired → approved but past its expiry date (client-derived, re-uploadable)
 ///   expiryMissing → approved legacy record without its required expiry date
@@ -878,6 +898,8 @@ class _SectionLabel extends StatelessWidget {
 enum _DocStatus {
   approved,
   pendingReview,
+  adminVerified,
+  coordinatorValidated,
   uploaded,
   uploading,
   rejected,
@@ -1151,6 +1173,18 @@ class _StatusPill extends StatelessWidget {
           MyShopColors.warning,
           'In Review',
           Icons.hourglass_top,
+        ),
+      _DocStatus.adminVerified => (
+          MyShopColors.warningLight,
+          MyShopColors.warning,
+          'Coordinator',
+          Icons.fact_check_outlined,
+        ),
+      _DocStatus.coordinatorValidated => (
+          MyShopColors.primaryGoldLight,
+          MyShopColors.primaryGold,
+          'RM Review',
+          Icons.verified_outlined,
         ),
       _DocStatus.uploaded => (
           MyShopColors.surfaceGrey,

@@ -270,6 +270,13 @@ Use internal-track/TestFlight builds with unused private build numbers.
      vehicle-document upload, require confirmation to reach `pending_review`
      without a `STORAGE_VERIFICATION_UNAVAILABLE` response before treating the
      storage path as release-ready.
+   - Apply `20260720010000_enforce_vehicle_document_three_stage_review` before
+     this test. For a newly uploaded insurance document, require Admin approval
+     to produce `confirmed` (not `approved`), the rides Coordinator to produce
+     `coordinator_validated`, and only the Regional Manager to produce
+     `approved`. The repair migration must place any earlier Admin-only vehicle
+     approval at the Coordinator step rather than asking the driver to upload it
+     again.
    - Coordinator forwards the migrated vehicle, Regional Manager finalizes it,
      and each vehicle category is approved separately. Missing/expired evidence
      is uploaded against the new vehicle through the normal review path. Re-run

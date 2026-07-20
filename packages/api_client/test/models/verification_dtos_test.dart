@@ -66,6 +66,20 @@ void main() {
     });
   });
 
+  group('DocumentInfo review chain', () {
+    test('keeps Admin and Coordinator decisions provisional', () {
+      final adminVerified = doc(status: 'confirmed');
+      final coordinatorValidated = doc(status: 'coordinator_validated');
+
+      expect(adminVerified.isAdminVerified, isTrue);
+      expect(coordinatorValidated.isCoordinatorValidated, isTrue);
+      expect(adminVerified.isSubmitted, isTrue);
+      expect(coordinatorValidated.isSubmitted, isTrue);
+      expect(adminVerified.isApproved, isFalse);
+      expect(coordinatorValidated.isApproved, isFalse);
+    });
+  });
+
   group('DocumentInfo.isExpired', () {
     test('is false when there is no expiry date', () {
       expect(doc().isExpired(now), isFalse);

@@ -172,8 +172,10 @@ class DocumentInfo {
   /// Document status flow:
   ///   `uploaded` → presigned URL given, file not yet in storage
   ///   `pending_review` → file uploaded successfully, awaiting admin review
-  ///   `approved` → admin approved the document
-  ///   `rejected` → admin rejected the document
+  ///   `confirmed` → Admin verified authenticity; awaiting Coordinator
+  ///   `coordinator_validated` → Coordinator validated; awaiting RM
+  ///   `approved` → RM gave final document approval
+  ///   `rejected` → document was rejected in the review chain
   final String status;
 
   final String? fileUrl;
@@ -201,10 +203,16 @@ class DocumentInfo {
   bool get isApproved => status == 'approved';
   bool get isRejected => status == 'rejected';
   bool get isPendingReview => status == 'pending_review';
+  bool get isAdminVerified => status == 'confirmed';
+  bool get isCoordinatorValidated => status == 'coordinator_validated';
   bool get isUploaded => status == 'uploaded';
 
   /// True if the document has been received and not rejected.
-  bool get isSubmitted => isPendingReview || isApproved;
+  bool get isSubmitted =>
+      isPendingReview ||
+      isAdminVerified ||
+      isCoordinatorValidated ||
+      isApproved;
 
   /// The parsed expiry date, or `null` when the document never expires or the
   /// backend value can't be parsed.
