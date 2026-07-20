@@ -11,6 +11,7 @@ import '../../../core/widgets/availability_restore_notice.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../../profile/providers/verification_provider.dart';
 import '../../profile/providers/provider_type_provider.dart';
+import '../../profile/utils/vehicle_eligibility_copy.dart';
 import '../../profile/widgets/incomplete_profile_sheet.dart';
 
 /// Segmented Online/Offline toggle at the top of the bottom sheet.
@@ -271,21 +272,21 @@ class _OnlineOfflineToggleState extends ConsumerState<OnlineOfflineToggle> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => _VehicleSelectionSheet(preflight: preflight),
+      builder: (_) => VehicleSelectionSheet(preflight: preflight),
     );
   }
 }
 
-class _VehicleSelectionSheet extends StatefulWidget {
-  const _VehicleSelectionSheet({required this.preflight});
+class VehicleSelectionSheet extends StatefulWidget {
+  const VehicleSelectionSheet({super.key, required this.preflight});
 
   final ProviderVehiclePreflight preflight;
 
   @override
-  State<_VehicleSelectionSheet> createState() => _VehicleSelectionSheetState();
+  State<VehicleSelectionSheet> createState() => _VehicleSelectionSheetState();
 }
 
-class _VehicleSelectionSheetState extends State<_VehicleSelectionSheet> {
+class _VehicleSelectionSheetState extends State<VehicleSelectionSheet> {
   String? _selectedVehicleId;
 
   @override
@@ -319,12 +320,19 @@ class _VehicleSelectionSheetState extends State<_VehicleSelectionSheet> {
             style: TextStyle(color: MyShopColors.textSecondary),
           ),
           const SizedBox(height: MyShopSpacing.md),
-          if (vehicles.isEmpty || !hasEligibleVehicle)
+          if (vehicles.isEmpty)
             _VehicleUnavailableNotice(
               legacyBackfillRequired: widget.preflight.legacyBackfillRequired,
               vehicles: vehicles,
             )
-          else
+          else ...[
+            if (!hasEligibleVehicle) ...[
+              _VehicleUnavailableNotice(
+                legacyBackfillRequired: widget.preflight.legacyBackfillRequired,
+                vehicles: vehicles,
+              ),
+              const SizedBox(height: MyShopSpacing.sm),
+            ],
             Flexible(
               child: RadioGroup<String>(
                 groupValue: _selectedVehicleId,
@@ -356,7 +364,12 @@ class _VehicleSelectionSheetState extends State<_VehicleSelectionSheet> {
                             ? (details.isEmpty
                                 ? 'Eligible to go online'
                                 : details)
-                            : _vehicleEligibilityMessage(vehicle.reasonCodes),
+                            : [
+                                if (details.isNotEmpty) details,
+                                vehicleEligibilitySummary(
+                                  vehicle.reasonCodes,
+                                ),
+                              ].join('\n'),
                       ),
                       activeColor: MyShopColors.online,
                     );
@@ -364,6 +377,7 @@ class _VehicleSelectionSheetState extends State<_VehicleSelectionSheet> {
                 ),
               ),
             ),
+          ],
           const SizedBox(height: MyShopSpacing.md),
           SizedBox(
             width: double.infinity,
@@ -395,7 +409,7 @@ class _VehicleUnavailableNotice extends StatelessWidget {
         ? legacyBackfillRequired
             ? 'Your existing vehicle record must be updated by support before you can go online.'
             : 'No vehicle is available for this driver profile.'
-        : _vehicleEligibilityMessage(vehicles.first.reasonCodes);
+        : 'No vehicle can go online yet. Review each vehicle’s blockers below.';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(MyShopSpacing.md),
@@ -406,39 +420,6 @@ class _VehicleUnavailableNotice extends StatelessWidget {
       child: Text(reason, style: const TextStyle(color: MyShopColors.error)),
     );
   }
-}
-
-String _vehicleEligibilityMessage(List<String> reasonCodes) {
-  final codes = reasonCodes.toSet();
-  if (codes.contains('LEGACY_VEHICLE_BACKFILL_REQUIRED')) {
-    return 'Support must update this vehicle record before it can be selected.';
-  }
-  if (codes.contains('VEHICLE_DOCUMENT_EXPIRED_ROADWORTHINESS')) {
-    return 'The roadworthiness certificate has expired.';
-  }
-  if (codes.contains('VEHICLE_DOCUMENT_EXPIRED_INSURANCE')) {
-    return 'The insurance certificate has expired.';
-  }
-  if (codes.any((code) => code.contains('ROADWORTHINESS'))) {
-    return 'An approved roadworthiness certificate is required.';
-  }
-  if (codes.any((code) => code.contains('INSURANCE'))) {
-    return 'An approved insurance certificate is required.';
-  }
-  if (codes.contains('VEHICLE_RIDE_CATEGORY_NOT_APPROVED')) {
-    return 'This vehicle needs at least one approved ride category.';
-  }
-  if (codes.contains('OFFER_RECEIPT_CAPABILITY_REQUIRED')) {
-    return 'Notification delivery must be ready before you can go online. Refresh the app and try again.';
-  }
-  if (codes.contains('VEHICLE_NOT_AVAILABLE')) {
-    return 'This vehicle is not available.';
-  }
-  if (codes.contains('RM_FINAL_APPROVAL_REQUIRED') ||
-      codes.contains('PROVIDER_APPROVAL_REQUIRED')) {
-    return 'Regional Manager approval is required.';
-  }
-  return 'This vehicle is not currently eligible. Review Documents & Verification.';
 }
 
 class _OnlineSegmentLeading extends StatelessWidget {

@@ -70,7 +70,8 @@ void main() {
 
     expect(find.text('Toyota Corolla'), findsOneWidget);
     expect(find.textContaining('GR-1234-20'), findsOneWidget);
-    expect(find.text('Approved'), findsNWidgets(2));
+    expect(find.text('Details approved'), findsOneWidget);
+    expect(find.text('Approved'), findsOneWidget);
     expect(find.text('Regular'), findsOneWidget);
     expect(
         find.text('Selected for the current online session'), findsOneWidget);

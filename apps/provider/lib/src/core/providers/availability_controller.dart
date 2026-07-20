@@ -160,6 +160,14 @@ String _providerEligibilityErrorCopy(Object? rawReasonCodes) {
     return 'The selected vehicle’s insurance certificate has expired. Upload '
         'the renewed certificate for approval.';
   }
+  if (codes.contains('VEHICLE_DOCUMENT_EXPIRY_MISSING_ROADWORTHINESS')) {
+    return 'The selected vehicle’s roadworthiness expiry date is missing. '
+        'Contact support to add the date printed on the certificate.';
+  }
+  if (codes.contains('VEHICLE_DOCUMENT_EXPIRY_MISSING_INSURANCE')) {
+    return 'The selected vehicle’s insurance expiry date is missing. Contact '
+        'support to add the date printed on the certificate.';
+  }
   if (codes.any((code) => code.contains('ROADWORTHINESS'))) {
     return 'The selected vehicle needs a current, independently approved '
         'roadworthiness certificate.';

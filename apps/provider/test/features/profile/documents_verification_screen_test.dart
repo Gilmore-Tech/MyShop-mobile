@@ -420,4 +420,124 @@ void main() {
       expect(find.text('Valid until 2 Feb 2031'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'uses document progress instead of claiming a complete profile with a missing vehicle document',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final selectedVehicle = vehicle(
+        id: 'vehicle_1',
+        make: 'Toyota',
+        model: 'Corolla',
+        plate: 'GR-1111-24',
+      );
+
+      await tester.pumpWidget(
+        screen(
+          user: driverUser(
+            profilePhotoUrl: 'https://cdn.example/driver.jpg',
+          ),
+          vehicles: [selectedVehicle],
+          activeVehicleId: selectedVehicle.id,
+          verification: VerificationStatusResponse(
+            driverData: const {'verificationStatus': 'approved'},
+            documents: [
+              DocumentInfo(
+                id: 'profile_1',
+                providerType: 'driver',
+                documentType: DocumentType.profilePhoto.value,
+                status: 'approved',
+                isCurrent: true,
+                createdAt: '2026-07-01T00:00:00Z',
+              ),
+              DocumentInfo(
+                id: 'licence_1',
+                providerType: 'driver',
+                documentType: DocumentType.driversLicence.value,
+                status: 'approved',
+                isCurrent: true,
+                createdAt: '2026-07-01T00:00:00Z',
+                expiresAt: '2030-01-01',
+              ),
+              DocumentInfo(
+                id: 'road_1',
+                providerType: 'driver',
+                documentType: DocumentType.roadworthinessCertificate.value,
+                status: 'approved',
+                isCurrent: true,
+                createdAt: '2026-07-01T00:00:00Z',
+                expiresAt: '2030-01-01',
+                vehicleId: selectedVehicle.id,
+              ),
+              DocumentInfo(
+                id: 'ghana_1',
+                providerType: 'driver',
+                documentType: DocumentType.ghanaCard.value,
+                status: 'approved',
+                isCurrent: true,
+                createdAt: '2026-07-01T00:00:00Z',
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Complete your documents'), findsOneWidget);
+      expect(
+        find.text('80% uploaded · 4 of 5 documents · 4 approved'),
+        findsOneWidget,
+      );
+      expect(find.text('Profile verification complete'), findsNothing);
+      expect(find.text('Insurance Certificate'), findsOneWidget);
+      expect(find.text('Upload'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'does not present an approved legacy vehicle document without expiry as eligible',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final selectedVehicle = vehicle(
+        id: 'vehicle_1',
+        make: 'Toyota',
+        model: 'Corolla',
+        plate: 'GR-1111-24',
+      );
+
+      await tester.pumpWidget(
+        screen(
+          user: driverUser(),
+          vehicles: [selectedVehicle],
+          activeVehicleId: selectedVehicle.id,
+          verification: VerificationStatusResponse(
+            documents: [
+              DocumentInfo(
+                id: 'road_without_expiry',
+                providerType: 'driver',
+                documentType: DocumentType.roadworthinessCertificate.value,
+                status: 'approved',
+                isCurrent: true,
+                createdAt: '2026-07-01T00:00:00Z',
+                vehicleId: selectedVehicle.id,
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Expiry date required — contact support'),
+        findsOneWidget,
+      );
+      expect(find.text('Action needed'), findsOneWidget);
+      expect(
+        find.text('20% uploaded · 1 of 5 documents · 0 approved'),
+        findsOneWidget,
+      );
+    },
+  );
 }

@@ -8,6 +8,7 @@ import 'package:shared_ui/shared_ui.dart';
 import '../models/vehicle_form_state.dart';
 import '../providers/provider_type_provider.dart';
 import '../providers/provider_vehicle_provider.dart';
+import '../utils/vehicle_eligibility_copy.dart';
 import '../widgets/vehicle_form_body.dart';
 
 class VehicleInformationScreen extends ConsumerWidget {
@@ -365,11 +366,12 @@ class _VehicleCard extends StatelessWidget {
             ),
           if (!vehicle.eligible && vehicle.reasonCodes.isNotEmpty) ...[
             const SizedBox(height: MyShopSpacing.sm),
-            for (final reason in vehicle.reasonCodes)
+            for (final reason
+                in vehicleEligibilityMessages(vehicle.reasonCodes))
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Text(
-                  '• ${_eligibilityMessage(reason)}',
+                  '• $reason',
                   style: MyShopTypography.body2.copyWith(
                     color: MyShopColors.textSecondary,
                   ),
@@ -521,7 +523,7 @@ extension on ProviderVehicleApprovalStatus {
         ProviderVehicleApprovalStatus.pendingCoordinator =>
           'Awaiting Coordinator',
         ProviderVehicleApprovalStatus.coordinatorApproved => 'Awaiting RM',
-        ProviderVehicleApprovalStatus.approved => 'Approved',
+        ProviderVehicleApprovalStatus.approved => 'Details approved',
         ProviderVehicleApprovalStatus.rejected => 'Rejected',
         ProviderVehicleApprovalStatus.retired => 'Retired',
       };
@@ -569,48 +571,4 @@ String _vehicleActionMessage(ApiException error) => switch (error.errorCode) {
       _ when error.isNetworkError =>
         'No internet connection. Check your network and try again.',
       _ => 'We could not save this vehicle. Please try again.',
-    };
-
-String _eligibilityMessage(String reason) => switch (reason) {
-      'PROVIDER_APPROVAL_REQUIRED' ||
-      'RM_FINAL_APPROVAL_REQUIRED' =>
-        'Final provider approval is required.',
-      'VEHICLE_NOT_AVAILABLE' =>
-        'This vehicle is not approved and available yet.',
-      'VEHICLE_RIDE_CATEGORY_NOT_APPROVED' =>
-        'At least one active ride category must be approved for this vehicle.',
-      'DOCUMENT_MISSING_GHANA_CARD' => 'Upload your Ghana Card.',
-      'DOCUMENT_NOT_APPROVED_GHANA_CARD' =>
-        'Your Ghana Card is awaiting approval or was rejected.',
-      'DOCUMENT_MISSING_DRIVERS_LICENCE' => "Upload your driver's licence.",
-      'DOCUMENT_NOT_APPROVED_DRIVERS_LICENCE' =>
-        "Your driver's licence is awaiting approval or was rejected.",
-      'DOCUMENT_EXPIRY_MISSING_DRIVERS_LICENCE' =>
-        "Add the expiry date on your driver's licence.",
-      'DOCUMENT_EXPIRED_DRIVERS_LICENCE' =>
-        "Your driver's licence has expired.",
-      'DOCUMENT_MISSING_PROFILE_PHOTO' => 'Upload a profile photo.',
-      'DOCUMENT_NOT_APPROVED_PROFILE_PHOTO' =>
-        'Your profile photo is awaiting approval or was rejected.',
-      'VEHICLE_DOCUMENT_MISSING_ROADWORTHINESS' =>
-        'Upload this vehicle’s roadworthiness certificate.',
-      'VEHICLE_DOCUMENT_NOT_APPROVED_ROADWORTHINESS' =>
-        'This vehicle’s roadworthiness certificate is awaiting approval or was rejected.',
-      'VEHICLE_DOCUMENT_EXPIRY_MISSING_ROADWORTHINESS' =>
-        'Add the roadworthiness certificate expiry date.',
-      'VEHICLE_DOCUMENT_EXPIRED_ROADWORTHINESS' =>
-        'This vehicle’s roadworthiness certificate has expired.',
-      'VEHICLE_DOCUMENT_MISSING_INSURANCE' =>
-        'Upload this vehicle’s insurance certificate.',
-      'VEHICLE_DOCUMENT_NOT_APPROVED_INSURANCE' =>
-        'This vehicle’s insurance certificate is awaiting approval or was rejected.',
-      'VEHICLE_DOCUMENT_EXPIRY_MISSING_INSURANCE' =>
-        'Add the insurance certificate expiry date.',
-      'VEHICLE_DOCUMENT_EXPIRED_INSURANCE' =>
-        'This vehicle’s insurance certificate has expired.',
-      'DOCUMENT_REPLACEMENT_GRACE_EXPIRED' =>
-        'A document replacement grace period has ended.',
-      'LEGACY_VEHICLE_BACKFILL_REQUIRED' =>
-        'Contact support to migrate your previous vehicle records.',
-      _ => 'This vehicle is not eligible. Refresh or contact support.',
     };

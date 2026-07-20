@@ -51,7 +51,6 @@ class _DocumentsVerificationScreenState
   Widget build(BuildContext context) {
     final isArtisan = ref.watch(providerTypeProvider).isArtisan;
     final user = ref.watch(currentUserProvider);
-    final completion = ref.watch(profileCompletionProvider);
     final verificationAsync = ref.watch(verificationStatusProvider);
     final uploadState = ref.watch(documentUploadProvider);
 
@@ -129,6 +128,14 @@ class _DocumentsVerificationScreenState
     final docsCompleted =
         uploadedRequired + (oneOfDocs.isEmpty ? 0 : (oneOfSatisfied ? 1 : 0));
     final docsTotal = requiredDocs.length + (oneOfDocs.isEmpty ? 0 : 1);
+    final approvedRequired =
+        requiredDocs.where((document) => document.isCurrentlyApproved).length;
+    final approvedCredentialCount =
+        oneOfDocs.where((document) => document.isCurrentlyApproved).length;
+    final docsApproved = approvedRequired +
+        (oneOfDocs.isEmpty
+            ? 0
+            : (oneOfSatisfied && approvedCredentialCount == 1 ? 1 : 0));
 
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
@@ -150,11 +157,9 @@ class _DocumentsVerificationScreenState
                   ),
                   children: [
                     _ProgressCard(
-                      completed: completion.completed,
-                      total: completion.total,
                       docsCompleted: docsCompleted,
+                      docsApproved: docsApproved,
                       docsTotal: docsTotal,
-                      isArtisan: isArtisan,
                     ),
                     if (!isArtisan) ...[
                       const SizedBox(height: MyShopSpacing.md),
@@ -521,6 +526,16 @@ class _DocumentsVerificationScreenState
     if (doc != null) {
       if (doc.isApproved) {
         final expiry = doc.expiresAtDate;
+        if (type.requiresExpiry && expiry == null) {
+          return _DocItem(
+            icon: icon,
+            title: title,
+            meta: 'Expiry date required — contact support',
+            status: _DocStatus.expiryMissing,
+            documentType: type,
+            vehicleId: vehicleId,
+          );
+        }
         // An approved document can still lapse. Provider-controlled upload is
         // deliberately closed until the exact GMT invalidity boundary; an
         // expiring-soon row is therefore a notice, not a renewal control.
@@ -650,27 +665,25 @@ class _Header extends StatelessWidget {
 
 class _ProgressCard extends StatelessWidget {
   const _ProgressCard({
-    required this.completed,
-    required this.total,
     required this.docsCompleted,
+    required this.docsApproved,
     required this.docsTotal,
-    required this.isArtisan,
   });
 
-  final int completed;
-  final int total;
   final int docsCompleted;
+  final int docsApproved;
   final int docsTotal;
-  final bool isArtisan;
 
   @override
   Widget build(BuildContext context) {
-    final progress = total == 0 ? 0.0 : completed / total;
+    final progress = docsTotal == 0 ? 0.0 : docsCompleted / docsTotal;
     final percentage = (progress * 100).round();
-    final isComplete = completed == total;
-    final accent = isComplete ? MyShopColors.success : MyShopColors.primaryGold;
+    final allUploaded = docsTotal > 0 && docsCompleted == docsTotal;
+    final allApproved = docsTotal > 0 && docsApproved == docsTotal;
+    final accent =
+        allApproved ? MyShopColors.success : MyShopColors.primaryGold;
     final accentLight =
-        isComplete ? MyShopColors.successLight : MyShopColors.primaryGoldLight;
+        allApproved ? MyShopColors.successLight : MyShopColors.primaryGoldLight;
 
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),
@@ -692,7 +705,7 @@ class _ProgressCard extends StatelessWidget {
                   border: Border.all(color: accent, width: 1.4),
                 ),
                 child: Icon(
-                  isComplete ? Icons.check : Icons.schedule,
+                  allApproved ? Icons.check : Icons.schedule,
                   size: 20,
                   color: accent,
                 ),
@@ -703,9 +716,11 @@ class _ProgressCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      isComplete
-                          ? 'Profile verification complete'
-                          : 'Complete your verification',
+                      allApproved
+                          ? 'Required documents approved'
+                          : allUploaded
+                              ? 'Documents require review or action'
+                              : 'Complete your documents',
                       style: MyShopTypography.h3.copyWith(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
@@ -713,7 +728,7 @@ class _ProgressCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '$percentage% complete · $docsCompleted of $docsTotal docs uploaded',
+                      '$percentage% uploaded · $docsCompleted of $docsTotal documents · $docsApproved approved',
                       style: MyShopTypography.body2,
                     ),
                   ],
@@ -856,6 +871,7 @@ class _SectionLabel extends StatelessWidget {
 ///   approved → admin approved
 ///   rejected → admin rejected
 ///   expired → approved but past its expiry date (client-derived, re-uploadable)
+///   expiryMissing → approved legacy record without its required expiry date
 ///   expiringSoon → approved and lapsing within 30 days (client-derived)
 ///   uploading → local upload in progress (client-only state)
 ///   missing → no document uploaded yet (client-only state)
@@ -866,6 +882,7 @@ enum _DocStatus {
   uploading,
   rejected,
   expired,
+  expiryMissing,
   expiringSoon,
   missing,
 }
@@ -886,6 +903,9 @@ class _DocItem {
   final _DocStatus status;
   final DocumentType? documentType;
   final String? vehicleId;
+
+  bool get isCurrentlyApproved =>
+      status == _DocStatus.approved || status == _DocStatus.expiringSoon;
 }
 
 class _DocsCard extends StatelessWidget {
@@ -1089,7 +1109,9 @@ class _DocRow extends StatelessWidget {
                               _DocStatus.rejected ||
                               _DocStatus.expired =>
                                 MyShopColors.error,
-                              _DocStatus.expiringSoon => MyShopColors.warning,
+                              _DocStatus.expiryMissing ||
+                              _DocStatus.expiringSoon =>
+                                MyShopColors.warning,
                               _ => null,
                             },
                           ),
@@ -1152,6 +1174,12 @@ class _StatusPill extends StatelessWidget {
           MyShopColors.errorLight,
           MyShopColors.error,
           'Expired',
+          Icons.event_busy_outlined,
+        ),
+      _DocStatus.expiryMissing => (
+          MyShopColors.warningLight,
+          MyShopColors.warning,
+          'Action needed',
           Icons.event_busy_outlined,
         ),
       _DocStatus.expiringSoon => (
