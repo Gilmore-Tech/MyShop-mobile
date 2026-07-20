@@ -250,7 +250,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
         .toDouble();
 
     return Scaffold(
-      backgroundColor: MyShopColors.surfaceGrey,
+      backgroundColor: MyShopColors.darkSlate,
       body: SafeArea(
         child: Column(
           children: [
@@ -264,7 +264,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Icon(Icons.more_vert,
-                      color: MyShopColors.textSecondary),
+                      color: MyShopColors.textOnDarkSlate),
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -289,7 +289,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                     behavior: HitTestBehavior.opaque,
                     onTap: () => context.push('/notifications'),
                     child: const Icon(Icons.notifications_outlined,
-                        color: MyShopColors.textSecondary),
+                        color: MyShopColors.textOnDarkSlate),
                   ),
                 ],
               ),
@@ -319,7 +319,10 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text('New Ride Request',
-                                      style: MyShopTypography.body2),
+                                      style: MyShopTypography.body2.copyWith(
+                                          color: MyShopColors.primaryGoldDark,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 0.6)),
                                   const SizedBox(height: 4),
                                   const Text('Immediate Pickup',
                                       style: TextStyle(
@@ -455,10 +458,14 @@ class _CountdownTimer extends StatelessWidget {
   final int seconds;
   @override
   Widget build(BuildContext context) {
-    final color = seconds <= 10 ? MyShopColors.error : MyShopColors.primaryGold;
-    return SizedBox(
+    final urgent = seconds <= 10;
+    final color = urgent ? MyShopColors.error : MyShopColors.primaryGold;
+    final fill =
+        urgent ? MyShopColors.errorLight : MyShopColors.primaryGoldLight;
+    return Container(
       width: 56,
       height: 56,
+      decoration: BoxDecoration(color: fill, shape: BoxShape.circle),
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -472,7 +479,9 @@ class _CountdownTimer extends StatelessWidget {
                   fontFamily: 'Raleway',
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
-                  color: color)),
+                  color: urgent
+                      ? MyShopColors.error
+                      : MyShopColors.primaryGoldDark)),
         ],
       ),
     );
@@ -537,10 +546,10 @@ class _RideRequestActionBar extends StatelessWidget {
             child: ElevatedButton(
               onPressed: disabled ? null : onAccept,
               style: ElevatedButton.styleFrom(
-                backgroundColor: MyShopColors.buttonPrimary,
+                backgroundColor: MyShopColors.primaryGold,
                 foregroundColor: MyShopColors.textOnPrimary,
                 disabledBackgroundColor:
-                    MyShopColors.darkSlate.withValues(alpha: 0.6),
+                    MyShopColors.primaryGold.withValues(alpha: 0.45),
                 disabledForegroundColor: MyShopColors.textOnPrimary,
                 minimumSize: const Size(0, 52),
                 shape: RoundedRectangleBorder(
@@ -656,10 +665,10 @@ class _PickupInfo extends ConsumerWidget {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-                color: MyShopColors.surfaceGrey,
+                color: MyShopColors.primaryGoldLight,
                 borderRadius: BorderRadius.circular(16)),
             child: const Icon(Icons.trip_origin,
-                size: 18, color: MyShopColors.textSecondary)),
+                size: 18, color: MyShopColors.primaryGoldDark)),
         const SizedBox(width: 12),
         Expanded(
             child:
@@ -788,10 +797,10 @@ class _PickupInfo extends ConsumerWidget {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-                color: MyShopColors.surfaceGrey,
+                color: MyShopColors.darkSlate,
                 borderRadius: BorderRadius.circular(16)),
             child: const Icon(Icons.location_on,
-                size: 18, color: MyShopColors.error)),
+                size: 18, color: MyShopColors.textOnDarkSlate)),
         const SizedBox(width: 12),
         Expanded(
             child:
@@ -825,20 +834,17 @@ class _EarningsCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),
       decoration: BoxDecoration(
-          color: MyShopColors.primaryGoldLight,
-          borderRadius: BorderRadius.circular(MyShopRadius.card),
-          border: Border.all(
-            color: MyShopColors.primaryGold.withValues(alpha: 0.24),
-          )),
+          color: MyShopColors.primaryGold,
+          borderRadius: BorderRadius.circular(MyShopRadius.card)),
       child: Row(children: [
         Container(
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-                color: MyShopColors.primaryGold.withValues(alpha: 0.2),
+                color: MyShopColors.surfaceWhite.withValues(alpha: 0.9),
                 borderRadius: BorderRadius.circular(MyShopRadius.button)),
             child: const Icon(Icons.account_balance_wallet,
-                size: 20, color: MyShopColors.primaryGold)),
+                size: 20, color: MyShopColors.primaryGoldDark)),
         const SizedBox(width: 12),
         Expanded(
             child:
@@ -846,7 +852,7 @@ class _EarningsCard extends StatelessWidget {
           Text(
             'ESTIMATED EARNINGS',
             style: MyShopTypography.overline.copyWith(
-              color: MyShopColors.primaryGoldDark,
+              color: MyShopColors.darkText,
               letterSpacing: 0.8,
             ),
           ),
@@ -855,14 +861,14 @@ class _EarningsCard extends StatelessWidget {
               style: MyShopTypography.price.copyWith(
                 fontSize: 28,
                 fontWeight: FontWeight.w900,
+                color: MyShopColors.darkText,
               )),
         ])),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
               color: MyShopColors.surfaceWhite,
-              borderRadius: BorderRadius.circular(MyShopRadius.pill),
-              border: Border.all(color: MyShopColors.divider)),
+              borderRadius: BorderRadius.circular(MyShopRadius.pill)),
           child: Text(paymentMethodLabel(ride.paymentMethod),
               style: MyShopTypography.body2.copyWith(
                   fontWeight: FontWeight.w600,

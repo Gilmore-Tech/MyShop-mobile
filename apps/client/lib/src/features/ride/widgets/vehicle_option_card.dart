@@ -39,8 +39,9 @@ class VehicleOptionCard extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
+                  color:
+                      selected ? MyShopColors.primaryGoldLight : Colors.white,
+                  borderRadius: BorderRadius.circular(MyShopRadius.card),
                   border: Border.all(
                     color: selected
                         ? MyShopColors.primaryGold
@@ -50,7 +51,9 @@ class VehicleOptionCard extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    _VehicleIcon(isMotorcycle: option.isMotorcycle),
+                    _VehicleIcon(
+                        isMotorcycle: option.isMotorcycle,
+                        isSelected: selected),
                     const SizedBox(width: 12),
                     Expanded(child: _VehicleInfo(option: option)),
                     _FareInfo(option: option, isSelected: selected),
@@ -91,7 +94,8 @@ class _SelectedBadge extends StatelessWidget {
 
 class _VehicleIcon extends StatelessWidget {
   final bool isMotorcycle;
-  const _VehicleIcon({required this.isMotorcycle});
+  final bool isSelected;
+  const _VehicleIcon({required this.isMotorcycle, required this.isSelected});
 
   @override
   Widget build(BuildContext context) {
@@ -101,13 +105,17 @@ class _VehicleIcon extends StatelessWidget {
       width: w * 0.144,
       height: h * 0.047,
       decoration: BoxDecoration(
-        color: MyShopColors.surfaceGrey,
+        color: isSelected ? Colors.white : MyShopColors.surfaceGrey,
         borderRadius: BorderRadius.circular(w * 0.015),
+        border: isSelected
+            ? Border.all(color: MyShopColors.primaryGold.withValues(alpha: 0.4))
+            : null,
       ),
       child: Icon(
         isMotorcycle ? Icons.two_wheeler_rounded : Icons.directions_car_rounded,
         size: isMotorcycle ? w * 0.067 : w * 0.077,
-        color: MyShopColors.darkSlate,
+        color:
+            isSelected ? MyShopColors.primaryGoldDark : MyShopColors.darkSlate,
       ),
     );
   }
