@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/auth/providers/auth_controller.dart';
+import '../providers/app_update_provider.dart';
 
 /// API configuration (base URL).
 final apiConfigProvider = Provider<ApiConfig>((ref) {
@@ -32,6 +33,9 @@ final dioClientProvider = Provider<DioClient>((ref) {
   return createDioClient(
     config: config,
     tokenStorage: tokenStorage,
+    appKind: MobileAppKind.provider,
+    onAppUpdateRequired:
+        ref.read(appUpdateRequirementProvider.notifier).requireUpdate,
     onForceLogout: () {
       ref.read(authControllerProvider.notifier).onForceLogoutFromInterceptor();
     },
@@ -97,10 +101,33 @@ final providerRequestServiceProvider = Provider<ProviderRequestService>((ref) {
   return ProviderRequestService(ref.watch(dioProvider));
 });
 
+/// Server-authoritative online/offline snapshot used during lifecycle/socket
+/// reconciliation.
+final providerAvailabilityServiceProvider =
+    Provider<ProviderAvailabilityService>((ref) {
+  return ProviderAvailabilityService(ref.watch(dioProvider));
+});
+
 /// Chat REST — history fetch + send/markRead fallback paths used by the
 /// orchestrator when the `/chat` socket can't deliver in time.
 final chatServiceProvider = Provider<ChatService>((ref) {
   return ChatService(ref.watch(dioProvider));
+});
+
+/// App-to-app voice call session service.
+final appCallServiceProvider = Provider<AppCallService>((ref) {
+  return AppCallService(ref.watch(dioProvider));
+});
+
+/// Live `/calls` socket used by the in-app call screen.
+final appCallSocketServiceProvider = Provider<AppCallSocketService>((ref) {
+  final service = AppCallSocketService(
+    config: ref.watch(apiConfigProvider),
+    tokenStorage: ref.watch(appTokenStorageProvider),
+    tokenRefresher: ref.watch(tokenRefresherProvider),
+  );
+  ref.onDispose(service.dispose);
+  return service;
 });
 
 /// Media upload — presigned URL flow for ticket attachments.
@@ -137,18 +164,15 @@ final platformConfigServiceProvider = Provider<PlatformConfigService>((ref) {
   return PlatformConfigService(ref.watch(dioProvider));
 });
 
-/// Cached commission rate (percent — e.g. `20` for 20%). Renders the
-/// platform-fee row on the bid/incoming-request screens. Falls back to
-/// `20` when the config endpoint is unreachable — that's the PRD default
-/// and matches `commission.service.ts` server-side fallback. Cached for
-/// the lifetime of the provider because admins change this rarely.
+/// Cached commission rate for estimate-only UI. Financial finalization remains
+/// server-authoritative and fail-closed. An unavailable or invalid value is an
+/// error state; silently substituting a percentage would misquote providers.
 final commissionRatePercentProvider = FutureProvider<num>((ref) async {
-  try {
-    final value = await ref
-        .watch(platformConfigServiceProvider)
-        .getNumber('commission_rate_percent');
-    return value ?? 20;
-  } catch (_) {
-    return 20;
+  final value = await ref
+      .watch(platformConfigServiceProvider)
+      .getNumber('commission_rate_percent');
+  if (value == null || !value.isFinite || value < 0 || value > 100) {
+    throw StateError('Commission configuration is unavailable or invalid.');
   }
+  return value;
 });

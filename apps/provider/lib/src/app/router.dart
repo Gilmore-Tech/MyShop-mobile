@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +13,7 @@ import '../core/providers/pending_request_recovery_provider.dart';
 import '../core/providers/socket_provider.dart';
 import '../core/widgets/incoming_request_listener.dart';
 import '../features/artisan_home/providers/job_poller_provider.dart';
+import '../features/artisan_home/providers/active_job_provider.dart';
 import '../features/auth/providers/auth_controller.dart';
 import '../features/auth/screens/otp_verification_screen.dart';
 import '../features/auth/screens/phone_input_screen.dart';
@@ -23,6 +25,7 @@ import '../features/registration/screens/artisan_registration_screen.dart';
 import '../features/registration/screens/driver_registration_screen.dart';
 import '../features/artisan_home/screens/active_job_screen.dart';
 import '../features/artisan_home/screens/supplement_request_screen.dart';
+import '../features/calls/screens/in_app_call_screen.dart';
 import '../features/chat/screens/chat_screen.dart';
 import '../features/chat/screens/messages_list_screen.dart';
 import '../features/notifications/screens/notifications_list_screen.dart';
@@ -48,6 +51,7 @@ import '../features/profile/screens/availability_schedule_screen.dart';
 import '../features/profile/screens/business_information_screen.dart';
 import '../features/profile/screens/deactivate_account_screen.dart';
 import '../features/profile/screens/documents_verification_screen.dart';
+import '../features/profile/screens/emergency_contacts_screen.dart';
 import '../features/profile/screens/notification_settings_screen.dart';
 import '../features/profile/screens/payout_methods_screen.dart';
 import '../features/profile/screens/privacy_security_screen.dart';
@@ -55,6 +59,9 @@ import '../features/support/screens/help_article_route_screen.dart';
 import '../features/support/screens/help_category_route_screen.dart';
 import '../features/support/screens/help_search_route_screen.dart';
 import '../features/support/screens/legal_document_route_screen.dart';
+import '../features/support/screens/legal_consent_route_screen.dart';
+import '../features/support/providers/support_providers.dart'
+    show legalConsentStatusProvider;
 import '../features/support/screens/new_ticket_route_screen.dart';
 import '../features/support/screens/support_legal_route_screen.dart';
 import '../features/support/screens/ticket_detail_route_screen.dart';
@@ -73,6 +80,12 @@ final goRouterProvider = Provider<GoRouter>((ref) {
     refreshListenable: refresh,
     redirect: (context, state) {
       final auth = ref.read(authControllerProvider);
+      final legalConsent = auth is AuthAuthenticated
+          ? ref.read(legalConsentStatusProvider)
+          : null;
+      final hasActiveWork = auth is AuthAuthenticated &&
+          (ref.read(activeRideProvider).hasRide ||
+              ref.read(activeJobProvider).hasJob);
       final onboardingFlagLoaded = ref.read(onboardingFlagLoadedProvider);
       final loc = state.matchedLocation;
 
@@ -93,6 +106,22 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       };
 
       if (auth is AuthAuthenticated) {
+        final consentRequiresReview =
+            legalConsent?.valueOrNull?.requiresConsent == true ||
+                legalConsent?.hasError == true;
+        final consentExemptRoute = loc == '/legal-consent' ||
+            loc.startsWith('/legal/') ||
+            loc.startsWith('/active-ride') ||
+            loc.startsWith('/active-job') ||
+            loc.startsWith('/safety/') ||
+            loc.startsWith('/account/support');
+        if (consentRequiresReview &&
+            !hasActiveWork &&
+            legalConsent?.valueOrNull?.hasActiveWork != true &&
+            !consentExemptRoute) {
+          return '/legal-consent';
+        }
+        if (!consentRequiresReview && loc == '/legal-consent') return '/home';
         if (!loc.startsWith('/home') &&
             !loc.startsWith('/account') &&
             !loc.startsWith('/earnings') &&
@@ -101,6 +130,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             !loc.startsWith('/ride') &&
             !loc.startsWith('/job') &&
             !loc.startsWith('/legal') &&
+            !loc.startsWith('/calls') &&
             !loc.startsWith('/chat') &&
             !loc.startsWith('/messages') &&
             !loc.startsWith('/notifications') &&
@@ -110,6 +140,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         }
         return null;
       }
+      if (loc.startsWith('/legal/')) return null;
       // Both roles found — force user to the role selection screen.
       if (auth is AuthRoleSelection) {
         return loc == '/signin/role' ? null : '/signin/role';
@@ -188,6 +219,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             signUpRole: role,
           );
         },
+      ),
+      GoRoute(
+        path: '/legal-consent',
+        builder: (context, state) => const LegalConsentRouteScreen(),
       ),
       GoRoute(
         path: '/signup/otp',
@@ -275,6 +310,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const NotificationSettingsScreen(),
       ),
       GoRoute(
+        path: '/account/emergency-contacts',
+        builder: (context, state) => const ProviderEmergencyContactsScreen(),
+      ),
+      GoRoute(
         path: '/account/privacy',
         builder: (context, state) => const PrivacySecurityScreen(),
       ),
@@ -340,11 +379,22 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       // Artisan flow routes (full-screen, no bottom nav)
       GoRoute(
         path: '/active-job',
-        builder: (context, state) => const ActiveJobScreen(),
+        builder: (context, state) => ActiveJobScreen(
+          recoveryJobId: state.uri.queryParameters['jobId'],
+        ),
       ),
       GoRoute(
         path: '/supplement-request',
         builder: (context, state) => const SupplementRequestScreen(),
+      ),
+      GoRoute(
+        path: '/calls/:callId',
+        builder: (context, state) => ProviderInAppCallScreen(
+          callId: state.pathParameters['callId']!,
+          initialSession: state.extra is AppCallSession
+              ? state.extra! as AppCallSession
+              : null,
+        ),
       ),
       GoRoute(
         path: '/chat',
@@ -394,6 +444,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
               job: extra.job,
               bidStatus: extra.bidStatus,
               submittedBidAmount: extra.submittedBidAmount,
+              openBidSheet: extra.openBidSheet,
             );
           }
           // No valid payload — bounce back to home rather than render a blank.
@@ -404,15 +455,31 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       // Ride flow routes (full-screen, no bottom nav)
       GoRoute(
         path: '/ride-request',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final extra = state.extra;
           if (extra is Ride) {
-            return RideRequestScreen(ride: extra);
+            return MaterialPage<void>(
+              key: state.pageKey,
+              child: RideRequestScreen(ride: extra),
+            );
           }
+          final Widget child;
           if (extra is RideRequestRouteExtra) {
-            return _RideRequestLoaderScreen(extra: extra);
+            child = _RideRequestLoaderScreen(extra: extra);
+          } else {
+            child = const _InvalidRideRequestScreen();
           }
-          return const _InvalidRideRequestScreen();
+          return CustomTransitionPage<void>(
+            key: state.pageKey,
+            opaque: false,
+            barrierColor: const Color(0x2E000000),
+            transitionDuration: const Duration(milliseconds: 100),
+            reverseTransitionDuration: const Duration(milliseconds: 80),
+            transitionsBuilder: (_, animation, __, child) {
+              return FadeTransition(opacity: animation, child: child);
+            },
+            child: child,
+          );
         },
       ),
       GoRoute(
@@ -433,7 +500,10 @@ class _AuthRouterRefresh extends ChangeNotifier {
   _AuthRouterRefresh(this._ref) {
     _authSub = _ref.listen<AuthState>(
       authControllerProvider,
-      (_, __) => notifyListeners(),
+      (_, next) {
+        _syncAuthenticatedDependencies(next);
+        notifyListeners();
+      },
     );
     _onboardingSub = _ref.listen<bool>(
       onboardingFlagLoadedProvider,
@@ -443,18 +513,50 @@ class _AuthRouterRefresh extends ChangeNotifier {
       hasSeenOnboardingProvider,
       (_, __) => notifyListeners(),
     );
+    _syncAuthenticatedDependencies(_ref.read(authControllerProvider));
   }
 
   final Ref _ref;
   late final ProviderSubscription<AuthState> _authSub;
   late final ProviderSubscription<bool> _onboardingSub;
   late final ProviderSubscription<bool> _hasSeenSub;
+  ProviderSubscription<AsyncValue<LegalConsentStatus>>? _legalConsentSub;
+  ProviderSubscription<bool>? _activeRideSub;
+  ProviderSubscription<bool>? _activeJobSub;
+
+  void _syncAuthenticatedDependencies(AuthState auth) {
+    if (auth is AuthAuthenticated) {
+      _legalConsentSub ??= _ref.listen<AsyncValue<LegalConsentStatus>>(
+        legalConsentStatusProvider,
+        (_, __) => notifyListeners(),
+      );
+      _activeRideSub ??= _ref.listen<bool>(
+        activeRideProvider.select((state) => state.hasRide),
+        (_, __) => notifyListeners(),
+      );
+      _activeJobSub ??= _ref.listen<bool>(
+        activeJobProvider.select((state) => state.hasJob),
+        (_, __) => notifyListeners(),
+      );
+      return;
+    }
+
+    _legalConsentSub?.close();
+    _legalConsentSub = null;
+    _activeRideSub?.close();
+    _activeRideSub = null;
+    _activeJobSub?.close();
+    _activeJobSub = null;
+  }
 
   @override
   void dispose() {
     _authSub.close();
     _onboardingSub.close();
     _hasSeenSub.close();
+    _legalConsentSub?.close();
+    _activeRideSub?.close();
+    _activeJobSub?.close();
     super.dispose();
   }
 }
@@ -608,7 +710,7 @@ class _RideRequestLoaderScreenState
     int generation,
   ) async {
     final elapsed = DateTime.now().difference(startedAt);
-    const minimumLoading = Duration(milliseconds: 2500);
+    const minimumLoading = Duration(milliseconds: 700);
     if (elapsed < minimumLoading) {
       await Future<void>.delayed(minimumLoading - elapsed);
     }
@@ -657,7 +759,7 @@ class _InvalidRideRequestScreenState
     // handoff. FCM tap hydration often wins within a few hundred milliseconds;
     // keep this screen in a neutral loading state until that race settles.
     final elapsed = DateTime.now().difference(startedAt);
-    const minimumLoading = Duration(milliseconds: 2500);
+    const minimumLoading = Duration(milliseconds: 700);
     if (elapsed < minimumLoading) {
       await Future<void>.delayed(minimumLoading - elapsed);
     }
@@ -677,54 +779,70 @@ class _RideRequestOpeningScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: MyShopColors.offWhite,
-      body: SafeArea(
+    return Material(
+      type: MaterialType.transparency,
+      child: SafeArea(
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (showUnavailable)
-                  const Icon(
-                    Icons.local_taxi_outlined,
-                    color: MyShopColors.warning,
-                    size: 48,
-                  )
-                else
-                  const SizedBox(
-                    width: 42,
-                    height: 42,
-                    child: CircularProgressIndicator(strokeWidth: 3),
-                  ),
-                const SizedBox(height: 16),
-                Text(
-                  showUnavailable
-                      ? 'Request expired or assigned'
-                      : 'Opening ride request…',
-                  style: MyShopTypography.h3,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  showUnavailable
-                      ? 'This request has expired or was assigned already. '
-                          'Go back online to receive the next request.'
-                      : 'Checking if this request is still available.',
-                  style: MyShopTypography.body2.copyWith(
-                    color: MyShopColors.textSecondary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                if (showUnavailable) ...[
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: () => context.go('/home'),
-                    child: const Text('Back to home'),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xF0FFFFFF),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x22000000),
+                    blurRadius: 24,
+                    offset: Offset(0, 12),
                   ),
                 ],
-              ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 22,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (showUnavailable)
+                      const Icon(
+                        Icons.local_taxi_outlined,
+                        color: MyShopColors.warning,
+                        size: 44,
+                      )
+                    else
+                      const SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: CircularProgressIndicator(strokeWidth: 3),
+                      ),
+                    const SizedBox(height: 14),
+                    Text(
+                      showUnavailable ? 'Request expired' : 'Please wait…',
+                      style: MyShopTypography.h3,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      showUnavailable
+                          ? 'This request has expired or was assigned already.'
+                          : 'Fetching the latest request details.',
+                      style: MyShopTypography.body2.copyWith(
+                        color: MyShopColors.textSecondary,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    if (showUnavailable) ...[
+                      const SizedBox(height: 20),
+                      ElevatedButton(
+                        onPressed: () => context.go('/home'),
+                        child: const Text('Back to home'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -1055,11 +1173,13 @@ class JobRequestRouteExtra {
     required this.job,
     required this.bidStatus,
     this.submittedBidAmount = 0,
+    this.openBidSheet = false,
   });
 
   final Job job;
   final BidStatus bidStatus;
   final num submittedBidAmount;
+  final bool openBidSheet;
 }
 
 /// Fallback rendered when `/job-request` is navigated to without a valid

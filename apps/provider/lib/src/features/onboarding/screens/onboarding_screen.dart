@@ -23,13 +23,13 @@ class OnboardingScreen extends ConsumerWidget {
     ),
     _Highlight(
       icon: Icons.payments_outlined,
-      title: 'Instant MoMo payouts',
-      subtitle: 'Get paid the moment a job or trip is complete.',
+      title: 'Track your earnings',
+      subtitle: 'See completed-work earnings and payout status in the app.',
     ),
     _Highlight(
       icon: Icons.verified_user_outlined,
-      title: 'Verified and protected',
-      subtitle: 'Background checks, in-app safety tools, and 24/7 support.',
+      title: 'Reviewed and supported',
+      subtitle: 'Manual document review, in-app safety tools, and support.',
     ),
   ];
 
@@ -66,8 +66,8 @@ class OnboardingScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: MyShopSpacing.sm),
                     Text(
-                      'One app for drivers and artisans across Ghana. '
-                      'Pick up rides, take on jobs, and get paid instantly.',
+                      'One app for drivers and artisans in the Ashanti Region. '
+                      'Pick up rides, take on jobs, and manage your earnings.',
                       textAlign: TextAlign.center,
                       style: MyShopTypography.body2,
                     ),

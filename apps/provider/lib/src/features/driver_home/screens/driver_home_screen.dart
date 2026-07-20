@@ -82,7 +82,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
       duration: const Duration(milliseconds: 900),
     )..addListener(_onAnimationTick);
     _loadCarIcon();
-    _goToCurrentLocation();
+    _goToCurrentLocation(requestPermissionIfNeeded: false);
   }
 
   @override
@@ -102,13 +102,10 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
     setState(() => _carIcon = icon);
   }
 
-  Future<void> _goToCurrentLocation() async {
-    // The app-level warm-up in `main.dart` already requests location
-    // permission and caches a fresh fix into `lastKnownPositionProvider`.
-    // If it landed first, just animate to that and bail — calling
-    // `requestPermission` again here races with the warm-up and crashes
-    // Geolocator with "A request for location permissions is already
-    // running" (real failure mode observed in QA).
+  Future<void> _goToCurrentLocation(
+      {bool requestPermissionIfNeeded = true}) async {
+    // Startup only warms an already-authorized location. Sensitive permission
+    // prompts are reserved for an explicit recenter or Go Online action.
     final cached = ref.read(lastKnownPositionProvider);
     if (cached != null) {
       try {
@@ -124,10 +121,9 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
     }
 
     var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      // Re-check just before prompting — the warm-up may have answered
-      // the user since we last looked, in which case requesting again
-      // throws.
+    if (permission == LocationPermission.denied && requestPermissionIfNeeded) {
+      // Re-check just before prompting in case another explicit flow completed
+      // while this one was waiting.
       permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         try {
@@ -159,10 +155,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
     try {
       position = await Geolocator.getLastKnownPosition();
       if (position != null) {
-        debugPrint(
-          '[LOC] using last-known fix '
-          '(${position.latitude}, ${position.longitude})',
-        );
+        debugPrint('[LOC] using last-known location fix');
       }
     } catch (e) {
       debugPrint('[LOC] getLastKnownPosition failed: $e');
@@ -176,10 +169,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
         ),
       );
       position = fresh;
-      debugPrint(
-        '[LOC] got fresh fix '
-        '(${fresh.latitude}, ${fresh.longitude})',
-      );
+      debugPrint('[LOC] got fresh location fix');
     } catch (e) {
       // Common on iOS when sensor isn't settled — fall back to lastKnown
       // (already loaded above) so the map at least leaves Kumasi.

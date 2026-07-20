@@ -83,19 +83,36 @@ class PayoutMethodOtpService {
   PayoutOtpResult _failureFromDio(DioException e, {required bool isVerify}) {
     final data = e.response?.data;
     if (data is Map<String, dynamic>) {
-      final code = (data['code'] ??
+      // The API's canonical error envelope is
+      // {success:false,error:{code,message,details}}. Retain the old flat
+      // fallback only for already-deployed servers during the update window.
+      final nested = data['error'];
+      final error =
+          nested is Map<String, dynamic> ? nested : const <String, dynamic>{};
+      final details = error['details'] is Map<String, dynamic>
+          ? error['details'] as Map<String, dynamic>
+          : data['details'] is Map<String, dynamic>
+              ? data['details'] as Map<String, dynamic>
+              : const <String, dynamic>{};
+      final codeValue = error['code'] ??
+          data['code'] ??
           data['errorCode'] ??
-          // NestJS HttpException default — `message` often carries the code.
-          data['message']) as String?;
-      final message = (data['message'] is String && data['message'] != code)
-          ? data['message'] as String
-          : null;
-      final retryAfter = (data['retryAfterSeconds'] as num?)?.toInt();
+          (nested is String ? nested : null);
+      final code =
+          codeValue is String && codeValue.isNotEmpty ? codeValue : null;
+      final messageValue = error['message'] ?? data['message'];
+      final message =
+          messageValue is String && messageValue != code ? messageValue : null;
+      final retryAfter = (details['retryAfterSecs'] as num?)?.toInt() ??
+          (details['retryAfterSeconds'] as num?)?.toInt() ??
+          (data['retryAfterSeconds'] as num?)?.toInt();
+      final otpActive = details['otpActive'] == true;
       if (code != null) {
         return PayoutOtpResult.failure(
           code: code,
           message: message ?? _messageFor(code, isVerify: isVerify),
           retryAfterSeconds: retryAfter,
+          otpActive: otpActive,
         );
       }
     }
@@ -124,17 +141,20 @@ class PayoutOtpResult {
     this.message,
     this.expiresAt,
     this.retryAfterSeconds,
+    this.otpActive = false,
   });
 
   const PayoutOtpResult.failure({
     required String code,
     String? message,
     int? retryAfterSeconds,
+    bool otpActive = false,
   }) : this(
           success: false,
           code: code,
           message: message,
           retryAfterSeconds: retryAfterSeconds,
+          otpActive: otpActive,
         );
 
   final bool success;
@@ -142,6 +162,7 @@ class PayoutOtpResult {
   final String? message;
   final DateTime? expiresAt;
   final int? retryAfterSeconds;
+  final bool otpActive;
 
   bool get isFailure => !success;
 }
@@ -156,7 +177,12 @@ String _messageFor(String code, {required bool isVerify}) {
       return 'Your payout method is already verified. Contact support to '
           'change it.';
     case 'OTP_RATE_LIMIT':
+    case 'OTP_DELIVERY_RATE_LIMITED':
       return 'Too many code requests. Please wait a moment and try again.';
+    case 'OTP_DELIVERY_FAILED':
+      return 'We could not confirm SMS delivery. If the code arrives, you can still enter it.';
+    case 'OTP_CONTROL_UNAVAILABLE':
+      return 'Code requests are temporarily unavailable. Please try again shortly.';
     case 'NO_PENDING_OTP':
       return 'No code to verify. Request a new one.';
     case 'OTP_EXPIRED':

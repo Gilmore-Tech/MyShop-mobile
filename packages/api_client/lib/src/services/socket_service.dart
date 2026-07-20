@@ -30,6 +30,8 @@ class SocketService {
         _tokenStorage = tokenStorage,
         _tokenRefresher = tokenRefresher;
 
+  static const int rideOfferReceiptVersion = 1;
+
   final ApiConfig _config;
   final TokenStorage _tokenStorage;
   final TokenRefresher _tokenRefresher;
@@ -111,7 +113,13 @@ class SocketService {
       io.OptionBuilder()
           .setTransports(['websocket'])
           .setExtraHeaders({'Authorization': 'Bearer $token'})
-          .setAuth({'token': token})
+          .setAuth({
+            'token': token,
+            // The server joins only receipt-capable provider builds to the
+            // v2 ride-offer room. Older installs therefore cannot receive an
+            // actionable envelope whose accept contract they do not support.
+            'offerReceiptVersion': rideOfferReceiptVersion,
+          })
           .enableAutoConnect()
           .enableReconnection()
           .setReconnectionDelay(2000)

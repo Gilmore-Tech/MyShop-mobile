@@ -102,7 +102,7 @@ On error:
 { "message": "OTP sent", "phone": "+233241234567" }
 ```
 
-**Error codes:** `CLIENT_ACCOUNT_EXISTS` (409), `DRIVER_ACCOUNT_EXISTS` (409), `ARTISAN_ACCOUNT_EXISTS` (409), `EMAIL_ALREADY_EXISTS` (409), `CATEGORIES_REQUIRED` (400), `INVALID_CATEGORY` (400)
+**Error codes:** `CLIENT_ACCOUNT_EXISTS` (409), `DRIVER_ACCOUNT_EXISTS` (409), `ARTISAN_ACCOUNT_EXISTS` (409), `ROLE_ACCOUNT_RETAINED` (409 — the same deleted role cannot be re-registered; offer support/recovery), `EMAIL_ALREADY_EXISTS` (409), `CATEGORIES_REQUIRED` (400), `INVALID_CATEGORY` (400)
 
 > **Note:** Register is for **new accounts only**. Existing users must use the role-specific login endpoints below.
 
@@ -200,18 +200,10 @@ Token payload: `{ sub: userId, role: "client"|"driver"|"artisan", phone: "+233..
 
 ---
 
-### POST /auth/recover
-> Recover a soft-deleted account within 24h. **Public endpoint.**
-
-**Required fields:**
-- `phone` (string) — Phone of deleted account
-
-**Response:**
-```json
-{ "message": "Account successfully recovered" }
-```
-
-**Error codes:** `ACCOUNT_NOT_FOUND` (404), `RECOVERY_EXPIRED` (410)
+### POST /auth/recover — unavailable
+> This old phone-only route is not registered. BR-63 requires a separate
+> user-initiated phone-OTP request plus authorized review; no endpoint may
+> directly reactivate a role from phone and role alone.
 
 ---
 
@@ -324,19 +316,32 @@ Token payload: `{ sub: userId, role: "client"|"driver"|"artisan", phone: "+233..
 ---
 
 ### DELETE /users/me
-> Soft-delete account. 24h recovery window, purged after 90 days. **Auth: Bearer.**
+> Soft-delete only the authenticated role account and retain it for exactly
+> 2,160 hours. Sibling roles remain untouched. `recoveryEnabled` reflects the
+> exact `FF_ROLE_ACCOUNT_RECOVERY=true` gate; permanent purge remains disabled
+> until its retention execution contract is complete. **Auth: Bearer.**
 
 **No request body.**
 
 **Response:**
 ```json
 {
-  "message": "Account deactivated. You have 24 hours to recover it.",
-  "recoveryDeadline": "2024-01-16T10:30:00Z"
+  "message": "Client account deactivated",
+  "role": "client",
+  "roleAccountId": "role-account-uuid",
+  "deletedAt": "2026-07-19T10:30:00Z",
+  "recoveryDeadline": "2026-10-17T10:30:00Z",
+  "retentionDays": 90,
+  "recoveryEnabled": true
 }
 ```
 
-**Error codes:** `CLAWBACK_BALANCE_OUTSTANDING` (400)
+When recovery is feature-disabled, the same response returns
+`"recoveryEnabled": false`.
+
+**Error codes:** `ROLE_ACCOUNT_NOT_FOUND` (404),
+`ACCOUNT_DELETE_ACTIVE_WORK` (409),
+`ACCOUNT_DELETE_FINANCIAL_LIABILITY` (409)
 
 ---
 
@@ -1740,12 +1745,15 @@ of truth and lets the app stay consistent across devices.
 | Method | Endpoint | Called By |
 |--------|----------|-----------|
 | POST | `/payments/webhooks/paystack` | Paystack/Flutterwave payment confirmations |
-| POST | `/verification/kyc/callback` | Smile Identity KYC results |
 | POST | `/verification/police-check/callback` | Ghana Police background check results |
 | POST | `/notifications/sms/delivery-report` | Arkesel SMS delivery reports |
 | POST | `/notifications/email/ses-webhook` | AWS SES bounce/complaint notifications |
 | POST | `/communication/call/callback` | Africa's Talking voice call events |
 | POST | `/ussd/callback` | Africa's Talking USSD sessions |
+
+<!-- BR-35: Smile Identity automation is deferred beyond v1. Its dormant
+implementation is retained for a future reviewed release, but v1 registers no
+initiation or callback endpoint. -->
 
 ---
 

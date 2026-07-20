@@ -2,22 +2,80 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 
+import 'package:api_client/api_client.dart' show ApiException, AppCallSession;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_ui/shared_ui.dart';
 
 import '../../app/router.dart';
 import '../../features/artisan_home/providers/active_job_provider.dart';
 import '../../features/artisan_home/providers/job_poller_provider.dart';
 import '../../features/artisan_home/widgets/rate_client_sheet.dart';
+import '../../features/artisan_home/widgets/bid_status_banner.dart';
+import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../features/auth/providers/auth_controller.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
 import '../../features/driver_home/widgets/rate_passenger_sheet.dart';
 import '../di/providers.dart';
 import '../providers/pending_request_recovery_provider.dart';
 import '../providers/socket_provider.dart';
+import '../providers/nav_badge_provider.dart';
 import 'local_notification_service.dart';
+import 'incoming_request_action_bridge.dart';
+import 'incoming_request_overlay_presenter.dart';
+import 'live_activity_service.dart';
+import 'ride_offer_receipt_service.dart';
+
+const _defaultIncomingCallTimeout = Duration(seconds: 60);
+const _terminalCallTombstoneFallback = Duration(minutes: 2);
+const _terminalCallTombstonePrefix = 'myshop.call_terminal.';
+
+@visibleForTesting
+bool notificationAuthorizationAllowsOnline(AuthorizationStatus status) {
+  return status == AuthorizationStatus.authorized ||
+      status == AuthorizationStatus.provisional;
+}
+
+Future<void> _recordTerminalCallTombstone(
+  String callId,
+  Map<String, dynamic> data,
+) async {
+  try {
+    final now = DateTime.now();
+    final rawExpiresAt = data[NotificationPayload.keyExpiresAt]?.toString();
+    final parsedExpiresAt =
+        rawExpiresAt == null ? null : DateTime.tryParse(rawExpiresAt);
+    final expiresAt = parsedExpiresAt != null && parsedExpiresAt.isAfter(now)
+        ? parsedExpiresAt
+        : now.add(_terminalCallTombstoneFallback);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    await prefs.setInt(
+      '$_terminalCallTombstonePrefix$callId',
+      expiresAt.millisecondsSinceEpoch,
+    );
+  } catch (error) {
+    debugPrint('[FCM] terminal tombstone write failed for $callId: $error');
+  }
+}
+
+Future<bool> _hasTerminalCallTombstone(String callId) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    final key = '$_terminalCallTombstonePrefix$callId';
+    final expiresAtMillis = prefs.getInt(key);
+    if (expiresAtMillis == null) return false;
+    if (expiresAtMillis > DateTime.now().millisecondsSinceEpoch) return true;
+    await prefs.remove(key);
+  } catch (error) {
+    debugPrint('[FCM] terminal tombstone read failed for $callId: $error');
+  }
+  return false;
+}
 
 /// Background isolate handler — must be a top-level function annotated with
 /// `@pragma('vm:entry-point')`.
@@ -39,8 +97,47 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
     '[FCM-bg] message arrived: '
     'type=${message.data['type']} '
     'hasNotificationField=${message.notification != null} '
-    'data=${message.data}',
+    'keys=${message.data.keys.toList()}',
   );
+
+  if (await _handleOfferRevokedFromRemote(
+    message,
+    source: 'background-fcm',
+  )) {
+    return;
+  }
+  if (await _handleCallEndedFromRemote(message, source: 'background-fcm')) {
+    return;
+  }
+  if (await _showIncomingCallFromRemote(message, source: 'background-fcm')) {
+    return;
+  }
+
+  final backgroundType = _remoteType(message);
+  var requestData = Map<String, dynamic>.from(message.data);
+  if (backgroundType == NotificationPayload.typeRideRequest) {
+    final received = await acknowledgeRideOfferFromBackground(requestData);
+    if (received == null) {
+      debugPrint('[FCM-bg] ride offer receipt failed; request not surfaced');
+      return;
+    }
+    requestData = received.payload;
+  }
+  if (Platform.isAndroid &&
+      (backgroundType == NotificationPayload.typeRideRequest ||
+          backgroundType == NotificationPayload.typeJobRequest)) {
+    final shown = await IncomingRequestOverlayPresenter.instance.showFromPush(
+      requestData,
+      notificationTitle:
+          message.notification?.title ?? message.data['title']?.toString(),
+    );
+    if (shown) {
+      debugPrint('[FCM-bg] native request overlay displayed: $backgroundType');
+      return;
+    }
+    debugPrint('[FCM-bg] overlay unavailable; using notification fallback');
+  }
+
   // FCM auto-displays hybrid pushes (top-level `notification`) while the
   // app is backgrounded/terminated. For normal timeline/chat pushes that is
   // exactly what we want because rendering locally as well produces duplicate
@@ -59,8 +156,186 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
   // Re-initialise the local notification plugin inside this isolate —
   // state from the main isolate is NOT shared.
   await LocalNotificationService.instance.init();
-  await _renderFromRemote(message);
+  await _renderFromRemote(message, dataOverride: requestData);
   debugPrint('[FCM-bg] local notification rendered');
+}
+
+Future<bool> _handleOfferRevokedFromRemote(
+  RemoteMessage message, {
+  required String source,
+}) async {
+  if (_remoteType(message) != NotificationPayload.typeOfferRevoked) {
+    return false;
+  }
+
+  final offerType = NotificationPayload.normaliseType(
+    message.data['offerType']?.toString() ?? '',
+  );
+  final rideId = message.data[NotificationPayload.keyRideId]?.toString();
+  final jobId = message.data[NotificationPayload.keyJobId]?.toString();
+  final inferredType = offerType == NotificationPayload.typeRideRequest ||
+          offerType == 'ride'
+      ? NotificationPayload.typeRideRequest
+      : offerType == NotificationPayload.typeJobRequest || offerType == 'job'
+          ? NotificationPayload.typeJobRequest
+          : rideId != null && rideId.isNotEmpty
+              ? NotificationPayload.typeRideRequest
+              : jobId != null && jobId.isNotEmpty
+                  ? NotificationPayload.typeJobRequest
+                  : null;
+  final requestId = inferredType == NotificationPayload.typeRideRequest
+      ? rideId
+      : inferredType == NotificationPayload.typeJobRequest
+          ? jobId
+          : null;
+
+  if (inferredType != null && requestId != null && requestId.isNotEmpty) {
+    await clearIncomingRequestAlert(
+      type: inferredType,
+      requestId: requestId,
+      offerId: message.data[NotificationPayload.keyOfferId]?.toString(),
+      reason: message.data['reason']?.toString() ?? 'revoked',
+    );
+    debugPrint('[FCM] $source cleared revoked $inferredType $requestId');
+  } else {
+    debugPrint('[FCM] $source offer_revoked missing request identity');
+  }
+  return true;
+}
+
+Future<bool> _showIncomingCallFromRemote(
+  RemoteMessage message, {
+  required String source,
+}) async {
+  final type = _remoteType(message);
+  if (type != NotificationPayload.typeCallIncoming) return false;
+
+  final callId = message.data[NotificationPayload.keyCallId]?.toString();
+  if (callId == null || callId.isEmpty) {
+    debugPrint(
+      '[FCM] $source call_incoming missing callId; '
+      'keys=${message.data.keys.toList()}',
+    );
+    return true;
+  }
+
+  if (await _hasTerminalCallTombstone(callId)) {
+    if (Platform.isAndroid) {
+      await LocalNotificationService.instance.cancelIncomingCall(callId);
+    }
+    debugPrint('[FCM] $source ignored terminal call_incoming: $callId');
+    return true;
+  }
+
+  final remaining = _remainingCallTimeout(message.data);
+  if (remaining <= Duration.zero) {
+    if (Platform.isAndroid) {
+      await LocalNotificationService.instance.cancelIncomingCall(callId);
+    }
+    debugPrint('[FCM] $source ignored stale call_incoming: $callId');
+    return true;
+  }
+
+  if (Platform.isAndroid) {
+    await LocalNotificationService.instance.init();
+    await _renderFromRemote(message, callTimeout: remaining);
+    debugPrint('[FCM] $source call_incoming displayed on Android: $callId');
+    return true;
+  }
+
+  if (!Platform.isIOS) {
+    debugPrint('[FCM] $source call_incoming ignored on $_platformName');
+    return true;
+  }
+
+  final payload = <String, dynamic>{...message.data};
+  payload['title'] ??= message.notification?.title ?? 'Incoming MyShop call';
+  payload['body'] ??=
+      message.notification?.body ?? 'Someone is calling in MyShop';
+
+  try {
+    await VoipCallBridgeService.instance.showIncomingCall(payload);
+    debugPrint('[FCM] $source call_incoming displayed with CallKit: $callId');
+    return true;
+  } catch (error) {
+    debugPrint('[FCM] $source CallKit fallback failed for $callId: $error');
+    return false;
+  }
+}
+
+Future<bool> _handleCallEndedFromRemote(
+  RemoteMessage message, {
+  required String source,
+}) async {
+  if (_remoteType(message) != NotificationPayload.typeCallEnded) return false;
+
+  final callId = message.data[NotificationPayload.keyCallId]?.toString();
+  if (callId == null || callId.isEmpty) {
+    debugPrint(
+      '[FCM] $source call_ended missing callId; '
+      'keys=${message.data.keys.toList()}',
+    );
+    return true;
+  }
+
+  await _recordTerminalCallTombstone(callId, message.data);
+
+  try {
+    if (Platform.isAndroid) {
+      await LocalNotificationService.instance.cancelIncomingCall(callId);
+    } else if (Platform.isIOS) {
+      await VoipCallBridgeService.instance.endCall(callId);
+    }
+    debugPrint('[FCM] $source call_ended cleared incoming call: $callId');
+  } catch (error) {
+    debugPrint('[FCM] $source call_ended clear failed for $callId: $error');
+  }
+  return true;
+}
+
+String? _remoteType(RemoteMessage message) {
+  final rawType = message.data[NotificationPayload.keyType]?.toString();
+  if (rawType == null || rawType.isEmpty) return null;
+  return NotificationPayload.normaliseType(rawType);
+}
+
+Duration _remainingCallTimeout(Map<String, dynamic> data) {
+  final rawExpiresAt = data[NotificationPayload.keyExpiresAt]?.toString();
+  if (rawExpiresAt == null || rawExpiresAt.isEmpty) {
+    return _defaultIncomingCallTimeout;
+  }
+  final expiresAt = DateTime.tryParse(rawExpiresAt);
+  if (expiresAt == null) return Duration.zero;
+  return expiresAt.difference(DateTime.now());
+}
+
+DateTime? _requestDeadlineFromData(Map<String, dynamic> data) {
+  for (final key in const <String>[
+    'expiresAt',
+    'expires_at',
+    'acceptanceExpiresAt',
+    'acceptance_expires_at',
+    'requestExpiresAt',
+    'request_expires_at',
+  ]) {
+    final raw = data[key]?.toString();
+    if (raw == null || raw.isEmpty) continue;
+    final parsed = DateTime.tryParse(raw);
+    if (parsed != null) return parsed.toUtc();
+  }
+  return null;
+}
+
+Duration _remainingRequestTimeout(Map<String, dynamic> data) {
+  final deadline = _requestDeadlineFromData(data);
+  if (deadline == null) return Duration.zero;
+  return deadline.difference(DateTime.now().toUtc());
+}
+
+String get _platformName {
+  if (Platform.isIOS) return 'ios';
+  if (Platform.isAndroid) return 'android';
+  return 'unknown';
 }
 
 bool _shouldSkipLocalBackgroundRender(RemoteMessage message) {
@@ -82,16 +357,67 @@ bool _shouldSkipLocalBackgroundRender(RemoteMessage message) {
   return true;
 }
 
-Future<void> _renderFromRemote(RemoteMessage message) async {
-  final data = message.data;
-  final rawType = data[NotificationPayload.keyType] as String?;
-  if (rawType == null || rawType.isEmpty) return;
+Future<void> _renderFromRemote(
+  RemoteMessage message, {
+  Duration? callTimeout,
+  Map<String, dynamic>? dataOverride,
+}) async {
+  final data = dataOverride ?? message.data;
+  final type = NotificationPayload.normaliseType(
+    data[NotificationPayload.keyType]?.toString() ?? '',
+  );
+  if (type.isEmpty) return;
 
-  // Backend emits `job.bid_accepted`; mobile uses `job_bid_accepted`.
-  final type = NotificationPayload.normaliseType(rawType);
+  final callId = data[NotificationPayload.keyCallId]?.toString();
+  if (type == NotificationPayload.typeCallEnded) {
+    if (callId != null && callId.isNotEmpty) {
+      await LocalNotificationService.instance.cancelIncomingCall(callId);
+    }
+    return;
+  }
 
-  final title = message.notification?.title ?? data['title'] as String? ?? '';
-  final body = message.notification?.body ?? data['body'] as String? ?? '';
+  Duration? timeoutAfter;
+  if (type == NotificationPayload.typeCallIncoming) {
+    if (callId == null || callId.isEmpty) {
+      debugPrint(
+        '[FCM] call_incoming missing callId; keys=${data.keys.toList()}',
+      );
+      return;
+    }
+    timeoutAfter = callTimeout ?? _remainingCallTimeout(data);
+    if (timeoutAfter <= Duration.zero) {
+      await LocalNotificationService.instance.cancelIncomingCall(callId);
+      debugPrint('[FCM] ignored stale call_incoming: $callId');
+      return;
+    }
+  } else if (type == NotificationPayload.typeRideRequest ||
+      type == NotificationPayload.typeJobRequest) {
+    timeoutAfter = _remainingRequestTimeout(data);
+    if (timeoutAfter <= Duration.zero) {
+      final requestId = type == NotificationPayload.typeRideRequest
+          ? data[NotificationPayload.keyRideId]?.toString()
+          : data[NotificationPayload.keyJobId]?.toString();
+      if (requestId != null && requestId.isNotEmpty) {
+        await clearIncomingRequestAlert(
+          type: type,
+          requestId: requestId,
+          offerId: data[NotificationPayload.keyOfferId]?.toString(),
+        );
+      }
+      debugPrint('[FCM] ignored stale $type request');
+      return;
+    }
+  }
+
+  var title = message.notification?.title ?? data['title']?.toString() ?? '';
+  var body = message.notification?.body ?? data['body']?.toString() ?? '';
+  if (type == NotificationPayload.typeRideRequest ||
+      type == NotificationPayload.typeJobRequest) {
+    title = type == NotificationPayload.typeRideRequest
+        ? 'New ride request'
+        : 'New job request';
+    body = _privacySafeRequestBody(type, data);
+  }
 
   // Forward every data-key besides title/body/type so the tap handler can
   // read jobId / rideId / bidId / chatId / notificationId without losing
@@ -109,7 +435,76 @@ Future<void> _renderFromRemote(RemoteMessage message) async {
     title: title.isEmpty ? _fallbackTitle(type) : title,
     body: body.isEmpty ? _fallbackBody(type) : body,
     extras: extras,
+    timeoutAfter: timeoutAfter,
   );
+}
+
+String _privacySafeRequestBody(
+  String type,
+  Map<String, dynamic> data,
+) {
+  Map<String, dynamic> decoded(String key) {
+    final raw = data[key];
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    if (raw is! String || raw.isEmpty) return const <String, dynamic>{};
+    try {
+      final value = json.decode(raw);
+      return value is Map
+          ? Map<String, dynamic>.from(value)
+          : const <String, dynamic>{};
+    } catch (_) {
+      return const <String, dynamic>{};
+    }
+  }
+
+  final details = <String, dynamic>{
+    ...decoded('offerPayload'),
+    ...decoded('ridePayload'),
+    ...decoded('jobPayload'),
+  };
+  String? value(Object? raw) {
+    final text = raw?.toString().trim();
+    return text == null || text.isEmpty ? null : text;
+  }
+
+  num? number(Object? raw) => switch (raw) {
+        final num raw => raw,
+        final Object raw => num.tryParse(raw.toString()),
+        null => null,
+      };
+
+  if (type == NotificationPayload.typeRideRequest) {
+    final fare = number(
+      details['estimatedFarePesewas'] ?? data['estimatedFarePesewas'],
+    );
+    final distance = number(details['distanceKm'] ?? data['distanceKm']);
+    final parts = <String>[
+      if (fare != null) 'GHS ${(fare / 100).toStringAsFixed(2)}',
+      if (distance != null) '${distance.toStringAsFixed(1)} km',
+    ];
+    return parts.isEmpty
+        ? 'Unlock to view pickup and destination.'
+        : '${parts.join(' · ')} · Unlock to view route.';
+  }
+
+  final category = value(details['categoryName'] ?? data['categoryName']);
+  final distanceMeters = number(
+    details['distanceMeters'] ?? data['distanceMeters'],
+  );
+  final minBid = number(
+    details['minBidPesewas'] ??
+        details['minimumBidPesewas'] ??
+        data['minBidPesewas'],
+  );
+  final parts = <String>[
+    if (category != null) category,
+    if (distanceMeters != null)
+      '${(distanceMeters / 1000).toStringAsFixed(1)} km',
+    if (minBid != null) 'Minimum GHS ${(minBid / 100).toStringAsFixed(2)}',
+  ];
+  return parts.isEmpty
+      ? 'Unlock to view description, location, and photos.'
+      : '${parts.join(' · ')} · Unlock to view details.';
 }
 
 String _fallbackTitle(String type) {
@@ -163,6 +558,22 @@ String _fallbackTitle(String type) {
       return 'New reply from support';
     case NotificationPayload.typeSupportTicketStatusChanged:
       return 'Ticket update';
+    case NotificationPayload.typeProviderDocumentUploadConfirmed:
+      return 'Document upload confirmed';
+    case NotificationPayload.typeProviderDocumentExpiryNotice:
+      return 'Document expires soon';
+    case NotificationPayload.typeProviderDocumentExpiry72h:
+      return 'Document invalid in 72 hours';
+    case NotificationPayload.typeProviderDocumentExpiry24h:
+      return 'Document invalid in 24 hours';
+    case NotificationPayload.typeProviderDocumentExpiry2h:
+      return 'Document invalid in 2 hours';
+    case NotificationPayload.typeProviderDocumentExpired:
+      return 'Document expired';
+    case NotificationPayload.typeProviderDocumentReplacementGraceStarted:
+      return 'Replacement awaiting review';
+    case NotificationPayload.typeProviderDocumentReplacementGraceExpired:
+      return 'Document action required';
     default:
       return 'MyShop';
   }
@@ -184,7 +595,7 @@ String _fallbackBody(String type) {
     case NotificationPayload.typeRideCancelled:
       return 'The client cancelled this ride.';
     case NotificationPayload.typeJobPaymentReleasing:
-      return 'Your earnings are being released to your wallet.';
+      return 'Your earnings settlement is being processed. Check Earnings for status.';
     case NotificationPayload.typeJobManuallyAssigned:
       return 'Tap to review and place your bid.';
     case NotificationPayload.typeJobNoBidsEscalated:
@@ -207,6 +618,19 @@ String _fallbackBody(String type) {
       return 'Tap to read and reply.';
     case NotificationPayload.typeSupportTicketStatusChanged:
       return 'Tap to see the latest status.';
+    case NotificationPayload.typeProviderDocumentUploadConfirmed:
+      return 'Open Documents & Verification to view its independent review status.';
+    case NotificationPayload.typeProviderDocumentExpiryNotice:
+    case NotificationPayload.typeProviderDocumentExpiry72h:
+    case NotificationPayload.typeProviderDocumentExpiry24h:
+    case NotificationPayload.typeProviderDocumentExpiry2h:
+      return 'Open Documents & Verification to review the renewal instructions.';
+    case NotificationPayload.typeProviderDocumentExpired:
+      return 'Finish any active trip, then replace the expired document before going online again.';
+    case NotificationPayload.typeProviderDocumentReplacementGraceStarted:
+      return 'Your existing approved document remains valid only until the stated review deadline.';
+    case NotificationPayload.typeProviderDocumentReplacementGraceExpired:
+      return 'Finish any active trip, then complete document review before going online again.';
     default:
       return 'Open MyShop to see the latest update.';
   }
@@ -228,32 +652,46 @@ class FcmService {
 
   final Ref _ref;
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
+  StreamSubscription<RemoteMessage>? _foregroundMessageSub;
+  StreamSubscription<RemoteMessage>? _openedMessageSub;
   StreamSubscription<String>? _tokenRefreshSub;
+  StreamSubscription<VoipCallBridgeEvent>? _voipEventSub;
+  StreamSubscription<LiveActivityBridgeEvent>? _liveActivityEventSub;
+  StreamSubscription<AppCallSession>? _incomingCallStateSub;
+  final Set<String> _trackedIncomingCallIds = <String>{};
+  bool _fullScreenPermissionRequested = false;
   bool _initialised = false;
+  Future<void>? _initializing;
 
   /// Called with the payload map when a user taps a push (either from the
   /// background/terminated state or after a foreground message surfaces
   /// through [LocalNotificationService]).
-  void Function(Map<String, dynamic> payload)? onTapMessage;
+  Future<void> Function(Map<String, dynamic> payload)? onTapMessage;
 
-  Future<void> init() async {
+  Future<void> init() {
     debugPrint('[FCM] init() called (initialised=$_initialised)');
-    if (_initialised) return;
-    _initialised = true;
+    if (_initialised) return Future<void>.value();
+    return _initializing ??= _initialize().whenComplete(() {
+      _initializing = null;
+    });
+  }
 
+  Future<void> _initialize() async {
     // Background isolate handler MUST be registered before any message
     // can arrive. Safe to call multiple times.
     FirebaseMessaging.onBackgroundMessage(fcmBackgroundHandler);
     debugPrint('[FCM] background handler registered');
 
-    // Permission prompts (iOS + Android 13+).
-    await _fcm.requestPermission(alert: true, badge: true, sound: true);
+    // Do not show an OS permission prompt during startup. The explicit
+    // Go Online action owns the contextual request through
+    // ensureOnlineNotificationReachability().
 
     // Ensure tapping a local notification also routes via the same
     // handler the router will set.
     LocalNotificationService.instance.onTap = (payload) {
       _markNotificationRead(payload);
-      onTapMessage?.call(payload);
+      final handler = onTapMessage;
+      if (handler != null) unawaited(handler(payload));
     };
 
     // Foreground messages — the in-app modal is driven by the socket in
@@ -267,10 +705,106 @@ class FcmService {
     // assumed messages weren't being delivered. The chat socket still
     // updates unread badges on those screens; we just also want a
     // heads-up banner when they're not actually in the chat.
-    FirebaseMessaging.onMessage.listen((message) async {
-      debugPrint('[FCM] foreground message: ${message.data}');
+    _foregroundMessageSub ??= FirebaseMessaging.onMessage.listen((
+      message,
+    ) async {
+      debugPrint(
+        '[FCM] foreground message: type=${message.data['type']} '
+        'keys=${message.data.keys.toList()}',
+      );
+      if (await _handleOfferRevokedFromRemote(
+        message,
+        source: 'foreground-fcm',
+      )) {
+        final rideId = message.data[NotificationPayload.keyRideId]?.toString();
+        final jobId = message.data[NotificationPayload.keyJobId]?.toString();
+        if (rideId != null && rideId.isNotEmpty) {
+          _ref.read(incomingRideRequestProvider.notifier).state = null;
+          _ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+                (deadlines) => {...deadlines}..remove(rideId),
+              );
+        }
+        if (jobId != null && jobId.isNotEmpty) {
+          _ref.read(pendingIncomingJobsProvider.notifier).remove(jobId);
+          if (_ref.read(incomingJobRequestProvider)?.id == jobId) {
+            _ref.read(incomingJobRequestProvider.notifier).state = null;
+          }
+        }
+        return;
+      }
+      if (await _handleCallEndedFromRemote(
+        message,
+        source: 'foreground-fcm',
+      )) {
+        return;
+      }
+      if (await _showIncomingCallFromRemote(
+        message,
+        source: 'foreground-fcm',
+      )) {
+        if (Platform.isAndroid &&
+            _remoteType(message) == NotificationPayload.typeCallIncoming) {
+          _openAndroidIncomingCall(message.data);
+        }
+        return;
+      }
+
       final rawType = message.data[NotificationPayload.keyType] as String?;
       final type = NotificationPayload.normaliseType(rawType ?? '');
+      if (type == NotificationPayload.typeRideRequest) {
+        final received = await acknowledgeRideOfferWithSocket(
+          payload: Map<String, dynamic>.from(message.data),
+          socket: _ref.read(socketServiceProvider),
+          rides: _ref.read(rideServiceProvider),
+        );
+        if (received == null) {
+          debugPrint('[FCM] foreground ride offer receipt failed');
+          return;
+        }
+        _ref.read(rideOfferIdByRideProvider.notifier).update(
+              (offers) => {
+                ...offers,
+                received.rideId: received.offerId,
+              },
+            );
+        _ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+              (deadlines) => {
+                ...deadlines,
+                received.rideId: received.decisionExpiresAt,
+              },
+            );
+        final active = _ref.read(activeRideProvider).ride;
+        if (active?.id == received.rideId ||
+            _ref.read(surfacedRideIdsProvider).contains(received.rideId)) {
+          return;
+        }
+        try {
+          final ride = Ride.fromJson(received.payload);
+          _ref.read(surfacedRideIdsProvider.notifier).update(
+                (ids) => {...ids, ride.id},
+              );
+          _ref.read(incomingRideRequestProvider.notifier).state = null;
+          _ref.read(incomingRideRequestProvider.notifier).state = ride;
+          _ref.read(navBadgeProvider.notifier).increment('/home');
+        } catch (error) {
+          debugPrint('[FCM] foreground ride offer parse failed: $error');
+        }
+        return;
+      }
+      if (type == NotificationPayload.typeRideCancelled) {
+        final rideId = (message.data[NotificationPayload.keyRideId] ??
+                message.data['ride_id'])
+            ?.toString();
+        final cleared =
+            _ref.read(activeRideProvider.notifier).clearRideIfMatches(rideId);
+        if (cleared) {
+          _ref.read(goRouterProvider).go('/home');
+        }
+        // Keep the cancellation notification visible as confirmation even
+        // though matching local ride state has already been reconciled.
+        await _renderFromRemote(message);
+        return;
+      }
       if (type == NotificationPayload.typeNewMessage) {
         final bookingId =
             (message.data[NotificationPayload.keyBookingId] as String?) ??
@@ -291,45 +825,61 @@ class FcmService {
       // top would stack a second alert with full-screen intent over
       // the in-app modal — silencing the looping ringtone gets messy
       // when two alert paths fire for the same booking.
-      if (NotificationPayload.fullScreenRequestTypes.contains(type)) {
+      if (type != NotificationPayload.typeCallIncoming &&
+          NotificationPayload.fullScreenRequestTypes.contains(type)) {
+        if (_ref.read(socketConnectedProvider)) {
+          debugPrint(
+            '[FCM] foreground $type — socket will surface in-app request',
+          );
+          return;
+        }
         debugPrint(
-          '[FCM] foreground $type — handled by in-app modal, skipping banner',
+          '[FCM] foreground $type — socket offline, rendering fallback',
         );
-        return;
       }
       await _renderFromRemote(message);
     });
 
     // User tapped a push while the app was backgrounded → resumed.
-    FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      debugPrint('[FCM] opened from background: ${message.data}');
+    _openedMessageSub ??= FirebaseMessaging.onMessageOpenedApp.listen((
+      message,
+    ) {
+      debugPrint(
+        '[FCM] opened from background: type=${message.data['type']} '
+        'keys=${message.data.keys.toList()}',
+      );
       final payload = Map<String, dynamic>.from(message.data);
       _markNotificationRead(payload);
-      onTapMessage?.call(payload);
+      final handler = onTapMessage;
+      if (handler != null) unawaited(handler(payload));
     });
 
     // Cold-start tap: app was terminated, user tapped a push to open it.
     final initialMessage = await _fcm.getInitialMessage();
     if (initialMessage != null) {
-      debugPrint('[FCM] initial message: ${initialMessage.data}');
+      debugPrint(
+        '[FCM] initial message: type=${initialMessage.data['type']} '
+        'keys=${initialMessage.data.keys.toList()}',
+      );
       final payload = Map<String, dynamic>.from(initialMessage.data);
       _markNotificationRead(payload);
       // Defer until the router is ready to avoid navigating before the
       // first frame.
       Future<void>.delayed(const Duration(milliseconds: 500), () {
-        onTapMessage?.call(payload);
+        final handler = onTapMessage;
+        if (handler != null) unawaited(handler(payload));
       });
     }
 
-    // Defense in depth: the auth bridge fires syncToken when state hits
-    // AuthAuthenticated, but on cold start that can fire BEFORE init()
-    // has requested permission — getToken() then returns null and the
-    // single-shot bridge never re-fires. Kick it again now that perms
-    // are granted; syncToken is idempotent (registerDevice is an upsert).
+    // Defense in depth: the auth bridge can fire before Firebase setup has
+    // finished. Kick token sync again after initialisation; registration is
+    // idempotent, and display permission is checked contextually at Go Online.
     final authState = _ref.read(authControllerProvider);
     if (authState is AuthAuthenticated) {
       unawaited(syncToken());
     }
+    _initialised = true;
+    debugPrint('[FCM] initialisation complete');
   }
 
   /// Fires a best-effort `PATCH /notifications/:id/read` when the push
@@ -349,8 +899,71 @@ class FcmService {
   /// Fetch the FCM token and POST it to the backend so we can receive
   /// pushes. Call once the user is authenticated (needs JWT on the Dio
   /// client). Also subscribes to token refresh events.
+  Future<String?> ensureOnlineNotificationReachability({
+    bool requestPermissionIfNeeded = true,
+  }) async {
+    if (!_ref.read(firebaseReadyProvider)) {
+      return 'Notifications are still starting. Check your connection and try again.';
+    }
+
+    try {
+      if (!_initialised) {
+        await init().timeout(const Duration(seconds: 10));
+      }
+
+      var settings = await _fcm
+          .getNotificationSettings()
+          .timeout(const Duration(seconds: 5));
+      if (settings.authorizationStatus == AuthorizationStatus.notDetermined &&
+          requestPermissionIfNeeded) {
+        settings = await _fcm
+            .requestPermission(alert: true, badge: true, sound: true)
+            .timeout(const Duration(seconds: 15));
+      }
+      if (!notificationAuthorizationAllowsOnline(
+        settings.authorizationStatus,
+      )) {
+        return 'Enable notifications in Settings before going online so you can receive requests.';
+      }
+
+      if (Platform.isIOS) {
+        final apnsToken =
+            await _fcm.getAPNSToken().timeout(const Duration(seconds: 5));
+        if (apnsToken == null || apnsToken.isEmpty) {
+          return 'This device is not ready for notifications yet. Check your connection and try again.';
+        }
+      }
+
+      final token = await _fcm.getToken().timeout(const Duration(seconds: 8));
+      if (token == null || token.isEmpty) {
+        return 'This device could not register for notifications. Check your connection and try again.';
+      }
+      final registered =
+          await _register(token).timeout(const Duration(seconds: 15));
+      if (!registered) {
+        return 'MyShop could not register this device for requests. Check your connection and try again.';
+      }
+      return null;
+    } catch (error) {
+      debugPrint('[FCM] online reachability check failed: $error');
+      return 'MyShop could not verify notification access. Check Settings and your connection, then try again.';
+    }
+  }
+
   Future<void> syncToken() async {
     debugPrint('[FCM] syncToken() entered');
+
+    if (Platform.isAndroid && !_fullScreenPermissionRequested) {
+      _fullScreenPermissionRequested = true;
+      try {
+        final granted = await LocalNotificationService.instance
+            .requestFullScreenCallPermission();
+        debugPrint('[FCM] full-screen call access granted=$granted');
+      } catch (error) {
+        _fullScreenPermissionRequested = false;
+        debugPrint('[FCM] full-screen call access request failed: $error');
+      }
+    }
 
     // Register the token-refresh listener FIRST. On iOS, APNs registration
     // on a fresh install can take longer than our initial retry window.
@@ -359,6 +972,16 @@ class FcmService {
     // _register call fires the moment the token shows up.
     _tokenRefreshSub?.cancel();
     _tokenRefreshSub = _fcm.onTokenRefresh.listen(_register);
+    if (Platform.isIOS) {
+      _wireVoipBridge();
+      unawaited(_syncVoipTokenOnce());
+      _wireLiveActivityBridge();
+      // ActivityKit may have produced and persisted its token before Flutter
+      // attached. Do not rely on a new native event being emitted: snapshots
+      // are idempotent, and the later successful FCM registration repeats the
+      // sync after the backend has a current device row to bind against.
+      unawaited(_syncLiveActivityTokensOnce());
+    }
 
     // iOS: FCM derives its token from the APNs device token. On cold
     // start `getToken()` throws `apns-token-not-set` if called before
@@ -421,15 +1044,18 @@ class FcmService {
     return false;
   }
 
-  Future<void> _register(String token) async {
-    // Pull active role from secure storage. The backend keys
-    // device_tokens on (userId, role, platform) — passing the wrong
-    // role here silently routes another role's pushes to this device.
-    // No role stored = no authenticated session, so skip registration.
-    final role = await _ref.read(appTokenStorageProvider).readRole();
+  Future<bool> _register(String token) async {
+    // Prefer the authenticated in-memory role. Secure storage can lag during a
+    // fresh login on Keychain/EncryptedSharedPreferences; previously a null
+    // read made registration exit permanently, leaving that session without
+    // background ride/job pushes until a future token refresh.
+    final authState = _ref.read(authControllerProvider);
+    final role = authState is AuthAuthenticated
+        ? authState.user.role.name
+        : await _ref.read(appTokenStorageProvider).readRole();
     if (role == null || role.isEmpty) {
       debugPrint('[FCM] no active role — skipping device registration');
-      return;
+      return false;
     }
     for (int attempt = 1; attempt <= 3; attempt++) {
       try {
@@ -437,7 +1063,38 @@ class FcmService {
             .read(apiNotificationServiceProvider)
             .registerDevice(fcmToken: token, platform: _platform, role: role);
         debugPrint('[FCM] token registered (role=$role, attempt $attempt)');
-        return;
+        if (Platform.isIOS) {
+          await _syncLiveActivityTokensOnce();
+        }
+        return true;
+      } on ApiException catch (e) {
+        // Mobile-first rollout compatibility: the currently deployed backend
+        // rejects unknown DTO fields. Register without the capability marker
+        // there so this provider build can ship first; after the upgraded
+        // backend is deployed, normal startup/token sync advertises v1.
+        if (e.statusCode == 400 &&
+            e.message.toLowerCase().contains('offerreceiptversion')) {
+          try {
+            await _ref.read(apiNotificationServiceProvider).registerDevice(
+                  fcmToken: token,
+                  platform: _platform,
+                  role: role,
+                  offerReceiptVersion: null,
+                );
+            debugPrint(
+              '[FCM] token registered against legacy backend; receipt capability will sync after backend upgrade',
+            );
+            return true;
+          } catch (legacyError) {
+            debugPrint(
+              '[FCM] legacy-backend registration fallback failed: $legacyError',
+            );
+          }
+        }
+        debugPrint('[FCM] register attempt $attempt/3 failed: $e');
+        if (attempt < 3) {
+          await Future<void>.delayed(Duration(seconds: attempt * 2));
+        }
       } catch (e) {
         debugPrint('[FCM] register attempt $attempt/3 failed: $e');
         if (attempt < 3) {
@@ -446,6 +1103,360 @@ class FcmService {
       }
     }
     debugPrint('[FCM] register exhausted retries — token NOT registered');
+    return false;
+  }
+
+  void _wireVoipBridge() {
+    _voipEventSub ??= VoipCallBridgeService.instance.events.listen((event) {
+      switch (event.type) {
+        case VoipCallBridgeEventType.tokenUpdated:
+          final token = event.token;
+          if (token != null && token.isNotEmpty) {
+            unawaited(_registerVoipToken(token));
+          }
+        case VoipCallBridgeEventType.tokenInvalidated:
+          unawaited(_unregisterVoipToken(event.token));
+        case VoipCallBridgeEventType.incomingCall:
+          debugPrint('[VoIP] incoming call bridge event: ${event.payload}');
+          unawaited(_trackIncomingCall(event));
+        case VoipCallBridgeEventType.callAccepted:
+          unawaited(_handleVoipCallAccepted(event));
+        case VoipCallBridgeEventType.callDeclined:
+          unawaited(_handleVoipCallDeclined(event));
+        case VoipCallBridgeEventType.callEnded:
+          unawaited(_handleVoipCallEnded(event));
+        case VoipCallBridgeEventType.unknown:
+          debugPrint('[VoIP] bridge event: ${event.type} ${event.payload}');
+      }
+    });
+  }
+
+  void _openAndroidIncomingCall(Map<String, dynamic> payload) {
+    final callId = payload[NotificationPayload.keyCallId]?.toString();
+    if (callId == null || callId.isEmpty) return;
+    _ref.read(goRouterProvider).go('/calls/$callId');
+  }
+
+  String _routeAfterCall(AppCallSession session) {
+    return switch (session.bookingType) {
+      'ride' => '/active-ride',
+      'artisan_job' ||
+      'job' when session.bookingId.isNotEmpty =>
+        '/active-job?jobId=${Uri.encodeQueryComponent(session.bookingId)}',
+      _ => '/home',
+    };
+  }
+
+  Future<void> _trackIncomingCall(VoipCallBridgeEvent event) async {
+    final callId = event.callId;
+    if (callId == null || callId.isEmpty) return;
+    final socket = _ref.read(appCallSocketServiceProvider);
+    _incomingCallStateSub ??= socket.sessionStream.listen((session) {
+      if (!_trackedIncomingCallIds.contains(session.callId) ||
+          !session.isTerminal) {
+        return;
+      }
+      _trackedIncomingCallIds.remove(session.callId);
+      socket.leaveCall(session.callId);
+      unawaited(VoipCallBridgeService.instance.endCall(session.callId));
+      debugPrint(
+        '[VoIP] remote ${session.status} dismissed CallKit: ${session.callId}',
+      );
+    });
+    if (_trackedIncomingCallIds.add(callId)) {
+      await socket.joinCall(callId);
+      debugPrint('[VoIP] joined call socket before answer: $callId');
+    }
+  }
+
+  void _stopTrackingIncomingCall(String callId) {
+    if (!_trackedIncomingCallIds.remove(callId)) return;
+    _ref.read(appCallSocketServiceProvider).leaveCall(callId);
+  }
+
+  Future<void> _handleVoipCallAccepted(VoipCallBridgeEvent event) async {
+    final callId = event.callId;
+    if (callId == null || callId.isEmpty) {
+      debugPrint('[VoIP] callAccepted missing callId: ${event.payload}');
+      return;
+    }
+    final router = _ref.read(goRouterProvider);
+    router.go('/calls/$callId');
+    try {
+      final session = await _retryVoipAction(
+        () => _ref.read(appCallServiceProvider).acceptCall(callId),
+      );
+      router.go('/calls/$callId', extra: session);
+      await VoipCallBridgeService.instance
+          .acknowledgeCallAction(event.actionId);
+    } catch (error) {
+      debugPrint('[VoIP] accept failed for $callId: $error');
+      try {
+        await _ref.read(appCallServiceProvider).endCall(callId);
+      } catch (cleanupError) {
+        debugPrint('[VoIP] accept recovery backend end failed: $cleanupError');
+      }
+      try {
+        await VoipCallBridgeService.instance.endCall(callId);
+      } catch (cleanupError) {
+        debugPrint('[VoIP] accept recovery CallKit end failed: $cleanupError');
+      }
+      _stopTrackingIncomingCall(callId);
+      try {
+        await VoipCallBridgeService.instance
+            .acknowledgeCallAction(event.actionId);
+      } catch (cleanupError) {
+        debugPrint('[VoIP] accept recovery acknowledge failed: $cleanupError');
+      }
+      router.go('/home');
+    }
+  }
+
+  Future<void> _handleVoipCallDeclined(VoipCallBridgeEvent event) async {
+    final callId = event.callId;
+    if (callId == null || callId.isEmpty) {
+      debugPrint('[VoIP] callDeclined missing callId: ${event.payload}');
+      return;
+    }
+    try {
+      var session = await _retryVoipAction(
+        () => _ref.read(appCallServiceProvider).declineCall(callId),
+      );
+      if (!session.isTerminal) {
+        debugPrint(
+          '[VoIP] decline raced ${session.status}; ending call: $callId',
+        );
+        session = await _retryVoipAction(
+          () => _ref.read(appCallServiceProvider).endCall(callId),
+        );
+      }
+      _stopTrackingIncomingCall(callId);
+      await VoipCallBridgeService.instance.endCall(callId);
+      _ref.read(goRouterProvider).go(_routeAfterCall(session));
+      await VoipCallBridgeService.instance
+          .acknowledgeCallAction(event.actionId);
+    } catch (error) {
+      debugPrint('[VoIP] decline failed for $callId: $error');
+    }
+  }
+
+  Future<void> _handleVoipCallEnded(VoipCallBridgeEvent event) async {
+    final callId = event.callId;
+    if (callId == null || callId.isEmpty) {
+      debugPrint('[VoIP] callEnded missing callId: ${event.payload}');
+      return;
+    }
+    try {
+      final session = await _retryVoipAction(
+        () => _ref.read(appCallServiceProvider).endCall(callId),
+      );
+      _stopTrackingIncomingCall(callId);
+      _ref.read(goRouterProvider).go(_routeAfterCall(session));
+      await VoipCallBridgeService.instance
+          .acknowledgeCallAction(event.actionId);
+    } catch (error) {
+      debugPrint('[VoIP] end failed for $callId: $error');
+    }
+  }
+
+  Future<T> _retryVoipAction<T>(Future<T> Function() action) async {
+    Object? lastError;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        return await action();
+      } catch (error) {
+        lastError = error;
+        if (attempt < 3) {
+          await Future<void>.delayed(Duration(seconds: attempt));
+        }
+      }
+    }
+    throw lastError!;
+  }
+
+  Future<void> _syncVoipTokenOnce() async {
+    final token = await VoipCallBridgeService.instance.getVoipToken();
+    if (token == null || token.isEmpty) return;
+    await _registerVoipToken(token);
+  }
+
+  Future<void> _registerVoipToken(String token) async {
+    final role = await _ref.read(appTokenStorageProvider).readRole();
+    if (role == null || role.isEmpty) {
+      debugPrint('[VoIP] no active role — skipping token registration');
+      return;
+    }
+
+    for (int attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await _ref.read(apiNotificationServiceProvider).registerVoipDevice(
+              voipToken: token,
+            );
+        debugPrint('[VoIP] token registered (role=$role, attempt $attempt)');
+        return;
+      } catch (e) {
+        debugPrint('[VoIP] register attempt $attempt/3 failed: $e');
+        if (attempt < 3) {
+          await Future<void>.delayed(Duration(seconds: attempt * 2));
+        }
+      }
+    }
+    debugPrint('[VoIP] register exhausted retries — token NOT registered');
+  }
+
+  Future<void> _unregisterVoipToken(String? token) async {
+    try {
+      await _ref.read(apiNotificationServiceProvider).unregisterVoipDevice(
+            voipToken: token,
+          );
+      debugPrint('[VoIP] token unregistered');
+    } catch (e) {
+      debugPrint('[VoIP] unregister failed: $e');
+    }
+  }
+
+  void _wireLiveActivityBridge() {
+    _liveActivityEventSub ??= LiveActivityService.instance.events.listen(
+      (event) => unawaited(_handleLiveActivityEvent(event)),
+      onError: (Object error) {
+        debugPrint('[LiveActivity] native event stream failed: $error');
+      },
+    );
+  }
+
+  Future<void> _handleLiveActivityEvent(
+    LiveActivityBridgeEvent event,
+  ) async {
+    switch (event.type) {
+      case LiveActivityBridgeEventType.pushToStartToken:
+        final token = event.token;
+        if (token != null && token.isNotEmpty) {
+          await _registerLiveActivityDevice(token);
+        }
+      case LiveActivityBridgeEventType.activityUpdateToken:
+        final activity = event.activity;
+        if (activity != null) {
+          await _registerLiveActivity(activity);
+        }
+      case LiveActivityBridgeEventType.activityEnded:
+        final activity = event.activity;
+        if (activity != null) {
+          await _unregisterLiveActivity(activity);
+        }
+      case LiveActivityBridgeEventType.activitiesEnabled:
+        if (event.activitiesEnabled == false) {
+          await _unregisterLiveActivityDevice();
+        } else {
+          await _syncLiveActivityTokensOnce();
+        }
+      case LiveActivityBridgeEventType.unknown:
+        debugPrint('[LiveActivity] ignored unknown native event');
+    }
+  }
+
+  Future<void> _syncLiveActivityTokensOnce() async {
+    final state = await LiveActivityService.instance.getState();
+    if (state.activitiesEnabled == false) {
+      await _unregisterLiveActivityDevice();
+      return;
+    }
+    final pushToStartToken = state.pushToStartToken;
+    if (pushToStartToken != null && pushToStartToken.isNotEmpty) {
+      await _registerLiveActivityDevice(pushToStartToken);
+    }
+    for (final activity in state.activities) {
+      if (activity.updateToken == null || activity.updateToken!.isEmpty) {
+        continue;
+      }
+      await _registerLiveActivity(activity);
+    }
+  }
+
+  Future<void> _registerLiveActivityDevice(String token) async {
+    final role = await _ref.read(appTokenStorageProvider).readRole();
+    if (role == null || role.isEmpty) {
+      debugPrint('[LiveActivity] no active role — skipping token registration');
+      return;
+    }
+    await _retryLiveActivityRegistration(
+      label: 'push-to-start',
+      action: () => _ref
+          .read(apiNotificationServiceProvider)
+          .registerLiveActivityDevice(pushToStartToken: token),
+    );
+  }
+
+  Future<void> _unregisterLiveActivityDevice({String? token}) async {
+    try {
+      await _ref
+          .read(apiNotificationServiceProvider)
+          .unregisterLiveActivityDevice(pushToStartToken: token);
+      debugPrint('[LiveActivity] device unregistered');
+    } catch (error) {
+      debugPrint('[LiveActivity] device unregister failed: $error');
+    }
+  }
+
+  Future<void> _registerLiveActivity(
+    LiveActivityRegistration activity,
+  ) async {
+    final updateToken = activity.updateToken;
+    if (updateToken == null || updateToken.isEmpty) return;
+    final role = await _ref.read(appTokenStorageProvider).readRole();
+    if (role == null || role.isEmpty) {
+      debugPrint('[LiveActivity] no active role — skipping activity token');
+      return;
+    }
+    await _retryLiveActivityRegistration(
+      label: 'activity ${activity.activityId}',
+      action: () =>
+          _ref.read(apiNotificationServiceProvider).registerLiveActivity(
+                activityId: activity.activityId,
+                updateToken: updateToken,
+                offerId: activity.offerId,
+                requestType: activity.requestType,
+                requestId: activity.requestId,
+                expiresAt: activity.expiresAt,
+              ),
+    );
+  }
+
+  Future<void> _unregisterLiveActivity(
+    LiveActivityRegistration activity,
+  ) async {
+    try {
+      await _ref.read(apiNotificationServiceProvider).unregisterLiveActivity(
+            activityId: activity.activityId,
+            updateToken: activity.updateToken,
+          );
+      debugPrint('[LiveActivity] unregistered ${activity.activityId}');
+    } catch (error) {
+      debugPrint(
+        '[LiveActivity] unregister ${activity.activityId} failed: $error',
+      );
+    }
+  }
+
+  Future<void> _retryLiveActivityRegistration({
+    required String label,
+    required Future<void> Function() action,
+  }) async {
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await action();
+        debugPrint(
+          '[LiveActivity] $label registered (attempt $attempt)',
+        );
+        return;
+      } catch (error) {
+        debugPrint(
+          '[LiveActivity] $label register attempt $attempt/3 failed: $error',
+        );
+        if (attempt < 3) {
+          await Future<void>.delayed(Duration(seconds: attempt * 2));
+        }
+      }
+    }
   }
 
   String get _platform {
@@ -482,6 +1493,27 @@ class FcmService {
   Future<void> dispose() async {
     await _tokenRefreshSub?.cancel();
     _tokenRefreshSub = null;
+    await _unregisterVoipToken(
+      await VoipCallBridgeService.instance.getVoipToken(),
+    );
+    await _voipEventSub?.cancel();
+    _voipEventSub = null;
+    if (Platform.isIOS) {
+      final liveActivityState = await LiveActivityService.instance.getState();
+      await _unregisterLiveActivityDevice(
+        token: liveActivityState.pushToStartToken,
+      );
+    }
+    await _liveActivityEventSub?.cancel();
+    _liveActivityEventSub = null;
+    await LiveActivityService.instance.endAll();
+    await _incomingCallStateSub?.cancel();
+    _incomingCallStateSub = null;
+    final socket = _ref.read(appCallSocketServiceProvider);
+    for (final callId in _trackedIncomingCallIds) {
+      socket.leaveCall(callId);
+    }
+    _trackedIncomingCallIds.clear();
     try {
       await _fcm.deleteToken();
     } catch (_) {
@@ -498,6 +1530,26 @@ final fcmServiceProvider = Provider<FcmService>((ref) {
   return FcmService(ref);
 });
 
+typedef OnlineNotificationReachabilityCheck = Future<String?> Function();
+
+final onlineNotificationReachabilityCheckProvider =
+    Provider<OnlineNotificationReachabilityCheck>((ref) {
+  final fcm = ref.read(fcmServiceProvider);
+  return fcm.ensureOnlineNotificationReachability;
+});
+
+/// BR-32 relaunch recovery must never make an OS permission prompt appear on
+/// its own. A prior Online intent can reuse an existing notification grant,
+/// but a missing grant leaves the provider Offline with actionable copy until
+/// they explicitly tap Go Online.
+final onlineNotificationRestoreReachabilityCheckProvider =
+    Provider<OnlineNotificationReachabilityCheck>((ref) {
+  final fcm = ref.read(fcmServiceProvider);
+  return () => fcm.ensureOnlineNotificationReachability(
+        requestPermissionIfNeeded: false,
+      );
+});
+
 /// Watches the auth state and synchronises the FCM token with the backend
 /// as soon as the user reaches `AuthAuthenticated`. On logout it clears
 /// the device token so the next account on this device registers a fresh
@@ -506,20 +1558,22 @@ final fcmServiceProvider = Provider<FcmService>((ref) {
 /// Must be watched once at app start (e.g. `container.read(...)` in main)
 /// so it stays subscribed.
 final fcmAuthBridgeProvider = Provider<void>((ref) {
-  final authState = ref.watch(authControllerProvider);
   final fcm = ref.read(fcmServiceProvider);
-  debugPrint('[FCM-bridge] auth state = ${authState.runtimeType}');
-
-  if (authState is AuthAuthenticated) {
-    debugPrint('[FCM-bridge] firing syncToken()');
-    fcm.syncToken();
-  } else if (authState is AuthUnauthenticated) {
-    // Only delete the local token on explicit logout. Other transient
-    // states (AuthUnknown on cold start, AuthOtpSent during login) used
-    // to call dispose() too, which churned the token and raced syncToken.
-    debugPrint('[FCM-bridge] firing dispose() (logout)');
-    fcm.dispose();
-  }
+  ref.listen<AuthState>(authControllerProvider, (previous, next) {
+    debugPrint('[FCM-bridge] auth state = ${next.runtimeType}');
+    if (next is AuthAuthenticated) {
+      debugPrint('[FCM-bridge] firing syncToken()');
+      unawaited(fcm.syncToken());
+      return;
+    }
+    // Initial cold-start unauthenticated state is not a logout. Only tear down
+    // native token listeners and Live Activities after an authenticated
+    // session actually transitions to unauthenticated.
+    if (previous is AuthAuthenticated && next is AuthUnauthenticated) {
+      debugPrint('[FCM-bridge] firing dispose() (logout)');
+      unawaited(fcm.dispose());
+    }
+  }, fireImmediately: true);
 });
 
 /// Wires FCM notification taps into GoRouter navigation.
@@ -543,6 +1597,40 @@ final fcmAuthBridgeProvider = Provider<void>((ref) {
 final fcmTapBridgeProvider = Provider<void>((ref) {
   final fcm = ref.read(fcmServiceProvider);
 
+  Future<bool> waitForAuthenticatedCall(
+    String callId,
+    Map<String, dynamic> payload,
+  ) async {
+    final initialRemaining = _remainingCallTimeout(payload);
+    if (initialRemaining <= Duration.zero) return false;
+    final deadline = DateTime.now().add(initialRemaining);
+    while (DateTime.now().isBefore(deadline)) {
+      final authState = ref.read(authControllerProvider);
+      if (authState is AuthAuthenticated) {
+        return _remainingCallTimeout(payload) > Duration.zero &&
+            !await _hasTerminalCallTombstone(callId);
+      }
+      if (authState is AuthUnauthenticated) return false;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    return false;
+  }
+
+  Future<bool> waitForAuthenticatedRequest(
+    Map<String, dynamic> payload,
+  ) async {
+    final explicitDeadline = _requestDeadlineFromData(payload);
+    final deadline = explicitDeadline ??
+        DateTime.now().toUtc().add(const Duration(seconds: 20));
+    while (DateTime.now().toUtc().isBefore(deadline)) {
+      final authState = ref.read(authControllerProvider);
+      if (authState is AuthAuthenticated) return true;
+      if (authState is AuthUnauthenticated) return false;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    return false;
+  }
+
   fcm.onTapMessage = (payload) async {
     final rawType = payload[NotificationPayload.keyType] as String?;
     // Backend emits dotted types ("job.request") in the FCM data payload.
@@ -552,8 +1640,18 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     // every background / cold-start tap fell through to the default case.
     final type =
         rawType == null ? null : NotificationPayload.normaliseType(rawType);
+    final actionId = payload[NotificationPayload.keyActionId]
+        ?.toString()
+        .trim()
+        .toUpperCase();
     final router = ref.read(goRouterProvider);
     debugPrint('[FCM-tap] type=$type (raw=$rawType)');
+
+    final lifecycleRoute = providerLifecycleNotificationRoute(type ?? '');
+    if (lifecycleRoute != null) {
+      router.go(lifecycleRoute);
+      return;
+    }
 
     // Backend may send the job id under either `jobId` (camel) or
     // `job_id` (snake) depending on which emitter wrote the push.
@@ -625,98 +1723,248 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       }
     }
 
-    void openRideRequest(Ride ride) {
-      final currentPath = router.routerDelegate.currentConfiguration.uri.path;
-      debugPrint('[FCM-tap] opening /ride-request for ${ride.id}');
-      if (currentPath == '/ride-request') {
-        router.pushReplacement('/ride-request', extra: ride);
-      } else {
-        router.push('/ride-request', extra: ride);
-      }
+    void clearRideRequestInFlightLater(String rideId) {
+      unawaited(
+        Future<void>.delayed(const Duration(seconds: 4), () {
+          ref.read(rideRequestNavigationInFlightProvider.notifier).update(
+                (s) => {...s}..remove(rideId),
+              );
+        }),
+      );
     }
 
-    void openRideRequestLoader(String rideId, DateTime? deadline) {
+    void openRideRequestLoader(
+      String rideId, {
+      DateTime? deadline,
+      String source = 'notification tap',
+    }) {
+      final offerId = payload[NotificationPayload.keyOfferId]?.toString();
+      if (offerId != null && offerId.isNotEmpty) {
+        ref.read(rideOfferIdByRideProvider.notifier).update(
+              (offers) => {...offers, rideId: offerId},
+            );
+      }
+      if (deadline != null) {
+        ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+              (m) => {...m, rideId: deadline},
+            );
+      }
+      ref.read(surfacedRideIdsProvider.notifier).update((s) => {...s, rideId});
+      ref.read(incomingRideRequestProvider.notifier).state = null;
+      final visibleId = ref.read(visibleRideRequestIdProvider);
+      if (visibleId == rideId) {
+        debugPrint(
+          '[FCM-tap] ride_request $rideId already visible — keeping details',
+        );
+        return;
+      }
+      ref.read(rideRequestNavigationInFlightProvider.notifier).update(
+            (s) => {...s, rideId},
+          );
+      clearRideRequestInFlightLater(rideId);
+
       final currentPath = router.routerDelegate.currentConfiguration.uri.path;
-      final extra = RideRequestRouteExtra(
+      final routeExtra = RideRequestRouteExtra(
         rideId: rideId,
         expiresAt: deadline,
       );
-      debugPrint('[FCM-tap] opening /ride-request loader for $rideId');
+      debugPrint(
+        '[FCM-tap] opening ride_request loader for $rideId from $source '
+        '(currentPath=$currentPath)',
+      );
       if (currentPath == '/ride-request') {
-        router.pushReplacement('/ride-request', extra: extra);
+        unawaited(router.pushReplacement('/ride-request', extra: routeExtra));
       } else {
-        router.push('/ride-request', extra: extra);
+        unawaited(router.push('/ride-request', extra: routeExtra));
       }
-    }
-
-    Future<bool> recoverAndOpenPendingRideRequest(String reason) async {
-      debugPrint('[FCM-tap] ride_request recovery: $reason');
-      final recovered = await recoverPendingRideRequestFromRef(ref);
-      if (recovered == null) {
-        debugPrint('[FCM-tap] ride_request recovery found no active request');
-        return false;
-      }
-      openRideRequest(recovered);
-      return true;
     }
 
     bool requestDeadlineExpired(DateTime deadline) {
       return !DateTime.now().toUtc().isBefore(deadline.toUtc());
     }
 
-    Ride? rideRequestFromPayload(String rideId) {
-      final raw = payload['ridePayload'] ?? payload['ride_payload'];
-      if (raw is! String || raw.isEmpty) return null;
-      try {
-        final decoded = json.decode(raw);
-        if (decoded is! Map<String, dynamic>) return null;
-        final data = Map<String, dynamic>.from(decoded);
-        data['id'] ??= rideId;
-        data['rideId'] ??= rideId;
-        final ride = Ride.fromJson(data);
-        if (ride.id != rideId || ride.status != RideStatus.requested) {
-          return null;
-        }
-        return ride;
-      } catch (e) {
-        debugPrint('[FCM-tap] ride_request payload parse failed: $e');
-        return null;
+    Future<void> openJobRequest({required bool openBidSheet}) async {
+      final jobId = jobIdFromPayload();
+      if (jobId == null || jobId.isEmpty) {
+        router.go('/home');
+        return;
       }
+      final deadline = requestDeadlineFromPayload();
+      if (deadline != null && requestDeadlineExpired(deadline)) {
+        await clearIncomingRequestAlert(
+          type: NotificationPayload.typeJobRequest,
+          requestId: jobId,
+          offerId: payload[NotificationPayload.keyOfferId]?.toString(),
+        );
+        return;
+      }
+      ref.read(surfacedJobIdsProvider.notifier).update((s) => {...s, jobId});
+      if (ref.read(incomingJobRequestProvider)?.id == jobId) {
+        ref.read(incomingJobRequestProvider.notifier).state = null;
+      }
+      final stub = Job(
+        id: jobId,
+        status: JobStatus.open,
+        categoryId: '',
+        description: '',
+        latitude: 0,
+        longitude: 0,
+        expiresAt: deadline?.toIso8601String(),
+      );
+      router.go('/home');
+      router.push(
+        '/job-request',
+        extra: JobRequestRouteExtra(
+          job: stub,
+          bidStatus: BidStatus.none,
+          openBidSheet: openBidSheet,
+        ),
+      );
     }
 
-    Future<void> validateOpenedRideRequest(
-      String rideId,
-      DateTime? deadline,
-    ) async {
-      try {
-        final data = await ref
-            .read(rideServiceProvider)
-            .getRide(rideId)
-            .timeout(const Duration(seconds: 6));
-        final ride = Ride.fromJson(data);
-        if (ride.status == RideStatus.requested) return;
-        if (ref.read(visibleRideRequestIdProvider) != rideId) return;
-        debugPrint(
-          '[FCM-tap] opened ride_request $rideId became non-actionable '
-          '(status=${ride.status.toJson()})',
-        );
-        openRideRequestLoader(rideId, deadline);
-      } catch (e) {
-        // Keep the instant screen up on transient network/auth failures.
-        // Accept remains backend-authoritative and will fail safely if the
-        // request is no longer actionable.
-        debugPrint('[FCM-tap] ride_request background validation skipped: $e');
+    // Local-notification and native overlay actions all converge here. The
+    // native bridges persist the action first, so this may run during a cold
+    // start after authentication is restored.
+    if (actionId != null && actionId.isNotEmpty) {
+      final deadline = requestDeadlineFromPayload();
+      if (deadline != null && requestDeadlineExpired(deadline)) {
+        final requestId = type == NotificationPayload.typeRideRequest
+            ? payload[NotificationPayload.keyRideId]?.toString()
+            : payload[NotificationPayload.keyJobId]?.toString();
+        if (type != null && requestId != null && requestId.isNotEmpty) {
+          await clearIncomingRequestAlert(
+            type: type,
+            requestId: requestId,
+            offerId: payload[NotificationPayload.keyOfferId]?.toString(),
+          );
+        }
+        debugPrint('[Request-action] ignored expired action=$actionId');
+        return;
+      }
+      if (!await waitForAuthenticatedRequest(payload)) {
+        debugPrint('[Request-action] auth unavailable for action=$actionId');
+        return;
+      }
+
+      switch (actionId) {
+        case NotificationPayload.actionRideAccept:
+          final rideId = payload[NotificationPayload.keyRideId]?.toString();
+          if (rideId == null || rideId.isEmpty) return;
+          final accepted = await ref
+              .read(activeRideProvider.notifier)
+              .acceptRideFromNotification(
+                rideId,
+                offerId: payload[NotificationPayload.keyOfferId]?.toString(),
+              );
+          if (accepted) {
+            await clearIncomingRequestAlert(
+              type: NotificationPayload.typeRideRequest,
+              requestId: rideId,
+              offerId: payload[NotificationPayload.keyOfferId]?.toString(),
+            );
+            router.go('/active-ride');
+          } else {
+            openRideRequestLoader(
+              rideId,
+              deadline: deadline,
+              source: 'failed native accept',
+            );
+          }
+          return;
+        case NotificationPayload.actionRideSkip:
+          final rideId = payload[NotificationPayload.keyRideId]?.toString();
+          if (rideId == null || rideId.isEmpty) return;
+          final skipped = await ref
+              .read(activeRideProvider.notifier)
+              .declineRideFromNotification(
+                rideId,
+                offerId: payload[NotificationPayload.keyOfferId]?.toString(),
+              );
+          if (skipped) {
+            await clearIncomingRequestAlert(
+              type: NotificationPayload.typeRideRequest,
+              requestId: rideId,
+              offerId: payload[NotificationPayload.keyOfferId]?.toString(),
+            );
+            ref.read(incomingRideRequestProvider.notifier).state = null;
+            router.go('/home');
+          } else {
+            openRideRequestLoader(
+              rideId,
+              deadline: deadline,
+              source: 'failed native skip',
+            );
+          }
+          return;
+        case NotificationPayload.actionJobSkip:
+          final jobId = jobIdFromPayload();
+          if (jobId == null || jobId.isEmpty) return;
+          try {
+            await ref.read(jobServiceProvider).declineJobRequest(
+                  jobId,
+                  reason: 'notification_skip',
+                );
+            ref.read(pendingIncomingJobsProvider.notifier).remove(jobId);
+            await clearIncomingRequestAlert(
+              type: NotificationPayload.typeJobRequest,
+              requestId: jobId,
+              offerId: payload[NotificationPayload.keyOfferId]?.toString(),
+            );
+            router.go('/home');
+          } catch (error) {
+            debugPrint('[Request-action] job skip failed: $error');
+            // The action notification is already gone. Hand off to the full
+            // request screen so the artisan can retry instead of silently
+            // losing the still-live offer on a transient network failure.
+            await openJobRequest(openBidSheet: false);
+          }
+          return;
+        case NotificationPayload.actionJobSubmitBid:
+          await openJobRequest(openBidSheet: true);
+          return;
+        case NotificationPayload.actionRideView:
+        case NotificationPayload.actionJobView:
+          // Continue into the normal type-based view routing below.
+          break;
       }
     }
 
     switch (type) {
+      case NotificationPayload.typeCallIncoming:
+        final callId = payload['callId'] as String?;
+        if (callId == null || callId.isEmpty) {
+          debugPrint(
+            '[FCM-tap] call_incoming missing callId; '
+            'keys=${payload.keys.toList()}',
+          );
+          router.go('/home');
+          break;
+        }
+        if (!await waitForAuthenticatedCall(callId, payload)) {
+          await LocalNotificationService.instance.cancelIncomingCall(callId);
+          debugPrint(
+            '[FCM-tap] call no longer open or auth was not restored: $callId',
+          );
+          break;
+        }
+        if (Platform.isAndroid) {
+          await LocalNotificationService.instance.cancelIncomingCall(callId);
+        }
+        // A notification tap only opens the explicit Accept/Decline screen.
+        // CallKit's Answer action is the sole native auto-accept path.
+        router.go('/calls/$callId');
+        break;
+
       case NotificationPayload.typeJobRequest:
         // Backend may send the job id under either `jobId` (camel) or
         // `job_id` (snake) depending on which emitter wrote the push;
         // accept both so a casing drift doesn't silently route to /home.
         final jobId = (payload[NotificationPayload.keyJobId] as String?) ??
             (payload['job_id'] as String?);
-        debugPrint('[FCM-tap] job_request jobId=$jobId payload=$payload');
+        debugPrint(
+          '[FCM-tap] job_request jobId=$jobId '
+          'keys=${payload.keys.toList()}',
+        );
         if (jobId == null) {
           router.go('/home');
           debugPrint('[FCM-tap] no jobId in payload — running recovery');
@@ -733,6 +1981,15 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         if (ref.read(incomingJobRequestProvider)?.id == jobId) {
           ref.read(incomingJobRequestProvider.notifier).state = null;
         }
+        // Details for this job are already on screen (opened in-app via the
+        // modal/socket path before the user backgrounded) — keep it. Without
+        // this guard the tap tears the screen down and re-pushes a stub that
+        // re-fetches the same job, which the artisan experiences as
+        // details → loading → details.
+        if (ref.read(visibleJobRequestIdProvider) == jobId) {
+          debugPrint('[FCM-tap] job_request $jobId already visible — keeping');
+          break;
+        }
         // Land on /home so dismissing /job-request returns to a sane
         // shell, then push the bid details synchronously with a stub
         // Job carrying only the id. JobRequestScreen.initState() calls
@@ -741,19 +1998,8 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         // I/O itself, against its own loading lifecycle, instead of us
         // holding the FCM callback open while a Render cold-start
         // refresh runs to 60 seconds and the user sees nothing happen.
-        router.go('/home');
         debugPrint('[FCM-tap] pushing /job-request stub for $jobId');
-        router.push(
-          '/job-request',
-          extra: Job(
-            id: jobId,
-            status: JobStatus.open,
-            categoryId: '',
-            description: '',
-            latitude: 0,
-            longitude: 0,
-          ),
-        );
+        await openJobRequest(openBidSheet: false);
         break;
 
       case NotificationPayload.typeRideRequest:
@@ -761,7 +2007,10 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         // (snake) depending on which emitter wrote the push.
         final rideId = (payload[NotificationPayload.keyRideId] as String?) ??
             (payload['ride_id'] as String?);
-        debugPrint('[FCM-tap] ride_request rideId=$rideId payload=$payload');
+        debugPrint(
+          '[FCM-tap] ride_request rideId=$rideId '
+          'keys=${payload.keys.toList()}',
+        );
         if (rideId == null) {
           router.go('/home');
           debugPrint('[FCM-tap] no rideId in payload — running recovery');
@@ -775,8 +2024,12 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
               );
           if (requestDeadlineExpired(deadline)) {
             debugPrint('[FCM-tap] ride_request $rideId expired before tap');
+            await clearIncomingRequestAlert(
+              type: NotificationPayload.typeRideRequest,
+              requestId: rideId,
+              offerId: payload[NotificationPayload.keyOfferId]?.toString(),
+            );
             router.go('/home');
-            await recoverAndOpenPendingRideRequest('payload deadline expired');
             break;
           }
         }
@@ -784,34 +2037,11 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           debugPrint('[FCM-tap] ride_request $rideId already visible');
           break;
         }
-        // Suppress the foreground re-broadcast modal for this ride — the
-        // user already acknowledged by tapping the notification, so the
-        // in-app sheet on top of /ride-request would be redundant.
-        ref
-            .read(surfacedRideIdsProvider.notifier)
-            .update((s) => {...s, rideId});
-        if (ref.read(incomingRideRequestProvider)?.id == rideId) {
-          final cachedRide = ref.read(incomingRideRequestProvider);
-          ref.read(incomingRideRequestProvider.notifier).state = null;
-          if (cachedRide != null && cachedRide.status == RideStatus.requested) {
-            openRideRequest(cachedRide);
-            break;
-          }
-        }
-        final rideFromPush = rideRequestFromPayload(rideId);
-        if (rideFromPush != null) {
-          debugPrint('[FCM-tap] opening ride_request $rideId from FCM payload');
-          openRideRequest(rideFromPush);
-          unawaited(validateOpenedRideRequest(rideId, deadline));
-          break;
-        }
-        ref.read(rideRequestNavigationInFlightProvider.notifier).update(
-              (s) => {...s, rideId},
-            );
-        openRideRequestLoader(rideId, deadline);
-        ref.read(rideRequestNavigationInFlightProvider.notifier).update(
-              (s) => {...s}..remove(rideId),
-            );
+        openRideRequestLoader(
+          rideId,
+          deadline: deadline,
+          source: 'ride_request notification',
+        );
         break;
 
       case NotificationPayload.typeBidAccepted:
@@ -835,8 +2065,24 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       // home tab that gives no context.
       case NotificationPayload.typeJobCancelled:
       case NotificationPayload.typeJobCancelledByClient:
-      case NotificationPayload.typeRideCancelled:
         router.go('/trips');
+        break;
+
+      case NotificationPayload.typeRideCancelled:
+        final rideId =
+            (payload[NotificationPayload.keyRideId] ?? payload['ride_id'])
+                ?.toString();
+        final currentRide = ref.read(activeRideProvider).ride;
+        if (currentRide != null && currentRide.id != rideId) {
+          debugPrint(
+            '[FCM-tap] ignoring delayed cancellation for $rideId while '
+            '${currentRide.id} is active',
+          );
+          break;
+        }
+        final cleared =
+            ref.read(activeRideProvider.notifier).clearRideIfMatches(rideId);
+        router.go(cleared ? '/home' : '/trips');
         break;
 
       // Reminders, staleness pings and welfare checks all relate to the
@@ -1016,6 +2262,17 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         router.go('/home');
     }
   };
+
+  final nativeActionBridge = IncomingRequestActionBridge(
+    handleAction: (payload) async {
+      final handler = fcm.onTapMessage;
+      if (handler != null) await handler(payload);
+    },
+  );
+  unawaited(nativeActionBridge.start());
+  ref.onDispose(() {
+    unawaited(nativeActionBridge.dispose());
+  });
 });
 
 /// Renders a friendly "what is the client up to right now" string for the

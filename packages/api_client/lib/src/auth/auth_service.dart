@@ -74,15 +74,29 @@ abstract class AuthService {
   /// POST /v1/auth/logout
   Future<void> logout();
 
-  /// Notify support that the user can't sign out on the device currently
-  /// holding the active session. Backend records the request and alerts
-  /// support so an operator can revoke the active session manually.
+  /// Submit the one-time exact-session recovery capability returned by the
+  /// blocked-device conflict. The backend records a request only while that
+  /// capability is current and bound to this role and device.
   /// Public endpoint — no auth required.
   /// POST /auth/request-session-recovery
   Future<void> requestSessionRecovery({
+    required String challenge,
     required String phone,
     required String deviceId,
+    required String role,
   });
+
+  /// Request an OTP for recovery of one soft-deleted retained role.
+  /// POST /auth/role-account-recovery/request-otp
+  Future<void> requestRoleAccountRecoveryOtp(
+    RequestRoleAccountRecoveryOtpRequest request,
+  );
+
+  /// Verify phone ownership and durably file the exact-role recovery request.
+  /// POST /auth/role-account-recovery/verify-otp
+  Future<RoleAccountRecoveryResult> verifyRoleAccountRecoveryOtp(
+    VerifyRoleAccountRecoveryOtpRequest request,
+  );
 
   /// Get the current user's full profile.
   /// GET /users/me

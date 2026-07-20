@@ -2,430 +2,573 @@ import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-import '../../auth/providers/current_user_provider.dart';
+import '../models/vehicle_form_state.dart';
 import '../providers/provider_type_provider.dart';
-import '../providers/verification_provider.dart';
-import '../utils/vehicle_display.dart';
-import '../widgets/profile_read_only_note.dart';
+import '../providers/provider_vehicle_provider.dart';
+import '../utils/vehicle_eligibility_copy.dart';
+import '../widgets/vehicle_form_body.dart';
 
-/// Vehicle Information screen — driver-only.
-///
-/// Figma: node 306:24056
-///
-/// Layout: hero card with vehicle name + plate, technical specs grid,
-/// compliance & docs cards, regulation notice, upload CTA.
 class VehicleInformationScreen extends ConsumerWidget {
   const VehicleInformationScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final providerType = ref.watch(providerTypeProvider);
-    // Guard: artisans should never reach this screen.
-    if (providerType.isArtisan) {
+    if (ref.watch(providerTypeProvider).isArtisan) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (context.mounted) context.go('/account');
       });
       return const SizedBox.shrink();
     }
 
-    final user = ref.watch(currentUserProvider);
-    final dp = user?.driverProfile;
-    final completion = ref.watch(profileCompletionProvider);
-    final vehicleName = driverVehicleName(dp);
-    final plate = dp?.vehiclePlate ?? '--';
-    final year = dp?.vehicleYear ?? '--';
-    final color = dp?.vehicleColor ?? '--';
-    final hasVehicle = hasDriverVehicleDetails(dp);
+    final vehicles = ref.watch(providerVehiclesProvider);
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
       appBar: AppBar(
         backgroundColor: MyShopColors.surfaceWhite,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-        title: const Text('Vehicle Info',
-            style: TextStyle(
-                fontFamily: 'Raleway',
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: MyShopColors.textPrimary)),
+        title: const Text('My Vehicles'),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(MyShopSpacing.md),
-        children: [
-          // Vehicle hero
-          Container(
-            height: 180,
-            decoration: BoxDecoration(
-              color: MyShopColors.surfaceGrey,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Stack(
-              children: [
-                const Positioned.fill(
-                  child: Center(
-                    child: Icon(Icons.directions_car,
-                        size: 96, color: MyShopColors.disabled),
-                  ),
-                ),
-                Positioned(
-                  top: MyShopSpacing.md,
-                  right: MyShopSpacing.md,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: MyShopColors.success,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text('Active',
-                        style: TextStyle(
-                            fontFamily: 'Raleway',
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white)),
-                  ),
-                ),
-                Positioned(
-                  left: MyShopSpacing.md,
-                  bottom: MyShopSpacing.md,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(hasVehicle ? vehicleName : 'No vehicle added',
-                          style: const TextStyle(
-                              fontFamily: 'Raleway',
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                              color: MyShopColors.textPrimary)),
-                      const SizedBox(height: 4),
-                      Row(children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: MyShopColors.darkSlate,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(plate,
-                              style: const TextStyle(
-                                  fontFamily: 'Raleway',
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white)),
-                        ),
-                      ]),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: MyShopSpacing.lg),
-
-          // Technical specs
-          Row(children: [
-            const Icon(Icons.directions_car_outlined,
-                size: 16, color: MyShopColors.textSecondary),
-            const SizedBox(width: 6),
-            const Text('Technical Specs',
-                style: TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: MyShopColors.textPrimary)),
-          ]),
-          const SizedBox(height: MyShopSpacing.sm),
-          Row(children: [
-            Expanded(
-                child: _SpecCard(
-                    icon: Icons.palette_outlined,
-                    label: 'COLOR',
-                    value: color)),
-            const SizedBox(width: 8),
-            Expanded(
-                child: _SpecCard(
-                    icon: Icons.directions_car_outlined,
-                    label: 'MAKE',
-                    value: dp?.vehicleMake ?? '--')),
-          ]),
-          const SizedBox(height: 8),
-          Row(children: [
-            Expanded(
-                child: _SpecCard(
-                    icon: Icons.calendar_today_outlined,
-                    label: 'YEAR',
-                    value: year)),
-            const SizedBox(width: 8),
-            Expanded(
-                child: _SpecCard(
-                    icon: Icons.badge_outlined,
-                    label: 'MODEL',
-                    value: dp?.vehicleModel ?? '--')),
-          ]),
-          const SizedBox(height: MyShopSpacing.md),
-
-          // Vehicle details are read-only for providers — changes are made
-          // by an admin on request.
-          const ProfileReadOnlyNote(),
-          const SizedBox(height: MyShopSpacing.lg),
-
-          // Compliance & Docs
-          Container(
+      body: vehicles.when(
+        loading: () => const _VehicleListSkeleton(),
+        error: (_, __) => MyShopErrorBody(
+          message: 'Could not load your vehicles',
+          onRetry: () => ref.invalidate(providerVehiclesProvider),
+        ),
+        data: (data) => RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(providerVehiclesProvider);
+            await ref.read(providerVehiclesProvider.future);
+          },
+          color: MyShopColors.primaryGold,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(MyShopSpacing.md),
-            decoration: BoxDecoration(
-              color: MyShopColors.surfaceWhite,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: MyShopColors.divider),
-            ),
-            child: Column(children: [
-              Row(children: [
-                const Icon(Icons.description_outlined,
-                    size: 16, color: MyShopColors.textSecondary),
-                const SizedBox(width: 6),
-                const Text('Compliance & Docs',
-                    style: TextStyle(
-                        fontFamily: 'Raleway',
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: MyShopColors.textPrimary)),
-                const Spacer(),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                      color: MyShopColors.surfaceGrey,
-                      borderRadius: BorderRadius.circular(10)),
-                  child: Text('2 Active',
-                      style: MyShopTypography.body2
-                          .copyWith(fontSize: 10, fontWeight: FontWeight.w700)),
-                ),
-              ]),
-              const SizedBox(height: 12),
-              _ComplianceDoc(
-                icon: Icons.shield_outlined,
-                iconBg: MyShopColors.successLight,
-                iconColor: MyShopColors.success,
-                title: 'Commercial Insurance',
-                expiry: 'Expires: Oct 12, 2025',
-                status: 'Valid',
-                statusColor: MyShopColors.success,
+            children: [
+              if (data.legacyBackfillRequired) const _LegacyVehicleNotice(),
+              if (data.legacyBackfillRequired)
+                const SizedBox(height: MyShopSpacing.md),
+              if (data.vehicles.isEmpty)
+                const _NoVehicles()
+              else
+                for (final vehicle in data.vehicles) ...[
+                  _VehicleCard(
+                    vehicle: vehicle,
+                    isSelectedOnline: data.activeVehicleId == vehicle.id,
+                    onRemovalRequest: vehicle.approvalStatus !=
+                                ProviderVehicleApprovalStatus.retired &&
+                            !vehicle.removalRequested
+                        ? () => _requestRemoval(context, ref, vehicle)
+                        : null,
+                    onDocuments: () => context.push('/account/documents'),
+                  ),
+                  const SizedBox(height: MyShopSpacing.md),
+                ],
+              MyShopPrimaryButton(
+                label: 'Add another vehicle',
+                icon: Icons.add,
+                onPressed: () => _openVehicleForm(context, ref),
               ),
-              const SizedBox(height: 8),
-              _ComplianceDoc(
-                icon: Icons.description_outlined,
-                iconBg: MyShopColors.warningLight,
-                iconColor: MyShopColors.warning,
-                title: 'Vehicle Registration',
-                expiry: 'Expires: Mar 04, 2024',
-                status: 'Expiring Soon',
-                statusColor: MyShopColors.warning,
+              const SizedBox(height: MyShopSpacing.xxl),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openVehicleForm(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => const ProviderVehicleFormScreen(),
+      ),
+    );
+    if (changed == true) ref.invalidate(providerVehiclesProvider);
+  }
+
+  Future<void> _requestRemoval(
+    BuildContext context,
+    WidgetRef ref,
+    ProviderVehicle vehicle,
+  ) async {
+    final reasonController = TextEditingController();
+    String? validationError;
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Request vehicle removal'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'An admin will review and retire this vehicle. It remains unchanged until then.',
+                style: MyShopTypography.body2,
               ),
-            ]),
+              const SizedBox(height: MyShopSpacing.md),
+              MyShopTextField(
+                controller: reasonController,
+                label: 'Reason (optional)',
+                hint: 'Why should this vehicle be removed?',
+                errorText: validationError,
+                onChanged: (_) => setState(() => validationError = null),
+              ),
+            ],
           ),
-          const SizedBox(height: MyShopSpacing.lg),
-
-          // Regulation notice
-          Container(
-            padding: const EdgeInsets.all(MyShopSpacing.md),
-            decoration: BoxDecoration(
-              color: MyShopColors.primaryGoldLight,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                  color: MyShopColors.primaryGold.withValues(alpha: 0.3)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
             ),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Icon(Icons.info_outline,
-                  size: 18, color: MyShopColors.primaryGold),
-              const SizedBox(width: 8),
-              Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    const Text('Regulation Notice',
-                        style: TextStyle(
-                            fontFamily: 'Raleway',
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: MyShopColors.textPrimary)),
-                    const SizedBox(height: 2),
-                    Text(
-                        'In accordance with Ghana GPRTU guidelines, all commercial vehicles must undergo quarterly safety inspections. Your next inspection is due in 14 days.',
-                        style: MyShopTypography.body2
-                            .copyWith(fontSize: 11, height: 1.4)),
-                    const SizedBox(height: 6),
-                    Row(children: [
-                      Text('Schedule Inspection',
-                          style: MyShopTypography.body2.copyWith(
-                              fontSize: 11,
-                              color: MyShopColors.primaryGold,
-                              fontWeight: FontWeight.w700)),
-                      const Icon(Icons.chevron_right,
-                          size: 14, color: MyShopColors.primaryGold),
-                    ]),
-                  ])),
-            ]),
-          ),
-          const SizedBox(height: MyShopSpacing.lg),
+            TextButton(
+              onPressed: () {
+                final value = reasonController.text.trim();
+                if (value.isNotEmpty && value.length < 5) {
+                  setState(() {
+                    validationError =
+                        'Use at least 5 characters or leave this blank.';
+                  });
+                  return;
+                }
+                Navigator.pop(dialogContext, value);
+              },
+              child: const Text('Send request'),
+            ),
+          ],
+        ),
+      ),
+    );
+    reasonController.dispose();
+    if (reason == null || !context.mounted) return;
 
-          ElevatedButton.icon(
-            onPressed: () async {
-              final file =
-                  await MediaPickerHelper.pickDocumentWithCamera(context);
-              if (file == null || !context.mounted) return;
+    try {
+      await ref.read(providerVehicleServiceProvider).requestRemoval(
+            vehicleId: vehicle.id,
+            expectedVersion: vehicle.version,
+            reason: reason,
+          );
+      ref.invalidate(providerVehiclesProvider);
+      if (context.mounted) {
+        MyShopToast.show(context, message: 'Removal request sent for review.');
+      }
+    } on ApiException catch (error) {
+      if (error.errorCode == 'VEHICLE_CHANGED_RETRY') {
+        ref.invalidate(providerVehiclesProvider);
+      }
+      if (context.mounted) {
+        MyShopToast.show(
+          context,
+          message: _vehicleActionMessage(error),
+          type: ToastType.error,
+        );
+      }
+    }
+  }
+}
 
-              // Upload as vehicle registration document
-              final error = await ref
-                  .read(documentUploadProvider.notifier)
-                  .upload(
-                    providerType: providerType.isDriver ? 'driver' : 'artisan',
-                    documentType: DocumentType.vehicleRegistration,
-                    file: file,
-                  );
+class ProviderVehicleFormScreen extends ConsumerWidget {
+  const ProviderVehicleFormScreen({super.key});
 
-              if (!context.mounted) return;
-              if (error != null) {
-                MyShopToast.show(context,
-                    message: error, type: ToastType.error);
-              } else {
-                MyShopToast.show(context,
-                    message: 'Uploaded: ${file.path.split('/').last}');
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final categories = ref.watch(providerVehicleRideCategoriesProvider);
+    const initial = VehicleFormState();
+
+    return Scaffold(
+      backgroundColor: MyShopColors.surfaceWhite,
+      appBar: AppBar(
+        backgroundColor: MyShopColors.surfaceWhite,
+        elevation: 0,
+        title: const Text('Add Vehicle'),
+      ),
+      body: categories.when(
+        loading: () => const _VehicleListSkeleton(),
+        error: (_, __) => MyShopErrorBody(
+          message: 'Could not load ride categories',
+          onRetry: () => ref.invalidate(providerVehicleRideCategoriesProvider),
+        ),
+        data: (choices) {
+          if (choices.isEmpty) {
+            return MyShopErrorBody(
+              message: 'No ride categories are available',
+              subtitle: 'Try again later or contact support.',
+              onRetry: () =>
+                  ref.invalidate(providerVehicleRideCategoriesProvider),
+            );
+          }
+          return VehicleFormBody(
+            initialValue: initial,
+            categories: choices
+                .map(
+                  (choice) => VehicleCategoryChoice(
+                    id: choice.id,
+                    name: choice.name,
+                    description: choice.description,
+                  ),
+                )
+                .toList(growable: false),
+            submitLabel: 'Submit for approval',
+            onSubmit: (draft) async {
+              final input = ProviderVehicleInput(
+                make: draft.make.trim(),
+                model: draft.model.trim(),
+                year: int.parse(draft.year.trim()),
+                plate: draft.normalizedPlate,
+                color: draft.color.trim(),
+                rideCategoryIds: draft.rideCategoryIds.toList(growable: false),
+              );
+              try {
+                await ref
+                    .read(providerVehicleServiceProvider)
+                    .createVehicle(input);
+                ref.invalidate(providerVehiclesProvider);
+                if (context.mounted) Navigator.pop(context, true);
+                return null;
+              } on ApiException catch (error) {
+                if (error.errorCode == 'VEHICLE_CHANGED_RETRY') {
+                  ref.invalidate(providerVehiclesProvider);
+                }
+                return _vehicleActionMessage(error);
               }
             },
-            icon: const Icon(Icons.add, size: 16),
-            label: const Text('Upload New Document'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: MyShopColors.darkSlate,
-              foregroundColor: MyShopColors.textOnPrimary,
-              minimumSize: const Size(double.infinity, 52),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              textStyle: const TextStyle(
-                  fontFamily: 'Raleway',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Center(
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(
-                completion.isComplete ? Icons.check_circle : Icons.info_outline,
-                size: 14,
-                color: completion.isComplete
-                    ? MyShopColors.success
-                    : MyShopColors.primaryGold,
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _VehicleCard extends StatelessWidget {
+  const _VehicleCard({
+    required this.vehicle,
+    required this.isSelectedOnline,
+    required this.onRemovalRequest,
+    required this.onDocuments,
+  });
+
+  final ProviderVehicle vehicle;
+  final bool isSelectedOnline;
+  final VoidCallback? onRemovalRequest;
+  final VoidCallback onDocuments;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      decoration: BoxDecoration(
+        color: MyShopColors.surfaceWhite,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: MyShopColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: MyShopColors.surfaceGrey,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.directions_car,
+                  color: MyShopColors.darkSlate,
+                ),
               ),
-              const SizedBox(width: 4),
-              Text('Profile ${completion.percentage}% complete',
-                  style: MyShopTypography.body2.copyWith(fontSize: 11)),
-            ]),
+              const SizedBox(width: MyShopSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(vehicle.displayName, style: MyShopTypography.h3),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${vehicle.plate} · ${vehicle.color} · ${vehicle.year}',
+                      style: MyShopTypography.body2,
+                    ),
+                  ],
+                ),
+              ),
+              _VehicleStatusBadge(status: vehicle.approvalStatus),
+            ],
           ),
-          const SizedBox(height: MyShopSpacing.xxl),
+          if (isSelectedOnline) ...[
+            const SizedBox(height: MyShopSpacing.sm),
+            Text(
+              'Selected for the current online session',
+              style: MyShopTypography.caption.copyWith(
+                color: MyShopColors.success,
+              ),
+            ),
+          ],
+          if (vehicle.rejectionReason case final rejection?) ...[
+            const SizedBox(height: MyShopSpacing.md),
+            _NoticeBox(
+              message: rejection,
+              color: MyShopColors.error,
+              background: MyShopColors.errorLight,
+            ),
+          ],
+          if (vehicle.removalRequested) ...[
+            const SizedBox(height: MyShopSpacing.md),
+            _NoticeBox(
+              message:
+                  'Removal requested ${DateFormat('dd MMM yyyy, HH:mm').format(vehicle.retirementRequestedAt!.toLocal())}. The vehicle remains unchanged until an admin retires it.${vehicle.retirementRequestReason == null ? '' : '\n${vehicle.retirementRequestReason}'}',
+              color: MyShopColors.warning,
+              background: MyShopColors.warningLight,
+            ),
+          ],
+          if (vehicle.pendingRevision case final revision?) ...[
+            const SizedBox(height: MyShopSpacing.md),
+            _NoticeBox(
+              message:
+                  'An admin change (${revision.make} ${revision.model}, ${revision.plate}) is awaiting ${revision.status == ProviderVehicleApprovalStatus.pendingCoordinator ? 'Coordinator review' : 'Regional Manager review'}. Your approved vehicle details remain active until final approval.',
+              color: MyShopColors.info,
+              background: MyShopColors.infoLight,
+            ),
+          ],
+          if (vehicle.approvalStatus ==
+              ProviderVehicleApprovalStatus.approved) ...[
+            const SizedBox(height: MyShopSpacing.md),
+            const _NoticeBox(
+              message:
+                  'Approved vehicle details are locked. Contact support to request an admin-assisted change.',
+              color: MyShopColors.info,
+              background: MyShopColors.infoLight,
+            ),
+          ],
+          const SizedBox(height: MyShopSpacing.md),
+          Text('Ride categories', style: MyShopTypography.body1),
+          const SizedBox(height: MyShopSpacing.sm),
+          for (final category in vehicle.rideCategories)
+            Padding(
+              padding: const EdgeInsets.only(bottom: MyShopSpacing.sm),
+              child: Row(
+                children: [
+                  Expanded(child: Text(category.name)),
+                  Text(
+                    category.status.label,
+                    style: MyShopTypography.caption.copyWith(
+                      color: category.status.color,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (!vehicle.eligible && vehicle.reasonCodes.isNotEmpty) ...[
+            const SizedBox(height: MyShopSpacing.sm),
+            for (final reason
+                in vehicleEligibilityMessages(vehicle.reasonCodes))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  '• $reason',
+                  style: MyShopTypography.body2.copyWith(
+                    color: MyShopColors.textSecondary,
+                  ),
+                ),
+              ),
+          ],
+          const Divider(height: MyShopSpacing.lg),
+          Wrap(
+            spacing: MyShopSpacing.sm,
+            runSpacing: MyShopSpacing.sm,
+            children: [
+              OutlinedButton.icon(
+                onPressed: onDocuments,
+                icon: const Icon(Icons.description_outlined, size: 18),
+                label: const Text('Documents'),
+              ),
+              if (onRemovalRequest != null)
+                TextButton(
+                  onPressed: onRemovalRequest,
+                  child: const Text('Request removal'),
+                ),
+            ],
+          ),
         ],
       ),
     );
   }
 }
 
-class _SpecCard extends StatelessWidget {
-  const _SpecCard(
-      {required this.icon, required this.label, required this.value});
-  final IconData icon;
-  final String label;
-  final String value;
+class _VehicleStatusBadge extends StatelessWidget {
+  const _VehicleStatusBadge({required this.status});
+
+  final ProviderVehicleApprovalStatus status;
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: MyShopColors.surfaceWhite,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: MyShopColors.divider),
+        color: status.background,
+        borderRadius: BorderRadius.circular(999),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(icon, size: 14, color: MyShopColors.textSecondary),
-          const SizedBox(width: 4),
-          Text(label, style: MyShopTypography.overline.copyWith(fontSize: 9)),
-        ]),
-        const SizedBox(height: 6),
-        Text(value,
-            style: const TextStyle(
-                fontFamily: 'Raleway',
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: MyShopColors.textPrimary)),
-      ]),
+      child: Text(
+        status.label,
+        style: MyShopTypography.caption.copyWith(
+          color: status.color,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 }
 
-class _ComplianceDoc extends StatelessWidget {
-  const _ComplianceDoc({
-    required this.icon,
-    required this.iconBg,
-    required this.iconColor,
-    required this.title,
-    required this.expiry,
-    required this.status,
-    required this.statusColor,
+class _NoticeBox extends StatelessWidget {
+  const _NoticeBox({
+    required this.message,
+    required this.color,
+    required this.background,
   });
-  final IconData icon;
-  final Color iconBg;
-  final Color iconColor;
-  final String title;
-  final String expiry;
-  final String status;
-  final Color statusColor;
+
+  final String message;
+  final Color color;
+  final Color background;
+
   @override
   Widget build(BuildContext context) {
-    return Row(children: [
-      Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-              color: iconBg, borderRadius: BorderRadius.circular(8)),
-          child: Icon(icon, size: 16, color: iconColor)),
-      const SizedBox(width: 10),
-      Expanded(
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title,
-            style: const TextStyle(
-                fontFamily: 'Raleway',
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: MyShopColors.textPrimary)),
-        Row(children: [
-          const Icon(Icons.access_time,
-              size: 11, color: MyShopColors.textSecondary),
-          const SizedBox(width: 4),
-          Text(expiry, style: MyShopTypography.caption.copyWith(fontSize: 10)),
-        ]),
-      ])),
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-            color: statusColor.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(6)),
-        child: Text(status,
-            style: TextStyle(
-                fontFamily: 'Raleway',
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: statusColor)),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(MyShopSpacing.sm),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(8),
       ),
-      const SizedBox(width: 4),
-      Text('View',
-          style: MyShopTypography.body2.copyWith(
-              fontSize: 11,
-              color: MyShopColors.primaryGold,
-              fontWeight: FontWeight.w700)),
-    ]);
+      child: Text(
+        message,
+        style: MyShopTypography.body2.copyWith(color: color),
+      ),
+    );
   }
 }
+
+class _LegacyVehicleNotice extends StatelessWidget {
+  const _LegacyVehicleNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _NoticeBox(
+      message:
+          'Your previous vehicle or vehicle documents need an admin-assisted migration. Contact support before trying to go online; the app will not guess document ownership.',
+      color: MyShopColors.warning,
+      background: MyShopColors.warningLight,
+    );
+  }
+}
+
+class _NoVehicles extends StatelessWidget {
+  const _NoVehicles();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: MyShopSpacing.xxl),
+      child: Column(
+        children: [
+          const Icon(
+            Icons.directions_car_outlined,
+            size: 64,
+            color: MyShopColors.disabled,
+          ),
+          const SizedBox(height: MyShopSpacing.md),
+          Text('No vehicles added', style: MyShopTypography.h3),
+          const SizedBox(height: MyShopSpacing.sm),
+          Text(
+            'Add a vehicle and its ride categories for Coordinator and Regional Manager review.',
+            textAlign: TextAlign.center,
+            style: MyShopTypography.body2,
+          ),
+          const SizedBox(height: MyShopSpacing.xl),
+        ],
+      ),
+    );
+  }
+}
+
+class _VehicleListSkeleton extends StatelessWidget {
+  const _VehicleListSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      children: List.generate(
+        3,
+        (_) => Container(
+          height: 150,
+          margin: const EdgeInsets.only(bottom: MyShopSpacing.md),
+          decoration: BoxDecoration(
+            color: MyShopColors.surfaceGrey,
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+extension on ProviderVehicleApprovalStatus {
+  String get label => switch (this) {
+        ProviderVehicleApprovalStatus.pendingCoordinator =>
+          'Awaiting Coordinator',
+        ProviderVehicleApprovalStatus.coordinatorApproved => 'Awaiting RM',
+        ProviderVehicleApprovalStatus.approved => 'Details approved',
+        ProviderVehicleApprovalStatus.rejected => 'Rejected',
+        ProviderVehicleApprovalStatus.retired => 'Retired',
+      };
+
+  Color get color => switch (this) {
+        ProviderVehicleApprovalStatus.approved => MyShopColors.success,
+        ProviderVehicleApprovalStatus.rejected ||
+        ProviderVehicleApprovalStatus.retired =>
+          MyShopColors.error,
+        _ => MyShopColors.warning,
+      };
+
+  Color get background => switch (this) {
+        ProviderVehicleApprovalStatus.approved => MyShopColors.successLight,
+        ProviderVehicleApprovalStatus.rejected ||
+        ProviderVehicleApprovalStatus.retired =>
+          MyShopColors.errorLight,
+        _ => MyShopColors.warningLight,
+      };
+}
+
+extension on ProviderVehicleCategoryStatus {
+  String get label => switch (this) {
+        ProviderVehicleCategoryStatus.pending => 'Pending review',
+        ProviderVehicleCategoryStatus.approved => 'Approved',
+        ProviderVehicleCategoryStatus.rejected => 'Rejected',
+      };
+
+  Color get color => switch (this) {
+        ProviderVehicleCategoryStatus.pending => MyShopColors.warning,
+        ProviderVehicleCategoryStatus.approved => MyShopColors.success,
+        ProviderVehicleCategoryStatus.rejected => MyShopColors.error,
+      };
+}
+
+String _vehicleActionMessage(ApiException error) => switch (error.errorCode) {
+      'VEHICLE_PLATE_IN_USE' =>
+        'That registration plate is already assigned to another active vehicle.',
+      'VEHICLE_CHANGED_RETRY' =>
+        'This vehicle changed on another screen. Reload it before trying again.',
+      'VEHICLE_ALREADY_APPROVED' =>
+        'An approved vehicle can only be changed by an authorized admin.',
+      'INVALID_RIDE_CATEGORY' =>
+        'A selected ride category is no longer available. Reload and try again.',
+      _ when error.isNetworkError =>
+        'No internet connection. Check your network and try again.',
+      _ => 'We could not save this vehicle. Please try again.',
+    };

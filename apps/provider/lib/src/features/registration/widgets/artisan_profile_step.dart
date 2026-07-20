@@ -18,7 +18,6 @@ class _ArtisanProfileStepState extends ConsumerState<ArtisanProfileStep>
   late final TextEditingController _nameCtrl;
   late final TextEditingController _emailCtrl;
   late final TextEditingController _ghanaCardCtrl;
-  late final TextEditingController _referralCtrl;
 
   bool _nameTouched = false;
   bool _emailTouched = false;
@@ -34,7 +33,6 @@ class _ArtisanProfileStepState extends ConsumerState<ArtisanProfileStep>
     _nameCtrl = TextEditingController(text: draft.fullName);
     _emailCtrl = TextEditingController(text: draft.email);
     _ghanaCardCtrl = TextEditingController(text: draft.ghanaCardNumber);
-    _referralCtrl = TextEditingController(text: draft.referralCode);
   }
 
   @override
@@ -42,7 +40,6 @@ class _ArtisanProfileStepState extends ConsumerState<ArtisanProfileStep>
     _nameCtrl.dispose();
     _emailCtrl.dispose();
     _ghanaCardCtrl.dispose();
-    _referralCtrl.dispose();
     super.dispose();
   }
 
@@ -107,20 +104,7 @@ class _ArtisanProfileStepState extends ConsumerState<ArtisanProfileStep>
           ),
           const SizedBox(height: MyShopSpacing.sm),
           Text(
-            'We use this to verify your identity with Smile Identity before you can accept jobs.',
-            style: MyShopTypography.caption,
-          ),
-          const SizedBox(height: MyShopSpacing.md),
-          MyShopTextField(
-            label: 'Referral code (optional)',
-            hint: 'e.g. MYSHOP-ABC123',
-            controller: _referralCtrl,
-            textCapitalization: TextCapitalization.characters,
-            onChanged: (v) => _apply((d) => d.copyWith(referralCode: v)),
-          ),
-          const SizedBox(height: MyShopSpacing.sm),
-          Text(
-            'Were you invited? Enter their code so they get credited when you start earning.',
+            'MyShop manually reviews your identity documents before a Regional Manager approves you to go online.',
             style: MyShopTypography.caption,
           ),
         ],

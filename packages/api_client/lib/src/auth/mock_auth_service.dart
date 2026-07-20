@@ -98,10 +98,40 @@ class MockAuthService implements AuthService {
 
   @override
   Future<void> requestSessionRecovery({
+    required String challenge,
     required String phone,
     required String deviceId,
+    required String role,
   }) async {
     await _delay();
+  }
+
+  @override
+  Future<void> requestRoleAccountRecoveryOtp(
+    RequestRoleAccountRecoveryOtpRequest request,
+  ) async {
+    await _delay();
+    _lastPhone = request.phone;
+    _lastType = request.role;
+  }
+
+  @override
+  Future<RoleAccountRecoveryResult> verifyRoleAccountRecoveryOtp(
+    VerifyRoleAccountRecoveryOtpRequest request,
+  ) async {
+    await _delay();
+    if (request.otp != _validCode) {
+      throw AuthException('Invalid OTP code.', code: 'INVALID_OTP');
+    }
+    return RoleAccountRecoveryResult(
+      requestId: request.requestKey,
+      role: request.role,
+      status: request.role == 'client'
+          ? 'pending_operations'
+          : 'pending_admin_intake',
+      recoveryDeadline: DateTime.now().add(const Duration(days: 90)),
+      requestedAt: DateTime.now(),
+    );
   }
 
   @override

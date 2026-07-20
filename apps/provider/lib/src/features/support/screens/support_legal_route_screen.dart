@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../core/constants/app_version.dart';
+import '../../../core/constants/support_contacts.dart';
 import '../providers/support_providers.dart';
 
 class SupportLegalRouteScreen extends ConsumerWidget {
@@ -21,12 +23,10 @@ class SupportLegalRouteScreen extends ConsumerWidget {
     final config = SupportLegalConfig(
       audience: kProviderSupportAudience,
       appName: 'MyShop Provider',
-      appVersion: 'Version 1.0.0',
+      appVersion: appVersionLabel,
       copyright: '© 2026 Gilmore Tech. All rights reserved.',
       logoAssetPath: 'assets/images/myshop_logo.png',
-      supportEmail: 'support@myshop.com.gh',
-      supportPhone: '+233 30 000 0000',
-      whatsappNumber: '233300000000',
+      supportEmail: providerSupportEmail,
       onOpenTickets: () => context.push('/account/support/tickets'),
       onNewTicket: (preselect) => context.push(
         '/account/support/tickets/new',
@@ -43,9 +43,7 @@ class SupportLegalRouteScreen extends ConsumerWidget {
       onOpenLegal: (slug) => context.push('/legal/$slug'),
       onOpenContactSheet: () => MyShopContactSupportSheet.show(
         context,
-        whatsappNumber: '233300000000',
-        supportPhone: '+233 30 000 0000',
-        supportEmail: 'support@myshop.com.gh',
+        supportEmail: providerSupportEmail,
         onNewTicket: () => context.push(
           '/account/support/tickets/new',
           extra: const <String, Object?>{

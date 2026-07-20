@@ -225,7 +225,8 @@ class ActivityHistoryNotifier extends StateNotifier<ActivityHistoryState> {
           final ride = Ride.fromJson(r);
           items.add(_rideToTransaction(ride));
         } catch (e) {
-          debugPrint('[Activity] ride parse error: $e for $r');
+          debugPrint(
+              '[Activity] rejected malformed ride entry: ${e.runtimeType}');
         }
       }
 
@@ -234,7 +235,8 @@ class ActivityHistoryNotifier extends StateNotifier<ActivityHistoryState> {
         try {
           items.add(_jobJsonToTransaction(j));
         } catch (e) {
-          debugPrint('[Activity] job parse error: $e for $j');
+          debugPrint(
+              '[Activity] rejected malformed job entry: ${e.runtimeType}');
         }
       }
 

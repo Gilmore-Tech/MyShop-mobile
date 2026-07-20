@@ -11,6 +11,7 @@ import '../di/providers.dart';
 import 'nav_badge_provider.dart';
 import 'recent_locations_provider.dart';
 import 'socket_provider.dart';
+import 'provider_location_notice_provider.dart';
 
 /// Bridge that watches auth state and tears down session-scoped state on
 /// logout (or any transition out of [AuthAuthenticated]).
@@ -72,6 +73,7 @@ final logoutCleanupBridgeProvider = Provider<void>((ref) {
     ref.invalidate(liveDriverPositionProvider);
     ref.invalidate(rideSearchProvider);
     ref.invalidate(ridePaymentNotifierProvider);
+    ref.invalidate(providerLocationNoticeProvider);
 
     // Pending payment records persisted to SharedPreferences. Must be
     // wiped on logout so a second user signing in on this install
@@ -79,14 +81,21 @@ final logoutCleanupBridgeProvider = Provider<void>((ref) {
     // charges. SharedPreferences is shared per-process so storing
     // these without a per-user namespace means logout is the only
     // safe place to drop them.
-    ref.read(pendingPaymentStoreProvider).clearAll().catchError((Object e) {
-      debugPrint('[Logout] pendingPaymentStore.clearAll failed: $e');
+    ref.read(pendingPaymentStoreProvider).clearAll().catchError((Object _) {
+      debugPrint('[Logout] pending payment cleanup failed');
+    });
+
+    // An idempotency key belongs to the authenticated client identity. Keeping
+    // it across logout could let the next user recover the previous user's
+    // booking attempt, so clear it at the same boundary as payment records.
+    ref.read(rideBookingAttemptStoreProvider).clearAll().catchError((Object _) {
+      debugPrint('[Logout] ride booking attempt cleanup failed');
     });
 
     // Recent location inputs are also persisted to SharedPreferences
     // and per-user — same reasoning as pendingPaymentStore above.
-    ref.read(recentLocationsProvider.notifier).clear().catchError((Object e) {
-      debugPrint('[Logout] recentLocations.clear failed: $e');
+    ref.read(recentLocationsProvider.notifier).clear().catchError((Object _) {
+      debugPrint('[Logout] recent locations cleanup failed');
     });
   });
 });

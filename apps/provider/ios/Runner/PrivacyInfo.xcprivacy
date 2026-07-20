@@ -3,11 +3,10 @@
   Privacy Manifest for the MyShop Provider app (iOS).
   Required by Apple for iOS 17+ apps; checked at App Review.
 
-  Same shape as the client app's manifest, plus two provider-only
-  data types:
+  Same shape as the client app's manifest, plus one provider-only
+  data type:
     - Government ID (Ghana Card uploaded during driver/artisan
       verification — soft-deletion + 90-day retention applies)
-    - Sensitive Info (police clearance documents)
 
   References: https://developer.apple.com/documentation/bundleresources/privacy_manifest_files
 -->
@@ -169,19 +168,6 @@
         <dict>
             <key>NSPrivacyCollectedDataType</key>
             <string>NSPrivacyCollectedDataTypeGovernmentID</string>
-            <key>NSPrivacyCollectedDataTypeLinked</key>
-            <true/>
-            <key>NSPrivacyCollectedDataTypeTracking</key>
-            <false/>
-            <key>NSPrivacyCollectedDataTypePurposes</key>
-            <array>
-                <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
-            </array>
-        </dict>
-        <!-- Provider-only: Sensitive Info — police clearance docs. -->
-        <dict>
-            <key>NSPrivacyCollectedDataType</key>
-            <string>NSPrivacyCollectedDataTypeSensitiveInfo</string>
             <key>NSPrivacyCollectedDataTypeLinked</key>
             <true/>
             <key>NSPrivacyCollectedDataTypeTracking</key>

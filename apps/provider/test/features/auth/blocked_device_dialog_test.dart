@@ -3,15 +3,42 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:shared_models/shared_models.dart';
 import 'package:myshop_provider/src/features/auth/data/auth_repository.dart';
 import 'package:myshop_provider/src/features/auth/providers/auth_controller.dart';
 import 'package:myshop_provider/src/features/auth/screens/phone_input_screen.dart';
+import 'package:myshop_provider/src/features/profile/providers/provider_type_provider.dart';
+import 'package:myshop_provider/src/features/registration/providers/registration_controller.dart';
+
+const _recoveryChallenge = 'opaque-recovery-challenge-1234567890';
+
+const _requiredDriverLegalDocuments = RequiredLegalDocuments(
+  role: 'driver',
+  documents: [
+    LegalDocument(
+      documentId: '11111111-1111-4111-8111-111111111111',
+      slug: LegalSlugs.terms,
+      title: 'Terms of Service',
+      version: '1.4.1',
+      audience: 'driver',
+    ),
+    LegalDocument(
+      documentId: '22222222-2222-4222-8222-222222222222',
+      slug: LegalSlugs.privacy,
+      title: 'Privacy Notice',
+      version: '1.4.1',
+      audience: 'driver',
+    ),
+  ],
+);
 
 class _MockTokenStorage extends Mock implements TokenStorage {}
 
 class _TestAuthController extends AuthController {
-  _TestAuthController(AuthState initial)
-      : super(
+  _TestAuthController(
+    AuthState initial, {
+    this.retainOnRegistration = false,
+  }) : super(
           AuthRepository(
             service: MockAuthService(),
             tokenStorage: _MockTokenStorage(),
@@ -22,8 +49,55 @@ class _TestAuthController extends AuthController {
     state = initial;
   }
 
+  final bool retainOnRegistration;
+
   @override
   Future<void> bootstrap() async {}
+
+  @override
+  Future<void> registerAndSendOtp({
+    required String phone,
+    required String fullName,
+    required String type,
+    required List<LegalAcceptanceSelection> legalAcceptances,
+    ProviderType? role,
+    String? displayName,
+    String? businessName,
+    String? email,
+    List<String>? categories,
+    List<String>? rideCategories,
+    String? regionId,
+    String? shopCapacity,
+    String? referralCode,
+    String? vehicleMake,
+    String? vehicleModel,
+    int? vehicleYear,
+    String? vehiclePlate,
+    String? vehicleColor,
+  }) async {
+    if (!retainOnRegistration) return;
+    state = const AuthUnauthenticated(
+      error: 'This role was previously deleted and cannot be registered again. '
+          'Contact support if you want to request recovery.',
+      requiresRoleRecoverySupport: true,
+    );
+  }
+
+  @override
+  Future<void> requestSessionRecovery() async {
+    final current = state;
+    if (current is! AuthBlockedByOtherDevice) return;
+    state = AuthBlockedByOtherDevice(
+      phone: current.phone,
+      recoveryChallenge: current.recoveryChallenge,
+      role: current.role,
+      otpCode: current.otpCode,
+      selectionToken: current.selectionToken,
+      recoveryRequestStatus: RecoveryRequestStatus.sent,
+      isTakingOver: current.isTakingOver,
+      takeoverError: current.takeoverError,
+    );
+  }
 
   AuthState get currentState => state;
 }
@@ -52,7 +126,7 @@ void main() {
 
       expect(find.text('Already signed in elsewhere'), findsOneWidget);
       expect(find.text('Sign me in here'), findsOneWidget);
-      expect(find.text('Contact support'), findsOneWidget);
+      expect(find.text('Contact support'), findsNothing);
 
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
@@ -61,4 +135,82 @@ void main() {
       expect(find.text('Already signed in elsewhere'), findsNothing);
     },
   );
+
+  testWidgets('does not promise that support was notified', (tester) async {
+    final controller = _TestAuthController(
+      const AuthBlockedByOtherDevice(
+        phone: '+233501234567',
+        recoveryChallenge: _recoveryChallenge,
+        role: ProviderType.driver,
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [authControllerProvider.overrideWith((_) => controller)],
+        child: const MaterialApp(
+          home: ProviderPhoneInputScreen(mode: PhoneInputMode.signIn),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.text('Contact support'));
+    await tester.pump();
+
+    expect(
+      find.text(
+        'Your request was received. If this role still has the matching active '
+        'session, support can review it.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Support has been notified'), findsNothing);
+  });
+
+  testWidgets('retained provider role shows a recovery support action',
+      (tester) async {
+    final controller = _TestAuthController(
+      const AuthUnauthenticated(),
+      retainOnRegistration: true,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authControllerProvider.overrideWith((_) => controller),
+          registrationLegalDocumentsProvider.overrideWith(
+            (_, __) async => _requiredDriverLegalDocuments,
+          ),
+          termsAcceptedProvider.overrideWith((_) => true),
+          privacyAcceptedProvider.overrideWith((_) => true),
+        ],
+        child: const MaterialApp(
+          home: ProviderPhoneInputScreen(
+            mode: PhoneInputMode.signUp,
+            signUpRole: ProviderType.driver,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).first, '501234567');
+    await tester.pump();
+    await tester.tap(find.text('Send code'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('cannot be registered again'), findsOneWidget);
+    expect(find.text('Request account recovery'), findsOneWidget);
+    expect(find.text('Contact support'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('Request account recovery'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Request account recovery'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Recover deleted driver role'), findsOneWidget);
+    expect(find.byKey(const Key('role-recovery-send-code')), findsOneWidget);
+  });
 }

@@ -17,6 +17,7 @@ import '../../../core/services/nav_guidance.dart';
 import '../../../core/widgets/maneuver_banner.dart';
 import '../../../core/widgets/nav_arrow_icon.dart';
 import '../../../core/widgets/route_warning_banner.dart';
+import '../../calls/helpers/start_in_app_call.dart';
 import '../data/external_nav_service.dart';
 import '../providers/driver_location_provider.dart';
 import '../providers/ride_request_provider.dart';
@@ -303,10 +304,10 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
               padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
               child: Text(
                 isFreeNoShow
-                    ? "You've waited the full 3 minutes — treated as a rider "
-                        'no-show, no penalty.'
-                    : "The rider's 3-minute wait hasn't elapsed — cancelling "
-                        'now affects your rating.',
+                    ? "You've waited the full 3 minutes and can report a rider no-show. "
+                        'Automatic cancellation penalties are currently paused.'
+                    : 'Automatic cancellation fees, ratings, and counter penalties '
+                        'are temporarily paused.',
                 style: const TextStyle(
                   fontFamily: 'Raleway',
                   fontSize: 12,
@@ -386,7 +387,16 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
 
     // Surface the outcome before popping. Suspension takes priority — the
     // driver must understand why they can no longer receive requests.
-    if (outcome.driverSuspended) {
+    if (outcome.cancellationConsequencesApplied == false) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            outcome.notice ??
+                'Ride cancelled. Automatic fees and penalties are temporarily paused.',
+          ),
+        ),
+      );
+    } else if (outcome.driverSuspended) {
       await showDialog<void>(
         context: context,
         barrierDismissible: false,
@@ -418,21 +428,11 @@ class _ActiveRideScreenState extends ConsumerState<ActiveRideScreen> {
       );
     }
     if (!mounted) return;
-    // The active-ride screen is a raw MaterialPageRoute pushed on top of the
-    // GoRouter shell (ride_request_screen._accept → pushReplacement). So
-    // context.go('/home') updates the route table but leaves THIS screen sitting
-    // on top — the driver stays stuck on the map. Pop it to reveal the home
-    // shell, where clearRide()/_resumeOnline has already flipped the driver back
-    // online so they receive requests again.
-    //
-    // Safe from the historical double-pop crash: on a driver-initiated cancel
-    // the ride is already cleared to null (not `cancelled`), so the
-    // cancelled-snapshot listener above does NOT fire — this is the only
-    // navigation in flight. The canPop fallback covers the recovery flow where
-    // the screen was opened via the /active-ride GoRoute instead of a push.
-    final navigator = Navigator.of(context);
-    if (navigator.canPop()) {
-      navigator.pop();
+    // The active ride now stays inside GoRouter's route table. Pop when it was
+    // pushed above home; use go() for recovery/deep-link flows with no page
+    // underneath.
+    if (context.canPop()) {
+      context.pop();
     } else {
       context.go('/home');
     }
@@ -1234,7 +1234,7 @@ class _SosButton extends StatelessWidget {
 
 // ─── Passenger panel ────────────────────────────────────────────────────────
 
-class _PassengerPanel extends StatelessWidget {
+class _PassengerPanel extends ConsumerWidget {
   const _PassengerPanel({
     required this.ride,
     required this.scrollController,
@@ -1265,7 +1265,7 @@ class _PassengerPanel extends StatelessWidget {
   final int? waitRemainingSecs;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Container(
       decoration: const BoxDecoration(
         color: MyShopColors.surfaceWhite,
@@ -1367,15 +1367,21 @@ class _PassengerPanel extends StatelessWidget {
                   rideId: ride.id,
                   riderName: ride.clientName ?? 'Passenger',
                 ),
-                // Numbers aren't masked during the pilot — the driver can
-                // call the passenger directly alongside the chat button.
-                if (isDialablePhoneNumber(ride.clientPhone)) ...[
-                  const SizedBox(width: 10),
-                  MyShopCallButton(
-                    phoneNumber: ride.clientPhone,
-                    semanticLabel: 'Call passenger',
-                  ),
-                ],
+                const SizedBox(width: 10),
+                MyShopCallButton(
+                  phoneNumber: ride.clientPhone,
+                  semanticLabel: 'Call passenger',
+                  onInAppCall: () {
+                    unawaited(
+                      startProviderInAppCall(
+                        context,
+                        ref,
+                        bookingType: 'ride',
+                        bookingId: ride.id,
+                      ),
+                    );
+                  },
+                ),
               ],
             ),
             const SizedBox(height: MyShopSpacing.lg),
@@ -1634,8 +1640,8 @@ class _WaitCountdownBanner extends StatelessWidget {
     final timeLabel = elapsed ? '+${_fmt(remainingSecs)}' : _fmt(remainingSecs);
     final title = elapsed ? 'WAIT TIME COMPLETE' : 'FREE WAITING TIME';
     final subtitle = elapsed
-        ? 'Rider no-show — you can cancel with no penalty.'
-        : 'Cancelling before this ends affects your rating.';
+        ? 'Rider no-show window reached. Automatic penalties are paused.'
+        : 'Wait time is tracked, but automatic penalties are temporarily paused.';
 
     return Container(
       padding: const EdgeInsets.symmetric(

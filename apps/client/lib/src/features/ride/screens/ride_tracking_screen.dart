@@ -1,15 +1,14 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 
-import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../app/router.dart';
 import '../../../core/di/providers.dart';
+import '../data/ride_cancellation_coordinator.dart';
 import '../providers/ride_payment_method_provider.dart';
 import '../providers/ride_provider.dart';
 import '../providers/ride_search_provider.dart';
@@ -182,32 +181,46 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
 
     _cancellingNow = true;
     final messenger = ScaffoldMessenger.of(context);
-    String message = 'Ride cancelled.';
-    try {
-      developer.log('[CANCEL] PATCH /rides/$rideId/cancel',
-          name: 'RideTrackingScreen');
-      final result = await ref.read(rideServiceProvider).cancelRide(
-            rideId,
-            reason: 'rider_cancelled',
-          );
-      final feePesewas =
-          (result['cancellationFeePesewas'] as num?)?.toInt() ?? 0;
-      if (feePesewas > 0) {
-        final fee = (feePesewas / 100).toStringAsFixed(2);
-        message = 'Ride cancelled. Cancellation fee: GHS $fee';
+    developer.log('[CANCEL] PATCH /rides/$rideId/cancel',
+        name: 'RideTrackingScreen');
+    final cancellation = await cancelRideWithAuthority(
+      rideService: ref.read(rideServiceProvider),
+      rideId: rideId,
+      reason: 'rider_cancelled',
+    );
+    if (!cancellation.confirmedCancelled) {
+      developer.log(
+        '[CANCEL] not confirmed; local ride preserved '
+        '(reconciled=${cancellation.reconciled})',
+        name: 'RideTrackingScreen',
+        level: 900,
+      );
+      _cancellingNow = false;
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text(cancellation.message)));
       }
-      developer.log('[CANCEL] success — fee=${feePesewas}p',
-          name: 'RideTrackingScreen');
-    } on ApiException catch (e) {
-      developer.log('[CANCEL] ApiException: ${e.message}',
-          name: 'RideTrackingScreen', level: 900);
-      message = e.message;
-    } catch (e) {
-      developer.log('[CANCEL] unexpected error: $e',
-          name: 'RideTrackingScreen', level: 900);
-      message = 'Could not cancel the ride. Please try again.';
+      return;
     }
 
+    await ref.read(rideBookingAttemptStoreProvider).clear();
+    final result = cancellation.response;
+    final feePesewas = (result['cancellationFeePesewas'] as num?)?.toInt() ?? 0;
+    var message = cancellation.message;
+    if (result['cancellationConsequencesApplied'] == false) {
+      message = result['notice'] as String? ??
+          'Ride cancelled. Automatic fees and penalties are temporarily paused.';
+    } else if (feePesewas > 0) {
+      final fee = (feePesewas / 100).toStringAsFixed(2);
+      message = 'Ride cancelled. Cancellation fee: GHS $fee';
+    }
+    developer.log(
+      '[CANCEL] confirmed — fee=${feePesewas}p '
+      'reconciled=${cancellation.reconciled}',
+      name: 'RideTrackingScreen',
+    );
+
+    // Reset only after authoritative cancellation so a network/server failure
+    // cannot hide a ride that remains active on the backend.
     // Reset every ride-related provider so the next booking starts
     // from a clean slate. The original cancel handler missed
     // rideTrackingPhaseProvider + liveDriverPositionProvider, which
@@ -361,13 +374,16 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
 
 // ── SOS button ────────────────────────────────────────────────────────────────
 
-class _SosButton extends ConsumerWidget {
+class _SosButton extends StatelessWidget {
   const _SosButton();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => _showSosDialog(context, ref),
+      // Every SOS entry uses the owner-approved three-second hold. Keeping a
+      // separate tap+dialog implementation here made the safety gesture
+      // inconsistent and could trigger an alert accidentally.
+      onTap: () => context.push(AppRoutes.safetyEmergency),
       child: Container(
         width: 52,
         height: 52,
@@ -395,97 +411,5 @@ class _SosButton extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  void _showSosDialog(BuildContext context, WidgetRef ref) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text(
-          'Emergency',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: MyShopColors.textPrimary,
-          ),
-        ),
-        content: const Text(
-          'Are you in danger? We will call Ghana Police Service (191) and alert MyShop support with your live location.',
-          style: TextStyle(color: MyShopColors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: MyShopColors.textSecondary),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () => _triggerSos(ctx, ref),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: MyShopColors.error,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: const Text('Call 191'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Two-stage emergency trigger: POST the alert to the backend (so the
-  /// admin dashboard + safety team see it AND can listen to live audio
-  /// upload later), then dial 191 via `tel:` URL. We post first because
-  /// the OS may freeze the app while the phone dialer takes over — losing
-  /// the network alert at that moment defeats the whole feature.
-  Future<void> _triggerSos(BuildContext dialogCtx, WidgetRef ref) async {
-    final messenger = ScaffoldMessenger.of(dialogCtx);
-    Navigator.of(dialogCtx).pop();
-
-    final rideId = ref.read(activeRideIdProvider);
-    final position = ref.read(liveDriverPositionProvider);
-    if (rideId == null || position == null) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text(
-              'We need an active ride and a recent GPS fix before raising SOS. '
-              'Try again in a few seconds.'),
-        ),
-      );
-      return;
-    }
-
-    try {
-      await ref.read(safetyServiceProvider).triggerEmergency(
-            bookingType: 'ride',
-            bookingId: rideId,
-            latitude: position.latitude,
-            longitude: position.longitude,
-          );
-    } on ApiException catch (e) {
-      // Don't swallow — but don't BLOCK the police dial on a network
-      // failure either. Surface the message so the rider knows the
-      // platform alert didn't land, then proceed to dial 191 anyway.
-      messenger.showSnackBar(
-        SnackBar(content: Text('Platform alert failed: ${e.message}')),
-      );
-    } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text("Couldn't send platform alert.")),
-      );
-    }
-
-    final dialUri = Uri.parse('tel:191');
-    if (await canLaunchUrl(dialUri)) {
-      await launchUrl(dialUri, mode: LaunchMode.externalApplication);
-    } else {
-      messenger.showSnackBar(
-        const SnackBar(content: Text("Couldn't open the phone dialer.")),
-      );
-    }
   }
 }

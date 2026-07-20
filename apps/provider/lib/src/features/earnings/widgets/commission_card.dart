@@ -83,7 +83,7 @@ class CommissionCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _Row(
-            label: 'App Commission (20%)',
+            label: 'App Commission',
             value: '- GHS ${_fmtGhs(commissionPesewas)}',
           ),
           const SizedBox(height: 12),

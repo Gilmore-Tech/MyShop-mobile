@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_models/shared_models.dart';
 
 /// Wraps [AuthService] with token persistence via [TokenStorage].
 /// Client-specific: uses loginClient instead of loginDriver/loginArtisan.
@@ -22,7 +23,7 @@ class ClientAuthRepository {
   Future<void> register({
     required String phone,
     required String fullName,
-    required bool privacyPolicyAccepted,
+    required List<LegalAcceptanceSelection> legalAcceptances,
     String? email,
     String? referralCode,
   }) async {
@@ -32,7 +33,7 @@ class ClientAuthRepository {
       phone: phone,
       fullName: fullName,
       type: 'client',
-      privacyPolicyAccepted: privacyPolicyAccepted,
+      legalAcceptances: legalAcceptances,
       deviceId: deviceId,
       deviceInfo: deviceInfo,
       email: email,
@@ -66,13 +67,43 @@ class ClientAuthRepository {
     await _tokenStorage.writePhone(phone);
   }
 
-  /// Notify support that another device holds the active session and the
-  /// user can't sign out on it. Public endpoint — no auth required.
-  Future<void> requestSessionRecovery(String phone) async {
+  /// Submit the one-time exact-session capability issued with the blocked
+  /// login conflict. Public endpoint, but not an unproved phone-only action.
+  Future<void> requestSessionRecovery(String phone, String challenge) async {
     final deviceId = await _deviceIdProvider.ensureDeviceId();
     await _service.requestSessionRecovery(
+      challenge: challenge,
       phone: phone,
       deviceId: deviceId,
+      role: 'client',
+    );
+  }
+
+  Future<void> requestRoleAccountRecoveryOtp(String phone) async {
+    final deviceId = await _deviceIdProvider.ensureDeviceId();
+    await _service.requestRoleAccountRecoveryOtp(
+      RequestRoleAccountRecoveryOtpRequest(
+        phone: phone,
+        role: 'client',
+        deviceId: deviceId,
+      ),
+    );
+  }
+
+  Future<RoleAccountRecoveryResult> verifyRoleAccountRecoveryOtp({
+    required String phone,
+    required String code,
+    required String requestKey,
+  }) async {
+    final deviceId = await _deviceIdProvider.ensureDeviceId();
+    return _service.verifyRoleAccountRecoveryOtp(
+      VerifyRoleAccountRecoveryOtpRequest(
+        phone: phone,
+        role: 'client',
+        deviceId: deviceId,
+        otp: code,
+        requestKey: requestKey,
+      ),
     );
   }
 
@@ -149,8 +180,8 @@ class ClientAuthRepository {
     } on TimeoutException {
       debugPrint('[ClientAuthRepo] backend logout timed out — '
           'session may linger until refresh-token TTL');
-    } catch (e) {
-      debugPrint('[ClientAuthRepo] backend logout failed: $e — '
+    } catch (_) {
+      debugPrint('[ClientAuthRepo] backend logout failed — '
           'session may linger until refresh-token TTL');
     }
     debugPrint('[ClientAuthRepo] clearing local tokens');

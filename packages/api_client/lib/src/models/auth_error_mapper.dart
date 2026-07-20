@@ -1,4 +1,5 @@
 import 'api_exception.dart';
+import 'user_safe_api_error.dart';
 
 /// Backend error codes that the mobile app reacts to programmatically
 /// (not just for user-facing messages). Centralised here so the
@@ -43,12 +44,17 @@ class AuthErrorCodes {
   /// practically only a stale-cache edge case. The app re-fetches
   /// `GET /v1/regions`, asks the user to re-select, and retries.
   static const invalidRegion = 'INVALID_REGION';
+
+  /// Returned by registration when the requested exact role was soft-deleted
+  /// and is still retained. Registration must not create a replacement role;
+  /// the app offers the separate support/recovery path instead.
+  static const roleAccountRetained = 'ROLE_ACCOUNT_RETAINED';
 }
 
 /// Maps [ApiException] instances to user-friendly, actionable error messages
 /// for the auth flow (register, login, OTP verification).
 ///
-/// Falls back to the backend message if the error code is unrecognised.
+/// Unknown backend prose is never returned to the UI.
 class AuthErrorMapper {
   AuthErrorMapper._();
 
@@ -71,11 +77,10 @@ class AuthErrorMapper {
     }
     final result = <String, String>{};
     for (final entry in error.details!.entries) {
-      if (entry.value is String) {
-        result[entry.key] = entry.value as String;
-      } else if (entry.value is List && (entry.value as List).isNotEmpty) {
-        // NestJS validation returns arrays: { "phone": ["must be a string"] }
-        result[entry.key] = (entry.value as List).first.toString();
+      final hasValidationValue = entry.value is String ||
+          (entry.value is List && (entry.value as List).isNotEmpty);
+      if (hasValidationValue) {
+        result[entry.key] = _safeFieldValidationMessage(entry.key);
       }
     }
     return result;
@@ -103,6 +108,33 @@ class AuthErrorMapper {
             message.contains('session'));
   }
 
+  /// Returns the short-lived exact-session recovery capability attached to a
+  /// canonical blocked-device conflict. Never infer or persist this value.
+  static String? sessionRecoveryChallenge(Object error) {
+    if (error is! ApiException) return null;
+    final value = error.details?['recoveryChallenge'];
+    if (value is! String) return null;
+    final trimmed = value.trim();
+    return trimmed.length >= 32 && trimmed.length <= 128 ? trimmed : null;
+  }
+
+  /// Whether the backend explicitly guarantees that the OTP remains valid
+  /// despite the request returning an error (for example, when it could not
+  /// confirm that the SMS provider accepted the delivery).
+  ///
+  /// Do not infer this from a status code or message: cooldown and quota
+  /// responses do not necessarily prove that a usable code exists.
+  static bool hasActiveOtp(Object error) {
+    return error is ApiException && error.details?['otpActive'] == true;
+  }
+
+  /// True only for the backend's stable retained-role registration fence.
+  /// Never infer recovery eligibility from prose or a generic conflict.
+  static bool requiresRoleRecoverySupport(Object error) {
+    return error is ApiException &&
+        error.errorCode == AuthErrorCodes.roleAccountRetained;
+  }
+
   static String _networkMessage(NetworkException e) {
     if (e.message.contains('timed out')) {
       return 'Connection timed out. Check your internet and try again.';
@@ -117,6 +149,22 @@ class AuthErrorMapper {
       case 'PHONE_ALREADY_REGISTERED':
       case 'USER_ALREADY_EXISTS':
         return 'This phone number is already registered. Try signing in instead.';
+
+      case AuthErrorCodes.roleAccountRetained:
+        return 'This role was previously deleted and cannot be registered again. Contact support if you want to request recovery.';
+
+      case 'ROLE_ACCOUNT_RECOVERY_DISABLED':
+        return 'Account recovery is temporarily unavailable. Please contact support.';
+
+      case 'ROLE_ACCOUNT_RECOVERY_WINDOW_CLOSED':
+        return 'The 90-day recovery period for this role has ended. Please contact support.';
+
+      case 'ROLE_ACCOUNT_RECOVERY_REQUEST_MISMATCH':
+      case 'INVALID_OTP_FLOW':
+        return 'This recovery verification no longer matches this phone, role, or device. Request a new code.';
+
+      case 'ROLE_ACCOUNT_RECOVERY_RETRY':
+        return 'The recovery state changed while you were submitting. Request a new code and try again.';
 
       case 'INVALID_PHONE':
       case 'INVALID_PHONE_FORMAT':
@@ -167,14 +215,58 @@ class AuthErrorMapper {
 
       case 'OTP_EXPIRED':
       case 'EXPIRED_OTP':
-        return 'This code has expired. Tap "Resend code" to get a new one.';
+        return 'This code has expired. Go back and request a new code.';
 
       case 'OTP_MAX_ATTEMPTS':
       case 'TOO_MANY_OTP_ATTEMPTS':
-        return 'Too many incorrect attempts. Wait a moment, then resend a new code.';
+        return 'Too many incorrect attempts. Wait a moment, then go back and request a new code.';
 
       case 'OTP_SEND_FAILED':
         return 'We couldn\'t send the code. Check your phone number and try again.';
+
+      case 'OTP_DELIVERY_FAILED':
+        if (hasActiveOtp(e)) {
+          return 'We couldn\'t confirm SMS delivery. Your code is still active. Wait for it or use resend.';
+        }
+        return 'We couldn\'t deliver the code. Please try again.';
+
+      case 'OTP_DELIVERY_RATE_LIMITED':
+        if (hasActiveOtp(e)) {
+          return 'SMS delivery is busy right now. Your code is still active. Wait a moment or use resend.';
+        }
+        return 'Too many code delivery attempts. Please wait before trying again.';
+
+      case 'OTP_COOLDOWN':
+        return 'Please wait before requesting another code.';
+
+      case 'OTP_DAILY_LIMIT':
+        return 'You\'ve requested too many new codes today. Please try again later or contact support.';
+
+      case 'OTP_RESEND_COOLDOWN':
+        return 'Please wait before resending this code.';
+
+      case 'OTP_RESEND_LIMIT':
+        return 'You\'ve reached the resend limit for this code. Enter the current code or go back and request a new one later.';
+
+      case 'OTP_NOT_FOUND':
+        return 'This code has expired or is no longer active. Go back and request a new code.';
+
+      case 'INVALID_OTP_STATE':
+        return 'This code can no longer be used. Go back and request a new code.';
+
+      case 'CHANNEL_DISABLED':
+      case 'CHANNEL_UNAVAILABLE':
+        return 'That delivery option is unavailable. Please try another channel.';
+
+      case 'OTP_ISSUANCE_CONTROL_UNAVAILABLE':
+      case 'OTP_STATE_CONTROL_UNAVAILABLE':
+        return 'Code requests are temporarily unavailable. Please try again shortly.';
+
+      case 'OTP_RESEND_CONTROL_UNAVAILABLE':
+        return 'Code resend is temporarily unavailable. Please try again shortly.';
+
+      case 'OTP_VERIFICATION_CONTROL_UNAVAILABLE':
+        return 'Code verification is temporarily unavailable. Please try again shortly.';
 
       case 'OTP_RATE_LIMITED':
       case 'RATE_LIMITED':
@@ -196,28 +288,38 @@ class AuthErrorMapper {
         return 'Our servers are having trouble. Please try again in a moment.';
 
       default:
-        // Fall back to backend message if it's non-empty and not generic.
-        if (e.message.isNotEmpty &&
-            e.message != 'Something went wrong. Please try again.') {
-          return e.message;
-        }
-
-        // Last resort based on status code.
-        if (e.isServerError) {
-          return 'Our servers are having trouble. Please try again in a moment.';
-        }
-        if (e.statusCode == 429) {
-          return 'Too many requests. Please wait a moment before trying again.';
-        }
-        return 'Something went wrong. Please try again.';
+        return userSafeApiErrorMessage(
+          e,
+          fallback: 'Something went wrong. Please try again.',
+          conflictMessage:
+              'That account state changed. Return to sign in and try again.',
+          validationMessage: 'Check the information you entered and try again.',
+        );
     }
   }
 
   /// Builds a user-readable summary from validation error details.
   static String _validationSummary(ApiException e) {
     final fields = fieldErrors(e);
-    if (fields.isEmpty) return e.message;
+    if (fields.isEmpty) {
+      return 'Check the information you entered and try again.';
+    }
     // Show the first field error as the main message.
     return fields.values.first;
+  }
+
+  static String _safeFieldValidationMessage(String field) {
+    return switch (field.toLowerCase()) {
+      'phone' || 'phonenumber' => 'Enter a valid 9-digit Ghana phone number.',
+      'otp' || 'code' => 'Enter the verification code sent to you.',
+      'firstname' ||
+      'lastname' ||
+      'name' =>
+        'Enter a valid name using letters and common punctuation.',
+      'email' => 'Enter a valid email address.',
+      'regionid' || 'region' => 'Choose an available region.',
+      'role' => 'Choose the account type you want to use.',
+      _ => 'Check this field and try again.',
+    };
   }
 }

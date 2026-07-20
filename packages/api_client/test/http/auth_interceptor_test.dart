@@ -66,4 +66,24 @@ void main() {
     expect(adapter.paths, ['/auth/otp/channels', '/auth/otp/resend']);
     verifyNever(() => tokenStorage.readAccessToken());
   });
+
+  test('does not treat the unregistered deleted-role recovery path as public',
+      () async {
+    when(() => tokenStorage.readAccessToken()).thenAnswer((_) async => null);
+
+    await expectLater(
+      dio.post(
+        '/auth/recover',
+        data: {'phone': '+233241234567', 'role': 'client'},
+      ),
+      throwsA(
+        isA<DioException>()
+            .having((error) => error.type, 'type', DioExceptionType.cancel)
+            .having((error) => error.error, 'error', 'NOT_AUTHENTICATED'),
+      ),
+    );
+
+    expect(adapter.paths, isEmpty);
+    verify(() => tokenStorage.readAccessToken()).called(1);
+  });
 }

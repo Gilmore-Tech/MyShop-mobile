@@ -2,17 +2,20 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:shared_utils/shared_utils.dart';
 
 import '../../../core/services/local_notification_service.dart';
+import '../../../core/services/incoming_request_overlay_presenter.dart';
+import '../../../core/di/providers.dart';
+import '../../artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 
-/// Auto-decline window for foreground incoming-job modals. Mirrors the
-/// 40 s window the user asked for so the ringtone never plays past
-/// what the matcher considers a missed bid.
-const Duration _kIncomingJobTimeout = Duration(seconds: 40);
+/// Safety fallback for legacy socket payloads that predate `expiresAt`.
+/// Current backend payloads always carry an absolute deadline.
+const Duration _kIncomingJobFallbackTimeout = Duration(seconds: 45);
 
 /// Slide-up modal that pops when a new `job:new` event arrives — shows a
 /// condensed preview so the artisan can decide at a glance whether to open
@@ -21,7 +24,7 @@ const Duration _kIncomingJobTimeout = Duration(seconds: 40);
 /// Minimal surface on purpose: the full [JobRequestScreen] is one tap away
 /// via the "View Details" CTA. Dismiss simply closes the sheet — the job
 /// stays in the backend and can still be opened from the jobs list later.
-class IncomingJobModal extends StatefulWidget {
+class IncomingJobModal extends ConsumerStatefulWidget {
   const IncomingJobModal({
     super.key,
     required this.job,
@@ -64,28 +67,60 @@ class IncomingJobModal extends StatefulWidget {
   }
 
   @override
-  State<IncomingJobModal> createState() => _IncomingJobModalState();
+  ConsumerState<IncomingJobModal> createState() => _IncomingJobModalState();
 }
 
-class _IncomingJobModalState extends State<IncomingJobModal> {
+class _IncomingJobModalState extends ConsumerState<IncomingJobModal> {
   Timer? _autoDismissTimer;
+  Timer? _countdownTicker;
+  late Duration _remaining;
+  bool _skipping = false;
 
   @override
   void initState() {
     super.initState();
+    final deadline = DateTime.tryParse(widget.job.expiresAt ?? '')?.toUtc();
+    _remaining = deadline == null
+        ? _kIncomingJobFallbackTimeout
+        : deadline.difference(DateTime.now().toUtc());
+    if (_remaining <= Duration.zero) {
+      _remaining = Duration.zero;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_expireRequest());
+      });
+      return;
+    }
     // Start the looping ringtone the moment the modal mounts. The
     // [LocalNotificationService] is a singleton so the ride flow shares
     // the same timer — both call sites are no-ops when one is already
     // ringing, which is fine because we never have a job and ride
     // request open at the same time.
     LocalNotificationService.instance.startIncomingRingtone();
-    // Auto-dismiss after the timeout so a buried phone doesn't keep
-    // ringing forever. Aligns the foreground UX with the 40 s
-    // backend-side bid window.
-    _autoDismissTimer = Timer(_kIncomingJobTimeout, () {
-      if (!mounted) return;
-      Navigator.of(context).maybePop();
+    // Auto-dismiss at the server-authored deadline so a buried phone never
+    // keeps ringing after the backend bid window has closed.
+    _autoDismissTimer = Timer(_remaining, () {
+      unawaited(_expireRequest());
     });
+    _countdownTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      final next = deadline == null
+          ? _remaining - const Duration(seconds: 1)
+          : deadline.difference(DateTime.now().toUtc());
+      setState(() {
+        _remaining = next > Duration.zero ? next : Duration.zero;
+      });
+    });
+  }
+
+  Future<void> _expireRequest() async {
+    await clearIncomingRequestAlert(
+      type: NotificationPayload.typeJobRequest,
+      requestId: widget.job.id,
+      reason: 'expired',
+    );
+    if (mounted) {
+      await Navigator.of(context).maybePop();
+    }
   }
 
   @override
@@ -96,6 +131,7 @@ class _IncomingJobModalState extends State<IncomingJobModal> {
     // this, the ringtone would keep firing from the singleton even
     // after the sheet was gone.
     _autoDismissTimer?.cancel();
+    _countdownTicker?.cancel();
     LocalNotificationService.instance.stopIncomingRingtone();
     super.dispose();
   }
@@ -106,6 +142,13 @@ class _IncomingJobModalState extends State<IncomingJobModal> {
           : 'Service Request';
   String get _clientName => widget.job.clientName ?? 'Client';
   String get _address => widget.job.addressText ?? 'Location pending';
+
+  String get _countdownLabel {
+    final totalSeconds = _remaining.inSeconds.clamp(0, 99 * 60 + 59);
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
 
   /// Address with optional distance + ETA suffix, e.g.
   /// "12 Maple St  •  3.2 km · ~7 min away".
@@ -126,6 +169,30 @@ class _IncomingJobModalState extends State<IncomingJobModal> {
   void _viewDetails(BuildContext context) {
     Navigator.of(context).pop();
     context.push('/job-request', extra: widget.job);
+  }
+
+  Future<void> _skip() async {
+    if (_skipping) return;
+    setState(() => _skipping = true);
+    try {
+      await ref.read(jobServiceProvider).declineJobRequest(
+            widget.job.id,
+            reason: 'provider_skipped',
+          );
+      ref.read(pendingIncomingJobsProvider.notifier).remove(widget.job.id);
+      await clearIncomingRequestAlert(
+        type: NotificationPayload.typeJobRequest,
+        requestId: widget.job.id,
+      );
+      if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _skipping = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Could not skip this request. Try again.')),
+      );
+    }
   }
 
   @override
@@ -179,7 +246,7 @@ class _IncomingJobModalState extends State<IncomingJobModal> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'NEW JOB REQUEST',
+                  'NEW JOB REQUEST  ·  $_countdownLabel',
                   style: MyShopTypography.overline.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.w900,
@@ -295,9 +362,9 @@ class _IncomingJobModalState extends State<IncomingJobModal> {
           // Dismiss
           Center(
             child: TextButton(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: _skipping ? null : _skip,
               child: Text(
-                'Dismiss',
+                _skipping ? 'Skipping…' : 'Skip / Ignore',
                 style: MyShopTypography.body1.copyWith(
                   color: MyShopColors.textSecondary,
                   fontWeight: FontWeight.w700,

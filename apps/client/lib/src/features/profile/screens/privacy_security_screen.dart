@@ -3,6 +3,7 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/privacy_security_provider.dart';
+import '../account_deletion_policy.dart';
 import '../widgets/submit_ghana_card_sheet.dart';
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -569,8 +570,9 @@ class _DataPrivacyInfoBox extends StatelessWidget {
 }
 
 // ── Danger Zone section ───────────────────────────────────────────────────────
-// EDD § User Module: DELETE /v1/users/me → soft delete, 90-day retention,
-// 24h recovery window. Blocked if outstanding clawback balance (edge case #51).
+// DELETE /v1/users/me soft-deletes only the authenticated role for 90-day
+// retention. Recovery and post-retention disposition remain disabled pending
+// explicit policy approval.
 
 class _DangerZoneSection extends ConsumerWidget {
   final double w;
@@ -728,9 +730,7 @@ class _DangerZoneSection extends ConsumerWidget {
               ),
               SizedBox(height: h * 0.010),
               Text(
-                'Your account and all data will be queued for permanent '
-                'deletion. You have 24 hours to cancel this action by '
-                'logging back in. After 90 days, all data is purged.',
+                clientAccountDeletionNotice,
                 style: TextStyle(
                   fontFamily: 'Raleway',
                   fontSize: w * 0.033,

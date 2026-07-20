@@ -2,9 +2,9 @@
 ///
 /// Catches `myshop://refer?code=XXXX` links (cold-start + while running),
 /// parses out the referral code, and parks it in [pendingReferralCodeProvider]
-/// so the sign-up screen can prefill its "Referral code" field. The code is a
-/// one-shot: the sign-up screen clears it once consumed (or on submit) so it
-/// can't leak into a later, unrelated registration.
+/// so the sign-up screen can explain that the code was not applied while the
+/// programme is paused. The code is one-shot and is cleared on submit so it
+/// cannot leak into a later, unrelated registration.
 ///
 /// Accepted shapes (host OR first path segment may be `refer`/`referral`):
 ///   myshop://refer?code=AMA10
@@ -19,8 +19,8 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Holds a referral code captured from a deep link but not yet consumed by
-/// the sign-up screen. Null when there's nothing pending.
+/// Holds a referral code captured from a deep link for the paused-programme
+/// notice. It is never submitted to registration in this release.
 ///
 /// Top-level (not autoDispose) so the value survives across the splash →
 /// onboarding → phone → sign-up navigation that happens between the OS

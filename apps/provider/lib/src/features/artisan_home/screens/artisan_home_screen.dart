@@ -5,6 +5,8 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../../core/providers/availability_controller.dart';
 import '../../../core/providers/provider_status_provider.dart';
+import '../../../core/widgets/background_location_disclosure.dart';
+import '../../../core/widgets/availability_restore_notice.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../../auth/providers/current_user_provider.dart';
 import '../../earnings/providers/earnings_providers.dart';
@@ -52,10 +54,14 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
       return;
     }
 
-    // Going offline: flip local state + fire backend offline POST so the
-    // matcher stops dispatching.
+    // Going offline: wait for the authoritative server transition.
     if (status.isOnline) {
-      availability.goOffline();
+      final error = await availability.goOffline();
+      if (error != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error)),
+        );
+      }
       return;
     }
 
@@ -80,16 +86,32 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
       if (!mounted) return;
       final completion = ref.read(profileCompletionProvider);
 
+      if (completion.verificationUnavailable) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(completion.missing.first)),
+        );
+        return;
+      }
+
       if (!completion.isComplete) {
         showIncompleteProfileSheet(context, completion: completion);
         return;
       }
 
-      final error = await availability.goOnline();
+      final disclosureAccepted =
+          await confirmBackgroundLocationDisclosure(context);
+      if (!disclosureAccepted || !mounted) return;
+
+      final error = await availability.goOnline(
+        backgroundLocationDisclosureAccepted: true,
+      );
       if (error != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error)),
-        );
+        final recoveryShown = await showLocationRecoveryIfNeeded(context);
+        if (!recoveryShown && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(error)),
+          );
+        }
       }
     } finally {
       if (mounted) setState(() => _isGoingOnline = false);
@@ -167,6 +189,8 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
               onNotificationsTap: () => context.push('/notifications'),
               onAvatarTap: () {},
             ),
+
+            const AvailabilityRestoreNoticeBanner(),
 
             // 2. Online status banner
             ArtisanOnlineBanner(

@@ -5,7 +5,7 @@ import 'package:shared_ui/shared_ui.dart';
 import '../providers/auth_controller.dart';
 
 // ── Screen ────────────────────────────────────────────────────────────────────
-// PRD § 4.1 — 6-digit OTP sent via SMS (Africa's Talking).
+// PRD § 4.1 — 6-digit OTP delivered via the configured SMS provider.
 // Auto-submits on last digit entry. Resend available after 30-second cooldown.
 // EDD: POST /v1/auth/verify-otp → JWT issued.
 
@@ -51,6 +51,10 @@ class OtpVerificationScreen extends ConsumerWidget {
       onErrorCleared: () {
         ref.read(clientAuthControllerProvider.notifier).clearError();
       },
+      // An expired/consumed code cannot be resent: the backend resend endpoint
+      // only re-delivers an active code. Give the user a real escape back to
+      // phone entry so they can request a fresh one.
+      onBack: () => ref.read(clientAuthControllerProvider.notifier).reset(),
       resendCooldown: 30,
     );
   }

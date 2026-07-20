@@ -20,10 +20,15 @@ import '../../features/driver_home/providers/ride_request_provider.dart';
 import '../../features/driver_home/widgets/rate_passenger_sheet.dart';
 import '../../features/trips/providers/driver_trips_provider.dart';
 import 'availability_controller.dart';
+import 'availability_reconciliation_controller.dart';
 import 'provider_status_provider.dart';
+import 'provider_location_session_provider.dart';
 import '../../features/profile/providers/provider_type_provider.dart';
 import 'nav_badge_provider.dart';
 import '../di/providers.dart';
+import '../services/incoming_request_overlay_presenter.dart';
+import '../services/local_notification_service.dart';
+import '../services/ride_offer_receipt_service.dart';
 
 /// Provides the [SocketService] singleton for the app.
 ///
@@ -57,35 +62,38 @@ final incomingRideRequestProvider = StateProvider<Ride?>((ref) => null);
 /// returning driver isn't permanently blind to old ride IDs.
 final surfacedRideIdsProvider = StateProvider<Set<String>>((_) => <String>{});
 
-DateTime? _requestDeadlineFrom(Map<String, dynamic> data) {
-  for (final key in const [
-    'expiresAt',
-    'expires_at',
-    'acceptanceExpiresAt',
-    'acceptance_expires_at',
-    'requestExpiresAt',
-    'request_expires_at',
-  ]) {
-    final raw = data[key];
-    if (raw is String && raw.isNotEmpty) {
-      final parsed = DateTime.tryParse(raw);
-      if (parsed != null) return parsed;
-    }
-  }
+/// Authoritative offer identity for each surfaced ride. Accept/decline must
+/// send this id; a ride id alone cannot prove which sequential offer is live.
+final rideOfferIdByRideProvider =
+    StateProvider<Map<String, String>>((_) => <String, String>{});
 
-  final seconds = data['expiresInSeconds'] ??
-      data['expires_in_seconds'] ??
-      data['acceptanceWindowSeconds'] ??
-      data['acceptance_window_seconds'];
-  if (seconds is num && seconds > 0) {
-    return DateTime.now().toUtc().add(Duration(seconds: seconds.toInt()));
+@visibleForTesting
+String? rideCancellationIdFromEvent(
+  Object? data, {
+  bool requireCancelledStatus = false,
+}) {
+  if (data is! Map) return null;
+  final rideId = (data['rideId'] ?? data['id'])?.toString().trim();
+  if (rideId == null || rideId.isEmpty) return null;
+  if (requireCancelledStatus &&
+      data['status']?.toString().trim().toLowerCase() != 'cancelled') {
+    return null;
   }
-
-  return null;
+  return rideId;
 }
 
 /// Incoming job request for artisans — populated by Socket.IO events.
 final incomingJobRequestProvider = StateProvider<Job?>((ref) => null);
+
+/// Job id currently visible on the full `/job-request` details route.
+///
+/// Mirrors [visibleRideRequestIdProvider] on the driver side: FCM taps,
+/// socket events and the incoming-job modal can all fire within moments of
+/// each other after a background wake. This marker lets the notification-tap
+/// handler keep the already-open details screen instead of tearing it down
+/// and re-pushing a stub that re-fetches the same job (which reads as
+/// details → loading → details to the artisan).
+final visibleJobRequestIdProvider = StateProvider<String?>((_) => null);
 
 /// True while the Socket.IO connection is open.
 /// Useful for showing a live indicator on the home screen.
@@ -152,6 +160,10 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
 
   final socket = ref.read(socketServiceProvider);
   final isArtisan = ref.read(providerTypeProvider).isArtisan;
+  final container = ref.container;
+  var disposed = false;
+  DateTime? lastEmittedCapturedAt;
+  ref.onDispose(() => disposed = true);
   debugPrint('[LOC] bridge: active (role=${isArtisan ? 'artisan' : 'driver'})'
       ' — listening for fixes');
 
@@ -161,19 +173,34 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   // events. Artisans use the REST path exclusively via background sync, and the
   // matcher reads their position from the PostGIS table the REST writer updates.
   void emitDriverLocation(Position pos) {
-    if (isArtisan) return;
+    if (disposed || isArtisan) return;
+    if (!isOnlineLocationFixAcceptable(pos)) return;
+    final capturedAt = pos.timestamp.toUtc();
+    final previousCapturedAt = lastEmittedCapturedAt;
+    if (previousCapturedAt != null && !capturedAt.isAfter(previousCapturedAt)) {
+      return;
+    }
+    final locationSession = container.read(providerLocationSessionProvider);
+    if (locationSession == null) return;
+    final sampleSequence =
+        container.read(providerLocationSessionProvider.notifier).nextSequence();
     socket.emit('driver:location:update', {
       'latitude': pos.latitude,
       'longitude': pos.longitude,
+      'accuracyMeters': pos.accuracy,
+      'recordedAt': pos.timestamp.toIso8601String(),
+      'sampleSequence': sampleSequence,
       'status': 'online',
     });
+    lastEmittedCapturedAt = capturedAt;
   }
 
   // Socket heartbeat: re-emit the last-known fix every 4s while connected so a
   // stationary driver still advances foreground rider/admin maps. Durable REST
   // heartbeat and trip trail persistence live in backgroundLocationSyncProvider.
   final heartbeat = Timer.periodic(const Duration(seconds: 4), (_) {
-    final pos = ref.read(lastKnownPositionProvider);
+    if (disposed) return;
+    final pos = container.read(lastKnownPositionProvider);
     if (pos == null) return;
     emitDriverLocation(pos);
   });
@@ -182,9 +209,14 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   // Kick the heartbeat once immediately if we already have a cached fix —
   // otherwise the backend would wait up to 4s before seeing the driver,
   // and the rider's matcher could miss them on a freshly-online driver.
-  final cached = ref.read(lastKnownPositionProvider);
+  final cached = container.read(lastKnownPositionProvider);
   if (cached != null) {
-    emitDriverLocation(cached);
+    // This provider may itself be created during a widget/provider build. A
+    // synchronous emit reserves a sequence by mutating
+    // providerLocationSessionProvider while Riverpod is still initializing
+    // this bridge, which is forbidden and crashes the first Online frame.
+    // Defer the cached-fix emit until the current provider build has completed.
+    Timer.run(() => emitDriverLocation(cached));
   } else {
     // No cached fix yet (e.g. recovered into busy on a fresh launch where
     // the warm-up hadn't settled). Pull one synchronously so the matcher
@@ -199,7 +231,8 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
             timeLimit: Duration(seconds: 8),
           ),
         );
-        ref.read(lastKnownPositionProvider.notifier).state = fresh;
+        if (disposed) return;
+        container.read(lastKnownPositionProvider.notifier).state = fresh;
         emitDriverLocation(fresh);
       } catch (e) {
         debugPrint('[LOC] bridge: cold-fix fetch failed: $e');
@@ -218,7 +251,8 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   ref.listen<AsyncValue<Position>>(driverLocationStreamProvider, (_, next) {
     next.when(
       data: (position) {
-        ref.read(lastKnownPositionProvider.notifier).state = position;
+        if (disposed) return;
+        container.read(lastKnownPositionProvider.notifier).state = position;
 
         // Socket emit on every fix is cheap and gives the matcher fresh
         // coords between heartbeat ticks while the driver is moving.
@@ -281,18 +315,71 @@ void _connectAndListen(Ref ref, SocketService socket) {
           '$event: $trimmed';
     });
 
+    // The backend heartbeat sweeper is authoritative for idle availability.
+    // Do not trust a potentially delayed event payload directly: fetch the
+    // current snapshot so a stale forced-offline emit cannot undo a newer
+    // successful online transition. Active-work state is left to its
+    // dedicated ride/job recovery path.
+    void handleForcedOffline(dynamic _) {
+      unawaited(
+        ref.container
+            .read(availabilityReconciliationControllerProvider)
+            .reconcile(trigger: 'forced_offline_event'),
+      );
+    }
+
+    socket
+      ..off('availability:forced_offline')
+      ..on('availability:forced_offline', handleForcedOffline);
+
+    void handleLocationAuthorityChanged(dynamic _) {
+      unawaited(
+        ref.container
+            .read(availabilityReconciliationControllerProvider)
+            .reconcile(trigger: 'location_authority_event'),
+      );
+    }
+
+    socket
+      ..off('availability:location_degraded')
+      ..off('availability:location_recovered')
+      ..off('availability:location_escalated')
+      ..on('availability:location_degraded', handleLocationAuthorityChanged)
+      ..on('availability:location_recovered', handleLocationAuthorityChanged)
+      ..on('availability:location_escalated', handleLocationAuthorityChanged);
+
     // Listen for incoming ride requests (driver) — new + legacy event names
-    void handleRide(dynamic data) {
-      debugPrint('[WS] Received ride event: $data');
-      if (data is Map<String, dynamic>) {
+    Future<void> receiveRide(dynamic data) async {
+      if (data is Map) {
+        debugPrint(
+          '[WS] Received ride event id=${data['id'] ?? data['rideId']} '
+          'keys=${data.keys.join(',')}',
+        );
+      } else {
+        debugPrint('[WS] Received ride event type=${data.runtimeType}');
+      }
+      if (data is Map) {
         try {
-          final ride = Ride.fromJson(data);
-          final expiresAt = _requestDeadlineFrom(data);
-          if (expiresAt != null) {
-            ref.container.read(rideRequestDeadlineByIdProvider.notifier).update(
-                  (m) => {...m, ride.id: expiresAt},
-                );
+          final delivery = Map<String, dynamic>.from(data);
+          final received = await acknowledgeRideOfferWithSocket(
+            payload: delivery,
+            socket: socket,
+            rides: ref.container.read(rideServiceProvider),
+          );
+          if (received == null) {
+            debugPrint(
+                '[WS] Ride offer was not receipted in time; not surfacing');
+            return;
           }
+          final actionable = received.payload;
+          final ride = Ride.fromJson(actionable);
+          final expiresAt = received.decisionExpiresAt;
+          ref.container.read(rideOfferIdByRideProvider.notifier).update(
+                (offers) => {...offers, ride.id: received.offerId},
+              );
+          ref.container.read(rideRequestDeadlineByIdProvider.notifier).update(
+                (m) => {...m, ride.id: expiresAt},
+              );
 
           // Drop re-broadcasts for a ride we've already accepted. The backend
           // re-fires `ride:request` / `ride:new` to all notified drivers until
@@ -311,7 +398,18 @@ void _connectAndListen(Ref ref, SocketService socket) {
           // a new screen on top.
           final surfaced = ref.container.read(surfacedRideIdsProvider);
           if (surfaced.contains(ride.id)) {
-            debugPrint('[WS] Ride ${ride.id} already surfaced — skipping');
+            // FCM can win the receipt race with a privacy-minimised payload.
+            // If the richer socket envelope follows, replace the in-memory
+            // card without replaying sound/navigation so route coordinates
+            // and stops are not left at fallback values.
+            final current = ref.container.read(incomingRideRequestProvider);
+            if (current?.id == ride.id) {
+              ref.container.read(incomingRideRequestProvider.notifier).state =
+                  ride;
+              debugPrint('[WS] Enriched already-surfaced ride ${ride.id}');
+            } else {
+              debugPrint('[WS] Ride ${ride.id} already surfaced — skipping');
+            }
             return;
           }
           ref.container.read(surfacedRideIdsProvider.notifier).update(
@@ -329,6 +427,10 @@ void _connectAndListen(Ref ref, SocketService socket) {
       }
     }
 
+    void handleRide(dynamic data) {
+      unawaited(receiveRide(data));
+    }
+
     // off+on guards against duplicate handlers if _connectAndListen runs
     // more than once against the same socket instance.
     //
@@ -338,9 +440,52 @@ void _connectAndListen(Ref ref, SocketService socket) {
       ..off('ride:new')
       ..on('ride:new', handleRide);
 
+    // Another driver accepted this offer, or the matcher/cancellation flow
+    // explicitly revoked it. Clear every pre-acceptance surface immediately;
+    // waiting for the local countdown leaves a stale screen ringing after the
+    // backend has already moved on.
+    void handleRideDismissed(dynamic data) {
+      if (data is! Map) return;
+      final rideId = data['rideId']?.toString() ?? data['id']?.toString();
+      if (rideId == null || rideId.isEmpty) return;
+      final current = ref.container.read(incomingRideRequestProvider);
+      if (current?.id == rideId) {
+        ref.container.read(incomingRideRequestProvider.notifier).state = null;
+      }
+      ref.container.read(rideRequestDeadlineByIdProvider.notifier).update(
+            (deadlines) => {...deadlines}..remove(rideId),
+          );
+      final offerId = ref.container.read(rideOfferIdByRideProvider)[rideId];
+      ref.container.read(rideOfferIdByRideProvider.notifier).update(
+            (offers) => {...offers}..remove(rideId),
+          );
+      if (offerId != null) unawaited(clearStoredRideOffer(offerId));
+      unawaited(
+        clearIncomingRequestAlert(
+          type: NotificationPayload.typeRideRequest,
+          requestId: rideId,
+          offerId: offerId,
+        ),
+      );
+    }
+
+    socket
+      ..off('ride:dismissed')
+      ..on('ride:dismissed', handleRideDismissed);
+
     // Listen for incoming job requests (artisan) — new + legacy event names
     void handleJob(dynamic data) {
-      debugPrint('[WS] Received job event: $data');
+      // Never print the full request: it can contain the customer's name,
+      // exact address, description and photo URLs. Keep only routing metadata
+      // in release/device logs.
+      if (data is Map) {
+        debugPrint(
+          '[WS] Received job event id=${data['id'] ?? data['jobId']} '
+          'keys=${data.keys.join(',')}',
+        );
+      } else {
+        debugPrint('[WS] Received job event type=${data.runtimeType}');
+      }
       if (data is Map<String, dynamic>) {
         try {
           final job = Job.fromJson(data);
@@ -440,6 +585,29 @@ void _connectAndListen(Ref ref, SocketService socket) {
       ..off('ride:state')
       ..on('ride:state', handleRideState);
 
+    // The canonical full snapshot is preferred, but cancellation also has a
+    // slim dedicated event and a legacy status event. Listening to both keeps
+    // the provider UI terminal even if snapshot generation fails or is late.
+    void applyRideCancellation(dynamic data, {bool requireStatus = false}) {
+      final rideId = rideCancellationIdFromEvent(
+        data,
+        requireCancelledStatus: requireStatus,
+      );
+      if (rideId == null) return;
+      ref.container
+          .read(activeRideProvider.notifier)
+          .applyRemoteCancellation(rideId);
+    }
+
+    socket
+      ..off('ride:cancelled')
+      ..off('ride:status')
+      ..on('ride:cancelled', (data) => applyRideCancellation(data))
+      ..on(
+        'ride:status',
+        (data) => applyRideCancellation(data, requireStatus: true),
+      );
+
     // Backend fires `ride:route_updated` when the rider adds or declines
     // a stop. The event itself only carries a thin `{rideId, …}` shape,
     // not the new stops list, so we re-fetch the full ride via REST and
@@ -474,7 +642,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // it advances through the active-work phases. Refreshing the jobs
     // list re-fetches `myBid.status`, which the JobRequest banner reads.
     void handleJobStatus(dynamic data) {
-      debugPrint('[WS] Received job:status: $data');
+      debugPrint('[WS] Received job:status');
       // Prefer silentReload over invalidate: invalidate tears down the
       // notifier and the constructor-triggered load() flips isLoading back
       // to true, which flashes the spinner on the My Jobs screen. A silent
@@ -493,6 +661,12 @@ void _connectAndListen(Ref ref, SocketService socket) {
           ref.container
               .read(pendingIncomingJobsProvider.notifier)
               .remove(jobId);
+          unawaited(
+            clearIncomingRequestAlert(
+              type: NotificationPayload.typeJobRequest,
+              requestId: jobId,
+            ),
+          );
         }
 
         // If the event is for the currently-active job, push the new
@@ -546,7 +720,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // active job's clientPaymentAcknowledgedAt/clientPaymentMethod so the
     // CompletionOverlay's "Yes, I received payment" CTA enables.
     void handleClientPaymentAck(dynamic data) {
-      debugPrint('[WS] Received job:client_payment_acknowledged: $data');
+      debugPrint('[WS] Received job:client_payment_acknowledged');
       if (data is! Map<String, dynamic>) return;
       final jobId = data['jobId'] as String? ?? data['id'] as String?;
       final method = data['paymentMethod'] as String?;
@@ -578,7 +752,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // background→resume cycle would reset the set and pop a duplicate
     // sheet for any rating event the server re-delivers on reconnect.
     void handleRatingPrompt(dynamic data) {
-      debugPrint('[WS] Received rating:prompt: $data');
+      debugPrint('[WS] Received rating:prompt');
       if (data is! Map<String, dynamic>) return;
       final bookingType = data['bookingType'] as String?;
       final bookingId =

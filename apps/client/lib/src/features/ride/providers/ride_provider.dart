@@ -8,6 +8,9 @@ import 'package:shared_models/shared_models.dart' show kFreeWaitAtPickupSeconds;
 import '../../../core/di/providers.dart';
 import '../../../core/providers/current_location_provider.dart';
 import '../../../core/providers/socket_provider.dart';
+import '../data/ride_booking_attempt_store.dart';
+import '../data/ride_booking_coordinator.dart';
+import '../data/ride_cancellation_coordinator.dart';
 import 'ride_payment_method_provider.dart';
 import 'ride_search_provider.dart';
 
@@ -46,11 +49,9 @@ class VehicleOption {
   /// instead of an ambient warning the user can't size up.
   final double surgeMultiplier;
 
-  /// `false` when the backend found no online, non-busy driver within the max
-  /// match radius — [estimatedTime] is then a fallback number, not a real ETA.
-  /// The vehicle cards show "No drivers available", gray out, and become
-  /// non-selectable; the Confirm CTA is disabled. Route-level, so every option
-  /// in a single estimate carries the same value (mirrors [surgeActive]).
+  /// `false` when the backend found no eligible driver for this ride category
+  /// within the maximum match radius. Availability is category-specific: one
+  /// tier may remain bookable while another is disabled.
   final bool driversAvailable;
 
   const VehicleOption({
@@ -72,6 +73,30 @@ class VehicleOption {
     final ghs = farePesewas / 100;
     return 'GH₵ ${ghs.toStringAsFixed(2)}';
   }
+}
+
+/// Availability is category-specific. A route remains bookable when at least
+/// one category has a dispatchable driver, even if the default/cheapest tier
+/// does not.
+bool hasAvailableRideOption(Iterable<VehicleOption> options) {
+  return options.any((option) => option.driversAvailable);
+}
+
+VehicleOption? firstAvailableRideOption(Iterable<VehicleOption> options) {
+  for (final option in options) {
+    if (option.driversAvailable) return option;
+  }
+  return null;
+}
+
+VehicleOption? availableRideOptionById(
+  Iterable<VehicleOption> options,
+  String optionId,
+) {
+  for (final option in options) {
+    if (option.id == optionId && option.driversAvailable) return option;
+  }
+  return null;
 }
 
 class RecentDestination {
@@ -698,14 +723,15 @@ final matcherProgressProvider = StateProvider<MatcherProgress?>((_) => null);
 
 /// Rider-side worst-case matching wait ceiling.
 ///
-/// Backend matching budget with the current config:
-///   initial 45 s driver acceptance window
-///   + 4 radius expansions (3 → 5 → 7 → 9 km) at 45 s each
-///   + 30 s buffer for the 10 s cron jitter / push propagation.
+/// BR-39 allows new delivery attempts for five minutes after dispatch becomes
+/// ready. An attempt whose full ten-second receipt window fits may then retain
+/// a fresh 45-second decision window, so the authoritative worst case is 345
+/// seconds. Keep another 30 seconds for worker/socket propagation and the
+/// final REST reconciliation.
 ///
 /// The backend remains the source of truth for the final outcome; this local
 /// ceiling only bounds our socket re-join / REST hydration loop.
-const int kRideMatchingSearchCeilingSeconds = 255;
+const int kRideMatchingSearchCeilingSeconds = 375;
 
 class BookingPhaseNotifier extends StateNotifier<BookingPhase> {
   BookingPhaseNotifier() : super(BookingPhase.idle);
@@ -724,9 +750,9 @@ final matchedDriverProvider = StateProvider<MatchedDriver?>((_) => null);
 final activeRideIdProvider = StateProvider<String?>((_) => null);
 
 /// Countdown timer (seconds remaining during search phase). Sized to cover
-/// the backend's full matching budget: initial 45 s window + 4 radius
-/// expansions (3 → 5 → 7 → 9 km) at 45 s each + a 30 s buffer for the 10 s
-/// cron jitter and post-dispatch propagation. Without this buffer the
+/// the backend's full BR-39 matching budget: five minutes in which a new
+/// delivery attempt may start, the final timely recipient's fresh 45-second
+/// decision window, and a 30-second propagation/reconciliation buffer. Without this buffer the
 /// local loop fires `failWith` ahead of the backend's real verdict — the
 /// rider sees a generic "couldn't find a driver in time" while the matcher
 /// is still trying. Keep this in lockstep with `MAX_MATCH_RADIUS_KM`,
@@ -930,6 +956,7 @@ Future<void> requestRideAndMatchDriver(
   List<Map<String, dynamic>> pretripStops = const [],
 }) async {
   final rideService = ref.read(rideServiceProvider);
+  final bookingCoordinator = ref.read(rideBookingCoordinatorProvider);
   final search = ref.read(rideSearchProvider);
 
   ref.read(bookingPhaseProvider.notifier).startSearch();
@@ -961,26 +988,53 @@ Future<void> requestRideAndMatchDriver(
     // 'comfort') — backend prices and matches on it. Mutually exclusive: a
     // Comfort booking only reaches Comfort-approved drivers.
     final selectedCategory = ref.read(selectedVehicleProvider);
-    final result = await rideService.createRide(
-      pickupLat: pickup?.lat ?? cached?.latitude ?? 6.6884,
-      pickupLng: pickup?.lng ?? cached?.longitude ?? -1.6244,
-      destinationLat: destination?.lat ?? 6.7000,
-      destinationLng: destination?.lng ?? -1.6300,
-      pickupAddress: pickup?.address,
-      destinationAddress: destination?.address,
-      stops: pretripStops.isEmpty ? null : pretripStops,
-      paymentMethod: selectedMethod.wireValue,
-      rideCategory: selectedCategory.isEmpty ? null : selectedCategory,
+    final pickupLat = pickup?.lat ?? cached?.latitude ?? 6.6884;
+    final pickupLng = pickup?.lng ?? cached?.longitude ?? -1.6244;
+    final destinationLat = destination?.lat ?? 6.7000;
+    final destinationLng = destination?.lng ?? -1.6300;
+    final pickupAddress = pickup?.address;
+    final destinationAddress = destination?.address;
+    final stops = pretripStops.isEmpty ? null : pretripStops;
+    final rideCategory = selectedCategory.isEmpty ? null : selectedCategory;
+    final requestFingerprint = rideBookingRequestFingerprint({
+      'pickupLat': pickupLat,
+      'pickupLng': pickupLng,
+      'dropoffLat': destinationLat,
+      'dropoffLng': destinationLng,
+      if (pickupAddress != null) 'pickupAddress': pickupAddress,
+      if (destinationAddress != null) 'dropoffAddress': destinationAddress,
+      if (stops != null) 'stops': stops,
+      'paymentMethod': selectedMethod.wireValue,
+      if (rideCategory != null) 'rideCategory': rideCategory,
+    });
+    final resolution = await bookingCoordinator.resolveOrCreate(
+      requestFingerprint: requestFingerprint,
+      create: (bookingKey) => rideService.createRide(
+        bookingKey: bookingKey,
+        pickupLat: pickupLat,
+        pickupLng: pickupLng,
+        destinationLat: destinationLat,
+        destinationLng: destinationLng,
+        pickupAddress: pickupAddress,
+        destinationAddress: destinationAddress,
+        stops: stops,
+        paymentMethod: selectedMethod.wireValue,
+        rideCategory: rideCategory,
+      ),
     );
-
-    developer.log('createRide raw result: $result', name: 'RideProvider');
+    final result = resolution.response;
+    developer.log(
+      resolution.recovered
+          ? 'Recovered a pending ride booking attempt'
+          : 'Ride booking attempt accepted by server',
+      name: 'RideProvider',
+    );
 
     // Backend has shipped the ride id under a few different shapes during
     // development — accept any of them so a wire-format change doesn't
     // strand the client at "no ride id". Order matches likelihood.
     rideId = _extractRideId(result);
     ref.read(activeRideIdProvider.notifier).state = rideId;
-    developer.log('Ride created: $rideId', name: 'RideProvider');
 
     // POST /rides returns `driversNotified` — the count of drivers the
     // matcher pushed the request to. As soon as that's > 0 we know a
@@ -1010,23 +1064,46 @@ Future<void> requestRideAndMatchDriver(
               name: 'RideProvider');
         }
       } catch (e) {
-        developer.log('client:track:ride emit failed: $e',
-            name: 'RideProvider');
+        developer.log(
+          'client:track:ride emit failed with ${e.runtimeType}',
+          name: 'RideProvider',
+        );
       }
     }
+  } on RideBookingLookupUncertainException catch (e) {
+    developer.log(
+      'Booking recovery was inconclusive '
+      '(status=${e.statusCode}, code=${e.errorCode ?? 'unknown'})',
+      name: 'RideProvider',
+      level: 800,
+    );
+    failWith(
+      "We couldn't confirm your previous ride request, so no new request was sent. Check your connection and try again.",
+    );
+    return;
   } on ApiException catch (e) {
     developer.log(
-      'createRide failed (${e.statusCode}): ${e.message}',
+      'createRide failed (status=${e.statusCode}, '
+      'code=${e.errorCode ?? 'unknown'})',
       name: 'RideProvider',
     );
     failWith(
-      e.message.isNotEmpty
-          ? e.message
-          : "Couldn't request a ride. Please check your connection and try again.",
+      userSafeApiErrorMessage(
+        e,
+        fallback:
+            "Couldn't request a ride. Please check your connection and try again.",
+        validationMessage:
+            'Check the pickup, destination, and ride option, then try again.',
+        conflictMessage:
+            'Your ride request changed. Check for an active ride before retrying.',
+      ),
     );
     return;
   } catch (e) {
-    developer.log('createRide error: $e', name: 'RideProvider');
+    developer.log(
+      'createRide failed with ${e.runtimeType}',
+      name: 'RideProvider',
+    );
     failWith("Couldn't request a ride. Please try again.");
     return;
   }
@@ -1056,8 +1133,8 @@ Future<void> requestRideAndMatchDriver(
   //      and bailed, leaving the rider stranded for the rest of the
   //      45s window. Polling at 10s intervals (≈ 5 calls per matching
   //      window) sits well under the backend's 30 req/min throttle.
-  // 255 s == backend matching budget: 45 s initial window + 4 radius
-  // expansions (each waiting 45 s for the cron) + 30 s buffer for jitter.
+  // 375 s == BR-39's 300 s new-attempt budget + the final timely recipient's
+  // 45 s decision window + 30 s for worker/socket/REST reconciliation.
   // Loop bails early on success, failure, or rider cancel — this is just
   // the worst-case ceiling so we don't outlast the backend's verdict.
   final socket = ref.read(socketServiceProvider);
@@ -1083,19 +1160,58 @@ Future<void> requestRideAndMatchDriver(
     }
   }
 
-  // Loop ceiling reached. The backend is the source of truth for "no
-  // drivers" / "cancelled" / "accepted" — it emits `ride:state` and a
-  // matching `ride.cancelled` push. Don't synthesize a failure here:
-  // earlier versions did, and the rider got a misleading "couldn't find
-  // a driver in time" card while the matcher was still searching. If
-  // the backend really went silent (network partition, server crash),
-  // the REST hydrate at the 10 s cadence above will catch the final
-  // state on its next tick.
+  // Loop ceiling reached. Do one final server read first so a last-second
+  // accept/cancel wins. If the backend is still silent after the full matching
+  // budget, stop the rider UI and best-effort cancel the stale requested ride.
+  // Leaving the phase in searching/driverFound here is what caused production
+  // reports of "searching for driver" staying on screen forever.
+  await _hydrateFromRest(ref.read, rideService, rideId);
+  final phaseAfterFinalHydrate = ref.read(bookingPhaseProvider);
+  if (ref.read(rideMatchedViaSocketProvider) ||
+      phaseAfterFinalHydrate == BookingPhase.accepted ||
+      phaseAfterFinalHydrate == BookingPhase.failed) {
+    return;
+  }
+
   developer.log(
     'Matching loop ceiling reached ($kRideMatchingSearchCeilingSeconds s) — '
-    'deferring final state to '
-    'backend snapshot. phase=${ref.read(bookingPhaseProvider)}',
+    'failing stale request locally. phase=$phaseAfterFinalHydrate',
     name: 'RideProvider',
+  );
+
+  try {
+    await rideService.cancelRide(
+      rideId,
+      reason: 'client_matching_timeout_recovery',
+    );
+    await ref.read(rideBookingAttemptStoreProvider).clear();
+  } on ApiException catch (e) {
+    developer.log(
+      'cancel stale matching ride failed (status=${e.statusCode}, '
+      'code=${e.errorCode ?? 'unknown'})',
+      name: 'RideProvider',
+      level: 800,
+    );
+    // A concurrent driver accept can make cancellation invalid. Re-check once
+    // before surfacing the failure card.
+    await _hydrateFromRest(ref.read, rideService, rideId);
+    final phaseAfterCancelFailure = ref.read(bookingPhaseProvider);
+    if (ref.read(rideMatchedViaSocketProvider) ||
+        phaseAfterCancelFailure == BookingPhase.accepted ||
+        phaseAfterCancelFailure == BookingPhase.failed) {
+      return;
+    }
+  } catch (e) {
+    developer.log(
+      'cancel stale matching ride failed with ${e.runtimeType}',
+      name: 'RideProvider',
+      level: 800,
+    );
+  }
+
+  ref.read(matchedDriverProvider.notifier).state = null;
+  failWith(
+    "We couldn't find a driver nearby. Please try again in a moment.",
   );
 }
 
@@ -1133,6 +1249,9 @@ Future<void> _hydrateFromRest(
     developer.log('REST fallback hydrating ride $rideId', name: 'RideProvider');
     final json = await rideService.getRide(rideId);
     final status = json['status'] as String? ?? '';
+    final cancelledBy = json['cancelledBy'] as String?;
+    final cancellationReason =
+        (json['cancellationReason'] ?? json['reason']) as String?;
     // Only fire the hydrate path when the backend has actually moved past
     // `requested` — otherwise we'd push a half-built MatchedDriver.
     if (status == 'requested') return;
@@ -1140,10 +1259,16 @@ Future<void> _hydrateFromRest(
     // providers flip identically. We're not in socket_provider's scope
     // here, but `applyRideSnapshot` is private; instead, push the raw
     // status fields into the public providers.
-    if (status == 'cancelled' || status == 'no_drivers') {
-      final cancelledBy = json['cancelledBy'] as String?;
-      read(bookingFailureMessageProvider.notifier).state = status ==
-              'no_drivers'
+    if (status == 'cancelled' || _isNoDriversTerminal(status)) {
+      if (status == 'cancelled') {
+        unawaited(read(rideBookingAttemptStoreProvider).clear());
+      }
+      final noDrivers = _isNoDriversTerminal(
+        status,
+        reason: cancellationReason,
+        cancelledBy: cancelledBy,
+      );
+      read(bookingFailureMessageProvider.notifier).state = noDrivers
           ? 'No drivers are available nearby right now. Please try again in a moment.'
           : cancelledBy == 'driver'
               ? 'The driver cancelled this ride.'
@@ -1162,6 +1287,7 @@ Future<void> _hydrateFromRest(
     // data. Tracking-phase flip is handled by the socket-side handler in
     // socket_provider; this REST path mirrors it for the recovery case.
     if (status == 'completed') {
+      unawaited(read(rideBookingAttemptStoreProvider).clear());
       read(rideTrackingPhaseProvider.notifier).state =
           RideTrackingPhase.completed;
       read(rideArrivalAnchorProvider.notifier).state = null;
@@ -1282,35 +1408,60 @@ Future<void> _hydrateFromRest(
     }
   } on ApiException catch (e) {
     developer.log(
-      'REST fallback hydrate failed (${e.statusCode}): ${e.message}',
+      'REST fallback hydrate failed (status=${e.statusCode}, '
+      'code=${e.errorCode ?? 'unknown'})',
       name: 'RideProvider',
       level: 800,
     );
   } catch (e) {
-    developer.log('REST fallback hydrate crashed: $e',
-        name: 'RideProvider', level: 800);
+    developer.log(
+      'REST fallback hydrate failed with ${e.runtimeType}',
+      name: 'RideProvider',
+      level: 800,
+    );
   }
 }
 
-/// Cancel an in-flight ride request from the matching screen — best-effort
-/// PATCH so the backend can release the slot. Local state is reset
-/// regardless of whether the cancel call succeeds.
-Future<void> cancelInFlightRideRequest(ProviderContainer ref) async {
+bool _isNoDriversTerminal(
+  String status, {
+  String? reason,
+  String? cancelledBy,
+}) {
+  final normalizedStatus = status.toLowerCase();
+  final normalizedReason = (reason ?? '').toLowerCase();
+  final normalizedCancelledBy = (cancelledBy ?? '').toLowerCase();
+
+  return normalizedStatus == 'no_drivers' ||
+      normalizedStatus == 'no_driver' ||
+      normalizedReason == 'no_drivers_available' ||
+      normalizedReason == 'no_driver_available' ||
+      normalizedReason == 'no_drivers' ||
+      normalizedCancelledBy == 'system';
+}
+
+/// Cancel an in-flight ride request from the matching screen. Local state is
+/// reset only after the API response or a read-back proves the backend row is
+/// cancelled; otherwise the caller must keep the ride visible.
+Future<bool> cancelInFlightRideRequest(ProviderContainer ref) async {
   final rideId = ref.read(activeRideIdProvider);
   if (rideId != null && rideId.isNotEmpty) {
-    try {
-      await ref.read(rideServiceProvider).cancelRide(
-            rideId,
-            reason: 'rider_cancelled_during_search',
-          );
-    } on ApiException catch (e) {
+    final cancellation = await cancelRideWithAuthority(
+      rideService: ref.read(rideServiceProvider),
+      rideId: rideId,
+      reason: 'rider_cancelled_during_search',
+    );
+    if (!cancellation.confirmedCancelled) {
       developer.log(
-        'cancelRide failed (${e.statusCode}): ${e.message}',
+        'cancelRide not confirmed; local matching state preserved '
+        '(reconciled=${cancellation.reconciled})',
         name: 'RideProvider',
+        level: 900,
       );
-    } catch (e) {
-      developer.log('cancelRide error: $e', name: 'RideProvider');
+      ref.read(bookingFailureMessageProvider.notifier).state =
+          cancellation.message;
+      return false;
     }
+    await ref.read(rideBookingAttemptStoreProvider).clear();
   }
   ref.read(activeRideIdProvider.notifier).state = null;
   ref.read(matchedDriverProvider.notifier).state = null;
@@ -1320,6 +1471,7 @@ Future<void> cancelInFlightRideRequest(ProviderContainer ref) async {
   ref.read(liveDriverPositionProvider.notifier).state = null;
   ref.read(rideArrivalAnchorProvider.notifier).state = null;
   ref.read(bookingPhaseProvider.notifier).reset();
+  return true;
 }
 
 DateTime? _dateFromJson(dynamic value) {

@@ -899,12 +899,10 @@ class _FareBreakdownCard extends StatelessWidget {
     final totalDisplay =
         hasSnapshot ? _ghs(s.totalFarePesewas) : trip.totalPaid;
 
-    // Commission shown as 20% of total — the platform_config key is
-    // `commission_rate_ride` and is fixed at 0.20 across the pilot.
-    final totalPesewas = hasSnapshot ? s.totalFarePesewas : null;
-    final commissionDisplay = totalPesewas != null
-        ? _ghs((totalPesewas * 0.20).round())
-        : trip.commission;
+    // Commission is an immutable backend-recorded amount on the history row.
+    // Never recalculate it from today's platform configuration: an admin rate
+    // change must not rewrite the economics of an already completed trip.
+    final commissionDisplay = trip.commission;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(17, MyShopSpacing.md, 17, 0),
@@ -1032,7 +1030,7 @@ class _FareBreakdownCard extends StatelessWidget {
                               size: 12, color: MyShopColors.textPrimary),
                           const SizedBox(width: 6),
                           const Text(
-                            'Platform Commission (20%)',
+                            'Platform Commission',
                             style: TextStyle(
                               fontFamily: 'Raleway',
                               fontSize: 12,
@@ -1056,7 +1054,7 @@ class _FareBreakdownCard extends StatelessWidget {
                       const Padding(
                         padding: EdgeInsets.only(left: 22),
                         child: Text(
-                          'Commission supports local artisan verification and 24/7 police-check monitoring.',
+                          'This commission rate is configured by platform administration and shown for this booking.',
                           style: TextStyle(
                             fontFamily: 'Raleway',
                             fontSize: 10,

@@ -84,6 +84,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                 recoveryStatus == RecoveryRequestStatus.sending;
             final takingOver = blocked?.isTakingOver ?? false;
             final takeoverError = blocked?.takeoverError;
+            final recoveryAvailable = blocked?.recoveryChallenge != null;
             final anyInFlight = sendingRecovery || takingOver;
             return AlertDialog(
               title: const Text('Already signed in elsewhere'),
@@ -95,9 +96,8 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                     'This account ($phone) is signed in on another device. '
                     'Choose "Sign me in here" to take over the session — '
                     "we'll send an OTP to confirm it's you and sign out the "
-                    'other device. '
-                    "If you don't recognise the other device, tap "
-                    'Contact support instead.',
+                    'other device.'
+                    '${recoveryAvailable ? " If you don't recognise the other device, tap Contact support instead." : ""}',
                   ),
                   if (takeoverError != null) ...[
                     const SizedBox(height: 12),
@@ -133,45 +133,48 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                         )
                       : const Text('Sign me in here'),
                 ),
-                TextButton(
-                  onPressed: anyInFlight
-                      ? null
-                      : () async {
-                          await controller.requestSessionRecovery();
-                          if (!dialogContext.mounted) return;
-                          final after = ref.read(clientAuthControllerProvider);
-                          if (after is AuthBlockedByOtherDevice) {
-                            if (after.recoveryRequestStatus ==
-                                RecoveryRequestStatus.sent) {
-                              messenger.showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Support has been notified. '
-                                    "We'll get back to you shortly.",
+                if (recoveryAvailable)
+                  TextButton(
+                    onPressed: anyInFlight
+                        ? null
+                        : () async {
+                            await controller.requestSessionRecovery();
+                            if (!dialogContext.mounted) return;
+                            final after =
+                                ref.read(clientAuthControllerProvider);
+                            if (after is AuthBlockedByOtherDevice) {
+                              if (after.recoveryRequestStatus ==
+                                  RecoveryRequestStatus.sent) {
+                                messenger.showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Your request was received. If this role '
+                                      'still has the matching active session, '
+                                      'support can review it.',
+                                    ),
                                   ),
-                                ),
-                              );
-                            } else if (after.recoveryRequestStatus ==
-                                RecoveryRequestStatus.failed) {
-                              messenger.showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    "Couldn't reach support. "
-                                    'Please check your connection and try again.',
+                                );
+                              } else if (after.recoveryRequestStatus ==
+                                  RecoveryRequestStatus.failed) {
+                                messenger.showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      "Couldn't reach support. "
+                                      'Please check your connection and try again.',
+                                    ),
                                   ),
-                                ),
-                              );
+                                );
+                              }
                             }
-                          }
-                        },
-                  child: sendingRecovery
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Contact support'),
-                ),
+                          },
+                    child: sendingRecovery
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Contact support'),
+                  ),
                 TextButton(
                   onPressed: anyInFlight
                       ? null

@@ -40,7 +40,7 @@ class AuthRepository {
       phone: request.phone,
       fullName: request.fullName,
       type: request.type,
-      privacyPolicyAccepted: request.privacyPolicyAccepted,
+      legalAcceptances: request.legalAcceptances,
       deviceId: ctx.deviceId,
       deviceInfo: ctx.deviceInfo,
       displayName: request.displayName,
@@ -111,13 +111,51 @@ class AuthRepository {
     return role;
   }
 
-  /// Notify support that another device holds the active session and the
-  /// user can't sign out on it. Public endpoint — no auth required.
-  Future<void> requestSessionRecovery(String phone) async {
+  /// Submit the one-time exact-session capability issued with the blocked
+  /// login conflict. Public endpoint, but not an unproved phone-only action.
+  Future<void> requestSessionRecovery(
+    String phone,
+    String role,
+    String challenge,
+  ) async {
     final ctx = await _deviceContext();
     await _service.requestSessionRecovery(
+      challenge: challenge,
       phone: phone,
       deviceId: ctx.deviceId,
+      role: role,
+    );
+  }
+
+  Future<void> requestRoleAccountRecoveryOtp(
+    String phone,
+    String role,
+  ) async {
+    final ctx = await _deviceContext();
+    await _service.requestRoleAccountRecoveryOtp(
+      RequestRoleAccountRecoveryOtpRequest(
+        phone: phone,
+        role: role,
+        deviceId: ctx.deviceId,
+      ),
+    );
+  }
+
+  Future<RoleAccountRecoveryResult> verifyRoleAccountRecoveryOtp({
+    required String phone,
+    required String role,
+    required String code,
+    required String requestKey,
+  }) async {
+    final ctx = await _deviceContext();
+    return _service.verifyRoleAccountRecoveryOtp(
+      VerifyRoleAccountRecoveryOtpRequest(
+        phone: phone,
+        role: role,
+        deviceId: ctx.deviceId,
+        otp: code,
+        requestKey: requestKey,
+      ),
     );
   }
 
@@ -205,6 +243,10 @@ class AuthRepository {
       accessToken: session.accessToken,
       refreshToken: session.refreshToken,
     );
+    // The role is part of the authenticated session. Persist it in the same
+    // awaited transaction as the tokens so startup/FCM observers can never see
+    // a new bearer token paired with the previous (or a missing) role.
+    await _tokenStorage.writeRole(session.role);
     if (phone.isNotEmpty) await _tokenStorage.writePhone(phone);
     await _tokenStorage.writeSessionStartedAt(DateTime.now());
   }

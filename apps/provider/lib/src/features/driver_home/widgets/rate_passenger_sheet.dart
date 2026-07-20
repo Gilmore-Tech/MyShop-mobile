@@ -118,7 +118,12 @@ class _RatePassengerSheetState extends ConsumerState<RatePassengerSheet> {
       case 'BOOKING_NOT_COMPLETED':
         return 'Wait until the trip is fully completed before rating.';
       default:
-        return e.message;
+        return userSafeApiErrorMessage(
+          e,
+          fallback: "Couldn't submit the rating. Please try again.",
+          conflictMessage:
+              'This rating state changed. Refresh the trip and try again.',
+        );
     }
   }
 

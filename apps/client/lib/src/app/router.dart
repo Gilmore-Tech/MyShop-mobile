@@ -1,6 +1,7 @@
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_models/shared_models.dart'
-    show ChatBookingType, TicketCategory;
+    show ChatBookingType, LegalConsentStatus, TicketCategory;
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -17,6 +18,7 @@ import '../dev/dev_menu_screen.dart';
 // ── Onboarding ─────────────────────────────────────────────────────────────────
 import '../features/onboarding/screens/onboarding_screen.dart';
 import '../features/onboarding/screens/splash_screen.dart';
+import '../features/calls/screens/in_app_call_screen.dart';
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
 import '../features/auth/screens/phone_input_screen.dart';
@@ -62,6 +64,7 @@ import '../features/services/screens/service_receipt_screen.dart';
 import '../features/services/providers/payment_provider.dart'
     show PaymentMethod;
 import '../features/services/screens/payment_screen.dart';
+import '../features/payments/screens/cash_refund_destination_screen.dart';
 
 // ── Activity ───────────────────────────────────────────────────────────────────
 import '../features/activity/screens/activity_list_screen.dart';
@@ -84,6 +87,9 @@ import '../features/support/screens/help_category_route_screen.dart';
 import '../features/support/screens/help_article_route_screen.dart';
 import '../features/support/screens/help_search_route_screen.dart';
 import '../features/support/screens/legal_document_route_screen.dart';
+import '../features/support/screens/legal_consent_route_screen.dart';
+import '../features/support/providers/support_providers.dart'
+    show legalConsentStatusProvider;
 import '../features/profile/screens/referral_screen.dart';
 import '../features/profile/screens/payment_methods_screen.dart';
 import '../features/profile/screens/emergency_contacts_screen.dart';
@@ -105,6 +111,7 @@ abstract final class AppRoutes {
   static const authPhone = '/auth/phone';
   static const authSignUp = '/auth/sign-up';
   static const authOtp = '/auth/otp';
+  static const legalConsent = '/legal-consent';
 
   // Main tabs
   static const home = '/home';
@@ -148,6 +155,8 @@ abstract final class AppRoutes {
   static const jobReceipt = '/services/job/:jobId/receipt';
   static const jobDispute = '/services/job/:jobId/dispute';
   static const jobPayment = '/services/job/:jobId/payment';
+  static const cashRefundDestination =
+      '/payments/refund-destination/:disputeId';
 
   static String jobDetailPath(String jobId) => '/services/job/$jobId';
   static String jobBidsPath(String j, String b) => '/services/job/$j/bids/$b';
@@ -166,6 +175,8 @@ abstract final class AppRoutes {
   static String jobReceiptPath(String jobId) => '/services/job/$jobId/receipt';
   static String jobDisputePath(String jobId) => '/services/job/$jobId/dispute';
   static String jobPaymentPath(String jobId) => '/services/job/$jobId/payment';
+  static String cashRefundDestinationPath(String disputeId) =>
+      '/payments/refund-destination/$disputeId';
 
   // Activity history
   static const activityRide = '/activity/ride/:rideId';
@@ -202,10 +213,25 @@ abstract final class AppRoutes {
   static const profileLoyalty = '/profile/loyalty';
 
   // Overlays
+  static const inAppCall = '/calls/:callId';
   static const chat = '/chat';
   static const safetyEmergency = '/safety/emergency';
   static const safetyShare = '/safety/share';
   static const notifications = '/notifications';
+
+  static String inAppCallPath(String callId) => '/calls/$callId';
+
+  static String safetyEmergencyForBooking({
+    required String bookingType,
+    required String bookingId,
+  }) =>
+      Uri(
+        path: safetyEmergency,
+        queryParameters: {
+          'bookingType': bookingType,
+          'bookingId': bookingId,
+        },
+      ).toString();
 
   // Dev
   static const dev = '/dev';
@@ -231,11 +257,15 @@ final routerProvider = Provider<GoRouter>((ref) {
   final hasSeen = ref.watch(hasSeenOnboardingProvider);
   final onboardingFlagLoaded = ref.watch(onboardingFlagLoadedProvider);
   final pendingReplay = ref.watch(pendingReplayOnboardingProvider);
+  final legalConsent = authState is AuthAuthenticated
+      ? ref.watch(legalConsentStatusProvider)
+      : null;
   return _buildRouter(
     authState: authState,
     hasSeen: hasSeen,
     onboardingFlagLoaded: onboardingFlagLoaded,
     pendingReplay: pendingReplay,
+    legalConsent: legalConsent,
   );
 });
 
@@ -244,6 +274,7 @@ GoRouter _buildRouter({
   required bool hasSeen,
   required bool onboardingFlagLoaded,
   required bool pendingReplay,
+  required AsyncValue<LegalConsentStatus>? legalConsent,
 }) {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
@@ -281,7 +312,9 @@ GoRouter _buildRouter({
 
       // New user needs to register — allow sign-up or phone screens
       if (authState is AuthNeedsRegistration) {
-        if (path == AppRoutes.authSignUp || path == AppRoutes.authPhone) {
+        if (path == AppRoutes.authSignUp ||
+            path == AppRoutes.authPhone ||
+            path.startsWith('/legal/')) {
           return null;
         }
         return AppRoutes.authSignUp;
@@ -309,6 +342,23 @@ GoRouter _buildRouter({
         final needsOnboarding = !hasSeen || pendingReplay;
         if (needsOnboarding) {
           return path == AppRoutes.onboarding ? null : AppRoutes.onboarding;
+        }
+        final consentRequiresReview =
+            legalConsent?.valueOrNull?.requiresConsent == true ||
+                legalConsent?.hasError == true;
+        final consentExemptRoute = path == AppRoutes.legalConsent ||
+            path.startsWith('/legal/') ||
+            path == AppRoutes.rideTracking ||
+            (path.startsWith('/services/job/') && path.endsWith('/active')) ||
+            path.startsWith('/safety/') ||
+            path.startsWith(AppRoutes.profileSupport);
+        if (consentRequiresReview &&
+            legalConsent?.valueOrNull?.hasActiveWork != true &&
+            !consentExemptRoute) {
+          return AppRoutes.legalConsent;
+        }
+        if (!consentRequiresReview && path == AppRoutes.legalConsent) {
+          return AppRoutes.home;
         }
         // Past onboarding — redirect away from any auth/onboarding routes.
         if (isAuthRoute || path == AppRoutes.onboarding) {
@@ -348,6 +398,10 @@ GoRouter _buildRouter({
       GoRoute(
         path: AppRoutes.authOtp,
         builder: (_, __) => const OtpVerificationScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.legalConsent,
+        builder: (_, __) => const LegalConsentRouteScreen(),
       ),
 
       // ── Main tabs shell ───────────────────────────────────────────────────────
@@ -408,6 +462,16 @@ GoRouter _buildRouter({
       ),
 
       // ── Ride sub-flow (full-screen, above shell) ──────────────────────────────
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: AppRoutes.inAppCall,
+        builder: (_, state) => ClientInAppCallScreen(
+          callId: state.pathParameters['callId']!,
+          initialSession: state.extra is AppCallSession
+              ? state.extra! as AppCallSession
+              : null,
+        ),
+      ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.rideSearch,
@@ -480,7 +544,9 @@ GoRouter _buildRouter({
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.rideDispute,
-        builder: (_, __) => const RideDisputeScreen(),
+        builder: (_, state) => RideDisputeScreen(
+          rideId: state.pathParameters['rideId']!,
+        ),
       ),
 
       // ── Services sub-flow (full-screen, above shell) ──────────────────────────
@@ -579,7 +645,9 @@ GoRouter _buildRouter({
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.jobDispute,
-        builder: (_, __) => const JobDisputeScreen(),
+        builder: (_, state) => JobDisputeScreen(
+          jobId: state.pathParameters['jobId']!,
+        ),
       ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
@@ -594,6 +662,13 @@ GoRouter _buildRouter({
             initialMethod: preset is PaymentMethod ? preset : null,
           );
         },
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: AppRoutes.cashRefundDestination,
+        builder: (_, state) => CashRefundDestinationScreen(
+          disputeId: state.pathParameters['disputeId']!,
+        ),
       ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
@@ -747,7 +822,18 @@ GoRouter _buildRouter({
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.safetyEmergency,
-        builder: (_, __) => const EmergencyScreen(),
+        builder: (_, state) {
+          final bookingType = state.uri.queryParameters['bookingType'];
+          final bookingId = state.uri.queryParameters['bookingId'];
+          final hasCompleteKnownContext =
+              (bookingType == 'ride' || bookingType == 'job') &&
+                  bookingId != null &&
+                  bookingId.isNotEmpty;
+          return EmergencyScreen(
+            bookingType: hasCompleteKnownContext ? bookingType : null,
+            bookingId: hasCompleteKnownContext ? bookingId : null,
+          );
+        },
       ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,

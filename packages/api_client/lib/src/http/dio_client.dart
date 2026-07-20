@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import '../config/api_config.dart';
 import 'auth_interceptor.dart';
 import 'logging_interceptor.dart';
+import 'mobile_client_interceptor.dart';
 import 'token_refresher.dart';
 import 'token_storage.dart';
 
@@ -26,6 +27,8 @@ class DioClient {
 DioClient createDioClient({
   required ApiConfig config,
   required TokenStorage tokenStorage,
+  required MobileAppKind appKind,
+  required void Function(AppUpdateRequirement requirement) onAppUpdateRequired,
   void Function()? onForceLogout,
   bool? enableLogging,
 }) {
@@ -39,6 +42,13 @@ DioClient createDioClient({
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
+    ),
+  );
+
+  dio.interceptors.add(
+    MobileClientInterceptor(
+      app: appKind,
+      onUpdateRequired: onAppUpdateRequired,
     ),
   );
 

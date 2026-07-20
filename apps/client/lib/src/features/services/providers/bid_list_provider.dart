@@ -167,10 +167,20 @@ class BidListNotifier extends StateNotifier<BidListState> {
       _ref.invalidate(jobDetailProvider(jobId));
       _ref.invalidate(bidsForJobProvider(jobId));
     } on ApiException catch (e) {
-      state = state.copyWith(clearSelecting: true, errorMessage: e.message);
+      state = state.copyWith(
+        clearSelecting: true,
+        errorMessage: userSafeApiErrorMessage(
+          e,
+          fallback: 'Failed to accept the bid. Please try again.',
+          conflictMessage:
+              'The bid changed before it could be accepted. Refresh and try again.',
+        ),
+      );
     } catch (_) {
-      // Fallback: treat as success during development
-      state = state.copyWith(clearSelecting: true);
+      state = state.copyWith(
+        clearSelecting: true,
+        errorMessage: 'Failed to accept the bid. Please try again.',
+      );
     }
   }
 

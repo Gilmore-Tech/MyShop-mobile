@@ -22,6 +22,9 @@ import '../../features/services/providers/job_detail_provider.dart';
 import '../../features/services/widgets/rate_job_sheet.dart';
 import '../di/providers.dart';
 import 'nav_badge_provider.dart';
+import 'provider_location_notice_provider.dart';
+
+const _allDriversBusyMessage = 'All drivers are busy. Please try again.';
 
 /// True while the Socket.IO connection is open. Mirrored from the underlying
 /// [SocketService.connectionStream] inside [_connectAndListen] so other
@@ -112,16 +115,69 @@ void _connectAndListen(Ref ref, SocketService socket) {
   void attachHandlers() {
     debugPrint('[WS] (re-)attaching client domain handlers');
 
-    // Diagnostic: log every event the rider's socket sees so we can tell
-    // a "no events arriving" problem (room-join race, auth issue) apart
-    // from a "wrong event name" problem (backend renamed something) at a
-    // glance. Stripped to the first ~200 chars to keep the log readable.
-    socket.onAnyEvent((event, data) {
-      final preview = data.toString();
-      final trimmed =
-          preview.length > 200 ? '${preview.substring(0, 200)}…' : preview;
-      developer.log('[any] $event → $trimmed', name: 'WS');
+    // Event names are useful diagnostics; payloads are not logged because
+    // ride snapshots can contain exact addresses, coordinates, and identity.
+    socket.onAnyEvent((event, _) {
+      developer.log('[event] $event', name: 'WS');
     });
+
+    ProviderLocationNotice? locationNoticeFrom(dynamic data,
+        {required bool escalated}) {
+      if (data is! Map) return null;
+      final payload = Map<String, dynamic>.from(data);
+      final rideId = payload['rideId']?.toString().trim();
+      if (rideId != null && rideId.isNotEmpty) {
+        return ProviderLocationNotice(
+          bookingId: rideId,
+          bookingType: 'ride',
+          escalated: escalated,
+        );
+      }
+      final jobId = payload['jobId']?.toString().trim();
+      if (jobId != null && jobId.isNotEmpty) {
+        return ProviderLocationNotice(
+          bookingId: jobId,
+          bookingType: 'job',
+          escalated: escalated,
+        );
+      }
+      return null;
+    }
+
+    void handleProviderLocationDegraded(dynamic data) {
+      final notice = locationNoticeFrom(data, escalated: false);
+      if (notice != null) {
+        ref.container.read(providerLocationNoticeProvider.notifier).state =
+            notice;
+      }
+    }
+
+    void handleProviderLocationEscalated(dynamic data) {
+      final notice = locationNoticeFrom(data, escalated: true);
+      if (notice != null) {
+        ref.container.read(providerLocationNoticeProvider.notifier).state =
+            notice;
+      }
+    }
+
+    void handleProviderLocationRecovered(dynamic data) {
+      final recovered = locationNoticeFrom(data, escalated: false);
+      if (recovered == null) return;
+      final current = ref.container.read(providerLocationNoticeProvider);
+      if (current?.bookingId == recovered.bookingId &&
+          current?.bookingType == recovered.bookingType) {
+        ref.container.read(providerLocationNoticeProvider.notifier).state =
+            null;
+      }
+    }
+
+    socket
+      ..off('provider:location_degraded')
+      ..off('provider:location_escalated')
+      ..off('provider:location_recovered')
+      ..on('provider:location_degraded', handleProviderLocationDegraded)
+      ..on('provider:location_escalated', handleProviderLocationEscalated)
+      ..on('provider:location_recovered', handleProviderLocationRecovered);
 
     // Apply a `ride:state` snapshot — the backend's canonical event that
     // fires on every ride state change (status transition, fare update,
@@ -184,6 +240,16 @@ void _connectAndListen(Ref ref, SocketService socket) {
       // the tracking screen listens for `rideTrackingPhase` transitions to
       // drive timers and the eventual `/ride-complete` redirect.
       final status = data['status'] as String? ?? '';
+      if (status == 'completed' ||
+          status == 'cancelled' ||
+          status == 'no_drivers') {
+        final rideId = (data['rideId'] ?? data['id'])?.toString();
+        final notice = ref.container.read(providerLocationNoticeProvider);
+        if (notice?.bookingType == 'ride' && notice?.bookingId == rideId) {
+          ref.container.read(providerLocationNoticeProvider.notifier).state =
+              null;
+        }
+      }
       switch (status) {
         case 'accepted' ||
               'driver_assigned' ||
@@ -229,6 +295,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
           ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.inProgress;
         case 'completed':
+          unawaited(
+            ref.container.read(rideBookingAttemptStoreProvider).clear(),
+          );
           ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
           ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.completed;
@@ -246,6 +315,11 @@ void _connectAndListen(Ref ref, SocketService socket) {
           }
           ref.container.read(navBadgeProvider.notifier).increment('/activity');
         case 'cancelled' || 'no_drivers':
+          if (status == 'cancelled') {
+            unawaited(
+              ref.container.read(rideBookingAttemptStoreProvider).clear(),
+            );
+          }
           ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
           // Flip BOTH provider tracks so wherever the rider is sitting —
           // matching screen (bookingPhase=searching) or tracking screen
@@ -262,7 +336,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
               reason == 'no_drivers_available' ||
               cancelledBy == 'system';
           final friendlyMessage = isNoDrivers
-              ? "We couldn't find a driver nearby. Please try again in a moment."
+              ? _allDriversBusyMessage
               : cancelledBy == 'driver'
                   ? 'The driver cancelled this ride.'
                   : (reason.isNotEmpty ? reason : 'This ride was cancelled.');
@@ -319,8 +393,11 @@ void _connectAndListen(Ref ref, SocketService socket) {
         try {
           applyRideSnapshot(snap);
         } catch (e) {
-          developer.log('Failed to apply ride:state snapshot: $e',
-              name: 'WS', level: 900);
+          developer.log(
+            'Failed to apply ride:state snapshot (${e.runtimeType})',
+            name: 'WS',
+            level: 900,
+          );
         }
       });
 
@@ -338,6 +415,11 @@ void _connectAndListen(Ref ref, SocketService socket) {
       if (eventRideId.isNotEmpty && eventRideId != activeRideId) return;
 
       final status = map['status'] as String? ?? '';
+      if (status == 'completed' || status == 'cancelled') {
+        unawaited(
+          ref.container.read(rideBookingAttemptStoreProvider).clear(),
+        );
+      }
       switch (status) {
         case 'driver_en_route':
           ref.container.read(bookingPhaseProvider.notifier).accepted();
@@ -369,12 +451,10 @@ void _connectAndListen(Ref ref, SocketService socket) {
           );
         case 'cancelled' || 'no_drivers':
           ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
-          ref.container
-              .read(bookingFailureMessageProvider.notifier)
-              .state = status ==
-                  'no_drivers'
-              ? "We couldn't find a driver nearby. Please try again in a moment."
-              : 'This ride was cancelled.';
+          ref.container.read(bookingFailureMessageProvider.notifier).state =
+              status == 'no_drivers'
+                  ? _allDriversBusyMessage
+                  : 'This ride was cancelled.';
           ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.cancelled;
           ref.container.read(bookingPhaseProvider.notifier).fail();
@@ -403,8 +483,39 @@ void _connectAndListen(Ref ref, SocketService socket) {
         if (cancelledBy == 'client') return;
         final rideId = (map['rideId'] ?? map['id']) as String? ?? '';
         if (rideId.isNotEmpty && !shownCancelledFor.add(rideId)) return;
+        unawaited(
+          ref.container.read(rideBookingAttemptStoreProvider).clear(),
+        );
 
         final reason = (map['reason'] as String?) ?? '';
+        final messageFromPayload = (map['message'] as String?) ?? '';
+        final noDriversMessage = messageFromPayload.isNotEmpty
+            ? messageFromPayload
+            : _allDriversBusyMessage;
+        final noDrivers = _isNoDriversCancellation(
+          reason: reason,
+          cancelledBy: cancelledBy,
+          message: messageFromPayload,
+        );
+        if (noDrivers) {
+          // Backend system expiry emits `ride:cancelled` first, followed by
+          // `ride:status no_drivers` and `ride:state`. If those later packets
+          // are missed, resetting bookingPhase to idle leaves the matching
+          // screen mounted but visually "searching" forever. Treat the
+          // no-driver cancellation as a terminal matching failure immediately.
+          ref.container.read(matchedDriverProvider.notifier).state = null;
+          ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
+          ref.container.read(bookingFailureMessageProvider.notifier).state =
+              noDriversMessage;
+          ref.container.read(bookingPhaseProvider.notifier).fail();
+          ref.container.read(rideTrackingPhaseProvider.notifier).state =
+              RideTrackingPhase.cancelled;
+          if (ref.container.exists(activityHistoryProvider)) {
+            ref.container.read(activityHistoryProvider.notifier).silentReload();
+          }
+          return;
+        }
+
         final message = cancelledBy == 'driver'
             ? 'The driver cancelled this ride.'
             : cancelledBy == 'admin'
@@ -481,7 +592,8 @@ void _connectAndListen(Ref ref, SocketService socket) {
         // matcher_progress events on real-device tests; cast through Map
         // and read keys defensively instead.
         if (data is! Map) {
-          developer.log('matcher_progress: non-map payload $data', name: 'WS');
+          developer.log('matcher_progress: rejected non-map payload',
+              name: 'WS');
           return;
         }
         final map = Map<String, dynamic>.from(data);
@@ -644,6 +756,15 @@ void _connectAndListen(Ref ref, SocketService socket) {
           ref.container.invalidate(jobDetailProvider(jobId));
           ref.container.invalidate(bidsForJobProvider(jobId));
           ref.container.invalidate(activeJobProvider(jobId));
+          final status =
+              data is Map<String, dynamic> ? data['status']?.toString() : null;
+          final notice = ref.container.read(providerLocationNoticeProvider);
+          if ((status == 'completed' || status == 'cancelled') &&
+              notice?.bookingType == 'job' &&
+              notice?.bookingId == jobId) {
+            ref.container.read(providerLocationNoticeProvider.notifier).state =
+                null;
+          }
         }
 
         if (ref.container.exists(activityNotifierProvider)) {
@@ -788,7 +909,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // app is open and connected).
     final shownRatingFor = <String>{};
     void handleRatingPrompt(dynamic data) {
-      developer.log('Received rating:prompt: $data', name: 'WS');
+      developer.log('Received rating:prompt', name: 'WS');
       if (data is! Map<String, dynamic>) return;
       final bookingType = data['bookingType'] as String?;
       final bookingId =
@@ -882,4 +1003,22 @@ void _connectAndListen(Ref ref, SocketService socket) {
   // apps/provider/lib/src/core/providers/socket_provider.dart.
   socket.onAfterCreate(attachHandlers);
   socket.connect();
+}
+
+bool _isNoDriversCancellation({
+  required String reason,
+  required String cancelledBy,
+  required String message,
+}) {
+  final normalizedReason = reason.toLowerCase();
+  final normalizedCancelledBy = cancelledBy.toLowerCase();
+  final normalizedMessage = message.toLowerCase();
+
+  return normalizedReason == 'no_drivers_available' ||
+      normalizedReason == 'no_driver_available' ||
+      normalizedReason == 'no_drivers' ||
+      normalizedReason == 'no_driver' ||
+      normalizedMessage.contains('no drivers available') ||
+      normalizedMessage.contains('no driver available') ||
+      normalizedCancelledBy == 'system';
 }

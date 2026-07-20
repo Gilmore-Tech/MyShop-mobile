@@ -91,20 +91,12 @@ class FareEstimateScreen extends ConsumerWidget {
     final estimate = ref.watch(fareEstimateProvider);
     final options = estimate.valueOrNull;
     final estimateReady = options?.isNotEmpty == true;
-    // Route-level flag (every option shares it). When true the backend found
-    // no online, non-busy driver in range — booking is blocked so the user
-    // can't dispatch into a void; the cards already render as disabled.
-    final noDrivers = estimateReady && options!.first.driversAvailable == false;
     // The fare on the currently-selected vehicle is what the client will pay —
     // surface it boldly in the confirm bar so it's the clearest number on the
     // screen before they commit.
     final selectedId = ref.watch(selectedVehicleProvider);
-    final selectedOption = estimateReady
-        ? options!.firstWhere(
-            (o) => o.id == selectedId,
-            orElse: () => options.first,
-          )
-        : null;
+    final selectedOption =
+        estimateReady ? availableRideOptionById(options!, selectedId) : null;
 
     return PopScope(
       canPop: true,
@@ -203,11 +195,11 @@ class FareEstimateScreen extends ConsumerWidget {
               _BottomActions(
                 // No drivers in range → block the confirm path entirely so the
                 // user can't kick off a match that has nobody to match against.
-                enabled: !noDrivers,
+                enabled: selectedOption != null,
                 // What the client pays for the selected vehicle — shown bold
                 // above the Confirm button. Hidden when no drivers are available
                 // (nothing is bookable, so a price would be misleading).
-                fareDisplay: noDrivers ? null : selectedOption?.fareDisplay,
+                fareDisplay: selectedOption?.fareDisplay,
                 onConfirm: () {
                   // Hand the long-running matcher a container instead of
                   // `ref` — the screen disposes on the next line's `go`,
@@ -434,15 +426,17 @@ class _VehicleSelectionSection extends ConsumerWidget {
             onRetry: () => ref.invalidate(fareEstimateProvider),
           ),
           data: (options) {
-            final noDrivers =
-                options.isNotEmpty && options.first.driversAvailable == false;
-            // Auto-select the first option when the selected id isn't in the
-            // list — but never when drivers are unavailable, since the cards
-            // are non-selectable and a gold "selected" border would be wrong.
-            if (!noDrivers && !options.any((o) => o.id == selectedId)) {
+            final firstAvailable = firstAvailableRideOption(options);
+            final noDrivers = options.isNotEmpty && firstAvailable == null;
+            // Auto-select the first available option when the current category
+            // is absent or unavailable. The confirm button remains disabled
+            // until this post-frame state update lands, so booking can never
+            // race with a stale unavailable category id.
+            if (firstAvailable != null &&
+                availableRideOptionById(options, selectedId) == null) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 ref.read(selectedVehicleProvider.notifier).state =
-                    options.first.id;
+                    firstAvailable.id;
               });
             }
             return Column(

@@ -4,12 +4,16 @@ import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../core/providers/app_lifecycle_provider.dart';
+import '../core/providers/app_update_provider.dart';
 import '../core/providers/availability_controller.dart';
+import '../core/providers/availability_reconciliation_bridge.dart';
 import '../core/providers/background_location_sync_provider.dart';
 import '../core/providers/foreground_display_wake_lock_provider.dart';
 import '../core/providers/pending_request_recovery_provider.dart';
 import '../core/providers/provider_status_provider.dart';
+import '../core/providers/location_degradation_provider.dart';
 import '../core/providers/socket_provider.dart';
+import '../core/widgets/location_degradation_banner.dart';
 import '../core/services/fcm_service.dart';
 import '../features/driver_home/providers/online_session_provider.dart';
 import '../features/artisan_jobs/providers/artisan_jobs_provider.dart';
@@ -127,6 +131,8 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(goRouterProvider);
+    final updateRequirement = ref.watch(appUpdateRequirementProvider);
+    final locationDegradation = ref.watch(providerLocationDegradationProvider);
 
     // Keep the display awake only while the provider is online/busy and the
     // app is foregrounded. Background location sync continues after this is
@@ -142,6 +148,7 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
       // there, a provider who backgrounds from those screens can lose the
       // socket/location heartbeat and look offline to the backend.
       ref.watch(socketConnectionProvider);
+      ref.watch(availabilityReconciliationBridgeProvider);
       ref.watch(locationSocketBridgeProvider);
       ref.watch(backgroundLocationSyncProvider);
       ref.watch(onlineSessionRecorderProvider);
@@ -163,6 +170,28 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
       debugShowCheckedModeBanner: false,
       theme: MyShopTheme.light,
       routerConfig: router,
+      builder: (context, child) {
+        if (updateRequirement != null) {
+          return MandatoryAppUpdateScreen(
+            message: updateRequirement.message,
+            storeUrl: updateRequirement.storeUrl,
+          );
+        }
+        return Stack(
+          children: [
+            child ?? const SizedBox.shrink(),
+            if (locationDegradation.isDegraded)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: LocationDegradationBanner(
+                  state: locationDegradation,
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

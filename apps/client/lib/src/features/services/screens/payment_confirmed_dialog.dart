@@ -13,9 +13,8 @@ import '../widgets/rate_job_sheet.dart';
 // ── Entry point ───────────────────────────────────────────────────────────────
 // PRD 7.2 / EDD § Payment Endpoints
 // Called from _PaymentBody via ref.listen when PaymentState.confirmation != null.
-// After payment is escrowed the client is prompted to rate the provider and can
-// view the receipt or navigate home.  Payment release to the artisan happens
-// only after dual confirmation (PRD 4.8.2).
+// After the payment record is confirmed, the client can view the receipt or
+// navigate home. Provider settlement remains separate server authority.
 
 void showPaymentConfirmedDialog(
   BuildContext context,

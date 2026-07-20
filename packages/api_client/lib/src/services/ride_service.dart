@@ -52,6 +52,7 @@ class RideService {
   /// `cash`, `card`, `momo_mtn`, `momo_telecel`, `momo_airteltigo`.
   /// Defaults to `cash` when the caller doesn't specify one.
   Future<Map<String, dynamic>> createRide({
+    required String bookingKey,
     required double pickupLat,
     required double pickupLng,
     required double destinationLat,
@@ -66,6 +67,7 @@ class RideService {
     try {
       final response = await _dio.post(
         '/rides',
+        options: Options(headers: {'Idempotency-Key': bookingKey}),
         data: {
           'pickupLat': pickupLat,
           'pickupLng': pickupLng,
@@ -86,6 +88,37 @@ class RideService {
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
     }
+  }
+
+  /// GET /rides/booking-attempts/:key — resolve an ambiguous create result.
+  ///
+  /// Returns the live create-response projection when this key created a ride,
+  /// or null only for the backend's definitive BOOKING_ATTEMPT_NOT_FOUND 404.
+  /// Network errors, 5xx responses, and unrelated 404s remain errors so a
+  /// caller cannot mistake an uncertain lookup for permission to create again.
+  Future<Map<String, dynamic>?> lookupBookingAttempt(String bookingKey) async {
+    try {
+      final response = await _dio.get('/rides/booking-attempts/$bookingKey');
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404 &&
+          _responseErrorCode(e.response?.data) == 'BOOKING_ATTEMPT_NOT_FOUND') {
+        return null;
+      }
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  String? _responseErrorCode(Object? data) {
+    if (data is! Map) return null;
+    final error = data['error'];
+    if (error is String) return error;
+    if (error is Map) {
+      final code = error['code'];
+      if (code is String) return code;
+    }
+    final code = data['errorCode'] ?? data['code'];
+    return code is String ? code : null;
   }
 
   /// GET /ride-categories — Public list of active ride categories (tiers).
@@ -153,6 +186,63 @@ class RideService {
     }
   }
 
+  /// POST /rides/:id/accept — accept the currently assigned ride offer.
+  ///
+  /// This REST path mirrors the `ride:accept` socket acknowledgement and is
+  /// intentionally used by notification/overlay actions, where the socket may
+  /// not be connected yet after a cold start.
+  Future<Map<String, dynamic>> acknowledgeRideOffer(
+    String rideId,
+    String offerId,
+  ) async {
+    try {
+      final response = await _dio.post(
+        '/rides/$rideId/offers/$offerId/received',
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> acceptRideRequest(
+    String rideId, {
+    required String offerId,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/rides/$rideId/accept',
+        data: {'offerId': offerId},
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// POST /rides/:id/decline — skip the current ride offer.
+  ///
+  /// The operation is idempotent on the backend. Sending it immediately lets
+  /// the matcher advance instead of waiting for the offer deadline.
+  Future<void> declineRideRequest(
+    String rideId, {
+    required String offerId,
+    String? reason,
+  }) async {
+    try {
+      await _dio.post(
+        '/rides/$rideId/decline',
+        data: {
+          'offerId': offerId,
+          if (reason != null && reason.trim().isNotEmpty)
+            'reason': reason.trim(),
+        },
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   /// GET /drivers/me/active-ride — Driver: fetch the ride this driver is
   /// currently assigned to (status in `accepted | driver_en_route |
   /// arrived_at_pickup | in_progress`), or null if none. Replaces the
@@ -197,7 +287,23 @@ class RideService {
     required String status,
     double? currentLat,
     double? currentLng,
+    double? accuracyMeters,
+    DateTime? capturedAt,
   }) async {
+    const locationStatuses = {
+      'arrived_at_pickup',
+      'in_progress',
+      'completed',
+    };
+    if (locationStatuses.contains(status) &&
+        (currentLat == null ||
+            currentLng == null ||
+            accuracyMeters == null ||
+            capturedAt == null)) {
+      throw ArgumentError(
+        'A lifecycle GPS fix is required for arrival, trip start, and trip end.',
+      );
+    }
     try {
       final response = await _dio.patch(
         '/rides/$rideId/status',
@@ -207,6 +313,9 @@ class RideService {
             'currentLat': currentLat,
             'currentLng': currentLng,
           },
+          if (accuracyMeters != null) 'accuracyMeters': accuracyMeters,
+          if (capturedAt != null)
+            'capturedAt': capturedAt.toUtc().toIso8601String(),
         },
       );
       return _unwrap(response) as Map<String, dynamic>;
@@ -255,18 +364,18 @@ class RideService {
     }
   }
 
-  /// POST /rides/:id/dispute — Client: dispute ride fare (2-hour window).
+  /// POST /rides/:id/dispute — Client: dispute ride fare (24-hour window).
   Future<Map<String, dynamic>> disputeRide(
     String rideId, {
     required String reason,
-    String? description,
+    String? details,
   }) async {
     try {
       final response = await _dio.post(
         '/rides/$rideId/dispute',
         data: {
           'reason': reason,
-          if (description != null) 'description': description,
+          if (details != null) 'details': details,
         },
       );
       return _unwrap(response) as Map<String, dynamic>;

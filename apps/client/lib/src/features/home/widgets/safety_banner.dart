@@ -36,7 +36,7 @@ class _BannerText extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          'Verified Safety Guaranteed',
+          'Provider Review Required',
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
@@ -45,7 +45,7 @@ class _BannerText extends StatelessWidget {
         ),
         SizedBox(height: 2),
         Text(
-          'All providers pass Ghana Police & KYC background checks.',
+          'Providers need required documents and Regional Manager approval before going online.',
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w400,

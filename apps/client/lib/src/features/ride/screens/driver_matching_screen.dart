@@ -122,8 +122,16 @@ class _FailureView extends ConsumerWidget {
 
     Future<void> dismiss() async {
       final container = ProviderScope.containerOf(context, listen: false);
-      await cancelInFlightRideRequest(container);
+      final cancelled = await cancelInFlightRideRequest(container);
       if (!context.mounted) return;
+      if (!cancelled) {
+        final failure = container.read(bookingFailureMessageProvider) ??
+            "We couldn't confirm whether the ride was cancelled.";
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(failure)),
+        );
+        return;
+      }
       context.go(AppRoutes.home);
     }
 

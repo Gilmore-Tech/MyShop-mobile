@@ -8,7 +8,11 @@ import 'package:shared_models/shared_models.dart';
 import '../../../core/di/providers.dart';
 import '../../../core/providers/availability_controller.dart';
 import '../../../core/providers/provider_status_provider.dart';
+import '../../../core/providers/location_degradation_provider.dart';
+import '../../../core/providers/availability_reconciliation_controller.dart';
 import '../../../core/providers/socket_provider.dart';
+import '../../../core/services/ride_offer_receipt_service.dart';
+import '../../../core/services/lifecycle_location_service.dart';
 import '../../earnings/providers/earnings_providers.dart';
 import '../../earnings/providers/ratings_provider.dart';
 import '../../trips/providers/driver_trips_provider.dart';
@@ -31,6 +35,12 @@ final visibleRideRequestIdProvider = StateProvider<String?>((_) => null);
 /// ride payload.
 final rideRequestNavigationInFlightProvider =
     StateProvider<Set<String>>((_) => <String>{});
+
+bool isConfirmedRideAcceptResponse(Object? raw, String rideId) {
+  if (raw is! Map) return false;
+  return raw['rideId']?.toString() == rideId &&
+      raw['status']?.toString() == 'accepted';
+}
 
 /// Best-known deadline for each incoming ride request.
 ///
@@ -70,16 +80,17 @@ class ActiveRideState {
   }
 }
 
-/// Outcome of a driver-side ride cancellation. The backend returns the
-/// fee deducted from the driver's earnings and a flag that flips to `true`
-/// when this cancellation just tripped the suspension threshold for the
-/// rolling 30-day window — the UI should call out both clearly.
+/// Outcome of a driver-side ride cancellation. Consequence fields are rendered
+/// only when the backend explicitly reports their state. An omitted flag from
+/// an older backend remains unknown so the app never displays a false pause.
 class RideCancelOutcome {
   const RideCancelOutcome({
     this.cancelled = false,
     this.feePesewas = 0,
     this.driverSuspended = false,
     this.driverNoShow = false,
+    this.cancellationConsequencesApplied,
+    this.notice,
   });
 
   /// True only when the backend accepted the cancellation and the local ride
@@ -91,6 +102,8 @@ class RideCancelOutcome {
   /// True when the backend treated this as a client no-show (driver waited out
   /// the free window before cancelling) — no rating/counter penalty applied.
   final bool driverNoShow;
+  final bool? cancellationConsequencesApplied;
+  final String? notice;
 
   bool get hasFee => feePesewas > 0;
 }
@@ -126,28 +139,65 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
     // ride" before the backend has actually assigned them.
     state = const ActiveRideState(isUpdating: true);
     try {
+      final offerId = _ref.read(rideOfferIdByRideProvider)[ride.id];
+      if (offerId == null || offerId.isEmpty) {
+        state = const ActiveRideState(
+          errorMessage: 'This ride offer is still syncing. Please try again.',
+        );
+        return false;
+      }
       final socket = _ref.read(socketServiceProvider);
-      final ack = await socket.emitWithAck(
-        'ride:accept',
-        {'rideId': ride.id},
-      );
-      developer.log('ride:accept ack: $ack', name: 'ActiveRide');
+      Map<String, dynamic>? ackMap;
+      try {
+        final ack = await socket.emitWithAck(
+          'ride:accept',
+          {'rideId': ride.id, 'offerId': offerId},
+        );
+        developer.log('ride:accept ack: $ack', name: 'ActiveRide');
+        ackMap = ack is Map ? Map<String, dynamic>.from(ack) : null;
+      } on TimeoutException catch (error) {
+        developer.log(
+          'ride:accept socket ack timed out; reconciling over REST: $error',
+          name: 'ActiveRide',
+          level: 900,
+        );
+      } on StateError catch (error) {
+        developer.log(
+          'ride:accept socket unavailable; reconciling over REST: $error',
+          name: 'ActiveRide',
+          level: 900,
+        );
+      }
 
       // Backend ack returns either `driverPayload` (success) or an
       // exception event. On success the response is a Map containing at
       // least `rideId` and `status: 'accepted'`. Anything else is treated
       // as a failure so the user sees a clear error instead of a stuck
       // active-ride screen.
-      final ackMap = ack is Map ? Map<String, dynamic>.from(ack) : null;
       final ackError = ackMap?['error'] as String?;
       if (ackError != null) {
         state = ActiveRideState(errorMessage: _friendlyAckError(ackError));
         return false;
       }
 
+      final socketConfirmed = isConfirmedRideAcceptResponse(ackMap, ride.id);
+      if (!socketConfirmed) {
+        final rest = await _ref
+            .read(rideServiceProvider)
+            .acceptRideRequest(ride.id, offerId: offerId);
+        if (!isConfirmedRideAcceptResponse(rest, ride.id)) {
+          state = const ActiveRideState(
+            errorMessage:
+                "We couldn't confirm the ride assignment. Please refresh and try again.",
+          );
+          return false;
+        }
+      }
+
       state = ActiveRideState(
         ride: ride.copyWith(status: RideStatus.accepted),
       );
+      _clearOfferIdentity(ride.id, offerId);
       _setBusy();
       // Advance immediately to `driver_en_route`. Backend's PATCH is
       // idempotent now, but `RideStageTimeoutService` still auto-cancels
@@ -158,17 +208,17 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       // snapshot reconciles local state.
       unawaited(markEnRoute());
       return true;
-    } on TimeoutException {
-      developer.log('acceptRide timed out', name: 'ActiveRide', level: 900);
-      state = const ActiveRideState(
-        errorMessage: "We didn't hear back from the server. Please try again.",
-      );
-      return false;
-    } on StateError catch (e) {
-      developer.log('acceptRide socket error: $e',
-          name: 'ActiveRide', level: 900);
-      state = const ActiveRideState(
-        errorMessage: "Connection lost — please try again.",
+    } on ApiException catch (e) {
+      developer.log('acceptRide API error: $e', name: 'ActiveRide', level: 900);
+      state = ActiveRideState(
+        errorMessage: e.errorCode == null
+            ? userSafeApiErrorMessage(
+                e,
+                fallback: "Couldn't accept the ride. Please try again.",
+                conflictMessage:
+                    'This ride offer changed. Refresh and try again.',
+              )
+            : _friendlyAckError(e.errorCode!),
       );
       return false;
     } catch (e) {
@@ -180,22 +230,173 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
     }
   }
 
+  /// Accept an offer selected from a native notification/overlay action.
+  ///
+  /// A terminated-app launch has no connected socket yet, so this uses the
+  /// REST equivalent, then hydrates the authoritative active ride before the
+  /// router opens `/active-ride`.
+  Future<bool> acceptRideFromNotification(
+    String rideId, {
+    String? offerId,
+  }) async {
+    if (state.isUpdating || rideId.isEmpty) return false;
+    state = const ActiveRideState(isUpdating: true);
+    try {
+      final activeOfferId =
+          offerId ?? _ref.read(rideOfferIdByRideProvider)[rideId];
+      if (activeOfferId == null || activeOfferId.isEmpty) {
+        state = const ActiveRideState(
+          errorMessage: 'This ride offer is no longer actionable.',
+        );
+        return false;
+      }
+      final service = _ref.read(rideServiceProvider);
+      await service.acceptRideRequest(rideId, offerId: activeOfferId);
+      final raw = await service.getMyActiveRide();
+      if (raw == null) {
+        state = const ActiveRideState(
+          errorMessage: 'Ride accepted, but its details are still loading.',
+        );
+        return false;
+      }
+      final ride = Ride.fromJson(raw);
+      if (ride.id != rideId || !ride.status.isActive) {
+        state = const ActiveRideState(
+          errorMessage: 'This ride is no longer available.',
+        );
+        return false;
+      }
+      restore(ride);
+      _clearOfferIdentity(rideId, activeOfferId);
+      unawaited(markEnRoute());
+      return true;
+    } on ApiException catch (e) {
+      developer.log(
+        'notification ride accept failed: ${e.errorCode} — ${e.message}',
+        name: 'ActiveRide',
+        level: 900,
+      );
+      state = ActiveRideState(
+        errorMessage: _friendlyAckError(e.errorCode ?? ''),
+      );
+      return false;
+    } catch (e) {
+      developer.log(
+        'notification ride accept crashed: $e',
+        name: 'ActiveRide',
+        level: 1000,
+      );
+      state = const ActiveRideState(
+        errorMessage: 'Could not accept the ride. Please try again.',
+      );
+      return false;
+    }
+  }
+
+  /// Skip an offer from a native notification/overlay action. REST is used so
+  /// the matcher can advance even before Socket.IO reconnects on cold start.
+  Future<bool> declineRideFromNotification(
+    String rideId, {
+    String? offerId,
+    String reason = 'notification_skip',
+  }) async {
+    if (rideId.isEmpty) return false;
+    try {
+      final activeOfferId =
+          offerId ?? _ref.read(rideOfferIdByRideProvider)[rideId];
+      if (activeOfferId == null || activeOfferId.isEmpty) return false;
+      await _ref.read(rideServiceProvider).declineRideRequest(
+            rideId,
+            offerId: activeOfferId,
+            reason: reason,
+          );
+      _clearOfferIdentity(rideId, activeOfferId);
+      return true;
+    } on ApiException catch (e) {
+      developer.log(
+        'notification ride decline failed: ${e.errorCode} — ${e.message}',
+        name: 'ActiveRide',
+        level: 900,
+      );
+      return false;
+    } catch (e) {
+      developer.log(
+        'notification ride decline crashed: $e',
+        name: 'ActiveRide',
+        level: 1000,
+      );
+      return false;
+    }
+  }
+
   /// Decline an incoming ride. Fires `ride:decline` to the backend so the
   /// matcher immediately moves on to the next driver instead of waiting
-  /// for the acceptance window to expire. Fire-and-forget — the request
-  /// screen pops regardless of network state, and the 45 s matcher timeout
-  /// is the safety net if the emit never lands.
-  void declineRide(String rideId, {String? reason}) {
+  /// for the acceptance window to expire. The screen can pop immediately,
+  /// while this reconciles a lost socket acknowledgement over idempotent REST.
+  void declineRide(String rideId, {String? reason, String? offerId}) {
+    final activeOfferId =
+        offerId ?? _ref.read(rideOfferIdByRideProvider)[rideId];
+    if (activeOfferId == null || activeOfferId.isEmpty) return;
+    unawaited(
+      _declineRideAuthoritatively(
+        rideId,
+        activeOfferId,
+        reason,
+      ),
+    );
+  }
+
+  Future<void> _declineRideAuthoritatively(
+    String rideId,
+    String offerId,
+    String? reason,
+  ) async {
     try {
       final socket = _ref.read(socketServiceProvider);
-      socket.emit('ride:decline', {
-        'rideId': rideId,
-        if (reason != null) 'reason': reason,
-      });
-    } catch (e) {
-      developer.log('declineRide emit failed: $e',
-          name: 'ActiveRide', level: 900);
+      final ack = await socket.emitWithAck(
+          'ride:decline',
+          {
+            'rideId': rideId,
+            'offerId': offerId,
+            if (reason != null) 'reason': reason,
+          },
+          timeout: const Duration(seconds: 3));
+      if (ack is Map && ack['error'] != null) return;
+      if (ack is Map && ack['acknowledged'] == true) {
+        _clearOfferIdentity(rideId, offerId);
+        return;
+      }
+    } catch (error) {
+      developer.log(
+        'ride:decline socket path failed; reconciling over REST: $error',
+        name: 'ActiveRide',
+        level: 900,
+      );
     }
+    try {
+      await _ref.read(rideServiceProvider).declineRideRequest(
+            rideId,
+            offerId: offerId,
+            reason: reason,
+          );
+      _clearOfferIdentity(rideId, offerId);
+    } catch (error) {
+      developer.log(
+        'ride:decline REST fallback failed: $error',
+        name: 'ActiveRide',
+        level: 900,
+      );
+    }
+  }
+
+  void _clearOfferIdentity(String rideId, String offerId) {
+    _ref.read(rideOfferIdByRideProvider.notifier).update(
+          (offers) => {...offers}..remove(rideId),
+        );
+    _ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+          (deadlines) => {...deadlines}..remove(rideId),
+        );
+    unawaited(clearStoredRideOffer(offerId));
   }
 
   String _friendlyAckError(String code) {
@@ -236,22 +437,53 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
     if (state.isUpdating) return false;
     state = state.copyWith(isUpdating: true, clearError: true);
     try {
-      // Include the freshest cached GPS fix on every lifecycle transition.
-      // The backend uses the in-progress/start and completion fixes as trail
-      // boundaries; live socket heartbeats fill the points between them.
-      final position = _ref.read(lastKnownPositionProvider);
+      final needsLifecycleFix = next == RideStatus.arrived ||
+          next == RideStatus.inProgress ||
+          next == RideStatus.completed;
+      final position = needsLifecycleFix
+          ? await _ref
+              .read(lifecycleLocationServiceProvider)
+              .obtain(_ref.read(lastKnownPositionProvider))
+          : null;
+      if (position != null) {
+        _ref.read(lastKnownPositionProvider.notifier).state = position;
+      }
       final json = await _ref.read(rideServiceProvider).updateRideStatus(
             ride.id,
             status: next.toJson(),
             currentLat: position?.latitude,
             currentLng: position?.longitude,
+            accuracyMeters: position?.accuracy,
+            capturedAt: position?.timestamp,
           );
       // PATCH response is the full ride snapshot (same shape the
       // `ride:state` socket event carries). Apply it directly so the UI
       // reacts on this round-trip even if the socket event is delayed.
       // The socket listener will arrive a moment later with an identical
       // payload — `applySnapshot` is idempotent.
-      final updated = _safeParseRide(json) ?? ride.copyWith(status: next);
+      var updated = _safeParseRide(json);
+      if (updated == null ||
+          updated.id != ride.id ||
+          !_hasReachedRideStatus(updated.status, next)) {
+        developer.log(
+          'Ride transition response was not authoritative for ${ride.id}; '
+          'reading the ride back before changing local status',
+          name: 'ActiveRide',
+          level: 900,
+        );
+        updated = await _refreshFromBackend(ride.id);
+      }
+      if (updated == null ||
+          updated.id != ride.id ||
+          !_hasReachedRideStatus(updated.status, next)) {
+        state = state.copyWith(
+          isUpdating: false,
+          errorMessage: updated?.status == RideStatus.cancelled
+              ? 'This ride was cancelled before the update could finish.'
+              : "We couldn't confirm the ride update. Keep this ride open while we check again.",
+        );
+        return false;
+      }
       state = state.copyWith(ride: updated, isUpdating: false);
       if (updated.status == RideStatus.completed ||
           updated.status == RideStatus.cancelled) {
@@ -267,6 +499,12 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
         _bustEarningsCaches();
       }
       return true;
+    } on LifecycleLocationException catch (e) {
+      state = state.copyWith(
+        isUpdating: false,
+        errorMessage: e.message,
+      );
+      return false;
     } on ApiException catch (e) {
       developer.log(
         'updateRideStatus failed: ${e.errorCode} — ${e.message}',
@@ -284,6 +522,7 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       // the authoritative state so the screen can react (e.g. navigate
       // away when status is now `cancelled`).
       if (e.errorCode == 'INVALID_STATUS_TRANSITION' ||
+          e.errorCode == 'LIFECYCLE_CHECKPOINT_REQUIRED' ||
           e.errorCode == 'NOT_ASSIGNED_DRIVER' ||
           e.errorCode == 'RIDE_ALREADY_ASSIGNED') {
         unawaited(_refreshFromBackend(ride.id));
@@ -342,6 +581,11 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
         feePesewas: (result['cancellationFeePesewas'] as num?)?.toInt() ?? 0,
         driverSuspended: result['driverSuspended'] == true,
         driverNoShow: result['driverNoShow'] == true,
+        cancellationConsequencesApplied:
+            result.containsKey('cancellationConsequencesApplied')
+                ? result['cancellationConsequencesApplied'] == true
+                : null,
+        notice: result['notice'] as String?,
       );
       developer.log(
         'cancelRide PATCH succeeded for ${ride.id} '
@@ -351,21 +595,42 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
     } on ApiException catch (e) {
       developer.log(
         'cancelRide PATCH failed: ${e.errorCode} — ${e.message} '
-        '(keeping local ride active)',
+        '(reconciling authoritative ride)',
         name: 'ActiveRide',
         level: 900,
       );
-      state = state.copyWith(isUpdating: false, errorMessage: e.message);
+      final fresh = await _refreshFromBackend(ride.id);
+      if (fresh?.status == RideStatus.cancelled) {
+        clearRide();
+        return const RideCancelOutcome(
+          cancelled: true,
+          notice: 'Ride cancellation confirmed.',
+        );
+      }
+      state = state.copyWith(
+        isUpdating: false,
+        errorMessage: _cancellationFailureMessage(e, fresh?.status),
+      );
       return outcome;
     } catch (e) {
       developer.log(
-        'cancelRide crashed: $e (keeping local ride active)',
+        'cancelRide crashed: $e (reconciling authoritative ride)',
         name: 'ActiveRide',
         level: 1000,
       );
+      final fresh = await _refreshFromBackend(ride.id);
+      if (fresh?.status == RideStatus.cancelled) {
+        clearRide();
+        return const RideCancelOutcome(
+          cancelled: true,
+          notice: 'Ride cancellation confirmed.',
+        );
+      }
       state = state.copyWith(
         isUpdating: false,
-        errorMessage: 'Could not cancel the ride. Please try again.',
+        errorMessage: fresh == null
+            ? "We couldn't confirm whether the ride was cancelled. Keep this ride open while we check again."
+            : _cancellationFailureMessage(null, fresh.status),
       );
       return outcome;
     }
@@ -424,6 +689,65 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
     }
   }
 
+  /// Apply a slim remote cancellation event when the full `ride:state`
+  /// snapshot is unavailable or arrives later.
+  ///
+  /// The ride-id guard is essential: a delayed push/event for an earlier ride
+  /// must never clear or cancel a newer active ride.
+  bool applyRemoteCancellation(String rideId) {
+    final current = state.ride;
+    if (rideId.isEmpty || current == null || current.id != rideId) return false;
+    if (current.status == RideStatus.cancelled) return true;
+    applySnapshot(current.copyWith(status: RideStatus.cancelled));
+    return true;
+  }
+
+  /// Clear a matching ride after a terminal FCM tap/foreground push.
+  /// Returns whether the supplied id owned the active slot.
+  bool clearRideIfMatches(String? rideId) {
+    final current = state.ride;
+    if (rideId == null || rideId.isEmpty || current?.id != rideId) {
+      return false;
+    }
+    clearRide();
+    return true;
+  }
+
+  /// Refresh the locally-tracked ride from its authoritative REST snapshot.
+  ///
+  /// This runs when Socket.IO reconnects. If a rider cancelled while the app
+  /// was backgrounded, the socket room no longer has a live ride to restore;
+  /// fetching by id still returns the terminal snapshot and lets the UI leave
+  /// the stale active-ride screen without requiring an app restart.
+  Future<void> reconcileTrackedRide() async {
+    final tracked = state.ride;
+    if (tracked == null) return;
+    try {
+      final raw = await _ref.read(rideServiceProvider).getRide(tracked.id);
+      final snapshot = Ride.fromJson(raw);
+      final current = state.ride;
+      if (current == null || current.id != tracked.id) return;
+      if (snapshot.status == RideStatus.requested) return;
+      applySnapshot(snapshot);
+    } on ApiException catch (error) {
+      developer.log(
+        'active ride reconcile failed: ${error.errorCode} — ${error.message}',
+        name: 'ActiveRide',
+        level: 900,
+      );
+      // An assigned ride should remain readable after cancellation. A 404
+      // means the local active slot is definitely stale; drive the same
+      // terminal transition used by socket/FCM cancellation.
+      if (error.statusCode == 404) applyRemoteCancellation(tracked.id);
+    } catch (error) {
+      developer.log(
+        'active ride reconcile crashed: $error',
+        name: 'ActiveRide',
+        level: 900,
+      );
+    }
+  }
+
   /// Restore an active ride from the recovery flow on app start. Same
   /// shape as [applySnapshot] but also flips the provider status to busy
   /// (recovery means we're definitely on a live ride).
@@ -466,7 +790,16 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
 
   void _resumeOnline() {
     try {
-      _ref.read(providerStatusProvider.notifier).resumeAfterJob();
+      final locationRecoveryRequired =
+          _ref.read(providerLocationDegradationProvider).isDegraded;
+      _ref.read(providerStatusProvider.notifier).finishActiveWork(
+            locationRecoveryRequired: locationRecoveryRequired,
+          );
+      unawaited(
+        _ref
+            .read(availabilityReconciliationControllerProvider)
+            .reconcile(trigger: 'driver_work_finished'),
+      );
     } catch (_) {}
   }
 
@@ -498,15 +831,17 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   /// implies our local state has drifted (ride auto-cancelled by the
   /// backend's stage-timeout cron, another driver reassigned, etc.).
   /// Failures are non-fatal — the user sees the original error message.
-  Future<void> _refreshFromBackend(String rideId) async {
+  Future<Ride?> _refreshFromBackend(String rideId) async {
     try {
       final json = await _ref.read(rideServiceProvider).getRide(rideId);
       final fresh = Ride.fromJson(json);
-      if (state.ride?.id != rideId) return;
+      if (state.ride?.id != rideId) return fresh;
       applySnapshot(fresh);
+      return fresh;
     } catch (e) {
       developer.log('refreshFromBackend failed: $e',
           name: 'ActiveRide', level: 800);
+      return null;
     }
   }
 
@@ -526,9 +861,46 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
         return 'Only the assigned driver can update this ride.';
       case 'RIDE_ALREADY_ASSIGNED':
         return 'Another driver already accepted this ride.';
+      case 'LIFECYCLE_CHECKPOINT_REQUIRED':
+        return 'Complete arrival, trip start, and trip end as separate steps.';
+      case 'LIFECYCLE_LOCATION_REQUIRED':
+        return 'Get your current GPS location before updating this ride.';
+      case 'GPS_FIX_STALE':
+        return 'MyShop needs a GPS fix from the last 15 seconds. Try again.';
+      case 'GPS_ACCURACY_REQUIRED':
+        return 'GPS accuracy is too low. Move to an open area and try again.';
       default:
-        return e.message;
+        return userSafeApiErrorMessage(
+          e,
+          fallback: 'Could not update the ride. Please try again.',
+          conflictMessage:
+              'The ride changed before the update completed. Refresh and try again.',
+        );
     }
+  }
+
+  String _cancellationFailureMessage(
+    ApiException? error,
+    RideStatus? authoritativeStatus,
+  ) {
+    if (authoritativeStatus == RideStatus.inProgress) {
+      return 'This trip has already started. End the trip normally or contact support.';
+    }
+    if (authoritativeStatus == RideStatus.completed) {
+      return 'This ride has already ended and can no longer be cancelled.';
+    }
+    return switch (error?.errorCode) {
+      'RIDE_NOT_FOUND' =>
+        'This ride could not be found. Refresh your trips and try again.',
+      'NOT_YOUR_RIDE' ||
+      'PROFILE_REQUIRED' =>
+        'This driver account is not allowed to cancel the ride.',
+      'RIDE_NOT_CANCELLABLE' => 'This ride can no longer be cancelled.',
+      'RATE_LIMITED' ||
+      'TOO_MANY_REQUESTS' =>
+        'Too many attempts. Wait a moment, then try again.',
+      _ => 'Could not cancel the ride. Please try again.',
+    };
   }
 }
 
@@ -548,6 +920,19 @@ RideStatus? _nextStatusFor(RideStatus current) {
     case RideStatus.cancelled:
       return null;
   }
+}
+
+bool _hasReachedRideStatus(RideStatus current, RideStatus target) {
+  if (current == RideStatus.cancelled) return false;
+  const rank = <RideStatus, int>{
+    RideStatus.requested: 0,
+    RideStatus.accepted: 1,
+    RideStatus.driverEnRoute: 2,
+    RideStatus.arrived: 3,
+    RideStatus.inProgress: 4,
+    RideStatus.completed: 5,
+  };
+  return (rank[current] ?? -1) >= (rank[target] ?? 999);
 }
 
 final activeRideProvider =

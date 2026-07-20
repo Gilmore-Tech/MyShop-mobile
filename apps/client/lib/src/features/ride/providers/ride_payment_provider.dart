@@ -127,12 +127,11 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
   /// attempt can't 409 the fresh charge.
   Future<void> _bestEffortAbandonByBooking(String rideId) async {
     try {
-      final res = await _paymentService.abandonByBooking(
+      await _paymentService.abandonByBooking(
         bookingType: _kBookingType,
         bookingId: rideId,
       );
-      developer.log('abandonByBooking(ride=$rideId) → $res',
-          name: 'RidePayment');
+      developer.log('abandonByBooking completed', name: 'RidePayment');
     } on ApiException catch (e) {
       developer.log(
         'ride abandonByBooking failed: ${e.errorCode} — ${e.message}',
@@ -177,13 +176,17 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
         paymentMethod: paymentMethod,
         momoPhone: _isMomo(paymentMethod) ? momoPhone : null,
       );
-      developer.log('initiatePayment(ride=$rideId) → $result',
-          name: 'RidePayment');
       final authUrl = _findCheckoutUrl(result);
       final paymentId = _findPaymentId(result);
       final paystackReference = _findPaystackReference(result);
       final chargeStatus = _findChargeStatus(result);
-      final displayText = _findDisplayText(result);
+      final displayText = _safeRidePaymentPrompt(chargeStatus);
+      developer.log(
+        'ride payment accepted: hasPaymentId=${paymentId != null} '
+        'hasReference=${paystackReference != null} '
+        'hasCheckout=${authUrl != null} status=${chargeStatus ?? 'pending'}',
+        name: 'RidePayment',
+      );
 
       // Persist the in-flight charge as soon as we know its id — survives
       // an app kill mid-OTP/-USSD so a Retry on the next launch can
@@ -215,17 +218,16 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
         return;
       }
 
-      // ── success → charge settled inline; advance the receipt flow ───
+      // ── success → provider accepted the charge, but only an
+      // authoritative status read may surface a settled receipt.
       if (chargeStatus == 'success') {
-        await _pendingStore.clear(
-          bookingType: _kBookingType,
-          bookingId: rideId,
-        );
         state = state.copyWith(
-          phase: RidePaymentPhase.settled,
+          phase: RidePaymentPhase.awaitingSettlement,
           paymentId: paymentId,
           paystackReference: paystackReference,
+          displayText: 'Payment accepted. Waiting for final confirmation.',
         );
+        _startPolling(paymentId);
         return;
       }
 
@@ -237,8 +239,7 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
         );
         state = state.copyWith(
           phase: RidePaymentPhase.failed,
-          errorMessage:
-              displayText ?? 'The payment was declined. Please try again.',
+          errorMessage: 'The payment was declined. Please try again.',
           paymentId: paymentId,
           paystackReference: paystackReference,
         );
@@ -347,24 +348,22 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
       final result =
           await _paymentService.submitOtp(reference: reference, otp: otp);
       final chargeStatus = _findChargeStatus(result);
-      final displayText = _findDisplayText(result);
+      final displayText = _safeRidePaymentPrompt(chargeStatus);
       switch (chargeStatus) {
         case 'send_otp':
           state = state.copyWith(
             phase: RidePaymentPhase.awaitingOtp,
-            errorMessage: displayText ?? "That OTP didn't work. Try again.",
+            errorMessage:
+                'That payment code was not accepted. Check it and try again.',
             displayText: displayText,
           );
           return;
         case 'success':
-          _stopPolling();
-          if (rideId != null) {
-            await _pendingStore.clear(
-              bookingType: _kBookingType,
-              bookingId: rideId,
-            );
-          }
-          state = state.copyWith(phase: RidePaymentPhase.settled);
+          state = state.copyWith(
+            phase: RidePaymentPhase.awaitingSettlement,
+            displayText: 'Payment accepted. Waiting for final confirmation.',
+          );
+          _startPolling(state.paymentId);
           return;
         case 'failed':
         case 'abandoned':
@@ -377,8 +376,7 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
           }
           state = state.copyWith(
             phase: RidePaymentPhase.failed,
-            errorMessage:
-                displayText ?? 'The payment was declined. Please try again.',
+            errorMessage: 'The payment was declined. Please try again.',
             clearAuthorizationUrl: true,
           );
           return;
@@ -396,7 +394,8 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
         case 'OTP_SUBMISSION_FAILED':
           state = state.copyWith(
             phase: RidePaymentPhase.awaitingOtp,
-            errorMessage: e.message,
+            errorMessage:
+                'That payment code was not accepted. Check it and try again.',
           );
         case 'PAYMENT_NOT_AWAITING_OTP':
           // Race: webhook already settled while user was typing.
@@ -445,21 +444,19 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
     state = const RidePaymentState();
   }
 
-  /// Manually flip to settled — the rider tells us the USSD prompt was
-  /// approved on their phone but the webhook hasn't reached us yet. Same
-  /// escape hatch the artisan-side payment notifier provides; the receipt
-  /// they see is real (Paystack moved the money), the backend's record
-  /// will catch up via the webhook eventually.
-  void markSettledLocally({String? rideId}) {
-    if (state.isSettled) return;
-    _stopPolling();
-    if (rideId != null) {
-      unawaited(_pendingStore.clear(
-        bookingType: _kBookingType,
-        bookingId: rideId,
-      ));
+  /// User-triggered authoritative refresh for a delayed payment. A rider tap
+  /// can never create a settled receipt from local state.
+  Future<void> checkPaymentStatusNow() async {
+    if (state.phase != RidePaymentPhase.awaitingSettlement) return;
+    final paymentId = state.paymentId;
+    if (paymentId == null || paymentId.isEmpty) {
+      state = state.copyWith(
+        errorMessage:
+            "We can't check this payment yet. Wait for confirmation or check Activity later.",
+      );
+      return;
     }
-    state = state.copyWith(phase: RidePaymentPhase.settled);
+    await _pollOnce(paymentId);
   }
 
   void resetForRetry() {
@@ -506,8 +503,12 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
     );
     try {
       final result = await _paymentService.retryPayment(pid);
-      developer.log('retryPayment(ride=$rideId pid=$pid) → $result',
-          name: 'RidePayment');
+      developer.log(
+        'ride payment retry accepted: '
+        'status=${_findChargeStatus(result) ?? 'pending'} '
+        'hasCheckout=${_findCheckoutUrl(result) != null}',
+        name: 'RidePayment',
+      );
       // Backend flips the payment to processing and re-sends the MoMo
       // prompt — same downstream state as a fresh /initiate that landed
       // on `pay_offline`. Poll for settlement.
@@ -624,7 +625,12 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
         return 'The payment was declined. Check the number and balance '
             'and try again.';
       default:
-        return e.message;
+        return userSafeApiErrorMessage(
+          e,
+          fallback: "Couldn't start the payment. Please try again.",
+          conflictMessage:
+              'The payment state changed. Refresh the trip before trying again.',
+        );
     }
   }
 
@@ -767,24 +773,15 @@ String? _findPaystackReference(Object? node) {
   return null;
 }
 
-String? _findDisplayText(Object? node) {
-  if (node is Map) {
-    for (final key in const [
-      'displayText',
-      'display_text',
-      'paystackMessage',
-      'paystack_message',
-      'message',
-    ]) {
-      final v = node[key];
-      if (v is String && v.isNotEmpty) return v;
-    }
-    for (final v in node.values) {
-      final hit = _findDisplayText(v);
-      if (hit != null) return hit;
-    }
-  }
-  return null;
+String? _safeRidePaymentPrompt(String? chargeStatus) {
+  return switch (chargeStatus) {
+    'send_otp' => 'Enter the payment code sent to your phone.',
+    'pay_offline' ||
+    'pending' ||
+    'processing' =>
+      'Approve the payment prompt on your phone, then wait for confirmation.',
+    _ => null,
+  };
 }
 
 final ridePaymentNotifierProvider =

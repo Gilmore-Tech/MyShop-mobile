@@ -61,6 +61,11 @@ Future<Ride?> recoverPendingRideRequest(WidgetRef ref) {
             (m) => {...m, rideId: deadline},
           );
     },
+    storeOfferId: (rideId, offerId) {
+      ref.read(rideOfferIdByRideProvider.notifier).update(
+            (offers) => {...offers, rideId: offerId},
+          );
+    },
   );
 }
 
@@ -73,6 +78,11 @@ Future<Ride?> recoverPendingRideRequestById(WidgetRef ref, String rideId) {
     storeDeadline: (rideId, deadline) {
       ref.read(rideRequestDeadlineByIdProvider.notifier).update(
             (m) => {...m, rideId: deadline},
+          );
+    },
+    storeOfferId: (rideId, offerId) {
+      ref.read(rideOfferIdByRideProvider.notifier).update(
+            (offers) => {...offers, rideId: offerId},
           );
     },
   );
@@ -91,6 +101,11 @@ Future<Ride?> recoverPendingRideRequestFromRef(Ref ref) {
             (m) => {...m, rideId: deadline},
           );
     },
+    storeOfferId: (rideId, offerId) {
+      ref.read(rideOfferIdByRideProvider.notifier).update(
+            (offers) => {...offers, rideId: offerId},
+          );
+    },
   );
 }
 
@@ -105,6 +120,11 @@ Future<Ride?> recoverPendingRideRequestByIdFromRef(Ref ref, String rideId) {
             (m) => {...m, rideId: deadline},
           );
     },
+    storeOfferId: (rideId, offerId) {
+      ref.read(rideOfferIdByRideProvider.notifier).update(
+            (offers) => {...offers, rideId: offerId},
+          );
+    },
   );
 }
 
@@ -113,6 +133,7 @@ Future<Ride?> _recoverPendingRideRequest({
   required Future<List<ProviderPendingRequest>> Function() listPendingRequests,
   required Future<Map<String, dynamic>> Function(String rideId) fetchRide,
   required void Function(String rideId, DateTime deadline) storeDeadline,
+  required void Function(String rideId, String offerId) storeOfferId,
 }) async {
   try {
     final requests = await listPendingRequests().timeout(
@@ -127,6 +148,9 @@ Future<Ride?> _recoverPendingRideRequest({
       );
       if (ride != null && request.expiresAt != null) {
         storeDeadline(ride.id, request.expiresAt!);
+      }
+      if (ride != null && request.offerId != null) {
+        storeOfferId(ride.id, request.offerId!);
       }
       return ride;
     }
@@ -188,6 +212,11 @@ Future<void> _surfaceRideRequest(
     if (request.expiresAt != null) {
       ref.read(rideRequestDeadlineByIdProvider.notifier).update(
             (m) => {...m, ride.id: request.expiresAt!},
+          );
+    }
+    if (request.offerId != null && request.offerId!.isNotEmpty) {
+      ref.read(rideOfferIdByRideProvider.notifier).update(
+            (offers) => {...offers, ride.id: request.offerId!},
           );
     }
     ref.read(surfacedRideIdsProvider.notifier).update((s) => {...s, ride.id});

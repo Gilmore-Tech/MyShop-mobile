@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io' show Platform;
 
-import 'package:api_client/api_client.dart' show ApiException;
+import 'package:api_client/api_client.dart'
+    show ApiException, userSafeApiErrorMessage;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,6 +15,10 @@ import 'package:shared_utils/shared_utils.dart' as geo_utils;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/providers/socket_provider.dart';
+import '../../../core/services/incoming_request_overlay_presenter.dart';
+import '../../../core/services/local_notification_service.dart';
+import '../../../core/widgets/incoming_request_map_preview.dart';
 
 import '../../artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../artisan_jobs/providers/pending_incoming_jobs_provider.dart';
@@ -36,11 +41,16 @@ class JobRequestScreen extends ConsumerStatefulWidget {
     required this.job,
     this.bidStatus = BidStatus.none,
     this.submittedBidAmount = 0,
+    this.openBidSheet = false,
   });
 
   final Job job;
   final BidStatus bidStatus;
   final num submittedBidAmount;
+
+  /// True for the native "Submit bid" notification action. The request
+  /// screen hydrates first, then opens the existing bid form once.
+  final bool openBidSheet;
 
   @override
   ConsumerState<JobRequestScreen> createState() => _JobRequestScreenState();
@@ -52,6 +62,8 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
   /// during a status-update cycle, and stacking post-frame callbacks used
   /// to thrash navigation and retain widgets in memory).
   bool _hasRedirectedToActiveJob = false;
+  bool _didAutoOpenBidSheet = false;
+  bool _decliningRequest = false;
 
   /// Full-fat job fetched from `GET /jobs/:id` on mount. The artisan jobs
   /// feed (`GET /jobs`) returns slim records that drop client identity
@@ -80,7 +92,28 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
   @override
   void initState() {
     super.initState();
+    // Post-frame: modifying a provider synchronously inside initState can
+    // fire rebuilds of widgets that are still building. Mirrors the ride
+    // request screen's visible-marker handshake.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(visibleJobRequestIdProvider.notifier).state = widget.job.id;
+    });
     _hydrateJob();
+  }
+
+  @override
+  void dispose() {
+    // Release the visible marker so the next notification tap for this job
+    // navigates again. Guarded: a replacement screen for the same job may
+    // already own the marker, and the container can be tearing down.
+    try {
+      final visibleId = ref.read(visibleJobRequestIdProvider);
+      if (visibleId == widget.job.id) {
+        ref.read(visibleJobRequestIdProvider.notifier).state = null;
+      }
+    } catch (_) {}
+    super.dispose();
   }
 
   /// Fetch the full job record. Tracks loading + error state so the
@@ -101,10 +134,11 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
         _hydratedJob = Job.fromJson(raw);
         _hydrating = false;
       });
+      _scheduleAutoOpenBidSheet();
     } catch (e) {
-      debugPrint('[JobRequest] hydrate failed for ${widget.job.id}: $e');
+      debugPrint('[JobRequest] hydration failed: ${e.runtimeType}');
       developer.log(
-        'Job hydration failed for ${widget.job.id}: $e',
+        'Job hydration failed: ${e.runtimeType}',
         name: 'JobRequest',
         level: 800,
       );
@@ -113,6 +147,47 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
         _hydrating = false;
         _hydrationError = e.toString();
       });
+      if (_hasUsableSeedData) _scheduleAutoOpenBidSheet();
+    }
+  }
+
+  void _scheduleAutoOpenBidSheet() {
+    if (!widget.openBidSheet || _didAutoOpenBidSheet) return;
+    _didAutoOpenBidSheet = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        BidSubmissionScreen.show(
+          context,
+          job: _sourceJob,
+          distanceKm: 0,
+        ),
+      );
+    });
+  }
+
+  Future<void> _declineRequest(Job job) async {
+    if (_decliningRequest) return;
+    setState(() => _decliningRequest = true);
+    try {
+      await ref.read(jobServiceProvider).declineJobRequest(
+            job.id,
+            reason: 'provider_declined',
+          );
+      ref.read(pendingIncomingJobsProvider.notifier).remove(job.id);
+      await clearIncomingRequestAlert(
+        type: NotificationPayload.typeJobRequest,
+        requestId: job.id,
+      );
+      if (mounted) context.pop();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _decliningRequest = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not decline this request. Please try again.'),
+        ),
+      );
     }
   }
 
@@ -141,13 +216,11 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
     if (!_hasUsableSeedData && _hydratedJob == null) {
       if (_hydrationError != null) {
         return _JobRequestLoadFailureScreen(
-          jobId: widget.job.id,
-          error: _hydrationError!,
           onRetry: _hydrateJob,
         );
       }
       if (_hydrating) {
-        return const _JobRequestLoadingScreen();
+        return _JobRequestLoadingScreen(requestId: _requestId);
       }
     }
 
@@ -220,6 +293,23 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
     final etaMinutes = distanceKm == null
         ? null
         : geo_utils.estimatedEtaMinutes(distanceKm * 1000);
+    final currentUser = ref.watch(currentUserProvider);
+    int? minimumBidPesewas;
+    final categoryLinks = currentUser?.artisanProfile?.serviceCategories;
+    if (categoryLinks != null) {
+      for (final link in categoryLinks) {
+        if (link.categoryId == effectiveJob.categoryId ||
+            link.category.id == effectiveJob.categoryId) {
+          minimumBidPesewas = link.category.minBidPesewas;
+          break;
+        }
+      }
+    }
+    final canPlaceBid = effectiveBidStatus == BidStatus.none &&
+        _isBiddable(
+          effectiveJob,
+          artisanUserId: currentUser?.id,
+        );
 
     return Scaffold(
       backgroundColor: MyShopColors.offWhite,
@@ -290,15 +380,25 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                     ),
                     const SizedBox(height: MyShopSpacing.md),
                   ],
+                  _JobDecisionHero(
+                    title: _title,
+                    minimumBidPesewas: minimumBidPesewas,
+                    distanceKm: distanceKm,
+                    etaMinutes: etaMinutes,
+                    postedAgo: _formatPostedAgo(effectiveJob.createdAt),
+                  ),
+                  const SizedBox(height: MyShopSpacing.md),
+                  _LocationCard(
+                    label: effectiveJob.addressText ?? 'Location pending',
+                    latitude: effectiveJob.latitude,
+                    longitude: effectiveJob.longitude,
+                  ),
+                  const SizedBox(height: MyShopSpacing.md),
                   _ClientSummaryCard(
                     clientName: effectiveJob.clientName ?? 'Client',
                     clientPhotoUrl: effectiveJob.clientPhotoUrl,
-                    clientLocation:
-                        effectiveJob.addressText ?? 'Location pending',
                     distanceKm: distanceKm,
                     etaMinutes: etaMinutes,
-                    title: _title,
-                    postedAgo: _formatPostedAgo(effectiveJob.createdAt),
                   ),
                   const SizedBox(height: MyShopSpacing.lg),
                   const _SectionHeader(
@@ -320,17 +420,6 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                     const SizedBox(height: MyShopSpacing.sm),
                     _PhotosRow(photos: effectiveJob.photos),
                   ],
-                  const SizedBox(height: MyShopSpacing.lg),
-                  const _SectionHeader(
-                    icon: Icons.near_me_outlined,
-                    label: 'LOCATION',
-                  ),
-                  const SizedBox(height: MyShopSpacing.sm),
-                  _LocationCard(
-                    label: effectiveJob.addressText ?? 'Location pending',
-                    latitude: effectiveJob.latitude,
-                    longitude: effectiveJob.longitude,
-                  ),
                   const SizedBox(height: MyShopSpacing.md),
                   if (effectiveBidStatus == BidStatus.none) ...[
                     if (effectiveJob.artisansNotified != null &&
@@ -339,10 +428,7 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                         artisansNotified: effectiveJob.artisansNotified!,
                       ),
                     const SizedBox(height: MyShopSpacing.lg),
-                    if (_isBiddable(
-                      effectiveJob,
-                      artisanUserId: ref.watch(currentUserProvider)?.id,
-                    )) ...[
+                    if (canPlaceBid) ...[
                       // If the artisan started a bid in a previous session
                       // (or got force-killed mid-submit), surface a tappable
                       // banner above PLACE BID. The bid sheet itself
@@ -373,22 +459,6 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                           ),
                         );
                       }),
-                      _PlaceBidButton(
-                        onTap: () => BidSubmissionScreen.show(
-                          context,
-                          job: effectiveJob,
-                          distanceKm: distanceKm ?? 0,
-                        ),
-                      ),
-                      const SizedBox(height: MyShopSpacing.md),
-                      _DeclineButton(
-                        onTap: () {
-                          ref
-                              .read(pendingIncomingJobsProvider.notifier)
-                              .remove(effectiveJob.id);
-                          context.pop();
-                        },
-                      ),
                     ] else
                       _NotBiddableNotice(
                         status: effectiveJob.status,
@@ -407,21 +477,26 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
                     const SizedBox(height: MyShopSpacing.sm),
                     _SubmittedBidCard(
                       total: effectiveBidAmount,
-                      // Commission rate sourced from platform_config so an
-                      // admin tweak (e.g. promo rate during pilot) lands
-                      // in the bid-summary card without a release. Falls
-                      // back to the PRD-default 20% inside the provider
-                      // when the config endpoint is unreachable.
-                      feePercent: ref
-                              .watch(commissionRatePercentProvider)
-                              .valueOrNull ??
-                          20,
+                      // Estimate only; the backend snapshots the authoritative
+                      // rate when money is finalized. Never invent a fallback.
+                      feePercent:
+                          ref.watch(commissionRatePercentProvider).valueOrNull,
                     ),
                   ],
                   const SizedBox(height: MyShopSpacing.lg),
                 ],
               ),
             ),
+            if (canPlaceBid)
+              _JobRequestActionBar(
+                onSubmitBid: () => BidSubmissionScreen.show(
+                  context,
+                  job: effectiveJob,
+                  distanceKm: distanceKm ?? 0,
+                ),
+                onSkip: () => _declineRequest(effectiveJob),
+                skipping: _decliningRequest,
+              ),
           ],
         ),
       ),
@@ -532,9 +607,12 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
       case 'NOT_BID_OWNER':
         return 'Only the bid owner can withdraw it.';
       default:
-        return e.message.isNotEmpty
-            ? e.message
-            : "Couldn't withdraw the bid. Please try again.";
+        return userSafeApiErrorMessage(
+          e,
+          fallback: "Couldn't withdraw the bid. Please try again.",
+          conflictMessage:
+              'The bid changed before it could be withdrawn. Refresh and try again.',
+        );
     }
   }
 }
@@ -815,27 +893,161 @@ class _Header extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Client summary card
+// Decision summary + client card
 // ─────────────────────────────────────────────────────────────────────────────
+
+class _JobDecisionHero extends StatelessWidget {
+  const _JobDecisionHero({
+    required this.title,
+    required this.minimumBidPesewas,
+    required this.distanceKm,
+    required this.etaMinutes,
+    required this.postedAgo,
+  });
+
+  final String title;
+  final int? minimumBidPesewas;
+  final double? distanceKm;
+  final int? etaMinutes;
+  final String postedAgo;
+
+  @override
+  Widget build(BuildContext context) {
+    final minimumBid = minimumBidPesewas;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      decoration: BoxDecoration(
+        color: MyShopColors.primaryGoldLight,
+        borderRadius: BorderRadius.circular(MyShopRadius.card),
+        border: Border.all(
+          color: MyShopColors.primaryGold.withValues(alpha: 0.24),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: MyShopTypography.h2.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: MyShopSpacing.sm,
+                  vertical: MyShopSpacing.xs,
+                ),
+                decoration: BoxDecoration(
+                  color: MyShopColors.surfaceWhite,
+                  borderRadius: BorderRadius.circular(MyShopRadius.pill),
+                ),
+                child: Text(
+                  'NEW',
+                  style: MyShopTypography.overline.copyWith(
+                    color: MyShopColors.primaryGoldDark,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: MyShopSpacing.md),
+          Text(
+            minimumBid == null ? 'PRICE' : 'MINIMUM BID',
+            style: MyShopTypography.overline.copyWith(
+              color: MyShopColors.primaryGoldDark,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            minimumBid == null
+                ? 'Submit your quote'
+                : 'GHS ${(minimumBid / 100).toStringAsFixed(2)}',
+            style: minimumBid == null
+                ? MyShopTypography.h2.copyWith(fontWeight: FontWeight.w800)
+                : MyShopTypography.price.copyWith(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                  ),
+          ),
+          const SizedBox(height: MyShopSpacing.md),
+          Wrap(
+            spacing: MyShopSpacing.sm,
+            runSpacing: MyShopSpacing.sm,
+            children: [
+              if (distanceKm != null)
+                _DecisionMetric(
+                  icon: Icons.near_me_outlined,
+                  label: '${distanceKm!.toStringAsFixed(1)} km away',
+                ),
+              if (etaMinutes != null && etaMinutes! > 0)
+                _DecisionMetric(
+                  icon: Icons.schedule,
+                  label: '~${geo_utils.formatEtaLabel(etaMinutes!)}',
+                ),
+              _DecisionMetric(
+                icon: Icons.bolt,
+                label: postedAgo,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DecisionMetric extends StatelessWidget {
+  const _DecisionMetric({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: MyShopColors.surfaceWhite,
+        borderRadius: BorderRadius.circular(MyShopRadius.pill),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: MyShopColors.darkSlate),
+          const SizedBox(width: MyShopSpacing.xs),
+          Text(
+            label,
+            style: MyShopTypography.body2.copyWith(
+              color: MyShopColors.textPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _ClientSummaryCard extends StatelessWidget {
   const _ClientSummaryCard({
     required this.clientName,
     required this.clientPhotoUrl,
-    required this.clientLocation,
     required this.distanceKm,
     required this.etaMinutes,
-    required this.title,
-    required this.postedAgo,
   });
 
   final String clientName;
   final String? clientPhotoUrl;
-  final String clientLocation;
   final double? distanceKm;
   final int? etaMinutes;
-  final String title;
-  final String postedAgo;
 
   @override
   Widget build(BuildContext context) {
@@ -856,90 +1068,38 @@ class _ClientSummaryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: MyShopColors.divider),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              _ClientAvatar(photoUrl: clientPhotoUrl),
-              const SizedBox(width: MyShopSpacing.sm),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      clientName,
-                      style: MyShopTypography.h3.copyWith(fontSize: 16),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.location_on,
-                          size: 14,
-                          color: MyShopColors.primaryGold,
-                        ),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Text(
-                            '$clientLocation  •  $distanceText',
-                            style: MyShopTypography.body2.copyWith(
-                              color: MyShopColors.primaryGold,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: MyShopColors.error,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'NOW',
-                  style: MyShopTypography.caption.copyWith(
-                    color: MyShopColors.textOnPrimary,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.6,
-                    fontSize: 11,
+          _ClientAvatar(photoUrl: clientPhotoUrl),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'CUSTOMER',
+                  style: MyShopTypography.overline.copyWith(
+                    color: MyShopColors.textSecondary,
+                    letterSpacing: 0.8,
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: MyShopSpacing.md),
-          const Divider(height: 1, color: MyShopColors.divider),
-          const SizedBox(height: MyShopSpacing.md),
-          Text(
-            title,
-            style: MyShopTypography.h2.copyWith(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              height: 1.3,
+                const SizedBox(height: 2),
+                Text(
+                  clientName,
+                  style: MyShopTypography.h3.copyWith(fontSize: 16),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  distanceText,
+                  style: MyShopTypography.body2.copyWith(
+                    color: MyShopColors.primaryGoldDark,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: MyShopSpacing.sm),
-          Row(
-            children: [
-              const Icon(
-                Icons.access_time,
-                size: 14,
-                color: MyShopColors.textSecondary,
-              ),
-              const SizedBox(width: 4),
-              Text(postedAgo, style: MyShopTypography.body2),
-            ],
           ),
         ],
       ),
@@ -1313,215 +1473,88 @@ class _LocationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () => _openDirections(context),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        decoration: BoxDecoration(
-          color: MyShopColors.surfaceWhite,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: MyShopColors.divider),
+    final hasUsableLocation =
+        IncomingRequestMapPreview.isUsableCoordinate(latitude, longitude);
+    return Column(
+      children: [
+        IncomingRequestMapPreview.location(
+          latitude: latitude,
+          longitude: longitude,
         ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          children: [
-            // Keep this preview code-native. A full GoogleMap costs a large
-            // native GL allocation, while a Static Maps image would expose a
-            // paid web-service key from the app. Tapping opens the real maps
-            // application with these coordinates.
-            SizedBox(
-              height: 160,
-              child: _LocationPreview(
-                latitude: latitude,
-                longitude: longitude,
-                onTap: () => _openDirections(context),
-              ),
+        const SizedBox(height: MyShopSpacing.sm),
+        InkWell(
+          onTap: hasUsableLocation ? () => _openDirections(context) : null,
+          borderRadius: BorderRadius.circular(MyShopRadius.card),
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: MyShopSpacing.md,
+              vertical: MyShopSpacing.sm,
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: MyShopSpacing.md,
-                vertical: MyShopSpacing.sm,
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.location_on,
-                    size: 16,
-                    color: MyShopColors.textPrimary,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      label,
-                      style: MyShopTypography.body1,
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: MyShopColors.primaryGold,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.navigation,
-                          size: 14,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Navigate',
-                          style: MyShopTypography.body2.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+            decoration: BoxDecoration(
+              color: MyShopColors.surfaceWhite,
+              borderRadius: BorderRadius.circular(MyShopRadius.card),
+              border: Border.all(color: MyShopColors.divider),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Key-free location preview. It deliberately does not claim to be a street
-// map; it gives the request card useful spatial affordance without mounting a
-// native map or sending a paid Google web-service key from the mobile app.
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _LocationPreview extends StatelessWidget {
-  const _LocationPreview({
-    required this.latitude,
-    required this.longitude,
-    required this.onTap,
-  });
-
-  final double latitude;
-  final double longitude;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: 'Open job location in maps',
-      child: InkWell(
-        onTap: onTap,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            const ColoredBox(
-              color: Color(0xFFF0F3F1),
-              child: CustomPaint(painter: _LocationPreviewPainter()),
-            ),
-            const Center(
-              child: Icon(
-                Icons.location_on,
-                size: 48,
-                color: MyShopColors.primaryGold,
-                shadows: [
-                  Shadow(
-                    color: Color(0x40000000),
-                    blurRadius: 8,
-                    offset: Offset(0, 3),
-                  ),
-                ],
-              ),
-            ),
-            Positioned(
-              left: 12,
-              bottom: 10,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: MyShopColors.surfaceWhite.withValues(alpha: 0.94),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: const [
-                    BoxShadow(color: Color(0x18000000), blurRadius: 5),
-                  ],
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.location_on_outlined,
+                  size: 18,
+                  color: MyShopColors.primaryGold,
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.open_in_new, size: 14),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Open live map  •  ${latitude.toStringAsFixed(4)}, '
-                      '${longitude.toStringAsFixed(4)}',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
+                const SizedBox(width: MyShopSpacing.sm),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: MyShopTypography.body1,
+                  ),
+                ),
+                const SizedBox(width: MyShopSpacing.sm),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: hasUsableLocation
+                        ? MyShopColors.primaryGoldLight
+                        : MyShopColors.surfaceGrey,
+                    borderRadius: BorderRadius.circular(MyShopRadius.pill),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        hasUsableLocation
+                            ? Icons.open_in_new
+                            : Icons.location_off_outlined,
+                        size: 14,
+                        color: hasUsableLocation
+                            ? MyShopColors.primaryGoldDark
+                            : MyShopColors.textSecondary,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 4),
+                      Text(
+                        hasUsableLocation ? 'Open map' : 'Unavailable',
+                        style: MyShopTypography.body2.copyWith(
+                          color: hasUsableLocation
+                              ? MyShopColors.primaryGoldDark
+                              : MyShopColors.textSecondary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
-}
-
-class _LocationPreviewPainter extends CustomPainter {
-  const _LocationPreviewPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final minorRoad = Paint()
-      ..color = const Color(0xFFD8DFDB)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 5;
-    final majorRoad = Paint()
-      ..color = const Color(0xFFFFFFFF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 10;
-
-    canvas.drawPath(
-      Path()
-        ..moveTo(-20, size.height * 0.78)
-        ..quadraticBezierTo(
-          size.width * 0.3,
-          size.height * 0.35,
-          size.width + 20,
-          size.height * 0.58,
-        ),
-      majorRoad,
-    );
-    canvas.drawPath(
-      Path()
-        ..moveTo(size.width * 0.2, -10)
-        ..lineTo(size.width * 0.38, size.height + 10),
-      minorRoad,
-    );
-    canvas.drawPath(
-      Path()
-        ..moveTo(size.width * 0.78, -10)
-        ..quadraticBezierTo(
-          size.width * 0.58,
-          size.height * 0.45,
-          size.width * 0.84,
-          size.height + 10,
-        ),
-      minorRoad,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1567,35 +1600,69 @@ class _BidStatusCard extends StatelessWidget {
 // Action buttons
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _PlaceBidButton extends StatelessWidget {
-  const _PlaceBidButton({required this.onTap});
+class _JobRequestActionBar extends StatelessWidget {
+  const _JobRequestActionBar({
+    required this.onSubmitBid,
+    required this.onSkip,
+    required this.skipping,
+  });
 
-  final VoidCallback onTap;
+  final VoidCallback onSubmitBid;
+  final VoidCallback onSkip;
+  final bool skipping;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 56,
-        decoration: BoxDecoration(
-          color: MyShopColors.darkSlate,
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x33000000),
-              blurRadius: 14,
-              offset: Offset(0, 6),
-            ),
-          ],
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          'PLACE BID',
-          style: MyShopTypography.button.copyWith(
-            color: MyShopColors.textOnDarkSlate,
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        MyShopSpacing.md,
+        MyShopSpacing.sm,
+        MyShopSpacing.md,
+        MyShopSpacing.md,
+      ),
+      decoration: const BoxDecoration(
+        color: MyShopColors.surfaceWhite,
+        border: Border(top: BorderSide(color: MyShopColors.divider)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: _DeclineButton(onTap: onSkip, loading: skipping),
+          ),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(
+            flex: 3,
+            child: _PlaceBidButton(onTap: skipping ? null : onSubmitBid),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlaceBidButton extends StatelessWidget {
+  const _PlaceBidButton({required this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 52,
+      child: ElevatedButton.icon(
+        onPressed: onTap,
+        icon: const Icon(Icons.edit_note, size: 19),
+        label: const Text('Submit bid'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: MyShopColors.buttonPrimary,
+          foregroundColor: MyShopColors.textOnDarkSlate,
+          disabledBackgroundColor: MyShopColors.disabled,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(MyShopRadius.button),
+          ),
+          textStyle: MyShopTypography.button.copyWith(
             fontWeight: FontWeight.w800,
-            letterSpacing: 0.8,
             fontSize: 15,
           ),
         ),
@@ -1612,12 +1679,13 @@ class _SubmittedBidCard extends StatelessWidget {
   const _SubmittedBidCard({required this.total, required this.feePercent});
 
   final num total;
-  final num feePercent;
+  final num? feePercent;
 
   @override
   Widget build(BuildContext context) {
-    final fee = (total * feePercent) / 100;
-    final net = total - fee;
+    final rate = feePercent;
+    final fee = rate == null ? null : (total * rate) / 100;
+    final net = fee == null ? null : total - fee;
     return DottedBorderBox(
       child: Padding(
         padding: const EdgeInsets.all(MyShopSpacing.md),
@@ -1644,48 +1712,57 @@ class _SubmittedBidCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: MyShopSpacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Platform Fee (${feePercent.toInt()}%)',
-                    style: MyShopTypography.body1.copyWith(
-                      color: MyShopColors.textSecondary,
-                      fontWeight: FontWeight.w400,
+            if (rate != null && fee != null)
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Estimated Platform Fee (${rate.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '')}%)',
+                      style: MyShopTypography.body1.copyWith(
+                        color: MyShopColors.textSecondary,
+                        fontWeight: FontWeight.w400,
+                      ),
                     ),
                   ),
-                ),
-                Text(
-                  '-GHS ${fee.toStringAsFixed(2)}',
-                  style: MyShopTypography.body1.copyWith(
-                    color: MyShopColors.error,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: MyShopSpacing.sm),
-            const Divider(height: 1, color: MyShopColors.divider),
-            const SizedBox(height: MyShopSpacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Estimated Net',
+                  Text(
+                    '-GHS ${fee.toStringAsFixed(2)}',
                     style: MyShopTypography.body1.copyWith(
+                      color: MyShopColors.error,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
+                ],
+              )
+            else
+              Text(
+                'The fee estimate is temporarily unavailable. Your final earnings will use the rate recorded by the server.',
+                style: MyShopTypography.body2.copyWith(
+                  color: MyShopColors.textSecondary,
                 ),
-                Text(
-                  'GHS ${net.toStringAsFixed(2)}',
-                  style: MyShopTypography.h3.copyWith(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
+              ),
+            const SizedBox(height: MyShopSpacing.sm),
+            const Divider(height: 1, color: MyShopColors.divider),
+            const SizedBox(height: MyShopSpacing.sm),
+            if (net != null)
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Estimated Net',
+                      style: MyShopTypography.body1.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
-                ),
-              ],
-            ),
+                  Text(
+                    'GHS ${net.toStringAsFixed(2)}',
+                    style: MyShopTypography.h3.copyWith(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
           ],
         ),
       ),
@@ -1792,83 +1869,80 @@ class _BidDraftBanner extends StatelessWidget {
 }
 
 class _DeclineButton extends StatelessWidget {
-  const _DeclineButton({required this.onTap});
+  const _DeclineButton({required this.onTap, this.loading = false});
 
   final VoidCallback onTap;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 56,
-        decoration: BoxDecoration(
-          color: MyShopColors.surfaceWhite,
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: MyShopColors.divider),
-        ),
-        alignment: Alignment.center,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                color: MyShopColors.surfaceWhite,
-                shape: BoxShape.circle,
-                border: Border.all(color: MyShopColors.error, width: 1.5),
-              ),
-              child: const Icon(
-                Icons.close,
-                size: 14,
-                color: MyShopColors.error,
-              ),
-            ),
-            const SizedBox(width: MyShopSpacing.sm),
-            Text(
-              'Decline',
-              style: MyShopTypography.button.copyWith(
-                color: MyShopColors.error,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.4,
-                fontSize: 15,
-              ),
-            ),
-          ],
+    return SizedBox(
+      height: 52,
+      child: OutlinedButton.icon(
+        onPressed: loading ? null : onTap,
+        icon: loading
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.close, size: 18),
+        label: Text(loading ? 'Skipping…' : 'Skip'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: MyShopColors.error,
+          side: const BorderSide(color: MyShopColors.error),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(MyShopRadius.button),
+          ),
+          textStyle: MyShopTypography.button.copyWith(
+            color: MyShopColors.error,
+            fontWeight: FontWeight.w800,
+            fontSize: 15,
+          ),
         ),
       ),
     );
   }
 }
 
-/// Loading skeleton shown while [JobRequestScreen] hydrates a stub Job
+/// Loading state shown while [JobRequestScreen] hydrates a stub Job
 /// (FCM-tap entry path, where the constructor receives only an id).
-/// A simple centered spinner — the previous "render with empty fields"
-/// fallback was visually indistinguishable from a broken screen.
+/// Renders the same Request Details shell (header + request id) as the
+/// hydrated screen with a spinner in the body, so the fetch completing
+/// only swaps the body content in place — the user never perceives a
+/// separate loading screen between two details screens.
 class _JobRequestLoadingScreen extends StatelessWidget {
-  const _JobRequestLoadingScreen();
+  const _JobRequestLoadingScreen({required this.requestId});
+
+  final String requestId;
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       backgroundColor: MyShopColors.offWhite,
       body: SafeArea(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(
-                color: MyShopColors.primaryGold,
-                strokeWidth: 2.4,
+        child: Column(
+          children: [
+            _Header(requestId: requestId),
+            const Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(
+                      color: MyShopColors.primaryGold,
+                      strokeWidth: 2.4,
+                    ),
+                    SizedBox(height: MyShopSpacing.md),
+                    Text(
+                      'Loading job…',
+                      style: MyShopTypography.body2,
+                    ),
+                  ],
+                ),
               ),
-              SizedBox(height: MyShopSpacing.md),
-              Text(
-                'Loading job…',
-                style: MyShopTypography.body2,
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1882,13 +1956,9 @@ class _JobRequestLoadingScreen extends StatelessWidget {
 /// or back out to /home.
 class _JobRequestLoadFailureScreen extends StatelessWidget {
   const _JobRequestLoadFailureScreen({
-    required this.jobId,
-    required this.error,
     required this.onRetry,
   });
 
-  final String jobId;
-  final String error;
   final VoidCallback onRetry;
 
   @override
@@ -1915,7 +1985,7 @@ class _JobRequestLoadFailureScreen extends StatelessWidget {
               ),
               const SizedBox(height: MyShopSpacing.sm),
               Text(
-                'Job ${jobId.length >= 8 ? jobId.substring(0, 8).toUpperCase() : jobId}\n$error',
+                'Check your connection and try again. If the job is no longer available, return to requests.',
                 style: MyShopTypography.body2.copyWith(
                   color: MyShopColors.textSecondary,
                 ),

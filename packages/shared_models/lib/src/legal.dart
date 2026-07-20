@@ -81,25 +81,36 @@ class HelpArticle {
 /// the screen swaps to a single "Open in browser" CTA instead.
 class LegalDocument {
   const LegalDocument({
+    required this.documentId,
     required this.slug,
     required this.title,
     required this.version,
+    required this.audience,
     this.bodyMarkdown,
     this.externalUrl,
     this.effectiveAt,
+    this.publishedAt,
+    this.accepted = false,
+    this.acceptedAt,
   });
 
   factory LegalDocument.fromJson(Map<String, dynamic> json) {
     return LegalDocument(
+      documentId: json['documentId'] as String? ?? json['id'] as String? ?? '',
       slug: json['slug'] as String? ?? '',
       title: json['title'] as String? ?? '',
       version: json['version'] as String? ?? '1.0.0',
+      audience: json['audience'] as String? ?? 'both',
       bodyMarkdown: json['bodyMarkdown'] as String? ?? json['body'] as String?,
       externalUrl: json['externalUrl'] as String?,
       effectiveAt: _parseDate(json['effectiveAt']),
+      publishedAt: _parseDate(json['publishedAt']),
+      accepted: json['accepted'] as bool? ?? false,
+      acceptedAt: _parseDate(json['acceptedAt']),
     );
   }
 
+  final String documentId;
   final String slug;
   final String title;
 
@@ -107,6 +118,7 @@ class LegalDocument {
   /// trigger — that work is out of scope for v1 but the field is here so
   /// the model doesn't need a migration later.
   final String version;
+  final String audience;
   final String? bodyMarkdown;
 
   /// When set, the viewer forgoes markdown rendering and shows a single
@@ -114,9 +126,91 @@ class LegalDocument {
   /// third-party licenses (huge file) and any externally hosted policy.
   final String? externalUrl;
   final DateTime? effectiveAt;
+  final DateTime? publishedAt;
+  final bool accepted;
+  final DateTime? acceptedAt;
 
   bool get isExternal => externalUrl != null && externalUrl!.isNotEmpty;
   bool get hasBody => bodyMarkdown != null && bodyMarkdown!.isNotEmpty;
+}
+
+/// Exact immutable document identity sent at registration or re-consent.
+class LegalAcceptanceSelection {
+  const LegalAcceptanceSelection({
+    required this.slug,
+    required this.documentId,
+    required this.version,
+  });
+
+  factory LegalAcceptanceSelection.fromDocument(LegalDocument document) =>
+      LegalAcceptanceSelection(
+        slug: document.slug,
+        documentId: document.documentId,
+        version: document.version,
+      );
+
+  final String slug;
+  final String documentId;
+  final String version;
+
+  Map<String, dynamic> toJson() => {
+        'slug': slug,
+        'documentId': documentId,
+        'version': version,
+      };
+}
+
+class RequiredLegalDocuments {
+  const RequiredLegalDocuments({required this.role, required this.documents});
+
+  factory RequiredLegalDocuments.fromJson(Map<String, dynamic> json) =>
+      RequiredLegalDocuments(
+        role: json['role'] as String? ?? '',
+        documents: (json['documents'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(LegalDocument.fromJson)
+            .toList(growable: false),
+      );
+
+  final String role;
+  final List<LegalDocument> documents;
+
+  List<LegalAcceptanceSelection> get selections => documents
+      .map(LegalAcceptanceSelection.fromDocument)
+      .toList(growable: false);
+}
+
+class LegalConsentStatus {
+  const LegalConsentStatus({
+    required this.role,
+    required this.current,
+    required this.requiresConsent,
+    required this.hasActiveWork,
+    required this.missingSlugs,
+    required this.documents,
+  });
+
+  factory LegalConsentStatus.fromJson(Map<String, dynamic> json) =>
+      LegalConsentStatus(
+        role: json['role'] as String? ?? '',
+        current: json['current'] as bool? ?? false,
+        requiresConsent: json['requiresConsent'] as bool? ?? true,
+        hasActiveWork: json['hasActiveWork'] as bool? ?? false,
+        missingSlugs: (json['missingSlugs'] as List<dynamic>? ?? const [])
+            .whereType<String>()
+            .toList(growable: false),
+        documents: (json['documents'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(LegalDocument.fromJson)
+            .toList(growable: false),
+      );
+
+  final String role;
+  final bool current;
+  final bool requiresConsent;
+  final bool hasActiveWork;
+  final List<String> missingSlugs;
+  final List<LegalDocument> documents;
 }
 
 /// Canonical legal slugs the backend serves. Kept here so screens can

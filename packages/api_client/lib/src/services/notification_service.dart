@@ -65,6 +65,7 @@ class NotificationService {
     required String fcmToken,
     required String platform,
     required String role,
+    int? offerReceiptVersion = 1,
   }) async {
     try {
       await _dio.post(
@@ -72,11 +73,144 @@ class NotificationService {
         data: {
           'fcmToken': fcmToken,
           'platform': platform,
+          if (offerReceiptVersion != null)
+            'offerReceiptVersion': offerReceiptVersion,
           // role omitted from the body — backend reads it from the
           // bearer JWT (`@CurrentUser('role')`). Including it here would
           // be a noop server-side and risk drift if the JWT and body
           // disagreed. Kept on the method signature so callers must
           // think about which role they're registering.
+        },
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// POST /notifications/register-voip-device — Store the iOS APNs PushKit
+  /// token for CallKit incoming calls.
+  ///
+  /// This is intentionally separate from [registerDevice]. FCM/APNs alert
+  /// tokens use the normal APNs topic, while PushKit VoIP tokens use the
+  /// app's `.voip` topic and are only valid on iOS.
+  Future<void> registerVoipDevice({
+    required String voipToken,
+  }) async {
+    try {
+      await _dio.post(
+        '/notifications/register-voip-device',
+        data: {
+          'voipToken': voipToken,
+          'platform': 'ios',
+        },
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// DELETE /notifications/register-voip-device — Clear the iOS PushKit token
+  /// binding when PushKit invalidates it or the app logs out.
+  Future<void> unregisterVoipDevice({
+    String? voipToken,
+  }) async {
+    try {
+      await _dio.delete(
+        '/notifications/register-voip-device',
+        data: {
+          'platform': 'ios',
+          if (voipToken != null && voipToken.isNotEmpty) 'voipToken': voipToken,
+        },
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// POST /notifications/register-live-activity-device — Bind the iOS
+  /// ActivityKit push-to-start token to the authenticated provider's current
+  /// FCM device registration.
+  ///
+  /// ActivityKit rotates this token independently of FCM, so callers should
+  /// invoke this on login and whenever the native token update stream emits.
+  Future<void> registerLiveActivityDevice({
+    required String pushToStartToken,
+  }) async {
+    try {
+      await _dio.post(
+        '/notifications/register-live-activity-device',
+        data: {
+          'platform': 'ios',
+          'pushToStartToken': pushToStartToken,
+        },
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// DELETE /notifications/register-live-activity-device — Remove the current
+  /// provider/device push-to-start binding on logout or native invalidation.
+  Future<void> unregisterLiveActivityDevice({
+    String? pushToStartToken,
+  }) async {
+    try {
+      await _dio.delete(
+        '/notifications/register-live-activity-device',
+        data: {
+          'platform': 'ios',
+          if (pushToStartToken != null && pushToStartToken.isNotEmpty)
+            'pushToStartToken': pushToStartToken,
+        },
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// POST /notifications/register-live-activity — Register the per-activity
+  /// ActivityKit update token that the backend must use to end an offer card.
+  /// The push-to-start token cannot update or end an already-started activity.
+  Future<void> registerLiveActivity({
+    required String activityId,
+    required String updateToken,
+    required String offerId,
+    required String requestType,
+    required String requestId,
+    required DateTime expiresAt,
+  }) async {
+    try {
+      await _dio.post(
+        '/notifications/register-live-activity',
+        data: {
+          'platform': 'ios',
+          'activityId': activityId,
+          'updateToken': updateToken,
+          'offerId': offerId,
+          'requestType': requestType,
+          'requestId': requestId,
+          'expiresAt': expiresAt.toUtc().toIso8601String(),
+        },
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// DELETE /notifications/register-live-activity — Remove one stale
+  /// per-activity update token after ActivityKit reports that it ended.
+  Future<void> unregisterLiveActivity({
+    required String activityId,
+    String? updateToken,
+  }) async {
+    try {
+      await _dio.delete(
+        '/notifications/register-live-activity',
+        data: {
+          'platform': 'ios',
+          'activityId': activityId,
+          if (updateToken != null && updateToken.isNotEmpty)
+            'updateToken': updateToken,
         },
       );
     } on DioException catch (e) {

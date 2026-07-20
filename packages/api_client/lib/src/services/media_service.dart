@@ -8,6 +8,7 @@ import '../models/api_exception.dart';
 /// Backend flow: request URL → upload to storage → confirm → get final URL.
 class MediaService {
   MediaService(this._dio);
+
   final Dio _dio;
 
   dynamic _unwrap(Response response) {
@@ -38,10 +39,18 @@ class MediaService {
         },
       );
       final data = _unwrap(response) as Map<String, dynamic>;
+      final uploadIntentId = data['uploadIntentId'];
+      if (uploadIntentId is! String || uploadIntentId.trim().isEmpty) {
+        throw const ApiException(
+          message: 'The upload service returned an invalid upload intent.',
+          errorCode: 'INVALID_UPLOAD_INTENT_RESPONSE',
+        );
+      }
       return UploadUrlResult(
         uploadUrl: data['uploadUrl'] as String,
         uploadMethod: data['uploadMethod'] as String? ?? 'PUT',
         uploadFieldName: data['uploadFieldName'] as String?,
+        uploadIntentId: uploadIntentId.trim(),
         storageKey: data['storageKey'] as String,
       );
     } on DioException catch (e) {
@@ -98,35 +107,45 @@ class MediaService {
 
   /// POST /media/confirm — Confirm the upload and get the final URL.
   Future<String> confirmUpload({
-    required String storageKey,
-    required String remoteUrl,
+    required String uploadIntentId,
   }) async {
     try {
       final response = await _dio.post(
         '/media/confirm',
         data: {
-          'storageKey': storageKey,
-          'remoteUrl': remoteUrl,
+          'uploadIntentId': uploadIntentId,
         },
       );
       final data = _unwrap(response) as Map<String, dynamic>;
-      return data['url'] as String? ?? remoteUrl;
+      final finalUrl = data['url'];
+      if (finalUrl is! String || finalUrl.trim().isEmpty) {
+        throw const ApiException(
+          message: 'The upload service did not return a verified file URL.',
+          errorCode: 'INVALID_UPLOAD_CONFIRMATION_RESPONSE',
+        );
+      }
+      return finalUrl;
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
     }
   }
 
-  /// Convenience: upload a local file and return its final remote URL.
-  /// Handles the full 3-step flow: request URL → upload → confirm.
+  /// Upload a job reference photo through the purpose-bound confirmed flow.
   Future<String> uploadJobPhoto(String localPath) =>
       _uploadImage(localPath, purpose: 'job_photo');
 
-  /// Convenience: upload a profile photo. Same 3-step flow as [uploadJobPhoto]
-  /// but with `purpose: 'profile_photo'` so the backend stores it under
+  /// Convenience: upload a profile photo through the full three-step flow.
+  /// Uses `purpose: 'profile_photo'` so the backend stores it under
   /// `media/profile_photo/<userId>/...`. Caller must then PATCH the URL onto
   /// the user via `UserService.updateClientProfilePhoto`.
   Future<String> uploadProfilePhoto(String localPath) =>
       _uploadImage(localPath, purpose: 'profile_photo');
+
+  /// Upload a client Ghana Card image through its own purpose-bound intent.
+  /// Keeping this separate from profile photos prevents a confirmed object
+  /// from being replayed across two unrelated consumers.
+  Future<String> uploadClientGhanaCard(String localPath) =>
+      _uploadImage(localPath, purpose: 'client_ghana_card');
 
   /// Upload an image attached to a support ticket / reply. Reuses the
   /// 3-step presigned-URL flow under `purpose: 'support_attachment'`.
@@ -138,20 +157,18 @@ class MediaService {
     final fileSize = await file.length();
     final mimeType =
         localPath.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-
     final uploadInfo = await requestUploadUrl(
       purpose: 'support_attachment',
       mimeType: mimeType,
       fileSize: fileSize,
     );
-    final remoteUrl = await uploadFile(
+    await uploadFile(
       filePath: localPath,
       uploadInfo: uploadInfo,
       mimeType: mimeType,
     );
     final finalUrl = await confirmUpload(
-      storageKey: uploadInfo.storageKey,
-      remoteUrl: remoteUrl,
+      uploadIntentId: uploadInfo.uploadIntentId,
     );
     return (url: finalUrl, sizeBytes: fileSize, mimeType: mimeType);
   }
@@ -170,14 +187,13 @@ class MediaService {
       mimeType: mimeType,
       fileSize: fileSize,
     );
-    final remoteUrl = await uploadFile(
+    await uploadFile(
       filePath: localPath,
       uploadInfo: uploadInfo,
       mimeType: mimeType,
     );
     return confirmUpload(
-      storageKey: uploadInfo.storageKey,
-      remoteUrl: remoteUrl,
+      uploadIntentId: uploadInfo.uploadIntentId,
     );
   }
 }
@@ -188,10 +204,12 @@ class UploadUrlResult {
     required this.uploadUrl,
     required this.uploadMethod,
     this.uploadFieldName,
+    required this.uploadIntentId,
     required this.storageKey,
   });
   final String uploadUrl;
   final String uploadMethod;
   final String? uploadFieldName;
+  final String uploadIntentId;
   final String storageKey;
 }

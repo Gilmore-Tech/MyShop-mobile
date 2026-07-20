@@ -38,6 +38,59 @@ class LegalService {
     }
   }
 
+  /// Public registration authority. Returns exactly the current effective
+  /// Terms and Privacy records for the selected role.
+  Future<RequiredLegalDocuments> getRequired({required String role}) async {
+    try {
+      final response = await _dio.get(
+        '/legal/required',
+        queryParameters: {'role': role},
+      );
+      final data = _unwrap(response);
+      if (data is! Map<String, dynamic>) {
+        throw const ApiException(message: 'Legal documents are unavailable.');
+      }
+      return RequiredLegalDocuments.fromJson(data);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  Future<LegalConsentStatus> getConsentStatus() async {
+    try {
+      final response = await _dio.get('/legal/consent/status');
+      final data = _unwrap(response);
+      if (data is! Map<String, dynamic>) {
+        throw const ApiException(message: 'Consent status is unavailable.');
+      }
+      return LegalConsentStatus.fromJson(data);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  Future<LegalConsentStatus> acceptCurrent(
+    List<LegalAcceptanceSelection> acceptances,
+  ) async {
+    try {
+      final response = await _dio.post(
+        '/legal/consent',
+        data: {
+          'acceptances': acceptances
+              .map((acceptance) => acceptance.toJson())
+              .toList(growable: false),
+        },
+      );
+      final data = _unwrap(response);
+      if (data is! Map<String, dynamic>) {
+        throw const ApiException(message: 'Consent could not be recorded.');
+      }
+      return LegalConsentStatus.fromJson(data);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   dynamic _unwrap(Response response) {
     final body = response.data;
     if (body is Map<String, dynamic> && body['success'] == true) {

@@ -135,6 +135,28 @@ class JobService {
     }
   }
 
+  /// POST /jobs/:id/decline — skip an incoming artisan job invitation.
+  ///
+  /// This only clears the authenticated artisan's invitation; it never
+  /// cancels the client's job. It is safe for overlay/notification actions
+  /// that are replayed after a terminated-app cold start.
+  Future<void> declineJobRequest(
+    String jobId, {
+    String? reason,
+  }) async {
+    try {
+      await _dio.post(
+        '/jobs/$jobId/decline',
+        data: {
+          if (reason != null && reason.trim().isNotEmpty)
+            'reason': reason.trim(),
+        },
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   /// POST /jobs/:id/bids — Artisan: submit a bid on an open job.
   /// Creates a bid record and notifies the client via socket `job:bid_new`.
   ///
@@ -256,11 +278,38 @@ class JobService {
   Future<Map<String, dynamic>> updateJobStatus(
     String jobId, {
     required String status,
+    double? currentLat,
+    double? currentLng,
+    double? accuracyMeters,
+    DateTime? capturedAt,
   }) async {
+    const locationStatuses = {
+      'arrived',
+      'in_progress',
+      'artisan_marked_complete',
+    };
+    if (locationStatuses.contains(status) &&
+        (currentLat == null ||
+            currentLng == null ||
+            accuracyMeters == null ||
+            capturedAt == null)) {
+      throw ArgumentError(
+        'A lifecycle GPS fix is required for arrival, work start, and work end.',
+      );
+    }
     try {
       final response = await _dio.patch(
         '/jobs/$jobId/status',
-        data: {'status': status},
+        data: {
+          'status': status,
+          if (currentLat != null && currentLng != null) ...{
+            'currentLat': currentLat,
+            'currentLng': currentLng,
+          },
+          if (accuracyMeters != null) 'accuracyMeters': accuracyMeters,
+          if (capturedAt != null)
+            'capturedAt': capturedAt.toUtc().toIso8601String(),
+        },
       );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
@@ -393,18 +442,18 @@ class JobService {
     }
   }
 
-  /// POST /jobs/:id/dispute — Dispute job (2-hour window).
+  /// POST /jobs/:id/dispute — Dispute job (24-hour window from client confirmation).
   Future<Map<String, dynamic>> disputeJob(
     String jobId, {
     required String reason,
-    String? description,
+    String? details,
   }) async {
     try {
       final response = await _dio.post(
         '/jobs/$jobId/dispute',
         data: {
           'reason': reason,
-          if (description != null) 'description': description,
+          if (details != null) 'details': details,
         },
       );
       return _unwrap(response) as Map<String, dynamic>;
@@ -413,7 +462,8 @@ class JobService {
     }
   }
 
-  /// PATCH /jobs/:id/cancel — Cancel job (30-min free, 20% fee after).
+  /// PATCH /jobs/:id/cancel — Cancel job. Automatic monetary/penalty
+  /// consequences are release-contained by the server until policy activation.
   Future<Map<String, dynamic>> cancelJob(
     String jobId, {
     String? reason,
@@ -452,8 +502,8 @@ class JobService {
   /// elapsed since the artisan marked complete; backend returns
   /// `ESCALATION_TOO_EARLY` with `remainingMinutes` otherwise.
   ///
-  /// On success the job auto-finalises to `completed` and payment is
-  /// released to the artisan. Response: `{ jobId, escalated,
+  /// On success the server may finalize the job to `completed`; provider
+  /// settlement remains separate payment authority. Response: `{ jobId, escalated,
   /// artisanMarkedCompleteAt, elapsedMs }`.
   Future<Map<String, dynamic>> escalateJobCompletion(String jobId) async {
     try {

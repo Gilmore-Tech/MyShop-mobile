@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:api_client/api_client.dart' show AppCallSession;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart' show ChatBookingType;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_ui/shared_ui.dart';
 
 import '../../app/router.dart';
 import '../../features/auth/providers/auth_controller.dart';
@@ -13,6 +16,48 @@ import '../../features/ride/widgets/rate_ride_sheet.dart';
 import '../../features/services/widgets/rate_job_sheet.dart';
 import '../di/providers.dart';
 import 'local_notification_service.dart';
+
+const _defaultIncomingCallTimeout = Duration(seconds: 60);
+const _terminalCallTombstoneFallback = Duration(minutes: 2);
+const _terminalCallTombstonePrefix = 'myshop.call_terminal.';
+
+Future<void> _recordTerminalCallTombstone(
+  String callId,
+  Map<String, dynamic> data,
+) async {
+  try {
+    final now = DateTime.now();
+    final rawExpiresAt = data[NotificationPayload.keyExpiresAt]?.toString();
+    final parsedExpiresAt =
+        rawExpiresAt == null ? null : DateTime.tryParse(rawExpiresAt);
+    final expiresAt = parsedExpiresAt != null && parsedExpiresAt.isAfter(now)
+        ? parsedExpiresAt
+        : now.add(_terminalCallTombstoneFallback);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    await prefs.setInt(
+      '$_terminalCallTombstonePrefix$callId',
+      expiresAt.millisecondsSinceEpoch,
+    );
+  } catch (error) {
+    debugPrint('[FCM] terminal tombstone write failed for $callId: $error');
+  }
+}
+
+Future<bool> _hasTerminalCallTombstone(String callId) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    final key = '$_terminalCallTombstonePrefix$callId';
+    final expiresAtMillis = prefs.getInt(key);
+    if (expiresAtMillis == null) return false;
+    if (expiresAtMillis > DateTime.now().millisecondsSinceEpoch) return true;
+    await prefs.remove(key);
+  } catch (error) {
+    debugPrint('[FCM] terminal tombstone read failed for $callId: $error');
+  }
+  return false;
+}
 
 /// Background isolate entry-point — FCM spawns a short-lived isolate to
 /// call this when a push arrives while the app is terminated or in the
@@ -23,6 +68,20 @@ import 'local_notification_service.dart';
 /// state is NOT shared with the main isolate.
 @pragma('vm:entry-point')
 Future<void> fcmBackgroundHandler(RemoteMessage message) async {
+  debugPrint(
+    '[FCM-bg] message arrived: '
+    'type=${message.data[NotificationPayload.keyType]} '
+    'hasNotificationField=${message.notification != null} '
+    'keys=${message.data.keys.toList()}',
+  );
+
+  if (await _handleCallEndedFromRemote(message, source: 'background-fcm')) {
+    return;
+  }
+  if (await _showIncomingCallFromRemote(message, source: 'background-fcm')) {
+    return;
+  }
+
   // Backend now sends a top-level `notification` field on every push so
   // FCM auto-displays the system tray banner in background/terminated.
   // Rendering our local notification on top of that produces 2× banners
@@ -34,16 +93,144 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
   await _renderFromRemote(message);
 }
 
-Future<void> _renderFromRemote(RemoteMessage message) async {
+Future<bool> _showIncomingCallFromRemote(
+  RemoteMessage message, {
+  required String source,
+}) async {
+  final type = _remoteType(message);
+  if (type != NotificationPayload.typeCallIncoming) return false;
+
+  final callId = message.data[NotificationPayload.keyCallId]?.toString();
+  if (callId == null || callId.isEmpty) {
+    debugPrint('[FCM] $source call_incoming missing required call identifier');
+    return true;
+  }
+
+  if (await _hasTerminalCallTombstone(callId)) {
+    if (Platform.isAndroid) {
+      await LocalNotificationService.instance.cancelIncomingCall(callId);
+    }
+    debugPrint('[FCM] $source ignored terminal call_incoming: $callId');
+    return true;
+  }
+
+  final remaining = _remainingCallTimeout(message.data);
+  if (remaining <= Duration.zero) {
+    if (Platform.isAndroid) {
+      await LocalNotificationService.instance.cancelIncomingCall(callId);
+    }
+    debugPrint('[FCM] $source ignored stale call_incoming: $callId');
+    return true;
+  }
+
+  if (Platform.isAndroid) {
+    await LocalNotificationService.instance.init();
+    await _renderFromRemote(message, callTimeout: remaining);
+    debugPrint('[FCM] $source call_incoming displayed on Android: $callId');
+    return true;
+  }
+
+  if (!Platform.isIOS) {
+    debugPrint('[FCM] $source call_incoming ignored on $_platformName');
+    return true;
+  }
+
+  final payload = <String, dynamic>{...message.data};
+  payload['title'] ??= message.notification?.title ?? 'Incoming MyShop call';
+  payload['body'] ??=
+      message.notification?.body ?? 'Someone is calling in MyShop';
+
+  try {
+    await VoipCallBridgeService.instance.showIncomingCall(payload);
+    debugPrint('[FCM] $source call_incoming displayed with CallKit: $callId');
+    return true;
+  } catch (error) {
+    debugPrint('[FCM] $source CallKit fallback failed for $callId: $error');
+    return false;
+  }
+}
+
+Future<bool> _handleCallEndedFromRemote(
+  RemoteMessage message, {
+  required String source,
+}) async {
+  if (_remoteType(message) != NotificationPayload.typeCallEnded) return false;
+
+  final callId = message.data[NotificationPayload.keyCallId]?.toString();
+  if (callId == null || callId.isEmpty) {
+    debugPrint('[FCM] $source call_ended missing required call identifier');
+    return true;
+  }
+
+  await _recordTerminalCallTombstone(callId, message.data);
+
+  try {
+    if (Platform.isAndroid) {
+      await LocalNotificationService.instance.cancelIncomingCall(callId);
+    } else if (Platform.isIOS) {
+      await VoipCallBridgeService.instance.endCall(callId);
+    }
+    debugPrint('[FCM] $source call_ended cleared incoming call: $callId');
+  } catch (error) {
+    debugPrint('[FCM] $source call_ended clear failed for $callId: $error');
+  }
+  return true;
+}
+
+String? _remoteType(RemoteMessage message) {
+  final rawType = message.data[NotificationPayload.keyType]?.toString();
+  if (rawType == null || rawType.isEmpty) return null;
+  return NotificationPayload.normaliseType(rawType);
+}
+
+Duration _remainingCallTimeout(Map<String, dynamic> data) {
+  final rawExpiresAt = data[NotificationPayload.keyExpiresAt]?.toString();
+  if (rawExpiresAt == null || rawExpiresAt.isEmpty) {
+    return _defaultIncomingCallTimeout;
+  }
+  final expiresAt = DateTime.tryParse(rawExpiresAt);
+  if (expiresAt == null) return Duration.zero;
+  return expiresAt.difference(DateTime.now());
+}
+
+String get _platformName {
+  if (Platform.isIOS) return 'ios';
+  if (Platform.isAndroid) return 'android';
+  return 'unknown';
+}
+
+Future<void> _renderFromRemote(
+  RemoteMessage message, {
+  Duration? callTimeout,
+}) async {
   final data = message.data;
-  final rawType = data[NotificationPayload.keyType] as String?;
-  if (rawType == null || rawType.isEmpty) return;
+  final type = _remoteType(message);
+  if (type == null) return;
 
-  // Backend emits `ride.driver_assigned`; mobile uses `ride_driver_assigned`.
-  final type = NotificationPayload.normaliseType(rawType);
+  final callId = data[NotificationPayload.keyCallId]?.toString();
+  if (type == NotificationPayload.typeCallEnded) {
+    if (callId != null && callId.isNotEmpty) {
+      await LocalNotificationService.instance.cancelIncomingCall(callId);
+    }
+    return;
+  }
 
-  final title = message.notification?.title ?? data['title'] as String? ?? '';
-  final body = message.notification?.body ?? data['body'] as String? ?? '';
+  Duration? timeoutAfter;
+  if (type == NotificationPayload.typeCallIncoming) {
+    if (callId == null || callId.isEmpty) {
+      debugPrint('[FCM] call_incoming missing required call identifier');
+      return;
+    }
+    timeoutAfter = callTimeout ?? _remainingCallTimeout(data);
+    if (timeoutAfter <= Duration.zero) {
+      await LocalNotificationService.instance.cancelIncomingCall(callId);
+      debugPrint('[FCM] ignored stale call_incoming: $callId');
+      return;
+    }
+  }
+
+  final title = message.notification?.title ?? data['title']?.toString() ?? '';
+  final body = message.notification?.body ?? data['body']?.toString() ?? '';
 
   // Pass through every non-title/body data key so the tap handler can
   // read jobId / rideId / bidId / chatId / notificationId.
@@ -60,6 +247,7 @@ Future<void> _renderFromRemote(RemoteMessage message) async {
     title: title.isEmpty ? _fallbackTitle(type) : title,
     body: body.isEmpty ? _fallbackBody(type) : body,
     extras: extras,
+    timeoutAfter: timeoutAfter,
   );
 }
 
@@ -176,16 +364,27 @@ class FcmService {
 
   final Ref _ref;
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
+  StreamSubscription<RemoteMessage>? _foregroundMessageSub;
+  StreamSubscription<RemoteMessage>? _openedMessageSub;
   StreamSubscription<String>? _tokenRefreshSub;
+  StreamSubscription<VoipCallBridgeEvent>? _voipEventSub;
+  StreamSubscription<AppCallSession>? _incomingCallStateSub;
+  final Set<String> _trackedIncomingCallIds = <String>{};
+  bool _fullScreenPermissionRequested = false;
   bool _initialised = false;
+  Future<void>? _initializing;
 
   void Function(Map<String, dynamic> payload)? onTapMessage;
 
-  Future<void> init() async {
+  Future<void> init() {
     debugPrint('[FCM] init() called (initialised=$_initialised)');
-    if (_initialised) return;
-    _initialised = true;
+    if (_initialised) return Future<void>.value();
+    return _initializing ??= _initialize().whenComplete(() {
+      _initializing = null;
+    });
+  }
 
+  Future<void> _initialize() async {
     // Must be registered before any message can arrive.
     FirebaseMessaging.onBackgroundMessage(fcmBackgroundHandler);
     debugPrint('[FCM] background handler registered');
@@ -209,8 +408,27 @@ class FcmService {
     // the message and the in-app surfaces (active-ride/job header, the
     // chat screen, the unread badge on the entry-point button) reflect
     // it. Suppress the OS banner so we don't double-notify.
-    FirebaseMessaging.onMessage.listen((message) async {
-      debugPrint('[FCM] foreground message: ${message.data}');
+    _foregroundMessageSub ??= FirebaseMessaging.onMessage.listen((
+      message,
+    ) async {
+      debugPrint('[FCM] foreground message received');
+      if (await _handleCallEndedFromRemote(
+        message,
+        source: 'foreground-fcm',
+      )) {
+        return;
+      }
+      if (await _showIncomingCallFromRemote(
+        message,
+        source: 'foreground-fcm',
+      )) {
+        if (Platform.isAndroid &&
+            _remoteType(message) == NotificationPayload.typeCallIncoming) {
+          _openAndroidIncomingCall(message.data);
+        }
+        return;
+      }
+
       // FCM does NOT auto-display in foreground (Android & iOS) — the SDK
       // hands it to onMessage and lets the app decide. So we always render
       // here, irrespective of whether `notification` is present, to give
@@ -229,8 +447,10 @@ class FcmService {
     });
 
     // Tap on push while app was backgrounded → resumed.
-    FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      debugPrint('[FCM] opened from background: ${message.data}');
+    _openedMessageSub ??= FirebaseMessaging.onMessageOpenedApp.listen((
+      message,
+    ) {
+      debugPrint('[FCM] app opened from a background notification');
       final payload = Map<String, dynamic>.from(message.data);
       _markNotificationRead(payload);
       onTapMessage?.call(payload);
@@ -239,7 +459,7 @@ class FcmService {
     // Cold-start: app was terminated, launched by a push tap.
     final initialMessage = await _fcm.getInitialMessage();
     if (initialMessage != null) {
-      debugPrint('[FCM] initial message: ${initialMessage.data}');
+      debugPrint('[FCM] initial notification received');
       final payload = Map<String, dynamic>.from(initialMessage.data);
       _markNotificationRead(payload);
       // Defer so the router is mounted before we try to navigate.
@@ -257,6 +477,8 @@ class FcmService {
     if (authState is AuthAuthenticated) {
       unawaited(syncToken());
     }
+    _initialised = true;
+    debugPrint('[FCM] initialisation complete');
   }
 
   /// Fires a best-effort `PATCH /notifications/:id/read` when the push
@@ -277,6 +499,18 @@ class FcmService {
   Future<void> syncToken() async {
     debugPrint('[FCM] syncToken() entered');
 
+    if (Platform.isAndroid && !_fullScreenPermissionRequested) {
+      _fullScreenPermissionRequested = true;
+      try {
+        final granted = await LocalNotificationService.instance
+            .requestFullScreenCallPermission();
+        debugPrint('[FCM] full-screen call access granted=$granted');
+      } catch (error) {
+        _fullScreenPermissionRequested = false;
+        debugPrint('[FCM] full-screen call access request failed: $error');
+      }
+    }
+
     // Register the token-refresh listener FIRST. On iOS, APNs registration
     // on a fresh install can take longer than our initial retry window.
     // If we exhaust retries here, the FCM token still arrives later via
@@ -284,6 +518,10 @@ class FcmService {
     // _register call fires the moment the token shows up.
     _tokenRefreshSub?.cancel();
     _tokenRefreshSub = _fcm.onTokenRefresh.listen(_register);
+    if (Platform.isIOS) {
+      _wireVoipBridge();
+      unawaited(_syncVoipTokenOnce());
+    }
 
     // iOS: FCM derives its token from the APNs device token. On cold
     // start `getToken()` throws `apns-token-not-set` if called before
@@ -370,6 +608,227 @@ class FcmService {
     debugPrint('[FCM] register exhausted retries — token NOT registered');
   }
 
+  void _wireVoipBridge() {
+    _voipEventSub ??= VoipCallBridgeService.instance.events.listen((event) {
+      switch (event.type) {
+        case VoipCallBridgeEventType.tokenUpdated:
+          final token = event.token;
+          if (token != null && token.isNotEmpty) {
+            unawaited(_registerVoipToken(token));
+          }
+        case VoipCallBridgeEventType.tokenInvalidated:
+          unawaited(_unregisterVoipToken(event.token));
+        case VoipCallBridgeEventType.incomingCall:
+          debugPrint('[VoIP] incoming call bridge event: ${event.payload}');
+          unawaited(_trackIncomingCall(event));
+        case VoipCallBridgeEventType.callAccepted:
+          unawaited(_handleVoipCallAccepted(event));
+        case VoipCallBridgeEventType.callDeclined:
+          unawaited(_handleVoipCallDeclined(event));
+        case VoipCallBridgeEventType.callEnded:
+          unawaited(_handleVoipCallEnded(event));
+        case VoipCallBridgeEventType.unknown:
+          debugPrint('[VoIP] bridge event: ${event.type} ${event.payload}');
+      }
+    });
+  }
+
+  void _openAndroidIncomingCall(Map<String, dynamic> payload) {
+    final callId = payload[NotificationPayload.keyCallId]?.toString();
+    if (callId == null || callId.isEmpty) return;
+    _ref.read(routerProvider).go(AppRoutes.inAppCallPath(callId));
+  }
+
+  String _routeAfterCall(AppCallSession session) {
+    return switch (session.bookingType) {
+      'ride' => AppRoutes.rideTracking,
+      'artisan_job' ||
+      'job' when session.bookingId.isNotEmpty =>
+        AppRoutes.jobActivePath(session.bookingId),
+      _ => AppRoutes.home,
+    };
+  }
+
+  void _navigateAfterCall(AppCallSession session) {
+    final router = _ref.read(routerProvider);
+    if ((session.bookingType == 'artisan_job' ||
+            session.bookingType == 'job') &&
+        session.bookingId.isNotEmpty) {
+      router.go(AppRoutes.activity);
+      router.push(AppRoutes.jobActivePath(session.bookingId));
+      return;
+    }
+    router.go(_routeAfterCall(session));
+  }
+
+  Future<void> _trackIncomingCall(VoipCallBridgeEvent event) async {
+    final callId = event.callId;
+    if (callId == null || callId.isEmpty) return;
+    final socket = _ref.read(appCallSocketServiceProvider);
+    _incomingCallStateSub ??= socket.sessionStream.listen((session) {
+      if (!_trackedIncomingCallIds.contains(session.callId) ||
+          !session.isTerminal) {
+        return;
+      }
+      _trackedIncomingCallIds.remove(session.callId);
+      socket.leaveCall(session.callId);
+      unawaited(VoipCallBridgeService.instance.endCall(session.callId));
+      debugPrint(
+        '[VoIP] remote ${session.status} dismissed CallKit: ${session.callId}',
+      );
+    });
+    if (_trackedIncomingCallIds.add(callId)) {
+      await socket.joinCall(callId);
+      debugPrint('[VoIP] joined call socket before answer: $callId');
+    }
+  }
+
+  void _stopTrackingIncomingCall(String callId) {
+    if (!_trackedIncomingCallIds.remove(callId)) return;
+    _ref.read(appCallSocketServiceProvider).leaveCall(callId);
+  }
+
+  Future<void> _handleVoipCallAccepted(VoipCallBridgeEvent event) async {
+    final callId = event.callId;
+    if (callId == null || callId.isEmpty) {
+      debugPrint('[VoIP] callAccepted missing callId: ${event.payload}');
+      return;
+    }
+    final router = _ref.read(routerProvider);
+    router.go(AppRoutes.inAppCallPath(callId));
+    try {
+      final session = await _retryVoipAction(
+        () => _ref.read(appCallServiceProvider).acceptCall(callId),
+      );
+      router.go(AppRoutes.inAppCallPath(callId), extra: session);
+      await VoipCallBridgeService.instance
+          .acknowledgeCallAction(event.actionId);
+    } catch (error) {
+      debugPrint('[VoIP] accept failed for $callId: $error');
+      try {
+        await _ref.read(appCallServiceProvider).endCall(callId);
+      } catch (cleanupError) {
+        debugPrint('[VoIP] accept recovery backend end failed: $cleanupError');
+      }
+      try {
+        await VoipCallBridgeService.instance.endCall(callId);
+      } catch (cleanupError) {
+        debugPrint('[VoIP] accept recovery CallKit end failed: $cleanupError');
+      }
+      _stopTrackingIncomingCall(callId);
+      try {
+        await VoipCallBridgeService.instance
+            .acknowledgeCallAction(event.actionId);
+      } catch (cleanupError) {
+        debugPrint('[VoIP] accept recovery acknowledge failed: $cleanupError');
+      }
+      router.go(AppRoutes.home);
+    }
+  }
+
+  Future<void> _handleVoipCallDeclined(VoipCallBridgeEvent event) async {
+    final callId = event.callId;
+    if (callId == null || callId.isEmpty) {
+      debugPrint('[VoIP] callDeclined missing callId: ${event.payload}');
+      return;
+    }
+    try {
+      var session = await _retryVoipAction(
+        () => _ref.read(appCallServiceProvider).declineCall(callId),
+      );
+      if (!session.isTerminal) {
+        debugPrint(
+          '[VoIP] decline raced ${session.status}; ending call: $callId',
+        );
+        session = await _retryVoipAction(
+          () => _ref.read(appCallServiceProvider).endCall(callId),
+        );
+      }
+      _stopTrackingIncomingCall(callId);
+      await VoipCallBridgeService.instance.endCall(callId);
+      _navigateAfterCall(session);
+      await VoipCallBridgeService.instance
+          .acknowledgeCallAction(event.actionId);
+    } catch (error) {
+      debugPrint('[VoIP] decline failed for $callId: $error');
+    }
+  }
+
+  Future<void> _handleVoipCallEnded(VoipCallBridgeEvent event) async {
+    final callId = event.callId;
+    if (callId == null || callId.isEmpty) {
+      debugPrint('[VoIP] callEnded missing callId: ${event.payload}');
+      return;
+    }
+    try {
+      final session = await _retryVoipAction(
+        () => _ref.read(appCallServiceProvider).endCall(callId),
+      );
+      _stopTrackingIncomingCall(callId);
+      _navigateAfterCall(session);
+      await VoipCallBridgeService.instance
+          .acknowledgeCallAction(event.actionId);
+    } catch (error) {
+      debugPrint('[VoIP] end failed for $callId: $error');
+    }
+  }
+
+  Future<T> _retryVoipAction<T>(Future<T> Function() action) async {
+    Object? lastError;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        return await action();
+      } catch (error) {
+        lastError = error;
+        if (attempt < 3) {
+          await Future<void>.delayed(Duration(seconds: attempt));
+        }
+      }
+    }
+    throw lastError!;
+  }
+
+  Future<void> _syncVoipTokenOnce() async {
+    final token = await VoipCallBridgeService.instance.getVoipToken();
+    if (token == null || token.isEmpty) return;
+    await _registerVoipToken(token);
+  }
+
+  Future<void> _registerVoipToken(String token) async {
+    final role = await _ref.read(appTokenStorageProvider).readRole();
+    if (role == null || role.isEmpty) {
+      debugPrint('[VoIP] no active role — skipping token registration');
+      return;
+    }
+
+    for (int attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await _ref.read(notificationServiceProvider).registerVoipDevice(
+              voipToken: token,
+            );
+        debugPrint('[VoIP] token registered (role=$role, attempt $attempt)');
+        return;
+      } catch (e) {
+        debugPrint('[VoIP] register attempt $attempt/3 failed: $e');
+        if (attempt < 3) {
+          await Future<void>.delayed(Duration(seconds: attempt * 2));
+        }
+      }
+    }
+    debugPrint('[VoIP] register exhausted retries — token NOT registered');
+  }
+
+  Future<void> _unregisterVoipToken(String? token) async {
+    try {
+      await _ref.read(notificationServiceProvider).unregisterVoipDevice(
+            voipToken: token,
+          );
+      debugPrint('[VoIP] token unregistered');
+    } catch (e) {
+      debugPrint('[VoIP] unregister failed: $e');
+    }
+  }
+
   String get _platform {
     if (Platform.isIOS) return 'ios';
     if (Platform.isAndroid) return 'android';
@@ -381,6 +840,18 @@ class FcmService {
   Future<void> dispose() async {
     await _tokenRefreshSub?.cancel();
     _tokenRefreshSub = null;
+    await _unregisterVoipToken(
+      await VoipCallBridgeService.instance.getVoipToken(),
+    );
+    await _voipEventSub?.cancel();
+    _voipEventSub = null;
+    await _incomingCallStateSub?.cancel();
+    _incomingCallStateSub = null;
+    final socket = _ref.read(appCallSocketServiceProvider);
+    for (final callId in _trackedIncomingCallIds) {
+      socket.leaveCall(callId);
+    }
+    _trackedIncomingCallIds.clear();
     try {
       await _fcm.deleteToken();
     } catch (_) {
@@ -431,6 +902,25 @@ final fcmAuthBridgeProvider = Provider<void>((ref) {
 final fcmTapBridgeProvider = Provider<void>((ref) {
   final fcm = ref.read(fcmServiceProvider);
 
+  Future<bool> waitForAuthenticatedCall(
+    String callId,
+    Map<String, dynamic> payload,
+  ) async {
+    final initialRemaining = _remainingCallTimeout(payload);
+    if (initialRemaining <= Duration.zero) return false;
+    final deadline = DateTime.now().add(initialRemaining);
+    while (DateTime.now().isBefore(deadline)) {
+      final authState = ref.read(clientAuthControllerProvider);
+      if (authState is AuthAuthenticated) {
+        return _remainingCallTimeout(payload) > Duration.zero &&
+            !await _hasTerminalCallTombstone(callId);
+      }
+      if (authState is AuthUnauthenticated) return false;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    return false;
+  }
+
   // Two-step navigation for deep-links: first land on the activity tab so
   // the navigator has at least one route, then push the detail screen on
   // top. Without the leading `go`, `router.go(detailPath)` replaces the
@@ -461,6 +951,28 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         '[FCM-tap] type=$type (raw=$rawType) jobId=$jobId rideId=$rideId');
 
     switch (type) {
+      case NotificationPayload.typeCallIncoming:
+        final callId = payload['callId'] as String?;
+        if (callId == null || callId.isEmpty) {
+          debugPrint('[FCM-tap] call_incoming missing callId: $payload');
+          router.go(AppRoutes.activity);
+          break;
+        }
+        if (!await waitForAuthenticatedCall(callId, payload)) {
+          await LocalNotificationService.instance.cancelIncomingCall(callId);
+          debugPrint(
+            '[FCM-tap] call no longer open or auth was not restored: $callId',
+          );
+          break;
+        }
+        if (Platform.isAndroid) {
+          await LocalNotificationService.instance.cancelIncomingCall(callId);
+        }
+        // A notification tap only opens the explicit Accept/Decline screen.
+        // CallKit's Answer action is the sole native auto-accept path.
+        router.go(AppRoutes.inAppCallPath(callId));
+        break;
+
       // ── Ride timeline ─────────────────────────────────────────────────
       case NotificationPayload.typeRideDriverAssigned:
         pushDeepLink(router, AppRoutes.rideDriverFound);

@@ -1,7 +1,9 @@
 name: myshop_client
 description: MyShop Client App — Book rides and artisan services in Ghana
 publish_to: 'none'
-version: 1.3.7+15
+# Marketing version approved in BR-65. Store builds must override the local
+# build-number floor through tool/build.sh after checking both private consoles.
+version: 1.4.1+20
 
 environment:
   sdk: ^3.6.0
@@ -10,6 +12,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # Flutter's adaptive Cupertino widgets reference this icon font even when
+  # most screens use Material components. Keep it packaged in release builds.
+  cupertino_icons: ^1.0.9
   
   # Shared packages
   api_client:
@@ -74,9 +79,11 @@ dependencies:
   printing: ^5.13.0
   
   # Utilities
+  crypto: ^3.0.6
   equatable: ^2.0.7
   freezed_annotation: ^2.4.0
   json_annotation: ^4.9.0
+  uuid: ^4.5.1
 
 dev_dependencies:
   flutter_test:

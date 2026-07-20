@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../app/router.dart';
+import '../../../core/constants/support_contacts.dart';
 import '../providers/support_providers.dart';
 
 class HelpArticleRouteScreen extends ConsumerWidget {
@@ -22,10 +25,13 @@ class HelpArticleRouteScreen extends ConsumerWidget {
       ),
       onContactSupport: () => MyShopContactSupportSheet.show(
         context,
-        whatsappNumber: '233 024 292 4671',
-        supportPhone: '+233 54 025 2576',
-        supportEmail: 'support@gilmoretechnologiesgh.com',
-        onNewTicket: () => Navigator.of(context).maybePop(),
+        supportEmail: clientSupportEmail,
+        onNewTicket: () => context.push(
+          AppRoutes.supportNewTicket,
+          extra: const <String, Object?>{
+            'preselectedCategory': TicketCategory.other,
+          },
+        ),
       ),
       onRefresh: () async {
         ref.invalidate(helpArticleProvider(slug));

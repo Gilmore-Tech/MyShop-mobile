@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:api_client/api_client.dart' show ApiException;
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
 import '../../../core/di/providers.dart';
+import '../data/job_cancellation_coordinator.dart';
 import '../providers/bid_list_provider.dart';
 import '../providers/job_detail_provider.dart';
 import '../widgets/bid_list_sheet.dart';
@@ -242,8 +242,8 @@ class _MoreMenuSheetState extends ConsumerState<_MoreMenuSheet> {
       builder: (ctx) => AlertDialog(
         title: const Text('Cancel job request?'),
         content: const Text(
-          'Cancelling within 30 minutes of posting is free. '
-          'After that a small cancellation fee may apply.',
+          'The request can be cancelled. Automatic cancellation fees and '
+          'penalties are temporarily paused.',
         ),
         actions: [
           TextButton(
@@ -266,26 +266,34 @@ class _MoreMenuSheetState extends ConsumerState<_MoreMenuSheet> {
     final router = GoRouter.of(context);
     final jobService = ref.read(jobServiceProvider);
 
-    String message = 'Job request cancelled.';
-    try {
-      final result = await jobService.cancelJob(
-        widget.jobId,
-        reason: 'client_cancelled',
-      );
-      final feePesewas =
-          (result['cancellationFeePesewas'] as num?)?.toInt() ?? 0;
-      if (feePesewas > 0) {
-        final fee = (feePesewas / 100).toStringAsFixed(2);
-        message = 'Request cancelled. Cancellation fee: GHS $fee';
+    final cancellation = await cancelJobWithAuthority(
+      jobService: jobService,
+      jobId: widget.jobId,
+      reason: 'client_cancelled',
+    );
+    if (!cancellation.confirmedCancelled) {
+      if (mounted) {
+        setState(() => _cancelling = false);
+        messenger.showSnackBar(SnackBar(content: Text(cancellation.message)));
       }
-    } on ApiException catch (e) {
-      message = e.message;
-    } catch (_) {
-      message = 'Could not cancel the request. Please try again.';
+      return;
+    }
+
+    final result = cancellation.response;
+    final feePesewas = (result['cancellationFeePesewas'] as num?)?.toInt() ?? 0;
+    var message = cancellation.message;
+    if (result['cancellationConsequencesApplied'] == false) {
+      message = result['notice'] as String? ??
+          'Request cancelled. Automatic fees and penalties are temporarily paused.';
+    } else if (feePesewas > 0) {
+      final fee = (feePesewas / 100).toStringAsFixed(2);
+      message = 'Request cancelled. Cancellation fee: GHS $fee';
     }
 
     // Invalidate the screen's data sources so any provider holding a
-    // stale "open" job doesn't keep the user looking at the same page
+    // stale "open" job doesn't keep the user looking at the same page.
+    // This runs only after authoritative cancellation; failures keep the job
+    // visible so the user never sees a false-success navigation.
     // after they navigate away and back.
     ref.invalidate(jobDetailProvider(widget.jobId));
     ref.invalidate(bidsForJobProvider(widget.jobId));

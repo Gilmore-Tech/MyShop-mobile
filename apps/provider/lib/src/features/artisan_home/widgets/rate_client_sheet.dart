@@ -114,7 +114,12 @@ class _RateClientSheetState extends ConsumerState<RateClientSheet> {
       case 'BOOKING_NOT_COMPLETED':
         return 'Wait until the job is fully completed before rating.';
       default:
-        return e.message;
+        return userSafeApiErrorMessage(
+          e,
+          fallback: "Couldn't submit the rating. Please try again.",
+          conflictMessage:
+              'This rating state changed. Refresh the job and try again.',
+        );
     }
   }
 

@@ -136,7 +136,7 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.message;
+        _errorMessage = _payoutMethodOtpError(e, requesting: true);
         _step = _Step.bindEnter;
       });
     } catch (_) {
@@ -168,7 +168,7 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.message;
+        _errorMessage = _payoutMethodOtpError(e, requesting: false);
         _step = _Step.bindOtp;
       });
     } catch (_) {
@@ -196,10 +196,16 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
     _idempotencyKey ??=
         'payout-${DateTime.now().millisecondsSinceEpoch}-${Random().nextInt(1 << 30)}';
     try {
-      await ref.read(paymentServiceProvider).requestPayout(
+      final result = await ref.read(paymentServiceProvider).requestPayout(
             method: method,
             idempotencyKey: _idempotencyKey,
           );
+      if (!isConfirmedQueuedPayoutResponse(result)) {
+        throw const ApiException(
+          message: 'Payout response did not confirm a queued payout.',
+          errorCode: 'PAYOUT_NOT_CONFIRMED',
+        );
+      }
       ref.invalidate(todayCardProvider);
       ref.invalidate(earningsSummaryProvider);
       ref.invalidate(payoutsProvider);
@@ -211,7 +217,7 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.message;
+        _errorMessage = _payoutRequestError(e);
         _step = _Step.error;
       });
     } catch (_) {
@@ -221,6 +227,60 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
         _step = _Step.error;
       });
     }
+  }
+
+  String _payoutMethodOtpError(
+    ApiException error, {
+    required bool requesting,
+  }) {
+    return switch (error.errorCode) {
+      'OTP_INVALID' ||
+      'INVALID_OTP' =>
+        'The code is incorrect. Check it and try again.',
+      'OTP_EXPIRED' => 'The code expired. Request another code.',
+      'OTP_ATTEMPTS_EXCEEDED' ||
+      'TOO_MANY_OTP_ATTEMPTS' =>
+        'Too many incorrect attempts. Request another code.',
+      'OTP_DELIVERY_RATE_LIMITED' ||
+      'OTP_COOLDOWN' =>
+        'Too many code requests. Wait before trying again.',
+      'PAYOUT_DESTINATION_LOCKED' =>
+        'This payout destination is locked. Contact support to change it.',
+      _ => userSafeApiErrorMessage(
+          error,
+          fallback: requesting
+              ? 'Could not send the verification code. Try again.'
+              : 'Verification failed. Try again.',
+          conflictMessage:
+              'The payout destination changed. Refresh it before trying again.',
+        ),
+    };
+  }
+
+  String _payoutRequestError(ApiException error) {
+    return switch (error.errorCode) {
+      'AGGREGATE_PAYOUTS_DISABLED' =>
+        'Payout requests are temporarily unavailable. Your earnings remain safe.',
+      'PAYOUT_DESTINATION_UNVERIFIED' ||
+      'NO_PAYOUT_METHOD' =>
+        'Verify and lock a MoMo payout destination before requesting payout.',
+      'PAYOUT_METHOD_MISMATCH' =>
+        'The selected payout method no longer matches your verified destination. Refresh and try again.',
+      'PAYOUT_IN_PROGRESS' =>
+        'A payout is already in progress. Wait for it to complete.',
+      'INSUFFICIENT_BALANCE' =>
+        'Your available balance is below the payout minimum.',
+      'PARTIAL_PAYOUT_NOT_SUPPORTED' =>
+        'Only the full available balance can be requested right now.',
+      'PAYOUT_NOT_CONFIRMED' =>
+        "We couldn't confirm that the payout was queued. Refresh your payout history before retrying.",
+      _ => userSafeApiErrorMessage(
+          error,
+          fallback: 'Could not request payout. Try again in a moment.',
+          conflictMessage:
+              'The payout state changed. Refresh your earnings before trying again.',
+        ),
+    };
   }
 
   // ── Render ────────────────────────────────────────────────────────
@@ -491,4 +551,12 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
       ),
     ];
   }
+}
+
+bool isConfirmedQueuedPayoutResponse(Map<String, dynamic> response) {
+  final status = response['status']?.toString();
+  final payoutId = response['payoutId']?.toString();
+  return (status == 'pending' || status == 'processing' || status == 'paid') &&
+      payoutId != null &&
+      payoutId.isNotEmpty;
 }

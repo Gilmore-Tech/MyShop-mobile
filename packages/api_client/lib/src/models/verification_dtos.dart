@@ -7,6 +7,7 @@ enum DocumentType {
   driversLicence('drivers_licence'),
   vehicleRegistration('vehicle_registration'),
   roadworthinessCertificate('roadworthiness_certificate'),
+  vehicleInsurance('vehicle_insurance'),
   nationalId('national_id'),
   ghanaCard('ghana_card'),
   tradeCertificate('trade_certificate'),
@@ -28,8 +29,16 @@ enum DocumentType {
   bool get requiresExpiry => switch (this) {
         DocumentType.driversLicence ||
         DocumentType.roadworthinessCertificate ||
-        DocumentType.ghanaCard ||
-        DocumentType.businessRegistration =>
+        DocumentType.vehicleInsurance =>
+          true,
+        _ => false,
+      };
+
+  /// Documents whose authority belongs to one physical vehicle rather than
+  /// to the driver account as a whole.
+  bool get isVehicleScoped => switch (this) {
+        DocumentType.roadworthinessCertificate ||
+        DocumentType.vehicleInsurance =>
           true,
         _ => false,
       };
@@ -43,6 +52,7 @@ class PresignedUrlRequest {
     required this.fileName,
     required this.mimeType,
     required this.fileSize,
+    this.vehicleId,
     this.fileHash,
     this.expiresAt,
   });
@@ -52,6 +62,7 @@ class PresignedUrlRequest {
   final String fileName;
   final String mimeType;
   final int fileSize;
+  final String? vehicleId;
   final String? fileHash;
   final String? expiresAt;
 
@@ -63,6 +74,7 @@ class PresignedUrlRequest {
       'mimeType': mimeType,
       'fileSize': fileSize,
     };
+    if (vehicleId != null) json['vehicleId'] = vehicleId;
     if (fileHash != null) json['fileHash'] = fileHash;
     if (expiresAt != null) json['expiresAt'] = expiresAt;
     return json;
@@ -121,10 +133,14 @@ class DocumentInfo {
     required this.isCurrent,
     required this.createdAt,
     this.fileUrl,
+    this.vehicleId,
     this.reviewedBy,
     this.reviewedAt,
     this.rejectionReason,
     this.expiresAt,
+    this.expired,
+    this.providerReplacementAllowed,
+    this.replacementOpensAt,
     this.version = 1,
   });
 
@@ -135,10 +151,14 @@ class DocumentInfo {
       documentType: json['documentType'] as String,
       status: json['status'] as String,
       fileUrl: json['fileUrl'] as String?,
+      vehicleId: json['vehicleId'] as String?,
       reviewedBy: json['reviewedBy'] as String?,
       reviewedAt: json['reviewedAt'] as String?,
       rejectionReason: json['rejectionReason'] as String?,
       expiresAt: json['expiresAt'] as String?,
+      expired: json['expired'] as bool?,
+      providerReplacementAllowed: json['providerReplacementAllowed'] as bool?,
+      replacementOpensAt: json['replacementOpensAt'] as String?,
       version: json['version'] as int? ?? 1,
       isCurrent: json['isCurrent'] as bool? ?? true,
       createdAt: json['createdAt'] as String,
@@ -152,15 +172,30 @@ class DocumentInfo {
   /// Document status flow:
   ///   `uploaded` → presigned URL given, file not yet in storage
   ///   `pending_review` → file uploaded successfully, awaiting admin review
-  ///   `approved` → admin approved the document
-  ///   `rejected` → admin rejected the document
+  ///   `confirmed` → Admin verified authenticity; awaiting Coordinator
+  ///   `coordinator_validated` → Coordinator validated; awaiting RM
+  ///   `approved` → RM gave final document approval
+  ///   `rejected` → document was rejected in the review chain
   final String status;
 
   final String? fileUrl;
+  final String? vehicleId;
   final String? reviewedBy;
   final String? reviewedAt;
   final String? rejectionReason;
   final String? expiresAt;
+
+  /// Server-authoritative expiry state. Older APIs may omit this field, in
+  /// which case [isExpired] retains a backwards-compatible local fallback.
+  final bool? expired;
+
+  /// Whether the authenticated provider may initiate a replacement now.
+  /// Approved profile photos remain administrator-only.
+  final bool? providerReplacementAllowed;
+
+  /// Exact server-computed GMT instant at which an expiring approved document
+  /// becomes invalid and provider resubmission opens.
+  final String? replacementOpensAt;
   final int version;
   final bool isCurrent;
   final String createdAt;
@@ -168,15 +203,37 @@ class DocumentInfo {
   bool get isApproved => status == 'approved';
   bool get isRejected => status == 'rejected';
   bool get isPendingReview => status == 'pending_review';
+  bool get isAdminVerified => status == 'confirmed';
+  bool get isCoordinatorValidated => status == 'coordinator_validated';
   bool get isUploaded => status == 'uploaded';
 
   /// True if the document has been received and not rejected.
-  bool get isSubmitted => isPendingReview || isApproved;
+  bool get isSubmitted =>
+      isPendingReview ||
+      isAdminVerified ||
+      isCoordinatorValidated ||
+      isApproved;
 
   /// The parsed expiry date, or `null` when the document never expires or the
   /// backend value can't be parsed.
   DateTime? get expiresAtDate =>
       expiresAt == null ? null : DateTime.tryParse(expiresAt!);
+
+  /// The first instant at which the printed document date is no longer valid.
+  /// A value such as `2026-07-17` remains valid for all of 17 July GMT and
+  /// becomes invalid at 00:00 GMT on 18 July.
+  DateTime? get expiryInvalidAtUtc {
+    final raw = expiresAt;
+    if (raw == null) return null;
+    final datePrefix = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(raw);
+    if (datePrefix == null || DateTime.tryParse(raw) == null) return null;
+    final expiryDate = DateTime.utc(
+      int.parse(datePrefix.group(1)!),
+      int.parse(datePrefix.group(2)!),
+      int.parse(datePrefix.group(3)!),
+    );
+    return expiryDate.add(const Duration(days: 1));
+  }
 
   /// True when this is an approved document whose expiry date has passed.
   ///
@@ -184,9 +241,20 @@ class DocumentInfo {
   /// but exposes `expiresAt`, so the provider must re-upload once it lapses.
   /// Pass [now] in tests; defaults to the current time.
   bool isExpired([DateTime? now]) {
-    final exp = expiresAtDate;
-    if (exp == null || !isApproved) return false;
-    return !(now ?? DateTime.now()).isBefore(exp);
+    if (expired != null) return expired!;
+    final invalidAt = expiryInvalidAtUtc;
+    if (invalidAt == null || !isApproved) return false;
+    return !(now ?? DateTime.now()).toUtc().isBefore(invalidAt);
+  }
+
+  bool canProviderReplace([DateTime? now]) {
+    if (providerReplacementAllowed != null) {
+      return providerReplacementAllowed!;
+    }
+    if (documentType == DocumentType.profilePhoto.value && isApproved) {
+      return false;
+    }
+    return isRejected || isExpired(now);
   }
 
   /// True when this approved document is valid but expires within [within]
@@ -195,10 +263,10 @@ class DocumentInfo {
     DateTime? now,
     Duration within = const Duration(days: 30),
   }) {
-    final exp = expiresAtDate;
-    if (exp == null || !isApproved) return false;
-    final ref = now ?? DateTime.now();
-    return ref.isBefore(exp) && !ref.add(within).isBefore(exp);
+    final invalidAt = expiryInvalidAtUtc;
+    if (invalidAt == null || !isApproved) return false;
+    final ref = (now ?? DateTime.now()).toUtc();
+    return ref.isBefore(invalidAt) && !ref.add(within).isBefore(invalidAt);
   }
 }
 
@@ -227,23 +295,32 @@ class VerificationStatusResponse {
   final Map<String, dynamic>? artisanData;
   final List<DocumentInfo> documents;
 
-  /// The provider-facing green "Approved" state is only final once the active
-  /// role itself has been approved by the RM/final verification stage. Individual
-  /// document rows can become `approved` earlier during Stage 1 admin review, but
-  /// the provider app should keep showing them as in-review until this returns
-  /// true.
-  bool isProviderFullyApproved(String providerType) {
+  /// Returns the aggregate verification status for [providerType], or `null`
+  /// when the backend omitted that role block from the response.
+  ///
+  /// Keeping the missing case distinct from a real non-approved status lets
+  /// callers fall back to the authenticated profile snapshot for legacy
+  /// accounts without treating an explicit `pending`, `rejected`, or
+  /// `suspended` response as approved.
+  String? providerVerificationStatus(String providerType) {
     final data = switch (providerType) {
       'driver' => driverData,
       'artisan' => artisanData,
       _ => null,
     };
-    return data?['verificationStatus']?.toString().toLowerCase() == 'approved';
+    return data?['verificationStatus']?.toString().toLowerCase();
   }
 
-  /// Find the document for a given type, preferring the latest current
-  /// row but falling back to the most recently approved row when the
-  /// backend hasn't (or no longer has) any `isCurrent` flag set.
+  /// Whether the active provider role has aggregate approval. This is separate
+  /// from each document's independent review decision: callers must not rewrite
+  /// an approved document as pending merely because this returns false.
+  bool isProviderFullyApproved(String providerType) {
+    return providerVerificationStatus(providerType) == 'approved';
+  }
+
+  /// Find the document for a given type, preferring the latest current row but
+  /// falling back to the most recent approved row when legacy data has no
+  /// `isCurrent` flag set.
   ///
   /// The match is case- and underscore-insensitive so a backend that
   /// emits `documentType: 'driversLicence'` (camelCase) still resolves
@@ -260,15 +337,33 @@ class VerificationStatusResponse {
         )
         .toList();
     if (matches.isEmpty) return null;
-    // Preference: current+approved → approved → current → anything.
-    int score(DocumentInfo d) {
+    int newestFirst(DocumentInfo a, DocumentInfo b) {
+      final byVersion = b.version.compareTo(a.version);
+      if (byVersion != 0) return byVersion;
+      final aCreated = DateTime.tryParse(a.createdAt);
+      final bCreated = DateTime.tryParse(b.createdAt);
+      if (aCreated != null && bCreated != null) {
+        final byCreated = bCreated.compareTo(aCreated);
+        if (byCreated != 0) return byCreated;
+      }
+      return b.id.compareTo(a.id);
+    }
+
+    // Preserve the existing renewal policy until the business decides whether
+    // a still-valid approved document remains eligible while its replacement
+    // is pending/rejected. Within each policy tier, choose deterministically by
+    // version/date so duplicate legacy rows cannot produce random results.
+    int policyScore(DocumentInfo d) {
       if (d.isCurrent && d.isApproved) return 0;
       if (d.isApproved) return 1;
       if (d.isCurrent) return 2;
       return 3;
     }
 
-    matches.sort((a, b) => score(a).compareTo(score(b)));
+    matches.sort((a, b) {
+      final byPolicy = policyScore(a).compareTo(policyScore(b));
+      return byPolicy != 0 ? byPolicy : newestFirst(a, b);
+    });
     return matches.first;
   }
 }

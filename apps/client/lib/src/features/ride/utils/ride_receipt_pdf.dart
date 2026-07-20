@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../../core/constants/support_contacts.dart';
+
 import '../providers/ride_receipt_provider.dart';
 
 // PRD § 4.6 — ride receipt artifact.
@@ -299,7 +301,7 @@ pw.Widget _footer() {
       ),
       pw.SizedBox(height: 2),
       pw.Text(
-        'Support: support@myshop.com.gh   ·   myshop.com.gh',
+        'Support: $clientSupportEmail   ·   myshop.com.gh',
         style: const pw.TextStyle(fontSize: 8, color: _textSecondary),
       ),
     ],

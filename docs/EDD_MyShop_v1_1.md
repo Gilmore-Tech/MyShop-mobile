@@ -8,6 +8,11 @@
 **Date:** March 2026  
 **Status:** CONFIDENTIAL — FOR INTERNAL USE ONLY
 
+> **Release-authority notice (July 2026):** This March 2026 design document
+> contains superseded assumptions and is not release authority. Use
+> `docs/production-release-audit-checklist.md` for every approved business rule,
+> containment decision, release gate, and current implementation status.
+
 ---
 
 | Item             | Value                        |
@@ -183,7 +188,7 @@ User registration, OTP verification (passwordless login via Africa's Talking SMS
 
 ### User Module
 
-Profile management for clients, drivers, and artisans. Saved locations (normalized table with PostGIS POINT), preferred payment methods, language preferences, and emergency contacts. Manages account suspension, banning, soft-delete (90-day retention via `deleted_at` timestamp), and the 24-hour recovery window. Provider accounts with outstanding clawback balances cannot be deactivated (PRD edge case #51).
+Profile management for clients, drivers, and artisans. Saved locations (normalized table with PostGIS POINT), preferred payment methods, language preferences, and emergency contacts. The exact-role soft-delete lifecycle uses a 90×24-hour recovery deadline; recovery is support-assisted, phone-verified, approval-gated, and sibling-role isolated. Provider accounts with unresolved exact-role financial liabilities cannot be deactivated.
 
 ### Verification Module
 
@@ -301,8 +306,8 @@ Centralized runtime configuration: all business rules stored in `platform_config
 
 ### 4.5 Data Retention & Deletion
 
-- Soft-deleted accounts: data retained 90 days with 24-hour recovery window, then permanent purge via nightly cron
-- Emergency recordings: minimum 90 days retention on encrypted S3 bucket
+- Soft-deleted role accounts: personal/profile data retained for 90×24 hours; recovery is support-assisted, phone-verified, and approval-gated. Permanent purge remains fail-closed until legal-hold, retained-record, object-storage, notification, and backup contracts are proved.
+- Emergency recording: deferred and disabled for this release; no upload, delivery, or retention claim is authorized.
 - Provider accounts with outstanding clawback balances: cannot be deactivated until settled; clawbacks under GHS 100 written off after 90 days of provider inactivity; above GHS 100 escalated for manual admin resolution
 - USSD sessions: short-lived (5-minute TTL in Redis), no long-term retention needed
 - Audit log: retained indefinitely (partitioned by month post-pilot for performance)
@@ -341,7 +346,7 @@ All client-facing traffic enters through the NestJS application which provides:
 | PUT    | /v1/users/me                    | Bearer | Update profile, saved locations, emergency contacts  |
 | GET    | /v1/users/me/saved-locations    | Bearer | Get saved locations (Home, Work, Favourites)         |
 | GET    | /v1/users/me/emergency-contacts | Bearer | Get emergency contacts                               |
-| DELETE | /v1/users/me                    | Bearer | Soft delete account (90-day retention, 24h recovery) |
+| DELETE | /v1/users/me                    | Bearer | Exact-role soft delete (90×24-hour recovery deadline) |
 
 #### Verification (4 endpoints)
 

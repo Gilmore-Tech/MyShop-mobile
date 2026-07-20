@@ -9,7 +9,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/router.dart';
 import '../../../core/providers/chat_controller_provider.dart';
+import '../../calls/helpers/start_in_app_call.dart';
 import '../providers/artisan_live_location_provider.dart';
+import '../providers/active_job_provider.dart';
 import '../providers/bid_detail_provider.dart';
 import '../providers/bid_list_provider.dart';
 import '../providers/job_detail_provider.dart';
@@ -118,7 +120,10 @@ class _BidDetailBody extends ConsumerWidget {
     // The socket handler invalidates jobDetailProvider on job:status:changed,
     // so this rebuilds live without any polling here.
     final jobAsync = ref.watch(jobDetailProvider(bid.jobId));
-    final jobStatus = jobAsync.valueOrNull?.status;
+    final job = jobAsync.valueOrNull;
+    final jobStatus = job?.isPaymentAcknowledgedPending == true
+        ? JobStatus.pendingPayment
+        : job?.status;
     // Once the job has left the bidding phase, the Accept button stops
     // making sense for non-winning bids — the client has already chosen,
     // or the job is done / cancelled. The `confirmed` path below still
@@ -136,9 +141,10 @@ class _BidDetailBody extends ConsumerWidget {
               children: [
                 SizedBox(height: h * 0.019),
                 if (confirmed) ...[
-                  _BidConfirmedBanner(
+                  _BidProgressBanner(
                     artisanName: bid.artisan.name,
                     etaLabel: actionState.confirmedEtaLabel ?? '~18 mins',
+                    status: jobStatus,
                     w: w,
                     h: h,
                   ),
@@ -2055,31 +2061,36 @@ class _CountdownTimerRowState extends State<_CountdownTimerRow> {
   }
 }
 
-// ── Bid Confirmed Banner ───────────────────────────────────────────────────────
-// Shown once the artisan has confirmed the appointment.
-// Driven by onArtisanConfirmed() — in production triggered by WebSocket push.
+// ── Accepted bid progress banner ─────────────────────────────────────────────
+// The accepted bid remains the entry point for an active artisan job, so its
+// banner must reflect the live job state instead of staying on "Bid Confirmed".
 
-class _BidConfirmedBanner extends StatelessWidget {
+class _BidProgressBanner extends StatelessWidget {
   final String artisanName;
   final String etaLabel;
+  final JobStatus? status;
   final double w;
   final double h;
-  const _BidConfirmedBanner({
+  const _BidProgressBanner({
     required this.artisanName,
     required this.etaLabel,
+    required this.status,
     required this.w,
     required this.h,
   });
 
   @override
   Widget build(BuildContext context) {
+    final presentation = _presentationFor(status);
     return Container(
       margin: EdgeInsets.symmetric(horizontal: w * 0.041),
       padding: EdgeInsets.all(w * 0.041),
       decoration: BoxDecoration(
-        color: MyShopColors.successLight,
+        color: presentation.background,
         borderRadius: BorderRadius.circular(w * 0.031),
-        border: Border.all(color: MyShopColors.success.withValues(alpha: 0.35)),
+        border: Border.all(
+          color: presentation.foreground.withValues(alpha: 0.35),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2088,10 +2099,10 @@ class _BidConfirmedBanner extends StatelessWidget {
             width: w * 0.105,
             height: w * 0.105,
             decoration: BoxDecoration(
-              color: MyShopColors.success,
+              color: presentation.foreground,
               shape: BoxShape.circle,
             ),
-            child: Icon(Icons.check_rounded,
+            child: Icon(presentation.icon,
                 size: w * 0.054, color: MyShopColors.surfaceWhite),
           ),
           SizedBox(width: w * 0.031),
@@ -2100,21 +2111,20 @@ class _BidConfirmedBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Bid Confirmed',
+                  presentation.title,
                   style: TextStyle(
                     fontSize: w * 0.038,
                     fontWeight: FontWeight.w700,
-                    color: const Color(0xFF1A6B3C),
+                    color: presentation.foreground,
                   ),
                 ),
                 SizedBox(height: h * 0.005),
                 Text(
-                  '$artisanName has confirmed the appointment. '
-                  'Arriving in $etaLabel.',
+                  presentation.message,
                   style: TextStyle(
                     fontSize: w * 0.031,
                     fontWeight: FontWeight.w400,
-                    color: const Color(0xFF1A6B3C),
+                    color: presentation.foreground,
                     height: 1.4,
                   ),
                 ),
@@ -2125,6 +2135,93 @@ class _BidConfirmedBanner extends StatelessWidget {
       ),
     );
   }
+
+  _BidProgressPresentation _presentationFor(JobStatus? current) {
+    return switch (current) {
+      JobStatus.enRoute => _BidProgressPresentation(
+          title: 'Artisan En Route',
+          message: '$artisanName is on the way. Estimated arrival: $etaLabel.',
+          icon: Icons.directions_walk_rounded,
+          background: MyShopColors.primaryGoldLight,
+          foreground: const Color(0xFF705400),
+        ),
+      JobStatus.arrived => _BidProgressPresentation(
+          title: 'Artisan Arrived',
+          message: '$artisanName has arrived at your job location.',
+          icon: Icons.location_on_rounded,
+          background: MyShopColors.primaryGoldLight,
+          foreground: const Color(0xFF705400),
+        ),
+      JobStatus.inProgress => _BidProgressPresentation(
+          title: 'Work In Progress',
+          message: '$artisanName has started work on your job.',
+          icon: Icons.handyman_rounded,
+          background: MyShopColors.primaryGoldLight,
+          foreground: const Color(0xFF705400),
+        ),
+      JobStatus.artisanMarkedComplete => _BidProgressPresentation(
+          title: 'Review Completion',
+          message: '$artisanName marked the work complete. Review it and '
+              'confirm completion.',
+          icon: Icons.fact_check_rounded,
+          background: MyShopColors.warningLight,
+          foreground: MyShopColors.warning,
+        ),
+      JobStatus.pendingPayment => const _BidProgressPresentation(
+          title: 'Payment Processing',
+          message:
+              'Your completion is confirmed and payment is being processed.',
+          icon: Icons.payments_rounded,
+          background: MyShopColors.warningLight,
+          foreground: MyShopColors.warning,
+        ),
+      JobStatus.completed => const _BidProgressPresentation(
+          title: 'Job Completed',
+          message: 'This job has been completed successfully.',
+          icon: Icons.check_rounded,
+          background: MyShopColors.successLight,
+          foreground: MyShopColors.success,
+        ),
+      JobStatus.cancelled => const _BidProgressPresentation(
+          title: 'Job Cancelled',
+          message: 'This job has been cancelled.',
+          icon: Icons.cancel_outlined,
+          background: MyShopColors.errorLight,
+          foreground: MyShopColors.error,
+        ),
+      JobStatus.adminAssigned => _BidProgressPresentation(
+          title: 'Artisan Assigned',
+          message: '$artisanName has been assigned to your job.',
+          icon: Icons.person_pin_circle_rounded,
+          background: MyShopColors.successLight,
+          foreground: MyShopColors.success,
+        ),
+      _ => _BidProgressPresentation(
+          title: 'Bid Accepted',
+          message:
+              '$artisanName has accepted your job and is preparing to leave.',
+          icon: Icons.check_rounded,
+          background: MyShopColors.successLight,
+          foreground: MyShopColors.success,
+        ),
+    };
+  }
+}
+
+class _BidProgressPresentation {
+  const _BidProgressPresentation({
+    required this.title,
+    required this.message,
+    required this.icon,
+    required this.background,
+    required this.foreground,
+  });
+
+  final String title;
+  final String message;
+  final IconData icon;
+  final Color background;
+  final Color foreground;
 }
 
 // ── Bid Expired Banner ─────────────────────────────────────────────────────────
@@ -2198,7 +2295,7 @@ class _BidExpiredBanner extends StatelessWidget {
 
 // ── Confirmed state action content ─────────────────────────────────────────────
 
-class _ConfirmedActionContent extends StatelessWidget {
+class _ConfirmedActionContent extends ConsumerWidget {
   final BidDetail bid;
   final double w;
   final double h;
@@ -2209,7 +2306,14 @@ class _ConfirmedActionContent extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // The accepted-bid payload intentionally contains no phone number. Fetch
+    // the participant-scoped active job, which exposes contact details only
+    // after assignment, so both in-app and phone-call choices are available
+    // without leaking an artisan's number before the bid is accepted.
+    final activeJob = ref.watch(activeJobProvider(bid.jobId)).valueOrNull;
+    final artisanPhone = activeJob?.artisan.phone;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -2221,8 +2325,22 @@ class _ConfirmedActionContent extends StatelessWidget {
               w: w,
               h: h,
             ),
-            // Phone-call circle button removed in v1.0 — masked calls
-            // deferred to v1.2. Chat covers client↔artisan comms.
+            SizedBox(width: w * 0.026),
+            MyShopCallButton(
+              phoneNumber: artisanPhone,
+              size: h * 0.062,
+              semanticLabel: 'Call artisan',
+              onInAppCall: () {
+                unawaited(
+                  startClientInAppCall(
+                    context,
+                    ref,
+                    bookingType: 'artisan_job',
+                    bookingId: bid.jobId,
+                  ),
+                );
+              },
+            ),
             SizedBox(width: w * 0.026),
             Expanded(
               child: SizedBox(
@@ -2239,21 +2357,28 @@ class _ConfirmedActionContent extends StatelessWidget {
                       borderRadius: BorderRadius.circular(w * 0.021),
                     ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.near_me_rounded,
-                          size: w * 0.041, color: MyShopColors.surfaceWhite),
-                      SizedBox(width: w * 0.015),
-                      Text(
-                        'Track Artisan',
-                        style: TextStyle(
-                          fontSize: w * 0.038,
-                          fontWeight: FontWeight.w600,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.near_me_rounded,
+                          size: w * 0.041,
                           color: MyShopColors.surfaceWhite,
                         ),
-                      ),
-                    ],
+                        SizedBox(width: w * 0.015),
+                        Text(
+                          'Track Artisan',
+                          style: TextStyle(
+                            fontSize: w * 0.038,
+                            fontWeight: FontWeight.w600,
+                            color: MyShopColors.surfaceWhite,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
