@@ -19,7 +19,7 @@ esac
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 PUBSPEC="$ROOT_DIR/apps/$APP/pubspec.yaml"
 APPROVED_MARKETING_VERSION=1.4.1
-LOCAL_BUILD_NUMBER_FLOOR=20
+LOCAL_BUILD_NUMBER_FLOOR=21
 MAX_PORTABLE_BUILD_NUMBER=2100000000
 
 PUBSPEC_VERSION=$(awk '$1 == "version:" { print $2; exit }' "$PUBSPEC")
