@@ -7,48 +7,52 @@ import 'package:myshop_provider/src/features/profile/providers/provider_vehicle_
 import 'package:myshop_provider/src/features/profile/screens/vehicle_information_screen.dart';
 
 void main() {
-  const vehicle = ProviderVehicle(
-    id: 'vehicle-1',
-    make: 'Toyota',
-    model: 'Corolla',
-    year: 2018,
-    plate: 'GR-1234-20',
-    color: 'Silver',
-    isActive: true,
-    approvalStatus: ProviderVehicleApprovalStatus.approved,
-    version: 4,
-    rejectionReason: null,
-    coordinatorReviewedAt: null,
-    regionalManagerReviewedAt: null,
-    retirementRequestedAt: null,
-    retirementRequestReason: null,
-    rideCategories: [
-      ProviderVehicleCategoryAssignment(
-        id: 'regular-id',
-        name: 'Regular',
-        slug: 'regular',
+  ProviderVehicle vehicle(ProviderVehicleApprovalStatus status) =>
+      ProviderVehicle(
+        id: 'vehicle-1',
+        make: 'Toyota',
+        model: 'Corolla',
+        year: 2018,
+        plate: 'GR-1234-20',
+        color: 'Silver',
         isActive: true,
-        status: ProviderVehicleCategoryStatus.approved,
+        approvalStatus: status,
+        version: 4,
         rejectionReason: null,
-        reviewedAt: null,
-      ),
-    ],
-    pendingRevision: null,
-    eligible: true,
-    reasonCodes: [],
-  );
+        coordinatorReviewedAt: null,
+        regionalManagerReviewedAt: null,
+        retirementRequestedAt: null,
+        retirementRequestReason: null,
+        rideCategories: const [
+          ProviderVehicleCategoryAssignment(
+            id: 'regular-id',
+            name: 'Regular',
+            slug: 'regular',
+            isActive: true,
+            status: ProviderVehicleCategoryStatus.approved,
+            rejectionReason: null,
+            reviewedAt: null,
+          ),
+        ],
+        pendingRevision: null,
+        eligible: status == ProviderVehicleApprovalStatus.approved,
+        reasonCodes: const [],
+      );
 
-  Widget screen() {
+  Widget screen({
+    ProviderVehicleApprovalStatus status =
+        ProviderVehicleApprovalStatus.approved,
+  }) {
     return ProviderScope(
       overrides: [
         providerTypeProvider.overrideWith((ref) => ProviderType.driver),
         providerVehiclesProvider.overrideWith(
-          (ref) async => const ProviderVehiclesResponse(
+          (ref) async => ProviderVehiclesResponse(
             activeVehicleId: 'vehicle-1',
             onlineStatus: 'online',
             legacyBackfillRequired: false,
             legacyReasonCode: null,
-            vehicles: [vehicle],
+            vehicles: [vehicle(status)],
           ),
         ),
       ],
@@ -72,5 +76,24 @@ void main() {
         find.text('Selected for the current online session'), findsOneWidget);
     expect(find.text('Edit'), findsNothing);
     expect(find.text('Request removal'), findsOneWidget);
+    expect(
+      find.textContaining('Approved vehicle details are locked'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('does not expose direct editing while a vehicle is under review',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      screen(status: ProviderVehicleApprovalStatus.pendingCoordinator),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Awaiting Coordinator'), findsOneWidget);
+    expect(find.text('Edit'), findsNothing);
+    expect(find.text('Add another vehicle'), findsOneWidget);
   });
 }

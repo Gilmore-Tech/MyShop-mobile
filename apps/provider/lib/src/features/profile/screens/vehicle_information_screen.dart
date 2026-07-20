@@ -56,11 +56,6 @@ class VehicleInformationScreen extends ConsumerWidget {
                   _VehicleCard(
                     vehicle: vehicle,
                     isSelectedOnline: data.activeVehicleId == vehicle.id,
-                    onEdit: vehicle.approvalStatus.canProviderEdit(
-                      removalRequested: vehicle.removalRequested,
-                    )
-                        ? () => _openVehicleForm(context, ref, vehicle)
-                        : null,
                     onRemovalRequest: vehicle.approvalStatus !=
                                 ProviderVehicleApprovalStatus.retired &&
                             !vehicle.removalRequested
@@ -73,7 +68,7 @@ class VehicleInformationScreen extends ConsumerWidget {
               MyShopPrimaryButton(
                 label: 'Add another vehicle',
                 icon: Icons.add,
-                onPressed: () => _openVehicleForm(context, ref, null),
+                onPressed: () => _openVehicleForm(context, ref),
               ),
               const SizedBox(height: MyShopSpacing.xxl),
             ],
@@ -86,11 +81,10 @@ class VehicleInformationScreen extends ConsumerWidget {
   Future<void> _openVehicleForm(
     BuildContext context,
     WidgetRef ref,
-    ProviderVehicle? vehicle,
   ) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => ProviderVehicleFormScreen(vehicle: vehicle),
+        builder: (_) => const ProviderVehicleFormScreen(),
       ),
     );
     if (changed == true) ref.invalidate(providerVehiclesProvider);
@@ -178,31 +172,19 @@ class VehicleInformationScreen extends ConsumerWidget {
 }
 
 class ProviderVehicleFormScreen extends ConsumerWidget {
-  const ProviderVehicleFormScreen({super.key, required this.vehicle});
-
-  final ProviderVehicle? vehicle;
+  const ProviderVehicleFormScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final categories = ref.watch(providerVehicleRideCategoriesProvider);
-    final initial = vehicle == null
-        ? const VehicleFormState()
-        : VehicleFormState(
-            make: vehicle!.make,
-            model: vehicle!.model,
-            year: vehicle!.year.toString(),
-            plate: vehicle!.plate,
-            color: vehicle!.color,
-            rideCategoryIds:
-                vehicle!.rideCategories.map((value) => value.id).toSet(),
-          );
+    const initial = VehicleFormState();
 
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
       appBar: AppBar(
         backgroundColor: MyShopColors.surfaceWhite,
         elevation: 0,
-        title: Text(vehicle == null ? 'Add Vehicle' : 'Edit Vehicle'),
+        title: const Text('Add Vehicle'),
       ),
       body: categories.when(
         loading: () => const _VehicleListSkeleton(),
@@ -230,8 +212,7 @@ class ProviderVehicleFormScreen extends ConsumerWidget {
                   ),
                 )
                 .toList(growable: false),
-            submitLabel:
-                vehicle == null ? 'Submit for approval' : 'Save changes',
+            submitLabel: 'Submit for approval',
             onSubmit: (draft) async {
               final input = ProviderVehicleInput(
                 make: draft.make.trim(),
@@ -242,17 +223,9 @@ class ProviderVehicleFormScreen extends ConsumerWidget {
                 rideCategoryIds: draft.rideCategoryIds.toList(growable: false),
               );
               try {
-                if (vehicle == null) {
-                  await ref
-                      .read(providerVehicleServiceProvider)
-                      .createVehicle(input);
-                } else {
-                  await ref.read(providerVehicleServiceProvider).updateVehicle(
-                        vehicleId: vehicle!.id,
-                        expectedVersion: vehicle!.version,
-                        input: input,
-                      );
-                }
+                await ref
+                    .read(providerVehicleServiceProvider)
+                    .createVehicle(input);
                 ref.invalidate(providerVehiclesProvider);
                 if (context.mounted) Navigator.pop(context, true);
                 return null;
@@ -274,14 +247,12 @@ class _VehicleCard extends StatelessWidget {
   const _VehicleCard({
     required this.vehicle,
     required this.isSelectedOnline,
-    required this.onEdit,
     required this.onRemovalRequest,
     required this.onDocuments,
   });
 
   final ProviderVehicle vehicle;
   final bool isSelectedOnline;
-  final VoidCallback? onEdit;
   final VoidCallback? onRemovalRequest;
   final VoidCallback onDocuments;
 
@@ -364,6 +335,16 @@ class _VehicleCard extends StatelessWidget {
               background: MyShopColors.infoLight,
             ),
           ],
+          if (vehicle.approvalStatus ==
+              ProviderVehicleApprovalStatus.approved) ...[
+            const SizedBox(height: MyShopSpacing.md),
+            const _NoticeBox(
+              message:
+                  'Approved vehicle details are locked. Contact support to request an admin-assisted change.',
+              color: MyShopColors.info,
+              background: MyShopColors.infoLight,
+            ),
+          ],
           const SizedBox(height: MyShopSpacing.md),
           Text('Ride categories', style: MyShopTypography.body1),
           const SizedBox(height: MyShopSpacing.sm),
@@ -405,12 +386,6 @@ class _VehicleCard extends StatelessWidget {
                 icon: const Icon(Icons.description_outlined, size: 18),
                 label: const Text('Documents'),
               ),
-              if (onEdit != null)
-                OutlinedButton.icon(
-                  onPressed: onEdit,
-                  icon: const Icon(Icons.edit_outlined, size: 18),
-                  label: const Text('Edit'),
-                ),
               if (onRemovalRequest != null)
                 TextButton(
                   onPressed: onRemovalRequest,
@@ -566,11 +541,6 @@ extension on ProviderVehicleApprovalStatus {
           MyShopColors.errorLight,
         _ => MyShopColors.warningLight,
       };
-
-  bool canProviderEdit({required bool removalRequested}) =>
-      this != ProviderVehicleApprovalStatus.approved &&
-      this != ProviderVehicleApprovalStatus.retired &&
-      !removalRequested;
 }
 
 extension on ProviderVehicleCategoryStatus {
