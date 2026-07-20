@@ -84,7 +84,10 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
     } catch (_) {
       // Status provider may not be mounted during tests — safe to ignore.
     }
-    if (job.clientName == null || job.clientPhotoUrl == null) {
+    if (job.clientName == null ||
+        job.clientPhotoUrl == null ||
+        job.clientPhone == null ||
+        job.clientPhone!.trim().isEmpty) {
       _hydrateClientInfo(job.id);
     }
   }

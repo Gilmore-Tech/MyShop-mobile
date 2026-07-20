@@ -39,6 +39,31 @@ void main() {
     );
   }
 
+  AuthUser artisanUser() {
+    return AuthUser(
+      id: 'artisan_user_1',
+      phone: '+233241234569',
+      fullName: 'Artisan One',
+      role: AuthRole.artisan,
+      artisanProfile: const ArtisanProfile(
+        id: 'artisan_1',
+        legalName: 'Artisan One',
+        verificationStatus: 'pending',
+        kycStatus: 'not_started',
+        policeCheckStatus: 'not_started',
+        onlineStatus: 'offline',
+        serviceRadiusKm: 5,
+        shopCapacity: 'solo',
+        maxConcurrentJobs: 1,
+        payoutPreference: 'standard',
+        completedJobsCount: 0,
+        cancellationCount30d: 0,
+        ghanaCardVerified: false,
+        languagePref: 'en',
+      ),
+    );
+  }
+
   ProviderVehicle vehicle({
     required String id,
     required String make,
@@ -72,11 +97,13 @@ void main() {
     required VerificationStatusResponse verification,
     List<ProviderVehicle> vehicles = const [],
     String? activeVehicleId,
+    ProviderType providerType = ProviderType.driver,
+    double textScale = 1,
   }) {
     return ProviderScope(
       overrides: [
         currentUserProvider.overrideWithValue(user),
-        providerTypeProvider.overrideWith((ref) => ProviderType.driver),
+        providerTypeProvider.overrideWith((ref) => providerType),
         verificationStatusProvider.overrideWith((ref) async => verification),
         providerVehiclesProvider.overrideWith(
           (ref) async => ProviderVehiclesResponse(
@@ -88,9 +115,44 @@ void main() {
           ),
         ),
       ],
-      child: const MaterialApp(home: DocumentsVerificationScreen()),
+      child: MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(textScale),
+          ),
+          child: child!,
+        ),
+        home: const DocumentsVerificationScreen(),
+      ),
     );
   }
+
+  testWidgets(
+    'artisan document sections do not overflow on a narrow phone with large text',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(320, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        screen(
+          user: artisanUser(),
+          providerType: ProviderType.artisan,
+          textScale: 1.5,
+          verification: const VerificationStatusResponse(documents: []),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('PROVIDE EXACTLY ONE'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('OPTIONAL PROFILE & DOCUMENTS'),
+        300,
+      );
+      expect(find.text('OPTIONAL PROFILE & DOCUMENTS'), findsOneWidget);
+      expect(find.text('Does not block online'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'does not mark profile fields as approved documents when no driver document rows exist',

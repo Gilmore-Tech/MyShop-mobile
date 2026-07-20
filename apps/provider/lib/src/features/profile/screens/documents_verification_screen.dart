@@ -175,33 +175,13 @@ class _DocumentsVerificationScreenState
                       ),
                     ],
                     const SizedBox(height: MyShopSpacing.lg),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _SectionLabel(
-                            icon: Icons.task_alt,
-                            label: 'REQUIRED DOCUMENTS',
-                            iconColor: MyShopColors.error,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: MyShopColors.errorLight,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            'Mandatory',
-                            style: MyShopTypography.body2.copyWith(
-                              color: MyShopColors.error,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
+                    const _SectionHeading(
+                      icon: Icons.task_alt,
+                      label: 'REQUIRED DOCUMENTS',
+                      iconColor: MyShopColors.error,
+                      badgeLabel: 'Mandatory',
+                      badgeBackground: MyShopColors.errorLight,
+                      badgeForeground: MyShopColors.error,
                     ),
                     const SizedBox(height: MyShopSpacing.sm),
                     _DocsCard(
@@ -211,41 +191,21 @@ class _DocumentsVerificationScreenState
                     ),
                     if (oneOfDocs.isNotEmpty) ...[
                       const SizedBox(height: MyShopSpacing.lg),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _SectionLabel(
-                              icon: Icons.rule,
-                              label: 'PROVIDE EXACTLY ONE',
-                              iconColor: MyShopColors.error,
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: oneOfSatisfied
-                                  ? MyShopColors.successLight
-                                  : MyShopColors.errorLight,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              oneOfSatisfied
-                                  ? 'Done'
-                                  : oneOfConflict
-                                      ? 'Keep one only'
-                                      : 'Pick one',
-                              style: MyShopTypography.body2.copyWith(
-                                color: oneOfSatisfied
-                                    ? MyShopColors.success
-                                    : MyShopColors.error,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                        ],
+                      _SectionHeading(
+                        icon: Icons.rule,
+                        label: 'PROVIDE EXACTLY ONE',
+                        iconColor: MyShopColors.error,
+                        badgeLabel: oneOfSatisfied
+                            ? 'Done'
+                            : oneOfConflict
+                                ? 'Keep one only'
+                                : 'Pick one',
+                        badgeBackground: oneOfSatisfied
+                            ? MyShopColors.successLight
+                            : MyShopColors.errorLight,
+                        badgeForeground: oneOfSatisfied
+                            ? MyShopColors.success
+                            : MyShopColors.error,
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -262,33 +222,13 @@ class _DocumentsVerificationScreenState
                     ],
                     if (optionalDocs.isNotEmpty) ...[
                       const SizedBox(height: MyShopSpacing.lg),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _SectionLabel(
-                              icon: Icons.add_circle_outline,
-                              label: 'OPTIONAL PROFILE & DOCUMENTS',
-                              iconColor: MyShopColors.textSecondary,
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: MyShopColors.surfaceGrey,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              'Does not block online',
-                              style: MyShopTypography.body2.copyWith(
-                                color: MyShopColors.textSecondary,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                        ],
+                      const _SectionHeading(
+                        icon: Icons.add_circle_outline,
+                        label: 'OPTIONAL PROFILE & DOCUMENTS',
+                        iconColor: MyShopColors.textSecondary,
+                        badgeLabel: 'Does not block online',
+                        badgeBackground: MyShopColors.surfaceGrey,
+                        badgeForeground: MyShopColors.textSecondary,
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -664,11 +604,15 @@ class _Header extends StatelessWidget {
             icon: const Icon(Icons.arrow_back, color: MyShopColors.textPrimary),
             onPressed: () => context.pop(),
           ),
-          Text(
-            'Documents & Verification',
-            style: MyShopTypography.h1.copyWith(
-              fontWeight: FontWeight.w700,
-              fontSize: 18,
+          Expanded(
+            child: Text(
+              'Documents & Verification',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: MyShopTypography.h1.copyWith(
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+              ),
             ),
           ),
         ],
@@ -848,6 +792,74 @@ class _VehicleDocumentSelector extends StatelessWidget {
 // Section label
 // ─────────────────────────────────────────────────────────────────────────────
 
+class _SectionHeading extends StatelessWidget {
+  const _SectionHeading({
+    required this.icon,
+    required this.label,
+    required this.iconColor,
+    required this.badgeLabel,
+    required this.badgeBackground,
+    required this.badgeForeground,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color iconColor;
+  final String badgeLabel;
+  final Color badgeBackground;
+  final Color badgeForeground;
+
+  @override
+  Widget build(BuildContext context) {
+    final badge = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: badgeBackground,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        badgeLabel,
+        style: MyShopTypography.body2.copyWith(
+          color: badgeForeground,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scaledLabelSize =
+            MediaQuery.textScalerOf(context).scale(12).toDouble();
+        final stack = constraints.maxWidth < 420 || scaledLabelSize > 14;
+        final sectionLabel = _SectionLabel(
+          icon: icon,
+          label: label,
+          iconColor: iconColor,
+        );
+
+        if (stack) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              sectionLabel,
+              const SizedBox(height: MyShopSpacing.xs),
+              badge,
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(child: sectionLabel),
+            const SizedBox(width: MyShopSpacing.sm),
+            badge,
+          ],
+        );
+      },
+    );
+  }
+}
+
 class _SectionLabel extends StatelessWidget {
   const _SectionLabel({
     required this.icon,
@@ -865,13 +877,17 @@ class _SectionLabel extends StatelessWidget {
       children: [
         Icon(icon, size: 16, color: iconColor),
         const SizedBox(width: MyShopSpacing.sm),
-        Text(
-          label,
-          style: MyShopTypography.overline.copyWith(
-            color: MyShopColors.textSecondary,
-            fontWeight: FontWeight.w900,
-            fontSize: 12,
-            letterSpacing: 1.2,
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: MyShopTypography.overline.copyWith(
+              color: MyShopColors.textSecondary,
+              fontWeight: FontWeight.w900,
+              fontSize: 12,
+              letterSpacing: 1.2,
+            ),
           ),
         ),
       ],
@@ -1075,9 +1091,12 @@ class _DocRow extends StatelessWidget {
       onTap: _canUpload ? () => _handleUpload(context) : null,
       child: Padding(
         padding: const EdgeInsets.all(MyShopSpacing.md),
-        child: Row(
-          children: [
-            Container(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final scaledTitleSize =
+                MediaQuery.textScalerOf(context).scale(16).toDouble();
+            final compact = constraints.maxWidth < 360 || scaledTitleSize > 18;
+            final icon = Container(
               width: 40,
               height: 40,
               decoration: BoxDecoration(
@@ -1085,69 +1104,95 @@ class _DocRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(item.icon, size: 20, color: MyShopColors.textPrimary),
-            ),
-            const SizedBox(width: MyShopSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.title,
-                    style: MyShopTypography.h3.copyWith(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                    ),
+            );
+            final details = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.title,
+                  style: MyShopTypography.h3.copyWith(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
                   ),
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      if (item.status != _DocStatus.missing &&
-                          item.status != _DocStatus.uploading)
-                        const Padding(
-                          padding: EdgeInsets.only(right: 4),
-                          child: Icon(
-                            Icons.access_time,
-                            size: 12,
-                            color: MyShopColors.textSecondary,
-                          ),
-                        ),
-                      if (item.status == _DocStatus.uploading)
-                        const Padding(
-                          padding: EdgeInsets.only(right: 4),
-                          child: SizedBox(
-                            width: 12,
-                            height: 12,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 1.5,
-                              color: MyShopColors.primaryGold,
-                            ),
-                          ),
-                        ),
-                      Flexible(
-                        child: Text(
-                          item.meta,
-                          style: MyShopTypography.body2.copyWith(
-                            color: switch (item.status) {
-                              _DocStatus.rejected ||
-                              _DocStatus.expired =>
-                                MyShopColors.error,
-                              _DocStatus.expiryMissing ||
-                              _DocStatus.expiringSoon =>
-                                MyShopColors.warning,
-                              _ => null,
-                            },
-                          ),
-                          overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    if (item.status != _DocStatus.missing &&
+                        item.status != _DocStatus.uploading)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 4),
+                        child: Icon(
+                          Icons.access_time,
+                          size: 12,
+                          color: MyShopColors.textSecondary,
                         ),
                       ),
-                    ],
+                    if (item.status == _DocStatus.uploading)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 4),
+                        child: SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.5,
+                            color: MyShopColors.primaryGold,
+                          ),
+                        ),
+                      ),
+                    Flexible(
+                      child: Text(
+                        item.meta,
+                        maxLines: compact ? 2 : 1,
+                        style: MyShopTypography.body2.copyWith(
+                          color: switch (item.status) {
+                            _DocStatus.rejected ||
+                            _DocStatus.expired =>
+                              MyShopColors.error,
+                            _DocStatus.expiryMissing ||
+                            _DocStatus.expiringSoon =>
+                              MyShopColors.warning,
+                            _ => null,
+                          },
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            );
+
+            if (compact) {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  icon,
+                  const SizedBox(width: MyShopSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        details,
+                        const SizedBox(height: MyShopSpacing.sm),
+                        _StatusPill(status: item.status),
+                      ],
+                    ),
                   ),
                 ],
-              ),
-            ),
-            const SizedBox(width: MyShopSpacing.sm),
-            _StatusPill(status: item.status),
-          ],
+              );
+            }
+
+            return Row(
+              children: [
+                icon,
+                const SizedBox(width: MyShopSpacing.md),
+                Expanded(child: details),
+                const SizedBox(width: MyShopSpacing.sm),
+                _StatusPill(status: item.status),
+              ],
+            );
+          },
         ),
       ),
     );

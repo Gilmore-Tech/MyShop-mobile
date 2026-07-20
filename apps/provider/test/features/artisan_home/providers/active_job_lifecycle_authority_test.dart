@@ -38,7 +38,11 @@ class _FakeJobService extends JobService {
   }
 }
 
-Job _job(JobStatus status) => Job(
+Job _job(
+  JobStatus status, {
+  String? clientPhone = '+233241234567',
+}) =>
+    Job(
       id: 'job-1',
       status: status,
       categoryId: 'category-1',
@@ -47,6 +51,7 @@ Job _job(JobStatus status) => Job(
       latitude: 5.6037,
       longitude: -0.1870,
       clientName: 'Client One',
+      clientPhone: clientPhone,
       clientPhotoUrl: 'https://example.test/client.jpg',
     );
 
@@ -59,10 +64,35 @@ Map<String, dynamic> _jobJson(String status) => {
       'latitude': 5.6037,
       'longitude': -0.1870,
       'clientName': 'Client One',
+      'clientPhone': '+233241234567',
       'clientPhotoUrl': 'https://example.test/client.jpg',
     };
 
 void main() {
+  test('hydrates a missing client phone so both call choices are available',
+      () async {
+    final service = _FakeJobService()
+      ..jobResponse = {
+        ..._jobJson('confirmed'),
+        'clientPhone': '+233501234567',
+      };
+    final container = ProviderContainer(
+      overrides: [jobServiceProvider.overrideWithValue(service)],
+    );
+    addTearDown(container.dispose);
+
+    container
+        .read(activeJobProvider.notifier)
+        .setJob(_job(JobStatus.confirmed, clientPhone: null));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(service.getCalls, 1);
+    expect(
+      container.read(activeJobProvider).job?.clientPhone,
+      '+233501234567',
+    );
+  });
+
   test('malformed acknowledgement does not invent an artisan job status',
       () async {
     final service = _FakeJobService()

@@ -6,6 +6,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../../core/constants/mapbox_config.dart';
 import '../../../core/providers/current_location_provider.dart';
+import '../../../core/services/directions_service.dart';
 import '../providers/artisan_live_location_provider.dart';
 import '../providers/bid_detail_provider.dart';
 
@@ -14,6 +15,7 @@ import '../providers/bid_detail_provider.dart';
 // freshly-polled one. Slightly less than the 10 s poll interval so motion
 // finishes before the next update arrives, avoiding jerk.
 const _markerInterpolationDuration = Duration(milliseconds: 8500);
+const _routeRefreshDistanceMeters = 50.0;
 
 /// Full-screen tracking map for an artisan who has bid on a job.
 /// The artisan pin interpolates smoothly between polled positions (à la
@@ -98,6 +100,18 @@ class _TrackingBodyState extends ConsumerState<_TrackingBody>
   /// a new live emission differs from the previous one.
   LatLng? _lastTarget;
 
+  // Road route returned by the authenticated backend route proxy. A direct
+  // two-point line is used only as an explicitly-labelled fallback when road
+  // directions are temporarily unavailable.
+  List<LatLng> _routePolyline = const [];
+  LatLng? _lastRoutedFrom;
+  LatLng? _lastRoutedTo;
+  bool _routeFetchInFlight = false;
+  bool _routeIsFallback = false;
+  String? _routeWarning;
+  int? _routeDistanceMeters;
+  int? _routeDurationSeconds;
+
   @override
   void initState() {
     super.initState();
@@ -118,6 +132,20 @@ class _TrackingBodyState extends ConsumerState<_TrackingBody>
     _moveCtrl.dispose();
     _mapController?.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TrackingBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.bid.jobLatitude != widget.bid.jobLatitude ||
+        oldWidget.bid.jobLongitude != widget.bid.jobLongitude) {
+      _routePolyline = const [];
+      _lastRoutedTo = null;
+      _routeDistanceMeters = null;
+      _routeDurationSeconds = null;
+      _routeWarning = null;
+      _routeIsFallback = false;
+    }
   }
 
   LatLng? get _snapshotArtisan {
@@ -157,6 +185,71 @@ class _TrackingBodyState extends ConsumerState<_TrackingBody>
       ..stop()
       ..reset()
       ..forward();
+  }
+
+  bool _routeNeedsRefresh(LatLng origin, LatLng destination) {
+    if (_routeFetchInFlight) return false;
+    final lastFrom = _lastRoutedFrom;
+    final lastTo = _lastRoutedTo;
+    if (_routePolyline.length < 2 || lastFrom == null || lastTo == null) {
+      return true;
+    }
+    final originDrift = Geolocator.distanceBetween(
+      lastFrom.latitude,
+      lastFrom.longitude,
+      origin.latitude,
+      origin.longitude,
+    );
+    final destinationDrift = Geolocator.distanceBetween(
+      lastTo.latitude,
+      lastTo.longitude,
+      destination.latitude,
+      destination.longitude,
+    );
+    return originDrift >= _routeRefreshDistanceMeters || destinationDrift >= 5;
+  }
+
+  void _scheduleRouteFetch(LatLng origin, LatLng destination) {
+    if (!_routeNeedsRefresh(origin, destination)) return;
+    // Mark as in-flight before deferring so animation-driven rebuilds do not
+    // enqueue duplicate requests during this frame.
+    _routeFetchInFlight = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        _routeFetchInFlight = false;
+        return;
+      }
+      _loadRoadRoute(origin, destination);
+    });
+  }
+
+  Future<void> _loadRoadRoute(LatLng origin, LatLng destination) async {
+    try {
+      final route = await ref.read(directionsServiceProvider).fetchRoute(
+            origin: origin,
+            destination: destination,
+          );
+      if (!mounted || route.polyline.length < 2) return;
+
+      final keepLastRoadRoute =
+          route.isFallback && _routePolyline.length >= 2 && !_routeIsFallback;
+      setState(() {
+        _lastRoutedFrom = origin;
+        _lastRoutedTo = destination;
+        if (keepLastRoadRoute) {
+          _routeWarning =
+              'Road directions are temporarily unavailable — showing the last known route.';
+          return;
+        }
+        _routePolyline = route.polyline;
+        _routeIsFallback = route.isFallback;
+        _routeWarning = route.warningMessage;
+        _routeDistanceMeters = route.distanceMeters;
+        _routeDurationSeconds = route.durationSeconds;
+      });
+    } finally {
+      _routeFetchInFlight = false;
+    }
   }
 
   void _fitBounds({required LatLng? job, required LatLng? artisan}) {
@@ -218,6 +311,10 @@ class _TrackingBodyState extends ConsumerState<_TrackingBody>
     final job = _job;
     final displayed = _displayedArtisan;
 
+    if (job != null && targetArtisan != null) {
+      _scheduleRouteFetch(targetArtisan, job);
+    }
+
     // One-shot camera fit when both points first become available.
     if (!_bothPointsFitDone && job != null && displayed != null) {
       _bothPointsFitDone = true;
@@ -250,10 +347,10 @@ class _TrackingBodyState extends ConsumerState<_TrackingBody>
     };
 
     final polylines = <Polyline>{
-      if (job != null && displayed != null)
+      if (_routePolyline.length >= 2)
         Polyline(
           polylineId: const PolylineId('route'),
-          points: [displayed, job],
+          points: _routePolyline,
           color: MyShopColors.primaryGold,
           width: 5,
           startCap: Cap.roundCap,
@@ -264,16 +361,23 @@ class _TrackingBodyState extends ConsumerState<_TrackingBody>
 
     // Live metrics shown in the bottom card. Recomputed every animation tick
     // so the distance visibly ticks down as the pin slides toward the site.
-    final double? distanceKm = (job != null && displayed != null)
-        ? Geolocator.distanceBetween(
-              job.latitude,
-              job.longitude,
-              displayed.latitude,
-              displayed.longitude,
-            ) /
-            1000.0
-        : null;
-    final int etaMinutes = live?.etaMinutes ?? bid.artisan.etaMinutes;
+    final double? distanceKm = _routeDistanceMeters != null
+        ? _routeDistanceMeters! / 1000.0
+        : (job != null && displayed != null)
+            ? Geolocator.distanceBetween(
+                  job.latitude,
+                  job.longitude,
+                  displayed.latitude,
+                  displayed.longitude,
+                ) /
+                1000.0
+            : null;
+    final routeEtaMinutes =
+        _routeDurationSeconds != null && _routeDurationSeconds! > 0
+            ? (_routeDurationSeconds! / 60).ceil()
+            : null;
+    final int etaMinutes =
+        routeEtaMinutes ?? live?.etaMinutes ?? bid.artisan.etaMinutes;
 
     final cached = ref.watch(currentDevicePositionProvider);
     final cachedLatLng =
@@ -327,6 +431,14 @@ class _TrackingBodyState extends ConsumerState<_TrackingBody>
           ),
         ),
 
+        if (_routeWarning != null)
+          Positioned(
+            top: topPad + h * 0.078,
+            left: w * 0.041,
+            right: w * 0.041,
+            child: _RouteWarningBanner(message: _routeWarning!),
+          ),
+
         // ── Recenter FAB ────────────────────────────────────────────────────
         Positioned(
           right: w * 0.041,
@@ -370,6 +482,43 @@ class _TrackingBodyState extends ConsumerState<_TrackingBody>
 bool _latLngEq(LatLng a, LatLng? b) {
   if (b == null) return false;
   return a.latitude == b.latitude && a.longitude == b.longitude;
+}
+
+class _RouteWarningBanner extends StatelessWidget {
+  const _RouteWarningBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: MyShopColors.surfaceWhite,
+      elevation: 3,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.route_outlined,
+              size: 18,
+              color: MyShopColors.warning,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                message,
+                style: MyShopTypography.body2.copyWith(
+                  color: MyShopColors.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ── Artisan info card (Uber-style) ────────────────────────────────────────────
