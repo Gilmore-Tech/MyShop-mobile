@@ -48,6 +48,7 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
 
   final isArtisan = ref.watch(providerTypeProvider).isArtisan;
   final locationService = ref.read(locationServiceProvider);
+  final positionLoader = ref.read(onlinePositionLoaderProvider);
   final cadence = _syncCadence(status, isArtisan: isArtisan);
   final movementThreshold =
       status.isBusy ? _busySampleMinMeters : _idleHeartbeatMinMeters;
@@ -92,14 +93,69 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
     driverQueue.removeRange(0, driverQueue.length - _maxQueuedDriverSamples);
   }
 
+  void stagePosition(Position position) {
+    latestPosition = position;
+    ref.read(lastKnownPositionProvider.notifier).state = position;
+
+    if (isArtisan) return;
+    final locationSession = ref.read(providerLocationSessionProvider);
+    if (locationSession == null) return;
+    if (queuedSessionId != locationSession.onlineSessionId) {
+      driverQueue.clear();
+      queuedSessionId = locationSession.onlineSessionId;
+    }
+    if (status.isBusy) {
+      if (busySampleDue(position)) {
+        driverQueue.add(
+          _sampleFromPosition(
+            position,
+            ref.read(providerLocationSessionProvider.notifier).nextSequence(),
+          ),
+        );
+        lastQueuedDriverPosition = position;
+        capDriverQueue();
+      }
+    } else {
+      driverQueue
+        ..clear()
+        ..add(
+          _sampleFromPosition(
+            position,
+            ref.read(providerLocationSessionProvider.notifier).nextSequence(),
+          ),
+        );
+      lastQueuedDriverPosition = position;
+    }
+  }
+
   Future<void> flush() async {
     if (disposed || flushInFlight) return;
-    final latest = latestPosition;
-    if (latest == null) return;
-
     flushInFlight = true;
     var sent = false;
     try {
+      final refreshRequired = periodicOnlineFixRefreshRequired(latestPosition);
+      Position latest;
+      try {
+        latest = await resolvePeriodicOnlinePosition(
+          latestPosition,
+          loader: positionLoader,
+        );
+      } catch (error) {
+        debugPrint('[LOC] background sync: fresh-fix request failed: $error');
+        return;
+      }
+      if (disposed) return;
+      if (periodicOnlineFixRefreshRequired(latest) ||
+          !isOnlineLocationFixAcceptable(latest)) {
+        debugPrint(
+          '[LOC] background sync: fresh-fix request returned an unusable sample',
+        );
+        return;
+      }
+      if (refreshRequired) {
+        stagePosition(latest);
+      }
+
       final locationSession = ref.read(providerLocationSessionProvider);
       if (locationSession == null) {
         debugPrint('[LOC] background sync: no server location epoch — waiting');
@@ -178,39 +234,7 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
   }
 
   void onPosition(Position position) {
-    latestPosition = position;
-    ref.read(lastKnownPositionProvider.notifier).state = position;
-
-    if (!isArtisan) {
-      final locationSession = ref.read(providerLocationSessionProvider);
-      if (locationSession == null) return;
-      if (queuedSessionId != locationSession.onlineSessionId) {
-        driverQueue.clear();
-        queuedSessionId = locationSession.onlineSessionId;
-      }
-      if (status.isBusy) {
-        if (busySampleDue(position)) {
-          driverQueue.add(
-            _sampleFromPosition(
-              position,
-              ref.read(providerLocationSessionProvider.notifier).nextSequence(),
-            ),
-          );
-          lastQueuedDriverPosition = position;
-          capDriverQueue();
-        }
-      } else {
-        driverQueue
-          ..clear()
-          ..add(
-            _sampleFromPosition(
-              position,
-              ref.read(providerLocationSessionProvider.notifier).nextSequence(),
-            ),
-          );
-        lastQueuedDriverPosition = position;
-      }
-    }
+    stagePosition(position);
 
     if (syncDueFor(position)) {
       unawaited(flush());

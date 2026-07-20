@@ -162,6 +162,7 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   final isArtisan = ref.read(providerTypeProvider).isArtisan;
   final container = ref.container;
   var disposed = false;
+  DateTime? lastEmittedCapturedAt;
   ref.onDispose(() => disposed = true);
   debugPrint('[LOC] bridge: active (role=${isArtisan ? 'artisan' : 'driver'})'
       ' — listening for fixes');
@@ -173,6 +174,12 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   // matcher reads their position from the PostGIS table the REST writer updates.
   void emitDriverLocation(Position pos) {
     if (disposed || isArtisan) return;
+    if (!isOnlineLocationFixAcceptable(pos)) return;
+    final capturedAt = pos.timestamp.toUtc();
+    final previousCapturedAt = lastEmittedCapturedAt;
+    if (previousCapturedAt != null && !capturedAt.isAfter(previousCapturedAt)) {
+      return;
+    }
     final locationSession = container.read(providerLocationSessionProvider);
     if (locationSession == null) return;
     final sampleSequence =
@@ -185,6 +192,7 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
       'sampleSequence': sampleSequence,
       'status': 'online',
     });
+    lastEmittedCapturedAt = capturedAt;
   }
 
   // Socket heartbeat: re-emit the last-known fix every 4s while connected so a

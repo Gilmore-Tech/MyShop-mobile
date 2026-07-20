@@ -2,6 +2,7 @@ import 'package:api_client/api_client.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:shared_models/shared_models.dart';
 
 import 'package:myshop_provider/src/core/di/providers.dart';
@@ -9,6 +10,9 @@ import 'package:myshop_provider/src/core/providers/availability_controller.dart'
 import 'package:myshop_provider/src/core/providers/provider_online_intent.dart';
 import 'package:myshop_provider/src/core/providers/provider_status_provider.dart';
 import 'package:myshop_provider/src/core/providers/location_degradation_provider.dart';
+import 'package:myshop_provider/src/core/providers/provider_location_session_provider.dart';
+import 'package:myshop_provider/src/features/driver_home/providers/driver_location_provider.dart';
+import 'package:myshop_provider/src/features/profile/providers/provider_type_provider.dart';
 
 class _FakeAvailabilityService extends ProviderAvailabilityService {
   _FakeAvailabilityService() : super(Dio());
@@ -64,6 +68,8 @@ class _FakeLocationService extends LocationService {
   _FakeLocationService() : super(Dio());
 
   LocationUnavailableReason? reportedReason;
+  Position? driverPosition;
+  int? driverSampleSequence;
 
   @override
   Future<Map<String, dynamic>> reportUnavailable(
@@ -72,7 +78,36 @@ class _FakeLocationService extends LocationService {
     reportedReason = reason;
     return <String, dynamic>{};
   }
+
+  @override
+  Future<Map<String, dynamic>> updateDriverLocation({
+    required double latitude,
+    required double longitude,
+    required double accuracyMeters,
+    required DateTime recordedAt,
+    String? onlineSessionId,
+    int? sampleSequence,
+    String? vehicleId,
+    String status = 'online',
+  }) async {
+    driverPosition = _position(recordedAt);
+    driverSampleSequence = sampleSequence;
+    return <String, dynamic>{};
+  }
 }
+
+Position _position(DateTime timestamp) => Position(
+      latitude: 6.6885,
+      longitude: -1.6244,
+      timestamp: timestamp,
+      accuracy: 8,
+      altitude: 0,
+      altitudeAccuracy: 0,
+      heading: 0,
+      headingAccuracy: 0,
+      speed: 0,
+      speedAccuracy: 0,
+    );
 
 ProviderContainer _container(
   _FakeAvailabilityService service, {
@@ -152,5 +187,38 @@ void main() {
       container.read(providerLocationDegradationProvider).isDegraded,
       isTrue,
     );
+  });
+
+  test('background transition replaces a stale cached fix before heartbeat',
+      () async {
+    clearOnlineLocationPostAt();
+    final service = _FakeAvailabilityService();
+    final location = _FakeLocationService();
+    final fresh = _position(DateTime.now().toUtc());
+    final container = ProviderContainer(
+      overrides: [
+        providerAvailabilityServiceProvider.overrideWithValue(service),
+        currentProviderOnlineIntentIdentityProvider.overrideWith((_) => null),
+        locationServiceProvider.overrideWithValue(location),
+        onlinePositionLoaderProvider.overrideWithValue(() async => fresh),
+      ],
+    );
+    addTearDown(() {
+      clearOnlineLocationPostAt();
+      container.dispose();
+    });
+    container.read(providerTypeProvider.notifier).state = ProviderType.driver;
+    container.read(providerStatusProvider.notifier).goOnline();
+    container.read(lastKnownPositionProvider.notifier).state =
+        _position(fresh.timestamp.subtract(const Duration(minutes: 1)));
+    container
+        .read(providerLocationSessionProvider.notifier)
+        .install('11111111-1111-4111-8111-111111111111', 0);
+
+    await container.read(availabilityControllerProvider).refreshHeartbeat();
+
+    expect(location.driverPosition?.timestamp, fresh.timestamp);
+    expect(location.driverSampleSequence, 1);
+    expect(container.read(lastKnownPositionProvider), same(fresh));
   });
 }

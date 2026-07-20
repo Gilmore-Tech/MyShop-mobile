@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:incoming_request_overlay/incoming_request_overlay.dart';
 
 import '../../features/profile/providers/provider_type_provider.dart';
+import '../../features/driver_home/providers/driver_location_provider.dart';
 import '../di/providers.dart';
 import '../services/ios_always_location_permission_bridge.dart';
 import '../services/fcm_service.dart';
@@ -227,7 +228,6 @@ String _providerEligibilityErrorCopy(Object? rawReasonCodes) {
       'then try again.';
 }
 
-@visibleForTesting
 bool isOnlineLocationFixAcceptable(
   Position position, {
   DateTime? now,
@@ -555,8 +555,26 @@ class AvailabilityController {
 
   Future<void> _refreshHeartbeat() async {
     if (_ref.read(providerStatusProvider).isOffline) return;
-    final pos = _ref.read(lastKnownPositionProvider);
-    if (pos == null) return;
+    Position pos;
+    try {
+      pos = await resolvePeriodicOnlinePosition(
+        _ref.read(lastKnownPositionProvider),
+        loader: _ref.read(onlinePositionLoaderProvider),
+      );
+    } catch (error) {
+      debugPrint(
+        '[Availability] heartbeat refresh fresh-fix request failed: $error',
+      );
+      return;
+    }
+    if (periodicOnlineFixRefreshRequired(pos) ||
+        !isOnlineLocationFixAcceptable(pos)) {
+      debugPrint(
+        '[Availability] heartbeat refresh skipped — fresh fix unusable',
+      );
+      return;
+    }
+    _ref.read(lastKnownPositionProvider.notifier).state = pos;
 
     // The 4 s socket-bridge heartbeat may have just fired; if so the
     // backend Redis TTL was already extended and posting again here

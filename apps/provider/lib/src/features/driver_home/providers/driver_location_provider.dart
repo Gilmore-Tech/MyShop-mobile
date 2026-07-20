@@ -4,6 +4,44 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../../core/providers/provider_status_provider.dart';
 
+typedef OnlinePositionLoader = Future<Position> Function();
+
+/// A 10-second acquisition threshold leaves enough time for the 15-second
+/// durable writer and network latency while the server enforces its strict
+/// 30-second dispatch boundary.
+const Duration periodicOnlineFixMaxAge = Duration(seconds: 10);
+
+final onlinePositionLoaderProvider = Provider<OnlinePositionLoader>((_) {
+  return () => Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 8),
+        ),
+      );
+});
+
+bool periodicOnlineFixRefreshRequired(
+  Position? position, {
+  DateTime? now,
+}) {
+  if (position == null) return true;
+  final age = (now ?? DateTime.now()).toUtc().difference(
+        position.timestamp.toUtc(),
+      );
+  return age.isNegative || age > periodicOnlineFixMaxAge;
+}
+
+Future<Position> resolvePeriodicOnlinePosition(
+  Position? position, {
+  required OnlinePositionLoader loader,
+  DateTime? now,
+}) {
+  if (!periodicOnlineFixRefreshRequired(position, now: now)) {
+    return Future<Position>.value(position!);
+  }
+  return loader();
+}
+
 LocationSettings onlineStreamLocationSettings(TargetPlatform platform) {
   if (platform == TargetPlatform.android) {
     return AndroidSettings(

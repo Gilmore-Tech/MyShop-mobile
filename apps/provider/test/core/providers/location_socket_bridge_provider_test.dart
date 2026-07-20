@@ -16,7 +16,7 @@ class _MockSocketService extends Mock implements SocketService {}
 Position _position() => Position(
       latitude: 6.6885,
       longitude: -1.6244,
-      timestamp: DateTime.utc(2026, 7, 20, 14),
+      timestamp: DateTime.now().toUtc(),
       accuracy: 8,
       altitude: 0,
       altitudeAccuracy: 0,
