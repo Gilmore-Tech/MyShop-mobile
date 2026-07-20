@@ -80,6 +80,25 @@ void main() {
     );
   });
 
+  test('missing vehicle-document expiry names the admin correction required', () {
+    const error = ApiException(
+      message: 'provider eligibility failed',
+      statusCode: 403,
+      errorCode: 'PROVIDER_NOT_ELIGIBLE',
+      details: {
+        'reasonCodes': [
+          'VEHICLE_DOCUMENT_EXPIRY_MISSING_ROADWORTHINESS',
+        ],
+      },
+    );
+
+    expect(
+      friendlyAvailabilityApiError(error),
+      'The selected vehicle’s roadworthiness expiry date is missing. '
+      'Contact support to add the date printed on the certificate.',
+    );
+  });
+
   test('network and server failures are distinguished without leaking detail',
       () {
     const network = NetworkException(message: 'socket exception: host');
