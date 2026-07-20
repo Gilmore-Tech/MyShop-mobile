@@ -7,9 +7,16 @@ import '../models/verification_dtos.dart';
 
 /// Service for document verification and upload endpoints.
 class VerificationService {
-  VerificationService(this._dio);
+  VerificationService(
+    this._dio, {
+    List<Duration> confirmationRetryDelays = const [
+      Duration(milliseconds: 750),
+      Duration(seconds: 2),
+    ],
+  }) : _confirmationRetryDelays = List.unmodifiable(confirmationRetryDelays);
 
   final Dio _dio;
+  final List<Duration> _confirmationRetryDelays;
 
   /// Request an upload URL for a document.
   /// POST /verification/documents
@@ -102,16 +109,29 @@ class VerificationService {
     required String documentId,
     required String remoteUrl,
   }) async {
-    try {
-      await _dio.post(
-        '/verification/documents/confirm',
-        data: {
-          'documentId': documentId,
-          'remoteUrl': remoteUrl,
-        },
-      );
-    } on DioException catch (e) {
-      throw ApiException.fromDioException(e);
+    for (var attempt = 0;; attempt += 1) {
+      try {
+        await _dio.post(
+          '/verification/documents/confirm',
+          data: {
+            'documentId': documentId,
+            'remoteUrl': remoteUrl,
+          },
+        );
+        return;
+      } on DioException catch (e) {
+        final apiError = ApiException.fromDioException(e);
+        final retryable =
+            apiError.errorCode == 'STORAGE_VERIFICATION_UNAVAILABLE' ||
+                apiError.isNetworkError;
+        if (!retryable || attempt >= _confirmationRetryDelays.length) {
+          throw apiError;
+        }
+        // Confirmation is idempotent. Retrying this exact document ID avoids a
+        // second sensitive-file upload and safely recovers both transient
+        // storage lookups and a lost HTTP response after a committed confirm.
+        await Future<void>.delayed(_confirmationRetryDelays[attempt]);
+      }
     }
   }
 

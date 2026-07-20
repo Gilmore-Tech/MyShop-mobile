@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:api_client/api_client.dart';
 import 'package:dio/dio.dart';
@@ -41,6 +42,42 @@ class _FlowVerificationService extends VerificationService {
     confirmedDocumentId = documentId;
     confirmedRemoteUrl = remoteUrl;
   }
+}
+
+class _ConfirmationAdapter implements HttpClientAdapter {
+  _ConfirmationAdapter({required this.failuresBeforeSuccess});
+
+  final int failuresBeforeSuccess;
+  int attempts = 0;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    attempts += 1;
+    if (attempts <= failuresBeforeSuccess) {
+      return ResponseBody.fromString(
+        '{"error":"STORAGE_VERIFICATION_UNAVAILABLE",'
+        '"message":"The upload could not be verified. Please retry shortly."}',
+        503,
+        headers: {
+          Headers.contentTypeHeader: [Headers.jsonContentType],
+        },
+      );
+    }
+    return ResponseBody.fromString(
+      '{"data":{"status":"pending_review"}}',
+      200,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }
 
 void main() {
@@ -108,6 +145,25 @@ void main() {
     expect(service.confirmedDocumentId, 'document-2');
     expect(service.confirmedRemoteUrl, remoteUrl);
     expect(result.remoteUrl, remoteUrl);
+  });
+
+  test('confirmation retries the same document after storage verification 503s',
+      () async {
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test/v1'));
+    final adapter = _ConfirmationAdapter(failuresBeforeSuccess: 2);
+    dio.httpClientAdapter = adapter;
+    final service = VerificationService(
+      dio,
+      confirmationRetryDelays: const [Duration.zero, Duration.zero],
+    );
+
+    await service.confirmUpload(
+      documentId: 'document-2',
+      remoteUrl: 'myshop-dev/documents/driver/driver-1/insurance',
+    );
+
+    expect(adapter.attempts, 3);
+    dio.close();
   });
 
   test('vehicle evidence keeps its exact vehicle binding in upload request',

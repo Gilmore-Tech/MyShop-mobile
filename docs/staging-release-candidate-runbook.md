@@ -264,6 +264,12 @@ Use internal-track/TestFlight builds with unused private build numbers.
      changing any vehicle/category state. Otherwise choose its requested ride
      categories and create the pending vehicle. Never use this flow to infer
      missing ownership or approve a document, vehicle, category, or expiry.
+   - If retained approved roadworthiness/insurance evidence has no expiry,
+     use the Vehicle Verification expiry control only when the date is readable
+     on that exact document; otherwise require a new upload. For every private
+     vehicle-document upload, require confirmation to reach `pending_review`
+     without a `STORAGE_VERIFICATION_UNAVAILABLE` response before treating the
+     storage path as release-ready.
    - Coordinator forwards the migrated vehicle, Regional Manager finalizes it,
      and each vehicle category is approved separately. Missing/expired evidence
      is uploaded against the new vehicle through the normal review path. Re-run
