@@ -345,7 +345,7 @@ bool _shouldSkipLocalBackgroundRender(RemoteMessage message) {
   final type = NotificationPayload.normaliseType(rawType);
 
   final shouldUseLocalRequestAlert = Platform.isAndroid &&
-      NotificationPayload.fullScreenRequestTypes.contains(type);
+      NotificationPayload.persistentRequestTypes.contains(type);
   if (shouldUseLocalRequestAlert) {
     debugPrint(
       '[FCM-bg] Android incoming request has notification field; '
@@ -659,7 +659,6 @@ class FcmService {
   StreamSubscription<LiveActivityBridgeEvent>? _liveActivityEventSub;
   StreamSubscription<AppCallSession>? _incomingCallStateSub;
   final Set<String> _trackedIncomingCallIds = <String>{};
-  bool _fullScreenPermissionRequested = false;
   bool _initialised = false;
   Future<void>? _initializing;
 
@@ -826,7 +825,7 @@ class FcmService {
       // the in-app modal — silencing the looping ringtone gets messy
       // when two alert paths fire for the same booking.
       if (type != NotificationPayload.typeCallIncoming &&
-          NotificationPayload.fullScreenRequestTypes.contains(type)) {
+          NotificationPayload.persistentRequestTypes.contains(type)) {
         if (_ref.read(socketConnectedProvider)) {
           debugPrint(
             '[FCM] foreground $type — socket will surface in-app request',
@@ -952,18 +951,6 @@ class FcmService {
 
   Future<void> syncToken() async {
     debugPrint('[FCM] syncToken() entered');
-
-    if (Platform.isAndroid && !_fullScreenPermissionRequested) {
-      _fullScreenPermissionRequested = true;
-      try {
-        final granted = await LocalNotificationService.instance
-            .requestFullScreenCallPermission();
-        debugPrint('[FCM] full-screen call access granted=$granted');
-      } catch (error) {
-        _fullScreenPermissionRequested = false;
-        debugPrint('[FCM] full-screen call access request failed: $error');
-      }
-    }
 
     // Register the token-refresh listener FIRST. On iOS, APNs registration
     // on a fresh install can take longer than our initial retry window.

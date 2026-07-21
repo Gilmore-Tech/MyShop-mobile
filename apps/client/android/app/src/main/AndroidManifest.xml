@@ -11,8 +11,6 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <!-- Vibrate is needed for the urgent notification channel. -->
     <uses-permission android:name="android.permission.VIBRATE"/>
-    <!-- Incoming MyShop voice calls use a call-category full-screen intent. -->
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
