@@ -149,7 +149,7 @@ class NotificationPayload {
   static const keyTicketId = 'ticketId';
   static const keyMessageId = 'messageId';
 
-  /// Types that deserve a heads-up, full-screen-intent style banner.
+  /// Types that deserve a persistent call-category notification.
   static const Set<String> urgentTypes = {
     typeCallIncoming,
     typeRideDriverAssigned,
@@ -161,7 +161,7 @@ class NotificationPayload {
     typeJobArtisanNoShow,
   };
 
-  static const Set<String> fullScreenCallTypes = {typeCallIncoming};
+  static const Set<String> persistentCallTypes = {typeCallIncoming};
 
   /// Types that should render through the dedicated `chat_messages` channel
   /// (Android) / `MESSAGE` category (iOS) so the OS treats them like
@@ -309,12 +309,6 @@ class LocalNotificationService {
     _initialised = true;
   }
 
-  Future<bool?> requestFullScreenCallPermission() async {
-    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    return androidPlugin?.requestFullScreenIntentPermission();
-  }
-
   /// Remove the Android incoming-call alert using the same stable id used by
   /// [showTimelineUpdate]. The deterministic hash works across background and
   /// main isolates, unlike Dart's runtime [String.hashCode] contract.
@@ -338,10 +332,10 @@ class LocalNotificationService {
     Duration? timeoutAfter,
   }) async {
     final isUrgent = NotificationPayload.urgentTypes.contains(type);
-    final isFullScreenCall =
-        NotificationPayload.fullScreenCallTypes.contains(type);
+    final isPersistentCall =
+        NotificationPayload.persistentCallTypes.contains(type);
     final isChat = NotificationPayload.chatTypes.contains(type);
-    final channel = isFullScreenCall
+    final channel = isPersistentCall
         ? _incomingCallChannel
         : isUrgent
             ? _urgentChannel
@@ -367,17 +361,19 @@ class LocalNotificationService {
           importance: isUrgent ? Importance.max : Importance.high,
           priority: isUrgent ? Priority.high : Priority.defaultPriority,
           category: androidCategory,
-          fullScreenIntent: isFullScreenCall,
+          // Keep calls visible, audible and actionable without forcing an
+          // activity launch that Google Play disallows for this app.
+          fullScreenIntent: false,
           playSound: channel.playSound,
           sound: channel.sound,
           audioAttributesUsage: channel.audioAttributesUsage,
-          additionalFlags: isFullScreenCall
+          additionalFlags: isPersistentCall
               ? Int32List.fromList(<int>[_androidFlagInsistent])
               : null,
           autoCancel: true,
-          ongoing: isFullScreenCall,
+          ongoing: isPersistentCall,
           timeoutAfter:
-              isFullScreenCall ? _timeoutMilliseconds(timeoutAfter) : null,
+              isPersistentCall ? _timeoutMilliseconds(timeoutAfter) : null,
           styleInformation: BigTextStyleInformation(body),
         ),
         iOS: DarwinNotificationDetails(

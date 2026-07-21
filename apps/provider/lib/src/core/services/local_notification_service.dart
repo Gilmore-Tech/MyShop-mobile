@@ -169,9 +169,11 @@ class NotificationPayload {
   static const keyTicketId = 'ticketId';
   static const keyMessageId = 'messageId';
 
-  /// Time-sensitive types. Voice calls may use a full-screen intent; ride/job
-  /// requests use the custom native overlay (or this service's sticky,
-  /// actionable heads-up fallback when overlay access is unavailable).
+  /// Time-sensitive types. Ride/job requests use the custom native overlay
+  /// (or this service's sticky, actionable heads-up fallback when overlay
+  /// access is unavailable). Voice calls use a persistent call-category
+  /// notification; Google Play does not permit this marketplace app to force
+  /// a full-screen activity launch.
   static const Set<String> urgentTypes = {
     typeCallIncoming,
     typeJobRequest,
@@ -187,7 +189,7 @@ class NotificationPayload {
   /// Backend pairs this with an Android-data-only push so FCM's auto
   /// banner doesn't fire on top of our local notification (see
   /// `apps/api/src/modules/notification/push.service.ts FULL_SCREEN_DATA_TYPES`).
-  static const Set<String> fullScreenRequestTypes = {
+  static const Set<String> persistentRequestTypes = {
     typeCallIncoming,
     typeJobRequest,
     typeRideRequest,
@@ -200,7 +202,7 @@ class NotificationPayload {
   /// OS notification alive beyond that creates a dead-tap window where the
   /// driver can open an already-expired request and land on the unavailable
   /// fallback screen.
-  static const Duration fullScreenRequestTimeout = Duration(seconds: 45);
+  static const Duration persistentRequestTimeout = Duration(seconds: 45);
 
   /// Types that should render through the dedicated `chat_messages` channel
   /// (Android) / `MESSAGE` category (iOS) so the OS treats them like
@@ -409,12 +411,6 @@ class LocalNotificationService {
     _initialised = true;
   }
 
-  Future<bool?> requestFullScreenCallPermission() async {
-    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    return androidPlugin?.requestFullScreenIntentPermission();
-  }
-
   /// Remove the Android incoming-call alert using the same stable id used by
   /// [showTimelineUpdate]. The deterministic hash works across background and
   /// main isolates, unlike Dart's runtime [String.hashCode] contract.
@@ -473,8 +469,8 @@ class LocalNotificationService {
   }
 
   /// Single entry-point for rendering any timeline push. Picks the right
-  /// channel + styling based on [type]. Only voice calls use a full-screen
-  /// intent; ride/job requests use an actionable sticky fallback banner.
+  /// channel + styling based on [type]. Incoming calls and ride/job requests
+  /// remain persistent and actionable without forcing a full-screen launch.
   ///
   /// [type] MUST be one of [NotificationPayload]'s `type*` constants.
   /// [extras] is merged into the payload — pass ids like
@@ -488,8 +484,8 @@ class LocalNotificationService {
   }) async {
     final isUrgent = NotificationPayload.urgentTypes.contains(type);
     final isChat = NotificationPayload.chatTypes.contains(type);
-    final isFullScreenRequest =
-        NotificationPayload.fullScreenRequestTypes.contains(type);
+    final isPersistentRequest =
+        NotificationPayload.persistentRequestTypes.contains(type);
     // Order matters: the incoming-request channel is the "most specific"
     // urgent path (custom ringtone, sticky, 45 s timeout). Falling back
     // to _urgentChannel for the rest of the urgent set keeps bid_accepted
@@ -498,7 +494,7 @@ class LocalNotificationService {
     final isIncomingCall = type == NotificationPayload.typeCallIncoming;
     final channel = isIncomingCall
         ? _incomingCallChannel
-        : isFullScreenRequest
+        : isPersistentRequest
             ? _incomingRequestChannel
             : isUrgent
                 ? _urgentChannel
@@ -508,7 +504,7 @@ class LocalNotificationService {
 
     final androidCategory = isIncomingCall
         ? AndroidNotificationCategory.call
-        : isFullScreenRequest
+        : isPersistentRequest
             ? AndroidNotificationCategory.transport
             : isChat
                 ? AndroidNotificationCategory.message
@@ -570,13 +566,14 @@ class LocalNotificationService {
           importance: isUrgent ? Importance.max : Importance.high,
           priority: isUrgent ? Priority.high : Priority.defaultPriority,
           category: androidCategory,
-          // Only app-to-app voice calls use a full-screen takeover. Job and
-          // ride offers remain heads-up notifications.
-          fullScreenIntent: isIncomingCall,
+          // Google Play rejected forced full-screen takeover for this app.
+          // Persistence is provided by the call/request channel, ongoing
+          // notification and (for ride/jobs) the native overlay service.
+          fullScreenIntent: false,
           playSound: channel.playSound,
           sound: channel.sound,
           audioAttributesUsage: channel.audioAttributesUsage,
-          additionalFlags: isFullScreenRequest
+          additionalFlags: isPersistentRequest
               ? Int32List.fromList(<int>[_androidFlagInsistent])
               : null,
           actions: androidActions,
@@ -586,10 +583,10 @@ class LocalNotificationService {
           // call-style banner away mid-pocket; the OS clears it via
           // `timeoutAfter` after the 45 s window OR when the user taps.
           autoCancel: true,
-          ongoing: isFullScreenRequest,
-          timeoutAfter: isFullScreenRequest
+          ongoing: isPersistentRequest,
+          timeoutAfter: isPersistentRequest
               ? _timeoutMilliseconds(
-                  timeoutAfter ?? NotificationPayload.fullScreenRequestTimeout,
+                  timeoutAfter ?? NotificationPayload.persistentRequestTimeout,
                 )
               : null,
           styleInformation: BigTextStyleInformation(body),
@@ -598,7 +595,7 @@ class LocalNotificationService {
           presentAlert: true,
           presentBadge: true,
           presentSound: true,
-          sound: isFullScreenRequest ? 'incoming_request.caf' : null,
+          sound: isPersistentRequest ? 'incoming_request.caf' : null,
           // Pair the iOS category with the appropriate interruption tier:
           //   urgent  → time-sensitive (cuts through Focus modes)
           //   chat    → time-sensitive + MESSAGE (iOS treats it like SMS)
