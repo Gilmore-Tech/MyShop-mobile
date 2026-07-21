@@ -7,7 +7,10 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../config/api_config.dart';
 import '../http/token_refresher.dart';
 import '../http/token_storage.dart';
+import '../realtime/realtime_socket_options.dart';
 import 'app_call_service.dart';
+
+const int _maxPendingCallSignals = 128;
 
 /// Lightweight Socket.IO client for the `/calls` namespace.
 ///
@@ -32,6 +35,7 @@ class AppCallSocketService {
   Future<void>? _inFlightReconnect;
   Completer<void>? _connectCompleter;
   final Set<String> _joinedCallIds = <String>{};
+  final List<_PendingCallSignal> _pendingSignals = <_PendingCallSignal>[];
 
   final _sessionController = StreamController<AppCallSession>.broadcast();
   final _connectionController = StreamController<bool>.broadcast();
@@ -52,6 +56,15 @@ class AppCallSocketService {
     final existingConnection = _connectCompleter;
     if (existingConnection != null) {
       await existingConnection.future;
+      return;
+    }
+
+    // A disconnected Socket.IO instance retains its listeners, room state and
+    // exponential reconnect schedule. Reuse it instead of creating a new
+    // Manager for every ICE candidate produced while the network is down.
+    final existingSocket = _socket;
+    if (existingSocket != null) {
+      existingSocket.connect();
       return;
     }
 
@@ -81,15 +94,7 @@ class AppCallSocketService {
 
       _socket = io.io(
         nsUrl,
-        io.OptionBuilder()
-            .setTransports(['websocket'])
-            .setExtraHeaders({'Authorization': 'Bearer $token'})
-            .setAuth({'token': token})
-            .enableAutoConnect()
-            .enableReconnection()
-            .setReconnectionDelay(2000)
-            .setReconnectionAttempts(10)
-            .build(),
+        buildRealtimeSocketOptions(token: token),
       );
 
       _socket!
@@ -99,6 +104,7 @@ class AppCallSocketService {
           for (final callId in _joinedCallIds) {
             _socket?.emit('call:join', {'callId': callId});
           }
+          _flushPendingSignals();
           if (!_connectionController.isClosed) {
             _connectionController.add(true);
           }
@@ -123,6 +129,15 @@ class AppCallSocketService {
           }
         })
         ..on('exception', (data) {
+          if (_errorCode(data) == 'SOCKET_REPLACED') {
+            debugPrint('[CALL-WS] Superseded socket stopped');
+            _socket?.dispose();
+            _socket = null;
+            if (!_connectionController.isClosed) {
+              _connectionController.add(false);
+            }
+            return;
+          }
           if (_looksUnauthorized(data)) {
             debugPrint('[CALL-WS] Server reported UNAUTHORIZED — refreshing');
             _handleUnauthorized();
@@ -163,6 +178,7 @@ class AppCallSocketService {
 
   void leaveCall(String callId) {
     _joinedCallIds.remove(callId);
+    _pendingSignals.removeWhere((signal) => signal.callId == callId);
     if (_socket?.connected != true) return;
     _socket!.emit('call:leave', {'callId': callId});
   }
@@ -172,12 +188,13 @@ class AppCallSocketService {
     required String type,
     required Map<String, dynamic> data,
   }) {
-    if (_socket?.connected != true) return;
-    _socket!.emit('call:signal', {
-      'callId': callId,
-      'type': type,
-      'data': data,
-    });
+    final signal = _PendingCallSignal(callId: callId, type: type, data: data);
+    if (_socket?.connected != true) {
+      _queueSignal(signal);
+      unawaited(connect());
+      return;
+    }
+    _emitSignal(signal);
   }
 
   void disconnect() {
@@ -189,6 +206,7 @@ class AppCallSocketService {
     _socket?.dispose();
     _socket = null;
     _joinedCallIds.clear();
+    _pendingSignals.clear();
     _sessionController.close();
     _connectionController.close();
     _signalController.close();
@@ -307,11 +325,75 @@ class AppCallSocketService {
     return false;
   }
 
+  void _emitSignal(_PendingCallSignal signal) {
+    _socket?.emit('call:signal', {
+      'callId': signal.callId,
+      'type': signal.type,
+      'data': signal.data,
+    });
+  }
+
+  void _queueSignal(_PendingCallSignal signal) {
+    // Only the latest SDP description of each type is useful after a
+    // reconnect. Replace it while retaining ICE candidates in order.
+    if (signal.type == 'offer' || signal.type == 'answer') {
+      _pendingSignals.removeWhere(
+        (pending) =>
+            pending.callId == signal.callId && pending.type == signal.type,
+      );
+    }
+    if (_pendingSignals.length >= _maxPendingCallSignals) {
+      final oldestIce = _pendingSignals.indexWhere(
+        (pending) => pending.type == 'ice',
+      );
+      _pendingSignals.removeAt(oldestIce >= 0 ? oldestIce : 0);
+      debugPrint('[CALL-WS] Pending signal buffer reached its safe limit');
+    }
+    _pendingSignals.add(signal);
+  }
+
+  void _flushPendingSignals() {
+    if (_socket?.connected != true || _pendingSignals.isEmpty) return;
+    final pending = List<_PendingCallSignal>.of(_pendingSignals);
+    _pendingSignals.clear();
+    var replayed = 0;
+    for (final signal in pending) {
+      if (!_joinedCallIds.contains(signal.callId)) continue;
+      _emitSignal(signal);
+      replayed += 1;
+    }
+    debugPrint('[CALL-WS] Replayed $replayed queued signal(s)');
+  }
+
+  String _errorCode(dynamic data) {
+    if (data is Map) return data['error']?.toString().toUpperCase() ?? '';
+    return '';
+  }
+
+  @visibleForTesting
+  int get pendingSignalCount => _pendingSignals.length;
+
+  @visibleForTesting
+  List<String> get pendingSignalTypes =>
+      _pendingSignals.map((signal) => signal.type).toList(growable: false);
+
   Map<String, dynamic>? _asJsonMap(dynamic data) {
     if (data is Map<String, dynamic>) return data;
     if (data is Map) return Map<String, dynamic>.from(data);
     return null;
   }
+}
+
+class _PendingCallSignal {
+  const _PendingCallSignal({
+    required this.callId,
+    required this.type,
+    required this.data,
+  });
+
+  final String callId;
+  final String type;
+  final Map<String, dynamic> data;
 }
 
 class AppCallSignal {

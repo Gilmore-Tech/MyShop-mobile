@@ -370,7 +370,6 @@ class FcmService {
   StreamSubscription<VoipCallBridgeEvent>? _voipEventSub;
   StreamSubscription<AppCallSession>? _incomingCallStateSub;
   final Set<String> _trackedIncomingCallIds = <String>{};
-  bool _fullScreenPermissionRequested = false;
   bool _initialised = false;
   Future<void>? _initializing;
 
@@ -498,18 +497,6 @@ class FcmService {
 
   Future<void> syncToken() async {
     debugPrint('[FCM] syncToken() entered');
-
-    if (Platform.isAndroid && !_fullScreenPermissionRequested) {
-      _fullScreenPermissionRequested = true;
-      try {
-        final granted = await LocalNotificationService.instance
-            .requestFullScreenCallPermission();
-        debugPrint('[FCM] full-screen call access granted=$granted');
-      } catch (error) {
-        _fullScreenPermissionRequested = false;
-        debugPrint('[FCM] full-screen call access request failed: $error');
-      }
-    }
 
     // Register the token-refresh listener FIRST. On iOS, APNs registration
     // on a fresh install can take longer than our initial retry window.
