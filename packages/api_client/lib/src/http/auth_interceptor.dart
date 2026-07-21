@@ -69,6 +69,18 @@ class AuthInterceptor extends Interceptor {
     '/auth/provider/',
     '/auth/refresh',
     '/auth/request-session-recovery',
+    // Registration must load the exact current legal documents before a
+    // user has an account or access token. The document viewer routes are
+    // public too, while /legal/consent and /legal/consent/status remain
+    // authenticated and therefore must not be covered by a broad /legal/
+    // prefix.
+    '/legal/required',
+    '/legal/terms',
+    '/legal/privacy',
+    '/legal/acceptable-use',
+    '/legal/community-guidelines',
+    '/legal/third-party-licenses',
+    '/legal/cookie-policy',
     '/config/',
     '/surge/current',
     // Categories are read during artisan registration (category picker)

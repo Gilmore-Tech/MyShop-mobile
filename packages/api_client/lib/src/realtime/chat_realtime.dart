@@ -8,6 +8,7 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../config/api_config.dart';
 import '../http/token_refresher.dart';
 import '../http/token_storage.dart';
+import 'realtime_socket_options.dart';
 
 /// Real-time client for the `/chat` Socket.IO namespace.
 ///
@@ -127,15 +128,7 @@ class ChatRealtime {
 
     _socket = io.io(
       nsUrl,
-      io.OptionBuilder()
-          .setTransports(['websocket'])
-          .setExtraHeaders({'Authorization': 'Bearer $token'})
-          .setAuth({'token': token})
-          .enableAutoConnect()
-          .enableReconnection()
-          .setReconnectionDelay(2000)
-          .setReconnectionAttempts(10)
-          .build(),
+      buildRealtimeSocketOptions(token: token),
     );
 
     _socket!
@@ -184,6 +177,12 @@ class ChatRealtime {
       })
       ..on('exception', (data) {
         debugPrint('[CHAT-WS] Server exception: $data');
+        if (_errorCode(data) == 'SOCKET_REPLACED') {
+          debugPrint('[CHAT-WS] Superseded socket stopped');
+          _socket?.dispose();
+          _socket = null;
+          return;
+        }
         if (_looksUnauthorized(data)) {
           _handleUnauthorized();
         }
@@ -518,6 +517,11 @@ class ChatRealtime {
     return s.contains('unauthorized') ||
         (s.contains('token') &&
             (s.contains('invalid') || s.contains('expired')));
+  }
+
+  String _errorCode(dynamic data) {
+    if (data is Map) return data['error']?.toString().toUpperCase() ?? '';
+    return '';
   }
 }
 

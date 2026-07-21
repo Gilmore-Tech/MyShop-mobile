@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Build a MyShop mobile app for production.
 #
-#   RELEASE_BUILD_NUMBER=21 tool/build.sh client android
-#   RELEASE_BUILD_NUMBER=21 tool/build.sh client android-apk
-#   RELEASE_BUILD_NUMBER=21 tool/build.sh client ios
-#   RELEASE_BUILD_NUMBER=21 tool/build.sh provider android
-#   RELEASE_BUILD_NUMBER=21 tool/build.sh provider android-apk
-#   RELEASE_BUILD_NUMBER=21 tool/build.sh provider ios
+#   RELEASE_BUILD_NUMBER=22 tool/build.sh client android
+#   RELEASE_BUILD_NUMBER=22 tool/build.sh client android-apk
+#   RELEASE_BUILD_NUMBER=22 tool/build.sh client ios
+#   RELEASE_BUILD_NUMBER=22 tool/build.sh provider android
+#   RELEASE_BUILD_NUMBER=22 tool/build.sh provider android-apk
+#   RELEASE_BUILD_NUMBER=22 tool/build.sh provider ios
 #   tool/build.sh provider android --validate-only  # config check, no build
 #
 # Reads `.env.prod` (gitignored — copy from `.env.prod.example` and fill in
