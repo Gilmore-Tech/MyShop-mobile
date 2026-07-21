@@ -29,4 +29,31 @@ void main() {
     expect(copy.title, 'Could not load fare estimate');
     expect(copy.showRetry, isTrue);
   });
+
+  test('maps no-driver result to availability copy before server fallback', () {
+    const error = ServerException(
+      message: 'Internal provider failure text',
+      statusCode: 503,
+      errorCode: 'NO_DRIVERS_AVAILABLE',
+    );
+
+    expect(rideRequestErrorMessage(error), noDriversAvailableMessage);
+    expect(
+      rideRequestErrorMessage(error),
+      'All nearby drivers are busy or offline. Please try again.',
+    );
+  });
+
+  test('keeps genuine server failures distinct from no-driver results', () {
+    const error = ServerException(
+      message: 'Internal provider failure text',
+      statusCode: 503,
+      errorCode: 'DEPENDENCY_UNAVAILABLE',
+    );
+
+    expect(
+      rideRequestErrorMessage(error),
+      'Internal error, please try again in a moment.',
+    );
+  });
 }

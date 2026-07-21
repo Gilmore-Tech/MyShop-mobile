@@ -13,6 +13,7 @@ import '../../features/activity/providers/activity_provider.dart';
 import '../../features/notifications/providers/notifications_provider.dart';
 import '../../features/ride/providers/edit_trip_provider.dart';
 import '../../features/ride/providers/ride_provider.dart';
+import '../../features/ride/utils/ride_error_messages.dart';
 import '../../features/ride/widgets/rate_ride_sheet.dart';
 import '../../features/ride/widgets/ride_cancelled_dialog.dart';
 import '../../features/services/providers/active_job_provider.dart';
@@ -23,8 +24,6 @@ import '../../features/services/widgets/rate_job_sheet.dart';
 import '../di/providers.dart';
 import 'nav_badge_provider.dart';
 import 'provider_location_notice_provider.dart';
-
-const _allDriversBusyMessage = 'All drivers are busy. Please try again.';
 
 /// True while the Socket.IO connection is open. Mirrored from the underlying
 /// [SocketService.connectionStream] inside [_connectAndListen] so other
@@ -336,7 +335,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
               reason == 'no_drivers_available' ||
               cancelledBy == 'system';
           final friendlyMessage = isNoDrivers
-              ? _allDriversBusyMessage
+              ? noDriversAvailableMessage
               : cancelledBy == 'driver'
                   ? 'The driver cancelled this ride.'
                   : (reason.isNotEmpty ? reason : 'This ride was cancelled.');
@@ -453,7 +452,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
           ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
           ref.container.read(bookingFailureMessageProvider.notifier).state =
               status == 'no_drivers'
-                  ? _allDriversBusyMessage
+                  ? noDriversAvailableMessage
                   : 'This ride was cancelled.';
           ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.cancelled;
@@ -489,9 +488,6 @@ void _connectAndListen(Ref ref, SocketService socket) {
 
         final reason = (map['reason'] as String?) ?? '';
         final messageFromPayload = (map['message'] as String?) ?? '';
-        final noDriversMessage = messageFromPayload.isNotEmpty
-            ? messageFromPayload
-            : _allDriversBusyMessage;
         final noDrivers = _isNoDriversCancellation(
           reason: reason,
           cancelledBy: cancelledBy,
@@ -506,7 +502,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
           ref.container.read(matchedDriverProvider.notifier).state = null;
           ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
           ref.container.read(bookingFailureMessageProvider.notifier).state =
-              noDriversMessage;
+              noDriversAvailableMessage;
           ref.container.read(bookingPhaseProvider.notifier).fail();
           ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.cancelled;

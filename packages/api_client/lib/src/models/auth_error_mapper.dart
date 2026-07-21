@@ -285,7 +285,7 @@ class AuthErrorMapper {
       // ── Server ──────────────────────────────────────────────────────
       case 'INTERNAL_ERROR':
       case 'SERVER_ERROR':
-        return 'Our servers are having trouble. Please try again in a moment.';
+        return 'Internal error, please try again in a moment.';
 
       default:
         return userSafeApiErrorMessage(
