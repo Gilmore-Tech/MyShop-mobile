@@ -14,6 +14,29 @@ class RideEstimateErrorCopy {
   final bool showRetry;
 }
 
+/// Stable client-owned copy for an exhausted ride match.
+///
+/// A completed search with no eligible driver is an availability outcome,
+/// not a server failure. Never replace this with backend/provider prose.
+const noDriversAvailableMessage =
+    'All nearby drivers are busy or offline. Please try again.';
+
+String rideRequestErrorMessage(ApiException error) {
+  if (error.errorCode?.toUpperCase() == 'NO_DRIVERS_AVAILABLE') {
+    return noDriversAvailableMessage;
+  }
+
+  return userSafeApiErrorMessage(
+    error,
+    fallback:
+        "Couldn't request a ride. Please check your connection and try again.",
+    validationMessage:
+        'Check the pickup, destination, and ride option, then try again.',
+    conflictMessage:
+        'Your ride request changed. Check for an active ride before retrying.',
+  );
+}
+
 RideEstimateErrorCopy rideEstimateErrorCopy(Object error) {
   if (_isOutsidePilotRegion(error)) {
     return const RideEstimateErrorCopy(

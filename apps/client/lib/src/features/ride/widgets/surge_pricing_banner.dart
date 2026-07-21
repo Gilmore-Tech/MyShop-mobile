@@ -15,7 +15,7 @@ class SurgePricingBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // e.g. 1.30 → "1.3×" — clean one-decimal display.
-    final pct = ((multiplier - 1) * 100).round();
+    // final pct = ((multiplier - 1) * 100).round();
     final rate = multiplier.toStringAsFixed(1);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -52,7 +52,7 @@ class SurgePricingBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  'High demand in your area — fares are about $pct% higher to attract more drivers.',
+                  'High demand in your area currently',
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w400,

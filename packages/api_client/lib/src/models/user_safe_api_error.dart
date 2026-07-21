@@ -20,7 +20,7 @@ String userSafeApiErrorMessage(
     return 'No internet connection. Check your network and try again.';
   }
   if (error.isServerError) {
-    return 'Our servers are having trouble. Please try again in a moment.';
+    return 'Internal error, please try again in a moment.';
   }
 
   if (error.errorCode == 'RATE_LIMITED' ||

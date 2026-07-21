@@ -34,7 +34,7 @@ void main() {
         ),
         fallback: 'fallback',
       ),
-      'Our servers are having trouble. Please try again in a moment.',
+      'Internal error, please try again in a moment.',
     );
   });
 

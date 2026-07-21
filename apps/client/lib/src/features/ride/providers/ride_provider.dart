@@ -11,6 +11,7 @@ import '../../../core/providers/socket_provider.dart';
 import '../data/ride_booking_attempt_store.dart';
 import '../data/ride_booking_coordinator.dart';
 import '../data/ride_cancellation_coordinator.dart';
+import '../utils/ride_error_messages.dart';
 import 'ride_payment_method_provider.dart';
 import 'ride_search_provider.dart';
 
@@ -1087,17 +1088,7 @@ Future<void> requestRideAndMatchDriver(
       'code=${e.errorCode ?? 'unknown'})',
       name: 'RideProvider',
     );
-    failWith(
-      userSafeApiErrorMessage(
-        e,
-        fallback:
-            "Couldn't request a ride. Please check your connection and try again.",
-        validationMessage:
-            'Check the pickup, destination, and ride option, then try again.',
-        conflictMessage:
-            'Your ride request changed. Check for an active ride before retrying.',
-      ),
-    );
+    failWith(rideRequestErrorMessage(e));
     return;
   } catch (e) {
     developer.log(
@@ -1210,9 +1201,7 @@ Future<void> requestRideAndMatchDriver(
   }
 
   ref.read(matchedDriverProvider.notifier).state = null;
-  failWith(
-    "We couldn't find a driver nearby. Please try again in a moment.",
-  );
+  failWith(noDriversAvailableMessage);
 }
 
 /// One-shot REST hydrate when socket-based snapshot delivery has been
@@ -1269,7 +1258,7 @@ Future<void> _hydrateFromRest(
         cancelledBy: cancelledBy,
       );
       read(bookingFailureMessageProvider.notifier).state = noDrivers
-          ? 'No drivers are available nearby right now. Please try again in a moment.'
+          ? noDriversAvailableMessage
           : cancelledBy == 'driver'
               ? 'The driver cancelled this ride.'
               : 'This ride was cancelled.';
