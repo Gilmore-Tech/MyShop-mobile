@@ -67,6 +67,38 @@ void main() {
     verifyNever(() => tokenStorage.readAccessToken());
   });
 
+  test('allows registration legal documents without an access token', () async {
+    when(() => tokenStorage.readAccessToken()).thenAnswer((_) async => null);
+
+    await dio.get(
+      '/legal/required',
+      queryParameters: {'role': 'client'},
+    );
+    await dio.get(
+      '/legal/terms',
+      queryParameters: {'audience': 'client'},
+    );
+
+    expect(adapter.paths, ['/legal/required', '/legal/terms']);
+    verifyNever(() => tokenStorage.readAccessToken());
+  });
+
+  test('keeps legal consent endpoints authenticated', () async {
+    when(() => tokenStorage.readAccessToken()).thenAnswer((_) async => null);
+
+    await expectLater(
+      dio.get('/legal/consent/status'),
+      throwsA(
+        isA<DioException>()
+            .having((error) => error.type, 'type', DioExceptionType.cancel)
+            .having((error) => error.error, 'error', 'NOT_AUTHENTICATED'),
+      ),
+    );
+
+    expect(adapter.paths, isEmpty);
+    verify(() => tokenStorage.readAccessToken()).called(1);
+  });
+
   test('does not treat the unregistered deleted-role recovery path as public',
       () async {
     when(() => tokenStorage.readAccessToken()).thenAnswer((_) async => null);
