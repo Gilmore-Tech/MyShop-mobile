@@ -31,10 +31,14 @@ class CallRingbackPlayer {
             contentType: AndroidContentType.sonification,
             usageType: AndroidUsageType.voiceCommunicationSignalling,
             audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+            isSpeakerphoneOn: true,
           ),
           iOS: AudioContextIOS(
             category: AVAudioSessionCategory.playAndRecord,
-            options: const {AVAudioSessionOptions.allowBluetooth},
+            options: const {
+              AVAudioSessionOptions.allowBluetooth,
+              AVAudioSessionOptions.defaultToSpeaker,
+            },
           ),
         ),
       );
