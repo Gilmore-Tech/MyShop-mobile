@@ -7,6 +7,7 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../config/api_config.dart';
 import '../http/token_refresher.dart';
 import '../http/token_storage.dart';
+import '../realtime/realtime_socket_options.dart';
 
 /// Callback for when a Socket.IO event is received.
 typedef SocketEventCallback = void Function(dynamic data);
@@ -110,21 +111,15 @@ class SocketService {
 
     _socket = io.io(
       nsUrl,
-      io.OptionBuilder()
-          .setTransports(['websocket'])
-          .setExtraHeaders({'Authorization': 'Bearer $token'})
-          .setAuth({
-            'token': token,
-            // The server joins only receipt-capable provider builds to the
-            // v2 ride-offer room. Older installs therefore cannot receive an
-            // actionable envelope whose accept contract they do not support.
-            'offerReceiptVersion': rideOfferReceiptVersion,
-          })
-          .enableAutoConnect()
-          .enableReconnection()
-          .setReconnectionDelay(2000)
-          .setReconnectionAttempts(10)
-          .build(),
+      buildRealtimeSocketOptions(
+        token: token,
+        auth: {
+          // The server joins only receipt-capable provider builds to the
+          // v2 ride-offer room. Older installs therefore cannot receive an
+          // actionable envelope whose accept contract they do not support.
+          'offerReceiptVersion': rideOfferReceiptVersion,
+        },
+      ),
     );
 
     _socket!
@@ -161,6 +156,12 @@ class SocketService {
       // the token is invalid or expired. Refresh + reconnect with the new
       // token rather than leaving the socket in a half-dead state.
       ..on('exception', (data) {
+        if (_errorCode(data) == 'SOCKET_REPLACED') {
+          debugPrint('[WS] Superseded socket stopped');
+          _socket?.dispose();
+          _socket = null;
+          return;
+        }
         if (_looksUnauthorized(data)) {
           debugPrint('[WS] Server reported UNAUTHORIZED — refreshing');
           _handleUnauthorized();
@@ -346,5 +347,10 @@ class SocketService {
     return s.contains('unauthorized') ||
         (s.contains('token') &&
             (s.contains('invalid') || s.contains('expired')));
+  }
+
+  String _errorCode(dynamic data) {
+    if (data is Map) return data['error']?.toString().toUpperCase() ?? '';
+    return '';
   }
 }
