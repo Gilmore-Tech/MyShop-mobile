@@ -212,7 +212,7 @@ The following remaining workers are capacity risks before a 100k-DAU claim:
       **3/3**; the complete API gate passes **214/214 suites and 4,224/4,224
       tests**, typecheck, zero-error lint and script syntax. Neither production
       diagnostic has been run yet.
-- [ ] Add bounded keyset/claim batches and explicit per-tick work budgets where
+- [x] Add bounded keyset/claim batches and explicit per-tick work budgets where
       the current worker can consume an unbounded backlog. The wider cron audit
       also found unbounded candidate enumeration in disconnection `SMEMBERS`,
       stale payment verification, escrow payout retry, clawback write-off,
@@ -251,6 +251,28 @@ The following remaining workers are capacity risks before a 100k-DAU claim:
       gate passes **214/214 suites and 4,247/4,247 tests**, builds, typechecks,
       Prisma validation, zero-error lint, the aggregate diagnostic and the
       online-index preflight. No staging or production system was touched.
+      Backend commit `1390423` closes the three remaining enumerated paths.
+      Insufficient-balance expiry now uses one five-minute deployment lease,
+      separately bounded deadline and failed-alert queues, atomic queue moves,
+      deduplicated notification retries and alternating queue priority; the
+      original 24-hour client retry deadline is never extended. Clawback
+      write-off now uses a leased, oldest-first `(created_at, id)` keyset with a
+      durable wraparound cursor and per-provider failure isolation. Session
+      recovery cleanup now runs through one lease and two bounded candidate
+      phases while rechecking the exact 24-hour cutoff and continuing to protect
+      `resolving` rows. All three budgets validate to 1–500 with a safe source
+      default of 100; production values remain subject to the measured backlog
+      and owner-approved workload model. A reviewed concurrent partial index
+      supports pending clawback traversal, and the preflight no longer
+      incorrectly requires a provider-document index that a later reviewed
+      migration intentionally drops while the invalid-remnant repair still
+      recognises it. The disposable database has **229** applied migrations,
+      passes the **83-index** deployment preflight and reports **32** aggregate
+      workloads, **19** worker index states and **16** planner-only checks. The
+      online-index write-continuity proof passes. On pinned Node **22.23.0**, the
+      exact committed source passes **214/214 suites and 4,269/4,269 tests**, API
+      typecheck, production build and lint with zero errors and 52 pre-existing
+      warnings. No staging or production system was touched.
 - [ ] Move or elect one scheduler/worker authority before scaling API replicas;
       retain row-level claims so worker failover remains safe.
 - [ ] Prove scheduler lag, database pool occupancy and notification/outbox
