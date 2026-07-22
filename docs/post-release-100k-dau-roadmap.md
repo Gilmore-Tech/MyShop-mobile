@@ -1,0 +1,212 @@
+# MyShop post-release and 100k-DAU roadmap
+
+Status captured: **2026-07-22 GMT**
+
+This document restarts the scale programme from the observed released state. It
+does not treat a daily-active-user target as a concurrency claim, and it does
+not activate deferred product features. Every workload value and business rule
+remains subject to owner approval before it becomes a test or production limit.
+
+## 1. Observed release baseline
+
+| Surface | Authoritative observation | Consequence |
+| --- | --- | --- |
+| Production API | `/v1/health` and `/v1/health/ready` return HTTP 200 with PostgreSQL and Redis `ok`; deployed commit is backend `d918243cd7c6bda778fa54dec6ac0fdbe8140595`. | Production does **not** yet contain the follow-up maintenance/audit hardening merged to backend staging. |
+| Live service flags | Public server-owned reads return `maintenance_mode=false`, `rides_enabled=true`, and `artisan_jobs_enabled=true`. | Rides and ordinary artisan jobs are open; changes to these flags remain controlled operational actions. |
+| OTP policy | The production API advertises SMS primary with WhatsApp fallback. | Delivery, callback, cost, provider-circuit and handset evidence still require monitoring; the channel advertisement alone is not delivery proof. |
+| Admin | `https://admin.myshop.gilmoretechnologiesgh.com/login` is live on Vercel deployment `dpl_6rNMmNbA97TPyvU4uURTg5tPLXMz`. Admin main is `30f2ed04cc03a3fa5cf20e4075368b9d67c4a7f3`. | The audit-vault UI is deployed, but authenticated Super Admin acceptance and Product Owner 403 evidence are still required. |
+| Staging API | `/v1/health/ready` is healthy at `myshop-api-test.onrender.com`, but it serves backend `fed0d149…`, ten commits behind repository staging `4e100a9…`. | It is not an exact-current load target and must not produce release/capacity evidence yet. |
+| Android client | The official Play listing for `com.gilmoretech.myshopclient` serves marketing version `1.4.1`, updated 21 July 2026. | The public build code is not exposed by the listing and must be read from Play Console before choosing the next code. |
+| Android provider | The official Play listing for `com.gilmoretech.myshopprovider` serves marketing version `1.4.1`, updated 21 July 2026. | The public build code is not exposed by the listing and must be read from Play Console before choosing the next code. |
+| iOS client | Apple's official lookup still serves `1.3.9`, released 13 July 2026, for bundle `com.gilmoretech.myshopclient`. | The audited update is not publicly available to iOS client users. |
+| iOS provider | Apple's official lookup still serves `1.4.0`, released 13 July 2026, for bundle `com.gilmoretech.myshopprovider`. | The audited update is not publicly available to iOS providers. |
+
+Public listing URLs:
+
+- Android client: <https://play.google.com/store/apps/details?id=com.gilmoretech.myshopclient>
+- Android provider: <https://play.google.com/store/apps/details?id=com.gilmoretech.myshopprovider>
+- iOS client: <https://apps.apple.com/gh/app/myshop-akwaaba/id6773658114>
+- iOS provider: <https://apps.apple.com/gh/app/myshop-provider/id6773660049>
+
+## 2. Source reconciliation after outside changes
+
+All three local worktrees were clean before this roadmap branch was created.
+No uncommitted outside work was overwritten.
+
+| Repository | Main | Staging | Reconciled state |
+| --- | --- | --- | --- |
+| Backend | `d918243…` | `4e100a9…` | PR #116 is merged only to staging. It adds exact Admin/deployment access during maintenance, strict legal-hold input, authenticated-role telemetry identity and CSV formula containment. |
+| Mobile | `61241f8…` | `bd63907…` | PR #92 is merged only to staging. It restores privacy-safe audit telemetry and binds future artifacts to an exact clean main SHA with build `24` or higher than both store-console maxima. |
+| Admin | `30f2ed0…` | `b4bebb5…` | Audit Vault is already merged to main and publicly deployed. The main and staging trees contain the same feature content through different merge commits. |
+
+## 3. Next production update — do before scale claims
+
+- [ ] Review backend staging `4e100a9…`, promote it to main, migrate only if
+      the exact main tree reports a reviewed pending migration, manually deploy
+      the recorded SHA, and prove health plus signed deployment evidence.
+- [ ] Complete authenticated Super Admin Audit Vault acceptance: timeline,
+      filters/pagination, mobile activity, CSV/JSON, legal hold, integrity and
+      Product Owner 403.
+- [ ] Obtain the real Data Protection Commission registration number. Publish a
+      new immutable Privacy version; never mutate accepted `1.4.1` content.
+- [ ] Read the highest private build codes from both Play Console and App Store
+      Connect. Promote reviewed mobile staging to main and build all four
+      artifacts from one clean explicit main SHA using codes above every maximum.
+- [ ] Release and install the iOS client/provider updates. Do not raise any
+      mandatory minimum build until both stores serve the reviewed build and a
+      rollback build/link is verified.
+- [ ] Re-run installed-device foreground/background/terminated/locked tests for
+      OTP, Go Online, location, ride/job receipt, calls, payments and recovery.
+
+## 4. Features deliberately outside the capacity programme
+
+The following remain contained until their own approved product, money,
+privacy and acceptance gates pass. A load test must not silently activate them:
+
+- automated batch or provider-aggregate payouts;
+- promo-code and loyalty-point redemption;
+- scheduled artisan jobs;
+- cancellation consequences;
+- lost-device and deleted-role self-service recovery;
+- support/dispute attachments and privileged provider-document upload;
+- emergency recording, general email/SMS/WhatsApp notifications, USSD,
+  SmileKYC and automated police checks.
+
+## 5. 100k-DAU programme
+
+### Phase A — approve the traffic model
+
+The owner must approve measured or planned peaks for each row in
+`myshop/docs/load-test-report.md`: concurrent signed-in clients, online drivers,
+online artisans, Socket.IO connections, GPS event rates, estimates, bookings,
+jobs/bids, OTP bursts, webhook traffic, regional mix, data volume and duration.
+Until then, repository pilot/stress presets are diagnostic only.
+
+Required inputs before the model is frozen:
+
+- current peak hourly/15-minute API requests and unique sessions;
+- current and expected client-to-provider population;
+- expected peak Online driver and artisan counts in the pilot region;
+- expected rides and artisan jobs per peak hour;
+- expected OTP login/registration burst and acceptable delivery cap;
+- expected simultaneous in-app calls;
+- launch/campaign multiplier and growth horizon.
+
+### Phase B — production-shaped topology
+
+- [ ] Confirm the actual Render production plan, CPU/RAM, instance count and
+      whether autoscaling or a manual warm-capacity procedure is available. The
+      repository Blueprint still says `plan: free` and declares no replica or
+      autoscaling policy; dashboard overrides are not externally observable.
+- [ ] Run at least two same-region API instances before claiming replica fault
+      tolerance. Preserve Socket.IO Redis-adapter authority and graceful drain.
+- [ ] Confirm the current Redis region, tier, memory limit, HA/failover, backups,
+      TLS, exact prefixes and `noeviction`. The last owner-reported Redis region
+      was Cape Town while API/PostgreSQL are Frankfurt; reverify rather than
+      assuming it is unchanged. Cross-region Redis is not an approved 100k-DAU
+      topology.
+- [ ] Budget PostgreSQL connections across every API/worker replica. Code
+      defaults to pool min `2`, max `10` **per process**; the deployed overrides
+      and Neon compute/connection limits must be recorded before scaling replicas.
+- [ ] Separate or explicitly capacity-budget scheduled/outbox workers. The API
+      currently hosts scheduled work and does not use an external broker.
+- [ ] Configure external metrics, alerts, log retention/redaction, paging and
+      named owners before fault tests.
+
+#### Initial scheduled-work capacity audit
+
+The post-release source audit found that the most latency-sensitive paths are
+already designed for more than one API replica: ride dispatch and offer expiry,
+active-trip ETA refresh, stale-provider recovery, Paystack webhook processing,
+pending transfers, tips and refunds use PostgreSQL `SKIP LOCKED`, compare-and-set
+updates, token-owned leases or equivalent durable claims. This is correctness
+evidence only; their throughput and pool cost still require measurement.
+
+The following remaining workers are capacity risks before a 100k-DAU claim:
+
+- bid-window expiry scans every open expired job without a batch limit and then
+  performs per-job offer revocation plus bid counts;
+- directed-quote, scheduled-job, job-staleness and welfare-check workers use
+  unbounded candidate reads followed by per-row notification/database work;
+- rating reveal updates and returns every expired row in one statement;
+- provider-document lifecycle staging runs broad SQL every minute, while audit
+  telemetry retention can keep deleting 5,000-row batches until the entire
+  expired backlog is drained by an API-hosted cron;
+- surge evaluation performs global demand/supply counts every minute; index and
+  production-cardinality evidence is still required;
+- several effects are durably deduplicated or compare-and-set protected, but
+  that prevents duplicate outcomes rather than duplicate scan/query load across
+  replicas.
+
+- [x] Add a deployment-wide, token-owned Redis lease around the first
+      scan-heavy worker set: bid expiry, directed quotes, scheduled-job
+      reminders, job staleness, welfare checks, rating reveal, surge evaluation,
+      provider-document lifecycle and audit retention. Redis failure skips the
+      tick; it never falls back to every replica scanning. This is currently a
+      local backend branch from exact repository staging and is not deployed.
+      Prometheus counters and duration histograms expose bounded worker names
+      and lease/execution outcomes without user identifiers.
+- [x] Add eight online partial indexes for the exact bid, directed-assignment,
+      job-staleness, scheduled-job, welfare-alert, rating-reveal, requested-ride
+      and Online-driver predicates, plus a fail-closed validity/table postflight.
+      All migrations executed successfully on disposable PostgreSQL. With
+      20,000–100,000 synthetic rows per table, PostgreSQL selected every new
+      index (index-only scans for the six due-work queries and bitmap index scans
+      for the two surge counts). No staging or production database was touched.
+- [x] Run the complete focused gate under pinned Node 22.23.0. The exact
+      production Dockerfile built successfully from the pinned base-image
+      digest, and its read-only test-source runs pass **12/12 suites and
+      272/272 tests**, including global-module injection. API typecheck, API
+      production build, changed-file lint,
+      Prisma validation and diff checks also pass. Local production image:
+      **181,359,385 bytes**, `sha256:cbf0da9c36ad89f6fda5186c069325c59810a023a929dde898f25c9d297df45f`.
+- [ ] Inventory the production cardinality and query plan for every scheduled
+      candidate scan without exposing user data.
+- [ ] Add bounded keyset/claim batches and explicit per-tick work budgets where
+      the current worker can consume an unbounded backlog.
+- [ ] Move or elect one scheduler/worker authority before scaling API replicas;
+      retain row-level claims so worker failover remains safe.
+- [ ] Prove scheduler lag, database pool occupancy and notification/outbox
+      backlog at normal peak, 2x peak, soak and one-replica-loss conditions.
+
+### Phase C — measured scale ladder
+
+Use only the repository's fail-closed wrapper against an isolated
+production-shaped target. Never load-test production.
+
+1. Provision fresh server-issued, exact-role fixtures for the target.
+2. Run smoke and the bounded pilot preset.
+3. Run the approved normal peak model.
+4. Run 2x peak headroom.
+5. Hold a soak long enough to expose pool, memory, worker and backlog growth.
+6. Inject replica, Redis, database, network and SIGTERM faults.
+7. Reconcile rides, offers, provider sessions, jobs, webhooks and money ledgers.
+8. Rehearse rollback and record recovery time.
+9. Set the temporary operating cap to the highest fully passing level, not the
+   requested DAU number.
+
+The fail-closed load-harness contract currently passes **10/10** local tests,
+including production-host refusal, target/commit binding, exact-role fixtures,
+provider epoch/sequence checks, call participant uniqueness and Cloudflare TURN
+preflight. The `k6` executable is not installed on the current machine. Passing
+the harness contract proves safety wiring only; it is not a load result.
+
+### Phase D — rollout
+
+Canary the exact reviewed backend/mobile artifacts, observe the approved window,
+then expand gradually. Stop on lost/duplicate accepted work, money mismatch,
+provider Online/session divergence, sustained latency/error/backlog thresholds,
+or missing alerts. The 100k-DAU claim remains unproven until the completed load
+evidence record is signed by the release, backend/SRE and payments owners.
+
+## 6. Decisions still required
+
+| Decision | Status |
+| --- | --- |
+| Approved peak traffic model and 2x headroom | **Required** |
+| Actual Render plan/replica/autoscaling budget | **Required** |
+| Current Redis region/tier/HA/capacity | **Required** |
+| Current Neon compute tier and connection ceiling | **Required** |
+| Highest private Android/iOS build codes | **Required** |
+| Real DPC registration number | **Required** |
+| Named load, incident-abort and release owners | **Required** |
