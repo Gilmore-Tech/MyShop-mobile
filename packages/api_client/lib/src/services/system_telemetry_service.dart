@@ -6,6 +6,18 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../auth/device_id.dart';
 
+String formatSystemTelemetryAppVersion(
+  String version,
+  String buildNumber, {
+  String sourceCommit = const String.fromEnvironment('MYSHOP_SOURCE_COMMIT'),
+}) {
+  final normalisedCommit = sourceCommit.trim().toLowerCase();
+  final suffix = RegExp(r'^[0-9a-f]{40}$').hasMatch(normalisedCommit)
+      ? '@${normalisedCommit.substring(0, 12)}'
+      : '';
+  return '$version+$buildNumber$suffix';
+}
+
 /// Privacy-minimal mobile telemetry. Only named screens, app lifecycle states,
 /// and explicitly named meaningful actions belong here. Raw taps, scrolling,
 /// typed text, chat content, coordinates and credentials are prohibited.
@@ -82,7 +94,10 @@ class SystemTelemetryService {
         '/system-audit/mobile/events',
         data: {
           'app': _app,
-          'appVersion': '${package.version}+${package.buildNumber}',
+          'appVersion': formatSystemTelemetryAppVersion(
+            package.version,
+            package.buildNumber,
+          ),
           'deviceId': deviceId,
           'events': batch,
         },

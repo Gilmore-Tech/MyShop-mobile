@@ -19,7 +19,11 @@ esac
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 PUBSPEC="$ROOT_DIR/apps/$APP/pubspec.yaml"
 APPROVED_MARKETING_VERSION=1.4.1
-LOCAL_BUILD_NUMBER_FLOOR=21
+# Build 23 has already been signed for all four store artifacts and was used in
+# an App Store upload attempt. Treat it as occupied even if a console later
+# shows that one target did not finish processing; release numbers are never
+# reused across uncertain upload state.
+LOCAL_BUILD_NUMBER_FLOOR=23
 MAX_PORTABLE_BUILD_NUMBER=2100000000
 
 PUBSPEC_VERSION=$(awk '$1 == "version:" { print $2; exit }' "$PUBSPEC")
