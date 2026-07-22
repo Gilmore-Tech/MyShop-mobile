@@ -11,7 +11,7 @@ remains subject to owner approval before it becomes a test or production limit.
 
 | Surface | Authoritative observation | Consequence |
 | --- | --- | --- |
-| Production API | `/v1/health` and `/v1/health/ready` return HTTP 200 with PostgreSQL and Redis `ok`; deployed commit is backend `d918243cd7c6bda778fa54dec6ac0fdbe8140595`. | Production does **not** yet contain the follow-up maintenance/audit hardening merged to backend staging. |
+| Production API | On 2026-07-22 GMT, both the canonical and direct Render domains returned HTTP 200 from `/v1/health/live` and `/v1/health/ready`, with PostgreSQL and Redis `ok`; deployed commit is backend `d918243cd7c6bda778fa54dec6ac0fdbe8140595`. | Production does **not** yet contain the follow-up maintenance/audit or scale hardening. `APP_VERSION` is also unset, so health reports `version=unknown`; commit remains the usable release marker. |
 | Live service flags | Public server-owned reads return `maintenance_mode=false`, `rides_enabled=true`, and `artisan_jobs_enabled=true`. | Rides and ordinary artisan jobs are open; changes to these flags remain controlled operational actions. |
 | OTP policy | The production API advertises SMS primary with WhatsApp fallback. | Delivery, callback, cost, provider-circuit and handset evidence still require monitoring; the channel advertisement alone is not delivery proof. |
 | Admin | `https://admin.myshop.gilmoretechnologiesgh.com/login` is live on Vercel deployment `dpl_6rNMmNbA97TPyvU4uURTg5tPLXMz`. Admin main is `30f2ed04cc03a3fa5cf20e4075368b9d67c4a7f3`. | The audit-vault UI is deployed, but authenticated Super Admin acceptance and Product Owner 403 evidence are still required. |
@@ -43,7 +43,7 @@ Current local hardening checkpoint (not pushed or deployed):
 
 | Repository | Clean local branch | Verified milestone | Relationship to reconciled staging |
 | --- | --- | --- | --- |
-| Backend | `codex/scale-worker-bounds` | Scale implementation and full regression gate through `6fa8f66` | Based directly on `4e100a987602415516fb619b32af5af8cd27e2f0` |
+| Backend | `codex/scale-worker-bounds` | Scale implementation and pinned-Node-22 full regression gate through `1390423` | Based directly on `4e100a987602415516fb619b32af5af8cd27e2f0` |
 | Mobile | `codex/mobile-poll-backpressure` | Mobile backpressure plus evidence through `ac4a94f6dd0e653293c217b83af763ac522412a9` | Based directly on `bd6390727ec2a6c5e8bf4dc4d5512433b992e18e`; later commits may update this roadmap only |
 | Admin | `feat/system-audit` | `e6b6ab5d326aa90c8d6821dc5106940691787c48` | Clean; no post-release scale change is pending in this increment |
 
@@ -111,8 +111,11 @@ Required inputs before the model is frozen:
 - [ ] Confirm the current Redis region, tier, memory limit, HA/failover, backups,
       TLS, exact prefixes and `noeviction`. The last owner-reported Redis region
       was Cape Town while API/PostgreSQL are Frankfurt; reverify rather than
-      assuming it is unchanged. Cross-region Redis is not an approved 100k-DAU
-      topology.
+      assuming it is unchanged. The 2026-07-22 production readiness result on
+      deployed commit `d918243` proves that a non-empty deployed prefix, TLS and
+      `noeviction` pass the runtime contract; it does **not** reveal region,
+      tier, memory, HA, backups, connection headroom or the prefix value.
+      Cross-region Redis is not an approved 100k-DAU topology.
 - [ ] Budget PostgreSQL connections across every API/worker replica. Code
       defaults to pool min `2`, max `10` **per process**; the deployed overrides
       and Neon compute/connection limits must be recorded before scaling replicas.
