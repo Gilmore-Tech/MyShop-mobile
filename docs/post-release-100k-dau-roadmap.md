@@ -182,9 +182,28 @@ The following remaining workers are capacity risks before a 100k-DAU claim:
       focused tests pass, both focused analyzers report no issues, formatting
       and `git diff --check` pass. Local mobile commit: `e551a41`; it is not
       pushed or deployed.
-- [ ] Complete the same overlap audit for call-state joins, payment settlement,
-      active-job acknowledgement, location-permission checks, and client
-      job/bid detail invalidations before the multi-device load run.
+- [x] Coalesce the three-second REST call-state safety net in both apps, and
+      cache the call socket while mounted so closing a call screen never reads
+      Riverpod after widget disposal. A slow initial join plus timer tick now
+      remains one request per call screen.
+- [x] Coalesce ride and artisan-job payment settlement reads. Each polling run
+      carries a generation plus exact payment ID, so a late success/failure
+      from an abandoned attempt cannot mutate or settle its replacement.
+- [x] Coalesce provider active-job acknowledgement/status refreshes shared by
+      its immediate read, timer, socket recovery and payment-retry paths.
+      Slow-response, retry-generation and call-disposal regressions pass in
+      **16/16** focused tests; focused client/provider analyzers and diff checks
+      pass. Local mobile commit: `162ef33`; it is not pushed or deployed.
+- [x] Coalesce provider location-permission checks per Online generation. Slow
+      platform checks cannot overlap, and a result from a superseded/Offline
+      generation cannot report a false location loss.
+- [x] Coalesce the client job and bid REST safety nets across the job screen,
+      bid screen and bid sheet. The coordinator joins initial loads, limits
+      each job/resource to one request and releases its fence after failure so
+      later recovery remains possible. The current source passes **91/91**
+      client tests and **173/173** provider tests; both full-app analyzers and
+      `git diff --check` pass. Local mobile commit: `711dd40`; it is not pushed
+      or deployed.
 - [ ] Approve any cadence jitter or adaptive backoff separately. No polling
       interval or user-visible freshness contract has been changed by this
       increment.
