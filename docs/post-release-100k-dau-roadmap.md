@@ -171,6 +171,16 @@ The following remaining workers are capacity risks before a 100k-DAU claim:
       indexes in backend commit `645da93` are valid/ready on the disposable
       database; representative-volume planner proof is still required. No
       staging or production database was touched.
+- [x] Register all fifteen scale indexes in the central reviewed-online-index
+      manifest, the aggregate preflight and the invalid-only recovery script.
+      The full API regression run initially rejected the unregistered
+      migrations, proving the deployment guard was effective. After the
+      registration fix, the migration contract passes **450/450** checks and
+      the complete API suite passes **213/213 suites and 4,221/4,221 tests**.
+      API typecheck and production build pass; lint has zero errors and 52
+      pre-existing warnings. The registration migration applied successfully
+      only to the disposable database. These latest checks ran on local Node
+      24.14.1 and therefore do not replace the pinned-Node-22 evidence above.
 - [x] Run the complete focused gate under pinned Node 22.23.0. The exact
       production Dockerfile built successfully from the pinned base-image
       digest, and its read-only test-source runs pass **12/12 suites and
