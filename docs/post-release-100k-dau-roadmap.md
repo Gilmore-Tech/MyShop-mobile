@@ -41,10 +41,10 @@ No uncommitted outside work was overwritten.
 
 Current local hardening checkpoint (not pushed or deployed):
 
-| Repository | Clean local branch | Exact local head | Relationship to reconciled staging |
+| Repository | Clean local branch | Verified milestone | Relationship to reconciled staging |
 | --- | --- | --- | --- |
-| Backend | `codex/scale-worker-bounds` | `2c845ed2d5768a85185d7ea385ff9ad4432cfcb7` | Six commits ahead of `4e100a987602415516fb619b32af5af8cd27e2f0` |
-| Mobile | `codex/mobile-poll-backpressure` | `ac4a94f6dd0e653293c217b83af763ac522412a9` | Nine commits ahead of `bd6390727ec2a6c5e8bf4dc4d5512433b992e18e` |
+| Backend | `codex/scale-worker-bounds` | Scale implementation and full regression gate through `2c845ed2d5768a85185d7ea385ff9ad4432cfcb7` | Based directly on `4e100a987602415516fb619b32af5af8cd27e2f0` |
+| Mobile | `codex/mobile-poll-backpressure` | Mobile backpressure plus evidence through `ac4a94f6dd0e653293c217b83af763ac522412a9` | Based directly on `bd6390727ec2a6c5e8bf4dc4d5512433b992e18e`; later commits may update this roadmap only |
 | Admin | `feat/system-audit` | `e6b6ab5d326aa90c8d6821dc5106940691787c48` | Clean; no post-release scale change is pending in this increment |
 
 ## 3. Next production update — do before scale claims
