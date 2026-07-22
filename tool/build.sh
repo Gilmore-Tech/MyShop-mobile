@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 # Build a MyShop mobile app for production.
 #
-#   RELEASE_BUILD_NUMBER=22 tool/build.sh client android
-#   RELEASE_BUILD_NUMBER=22 tool/build.sh client android-apk
-#   RELEASE_BUILD_NUMBER=22 tool/build.sh client ios
-#   RELEASE_BUILD_NUMBER=22 tool/build.sh provider android
-#   RELEASE_BUILD_NUMBER=22 tool/build.sh provider android-apk
-#   RELEASE_BUILD_NUMBER=22 tool/build.sh provider ios
+#   RELEASE_SOURCE_COMMIT=<reviewed-origin-main-sha> RELEASE_BUILD_NUMBER=24 tool/build.sh client android
+#   RELEASE_SOURCE_COMMIT=<reviewed-origin-main-sha> RELEASE_BUILD_NUMBER=24 tool/build.sh client ios
+#   RELEASE_SOURCE_COMMIT=<reviewed-origin-main-sha> RELEASE_BUILD_NUMBER=24 tool/build.sh provider android
+#   RELEASE_SOURCE_COMMIT=<reviewed-origin-main-sha> RELEASE_BUILD_NUMBER=24 tool/build.sh provider ios
 #   tool/build.sh provider android --validate-only  # config check, no build
 #
 # Reads `.env.prod` (gitignored — copy from `.env.prod.example` and fill in
@@ -82,6 +80,36 @@ case "$PLATFORM" in
     ;;
 esac
 
+SOURCE_COMMIT=""
+if [[ "$VALIDATE_ONLY" == false ]]; then
+  SOURCE_COMMIT="${RELEASE_SOURCE_COMMIT:-}"
+  if [[ ! "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "error: RELEASE_SOURCE_COMMIT must be the full 40-character reviewed main commit SHA" >&2
+    exit 1
+  fi
+
+  CURRENT_COMMIT="$(git rev-parse HEAD)"
+  if [[ "$CURRENT_COMMIT" != "$SOURCE_COMMIT" ]]; then
+    echo "error: HEAD $CURRENT_COMMIT does not match RELEASE_SOURCE_COMMIT $SOURCE_COMMIT" >&2
+    exit 1
+  fi
+
+  if ! git rev-parse --verify refs/remotes/origin/main >/dev/null 2>&1; then
+    echo "error: origin/main is unavailable; fetch and review the remote before building" >&2
+    exit 1
+  fi
+  REMOTE_MAIN="$(git rev-parse refs/remotes/origin/main)"
+  if [[ "$CURRENT_COMMIT" != "$REMOTE_MAIN" ]]; then
+    echo "error: release builds must use exact origin/main $REMOTE_MAIN, got $CURRENT_COMMIT" >&2
+    exit 1
+  fi
+
+  if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
+    echo "error: release builds require a clean worktree; commit or remove every change first" >&2
+    exit 1
+  fi
+fi
+
 ENV_FILE="$REPO_ROOT/.env.prod"
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "error: $ENV_FILE not found. Copy .env.dev.example to .env.prod and fill in the PRODUCTION-restricted keys." >&2
@@ -115,6 +143,10 @@ while IFS='=' read -r key value; do
   value="${value#\"}"
   value="${value%\'}"
   value="${value#\'}"
+  if [[ "$key" == "MYSHOP_SOURCE_COMMIT" ]]; then
+    echo "error: MYSHOP_SOURCE_COMMIT is controlled by RELEASE_SOURCE_COMMIT, not $ENV_FILE" >&2
+    exit 1
+  fi
   # Capture the per-(app[,platform]) Maps keys and Android cert SHA-1s into
   # like-named shell vars and skip the dart-define — the selected ones are
   # appended after the loop. `printf -v` (bash 3.1+) is the bash-3.2-safe way
@@ -131,6 +163,12 @@ while IFS='=' read -r key value; do
   esac
   DEFINES+=("--dart-define=${key}=${value}")
 done < "$ENV_FILE"
+
+if [[ -n "$SOURCE_COMMIT" ]]; then
+  # Retain exact source provenance in the compiled Dart snapshot. Release
+  # telemetry can expose this non-secret marker without relying on timestamps.
+  DEFINES+=("--dart-define=MYSHOP_SOURCE_COMMIT=${SOURCE_COMMIT}")
+fi
 
 # Production builds must never fall back to a staging URL or placeholder
 # service credentials. Fail before invoking Flutter so CI cannot publish a

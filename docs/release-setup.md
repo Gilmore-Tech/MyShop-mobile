@@ -324,13 +324,18 @@ Before tagging an actual release, verify each piece works:
 cd /Users/ayiks/Desktop/ayiks/gilmore/myshop-mobile
 cp .env.dev.example .env.prod
 # Edit .env.prod with REAL production keys (the ones from §3)
+git fetch origin
+git checkout main
+git pull --ff-only origin main
+export RELEASE_SOURCE_COMMIT="$(git rev-parse HEAD)"
+export RELEASE_BUILD_NUMBER=<greater-than-both-console-values-and-23>
 tool/build.sh client android
 ```
 
 Expected end:
 ```
-→ wrote MAPS_API_KEY to apps/client/android/local.properties
-→ flutter build appbundle (release) for apps/client with 3 dart-defines
+→ wrote MAPS_API_KEY to apps/client/android/gradle.properties
+→ flutter build appbundle (release) for apps/client with production dart-defines
 ✓ Built apps/client/build/app/outputs/bundle/release/app-release.aab
 ```
 
@@ -382,16 +387,24 @@ Once Part 5 passes, every release is:
 #    Connect and Play Console. Choose a number greater than both values. Client
 #    and provider are checked independently; never infer a console value.
 
-# 2. The approved marketing version lives in both pubspec.yaml files. The
-#    production build command requires the console-verified build number and
-#    passes both values explicitly to Flutter.
-RELEASE_BUILD_NUMBER=<greater-than-both-console-values> tool/build.sh client android
-RELEASE_BUILD_NUMBER=<greater-than-both-console-values> tool/build.sh client ios
+# 2. Build only the clean, reviewed origin/main commit that already passed
+#    staging. Build 23 is treated as occupied because signed/upload-attempted
+#    artifacts exist locally; still check both private store consoles because
+#    either may contain a higher number.
+git fetch origin
+git checkout main
+git pull --ff-only origin main
+export RELEASE_SOURCE_COMMIT="$(git rev-parse HEAD)"
+export RELEASE_BUILD_NUMBER=<greater-than-both-console-values-and-23>
+tool/build.sh client android
+tool/build.sh client ios
 
-# 3. Commit + tag + push only after the exact artifacts pass staging/device QA
-git commit -am "chore(release): v1.4.1"
+# 3. Tag only after the exact artifacts pass internal/device QA. Do not commit
+#    after building: the tag and artifacts must identify RELEASE_SOURCE_COMMIT.
+test "$(git rev-parse HEAD)" = "$RELEASE_SOURCE_COMMIT"
+test -z "$(git status --porcelain --untracked-files=all)"
 git tag v1.4.1
-git push && git push --tags
+git push origin v1.4.1
 ```
 
 The workflows fire on tag push, produce signed builds, upload to Internal tracks. You receive:
