@@ -132,10 +132,6 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   /// payload from the request modal is good enough to render the screen.
   Future<bool> acceptRide(Ride ride) async {
     if (state.isUpdating) return false;
-    _ref.read(systemTelemetryProvider).trackAction(
-          'driver_accept_ride_requested',
-          correlationId: ride.id,
-        );
     // Do not expose the pre-acceptance `requested` ride through
     // [activeRideProvider]. The shell-level recovery listener treats a
     // non-null ride here as something it may route to /active-ride; putting
@@ -560,11 +556,6 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   /// cancellations — so the screen can show a dedicated dialog instead of
   /// silently kicking the driver back to the home map.
   Future<RideCancelOutcome> cancelRide({String? reason}) async {
-    _ref.read(systemTelemetryProvider).trackAction(
-      'driver_cancel_ride_requested',
-      correlationId: state.ride?.id,
-      metadata: {'reasonSelected': reason?.isNotEmpty == true},
-    );
     final ride = state.ride;
     if (ride == null) {
       clearRide();

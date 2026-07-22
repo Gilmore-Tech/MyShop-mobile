@@ -5,7 +5,6 @@ import 'package:shared_models/shared_models.dart'
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../core/di/providers.dart' show systemTelemetryProvider;
 
 // ── Auth state ────────────────────────────────────────────────────────────────
 import '../features/auth/providers/auth_controller.dart';
@@ -267,7 +266,6 @@ final routerProvider = Provider<GoRouter>((ref) {
     onboardingFlagLoaded: onboardingFlagLoaded,
     pendingReplay: pendingReplay,
     legalConsent: legalConsent,
-    telemetry: ref.read(systemTelemetryProvider),
   );
 });
 
@@ -277,7 +275,6 @@ GoRouter _buildRouter({
   required bool onboardingFlagLoaded,
   required bool pendingReplay,
   required AsyncValue<LegalConsentStatus>? legalConsent,
-  required SystemTelemetryService telemetry,
 }) {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
@@ -285,7 +282,6 @@ GoRouter _buildRouter({
     debugLogDiagnostics: false,
     redirect: (context, state) {
       final path = state.uri.path;
-      telemetry.trackScreen(path);
       final isAuthRoute = path == AppRoutes.splash ||
           path == AppRoutes.onboarding ||
           path == AppRoutes.authPhone ||

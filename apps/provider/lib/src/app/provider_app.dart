@@ -4,7 +4,6 @@ import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../core/providers/app_lifecycle_provider.dart';
-import '../core/di/providers.dart' show systemTelemetryProvider;
 import '../core/providers/app_update_provider.dart';
 import '../core/providers/availability_controller.dart';
 import '../core/providers/availability_reconciliation_bridge.dart';
@@ -50,7 +49,6 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    ref.read(systemTelemetryProvider).trackLifecycle(state);
     switch (state) {
       case AppLifecycleState.resumed:
         // Flip the foreground flag first so any provider listening on

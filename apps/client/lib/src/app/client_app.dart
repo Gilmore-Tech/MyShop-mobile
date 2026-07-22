@@ -7,7 +7,6 @@ import 'theme_provider.dart';
 import '../core/providers/app_update_provider.dart';
 import '../core/providers/provider_location_notice_provider.dart';
 import '../core/widgets/provider_location_notice_banner.dart';
-import '../core/di/providers.dart' show systemTelemetryProvider;
 
 /// Root widget for the MyShop Client App.
 /// PRD Reference: Section 4 (Client App)
@@ -20,34 +19,11 @@ class ClientApp extends StatelessWidget {
   }
 }
 
-class _MyShopMaterialApp extends ConsumerStatefulWidget {
+class _MyShopMaterialApp extends ConsumerWidget {
   const _MyShopMaterialApp();
 
   @override
-  ConsumerState<_MyShopMaterialApp> createState() => _MyShopMaterialAppState();
-}
-
-class _MyShopMaterialAppState extends ConsumerState<_MyShopMaterialApp>
-    with WidgetsBindingObserver {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    ref.read(systemTelemetryProvider).trackLifecycle(state);
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
     final themeMode = ref.watch(themeNotifierProvider);
     final updateRequirement = ref.watch(appUpdateRequirementProvider);

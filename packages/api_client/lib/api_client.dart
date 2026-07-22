@@ -50,7 +50,6 @@ export 'src/services/region_service.dart';
 export 'src/services/ride_service.dart';
 export 'src/services/safety_service.dart';
 export 'src/services/support_service.dart';
-export 'src/services/system_telemetry_service.dart';
 export 'src/services/user_service.dart';
 export 'src/services/socket_service.dart';
 export 'src/services/verification_service.dart';

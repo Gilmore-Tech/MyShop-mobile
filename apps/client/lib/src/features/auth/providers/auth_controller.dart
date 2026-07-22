@@ -139,7 +139,6 @@ final clientAuthControllerProvider =
     StateNotifierProvider<ClientAuthController, ClientAuthState>((ref) {
   final controller = ClientAuthController(
     ref.watch(clientAuthRepositoryProvider),
-    ref.watch(systemTelemetryProvider),
   );
   // Register with the Dio interceptor's force-logout dispatcher so that
   // SESSION_TAKEN_OVER / TOKEN_EXPIRED / etc. flip the controller to
@@ -184,11 +183,9 @@ Future<void> loadOnboardingFlag(ProviderContainer container) async {
 // ---------------------------------------------------------------------------
 
 class ClientAuthController extends StateNotifier<ClientAuthState> {
-  ClientAuthController(this._repo, [this._telemetry])
-      : super(const AuthUnknown());
+  ClientAuthController(this._repo) : super(const AuthUnknown());
 
   final ClientAuthRepository _repo;
-  final SystemTelemetryService? _telemetry;
   bool _requesting = false;
 
   /// Try to restore session from stored tokens.
@@ -378,7 +375,6 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
       // tutorial yet. Authenticated users without the seen flag get
       // routed to /onboarding by the router redirect.
       state = AuthAuthenticated(profile);
-      _telemetry?.trackAction('client_login_completed');
     } on ApiException catch (e) {
       state = AuthOtpSent(
         phone: current.phone,
