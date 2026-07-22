@@ -43,7 +43,7 @@ Current local hardening checkpoint (not pushed or deployed):
 
 | Repository | Clean local branch | Verified milestone | Relationship to reconciled staging |
 | --- | --- | --- | --- |
-| Backend | `codex/scale-worker-bounds` | Scale implementation and full regression gate through `02174c4` | Based directly on `4e100a987602415516fb619b32af5af8cd27e2f0` |
+| Backend | `codex/scale-worker-bounds` | Scale implementation and full regression gate through `a0ede16` | Based directly on `4e100a987602415516fb619b32af5af8cd27e2f0` |
 | Mobile | `codex/mobile-poll-backpressure` | Mobile backpressure plus evidence through `ac4a94f6dd0e653293c217b83af763ac522412a9` | Based directly on `bd6390727ec2a6c5e8bf4dc4d5512433b992e18e`; later commits may update this roadmap only |
 | Admin | `feat/system-audit` | `e6b6ab5d326aa90c8d6821dc5106940691787c48` | Clean; no post-release scale change is pending in this increment |
 
@@ -207,10 +207,11 @@ The following remaining workers are capacity risks before a 100k-DAU claim:
       disconnection set now has a fail-closed, aggregate-only diagnostic in
       backend commit `c187a5e`. It accepts only an explicitly acknowledged TLS
       staging/production target and emits whitelisted `INFO` fields, fingerprints
-      and `SCARD` only—never URLs, credentials, prefixes, keys, members or ride
-      IDs. Its contract passes **3/3**; the complete API gate passes **214/214
-      suites and 4,224/4,224 tests**, typecheck, zero-error lint and script syntax.
-      Neither production diagnostic has been run yet.
+      plus aggregate `ZCARD`/`SCARD` backlog counts only—never URLs,
+      credentials, prefixes, keys, members or ride IDs. Its contract passes
+      **3/3**; the complete API gate passes **214/214 suites and 4,224/4,224
+      tests**, typecheck, zero-error lint and script syntax. Neither production
+      diagnostic has been run yet.
 - [ ] Add bounded keyset/claim batches and explicit per-tick work budgets where
       the current worker can consume an unbounded backlog. The wider cron audit
       also found unbounded candidate enumeration in disconnection `SMEMBERS`,
@@ -223,9 +224,20 @@ The following remaining workers are capacity risks before a 100k-DAU claim:
       Disposable PostgreSQL accepted empty and non-empty cursors and selected
       `rides_stage_accepted_due_idx`; the complete API gate passes **214/214
       suites and 4,228/4,228 tests**, API/config builds, typechecks and
-      zero-error lint. Final deployed budget sizing still depends on the
-      production aggregate diagnostic. Replica-level leases reduce duplicate
-      scans but do not replace bounded durable work for the remaining paths.
+      zero-error lint. Backend commit `a0ede16` also replaces the unbounded
+      disconnection `SMEMBERS` scan with a Redis-server-clock deadline queue, a
+      configurable 1–500 total per-tick budget (safe default 100), and a bounded
+      rolling sampler that drains entries written by older deployments. Queue
+      registration happens before the per-ride grace records so a partial write
+      cannot strand undiscoverable work; reconnect, heartbeat renewal, replica
+      claim loss and escalation retry paths retain their existing safety
+      semantics. The complete API gate now passes **214/214 suites and
+      4,232/4,232 tests**, API/config typechecks and builds, script syntax,
+      zero-error lint and diff checks. These latest checks ran on local Node
+      24.14.1, so a pinned Node 22.23.0 gate remains required before a PR. Final
+      deployed budget sizing still depends on the production aggregate
+      diagnostic. Replica-level leases reduce duplicate scans but do not replace
+      bounded durable work for the remaining paths.
 - [ ] Move or elect one scheduler/worker authority before scaling API replicas;
       retain row-level claims so worker failover remains safe.
 - [ ] Prove scheduler lag, database pool occupancy and notification/outbox
