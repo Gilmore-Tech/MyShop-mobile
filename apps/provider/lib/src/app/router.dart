@@ -75,6 +75,7 @@ import '../features/trips/screens/trips_history_screen.dart';
 /// Full-screen routes (ride request, active ride, trip complete) are outside the shell.
 final goRouterProvider = Provider<GoRouter>((ref) {
   final refresh = _AuthRouterRefresh(ref);
+  final telemetry = ref.read(systemTelemetryProvider);
   return GoRouter(
     initialLocation: '/splash',
     refreshListenable: refresh,
@@ -88,6 +89,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
               ref.read(activeJobProvider).hasJob);
       final onboardingFlagLoaded = ref.read(onboardingFlagLoadedProvider);
       final loc = state.matchedLocation;
+      telemetry.trackScreen(state.uri.path);
 
       // Still bootstrapping — keep the Flutter splash visible. Both waits
       // have deadlines, so this route can no longer strand the user.
