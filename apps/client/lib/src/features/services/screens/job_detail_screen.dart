@@ -10,6 +10,7 @@ import '../../../core/di/providers.dart';
 import '../data/job_cancellation_coordinator.dart';
 import '../providers/bid_list_provider.dart';
 import '../providers/job_detail_provider.dart';
+import '../providers/job_data_refresh_coordinator.dart';
 import '../widgets/bid_list_sheet.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
@@ -44,8 +45,11 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
       // shows the live bid count, and a stale bid list under it is what
       // made new bids feel like they only "arrived" after opening the
       // modal. Refreshing both together keeps the screen self-consistent.
-      ref.invalidate(jobDetailProvider(widget.jobId));
-      ref.invalidate(bidsForJobProvider(widget.jobId));
+      unawaited(
+        ref
+            .read(jobDataRefreshCoordinatorProvider)
+            .refreshJobAndBids(widget.jobId),
+      );
     });
   }
 
@@ -69,7 +73,11 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
         loading: () => _LoadingSkeleton(w: w, h: h),
         error: (e, _) => MyShopErrorBody(
           message: 'Could not load job details',
-          onRetry: () => ref.invalidate(jobDetailProvider(widget.jobId)),
+          onRetry: () => unawaited(
+            ref
+                .read(jobDataRefreshCoordinatorProvider)
+                .refreshJob(widget.jobId),
+          ),
         ),
         data: (job) => _JobDetailBody(job: job, w: w, h: h),
       ),

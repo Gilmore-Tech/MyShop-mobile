@@ -10,6 +10,27 @@ import 'availability_controller.dart';
 import 'app_lifecycle_provider.dart';
 import 'provider_status_provider.dart';
 
+typedef LocationPermissionReader = Future<LocationPermission> Function();
+typedef LocationUnavailableReporter = Future<void> Function(
+  LocationUnavailableReason reason,
+);
+
+final locationPermissionReaderProvider = Provider<LocationPermissionReader>(
+  (_) => Geolocator.checkPermission,
+);
+
+final locationServiceStatusStreamProvider = Provider<Stream<ServiceStatus>>(
+  (_) => Geolocator.getServiceStatusStream(),
+);
+
+final locationGuardPollIntervalProvider =
+    Provider<Duration>((_) => const Duration(seconds: 15));
+
+final locationUnavailableReporterProvider =
+    Provider<LocationUnavailableReporter>((ref) {
+  return ref.read(availabilityControllerProvider).reportLocationUnavailable;
+});
+
 /// Listens for location-service and permission changes while the provider
 /// is online. If location becomes unusable (user disabled Location Services
 /// in Settings, or revoked permission), flips the provider offline so the
@@ -23,8 +44,11 @@ import 'provider_status_provider.dart';
 final locationGuardProvider = Provider<void>((ref) {
   StreamSubscription<ServiceStatus>? serviceSub;
   Timer? permissionPoll;
+  int guardGeneration = 0;
+  int? permissionCheckGeneration;
 
   void stop() {
+    guardGeneration += 1;
     serviceSub?.cancel();
     serviceSub = null;
     permissionPoll?.cancel();
@@ -39,46 +63,58 @@ final locationGuardProvider = Provider<void>((ref) {
       return;
     }
     if (serviceSub != null) return;
+    final generation = ++guardGeneration;
+    final reportUnavailable = ref.read(locationUnavailableReporterProvider);
 
     // 1. Service-enabled changes emit on this stream on both platforms.
-    serviceSub = Geolocator.getServiceStatusStream().listen((status) {
+    serviceSub = ref.read(locationServiceStatusStreamProvider).listen((status) {
+      if (generation != guardGeneration) return;
       if (status == ServiceStatus.disabled) {
         debugPrint('[LocationGuard] services disabled — reporting loss');
-        ref.read(availabilityControllerProvider).reportLocationUnavailable(
-              LocationUnavailableReason.serviceDisabled,
-            );
+        unawaited(
+          reportUnavailable(LocationUnavailableReason.serviceDisabled),
+        );
       }
     });
 
     // 2. Permission changes don't emit a stream, so poll. 15s cadence is
     // fast enough to catch a Settings revocation before the backend TTL
     // dispatches a job, without burning CPU.
-    permissionPoll = Timer.periodic(const Duration(seconds: 15), (_) async {
-      final permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        debugPrint(
-          '[LocationGuard] location permission lost — reporting loss',
-        );
-        await ref
-            .read(availabilityControllerProvider)
-            .reportLocationUnavailable(
-              LocationUnavailableReason.permissionLost,
-            );
+    permissionPoll =
+        Timer.periodic(ref.read(locationGuardPollIntervalProvider), (_) async {
+      if (generation != guardGeneration ||
+          permissionCheckGeneration == generation) {
         return;
       }
+      permissionCheckGeneration = generation;
+      try {
+        final permission = await ref.read(locationPermissionReaderProvider)();
+        if (generation != guardGeneration) return;
+        if (permission == LocationPermission.denied ||
+            permission == LocationPermission.deniedForever) {
+          debugPrint(
+            '[LocationGuard] location permission lost — reporting loss',
+          );
+          await reportUnavailable(LocationUnavailableReason.permissionLost);
+          return;
+        }
 
-      final foregrounded = ref.read(appForegroundedProvider);
-      if (!foregrounded && permission != LocationPermission.always) {
-        debugPrint(
-          '[LocationGuard] app backgrounded without Always '
-          'permission — reporting loss',
-        );
-        await ref
-            .read(availabilityControllerProvider)
-            .reportLocationUnavailable(
-              LocationUnavailableReason.backgroundPermissionLost,
-            );
+        final foregrounded = ref.read(appForegroundedProvider);
+        if (!foregrounded && permission != LocationPermission.always) {
+          debugPrint(
+            '[LocationGuard] app backgrounded without Always '
+            'permission — reporting loss',
+          );
+          await reportUnavailable(
+            LocationUnavailableReason.backgroundPermissionLost,
+          );
+        }
+      } catch (error) {
+        debugPrint('[LocationGuard] permission check failed: $error');
+      } finally {
+        if (permissionCheckGeneration == generation) {
+          permissionCheckGeneration = null;
+        }
       }
     });
   });

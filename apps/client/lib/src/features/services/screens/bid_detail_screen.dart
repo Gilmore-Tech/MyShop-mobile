@@ -13,8 +13,8 @@ import '../../calls/helpers/start_in_app_call.dart';
 import '../providers/artisan_live_location_provider.dart';
 import '../providers/active_job_provider.dart';
 import '../providers/bid_detail_provider.dart';
-import '../providers/bid_list_provider.dart';
 import '../providers/job_detail_provider.dart';
+import '../providers/job_data_refresh_coordinator.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
 // PRD 4.5 — Client reviews full bid details: artisan profile, bid breakdown,
@@ -54,8 +54,11 @@ class _BidDetailScreenState extends ConsumerState<BidDetailScreen> {
       // Refresh the bid list (which `bidDetailProvider` watches) and the
       // parent job so both the bid status and the footer's job-status
       // badge stay live without depending on socket delivery.
-      ref.invalidate(bidsForJobProvider(widget.jobId));
-      ref.invalidate(jobDetailProvider(widget.jobId));
+      unawaited(
+        ref
+            .read(jobDataRefreshCoordinatorProvider)
+            .refreshJobAndBids(widget.jobId),
+      );
     });
   }
 

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
 import '../providers/bid_list_provider.dart';
+import '../providers/job_data_refresh_coordinator.dart';
 
 // ── Public entry-point ────────────────────────────────────────────────────────
 
@@ -54,7 +55,11 @@ class _BidListSheetState extends ConsumerState<BidListSheet> {
     super.initState();
     _poll = Timer.periodic(_bidsPollInterval, (_) {
       if (!mounted) return;
-      ref.invalidate(bidsForJobProvider(widget.job.jobId));
+      unawaited(
+        ref
+            .read(jobDataRefreshCoordinatorProvider)
+            .refreshBids(widget.job.jobId),
+      );
     });
   }
 
@@ -100,7 +105,11 @@ class _BidListSheetState extends ConsumerState<BidListSheet> {
             child: bidsAsync.when(
               loading: () => _BidListSkeleton(w: w, h: h),
               error: (_, __) => _ErrorState(
-                onRetry: () => ref.invalidate(bidsForJobProvider(job.jobId)),
+                onRetry: () => unawaited(
+                  ref
+                      .read(jobDataRefreshCoordinatorProvider)
+                      .refreshBids(job.jobId),
+                ),
                 w: w,
                 h: h,
               ),
