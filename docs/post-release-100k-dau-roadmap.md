@@ -43,7 +43,7 @@ Current local hardening checkpoint (not pushed or deployed):
 
 | Repository | Clean local branch | Verified milestone | Relationship to reconciled staging |
 | --- | --- | --- | --- |
-| Backend | `codex/scale-worker-bounds` | Scale implementation and full regression gate through `c187a5e` | Based directly on `4e100a987602415516fb619b32af5af8cd27e2f0` |
+| Backend | `codex/scale-worker-bounds` | Scale implementation and full regression gate through `02174c4` | Based directly on `4e100a987602415516fb619b32af5af8cd27e2f0` |
 | Mobile | `codex/mobile-poll-backpressure` | Mobile backpressure plus evidence through `ac4a94f6dd0e653293c217b83af763ac522412a9` | Based directly on `bd6390727ec2a6c5e8bf4dc4d5512433b992e18e`; later commits may update this roadmap only |
 | Admin | `feat/system-audit` | `e6b6ab5d326aa90c8d6821dc5106940691787c48` | Clean; no post-release scale change is pending in this increment |
 
@@ -213,11 +213,19 @@ The following remaining workers are capacity risks before a 100k-DAU claim:
       Neither production diagnostic has been run yet.
 - [ ] Add bounded keyset/claim batches and explicit per-tick work budgets where
       the current worker can consume an unbounded backlog. The wider cron audit
-      also found unbounded candidate enumeration in ride-stage monitoring,
-      disconnection `SMEMBERS`, stale payment verification, escrow payout retry,
-      clawback write-off, insufficient-balance expiry and session-recovery
-      cleanup. Replica-level leases reduce duplicate scans but do not replace
-      bounded durable work.
+      also found unbounded candidate enumeration in disconnection `SMEMBERS`,
+      stale payment verification, escrow payout retry, clawback write-off,
+      insufficient-balance expiry and session-recovery cleanup. Backend commit
+      `02174c4` closes the ride-stage portion: each stage uses the indexed
+      timestamp/UUID keyset plus a Redis cursor, a configurable 1–500 per-stage
+      budget (safe default 100), tail wrap and cursor-corruption recovery. It
+      does not change stage thresholds, cooldowns, notifications or ride state.
+      Disposable PostgreSQL accepted empty and non-empty cursors and selected
+      `rides_stage_accepted_due_idx`; the complete API gate passes **214/214
+      suites and 4,228/4,228 tests**, API/config builds, typechecks and
+      zero-error lint. Final deployed budget sizing still depends on the
+      production aggregate diagnostic. Replica-level leases reduce duplicate
+      scans but do not replace bounded durable work for the remaining paths.
 - [ ] Move or elect one scheduler/worker authority before scaling API replicas;
       retain row-level claims so worker failover remains safe.
 - [ ] Prove scheduler lag, database pool occupancy and notification/outbox
