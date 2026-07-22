@@ -169,6 +169,26 @@ The following remaining workers are capacity risks before a 100k-DAU claim:
 - [ ] Prove scheduler lag, database pool occupancy and notification/outbox
       backlog at normal peak, 2x peak, soak and one-replica-loss conditions.
 
+#### Initial mobile request-amplification audit
+
+- [x] Coalesce the client Activity foreground refresh so its 15-second timer,
+      pull-to-refresh and event-driven reload cannot overlap the same
+      `GET /jobs` request. Timer refreshes retain the last visible snapshot
+      instead of flashing a loading state.
+- [x] Coalesce the Online-artisan 10-second REST fallback so a degraded API
+      cannot create more than one `GET /jobs` request per device at a time.
+      The production cadence and foreground-only/FCM behavior are unchanged.
+- [x] Add deterministic slow-response tests for both paths. Client and provider
+      focused tests pass, both focused analyzers report no issues, formatting
+      and `git diff --check` pass. Local mobile commit: `e551a41`; it is not
+      pushed or deployed.
+- [ ] Complete the same overlap audit for call-state joins, payment settlement,
+      active-job acknowledgement, location-permission checks, and client
+      job/bid detail invalidations before the multi-device load run.
+- [ ] Approve any cadence jitter or adaptive backoff separately. No polling
+      interval or user-visible freshness contract has been changed by this
+      increment.
+
 ### Phase C — measured scale ladder
 
 Use only the repository's fail-closed wrapper against an isolated

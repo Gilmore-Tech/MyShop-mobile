@@ -4,11 +4,19 @@
 > evidence, and every gate that must close before production. It does not inherit
 > a PASS from an older audit, specification, or unchecked implementation claim.
 
+> **Post-release continuation (22 July 2026):** the emergency release tracked in
+> the historical sections below has shipped. The active remaining-release and
+> 100k-DAU checklist is
+> [`post-release-100k-dau-roadmap.md`](post-release-100k-dau-roadmap.md). The
+> older entries remain here as the decision/evidence ledger; their historical
+> `NO-GO`, branch and percentage statements must not be read as the current
+> runtime state.
+
 ## Release identity
 
 | Field | Current value |
 | --- | --- |
-| Last updated | 2026-07-19 (GMT) |
+| Last updated | 2026-07-22 (GMT) |
 | Release target | Client app, provider app, API, admin, and infrastructure |
 | Scale target | 100,000 daily active users; peak concurrency/RPS model still to be approved |
 | Release flow | feature branch -> `staging` -> tested staging -> `main` -> production |
