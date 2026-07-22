@@ -43,7 +43,7 @@ Current local hardening checkpoint (not pushed or deployed):
 
 | Repository | Clean local branch | Verified milestone | Relationship to reconciled staging |
 | --- | --- | --- | --- |
-| Backend | `codex/scale-worker-bounds` | Scale implementation and full regression gate through `a0ede16` | Based directly on `4e100a987602415516fb619b32af5af8cd27e2f0` |
+| Backend | `codex/scale-worker-bounds` | Scale implementation and full regression gate through `6fa8f66` | Based directly on `4e100a987602415516fb619b32af5af8cd27e2f0` |
 | Mobile | `codex/mobile-poll-backpressure` | Mobile backpressure plus evidence through `ac4a94f6dd0e653293c217b83af763ac522412a9` | Based directly on `bd6390727ec2a6c5e8bf4dc4d5512433b992e18e`; later commits may update this roadmap only |
 | Admin | `feat/system-audit` | `e6b6ab5d326aa90c8d6821dc5106940691787c48` | Clean; no post-release scale change is pending in this increment |
 
@@ -238,6 +238,19 @@ The following remaining workers are capacity risks before a 100k-DAU claim:
       deployed budget sizing still depends on the production aggregate
       diagnostic. Replica-level leases reduce duplicate scans but do not replace
       bounded durable work for the remaining paths.
+      Backend commit `6fa8f66` additionally gives stale-charge verification and
+      escrow payout retry their own deployment-wide leases, configurable 1–500
+      total per-tick budgets (safe default 100), oldest-first keyset traversal
+      and Redis-backed wraparound cursors. Persistently blocked gateway or
+      manual-review rows therefore cannot monopolise a batch. Escrow release and
+      missing-hold recovery now also have single-owner leases while retaining
+      their existing PostgreSQL compare-and-set authority. Two online partial
+      payment indexes and a fail-closed postflight applied successfully on the
+      disposable database; the expanded diagnostic reports **29** aggregate
+      workloads, **17** index states and **13** planner-only plans. The full API
+      gate passes **214/214 suites and 4,247/4,247 tests**, builds, typechecks,
+      Prisma validation, zero-error lint, the aggregate diagnostic and the
+      online-index preflight. No staging or production system was touched.
 - [ ] Move or elect one scheduler/worker authority before scaling API replicas;
       retain row-level claims so worker failover remains safe.
 - [ ] Prove scheduler lag, database pool occupancy and notification/outbox
