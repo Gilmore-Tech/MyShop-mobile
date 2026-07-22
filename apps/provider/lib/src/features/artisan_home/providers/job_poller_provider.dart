@@ -22,6 +22,14 @@ import '../../profile/providers/provider_type_provider.dart';
 /// logout only.
 final surfacedJobIdsProvider = StateProvider<Set<String>>((_) => <String>{});
 
+/// Cadence for the foreground-only REST safety net.
+///
+/// Kept as a provider so the single-flight behavior can be exercised with a
+/// short deterministic cadence in tests. Production retains the existing
+/// ten-second interval.
+final jobPollIntervalProvider =
+    Provider<Duration>((_) => const Duration(seconds: 10));
+
 /// REST-polling fallback for incoming jobs.
 ///
 /// The socket is the primary delivery channel — this poller is the safety
@@ -47,8 +55,10 @@ final jobPollerProvider = Provider<void>((ref) {
   if (!status.isOnline || !isArtisan) return;
 
   final jobService = ref.read(jobServiceProvider);
+  final pollInterval = ref.read(jobPollIntervalProvider);
   final goOnlineAt = DateTime.now().toUtc();
   Timer? timer;
+  bool pollInFlight = false;
 
   Future<List<Job>> fetchOpenJobs() async {
     final raw = await jobService.listJobs(
@@ -73,6 +83,11 @@ final jobPollerProvider = Provider<void>((ref) {
   }
 
   Future<void> poll() async {
+    // The shared HTTP timeout is intentionally longer than this fallback's
+    // cadence. Coalesce slow ticks so a degraded API cannot create overlapping
+    // GET /jobs calls from every Online artisan.
+    if (pollInFlight) return;
+    pollInFlight = true;
     try {
       final jobs = await fetchOpenJobs();
       final surfaced = ref.read(surfacedJobIdsProvider);
@@ -121,6 +136,8 @@ final jobPollerProvider = Provider<void>((ref) {
       }
     } catch (e) {
       debugPrint('[JobPoller] poll failed: $e');
+    } finally {
+      pollInFlight = false;
     }
   }
 
@@ -131,7 +148,7 @@ final jobPollerProvider = Provider<void>((ref) {
     // tapping online (or the app coming back to foreground) and the
     // timer's first tick still surfaces.
     poll();
-    timer = Timer.periodic(const Duration(seconds: 10), (_) => poll());
+    timer = Timer.periodic(pollInterval, (_) => poll());
   }
 
   void stop() {

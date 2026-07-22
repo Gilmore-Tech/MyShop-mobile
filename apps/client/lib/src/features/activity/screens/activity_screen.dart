@@ -36,7 +36,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     super.initState();
     _poll = Timer.periodic(_activityPollInterval, (_) {
       if (!mounted) return;
-      ref.read(activityNotifierProvider.notifier).reload();
+      ref.read(activityNotifierProvider.notifier).silentReload();
     });
   }
 

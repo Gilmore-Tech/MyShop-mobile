@@ -122,12 +122,21 @@ class ActivityState {
 
 class ActivityNotifier extends StateNotifier<ActivityState> {
   final Ref _ref;
+  bool _inFlight = false;
 
   ActivityNotifier(this._ref) : super(const ActivityState()) {
-    _loadJobs();
+    _loadJobs(silent: false);
   }
 
-  Future<void> _loadJobs() async {
+  Future<void> _loadJobs({required bool silent}) async {
+    // A slow request must not let foreground polling, socket invalidation and
+    // pull-to-refresh stack identical list calls. At scale those overlaps turn
+    // one slow dependency into a per-device request multiplier.
+    if (_inFlight) return;
+    _inFlight = true;
+    if (!silent && mounted) {
+      state = state.copyWith(isLoading: true, clearError: true);
+    }
     try {
       final jobService = _ref.read(jobServiceProvider);
       final data = await jobService.listJobs(page: 1, limit: 50);
@@ -163,13 +172,14 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
         isLoading: false,
         errorMessage: 'Failed to load jobs. Pull to retry.',
       );
+    } finally {
+      _inFlight = false;
     }
   }
 
-  Future<void> reload() async {
-    state = state.copyWith(isLoading: true, clearError: true);
-    await _loadJobs();
-  }
+  Future<void> reload() => _loadJobs(silent: false);
+
+  Future<void> silentReload() => _loadJobs(silent: true);
 
   void setFilter(RequestFilter filter) =>
       state = state.copyWith(activeFilter: filter);
