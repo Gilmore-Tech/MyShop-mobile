@@ -108,6 +108,15 @@ Required inputs before the model is frozen:
 - [ ] Budget PostgreSQL connections across every API/worker replica. Code
       defaults to pool min `2`, max `10` **per process**; the deployed overrides
       and Neon compute/connection limits must be recorded before scaling replicas.
+- [ ] Prove database recovery on an isolated production-shaped restore and
+      establish a reviewed bootstrap/baseline procedure for a truly empty
+      database. A fresh chronological replay exposed two historical
+      preconditions: the production-applied
+      `20260615000000_ride_max_broadcast_drivers_config` migration precedes the
+      later `updated_at` default that made it succeed in production, and the
+      System Audit migration intentionally requires the exact active bootstrap
+      Super Administrator. Do not edit either applied migration or manually
+      alter production history to make a synthetic empty replay pass.
 - [ ] Separate or explicitly capacity-budget scheduled/outbox workers. The API
       currently hosts scheduled work and does not use an external broker.
 - [ ] Configure external metrics, alerts, log retention/redaction, paging and
@@ -161,7 +170,13 @@ The following remaining workers are capacity risks before a 100k-DAU claim:
       Prisma validation and diff checks also pass. Local production image:
       **181,359,385 bytes**, `sha256:cbf0da9c36ad89f6fda5186c069325c59810a023a929dde898f25c9d297df45f`.
 - [ ] Inventory the production cardinality and query plan for every scheduled
-      candidate scan without exposing user data.
+      candidate scan without exposing user data. Backend commit `963d550`
+      provides an aggregate-only, read-only diagnostic with 30-second statement
+      and two-second lock timeouts, 20 candidate/backlog measurements, eight
+      index-state checks and six planner-only `EXPLAIN`s. It executes
+      successfully on the fully migrated disposable database; all eight indexes
+      are valid/ready and all six plans select their partial indexes. Production
+      has not been queried and remains the missing sizing evidence.
 - [ ] Add bounded keyset/claim batches and explicit per-tick work budgets where
       the current worker can consume an unbounded backlog.
 - [ ] Move or elect one scheduler/worker authority before scaling API replicas;
