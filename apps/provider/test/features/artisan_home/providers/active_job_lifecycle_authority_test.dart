@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:api_client/api_client.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -38,6 +40,19 @@ class _FakeJobService extends JobService {
   }
 }
 
+class _ControlledRefreshJobService extends JobService {
+  _ControlledRefreshJobService() : super(Dio());
+
+  final response = Completer<Map<String, dynamic>>();
+  int getCalls = 0;
+
+  @override
+  Future<Map<String, dynamic>> getJob(String jobId) {
+    getCalls += 1;
+    return response.future;
+  }
+}
+
 Job _job(
   JobStatus status, {
   String? clientPhone = '+233241234567',
@@ -69,6 +84,26 @@ Map<String, dynamic> _jobJson(String status) => {
     };
 
 void main() {
+  test('active-job acknowledgement refreshes share one pending REST read',
+      () async {
+    final service = _ControlledRefreshJobService();
+    final container = ProviderContainer(
+      overrides: [jobServiceProvider.overrideWithValue(service)],
+    );
+    addTearDown(container.dispose);
+    final notifier = container.read(activeJobProvider.notifier);
+    notifier.setJob(_job(JobStatus.artisanMarkedComplete));
+
+    final first = notifier.refreshFromServer();
+    final second = notifier.refreshFromServer();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(service.getCalls, 1);
+
+    service.response.complete(_jobJson('artisan_marked_complete'));
+    await Future.wait([first, second]);
+  });
+
   test('hydrates a missing client phone so both call choices are available',
       () async {
     final service = _FakeJobService()

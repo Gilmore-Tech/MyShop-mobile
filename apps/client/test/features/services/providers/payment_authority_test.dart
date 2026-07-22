@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:api_client/api_client.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -102,6 +104,136 @@ void main() {
     expect(notifier.state.isSettled, isFalse);
     expect(notifier.state.displayText, isNot(contains('raw Paystack')));
   });
+
+  test('job settlement refreshes coalesce while one status read is pending',
+      () async {
+    final paymentService = _ControlledPaymentService();
+    final notifier = PaymentNotifier(
+      paymentService,
+      _FakeJobService(
+        confirmation: const {'jobId': 'job-1', 'status': 'pending_payment'},
+        readBack: const {'jobId': 'job-1', 'status': 'pending_payment'},
+      ),
+      _MemoryPendingPaymentStore(),
+    );
+    addTearDown(notifier.dispose);
+
+    await notifier.confirmPayment(
+      jobId: 'job-1',
+      summary: summary,
+      momoPhone: '0240000000',
+    );
+    final first = notifier.checkPaymentStatusNow(summary: summary);
+    final second = notifier.checkPaymentStatusNow(summary: summary);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(paymentService.statusCalls, 1);
+
+    paymentService.statusResponse.complete(const {'status': 'pending'});
+    await Future.wait([first, second]);
+  });
+
+  test('ride settlement refreshes coalesce while one status read is pending',
+      () async {
+    final paymentService = _ControlledPaymentService();
+    final notifier = RidePaymentNotifier(
+      paymentService,
+      _MemoryPendingPaymentStore(),
+    );
+    addTearDown(notifier.dispose);
+
+    await notifier.initiate(
+      rideId: 'ride-1',
+      paymentMethod: 'momo_mtn',
+      momoPhone: '0240000000',
+    );
+    final first = notifier.checkPaymentStatusNow();
+    final second = notifier.checkPaymentStatusNow();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(paymentService.statusCalls, 1);
+
+    paymentService.statusResponse.complete(const {'status': 'pending'});
+    await Future.wait([first, second]);
+  });
+
+  test('late job status from an older payment attempt cannot settle the retry',
+      () async {
+    final paymentService = _SequencedPaymentService();
+    final notifier = PaymentNotifier(
+      paymentService,
+      _FakeJobService(
+        confirmation: const {'jobId': 'job-1', 'status': 'pending_payment'},
+        readBack: const {'jobId': 'job-1', 'status': 'pending_payment'},
+      ),
+      _MemoryPendingPaymentStore(),
+    );
+    addTearDown(notifier.dispose);
+
+    await notifier.confirmPayment(
+      jobId: 'job-1',
+      summary: summary,
+      momoPhone: '0240000000',
+    );
+    final oldRead = notifier.checkPaymentStatusNow(summary: summary);
+    await Future<void>.delayed(Duration.zero);
+
+    notifier.resetForRetry();
+    await notifier.confirmPayment(
+      jobId: 'job-1',
+      summary: summary,
+      momoPhone: '0240000000',
+      isRetry: true,
+    );
+    final currentRead = notifier.checkPaymentStatusNow(summary: summary);
+    await Future<void>.delayed(Duration.zero);
+
+    paymentService.statusResponses[0].complete(const {'status': 'success'});
+    await oldRead;
+
+    expect(notifier.state.paymentId, 'payment-2');
+    expect(notifier.state.phase, PaymentPhase.awaitingSettlement);
+
+    paymentService.statusResponses[1].complete(const {'status': 'pending'});
+    await currentRead;
+  });
+
+  test('late ride status from an older payment attempt cannot settle the retry',
+      () async {
+    final paymentService = _SequencedPaymentService();
+    final notifier = RidePaymentNotifier(
+      paymentService,
+      _MemoryPendingPaymentStore(),
+    );
+    addTearDown(notifier.dispose);
+
+    await notifier.initiate(
+      rideId: 'ride-1',
+      paymentMethod: 'momo_mtn',
+      momoPhone: '0240000000',
+    );
+    final oldRead = notifier.checkPaymentStatusNow();
+    await Future<void>.delayed(Duration.zero);
+
+    notifier.resetForRetry();
+    await notifier.initiate(
+      rideId: 'ride-1',
+      paymentMethod: 'momo_mtn',
+      momoPhone: '0240000000',
+      isRetry: true,
+    );
+    final currentRead = notifier.checkPaymentStatusNow();
+    await Future<void>.delayed(Duration.zero);
+
+    paymentService.statusResponses[0].complete(const {'status': 'success'});
+    await oldRead;
+
+    expect(notifier.state.paymentId, 'payment-2');
+    expect(notifier.state.phase, RidePaymentPhase.awaitingSettlement);
+
+    paymentService.statusResponses[1].complete(const {'status': 'pending'});
+    await currentRead;
+  });
 }
 
 Map<String, dynamic> _acceptedPaymentResponse({String? message}) => {
@@ -132,6 +264,68 @@ class _FakePaymentService extends PaymentService {
   @override
   Future<Map<String, dynamic>> getPaymentStatus(String paymentId) async =>
       const {'status': 'pending'};
+}
+
+class _ControlledPaymentService extends _FakePaymentService {
+  _ControlledPaymentService()
+      : super(
+          initiateResponse: {
+            'paymentId': 'payment-1',
+            'reference': 'paystack-reference-1',
+            'data': {'status': 'pending'},
+          },
+        );
+
+  final statusResponse = Completer<Map<String, dynamic>>();
+  int statusCalls = 0;
+
+  @override
+  Future<Map<String, dynamic>> getPaymentStatus(String paymentId) {
+    statusCalls += 1;
+    return statusResponse.future;
+  }
+}
+
+class _SequencedPaymentService extends PaymentService {
+  _SequencedPaymentService() : super(Dio());
+
+  final statusResponses = [
+    Completer<Map<String, dynamic>>(),
+    Completer<Map<String, dynamic>>(),
+  ];
+  int initiateCalls = 0;
+  int statusCalls = 0;
+
+  @override
+  Future<Map<String, dynamic>> initiatePayment({
+    required String bookingType,
+    required String bookingId,
+    required String paymentMethod,
+    String? momoPhone,
+    String? cardToken,
+    String? promoCode,
+  }) async {
+    initiateCalls += 1;
+    return {
+      'paymentId': 'payment-$initiateCalls',
+      'reference': 'reference-$initiateCalls',
+      'data': {'status': 'pending'},
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> getPaymentStatus(String paymentId) {
+    final index = statusCalls;
+    statusCalls += 1;
+    return statusResponses[index].future;
+  }
+
+  @override
+  Future<Map<String, dynamic>> abandonByBooking({
+    required String bookingType,
+    required String bookingId,
+  }) async =>
+      const {'status': 'abandoned'};
 }
 
 class _FakeJobService extends JobService {

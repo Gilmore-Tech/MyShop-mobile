@@ -120,6 +120,8 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
 
   Timer? _pollTimer;
   DateTime? _pollStartedAt;
+  int _pollGeneration = 0;
+  int? _pollInFlightGeneration;
 
   /// Belt-and-braces /payments/abandon-by-booking. Idempotent; logs but
   /// never throws so a network blip can't block /initiate. Run before
@@ -551,11 +553,14 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
   }
 
   void _startPolling(String? paymentId) {
-    _stopPolling();
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _pollStartedAt = null;
+    final generation = ++_pollGeneration;
     if (paymentId == null) return;
     _pollStartedAt = DateTime.now();
     _pollTimer = Timer.periodic(_kPollInterval, (_) {
-      _pollOnce(paymentId);
+      _pollOnce(paymentId, generation: generation);
     });
   }
 
@@ -563,9 +568,16 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
     _pollTimer?.cancel();
     _pollTimer = null;
     _pollStartedAt = null;
+    _pollGeneration += 1;
   }
 
-  Future<void> _pollOnce(String paymentId) async {
+  Future<void> _pollOnce(String paymentId, {int? generation}) async {
+    final expectedGeneration = generation ?? _pollGeneration;
+    if (expectedGeneration != _pollGeneration ||
+        state.paymentId != paymentId ||
+        _pollInFlightGeneration == expectedGeneration) {
+      return;
+    }
     if (state.phase != RidePaymentPhase.awaitingSettlement) {
       _stopPolling();
       return;
@@ -582,9 +594,13 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
       );
       return;
     }
+    _pollInFlightGeneration = expectedGeneration;
     try {
       final result = await _paymentService.getPaymentStatus(paymentId);
-      if (!mounted || state.phase != RidePaymentPhase.awaitingSettlement) {
+      if (!mounted ||
+          expectedGeneration != _pollGeneration ||
+          state.paymentId != paymentId ||
+          state.phase != RidePaymentPhase.awaitingSettlement) {
         return;
       }
       final outcome = _classifyStatus(result);
@@ -606,6 +622,10 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
       // Transient — let the next tick try again.
       developer.log('ride payment poll error: $e',
           name: 'RidePayment', level: 700);
+    } finally {
+      if (_pollInFlightGeneration == expectedGeneration) {
+        _pollInFlightGeneration = null;
+      }
     }
   }
 

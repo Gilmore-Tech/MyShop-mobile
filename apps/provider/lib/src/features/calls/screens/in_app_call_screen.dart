@@ -43,12 +43,15 @@ class _ProviderInAppCallScreenState
   AppCallRtcService? _rtc;
   AppCallRtcConnectionState _rtcState = AppCallRtcConnectionState.disconnected;
   bool _rtcStarting = false;
+  bool _joinRequestInFlight = false;
   Future<void>? _acceptedTransition;
   final CallRingbackPlayer _ringback = CallRingbackPlayer();
+  late final AppCallSocketService _callSocket;
 
   @override
   void initState() {
     super.initState();
+    _callSocket = ref.read(appCallSocketServiceProvider);
     unawaited(setCallLockScreenAccess(true));
     _session = widget.initialSession;
     _loading = _session == null;
@@ -64,49 +67,48 @@ class _ProviderInAppCallScreenState
     _rtcStateSub?.cancel();
     unawaited(_ringback.stop());
     unawaited(_rtc?.dispose());
-    final socket = ref.read(appCallSocketServiceProvider);
-    socket.leaveCall(widget.callId);
-    socket.disconnect();
+    _callSocket.leaveCall(widget.callId);
+    _callSocket.disconnect();
     unawaited(setCallLockScreenAccess(false));
     super.dispose();
   }
 
   void _listenForCallState() {
-    final socket = ref.read(appCallSocketServiceProvider);
-    _callStateSub = socket.sessionStream.listen(_applyRemoteSession);
-    unawaited(socket.joinCall(widget.callId));
+    _callStateSub = _callSocket.sessionStream.listen(_applyRemoteSession);
+    unawaited(_callSocket.joinCall(widget.callId));
     _refreshTimer = Timer.periodic(
       const Duration(seconds: 3),
       (_) => unawaited(_refreshCallState()),
     );
   }
 
-  Future<void> _joinCall() async {
+  Future<void> _joinCall({bool surfaceError = true}) async {
+    // The three-second REST safety net can fire while the initial join is
+    // still waiting on a degraded API. Never multiply one active call into
+    // overlapping join requests; the call socket remains the primary path.
+    if (_joinRequestInFlight) return;
+    _joinRequestInFlight = true;
     try {
       final session =
           await ref.read(appCallServiceProvider).joinCall(widget.callId);
       if (!mounted) return;
       _applyRemoteSession(session);
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !surfaceError) return;
       setState(() {
         _loading = false;
         _errorMessage = _callErrorMessage(error);
       });
+    } finally {
+      _joinRequestInFlight = false;
     }
   }
 
   Future<void> _refreshCallState() async {
     if (!mounted || _session?.isTerminal == true) return;
-    try {
-      final session =
-          await ref.read(appCallServiceProvider).joinCall(widget.callId);
-      if (!mounted) return;
-      _applyRemoteSession(session);
-    } catch (_) {
-      // Best-effort fallback only; the visible error state belongs to the
-      // initial join/end actions, not a background refresh tick.
-    }
+    // Best-effort fallback only; errors remain invisible and the visible
+    // error state belongs to the initial join/end actions.
+    await _joinCall(surfaceError: false);
   }
 
   void _applyRemoteSession(AppCallSession session) {
