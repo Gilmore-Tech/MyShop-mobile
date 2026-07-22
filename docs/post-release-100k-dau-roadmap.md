@@ -154,14 +154,23 @@ The following remaining workers are capacity risks before a 100k-DAU claim:
       tick; it never falls back to every replica scanning. This is currently a
       local backend branch from exact repository staging and is not deployed.
       Prometheus counters and duration histograms expose bounded worker names
-      and lease/execution outcomes without user identifiers.
-- [x] Add eight online partial indexes for the exact bid, directed-assignment,
+      and lease/execution outcomes without user identifiers. Backend commit
+      `a78cd1b` renews an acquired lease by its random owner token while work is
+      still running and records renewal failure or ownership loss. Commit
+      `606a068` applies the same authority to ride-stage monitoring,
+      disconnection-grace enumeration, and active-location degradation
+      detection/escalation.
+- [x] Add fifteen online partial indexes for the exact bid, directed-assignment,
       job-staleness, scheduled-job, welfare-alert, rating-reveal, requested-ride
-      and Online-driver predicates, plus a fail-closed validity/table postflight.
+      and Online-driver predicates plus ride-stage and provider-location
+      degradation scans, with fail-closed validity/table postflights.
       All migrations executed successfully on disposable PostgreSQL. With
       20,000–100,000 synthetic rows per table, PostgreSQL selected every new
       index (index-only scans for the six due-work queries and bitmap index scans
-      for the two surge counts). No staging or production database was touched.
+      for the two surge counts) from the first set. The seven ride/location
+      indexes in backend commit `645da93` are valid/ready on the disposable
+      database; representative-volume planner proof is still required. No
+      staging or production database was touched.
 - [x] Run the complete focused gate under pinned Node 22.23.0. The exact
       production Dockerfile built successfully from the pinned base-image
       digest, and its read-only test-source runs pass **12/12 suites and
@@ -172,13 +181,20 @@ The following remaining workers are capacity risks before a 100k-DAU claim:
 - [ ] Inventory the production cardinality and query plan for every scheduled
       candidate scan without exposing user data. Backend commit `963d550`
       provides an aggregate-only, read-only diagnostic with 30-second statement
-      and two-second lock timeouts, 20 candidate/backlog measurements, eight
-      index-state checks and six planner-only `EXPLAIN`s. It executes
-      successfully on the fully migrated disposable database; all eight indexes
-      are valid/ready and all six plans select their partial indexes. Production
-      has not been queried and remains the missing sizing evidence.
+      and two-second lock timeouts. Commit `645da93` expands it to 27
+      candidate/backlog measurements, fifteen index-state checks and eleven
+      planner-only `EXPLAIN`s. It executes successfully on the fully migrated
+      disposable database; all fifteen indexes are valid/ready. Production has
+      not been queried and remains the missing sizing evidence. The Redis-backed
+      disconnection set requires a separate aggregate `SCARD`, never `KEYS` or
+      member export.
 - [ ] Add bounded keyset/claim batches and explicit per-tick work budgets where
-      the current worker can consume an unbounded backlog.
+      the current worker can consume an unbounded backlog. The wider cron audit
+      also found unbounded candidate enumeration in ride-stage monitoring,
+      disconnection `SMEMBERS`, stale payment verification, escrow payout retry,
+      clawback write-off, insufficient-balance expiry and session-recovery
+      cleanup. Replica-level leases reduce duplicate scans but do not replace
+      bounded durable work.
 - [ ] Move or elect one scheduler/worker authority before scaling API replicas;
       retain row-level claims so worker failover remains safe.
 - [ ] Prove scheduler lag, database pool occupancy and notification/outbox
