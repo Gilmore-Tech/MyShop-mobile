@@ -14,17 +14,17 @@ as a request to repeat the release or reactivate deliberately deferred features.
 
 ## 1. Observed release baseline
 
-| Surface | Authoritative observation | Consequence |
-| --- | --- | --- |
-| Production API | On 2026-07-22 GMT, both the canonical and direct Render domains returned HTTP 200 from `/v1/health/live` and `/v1/health/ready`, with PostgreSQL and Redis `ok`; deployed commit is backend `d918243cd7c6bda778fa54dec6ac0fdbe8140595`. | Production does **not** yet contain the follow-up maintenance/audit or scale hardening. `APP_VERSION` is also unset, so health reports `version=unknown`; commit remains the usable release marker. |
-| Live service flags | Public server-owned reads return `maintenance_mode=false`, `rides_enabled=true`, and `artisan_jobs_enabled=true`. | Rides and ordinary artisan jobs are open; changes to these flags remain controlled operational actions. |
-| OTP policy | The production API advertises SMS primary with WhatsApp fallback. | Delivery, callback, cost, provider-circuit and handset evidence still require monitoring; the channel advertisement alone is not delivery proof. |
-| Admin | `https://admin.myshop.gilmoretechnologiesgh.com/login` is live on Vercel deployment `dpl_6rNMmNbA97TPyvU4uURTg5tPLXMz`. Admin main is `30f2ed04cc03a3fa5cf20e4075368b9d67c4a7f3`. | The audit-vault UI is deployed, but authenticated Super Admin acceptance and Product Owner 403 evidence are still required. |
-| Staging API | `/v1/health/ready` is healthy at `myshop-api-test.onrender.com`, but it serves backend `fed0d149…`, ten commits behind repository staging `4e100a9…`. | It is not an exact-current load target and must not produce release/capacity evidence yet. |
-| Android client | The official Play listing for `com.gilmoretech.myshopclient` serves marketing version `1.4.1`, updated 21 July 2026. | The public build code is not exposed by the listing and must be read from Play Console before choosing the next code. |
-| Android provider | The official Play listing for `com.gilmoretech.myshopprovider` serves marketing version `1.4.1`, updated 21 July 2026. | The public build code is not exposed by the listing and must be read from Play Console before choosing the next code. |
-| iOS client | Apple's official lookup still serves `1.3.9`, released 13 July 2026, for bundle `com.gilmoretech.myshopclient`. | The audited update is not publicly available to iOS client users. |
-| iOS provider | Apple's official lookup still serves `1.4.0`, released 13 July 2026, for bundle `com.gilmoretech.myshopprovider`. | The audited update is not publicly available to iOS providers. |
+| Surface            | Authoritative observation                                                                                                                                                                                                               | Consequence                                                                                                                                                                                         |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Production API     | On 2026-07-22 GMT, both the canonical and direct Render domains returned HTTP 200 from `/v1/health/live` and `/v1/health/ready`, with PostgreSQL and Redis `ok`; deployed commit is backend `d918243cd7c6bda778fa54dec6ac0fdbe8140595`. | Production does **not** yet contain the follow-up maintenance/audit or scale hardening. `APP_VERSION` is also unset, so health reports `version=unknown`; commit remains the usable release marker. |
+| Live service flags | Public server-owned reads return `maintenance_mode=false`, `rides_enabled=true`, and `artisan_jobs_enabled=true`.                                                                                                                       | Rides and ordinary artisan jobs are open; changes to these flags remain controlled operational actions.                                                                                             |
+| OTP policy         | The production API advertises SMS primary with WhatsApp fallback.                                                                                                                                                                       | Delivery, callback, cost, provider-circuit and handset evidence still require monitoring; the channel advertisement alone is not delivery proof.                                                    |
+| Admin              | `https://admin.myshop.gilmoretechnologiesgh.com/login` is live on Vercel deployment `dpl_6rNMmNbA97TPyvU4uURTg5tPLXMz`. Admin main is `30f2ed04cc03a3fa5cf20e4075368b9d67c4a7f3`.                                                       | The audit-vault UI is deployed, but authenticated Super Admin acceptance and Product Owner 403 evidence are still required.                                                                         |
+| Staging API        | `/v1/health/ready` is healthy at `myshop-api-test.onrender.com`, but it serves backend `fed0d149…`, ten commits behind repository staging `4e100a9…`.                                                                                   | It is not an exact-current load target and must not produce release/capacity evidence yet.                                                                                                          |
+| Android client     | The official Play listing for `com.gilmoretech.myshopclient` serves marketing version `1.4.1`, updated 21 July 2026.                                                                                                                    | The public build code is not exposed by the listing and must be read from Play Console before choosing the next code.                                                                               |
+| Android provider   | The official Play listing for `com.gilmoretech.myshopprovider` serves marketing version `1.4.1`, updated 21 July 2026.                                                                                                                  | The public build code is not exposed by the listing and must be read from Play Console before choosing the next code.                                                                               |
+| iOS client         | Apple's official lookup still serves `1.3.9`, released 13 July 2026, for bundle `com.gilmoretech.myshopclient`.                                                                                                                         | The audited update is not publicly available to iOS client users.                                                                                                                                   |
+| iOS provider       | Apple's official lookup still serves `1.4.0`, released 13 July 2026, for bundle `com.gilmoretech.myshopprovider`.                                                                                                                       | The audited update is not publicly available to iOS providers.                                                                                                                                      |
 
 Public listing URLs:
 
@@ -38,19 +38,19 @@ Public listing URLs:
 All three local worktrees were clean before this roadmap branch was created.
 No uncommitted outside work was overwritten.
 
-| Repository | Main | Staging | Reconciled state |
-| --- | --- | --- | --- |
-| Backend | `d918243…` | `4e100a9…` | PR #116 is merged only to staging. It adds exact Admin/deployment access during maintenance, strict legal-hold input, authenticated-role telemetry identity and CSV formula containment. |
-| Mobile | `61241f8…` | `bd63907…` | PR #92 is merged only to staging. It restores privacy-safe audit telemetry and binds future artifacts to an exact clean main SHA with build `24` or higher than both store-console maxima. |
-| Admin | `30f2ed0…` | `b4bebb5…` | Audit Vault is already merged to main and publicly deployed. The main and staging trees contain the same feature content through different merge commits. |
+| Repository | Main       | Staging    | Reconciled state                                                                                                                                                                           |
+| ---------- | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Backend    | `d918243…` | `4e100a9…` | PR #116 is merged only to staging. It adds exact Admin/deployment access during maintenance, strict legal-hold input, authenticated-role telemetry identity and CSV formula containment.   |
+| Mobile     | `61241f8…` | `bd63907…` | PR #92 is merged only to staging. It restores privacy-safe audit telemetry and binds future artifacts to an exact clean main SHA with build `24` or higher than both store-console maxima. |
+| Admin      | `30f2ed0…` | `b4bebb5…` | Audit Vault is already merged to main and publicly deployed. The main and staging trees contain the same feature content through different merge commits.                                  |
 
 Current local hardening checkpoint (not pushed or deployed):
 
-| Repository | Local branch/state | Verified milestone | Relationship to reconciled staging |
-| --- | --- | --- | --- |
-| Backend | Clean `codex/scale-worker-bounds` through `875f1e3` | Bounded scheduled workers, the transactional marketplace-notification outbox and a hard-bounded daily settlement fetch pass the exact pinned-Node-22 build, full API test and lint gates; the stripped runtime image passes its static/application allowlist contracts but the clean-database verifier remains subject to the separately tracked historical migration-order defect | Based directly on `4e100a987602415516fb619b32af5af8cd27e2f0` |
-| Mobile | `codex/mobile-poll-backpressure` | Mobile backpressure plus evidence through `ac4a94f6dd0e653293c217b83af763ac522412a9` | Based directly on `bd6390727ec2a6c5e8bf4dc4d5512433b992e18e`; later commits may update this roadmap only |
-| Admin | `feat/system-audit` | `e6b6ab5d326aa90c8d6821dc5106940691787c48` | Clean; no post-release scale change is pending in this increment |
+| Repository | Local branch/state                                                                                 | Verified milestone                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Relationship to reconciled staging                                                                       |
+| ---------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Backend    | Clean `codex/scale-worker-bounds` through `d0ce598`                                                 | Bounded scheduled workers, the transactional marketplace-notification outbox and a hard-bounded daily settlement fetch pass the exact pinned-Node-22 build, full API test and lint gates. The latest checkpoint adds explicit bounded PostgreSQL pool ownership, per-process pool/Redis pressure metrics and an exact 22-name leased-worker observability contract; its pinned Node 22.23 gate passes 218/218 suites and 4,399/4,399 tests, builds and typechecks. The stripped runtime image remains subject to the separately tracked historical clean-database migration-order defect. | Based directly on `4e100a987602415516fb619b32af5af8cd27e2f0`                                             |
+| Mobile     | `codex/mobile-poll-backpressure`                                                                   | Mobile backpressure plus evidence through `ac4a94f6dd0e653293c217b83af763ac522412a9`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Based directly on `bd6390727ec2a6c5e8bf4dc4d5512433b992e18e`; later commits may update this roadmap only |
+| Admin      | `feat/system-audit`                                                                                | `e6b6ab5d326aa90c8d6821dc5106940691787c48`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Clean; no post-release scale change is pending in this increment                                         |
 
 ## 3. Next production update — do before scale claims
 
@@ -124,6 +124,10 @@ Required inputs before the model is frozen:
 - [ ] Budget PostgreSQL connections across every API/worker replica. Code
       defaults to pool min `2`, max `10` **per process**; the deployed overrides
       and Neon compute/connection limits must be recorded before scaling replicas.
+      The current local telemetry checkpoint validates both bounds, owns the
+      underlying `pg` pool explicitly and exports live total/idle/active/waiting
+      plus min/max metrics from every process. This closes the source-level
+      visibility gap, not the production-shaped sizing gate.
 - [ ] Prove database recovery on an isolated production-shaped restore and
       establish a reviewed bootstrap/baseline procedure for a truly empty
       database. A fresh chronological replay exposed two historical
@@ -137,6 +141,11 @@ Required inputs before the model is frozen:
       currently hosts scheduled work and does not use an external broker.
 - [ ] Configure external metrics, alerts, log retention/redaction, paging and
       named owners before fault tests.
+      The local telemetry checkpoint now exposes readiness and pending commands
+      separately for the command, Socket.IO publisher and Socket.IO subscriber
+      Redis clients, and every deployment-wide worker lease must use one of 22
+      exact reviewed metric names. Provider-side Redis memory, connection,
+      latency and eviction metrics and actual alert delivery remain unproven.
 
 #### Initial scheduled-work capacity audit
 
@@ -359,6 +368,21 @@ backend worktree, but the following risks remain before a 100k-DAU claim:
       `sha256:a0f1e6f6551c3e46086f0fc6d8ed7225ca8d700f6bc88d2c5386d141f7761686`
       is 181,397,162 bytes and runs as the unprivileged `myshop` user on Node
       22.23.0. Nothing was pushed, deployed or run against staging/production.
+      Backend commit `d0ce598` then closes the source observability gap for
+      connection saturation and distributed-worker identity. It validates and
+      defense-in-depth bounds each process's PostgreSQL pool, owns the underlying
+      pool explicitly, and exports total, idle, active, waiting, minimum and
+      maximum values. The command Redis client and both Socket.IO Redis clients
+      export separate readiness and pending-command gauges. An AST contract
+      requires every deployment-wide lease to retain one of **22** exact
+      reviewed metric names. On pinned Node **22.23.0**, the exact committed
+      tree passes **218/218 suites and 4,399/4,399 tests**, API source/E2E and
+      package typechecks, production build, and lint with zero errors and 52
+      existing warnings. Exact stripped runtime image
+      `sha256:154669575bd721c3893bc42cc18633575109273b104d97321265351472132dc2`
+      is 181,400,839 bytes and runs as UID/GID 1001. No staging or production
+      system was touched. Provider-side Neon/Redis limits and production-shaped
+      saturation measurements remain required.
       Keep this item open only for production-shaped backlog, query-plan,
       throughput, scheduler-lag and database-pool proof.
 - [ ] Move or elect one scheduler/worker authority before scaling API replicas;
@@ -437,12 +461,12 @@ evidence record is signed by the release, backend/SRE and payments owners.
 
 ## 6. Decisions still required
 
-| Decision | Status |
-| --- | --- |
-| Approved peak traffic model and 2x headroom | **Required** |
-| Actual Render plan/replica/autoscaling budget | **Required** |
-| Current Redis region/tier/HA/capacity | **Required** |
+| Decision                                         | Status       |
+| ------------------------------------------------ | ------------ |
+| Approved peak traffic model and 2x headroom      | **Required** |
+| Actual Render plan/replica/autoscaling budget    | **Required** |
+| Current Redis region/tier/HA/capacity            | **Required** |
 | Current Neon compute tier and connection ceiling | **Required** |
-| Highest private Android/iOS build codes | **Required** |
-| Real DPC registration number | **Required** |
-| Named load, incident-abort and release owners | **Required** |
+| Highest private Android/iOS build codes          | **Required** |
+| Real DPC registration number                     | **Required** |
+| Named load, incident-abort and release owners    | **Required** |
