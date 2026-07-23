@@ -1,11 +1,16 @@
 # MyShop post-release and 100k-DAU roadmap
 
-Status captured: **2026-07-22 GMT**
+Status captured: **2026-07-23 GMT**
 
 This document restarts the scale programme from the observed released state. It
 does not treat a daily-active-user target as a concurrency claim, and it does
 not activate deferred product features. Every workload value and business rule
 remains subject to owner approval before it becomes a test or production limit.
+
+This is the authoritative tracker for work after the `1.4.1` release. The larger
+`production-release-audit-checklist.md` remains the historical release evidence
+and approved-business-rule register; unchecked historical rows must not be read
+as a request to repeat the release or reactivate deliberately deferred features.
 
 ## 1. Observed release baseline
 
@@ -41,9 +46,9 @@ No uncommitted outside work was overwritten.
 
 Current local hardening checkpoint (not pushed or deployed):
 
-| Repository | Clean local branch | Verified milestone | Relationship to reconciled staging |
+| Repository | Local branch/state | Verified milestone | Relationship to reconciled staging |
 | --- | --- | --- | --- |
-| Backend | `codex/scale-worker-bounds` | Scale implementation and pinned-Node-22 full regression gate through `1390423` | Based directly on `4e100a987602415516fb619b32af5af8cd27e2f0` |
+| Backend | Clean `codex/scale-worker-bounds` through `db5a37a` | Bounded scheduled workers plus the transactional marketplace-notification outbox pass the exact pinned-Node-22 build, full API test and lint gates; the stripped runtime image passes its static/application allowlist contracts but the clean-database verifier remains subject to the separately tracked historical migration-order defect | Based directly on `4e100a987602415516fb619b32af5af8cd27e2f0` |
 | Mobile | `codex/mobile-poll-backpressure` | Mobile backpressure plus evidence through `ac4a94f6dd0e653293c217b83af763ac522412a9` | Based directly on `bd6390727ec2a6c5e8bf4dc4d5512433b992e18e`; later commits may update this roadmap only |
 | Admin | `feat/system-audit` | `e6b6ab5d326aa90c8d6821dc5106940691787c48` | Clean; no post-release scale change is pending in this increment |
 
@@ -142,21 +147,29 @@ pending transfers, tips and refunds use PostgreSQL `SKIP LOCKED`, compare-and-se
 updates, token-owned leases or equivalent durable claims. This is correctness
 evidence only; their throughput and pool cost still require measurement.
 
-The following remaining workers are capacity risks before a 100k-DAU claim:
+The source-level candidate-scan audit is substantially closed in the local
+backend worktree, but the following risks remain before a 100k-DAU claim:
 
-- bid-window expiry scans every open expired job without a batch limit and then
-  performs per-job offer revocation plus bid counts;
-- directed-quote, scheduled-job, job-staleness and welfare-check workers use
-  unbounded candidate reads followed by per-row notification/database work;
-- rating reveal updates and returns every expired row in one statement;
-- provider-document lifecycle staging runs broad SQL every minute, while audit
-  telemetry retention can keep deleting 5,000-row batches until the entire
-  expired backlog is drained by an API-hosted cron;
-- surge evaluation performs global demand/supply counts every minute; index and
-  production-cardinality evidence is still required;
-- several effects are durably deduplicated or compare-and-set protected, but
-  that prevents duplicate outcomes rather than duplicate scan/query load across
-  replicas.
+- backend commit `db5a37a` closes the identified marketplace state/notice crash
+  gap for directed-quote revert, scheduled no-show cancellation, 48-hour job
+  freeze and zero-bid escalation. Each state transition now records immutable
+  recipient/payload snapshots in the same PostgreSQL transaction, and a bounded
+  oldest-first worker claims, retries and deduplicates delivery. This remains a
+  local checkpoint: deployed throughput, backlog-age alerts and replica-loss
+  recovery are not yet proven;
+- daily payment reconciliation follows the gateway-provided page count and
+  accumulates all returned pages in one run. It needs a measured, explicit work
+  ceiling or a separately approved reconciliation workload contract;
+- surge evaluation now fetches only the single winning rule, but its global
+  demand/supply counts still need representative-cardinality query plans and
+  pool-cost evidence;
+- batch payout enumeration and the weekly email digest remain unbounded in
+  source, but both are explicitly disabled/deferred for this release and are
+  production-forbidden by configuration. They become blocking before either
+  feature is enabled;
+- bounded queries, row claims and deployment leases prove source-side
+  containment, not production throughput. Exact backlog cardinalities, pool
+  occupancy, scheduler lag and multi-replica failure behavior remain unmeasured.
 
 - [x] Add a deployment-wide, token-owned Redis lease around the first
       scan-heavy worker set: bid expiry, directed quotes, scheduled-job
@@ -215,7 +228,7 @@ The following remaining workers are capacity risks before a 100k-DAU claim:
       **3/3**; the complete API gate passes **214/214 suites and 4,224/4,224
       tests**, typecheck, zero-error lint and script syntax. Neither production
       diagnostic has been run yet.
-- [x] Add bounded keyset/claim batches and explicit per-tick work budgets where
+- [ ] Add bounded keyset/claim batches and explicit per-tick work budgets where
       the current worker can consume an unbounded backlog. The wider cron audit
       also found unbounded candidate enumeration in disconnection `SMEMBERS`,
       stale payment verification, escrow payout retry, clawback write-off,
@@ -254,7 +267,7 @@ The following remaining workers are capacity risks before a 100k-DAU claim:
       gate passes **214/214 suites and 4,247/4,247 tests**, builds, typechecks,
       Prisma validation, zero-error lint, the aggregate diagnostic and the
       online-index preflight. No staging or production system was touched.
-      Backend commit `1390423` closes the three remaining enumerated paths.
+      Backend commit `1390423` closes three additional enumerated paths.
       Insufficient-balance expiry now uses one five-minute deployment lease,
       separately bounded deadline and failed-alert queues, atomic queue moves,
       deduplicated notification retries and alternating queue priority; the
@@ -275,7 +288,61 @@ The following remaining workers are capacity risks before a 100k-DAU claim:
       online-index write-continuity proof passes. On pinned Node **22.23.0**, the
       exact committed source passes **214/214 suites and 4,269/4,269 tests**, API
       typecheck, production build and lint with zero errors and 52 pre-existing
-      warnings. No staging or production system was touched.
+      warnings. No staging or production system was touched. Keep this item
+      open until the remaining crash-safe notification/reconciliation gaps
+      below are closed. Backend commit `20890aa` gives bid expiry,
+      directed-quote acceptance,
+      scheduled reminders, job staleness, welfare checks, rating reveal and
+      audit retention deterministic configurable 1–500 work budgets (safe
+      defaults 100), durable stage markers where repeated candidate selection
+      would otherwise starve later work, and exact partial candidate indexes.
+      Provider-document lifecycle uses bounded oldest-first event claims plus a
+      single locked replacement-authority cohort so a crash cannot create a
+      partly swapped current-document set; all provider reset/offline/expiry
+      stages and expired processing-lease reclamation are also bounded without
+      changing the approved active-work-finish rule. Stale payout reconciliation
+      is oldest-first and bounded behind a deployment lease, daily payment
+      reconciliation has a deployment lease, and surge selects only one
+      deterministic winning rule instead of materialising all matching rules.
+      All **264** migrations apply on disposable PostgreSQL; the aggregate-only
+      diagnostic reports **34** workload counts and **36** required index rows,
+      with every new index valid/ready. Event and payout plans select the new
+      partial indexes; the nine-row provider-document fixture correctly chooses
+      sequential scans and is not representative scale evidence. Focused tests
+      pass **103/103** for the worker/config/index group and **82/82** for the
+      payment/reconciliation/surge group. The exact committed tree passes the
+      pinned Node **22.23.0** production build, **214/214 suites and
+      4,375/4,375 tests**, lint with zero errors and 52 existing warnings,
+      Prisma validation and diff checks. Exact stripped image
+      `sha256:0319b306585a3b6af360bfeb6c2a6189cdc096671405af5d3072977b04314c14`
+      is 181,384,107 bytes, runs as UID/GID 1001 on Node 22.23.0, contains no
+      application source, Git metadata, environment file or product docs,
+      exposes no top-level Jest runtime, and passes the static runtime contract.
+      Its disposable clean-database verifier
+      fails only at the previously recorded historical
+      `20260615000000_ride_max_broadcast_drivers_config` ordering defect; this
+      does not invalidate the current migrated-database proof, but the image is
+      not recorded as an end-to-end runtime-verifier PASS. Nothing was pushed,
+      deployed or run against staging/production. Backend commit `db5a37a`
+      then closes the four marketplace notification crash gaps with a
+      transactionally inserted, deduplicated and leased PostgreSQL outbox. Its
+      configurable 1–500 delivery budget defaults to 100, expired claims are
+      reclaimed in bounded order, retries use capped backoff, and a durable
+      admin alert is retained when no authorised operator currently exists.
+      On disposable PostgreSQL, all **265** migrations are current, all **102**
+      release-preflight indexes are valid, the aggregate diagnostic reports
+      **36** workloads and **38** scheduler indexes, and both new planner checks
+      select their partial indexes with index-only scans. The exact committed
+      tree passes the pinned Node **22.23.0** production build, typecheck,
+      **216/216 suites and 4,388/4,388 tests**, and lint with zero errors and 52
+      existing warnings. Exact stripped runtime image
+      `sha256:6a13f366340f313929c898e90111bc6f913dc3207db95977ed15bcb213cff149`
+      is 181,396,214 bytes, runs as UID/GID 1001 on Node 22.23.0, and contains
+      no application source, Git metadata, environment file, product docs,
+      or top-level Jest runtime. TypeScript remains transitive in the pnpm store
+      and is therefore not claimed absent. Nothing was pushed, deployed or run
+      against staging/production. Keep this item open for the remaining
+      reconciliation work ceiling and production-shaped backlog/throughput proof.
 - [ ] Move or elect one scheduler/worker authority before scaling API replicas;
       retain row-level claims so worker failover remains safe.
 - [ ] Prove scheduler lag, database pool occupancy and notification/outbox
