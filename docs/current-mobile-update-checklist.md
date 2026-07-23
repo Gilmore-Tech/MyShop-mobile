@@ -7,7 +7,7 @@ store update. The larger production audit and 100k-DAU roadmap remain evidence
 and future-work registers; they do not expand this release unless an item is
 explicitly copied into this file with owner approval.
 
-Current counted progress is **46/72 checklist items (64%)**. The stricter final
+Current counted progress is **52/79 checklist items (66%)**. The stricter final
 release-gate subset is **4/13 (31%)** because signed builds, physical-device
 acceptance, store declarations and canary evidence can only close after scope
 and version approval. These are evidence counts, not estimates of effort.
@@ -39,6 +39,19 @@ and version approval. These are evidence counts, not estimates of effort.
     cannot settle or fail a replacement payment;
   - one shared provider active-job refresh during payment/recovery overlap;
   - privacy-safe payment lifecycle telemetry containing phase/outcome only.
+- [x] Provider cash-commission (`Owings`) remittance reconciliation was
+      explicitly added to this release scope on 2026-07-23 GMT.
+- [x] Backend reconciliation is idempotent and provider-scoped: a successful
+      Paystack verification applies a partial payment once, while failed,
+      abandoned or reversed attempts leave the owing balance unchanged.
+- [x] Provider payment UX polls an owned remittance status and reports success
+      only after the backend completes settlement; delayed verification does
+      not invite a duplicate payment.
+- [ ] Deploy the two reconciliation migrations and exact Backend candidate to
+      staging before installing the corresponding Provider candidate.
+- [ ] Physically prove on staging that a completed partial payment reduces
+      `Owings` by the exact amount and a cancelled attempt becomes terminal
+      without changing `Owings`.
 - [x] Release provenance tooling: require a clean exact `origin/main` SHA,
       embed it in Android, iOS and telemetry, and automatically inspect every
       built APK/AAB/IPA for identity, version, build, source, signature,
@@ -77,7 +90,7 @@ approval recorded here.
 - Main-based commit:
   `9979cc4` (`feat(release): add audited telemetry and payment reliability`)
 - Staging review branch: `codex/audit-telemetry-payment-staging`
-- Staging base: `origin/staging`
+- Staging base before merge:
   `bd6390727ec2a6c5e8bf4dc4d5512433b992e18e`
 - Staging candidate commit:
   `469c880` (`feat(release): add audited telemetry and payment reliability`)
@@ -105,18 +118,26 @@ approval recorded here.
 - [x] Commit the exact approved implementation candidate locally.
 - [x] Push `codex/audit-telemetry-payment-staging` to
       `origin` without merging it.
-- [ ] Open the normal feature → staging review pull request.
+- [x] Merge the normal feature → staging review pull request; PR `#93` is
+      present in `origin/staging` at merge commit `2a860ad`.
+- Cash-remittance reconciliation branches:
+  `codex/cash-remit-reconciliation` in clean Backend and Mobile worktrees,
+  both based on their current `origin/staging`.
+- Cash-remittance reconciliation implementation: **17 paths** — 12 Backend/
+  database paths and five Provider/API-client paths. It remains uncommitted,
+  unpushed and undeployed while validation and review finish.
 
-The checklist is versioned separately from the runtime commit. No pull request,
-merge, signed build, store upload or production mutation has occurred.
+The reconciliation checklist is versioned separately from its runtime changes.
+No reconciliation pull request, merge, signed build, store upload or production
+mutation has occurred.
 
 ## 4. Current verification evidence
 
 - [x] Focused privacy/telemetry suite: **13/13 passed**.
 - [x] Focused Client payment authority/telemetry suite: **8/8 passed**.
 - [x] Focused Provider active-job authority suite: **7/7 passed**.
-- [x] Complete API-client suite: **172/172 passed**.
-- [x] Complete Provider suite: **169/169 passed**.
+- [x] Complete API-client suite: **173/173 passed**.
+- [x] Complete Provider suite: **172/172 passed**.
 - [x] Complete Client suite: **88/88 passed**.
 - [x] The pre-login timer defect is corrected: unauthenticated events remain
       queued without a timer or request; a later authenticated event schedules
@@ -124,7 +145,7 @@ merge, signed build, store upload or production mutation has occurred.
 - [x] Fatal-info analyzers for Client, Provider and API client: **no issues**.
 - [x] `git diff --check`, privacy source scan and exact 30-path implementation
       inventory passed.
-- [x] Current automated total: **429/429 passed**.
+- [x] Current Mobile automated total: **433/433 passed**.
 - [x] Release version, source and artifact contract suites: **3/3 passed**.
 - [x] Source verifier explicitly rejects malformed/mismatched SHAs, commits not
       at `origin/main`, dirty tracked files and untracked files.
@@ -153,6 +174,12 @@ merge, signed build, store upload or production mutation has occurred.
 - [x] Repository Privacy Policy `1.4.1` sections 3.7 and 4 already disclose
       device/technical/security/audit/performance events and their use for
       diagnosis, capacity and user-experience improvement.
+- [x] Cash-remittance Backend verification passed: Payment/Webhook focused
+      suites **159/159**, migration-deploy contract **418/418**, Prisma schema
+      validation and API build.
+- [x] Cash-remittance Mobile verification passed: Provider reconciliation
+      poller **3/3**, API-client status contract **4/4**, all three complete
+      suites **433/433**, and the complete Provider analyzer with no issues.
 - [ ] The same policy does not expressly say that named screen, lifecycle and
       meaningful-action events are collected. Product/qualified Legal must
       decide whether the existing disclosure is sufficient or publish a new
@@ -291,3 +318,5 @@ updating this checklist and obtaining owner approval.
 | 2026-07-23 | Exact implementation scope approved | Owner approved the recorded 32-path telemetry, payment-reliability, provenance and privacy-manifest candidate; excluded features remain excluded. |
 | 2026-07-23 | Prepared exact staging review candidate | Main-based commit `9979cc4` and staging commit `469c880` have byte-identical approved implementation paths. The clean staging commit passes 429/429 tests, all analyzers, all release contracts and whitespace validation; it has not been pushed. |
 | 2026-07-23 | Published the review branch | `codex/audit-telemetry-payment-staging` was pushed to `origin` with the runtime and checklist commits. It has not been merged or deployed; draft PR creation remains pending. |
+| 2026-07-23 | Merged the approved telemetry/payment candidate to staging | PR `#93` is present in `origin/staging` merge commit `2a860ad`; this does not constitute a store release. |
+| 2026-07-23 | Added provider `Owings` reconciliation candidate | Backend verifies missed/misdirected Paystack callbacks, settles partial commission debt idempotently, closes cancelled attempts without touching debt, and exposes an owned status endpoint. Provider now waits for that authoritative state. Focused Backend **159/159**, migration contract **418/418**, Provider **3/3** and API-client **4/4** pass; staging deploy and physical payment proof remain open. |

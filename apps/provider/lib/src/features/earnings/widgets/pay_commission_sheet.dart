@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +9,7 @@ import 'package:shared_ui/shared_ui.dart';
 import '../../../core/di/providers.dart';
 import '../../auth/providers/current_user_provider.dart';
 import '../providers/earnings_providers.dart';
+import '../services/cash_commission_remittance_poller.dart';
 
 /// Driver / artisan tap "Pay Commission" → this sheet charges their own
 /// MoMo to settle outstanding cash-commission debt.
@@ -49,7 +52,7 @@ class _PayCommissionSheet extends ConsumerStatefulWidget {
       _PayCommissionSheetState();
 }
 
-enum _Step { enter, working, done, error }
+enum _Step { enter, working, awaiting, completed, failed, error }
 
 class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
   _Step _step = _Step.enter;
@@ -59,6 +62,10 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
   String? _errorMessage;
   String? _displayText;
   int? _surplusPesewas;
+  int? _remittedPesewas;
+  int? _remainingOwedPesewas;
+  String? _gatewayStatus;
+  bool _pollTimedOut = false;
 
   @override
   void initState() {
@@ -102,31 +109,30 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
     });
 
     try {
-      final res = await ref.read(paymentServiceProvider).remitCashCommission(
+      final res = await ref
+          .read(paymentServiceProvider)
+          .remitCashCommission(
             amountPesewas: amount,
             paymentMethod: _selectedMethod,
             momoPhone: phone,
           );
       if (!mounted) return;
-
-      // Deliberately NOT invalidating earnings providers here. The
-      // Paystack webhook that actually reduces the owed-balance
-      // doesn't fire until the user authorises the MoMo prompt on
-      // their phone — which happens AFTER this success state shows.
-      // Invalidating now would force a refetch that re-caches the
-      // pre-webhook (stale) value, and the dashboard would still
-      // show the unchanged owed amount. Instead we invalidate when
-      // the user dismisses this sheet via DONE, by which time the
-      // webhook has typically landed (and the backend has busted
-      // its own Redis cache).
+      final remitId = res['remitId'];
+      if (remitId is! String || remitId.isEmpty) {
+        throw const FormatException('Missing commission payment identifier');
+      }
 
       setState(() {
-        _step = _Step.done;
-        _displayText = (res['displayText'] as String?) ??
+        _step = _Step.awaiting;
+        _displayText =
+            (res['displayText'] as String?) ??
             'Authorise the prompt on '
                 'your phone to complete the payment.';
         _surplusPesewas = (res['surplusPesewas'] as num?)?.toInt() ?? 0;
+        _remittedPesewas = amount;
+        _pollTimedOut = false;
       });
+      unawaited(_monitorRemittance(remitId));
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -140,6 +146,34 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
         _errorMessage = "Couldn't start the payment. Please try again.";
       });
     }
+  }
+
+  Future<void> _monitorRemittance(String remitId) async {
+    final result = await const CashCommissionRemittancePoller().waitForTerminal(
+      () => ref
+          .read(paymentServiceProvider)
+          .getCashCommissionRemittanceStatus(remitId),
+    );
+    if (!mounted) return;
+
+    if (result == null) {
+      setState(() => _pollTimedOut = true);
+      return;
+    }
+
+    _refreshEarnings();
+    setState(() {
+      _gatewayStatus = result.gatewayStatus;
+      _remittedPesewas = result.amountPesewas;
+      _remainingOwedPesewas = result.owedPesewas;
+      _step = result.isCompleted ? _Step.completed : _Step.failed;
+    });
+  }
+
+  void _refreshEarnings() {
+    ref.invalidate(todayCardProvider);
+    ref.invalidate(earningsSummaryProvider);
+    ref.invalidate(earningsReportProvider);
   }
 
   static String _friendlyError(ApiException e) {
@@ -172,12 +206,18 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(MyShopSpacing.md, MyShopSpacing.md,
-              MyShopSpacing.md, MyShopSpacing.lg),
+          padding: const EdgeInsets.fromLTRB(
+            MyShopSpacing.md,
+            MyShopSpacing.md,
+            MyShopSpacing.md,
+            MyShopSpacing.lg,
+          ),
           child: switch (_step) {
             _Step.enter => _buildEnter(),
             _Step.working => _buildWorking(),
-            _Step.done => _buildDone(),
+            _Step.awaiting => _buildAwaiting(),
+            _Step.completed => _buildCompleted(),
+            _Step.failed => _buildFailed(),
             _Step.error => _buildError(),
           },
         ),
@@ -210,11 +250,12 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
         const Text(
           'AMOUNT (GHS)',
           style: TextStyle(
-              fontFamily: 'Raleway',
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-              color: MyShopColors.textSecondary,
-              letterSpacing: 1.1),
+            fontFamily: 'Raleway',
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+            color: MyShopColors.textSecondary,
+            letterSpacing: 1.1,
+          ),
         ),
         const SizedBox(height: 6),
         TextField(
@@ -228,24 +269,32 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
             prefixText: 'GHS  ',
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide:
-                  const BorderSide(color: MyShopColors.divider, width: 1),
+              borderSide: const BorderSide(
+                color: MyShopColors.divider,
+                width: 1,
+              ),
             ),
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 14,
+            ),
           ),
           style: const TextStyle(
-              fontFamily: 'Raleway', fontSize: 18, fontWeight: FontWeight.w800),
+            fontFamily: 'Raleway',
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+          ),
         ),
         const SizedBox(height: 16),
         const Text(
           'MOMO NETWORK',
           style: TextStyle(
-              fontFamily: 'Raleway',
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-              color: MyShopColors.textSecondary,
-              letterSpacing: 1.1),
+            fontFamily: 'Raleway',
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+            color: MyShopColors.textSecondary,
+            letterSpacing: 1.1,
+          ),
         ),
         const SizedBox(height: 6),
         _MomoPicker(
@@ -256,11 +305,12 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
         const Text(
           'MOMO NUMBER',
           style: TextStyle(
-              fontFamily: 'Raleway',
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-              color: MyShopColors.textSecondary,
-              letterSpacing: 1.1),
+            fontFamily: 'Raleway',
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+            color: MyShopColors.textSecondary,
+            letterSpacing: 1.1,
+          ),
         ),
         const SizedBox(height: 6),
         TextField(
@@ -274,11 +324,15 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
             hintText: '0241234567',
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide:
-                  const BorderSide(color: MyShopColors.divider, width: 1),
+              borderSide: const BorderSide(
+                color: MyShopColors.divider,
+                width: 1,
+              ),
             ),
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 14,
+            ),
           ),
         ),
         if (_errorMessage != null) ...[
@@ -298,14 +352,18 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
             backgroundColor: MyShopColors.primaryGold,
             foregroundColor: MyShopColors.textOnPrimary,
             minimumSize: const Size(double.infinity, 50),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(28),
+            ),
           ),
-          child: const Text('PAY COMMISSION',
-              style: TextStyle(
-                  fontFamily: 'Raleway',
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.5)),
+          child: const Text(
+            'PAY COMMISSION',
+            style: TextStyle(
+              fontFamily: 'Raleway',
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.5,
+            ),
+          ),
         ),
       ],
     );
@@ -319,29 +377,39 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
         SizedBox(height: 24),
         CircularProgressIndicator(color: MyShopColors.primaryGold),
         SizedBox(height: 16),
-        Text('Sending request to your MoMo wallet…',
-            style: MyShopTypography.body1, textAlign: TextAlign.center),
+        Text(
+          'Sending request to your MoMo wallet…',
+          style: MyShopTypography.body1,
+          textAlign: TextAlign.center,
+        ),
         SizedBox(height: 24),
       ],
     );
   }
 
-  Widget _buildDone() {
-    final surplus = _surplusPesewas ?? 0;
+  Widget _buildAwaiting() {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const _GrabHandle(),
         const SizedBox(height: 16),
-        const Icon(Icons.check_circle_rounded,
-            color: MyShopColors.success, size: 56),
+        const Center(
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            child: CircularProgressIndicator(color: MyShopColors.primaryGold),
+          ),
+        ),
         const SizedBox(height: 12),
         const Text(
           'Authorise on your phone',
           textAlign: TextAlign.center,
           style: TextStyle(
-              fontFamily: 'Raleway', fontSize: 20, fontWeight: FontWeight.w900),
+            fontFamily: 'Raleway',
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+          ),
         ),
         const SizedBox(height: 8),
         Text(
@@ -349,8 +417,88 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
               'You should receive a MoMo prompt asking you to authorise the '
                   'payment. Once you approve it, your owed balance will update.',
           textAlign: TextAlign.center,
-          style: MyShopTypography.body2
-              .copyWith(color: MyShopColors.textSecondary, height: 1.45),
+          style: MyShopTypography.body2.copyWith(
+            color: MyShopColors.textSecondary,
+            height: 1.45,
+          ),
+        ),
+        if (_pollTimedOut) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: MyShopColors.primaryGoldLight,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Text(
+              'Confirmation is taking longer than expected. Do not pay again. '
+              'We will keep checking safely in the background.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: MyShopColors.textPrimary,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 18),
+        OutlinedButton(
+          onPressed: () => Navigator.of(context).pop(),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: MyShopColors.textPrimary,
+            minimumSize: const Size(double.infinity, 50),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(28),
+            ),
+          ),
+          child: const Text(
+            'CLOSE',
+            style: TextStyle(
+              fontFamily: 'Raleway',
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompleted() {
+    final surplus = _surplusPesewas ?? 0;
+    final paid = _remittedPesewas ?? 0;
+    final remaining = _remainingOwedPesewas ?? 0;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _GrabHandle(),
+        const SizedBox(height: 16),
+        const Icon(
+          Icons.check_circle_rounded,
+          color: MyShopColors.success,
+          size: 56,
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'Payment confirmed',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: 'Raleway',
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'GHS ${_fmtGhs(paid)} was applied to your commission account. '
+          'Your remaining Owings is GHS ${_fmtGhs(remaining)}.',
+          textAlign: TextAlign.center,
+          style: MyShopTypography.body2.copyWith(
+            color: MyShopColors.textSecondary,
+            height: 1.45,
+          ),
         ),
         if (surplus > 0) ...[
           const SizedBox(height: 12),
@@ -361,42 +509,101 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
-              'You paid GHS ${_fmtGhs(surplus)} extra — we\'ll credit it '
-              'against your next cash ride\'s commission.',
+              'GHS ${_fmtGhs(surplus)} is held as commission credit for '
+              'your next cash booking.',
               textAlign: TextAlign.center,
               style: const TextStyle(
-                  color: MyShopColors.textPrimary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13),
+                color: MyShopColors.textPrimary,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
             ),
           ),
         ],
         const SizedBox(height: 18),
         ElevatedButton(
-          onPressed: () {
-            // Invalidate the earnings caches NOW so the dashboard
-            // refetches when the user lands back on it. By the time
-            // they've authorised the MoMo prompt on their phone +
-            // tapped DONE here, the Paystack webhook has typically
-            // landed and the backend Redis cache has been busted —
-            // the fresh fetch will show the reduced owed balance.
-            ref.invalidate(todayCardProvider);
-            ref.invalidate(earningsSummaryProvider);
-            ref.invalidate(earningsReportProvider);
-            Navigator.of(context).pop();
-          },
+          onPressed: () => Navigator.of(context).pop(),
           style: ElevatedButton.styleFrom(
             backgroundColor: MyShopColors.darkSlate,
             foregroundColor: Colors.white,
             minimumSize: const Size(double.infinity, 50),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(28),
+            ),
           ),
-          child: const Text('DONE',
-              style: TextStyle(
-                  fontFamily: 'Raleway',
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.5)),
+          child: const Text(
+            'DONE',
+            style: TextStyle(
+              fontFamily: 'Raleway',
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFailed() {
+    final cancelled = _gatewayStatus == 'abandoned';
+    final reversed = _gatewayStatus == 'reversed';
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _GrabHandle(),
+        const SizedBox(height: 16),
+        const Icon(Icons.cancel_outlined, color: MyShopColors.error, size: 52),
+        const SizedBox(height: 12),
+        Text(
+          cancelled
+              ? 'Payment cancelled'
+              : reversed
+              ? 'Payment reversed'
+              : 'Payment not completed',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontFamily: 'Raleway',
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          reversed
+              ? 'The payment was reversed by the payment network. Your Owings '
+                    'balance was not changed.'
+              : 'No commission payment was applied. Your Owings balance was '
+                    'not changed.',
+          textAlign: TextAlign.center,
+          style: MyShopTypography.body2.copyWith(
+            color: MyShopColors.textSecondary,
+            height: 1.45,
+          ),
+        ),
+        const SizedBox(height: 18),
+        ElevatedButton(
+          onPressed: () => setState(() {
+            _step = _Step.enter;
+            _gatewayStatus = null;
+            _pollTimedOut = false;
+          }),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: MyShopColors.primaryGold,
+            foregroundColor: MyShopColors.textOnPrimary,
+            minimumSize: const Size(double.infinity, 50),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(28),
+            ),
+          ),
+          child: const Text(
+            'TRY AGAIN',
+            style: TextStyle(
+              fontFamily: 'Raleway',
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.5,
+            ),
+          ),
         ),
       ],
     );
@@ -423,8 +630,9 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
             backgroundColor: MyShopColors.primaryGold,
             foregroundColor: MyShopColors.textOnPrimary,
             minimumSize: const Size(double.infinity, 48),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
           ),
           child: const Text('TRY AGAIN'),
         ),
