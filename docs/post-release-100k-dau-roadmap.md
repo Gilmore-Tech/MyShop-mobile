@@ -16,11 +16,11 @@ as a request to repeat the release or reactivate deliberately deferred features.
 
 | Surface            | Authoritative observation                                                                                                                                                                                                               | Consequence                                                                                                                                                                                         |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Production API     | On 2026-07-22 GMT, both the canonical and direct Render domains returned HTTP 200 from `/v1/health/live` and `/v1/health/ready`, with PostgreSQL and Redis `ok`; deployed commit is backend `d918243cd7c6bda778fa54dec6ac0fdbe8140595`. | Production does **not** yet contain the follow-up maintenance/audit or scale hardening. `APP_VERSION` is also unset, so health reports `version=unknown`; commit remains the usable release marker. |
+| Production API     | Reverified 2026-07-23 GMT: both the canonical and direct Render domains return HTTP 200 from `/v1/health/ready`, with PostgreSQL and Redis `ok`; deployed commit remains backend `d918243cd7c6bda778fa54dec6ac0fdbe8140595`. | Production does **not** yet contain the follow-up maintenance/audit or scale hardening. `APP_VERSION` is also unset, so health reports `version=unknown`; commit remains the usable release marker. |
 | Live service flags | Public server-owned reads return `maintenance_mode=false`, `rides_enabled=true`, and `artisan_jobs_enabled=true`.                                                                                                                       | Rides and ordinary artisan jobs are open; changes to these flags remain controlled operational actions.                                                                                             |
 | OTP policy         | The production API advertises SMS primary with WhatsApp fallback.                                                                                                                                                                       | Delivery, callback, cost, provider-circuit and handset evidence still require monitoring; the channel advertisement alone is not delivery proof.                                                    |
 | Admin              | `https://admin.myshop.gilmoretechnologiesgh.com/login` is live on Vercel deployment `dpl_6rNMmNbA97TPyvU4uURTg5tPLXMz`. Admin main is `30f2ed04cc03a3fa5cf20e4075368b9d67c4a7f3`.                                                       | The audit-vault UI is deployed, but authenticated Super Admin acceptance and Product Owner 403 evidence are still required.                                                                         |
-| Staging API        | `/v1/health/ready` is healthy at `myshop-api-test.onrender.com`, but it serves backend `fed0d149…`, ten commits behind repository staging `4e100a9…`.                                                                                   | It is not an exact-current load target and must not produce release/capacity evidence yet.                                                                                                          |
+| Staging API        | Reverified 2026-07-23 GMT: `/v1/health/ready` is healthy at `myshop-api-test.onrender.com`, but it still serves backend `fed0d149…`, ten commits behind repository staging `4e100a9…`.                                                    | It is not an exact-current load target and must not produce release/capacity evidence yet.                                                                                                          |
 | Android client     | The official Play listing for `com.gilmoretech.myshopclient` serves marketing version `1.4.1`, updated 21 July 2026.                                                                                                                    | The public build code is not exposed by the listing and must be read from Play Console before choosing the next code.                                                                               |
 | Android provider   | The official Play listing for `com.gilmoretech.myshopprovider` serves marketing version `1.4.1`, updated 21 July 2026.                                                                                                                  | The public build code is not exposed by the listing and must be read from Play Console before choosing the next code.                                                                               |
 | iOS client         | Apple's official lookup still serves `1.3.9`, released 13 July 2026, for bundle `com.gilmoretech.myshopclient`.                                                                                                                         | The audited update is not publicly available to iOS client users.                                                                                                                                   |
@@ -48,7 +48,7 @@ Current local hardening checkpoint (not pushed or deployed):
 
 | Repository | Local branch/state                                                                                 | Verified milestone                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Relationship to reconciled staging                                                                       |
 | ---------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Backend    | Clean `codex/scale-worker-bounds` through `a650682`                                                 | Bounded scheduled workers, the transactional marketplace-notification outbox and a hard-bounded daily settlement fetch pass the exact pinned-Node-22 build, full API test and lint gates. Every one of the 36 active cron entry points now has an exact observable deployment-wide owner in addition to its durable row/state authority; all 36 map to aggregate capacity evidence covering 53 durable-workload/index states and 48 planner checks. The latest pinned Node 22.23 gate passes 218/218 suites and 4,418/4,418 tests, builds and typechecks. The stripped runtime image remains subject to the separately tracked historical clean-database migration-order defect. | Based directly on `4e100a987602415516fb619b32af5af8cd27e2f0`                                             |
+| Backend    | `codex/scale-worker-bounds` through `a650682`, plus the locally verified fixture/routing-isolation increment | Bounded scheduled workers, the transactional marketplace-notification outbox and a hard-bounded daily settlement fetch pass the exact pinned-Node-22 build, full API test and lint gates. Every one of the 36 active cron entry points now has an exact observable deployment-wide owner in addition to its durable row/state authority; all 36 map to aggregate capacity evidence covering 53 durable-workload/index states and 48 planner checks. The latest pinned Node 22.23 gate passes 218/218 suites and 4,418/4,418 tests, builds and typechecks. The guarded exact-role fixture provisioner and explicit synthetic-route isolation pass 16/16 contracts locally and under pinned Node 22. A fresh disposable PostgreSQL/Redis clone completed live preflight and k6 1.3.0 smoke at 9/9 checks, 0/7 failed HTTP requests and p99 133.23 ms; this is single-replica harness proof, not capacity. The stripped runtime image remains subject to the separately tracked historical clean-database migration-order defect. | Based directly on `4e100a987602415516fb619b32af5af8cd27e2f0`                                             |
 | Mobile     | `codex/mobile-poll-backpressure`                                                                   | Mobile backpressure plus evidence through `ac4a94f6dd0e653293c217b83af763ac522412a9`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Based directly on `bd6390727ec2a6c5e8bf4dc4d5512433b992e18e`; later commits may update this roadmap only |
 | Admin      | `feat/system-audit`                                                                                | `e6b6ab5d326aa90c8d6821dc5106940691787c48`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Clean; no post-release scale change is pending in this increment                                         |
 
@@ -146,6 +146,42 @@ Required inputs before the model is frozen:
       Redis clients, and every deployment-wide worker lease must use one of 22
       exact reviewed metric names. Provider-side Redis memory, connection,
       latency and eviction metrics and actual alert delivery remain unproven.
+
+#### Dashboard capture and proposed rehearsal baseline
+
+Private dashboard access was unavailable to this audit session on 2026-07-23.
+The following facts therefore remain **unknown**, even where a repository or
+historical value exists. Record values without secrets or endpoints:
+
+| Provider | Required current fact | Current evidence |
+| --- | --- | --- |
+| Render | workspace plan; `myshop-api` instance type, CPU/RAM, Frankfurt region, instance count; manual/autoscaling configuration; deploy/drain settings | Public health proves one healthy release marker only. Repository Blueprint says `free`, but a dashboard override cannot be ruled out. |
+| Upstash | database type/plan, primary/read regions, command/s, memory/data/connection/bandwidth limits, budget/rate-limit behavior, eviction toggle, TLS, replication, Prod Pack/multi-zone HA, backups and metrics access | Runtime readiness proves the deployed Redis accepts the source `noeviction` check. Last owner report placed it in Cape Town; current dashboard region and limits are unverified. |
+| Neon | production plan, Frankfurt branch/compute, minimum/maximum CU, scale-to-zero, pooled/direct connection limits, current connection use, working-set/cache hit, storage/WAL/PITR/restore limits | The API reports PostgreSQL healthy and source uses a pooled application URL. No capacity or recovery limit is publicly observable. |
+
+Recommended **starting point for measurement**, not an approved purchase or a
+final 100k-DAU size:
+
+- two Render `Standard` web instances in Frankfurt (each 1 CPU/2 GB) with the
+  existing readiness path and manual scaling; choose autoscaling only after the
+  owner confirms a Pro workspace and approves its min/max and spend;
+- one Upstash database whose write primary is Frankfurt, with no cross-region
+  read replica for Redis authority paths, TLS, eviction disabled and paid
+  replication. Explicit owner decision is required on the separately priced
+  Prod Pack for multi-zone HA/SLA/Prometheus;
+- production Neon in Frankfurt through the pooled application endpoint, scale
+  to zero disabled, with actual min/max CU and `SHOW max_connections` recorded.
+  At two API replicas, the current default pool ceiling reserves up to 20
+  application connections; retain explicit headroom for migrations, operators,
+  monitoring, failover and any separately deployed worker before raising it.
+
+These are test-entry recommendations only. The highest passing, reconciled and
+fault-tested size becomes the temporary operating cap. Official references:
+[Render instance types](https://render.com/docs/compute-plans),
+[Render scaling](https://render.com/docs/scaling),
+[Upstash regions/consistency](https://upstash.com/docs/redis/features/globaldatabase),
+[Upstash replication](https://upstash.com/docs/redis/features/replication), and
+[Neon compute/connection sizing](https://neon.com/docs/manage/endpoints/).
 
 #### Initial scheduled-work capacity audit
 
@@ -478,11 +514,25 @@ production-shaped target. Never load-test production.
 9. Set the temporary operating cap to the highest fully passing level, not the
    requested DAU number.
 
-The fail-closed load-harness contract currently passes **10/10** local tests,
-including production-host refusal, target/commit binding, exact-role fixtures,
-provider epoch/sequence checks, call participant uniqueness and Cloudflare TURN
-preflight. The `k6` executable is not installed on the current machine. Passing
-the harness contract proves safety wiring only; it is not a load result.
+The fail-closed load-harness contract currently passes **16/16** local and
+pinned-Node-22 tests, including production-host refusal, target/commit binding,
+exact-role fixtures, provider epoch/sequence checks, call participant
+uniqueness, Cloudflare TURN preflight, geofence/clean-database/Redis nonce
+authority, scenario sizing and explicit routing isolation. The guarded
+target-local provisioner refuses shared staging, production hosts, the Ashanti
+production geofence, real-user data, mismatched database/Redis nonces,
+repository output paths and existing output files.
+
+The first k6 1.3.0 smoke correctly failed after three invalid-key Google Routes
+requests exposed that routing was not isolated. No live credential was used.
+Ride scenarios now require an explicit four-hour synthetic cache covering all
+18 ordered workload routes; Google routing remains a separate approved,
+cost-bounded canary. A completely fresh clone then passed provisioning, live
+preflight and smoke at **9/9 checks**, **0/7 failed HTTP requests** and
+**133.23 ms p99**. Reconciliation found one terminal ride and zero active
+rides/jobs, and logs proved route-cache hits rather than a provider failure.
+This is single-replica harness evidence only; no pilot, call-concurrency or
+100k-DAU capacity claim is closed.
 
 ### Phase D — rollout
 
