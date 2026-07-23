@@ -1,0 +1,291 @@
+# Current Mobile Update Checklist
+
+Status captured: **2026-07-23 GMT**
+
+This is the single authoritative checklist for the next Client and Provider
+store update. The larger production audit and 100k-DAU roadmap remain evidence
+and future-work registers; they do not expand this release unless an item is
+explicitly copied into this file with owner approval.
+
+Current counted progress is **45/71 checklist items (63%)**. The stricter final
+release-gate subset is **4/13 (31%)** because signed builds, physical-device
+acceptance, store declarations and canary evidence can only close after scope
+and version approval. These are evidence counts, not estimates of effort.
+
+## 1. Fixed release baseline
+
+- [x] Previous release identity confirmed by the owner: **Client Android,
+      Client iOS, Provider Android and Provider iOS are `1.4.1+24`**.
+- [x] All four previous artifacts were built from `main`.
+- [ ] Record the exact `main` source SHA used for `1.4.1+24`. It is currently
+      unknown.
+- [x] Repository pubspec values such as `1.4.1+20` are source defaults and must
+      not be reported as the previous store build.
+
+## 2. Approved scope for this update
+
+### Included
+
+- [x] Privacy-minimal mobile Audit telemetry already present on
+      `origin/staging`.
+- [x] Telemetry privacy hardening: route templates, query/fragment removal,
+      concrete route-ID redaction, bounded correlation IDs and primitive-only
+      metadata.
+- [x] Telemetry delivery hardening: bounded queue/batches, non-blocking
+      failures, low-activity delayed flush and bounded jittered retry.
+- [x] Mobile payment-settlement reliability:
+  - one in-flight status read per current ride or artisan-job payment;
+  - generation/payment-ID fencing so a late response from an older attempt
+    cannot settle or fail a replacement payment;
+  - one shared provider active-job refresh during payment/recovery overlap;
+  - privacy-safe payment lifecycle telemetry containing phase/outcome only.
+- [x] Release provenance tooling: require a clean exact `origin/main` SHA,
+      embed it in Android, iOS and telemetry, and automatically inspect every
+      built APK/AAB/IPA for identity, version, build, source, signature,
+      production endpoint and staging-URL absence.
+- [ ] Produce and verify the four signed artifacts from the eventual reviewed
+      `main` SHA.
+- [x] Candidate iOS privacy manifests declare linked, non-tracking Product
+      Interaction for Analytics and add Analytics to the existing linked,
+      non-tracking Device ID purpose.
+- [ ] Apply the matching App Store Connect privacy and Google Play Data Safety
+      answers to both apps; this is a private-console action and has not been
+      completed.
+
+### Explicitly excluded
+
+- [x] No new payment provider or payment method.
+- [x] No change to fares, commission, tips, refund rules, dispute timing,
+      clawbacks, provider earnings or payout rules.
+- [x] Automated batch/aggregate payouts remain disabled.
+- [x] Promo/loyalty redemption remains disabled.
+- [x] No call-duration, one-active-call or signalling-limit behavior change.
+- [x] No wholesale merge of the 136-path Mobile stability candidate.
+- [x] No wholesale Backend/Admin scale candidate, realtime chat/GPS tranche,
+      role recovery/purge, scheduled jobs, SmileKYC/police automation,
+      emergency recording, support/dispute attachments, cancellation
+      consequences or active-trip fallback.
+
+Any request to add one of these items must first identify its exact paths,
+business rules, migrations, tests and rollback, then receive an explicit owner
+approval recorded here.
+
+## 3. Current isolated candidates
+
+- Main-based audit branch: `codex/audit-telemetry-mobile-rc`
+- Production base: `origin/main` `61241f89dd48adef0c23d4bf9dbd2373b505947d`
+- Main-based commit:
+  `9979cc4` (`feat(release): add audited telemetry and payment reliability`)
+- Staging review branch: `codex/audit-telemetry-payment-staging`
+- Staging base: `origin/staging`
+  `bd6390727ec2a6c5e8bf4dc4d5512433b992e18e`
+- Staging candidate commit:
+  `469c880` (`feat(release): add audited telemetry and payment reliability`)
+- Isolated worktrees:
+  `/private/tmp/myshop-mobile-audit-telemetry-rc` and
+  `/private/tmp/myshop-mobile-audit-telemetry-staging-rc`
+- Current scope: **32 paths** — the 12-path telemetry unit, five payment-only
+  paths extracted from mixed commit `0e9c160…`, and 13 narrowly scoped
+  provenance/version/native-metadata paths, plus the two iOS privacy manifests.
+- [x] The five original payment files matched their reviewed source blobs
+      exactly before payment lifecycle telemetry was added.
+- [x] The four call-related paths from `0e9c160…` were not included.
+- [x] Committed pre-marketing-version 32-path implementation fingerprint
+      relative to the recorded `main` base:
+      `9e1b64c5270f3136d514ff695815ab3fc40e98a22688ad28b9a2539316f1fe7b`.
+- [x] Staging runtime delta is 26 paths, excluding this documentation-only
+      checklist, because six approved paths already existed on
+      `origin/staging`; its committed implementation fingerprint is
+      `c96af523ee33618719511b58f170cdc4590da64fe5521b0a4063877fac8f00ab`.
+- [x] Every one of the 32 approved implementation paths in staging commit
+      `469c880` is byte-identical to the corresponding path in main-based
+      commit `9979cc4`.
+- [ ] Recompute and record the final candidate fingerprint after the approved
+      marketing-version change.
+- [x] Commit the exact approved implementation candidate locally.
+- [ ] Push and open the normal feature → staging review path.
+
+The checklist is versioned separately from the runtime commit. No candidate
+push, pull request, merge, signed build, store upload or production mutation
+has occurred.
+
+## 4. Current verification evidence
+
+- [x] Focused privacy/telemetry suite: **13/13 passed**.
+- [x] Focused Client payment authority/telemetry suite: **8/8 passed**.
+- [x] Focused Provider active-job authority suite: **7/7 passed**.
+- [x] Complete API-client suite: **172/172 passed**.
+- [x] Complete Provider suite: **169/169 passed**.
+- [x] Complete Client suite: **88/88 passed**.
+- [x] The pre-login timer defect is corrected: unauthenticated events remain
+      queued without a timer or request; a later authenticated event schedules
+      the batch. The focused regression proves both events are retained.
+- [x] Fatal-info analyzers for Client, Provider and API client: **no issues**.
+- [x] `git diff --check`, privacy source scan and exact 30-path implementation
+      inventory passed.
+- [x] Current automated total: **429/429 passed**.
+- [x] Release version, source and artifact contract suites: **3/3 passed**.
+- [x] Source verifier explicitly rejects malformed/mismatched SHAs, commits not
+      at `origin/main`, dirty tracked files and untracked files.
+- [x] Client and Provider Android candidate manifests compile with the
+      production build's AndroidX property; both iOS plists and
+      `ExportOptions.plist` parse successfully.
+- [x] Local release-key inspection confirms the expected Client and Provider
+      upload-certificate SHA-1 values. Play Console comparison remains a
+      separate private-console gate.
+- [x] Both iOS privacy manifests parse successfully and contain
+      `NSPrivacyCollectedDataTypeProductInteraction` for Analytics plus
+      Analytics as an additional Device ID purpose.
+- [x] The IPA verifier now parses the packaged privacy manifest and requires it
+      to be byte-identical to the reviewed app manifest; the artifact contract
+      test passes and prevents packaging from silently dropping or replacing
+      the declarations.
+- [x] Backend-contract audit proved that ingestion may return HTTP 200 with
+      `accepted: 0` when telemetry storage fails. Mobile now removes a batch
+      only when the server confirms the full count; zero or partial acceptance
+      is retained and retried. Both regressions and all three complete mobile
+      suites pass.
+- [x] The exact staging commit `469c880` independently passes Client **88/88**,
+      Provider **169/169**, API client **172/172**, all three fatal-info
+      analyzers, all three release contracts and `git diff --check`; its
+      worktree is clean.
+- [x] Repository Privacy Policy `1.4.1` sections 3.7 and 4 already disclose
+      device/technical/security/audit/performance events and their use for
+      diagnosis, capacity and user-experience improvement.
+- [ ] The same policy does not expressly say that named screen, lifecycle and
+      meaningful-action events are collected. Product/qualified Legal must
+      decide whether the existing disclosure is sufficient or publish a new
+      immutable policy version; this is not silently assumed by engineering.
+
+## 5. Decisions still required
+
+- [ ] Read the highest private build number for all four app/store targets.
+- [ ] Select the next marketing version. Current recommendation is `1.4.2`,
+      but it is not approved or applied.
+- [ ] Select one build number higher than every private-console maximum.
+      `+25` is valid only if no target already contains a build above `24`.
+- [ ] Confirm whether the existing Privacy Policy/store declarations already
+      cover named screen/lifecycle/payment-phase telemetry. The source audit
+      found broad technical/audit disclosure but no explicit named-action
+      wording. If Product/qualified Legal requires a change, publish a new
+      immutable version and obtain the required acceptance.
+- [ ] Add the real DPC registration number when available; never fabricate it.
+
+## 6. Exact store privacy answers for this update
+
+These rows describe only the telemetry delta. They do not replace the complete
+existing privacy declarations for location, payment, identity, content,
+communications or third-party SDKs.
+
+### Apple — Client and Provider
+
+- [ ] Product Interaction: **Collected = Yes; Linked to identity = Yes;
+      Tracking = No; Purpose = Analytics**.
+- [ ] Device ID: retain **Collected = Yes; Linked to identity = Yes;
+      Tracking = No; Purpose = App Functionality**, and add **Analytics**.
+- [ ] Confirm the final App Store Connect answers match the signed artifact and
+      the embedded privacy manifest for each app.
+
+### Google Play — Client and Provider
+
+- [ ] App activity → App interactions: **Collected = Yes; Shared = No;
+      Ephemeral = No; Required = Yes; Purpose = Analytics**.
+- [ ] Device or other IDs: retain **Collected = Yes; Shared = No; Ephemeral =
+      No; Required = Yes**, and include **Analytics** in addition to every
+      already truthful purpose such as App functionality.
+- [ ] Do not change global encryption, deletion-request, sharing or SDK answers
+      from this delta alone; compare the complete current form with the exact
+      signed artifact before submission.
+
+## 7. Exact 32-path candidate inventory
+
+### Telemetry and payment reliability
+
+- `apps/client/lib/src/app/client_app.dart`
+- `apps/client/lib/src/app/router.dart`
+- `apps/client/lib/src/core/di/providers.dart`
+- `apps/client/lib/src/features/auth/providers/auth_controller.dart`
+- `apps/client/lib/src/features/ride/providers/ride_payment_provider.dart`
+- `apps/client/lib/src/features/services/providers/payment_provider.dart`
+- `apps/client/test/features/services/providers/payment_authority_test.dart`
+- `apps/provider/lib/src/app/provider_app.dart`
+- `apps/provider/lib/src/app/router.dart`
+- `apps/provider/lib/src/core/di/providers.dart`
+- `apps/provider/lib/src/core/providers/availability_controller.dart`
+- `apps/provider/lib/src/features/artisan_home/providers/active_job_provider.dart`
+- `apps/provider/lib/src/features/driver_home/providers/ride_request_provider.dart`
+- `apps/provider/test/features/artisan_home/providers/active_job_lifecycle_authority_test.dart`
+- `packages/api_client/lib/api_client.dart`
+- `packages/api_client/lib/src/services/system_telemetry_service.dart`
+- `packages/api_client/test/services/system_telemetry_service_test.dart`
+
+### Release provenance and native metadata
+
+- `apps/client/android/app/build.gradle.kts`
+- `apps/client/android/app/src/main/AndroidManifest.xml`
+- `apps/client/ios/Runner/Info.plist`
+- `apps/provider/android/app/build.gradle.kts`
+- `apps/provider/android/app/src/main/AndroidManifest.xml`
+- `apps/provider/ios/Runner/Info.plist`
+- `tool/build.sh`
+- `tool/resolve-release-version.sh`
+- `tool/test-release-version-contract.sh`
+- `tool/verify-release-source.sh`
+- `tool/test-release-source-contract.sh`
+- `tool/verify-release-artifact.sh`
+- `tool/test-release-artifact-contract.sh`
+
+### Privacy-manifest delta
+
+- `apps/client/ios/Runner/PrivacyInfo.xcprivacy`
+- `apps/provider/ios/Runner/PrivacyInfo.xcprivacy`
+
+No file outside this inventory is authorised for this update without first
+updating this checklist and obtaining owner approval.
+
+## 8. Release gates
+
+- [x] Fix the pending telemetry-timer lifecycle/test defect.
+- [x] Complete all automated tests and analyzers with zero failures.
+- [x] Owner approved the exact 32-path implementation inventory on
+      2026-07-23 GMT.
+- [x] Complete the source-provenance unit and prove it refuses dirty,
+      non-`main` or source-mismatched builds.
+- [ ] Apply the approved marketing version and one build number above every
+      private-console maximum, then verify the actual signed artifacts.
+- [ ] Merge through staging, deploy no unrelated Mobile/Backend/Admin changes,
+      and test the exact reviewed SHA.
+- [ ] Verify controlled events in Super Admin Mobile Activity: correct role,
+      app, version/source, screen template, payment phase and 90-day expiry;
+      prove no phone, OTP, location, message, amount, payment reference or raw
+      provider response is retained.
+- [ ] Physical-device payment tests for ride and artisan flows: MTN MoMo,
+      Telecel Cash and card where currently supported; pending, delayed
+      callback, retry, duplicate tap, app background/return, old-response race,
+      success, decline and timeout.
+- [ ] Physical-device telemetry tests: foreground, background, offline,
+      reconnect, low-activity session and authenticated retry.
+- [ ] Build, sign, inspect and install all four artifacts from the same reviewed
+      `main` SHA.
+- [ ] Complete App Store privacy and Play Data Safety declarations before
+      submission.
+- [ ] Canary with the two developers, monitor API/database errors and dropped
+      telemetry, retain the previous store build, and exercise rollback.
+- [ ] Record store submission IDs, review results and served versions.
+
+## 9. Change log
+
+| Date GMT | Scope change | Evidence/state |
+| --- | --- | --- |
+| 2026-07-23 | Corrected previous release identity | Owner confirmed `1.4.1+24` on all four targets, built from `main`; exact SHA still missing. |
+| 2026-07-23 | Isolated telemetry | 12-path telemetry unit based on current `origin/main`; staging branch was not merged wholesale. |
+| 2026-07-23 | Hardened telemetry privacy | Route-ID/query redaction, bounded identifiers and primitive-only metadata; focused tests pass. |
+| 2026-07-23 | Added payment reliability to release scope | Five payment-only paths extracted; call paths excluded; focused Client 8/8 and Provider 7/7 pass. |
+| 2026-07-23 | Added delivery reliability and payment lifecycle telemetry | Low-activity flush, transient retry and phase-only payment events; API client and Provider full suites pass. Client full suite remains blocked by two pending-timer test failures. |
+| 2026-07-23 | Closed the pre-login telemetry timer defect | Delivery now waits for an authenticated token without dropping queued events; Client 88/88, Provider 169/169 and API client 170/170 pass; all analyzers are clean. |
+| 2026-07-23 | Added fail-closed release provenance | Candidate is now exactly 30 paths. Source/identity metadata and post-build inspection cover Android, iOS and telemetry; three contract suites, two Android manifest compiles and all plist parses pass. Marketing version, private-console maxima and actual artifacts remain open. |
+| 2026-07-23 | Reconciled telemetry privacy declarations | Candidate is now exactly 32 paths. Both iOS manifests declare linked/non-tracking Product Interaction analytics and the Device ID analytics purpose; exact Apple/Google console answers are recorded. Repository policy has broad audit/diagnostic disclosure but its explicit named-event wording remains a Product/Legal decision. |
+| 2026-07-23 | Bound privacy declarations to signed IPA verification | The artifact gate now rejects a packaged app privacy manifest that is missing, invalid or different from the reviewed source; the updated contract passes. |
+| 2026-07-23 | Closed server-acknowledged telemetry loss | HTTP success no longer deletes a batch when ingestion reports zero/partial acceptance. Focused telemetry is 13/13; Client 88/88, Provider 169/169 and API client 172/172 pass, for 429/429 total. |
+| 2026-07-23 | Exact implementation scope approved | Owner approved the recorded 32-path telemetry, payment-reliability, provenance and privacy-manifest candidate; excluded features remain excluded. |
+| 2026-07-23 | Prepared exact staging review candidate | Main-based commit `9979cc4` and staging commit `469c880` have byte-identical approved implementation paths. The clean staging commit passes 429/429 tests, all analyzers, all release contracts and whitespace validation; it has not been pushed. |
