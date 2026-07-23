@@ -7,7 +7,7 @@ store update. The larger production audit and 100k-DAU roadmap remain evidence
 and future-work registers; they do not expand this release unless an item is
 explicitly copied into this file with owner approval.
 
-Current counted progress is **45/71 checklist items (63%)**. The stricter final
+Current counted progress is **46/72 checklist items (64%)**. The stricter final
 release-gate subset is **4/13 (31%)** because signed builds, physical-device
 acceptance, store declarations and canary evidence can only close after scope
 and version approval. These are evidence counts, not estimates of effort.
@@ -103,11 +103,12 @@ approval recorded here.
 - [ ] Recompute and record the final candidate fingerprint after the approved
       marketing-version change.
 - [x] Commit the exact approved implementation candidate locally.
-- [ ] Push and open the normal feature → staging review path.
+- [x] Push `codex/audit-telemetry-payment-staging` to
+      `origin` without merging it.
+- [ ] Open the normal feature → staging review pull request.
 
-The checklist is versioned separately from the runtime commit. No candidate
-push, pull request, merge, signed build, store upload or production mutation
-has occurred.
+The checklist is versioned separately from the runtime commit. No pull request,
+merge, signed build, store upload or production mutation has occurred.
 
 ## 4. Current verification evidence
 
@@ -289,3 +290,4 @@ updating this checklist and obtaining owner approval.
 | 2026-07-23 | Closed server-acknowledged telemetry loss | HTTP success no longer deletes a batch when ingestion reports zero/partial acceptance. Focused telemetry is 13/13; Client 88/88, Provider 169/169 and API client 172/172 pass, for 429/429 total. |
 | 2026-07-23 | Exact implementation scope approved | Owner approved the recorded 32-path telemetry, payment-reliability, provenance and privacy-manifest candidate; excluded features remain excluded. |
 | 2026-07-23 | Prepared exact staging review candidate | Main-based commit `9979cc4` and staging commit `469c880` have byte-identical approved implementation paths. The clean staging commit passes 429/429 tests, all analyzers, all release contracts and whitespace validation; it has not been pushed. |
+| 2026-07-23 | Published the review branch | `codex/audit-telemetry-payment-staging` was pushed to `origin` with the runtime and checklist commits. It has not been merged or deployed; draft PR creation remains pending. |
