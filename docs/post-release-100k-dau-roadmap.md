@@ -48,7 +48,7 @@ Current local hardening checkpoint (not pushed or deployed):
 
 | Repository | Local branch/state                                                                                 | Verified milestone                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Relationship to reconciled staging                                                                       |
 | ---------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Backend    | Clean `codex/scale-worker-bounds` through `16e4247`                                                 | Bounded scheduled workers, the transactional marketplace-notification outbox and a hard-bounded daily settlement fetch pass the exact pinned-Node-22 build, full API test and lint gates. The latest checkpoint maps every one of the 36 active cron entry points to aggregate capacity evidence, reports 53 durable-workload/index states and 48 planner checks, exports the last successful owned run per reviewed worker, and prevents future escrow holds or incomplete bookings from delaying eligible payout work; its pinned Node 22.23 gate passes 218/218 suites and 4,418/4,418 tests, builds and typechecks. The stripped runtime image remains subject to the separately tracked historical clean-database migration-order defect. | Based directly on `4e100a987602415516fb619b32af5af8cd27e2f0`                                             |
+| Backend    | Clean `codex/scale-worker-bounds` through `a650682`                                                 | Bounded scheduled workers, the transactional marketplace-notification outbox and a hard-bounded daily settlement fetch pass the exact pinned-Node-22 build, full API test and lint gates. Every one of the 36 active cron entry points now has an exact observable deployment-wide owner in addition to its durable row/state authority; all 36 map to aggregate capacity evidence covering 53 durable-workload/index states and 48 planner checks. The latest pinned Node 22.23 gate passes 218/218 suites and 4,418/4,418 tests, builds and typechecks. The stripped runtime image remains subject to the separately tracked historical clean-database migration-order defect. | Based directly on `4e100a987602415516fb619b32af5af8cd27e2f0`                                             |
 | Mobile     | `codex/mobile-poll-backpressure`                                                                   | Mobile backpressure plus evidence through `ac4a94f6dd0e653293c217b83af763ac522412a9`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Based directly on `bd6390727ec2a6c5e8bf4dc4d5512433b992e18e`; later commits may update this roadmap only |
 | Admin      | `feat/system-audit`                                                                                | `e6b6ab5d326aa90c8d6821dc5106940691787c48`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Clean; no post-release scale change is pending in this increment                                         |
 
@@ -400,10 +400,26 @@ backend worktree, but the following risks remain before a 100k-DAU claim:
       `sha256:f984d7e3a86342f31ba81aaa82c1c15dd3ef7250221f846fbde1af40320d8a00`
       is 181,401,463 bytes and runs as UID/GID 1001. No staging or production
       system was touched.
+      Backend commit `a650682` then gives **all 36 active cron entry points**
+      an exact, observable deployment-wide Redis lease while preserving their
+      PostgreSQL/Redis row claims and compare-and-set transitions as the final
+      effect authority. This prevents each future API replica from repeating
+      every candidate scan, fails closed when shared lease authority is
+      unavailable, and retains safe takeover on later ticks. The AST contract
+      maps each exact cron method to one of 36 bounded metric names, so a new or
+      misplaced lease fails the suite. The committed tree again passes the
+      pinned Node **22.23.0** production build, API source/E2E plus
+      config/database typechecks, **218/218 suites and 4,418/4,418 tests**, and
+      lint with zero errors and 52 existing warnings. Exact stripped runtime
+      image
+      `sha256:8fdf75d0814a73a3767cb0ffdf5ab0453b9af5cd7f9930c0153d73beefbc62ec`
+      is 181,405,453 bytes and runs as UID/GID 1001. No staging or production
+      system was touched; live lease takeover and drain rate remain unproven.
       Keep this item open only for production-shaped backlog, query-plan,
       throughput, scheduler-lag and database-pool proof.
-- [ ] Move or elect one scheduler/worker authority before scaling API replicas;
-      retain row-level claims so worker failover remains safe.
+- [x] Elect one deployment-wide owner for every active scheduler before scaling
+      API replicas, while retaining row-level claims so worker failover remains
+      safe. Local backend commit `a650682`; not pushed or deployed.
 - [ ] Prove scheduler lag, database pool occupancy and notification/outbox
       backlog at normal peak, 2x peak, soak and one-replica-loss conditions.
 
