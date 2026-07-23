@@ -89,7 +89,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
               ref.read(activeJobProvider).hasJob);
       final onboardingFlagLoaded = ref.read(onboardingFlagLoadedProvider);
       final loc = state.matchedLocation;
-      telemetry.trackScreen(state.uri.path);
+      telemetry.trackScreen(state.fullPath ?? state.matchedLocation);
 
       // Still bootstrapping — keep the Flutter splash visible. Both waits
       // have deadlines, so this route can no longer strand the user.

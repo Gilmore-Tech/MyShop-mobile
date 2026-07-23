@@ -91,6 +91,18 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
+        <meta-data
+            android:name="com.gilmoretechnologies.myshop.SOURCE_COMMIT"
+            android:value="${MYSHOP_SOURCE_COMMIT}" />
+        <meta-data
+            android:name="com.gilmoretechnologies.myshop.MARKETING_VERSION"
+            android:value="${MYSHOP_MARKETING_VERSION}" />
+        <meta-data
+            android:name="com.gilmoretechnologies.myshop.BUILD_NUMBER"
+            android:value="${MYSHOP_BUILD_NUMBER}" />
+        <meta-data
+            android:name="com.gilmoretechnologies.myshop.RELEASE_IDENTITY"
+            android:value="${MYSHOP_MARKETING_VERSION}+${MYSHOP_BUILD_NUMBER}@${MYSHOP_SOURCE_COMMIT}" />
 
         <!-- Default FCM channel. Must match the id created via
              `flutter_local_notifications` (see LocalNotificationService)

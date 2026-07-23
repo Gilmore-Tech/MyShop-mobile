@@ -26,10 +26,15 @@ final deviceIdProvider = Provider<DeviceIdProvider>((ref) {
 });
 
 final systemTelemetryProvider = Provider<SystemTelemetryService>((ref) {
+  final tokenStorage = ref.watch(appTokenStorageProvider);
   final service = SystemTelemetryService(
     dio: ref.watch(dioProvider),
     deviceIdProvider: ref.watch(deviceIdProvider),
     app: 'client',
+    deliveryAuthority: () async {
+      final token = await tokenStorage.readAccessToken();
+      return token?.isNotEmpty ?? false;
+    },
   );
   ref.onDispose(service.dispose);
   return service;

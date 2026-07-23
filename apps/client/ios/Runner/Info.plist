@@ -28,6 +28,10 @@
 		<string>$(FLUTTER_BUILD_NUMBER)</string>
 		<key>GMSApiKey</key>
 		<string>$(GOOGLE_MAPS_API_KEY)</string>
+		<key>MyShopSourceCommit</key>
+		<string>$(MYSHOP_SOURCE_COMMIT)</string>
+		<key>MyShopReleaseIdentity</key>
+		<string>$(FLUTTER_BUILD_NAME)+$(FLUTTER_BUILD_NUMBER)@$(MYSHOP_SOURCE_COMMIT)</string>
 		<key>LSRequiresIPhoneOS</key>
 		<true/>
 		<key>UIApplicationSceneManifest</key>
