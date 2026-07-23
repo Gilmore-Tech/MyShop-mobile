@@ -48,7 +48,7 @@ Current local hardening checkpoint (not pushed or deployed):
 
 | Repository | Local branch/state | Verified milestone | Relationship to reconciled staging |
 | --- | --- | --- | --- |
-| Backend | Clean `codex/scale-worker-bounds` through `db5a37a` | Bounded scheduled workers plus the transactional marketplace-notification outbox pass the exact pinned-Node-22 build, full API test and lint gates; the stripped runtime image passes its static/application allowlist contracts but the clean-database verifier remains subject to the separately tracked historical migration-order defect | Based directly on `4e100a987602415516fb619b32af5af8cd27e2f0` |
+| Backend | Clean `codex/scale-worker-bounds` through `875f1e3` | Bounded scheduled workers, the transactional marketplace-notification outbox and a hard-bounded daily settlement fetch pass the exact pinned-Node-22 build, full API test and lint gates; the stripped runtime image passes its static/application allowlist contracts but the clean-database verifier remains subject to the separately tracked historical migration-order defect | Based directly on `4e100a987602415516fb619b32af5af8cd27e2f0` |
 | Mobile | `codex/mobile-poll-backpressure` | Mobile backpressure plus evidence through `ac4a94f6dd0e653293c217b83af763ac522412a9` | Based directly on `bd6390727ec2a6c5e8bf4dc4d5512433b992e18e`; later commits may update this roadmap only |
 | Admin | `feat/system-audit` | `e6b6ab5d326aa90c8d6821dc5106940691787c48` | Clean; no post-release scale change is pending in this increment |
 
@@ -157,9 +157,13 @@ backend worktree, but the following risks remain before a 100k-DAU claim:
   oldest-first worker claims, retries and deduplicates delivery. This remains a
   local checkpoint: deployed throughput, backlog-age alerts and replica-loss
   recovery are not yet proven;
-- daily payment reconciliation follows the gateway-provided page count and
-  accumulates all returned pages in one run. It needs a measured, explicit work
-  ceiling or a separately approved reconciliation workload contract;
+- backend commit `875f1e3` closes the unbounded daily-settlement fetch: each
+  Paystack request has a configurable 1–30 second timeout (safe default ten
+  seconds), responses are limited to the requested 50 records, and the complete
+  run is limited to a configurable 1–100 pages (safe default and hard maximum
+  100). Invalid, inconsistent or over-budget pagination aborts without writing
+  a partial financial report. The final production page budget still depends on
+  the owner-approved workload model;
 - surge evaluation now fetches only the single winning rule, but its global
   demand/supply counts still need representative-cardinality query plans and
   pool-cost evidence;
@@ -341,8 +345,22 @@ backend worktree, but the following risks remain before a 100k-DAU claim:
       no application source, Git metadata, environment file, product docs,
       or top-level Jest runtime. TypeScript remains transitive in the pnpm store
       and is therefore not claimed absent. Nothing was pushed, deployed or run
-      against staging/production. Keep this item open for the remaining
-      reconciliation work ceiling and production-shaped backlog/throughput proof.
+      against staging/production. Backend commit `875f1e3` then bounds daily
+      Paystack settlement reconciliation to at most **100 × 50 = 5,000** rows
+      and **100** individually timed requests, rejects inconsistent or oversized
+      provider pages, and fails closed instead of persisting a partial money
+      report. A source-AST regression contract inventories all **46** cron entry
+      points as **36 active**, **9 explicitly deferred** and **1 fail-closed**;
+      adding a cron without a reviewed classification now fails the suite. The
+      exact committed tree passes the pinned Node **22.23.0** production build,
+      typecheck, **217/217 suites and 4,392/4,392 tests**, and lint with zero
+      errors (seven source-only warnings; 52 when tests are included locally).
+      Exact stripped runtime image
+      `sha256:a0f1e6f6551c3e46086f0fc6d8ed7225ca8d700f6bc88d2c5386d141f7761686`
+      is 181,397,162 bytes and runs as the unprivileged `myshop` user on Node
+      22.23.0. Nothing was pushed, deployed or run against staging/production.
+      Keep this item open only for production-shaped backlog, query-plan,
+      throughput, scheduler-lag and database-pool proof.
 - [ ] Move or elect one scheduler/worker authority before scaling API replicas;
       retain row-level claims so worker failover remains safe.
 - [ ] Prove scheduler lag, database pool occupancy and notification/outbox
