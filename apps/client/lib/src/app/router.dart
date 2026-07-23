@@ -285,7 +285,7 @@ GoRouter _buildRouter({
     debugLogDiagnostics: false,
     redirect: (context, state) {
       final path = state.uri.path;
-      telemetry.trackScreen(path);
+      telemetry.trackScreen(state.fullPath ?? state.matchedLocation);
       final isAuthRoute = path == AppRoutes.splash ||
           path == AppRoutes.onboarding ||
           path == AppRoutes.authPhone ||

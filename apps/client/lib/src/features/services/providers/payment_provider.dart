@@ -503,6 +503,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   /// Wallclock when polling started — used to enforce [_kSettlementPollMax]
   /// without keeping a tick counter. Reset every time polling restarts.
   DateTime? _pollStartedAt;
+  int _pollGeneration = 0;
+  int? _pollInFlightGeneration;
 
   void selectMethod(PaymentMethod method) =>
       state = state.copyWith(selectedMethod: method);
@@ -520,6 +522,9 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     required PaymentSummary summary,
   }) {
     _pollTimer?.cancel();
+    _pollTimer = null;
+    _pollStartedAt = null;
+    final generation = ++_pollGeneration;
     if (paymentId == null) {
       developer.log(
         'Skipping settlement poll — no paymentId in state.',
@@ -534,6 +539,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         paymentId: paymentId,
         jobId: jobId,
         summary: summary,
+        generation: generation,
       );
     });
   }
@@ -542,13 +548,22 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     _pollTimer?.cancel();
     _pollTimer = null;
     _pollStartedAt = null;
+    _pollGeneration += 1;
   }
 
   Future<void> _pollSettlementOnce({
     required String paymentId,
     required String jobId,
     required PaymentSummary summary,
+    int? generation,
   }) async {
+    final expectedGeneration = generation ?? _pollGeneration;
+    if (expectedGeneration != _pollGeneration ||
+        state.paymentId != paymentId ||
+        _pollInFlightGeneration == expectedGeneration) {
+      return;
+    }
+
     // If the user navigated to a different phase between ticks, drop out.
     if (state.phase != PaymentPhase.awaitingSettlement) {
       _stopSettlementPolling();
@@ -575,9 +590,15 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       return;
     }
 
+    _pollInFlightGeneration = expectedGeneration;
     try {
       final result = await _paymentService.getPaymentStatus(paymentId);
-      if (!mounted || state.phase != PaymentPhase.awaitingSettlement) return;
+      if (!mounted ||
+          expectedGeneration != _pollGeneration ||
+          state.paymentId != paymentId ||
+          state.phase != PaymentPhase.awaitingSettlement) {
+        return;
+      }
 
       final outcome = _classifyStatus(result);
       switch (outcome) {
@@ -611,6 +632,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         name: 'Payment',
         level: 700,
       );
+    } finally {
+      if (_pollInFlightGeneration == expectedGeneration) {
+        _pollInFlightGeneration = null;
+      }
     }
   }
 
@@ -1420,11 +1445,25 @@ bool _isAuthoritativeCompletedJob(
 
 final paymentNotifierProvider =
     StateNotifierProvider.autoDispose<PaymentNotifier, PaymentState>(
-  (ref) => PaymentNotifier(
-    ref.watch(paymentServiceProvider),
-    ref.watch(jobServiceProvider),
-    ref.watch(pendingPaymentStoreProvider),
-  ),
+  (ref) {
+    final telemetry = ref.read(systemTelemetryProvider);
+    final notifier = PaymentNotifier(
+      ref.watch(paymentServiceProvider),
+      ref.watch(jobServiceProvider),
+      ref.watch(pendingPaymentStoreProvider),
+    );
+    var previousPhase = PaymentPhase.idle;
+    final removeListener = notifier.addListener((next) {
+      if (next.phase == previousPhase) return;
+      previousPhase = next.phase;
+      telemetry.trackAction(
+        'artisan_payment_${next.phase.name}',
+        outcome: next.phase == PaymentPhase.failed ? 'failure' : 'success',
+      );
+    }, fireImmediately: false);
+    ref.onDispose(removeListener);
+    return notifier;
+  },
 );
 
 // ── Data Provider ─────────────────────────────────────────────────────────────
