@@ -55,6 +55,7 @@ import '../features/profile/screens/emergency_contacts_screen.dart';
 import '../features/profile/screens/notification_settings_screen.dart';
 import '../features/profile/screens/payout_methods_screen.dart';
 import '../features/profile/screens/privacy_security_screen.dart';
+import '../features/profile/screens/referral_screen.dart';
 import '../features/support/screens/help_article_route_screen.dart';
 import '../features/support/screens/help_category_route_screen.dart';
 import '../features/support/screens/help_search_route_screen.dart';
@@ -318,6 +319,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/account/privacy',
         builder: (context, state) => const PrivacySecurityScreen(),
+      ),
+      GoRoute(
+        path: '/account/referrals',
+        builder: (context, state) => const ProviderReferralScreen(),
       ),
       GoRoute(
         path: '/account/support',

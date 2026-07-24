@@ -20,6 +20,15 @@ final privacyAcceptedProvider = StateProvider<bool>((_) => false);
 final policyAcceptedProvider = Provider<bool>((ref) =>
     ref.watch(termsAcceptedProvider) && ref.watch(privacyAcceptedProvider));
 
+String? validateOptionalReferralCode(String value) {
+  final code = value.trim().toUpperCase();
+  if (code.isEmpty) return null;
+  if (!RegExp(r'^MYSHOP-[A-Z0-9]{6}$').hasMatch(code)) {
+    return 'Use MYSHOP- followed by 6 letters or numbers';
+  }
+  return null;
+}
+
 final registrationLegalDocumentsProvider =
     FutureProvider.family<RequiredLegalDocuments, ProviderType>((ref, role) {
   return ref.watch(legalServiceProvider).getRequired(
@@ -66,8 +75,8 @@ class DriverRegistrationDraft {
   final String regionId;
 
   /// Optional referral code entered at signup. Empty when not provided.
-  /// Forwarded to POST /auth/register and linked fire-and-forget by the
-  /// backend — a bad code is ignored and never blocks registration.
+  /// Forwarded to POST /auth/register and transactionally linked to this exact
+  /// driver role. Invalid and sibling-owned codes are rejected.
   final String referralCode;
 
   DriverRegistrationDraft copyWith({
@@ -149,8 +158,8 @@ class ArtisanRegistrationDraft {
   final String regionId;
 
   /// Optional referral code entered at signup. Empty when not provided.
-  /// Forwarded to POST /auth/register and linked fire-and-forget by the
-  /// backend — a bad code is ignored and never blocks registration.
+  /// Forwarded to POST /auth/register and transactionally linked to this exact
+  /// artisan role. Invalid and sibling-owned codes are rejected.
   final String referralCode;
 
   ArtisanRegistrationDraft copyWith({

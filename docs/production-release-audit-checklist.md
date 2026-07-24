@@ -8,18 +8,89 @@
 
 | Field | Current value |
 | --- | --- |
-| Last updated | 2026-07-19 (GMT) |
+| Last updated | 2026-07-24 (GMT) |
 | Release target | Client app, provider app, API, admin, and infrastructure |
 | Scale target | 100,000 daily active users; peak concurrency/RPS model still to be approved |
 | Release flow | feature branch -> `staging` -> tested staging -> `main` -> production |
-| Mobile working branch | `feature/provider-request-overlay-redesign` at `d200d3dd5fbf0f6031c9930046c62cfc816e6cd5` |
-| Mobile staging state | Fetched `origin/staging` is `f88f43c85e52ecf9f7d69b0f6e0a500665a0edcb`; the committed tree is byte-identical to mobile worktree HEAD `d200d3d…`, but the histories differ, so package the dirty candidate on a new branch from `f88f43c…` rather than merging the old feature-branch graph |
-| Backend staging state | [Gilmore-Tech/myshop#96](https://github.com/Gilmore-Tech/myshop/pull/96) was merged by `Ayiks` at 2026-07-16 21:16:48 GMT; `staging` is now `1f1ada8b7ad3b9b8ab937fe8fab3dad611aae7bd` |
-| Audited backend tree | PR head `3f27dd9825b47a82280a6ae6013d8988f8a0fae4`; its tree `e241fcfe198813274a897928b5671508d353ccb3e` is byte-identical to merge commit `1f1ada8b7ad3b9b8ab937fe8fab3dad611aae7bd` |
-| Admin staging state | Fetched `origin/staging` and the local packaging base are both `78fabd15d8235e399dba45933bbe125b13c81077` |
+| Mobile working branch | `feat/role-owned-referrals-release`, based exactly on local `origin/staging` `ecde3c12430c2be59d5a2cff2e16c9cc3731637b`; referral changes remain uncommitted |
+| Mobile staging state | Local `origin/staging` and the feature-branch parent are both `ecde3c12430c2be59d5a2cff2e16c9cc3731637b` |
+| Backend staging state | Local `origin/staging` and the feature-branch parent are both `fa5552df7f0d745101eb54e6455803cb631a76b4`; referral changes remain uncommitted |
+| Audited backend tree | Current dirty `feat/role-owned-referrals-release` worktree over `fa5552d…`; the committed release SHA will be recorded only after review and commit |
+| Admin staging state | Local `origin/staging` and the feature-branch parent are both `b4bebb5a6b961a66b17c27ad13bf3c792fb9af02`; referral changes remain uncommitted |
 | Staging API | Render `myshop-api-test`, Oregon, live and healthy |
 | Production API | Render `myshop-api`, Frankfurt |
 | Decision posture | Staging API **LIVE**, live-OTP testing **BLOCKED FOR CONTAINMENT**; production **NO-GO** |
+
+## Current incremental update: role-owned referrals
+
+This section is the authoritative tracker for the referral slice being added
+after the published `1.4.1+24` release. The current client and provider source
+manifests still contain stale local build code `+20`; neither may be packaged
+until both are assigned reviewed store build codes greater than `24`. Older
+progress percentages and pinned SHAs below are historical evidence for the
+prior release and must not be reused as approval for this incremental
+candidate.
+
+- [x] Business rules approved: every client, driver and artisan role owns a
+  separate code, wallet and history; any role may refer any other role, but
+  sibling roles under one private phone-auth identity cannot refer one another.
+- [x] A code may be entered only while registering the exact new role. Invalid,
+  reused and sibling-owned codes fail before or inside the registration
+  transaction; registration never swallows a failed linkage.
+- [x] The exact referrer role earns the admin-configured reward once, after the
+  referred role's first qualifying completed paid ride/job. Completion hooks
+  use public role-account IDs; the private auth ID is only an ownership fence.
+  The approved point value is seeded at **50 pesewas per point** without
+  overwriting an existing audited admin value.
+- [x] Backend implementation is local on
+  `feat/role-owned-referrals-release`: additive migration
+  `20260724000000_role_owned_referrals`, exact-role APIs and ledger,
+  sibling/code-authority database triggers, concurrency-safe code allocation
+  and PII-free legacy quarantine.
+- [x] Client and provider signup accept `MYSHOP-XXXXXX`; both apps expose only
+  the authenticated exact-role summary. Provider Account Settings includes the
+  driver/artisan referral page. Client deep links accept only the approved
+  format.
+- [x] Admin list, metrics, exact-role drilldown, manual award/void and reward
+  configuration use role-account routes. The referral surface returns neither
+  the private auth-user ID nor the shared phone identity.
+- [x] Legacy policy implemented: copy only a single live role's valid legacy
+  code/balance/referrals/transactions. Multi-role, malformed and legacy-self
+  records remain unexposed in `role_reward_ownership_quarantine`.
+- [x] Independent double gate implemented. The migration creates
+  `role_account_referrals_enabled=false`; Render requires an explicit
+  `FF_ROLE_ACCOUNT_REFERRALS` value. `FF_ROLE_ACCOUNT_REWARDS=false` continues
+  to suspend general loyalty earning/redemption.
+- [x] Full local regression evidence: Prisma validation and database build pass;
+  the API passes typecheck, **211/211 suites and 4,109/4,109 tests**, and its
+  production build. Client analyze and **93/93 tests** pass; provider analyze
+  and **174/174 tests** pass. Admin passes **38/38 contract tests**, lint with
+  zero errors, and its 48-route production build.
+- [x] The migration ran through all **207** repository migrations on disposable
+  PostgreSQL after reproducing and locally repairing two known historical
+  fresh-database blockers. Rollback-only smoke tests passed exact-role creation,
+  format/uniqueness, sibling rejection, cross-identity referral, code-authority
+  rejection, owner-mismatch rejection and default-OFF state. The aggregate
+  post-migration verifier returned zero invariant violations.
+- [ ] Read the highest private build from both store consoles and assign each
+  app a new build code greater than `24`, retaining marketing version `1.4.1`.
+  The current `+20` manifests are not valid release artifacts.
+- [ ] Commit/push the three exact feature branches and open focused PRs into
+  `staging`; record all three reviewed commit SHAs before deployment.
+- [ ] Preserve a staging restore point, rerun the aggregate role-separation
+  preflight, apply the migration from the reviewed SHA, and require every first
+  table invariant in `verify-role-owned-referrals.sql` to be zero.
+- [ ] Enable the database switch and `FF_ROLE_ACCOUNT_REFERRALS=true` on staging
+  only; deploy exact backend/Admin SHAs and install mobile from the exact mobile
+  SHA. Production remains OFF.
+- [ ] Complete staging acceptance: three separate codes for one three-role
+  identity; safe coexisting sessions; no sibling referral; every cross-role
+  direction; registration retry/idempotency; first qualifying activity awards
+  once; duplicate completion/webhook/retry awards nothing extra; admin
+  award/void audit; malformed/deleted-role rejection; deep-link/manual entry;
+  logout/reinstall and sibling deletion isolation.
+- [ ] Reconcile referral counts, exact-role balances and new ledger rows after
+  the canary. Rollback is switch-first; do not drop the additive schema.
 
 ## Current progress snapshot
 
@@ -793,7 +864,7 @@ batches and add the answer to the decision log.
   reservation. `FF_PROMO_REDEMPTION=false` remains the release authority; a
   later enablement still requires production-shaped concurrency and accounting
   canaries.
-- [ ] **P0 / account isolation — local sessions/exit/emergency/recovery ownership contained; shared rewards and staging proof remain:** client, driver, and artisan now have separate role-account IDs plus durable exact-role SID/generation fences; concurrent sibling sessions, normal logout, self-delete, admin delete, emergency force logout, and BR-63 OTP recovery act only on the selected role. Emergency contacts are role-owned and legacy ambiguous rows are quarantined. Deletion blocks active work and exact-role financial liabilities, including the immutable 24-hour dispute boundary anchored only to `ride.completedAt` or `artisanJob.clientConfirmedCompleteAt`; tests prove the private auth root and both siblings remain untouched. Keep P0 open because loyalty/referral ownership is still rooted in shared `User` while those features remain OFF, BR-64 automatic purge is intentionally unimplemented/disabled pending exact Legal periods, and production-shaped migration plus cross-role IDOR/delete/recovery/purge evidence is absent. Hold-release governance is approved but not yet implemented. Do not assign legacy shared rewards by assumption.
+- [ ] **P0 / account isolation — exact-role referral ownership implemented locally; staging proof and remaining loyalty/purge work remain:** client, driver, and artisan have separate role-account IDs plus durable exact-role session fences. Emergency contacts and the new referral codes/balances/ledgers are role-owned; ambiguous legacy reward data is quarantined without copying or guessing. Deletion still blocks active work and exact-role financial liabilities, and tests prove the private auth root and sibling roles remain untouched. Keep P0 open until the reviewed referral migration and cross-role IDOR/delete/award evidence pass on staging, general loyalty earning/redemption is separately enabled, and BR-64 automatic purge/hold-release plus production-shaped recovery/purge evidence close.
 - [x] **P0 / admin sibling-account actions — local code closed; integrated proof tracked separately:** active admin mutations require explicit `client|driver|artisan` plus public role-account ID; role detail/actions show the exact target; suspend, reinstate, delete, force logout, and provider verification/vehicle workflows cannot fall through to the private auth root or the sibling provider role. Backend route/service regressions and **27/27** admin contracts cover the exact-role shapes and reject private root IDs. Keep production NO-GO until the pinned staging artifact passes browser IDOR/concurrency and sibling-session preservation journeys.
 - [ ] **P1 / platform-wide Super Admin authorization sweep pending; verification slice closed locally:** the root `product_owner` plus legacy `super_admin`/`manage_admins` markers may now perform every ordered provider-verification stage across region/category scopes, while Admin, category Coordinator and RM restrictions remain unchanged for non-root accounts. Admin login now returns the named role and complete region/category profile required by the dashboard. Focused verification evidence passes **3 suites / 534 tests**; the full backend passes **202 suites / 4,047 tests**, typecheck and build; and the Admin passes TypeScript, **33/33** contracts and its 48-route production build. After staging deploy, re-login and prove Admin check → Coordinator validation → RM finalization from the Super Admin account. Keep this item open for the explicitly deferred route-by-route platform permission/scope sweep; do not infer that unaudited modules already implement root override consistently.
 - [x] **P0 / shared identity fallback leakage — local code closed; integrated staging proof still required elsewhere:** payment/Paystack, ride offer/snapshot, tips, marketplace bids/jobs, refund destination, dispute/admin finance/activity/map/reporting, clawback, and email paths now resolve only the exact client/driver/artisan legal/display/business name and exact-role email, falling back only to `Client`/`Driver`/`Artisan`. Active admin responses no longer nest the private auth entity or expose its ID; clawbacks return the operational phone directly instead of a private `userId`. Adversarial regressions inject `SHARED AUTH NAME` and prove it cannot surface. A permanent source contract rejects shared name/email joins in these active paths. Evidence: focused backend **9/9 suites and 586/586 tests**, full backend **183/183 suites and 3,783/3,783 tests**, API typecheck, admin TypeScript, **27/27** admin contracts, and a successful production admin build. The remaining account-isolation, installed-artifact, and deployed staging gates are tracked separately and remain open.
