@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers/app_lifecycle_provider.dart';
 import '../../services/providers/bid_list_provider.dart';
 import '../../services/providers/job_detail_provider.dart';
 import '../../services/widgets/bid_list_sheet.dart';
@@ -35,7 +36,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   void initState() {
     super.initState();
     _poll = Timer.periodic(_activityPollInterval, (_) {
-      if (!mounted) return;
+      if (!mounted || !ref.read(appForegroundedProvider)) return;
       ref.read(activityNotifierProvider.notifier).silentReload();
     });
   }

@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'bid_list_provider.dart';
@@ -61,7 +61,7 @@ class JobDataRefreshCoordinator {
       // The AsyncNotifier retains the failure for the visible error state.
       // Poll/socket safety-net callers intentionally fire-and-forget, so do
       // not leak the same failure as an unhandled asynchronous exception.
-      debugPrint('[JobDataRefreshCoordinator] $key refresh failed: $error');
+      debugLog(() => '[JobDataRefreshCoordinator] $key refresh failed: $error');
     }).whenComplete(() {
       if (identical(_inFlight[key], next)) _inFlight.remove(key);
     });

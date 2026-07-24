@@ -1,4 +1,4 @@
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -88,8 +88,8 @@ class ProviderEmergencyContactsNotifier
         });
       state = state.copyWith(contacts: contacts, loading: false);
     } catch (error) {
-      developer.log(
-        'Provider emergency-contact load failed: $error',
+      developer.debugLog(
+        () => 'Provider emergency-contact load failed: $error',
         name: 'ProviderEmergencyContacts',
       );
       state = state.copyWith(
@@ -120,8 +120,8 @@ class ProviderEmergencyContactsNotifier
       );
       return true;
     } catch (error) {
-      developer.log(
-        'Provider emergency-contact create failed: $error',
+      developer.debugLog(
+        () => 'Provider emergency-contact create failed: $error',
         name: 'ProviderEmergencyContacts',
       );
       state = state.copyWith(
@@ -143,8 +143,8 @@ class ProviderEmergencyContactsNotifier
         clearDeleting: true,
       );
     } catch (error) {
-      developer.log(
-        'Provider emergency-contact delete failed: $error',
+      developer.debugLog(
+        () => 'Provider emergency-contact delete failed: $error',
         name: 'ProviderEmergencyContacts',
       );
       state = state.copyWith(

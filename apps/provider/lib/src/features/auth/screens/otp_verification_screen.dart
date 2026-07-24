@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -137,7 +138,7 @@ class _ProviderOtpVerificationScreenState
           ),
         );
         if (error != null) {
-          debugPrint('[Auth] post-signup artisan sync failed: $error');
+          debugLog(() => '[Auth] post-signup artisan sync failed: $error');
           return;
         }
       }

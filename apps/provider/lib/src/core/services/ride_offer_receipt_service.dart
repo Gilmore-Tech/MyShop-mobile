@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 import 'dart:convert';
 
@@ -62,7 +63,7 @@ Future<bool> persistIncomingRideOffer(Map<String, dynamic> payload) async {
       }),
     );
   } catch (error) {
-    debugPrint('[RideOfferReceipt] durable handoff failed: $error');
+    debugLog(() => '[RideOfferReceipt] durable handoff failed: $error');
     return false;
   }
 }
@@ -95,7 +96,7 @@ Future<ReceivedRideOffer?> acknowledgeRideOfferWithSocket({
       );
     }
   } catch (error) {
-    debugPrint('[RideOfferReceipt] socket receipt failed: $error');
+    debugLog(() => '[RideOfferReceipt] socket receipt failed: $error');
   }
 
   // A socket can disconnect between delivery and ack. Authenticated REST is
@@ -111,7 +112,7 @@ Future<ReceivedRideOffer?> acknowledgeRideOfferWithSocket({
       transportElapsed: transport.elapsed,
     );
   } catch (error) {
-    debugPrint('[RideOfferReceipt] REST receipt fallback failed: $error');
+    debugLog(() => '[RideOfferReceipt] REST receipt fallback failed: $error');
     return null;
   }
 }
@@ -152,13 +153,13 @@ Future<ReceivedRideOffer?> acknowledgeRideOfferFromBackground(
       transportElapsed: transport.elapsed,
     );
   } on DioException catch (error) {
-    debugPrint(
-      '[RideOfferReceipt] background receipt rejected: '
-      '${error.response?.statusCode ?? error.type}',
+    debugLog(
+      () => '[RideOfferReceipt] background receipt rejected: '
+          '${error.response?.statusCode ?? error.type}',
     );
     return null;
   } catch (error) {
-    debugPrint('[RideOfferReceipt] background receipt failed: $error');
+    debugLog(() => '[RideOfferReceipt] background receipt failed: $error');
     return null;
   } finally {
     dio.close(force: true);
@@ -171,7 +172,7 @@ Future<void> clearStoredRideOffer(String offerId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('$_rideOfferStorePrefix$offerId');
   } catch (error) {
-    debugPrint('[RideOfferReceipt] local cleanup failed: $error');
+    debugLog(() => '[RideOfferReceipt] local cleanup failed: $error');
   }
 }
 

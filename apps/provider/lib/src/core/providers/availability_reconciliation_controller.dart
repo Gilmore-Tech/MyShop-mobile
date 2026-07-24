@@ -1,7 +1,7 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
 import 'package:api_client/api_client.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 
@@ -78,26 +78,26 @@ class AvailabilityReconciliationController {
           .read(providerAvailabilityServiceProvider)
           .getMyAvailability();
     } on ApiException catch (error) {
-      debugPrint(
-        '[AvailabilityReconcile] $trigger failed: '
-        '${error.errorCode ?? error.message}',
+      debugLog(
+        () => '[AvailabilityReconcile] $trigger failed: '
+            '${error.errorCode ?? error.message}',
       );
       return;
     } on FormatException catch (error) {
-      debugPrint(
-        '[AvailabilityReconcile] $trigger rejected invalid response '
-        'type=${error.runtimeType}',
+      debugLog(
+        () => '[AvailabilityReconcile] $trigger rejected invalid response '
+            'type=${error.runtimeType}',
       );
       return;
     } catch (error) {
-      debugPrint('[AvailabilityReconcile] $trigger error: $error');
+      debugLog(() => '[AvailabilityReconcile] $trigger error: $error');
       return;
     }
 
     if (statusNotifier.transitionRevision != transitionRevisionAtStart) {
-      debugPrint(
-        '[AvailabilityReconcile] $trigger ignored stale snapshot after '
-        'a newer local transition',
+      debugLog(
+        () => '[AvailabilityReconcile] $trigger ignored stale snapshot after '
+            'a newer local transition',
       );
       return;
     }
@@ -106,16 +106,17 @@ class AvailabilityReconciliationController {
         ? ProviderAvailabilityRole.driver
         : ProviderAvailabilityRole.artisan;
     if (snapshot.role != expectedRole) {
-      debugPrint(
-        '[AvailabilityReconcile] $trigger role mismatch '
-        '(expected=$expectedRole, actual=${snapshot.role}) — ignored',
+      debugLog(
+        () => '[AvailabilityReconcile] $trigger role mismatch '
+            '(expected=$expectedRole, actual=${snapshot.role}) — ignored',
       );
       return;
     }
 
     if (snapshot.providerId != intentIdentity.roleAccountId) {
-      debugPrint(
-        '[AvailabilityReconcile] $trigger role-account mismatch — ignored',
+      debugLog(
+        () =>
+            '[AvailabilityReconcile] $trigger role-account mismatch — ignored',
       );
       _ref.read(availabilityRestoreNoticeProvider.notifier).state =
           'We kept you offline because the server returned a different '
@@ -133,9 +134,10 @@ class AvailabilityReconciliationController {
 
     final localStatus = _ref.read(providerStatusProvider);
     if (snapshot.hasActiveWork || localStatus == DriverStatus.busy) {
-      debugPrint(
-        '[AvailabilityReconcile] $trigger deferred to active-work recovery '
-        '(serverActive=${snapshot.hasActiveWork}, local=$localStatus)',
+      debugLog(
+        () =>
+            '[AvailabilityReconcile] $trigger deferred to active-work recovery '
+            '(serverActive=${snapshot.hasActiveWork}, local=$localStatus)',
       );
       return;
     }
@@ -146,8 +148,8 @@ class AvailabilityReconciliationController {
           .read(providerOnlineIntentStoreProvider)
           .read(intentIdentity);
     } catch (error) {
-      debugPrint(
-        '[AvailabilityReconcile] $trigger intent read failed: $error',
+      debugLog(
+        () => '[AvailabilityReconcile] $trigger intent read failed: $error',
       );
       hasOnlineIntent = false;
       _ref.read(availabilityRestoreNoticeProvider.notifier).state =
@@ -156,9 +158,9 @@ class AvailabilityReconciliationController {
     }
 
     if (statusNotifier.transitionRevision != transitionRevisionAtStart) {
-      debugPrint(
-        '[AvailabilityReconcile] $trigger ignored intent after a newer '
-        'local transition',
+      debugLog(
+        () => '[AvailabilityReconcile] $trigger ignored intent after a newer '
+            'local transition',
       );
       return;
     }
@@ -175,8 +177,9 @@ class AvailabilityReconciliationController {
         statusNotifier.goOffline();
         _ref.read(providerLocationSessionProvider.notifier).clear();
         clearOnlineLocationPostAt();
-        debugPrint(
-          '[AvailabilityReconcile] $trigger applied authoritative offline',
+        debugLog(
+          () =>
+              '[AvailabilityReconcile] $trigger applied authoritative offline',
         );
       }
       return;
@@ -188,8 +191,9 @@ class AvailabilityReconciliationController {
     // valid prior intent merely because notification authority is not ready;
     // the bridge triggers another reconciliation as soon as Firebase is ready.
     if (!_ref.read(firebaseReadyProvider)) {
-      debugPrint(
-        '[AvailabilityReconcile] $trigger waiting for notification startup',
+      debugLog(
+        () =>
+            '[AvailabilityReconcile] $trigger waiting for notification startup',
       );
       return;
     }
@@ -209,16 +213,16 @@ class AvailabilityReconciliationController {
     final error = await actions.restoreOnline(snapshot.selectedVehicleId);
     if (error == null) {
       _ref.read(availabilityRestoreNoticeProvider.notifier).state = null;
-      debugPrint(
-        '[AvailabilityReconcile] $trigger restored prior Online intent',
+      debugLog(
+        () => '[AvailabilityReconcile] $trigger restored prior Online intent',
       );
       return;
     }
 
     if (statusNotifier.transitionRevision != transitionRevisionAtStart) {
-      debugPrint(
-        '[AvailabilityReconcile] $trigger ignored failed restore after a '
-        'newer local transition',
+      debugLog(
+        () => '[AvailabilityReconcile] $trigger ignored failed restore after a '
+            'newer local transition',
       );
       return;
     }
@@ -239,7 +243,7 @@ class AvailabilityReconciliationController {
             shouldBeOnline: false,
           );
     } catch (error) {
-      debugPrint('[AvailabilityReconcile] intent clear failed: $error');
+      debugLog(() => '[AvailabilityReconcile] intent clear failed: $error');
     }
   }
 
@@ -260,9 +264,9 @@ class AvailabilityReconciliationController {
             ? notice
             : 'We could not confirm that you are offline. Check your '
                 'connection, then open the app again before accepting work.';
-    debugPrint(
-      '[AvailabilityReconcile] $trigger recovery failed; forced offline '
-      '(confirmed=${offlineError == null})',
+    debugLog(
+      () => '[AvailabilityReconcile] $trigger recovery failed; forced offline '
+          '(confirmed=${offlineError == null})',
     );
   }
 }

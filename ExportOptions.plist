@@ -10,8 +10,10 @@
   <string>automatic</string>
   <key>destination</key>
   <string>export</string>
-  <key>uploadSymbols</key>
+  <key>manageAppVersionAndBuildNumber</key>
   <false/>
+  <key>uploadSymbols</key>
+  <true/>
   <key>stripSwiftSymbols</key>
   <true/>
 </dict>

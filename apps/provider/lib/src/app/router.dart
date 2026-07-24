@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
 import 'package:api_client/api_client.dart';
@@ -620,7 +621,7 @@ class _RideRequestLoaderScreenState
             (m) => {...m, rideId: deadline},
           );
       if (!_isBeforeDeadline(deadline)) {
-        debugPrint('[RideRequestLoader] $rideId expired before hydrate');
+        debugLog(() => '[RideRequestLoader] $rideId expired before hydrate');
         await _recoverOrShowUnavailable(startedAt, generation);
         return;
       }
@@ -656,11 +657,11 @@ class _RideRequestLoaderScreenState
       unawaited(
         future.then((ride) {
           if (ride != null && !completer.isCompleted) {
-            debugPrint('[RideRequestLoader] $rideId hydrated from $source');
+            debugLog(() => '[RideRequestLoader] $rideId hydrated from $source');
             completer.complete(ride);
           }
         }).catchError((Object e) {
-          debugPrint(
+          debugLog(() =>
               '[RideRequestLoader] $source hydrate failed for $rideId: $e');
         }).whenComplete(completeIfDone),
       );
@@ -672,7 +673,7 @@ class _RideRequestLoaderScreenState
     return completer.future.timeout(
       const Duration(seconds: 10),
       onTimeout: () {
-        debugPrint('[RideRequestLoader] hydrate timed out for $rideId');
+        debugLog(() => '[RideRequestLoader] hydrate timed out for $rideId');
         return null;
       },
     );
@@ -685,9 +686,9 @@ class _RideRequestLoaderScreenState
         .timeout(const Duration(seconds: 8));
     final ride = Ride.fromJson(data);
     if (ride.status == RideStatus.requested) return ride;
-    debugPrint(
-      '[RideRequestLoader] $rideId no longer actionable '
-      '(status=${ride.status.toJson()})',
+    debugLog(
+      () => '[RideRequestLoader] $rideId no longer actionable '
+          '(status=${ride.status.toJson()})',
     );
     return null;
   }

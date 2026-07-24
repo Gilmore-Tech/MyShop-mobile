@@ -47,8 +47,8 @@ class CallRingbackPlayer {
         BytesSource(_ringbackWav, mimeType: 'audio/wav'),
         volume: 0.42,
       );
-    } catch (error) {
-      debugPrint('[CALL-AUDIO] ringback start failed: $error');
+    } catch (_) {
+      // Audio is best effort. Do not emit platform/plugin error text.
       if (identical(_player, player)) _player = null;
       await player.dispose();
     }
@@ -61,8 +61,8 @@ class CallRingbackPlayer {
     if (player == null) return;
     try {
       await player.stop();
-    } catch (error) {
-      debugPrint('[CALL-AUDIO] ringback stop failed: $error');
+    } catch (_) {
+      // Audio is best effort. Do not emit platform/plugin error text.
     } finally {
       await player.dispose();
     }

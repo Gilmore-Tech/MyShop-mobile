@@ -1,7 +1,7 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -59,15 +59,15 @@ class IosAlwaysLocationPermissionBridge {
       }
       return IosAlwaysAuthorizationRequestResult.notGranted;
     } on TimeoutException catch (error) {
-      debugPrint('[LocationAuthorization] iOS request timed out: $error');
+      debugLog(() => '[LocationAuthorization] iOS request timed out: $error');
       return IosAlwaysAuthorizationRequestResult.failed;
     } on PlatformException catch (error) {
-      debugPrint(
-        '[LocationAuthorization] iOS request failed: ${error.code}',
+      debugLog(
+        () => '[LocationAuthorization] iOS request failed: ${error.code}',
       );
       return IosAlwaysAuthorizationRequestResult.failed;
     } on MissingPluginException catch (error) {
-      debugPrint('[LocationAuthorization] iOS bridge unavailable: $error');
+      debugLog(() => '[LocationAuthorization] iOS bridge unavailable: $error');
       return IosAlwaysAuthorizationRequestResult.failed;
     }
   }

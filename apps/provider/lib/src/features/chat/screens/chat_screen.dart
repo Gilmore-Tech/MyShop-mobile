@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
 import 'package:api_client/api_client.dart';
@@ -124,10 +125,10 @@ class _ProviderChatScreenState extends ConsumerState<ProviderChatScreen> {
     // collapses when both apps share `auth.user.id` on the same device.
     final isMine = controller.isOwnMessage(m);
     if (kDebugMode && debugSeen.add(m.id)) {
-      debugPrint(
-        '[CHAT-UI] id=${m.id} senderId="${m.senderId}" '
-        'senderRole=${m.senderRole?.wire} selfId="${controller.selfUserId}" '
-        'selfRole=${controller.selfRole.wire} → isMine=$isMine',
+      debugLog(
+        () => '[CHAT-UI] id=${m.id} senderId="${m.senderId}" '
+            'senderRole=${m.senderRole?.wire} selfId="${controller.selfUserId}" '
+            'selfRole=${controller.selfRole.wire} → isMine=$isMine',
       );
     }
     final ChatMessageStatus status;

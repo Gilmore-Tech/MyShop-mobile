@@ -1,11 +1,12 @@
 import 'dart:async';
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart' show kFreeWaitAtPickupSeconds;
 
 import '../../../core/di/providers.dart';
+import '../../../core/providers/app_lifecycle_provider.dart';
 import '../../../core/providers/current_location_provider.dart';
 import '../../../core/providers/socket_provider.dart';
 import '../data/ride_booking_attempt_store.dart';
@@ -831,6 +832,7 @@ final activeRideTrackingMaintainerProvider =
     StreamProvider.autoDispose<void>((ref) async* {
   final rideId = ref.watch(activeRideIdProvider);
   if (rideId == null || rideId.isEmpty) return;
+  if (!ref.watch(appForegroundedProvider)) return;
   final rideService = ref.read(rideServiceProvider);
   final socket = ref.read(socketServiceProvider);
 
@@ -1024,8 +1026,8 @@ Future<void> requestRideAndMatchDriver(
       ),
     );
     final result = resolution.response;
-    developer.log(
-      resolution.recovered
+    developer.debugLog(
+      () => resolution.recovered
           ? 'Recovered a pending ride booking attempt'
           : 'Ride booking attempt accepted by server',
       name: 'RideProvider',
@@ -1058,23 +1060,25 @@ Future<void> requestRideAndMatchDriver(
         final socket = ref.read(socketServiceProvider);
         if (socket.isConnected) {
           socket.emit('client:track:ride', {'rideId': rideId});
-          developer.log('Joined ride room: $rideId', name: 'RideProvider');
+          developer.debugLog(() => 'Joined ride room: $rideId',
+              name: 'RideProvider');
         } else {
-          developer.log(
-              'Socket not yet connected — track:ride deferred to onConnect',
+          developer.debugLog(
+              () =>
+                  'Socket not yet connected — track:ride deferred to onConnect',
               name: 'RideProvider');
         }
       } catch (e) {
-        developer.log(
-          'client:track:ride emit failed with ${e.runtimeType}',
+        developer.debugLog(
+          () => 'client:track:ride emit failed with ${e.runtimeType}',
           name: 'RideProvider',
         );
       }
     }
   } on RideBookingLookupUncertainException catch (e) {
-    developer.log(
-      'Booking recovery was inconclusive '
-      '(status=${e.statusCode}, code=${e.errorCode ?? 'unknown'})',
+    developer.debugLog(
+      () => 'Booking recovery was inconclusive '
+          '(status=${e.statusCode}, code=${e.errorCode ?? 'unknown'})',
       name: 'RideProvider',
       level: 800,
     );
@@ -1083,16 +1087,16 @@ Future<void> requestRideAndMatchDriver(
     );
     return;
   } on ApiException catch (e) {
-    developer.log(
-      'createRide failed (status=${e.statusCode}, '
-      'code=${e.errorCode ?? 'unknown'})',
+    developer.debugLog(
+      () => 'createRide failed (status=${e.statusCode}, '
+          'code=${e.errorCode ?? 'unknown'})',
       name: 'RideProvider',
     );
     failWith(rideRequestErrorMessage(e));
     return;
   } catch (e) {
-    developer.log(
-      'createRide failed with ${e.runtimeType}',
+    developer.debugLog(
+      () => 'createRide failed with ${e.runtimeType}',
       name: 'RideProvider',
     );
     failWith("Couldn't request a ride. Please try again.");
@@ -1164,9 +1168,10 @@ Future<void> requestRideAndMatchDriver(
     return;
   }
 
-  developer.log(
-    'Matching loop ceiling reached ($kRideMatchingSearchCeilingSeconds s) — '
-    'failing stale request locally. phase=$phaseAfterFinalHydrate',
+  developer.debugLog(
+    () =>
+        'Matching loop ceiling reached ($kRideMatchingSearchCeilingSeconds s) — '
+        'failing stale request locally. phase=$phaseAfterFinalHydrate',
     name: 'RideProvider',
   );
 
@@ -1177,9 +1182,9 @@ Future<void> requestRideAndMatchDriver(
     );
     await ref.read(rideBookingAttemptStoreProvider).clear();
   } on ApiException catch (e) {
-    developer.log(
-      'cancel stale matching ride failed (status=${e.statusCode}, '
-      'code=${e.errorCode ?? 'unknown'})',
+    developer.debugLog(
+      () => 'cancel stale matching ride failed (status=${e.statusCode}, '
+          'code=${e.errorCode ?? 'unknown'})',
       name: 'RideProvider',
       level: 800,
     );
@@ -1193,8 +1198,8 @@ Future<void> requestRideAndMatchDriver(
       return;
     }
   } catch (e) {
-    developer.log(
-      'cancel stale matching ride failed with ${e.runtimeType}',
+    developer.debugLog(
+      () => 'cancel stale matching ride failed with ${e.runtimeType}',
       name: 'RideProvider',
       level: 800,
     );
@@ -1235,7 +1240,8 @@ Future<void> _hydrateFromRest(
   String rideId,
 ) async {
   try {
-    developer.log('REST fallback hydrating ride $rideId', name: 'RideProvider');
+    developer.debugLog(() => 'REST fallback hydrating ride $rideId',
+        name: 'RideProvider');
     final json = await rideService.getRide(rideId);
     final status = json['status'] as String? ?? '';
     final cancelledBy = json['cancelledBy'] as String?;
@@ -1396,15 +1402,15 @@ Future<void> _hydrateFromRest(
       );
     }
   } on ApiException catch (e) {
-    developer.log(
-      'REST fallback hydrate failed (status=${e.statusCode}, '
-      'code=${e.errorCode ?? 'unknown'})',
+    developer.debugLog(
+      () => 'REST fallback hydrate failed (status=${e.statusCode}, '
+          'code=${e.errorCode ?? 'unknown'})',
       name: 'RideProvider',
       level: 800,
     );
   } catch (e) {
-    developer.log(
-      'REST fallback hydrate failed with ${e.runtimeType}',
+    developer.debugLog(
+      () => 'REST fallback hydrate failed with ${e.runtimeType}',
       name: 'RideProvider',
       level: 800,
     );
@@ -1440,9 +1446,9 @@ Future<bool> cancelInFlightRideRequest(ProviderContainer ref) async {
       reason: 'rider_cancelled_during_search',
     );
     if (!cancellation.confirmedCancelled) {
-      developer.log(
-        'cancelRide not confirmed; local matching state preserved '
-        '(reconciled=${cancellation.reconciled})',
+      developer.debugLog(
+        () => 'cancelRide not confirmed; local matching state preserved '
+            '(reconciled=${cancellation.reconciled})',
         name: 'RideProvider',
         level: 900,
       );

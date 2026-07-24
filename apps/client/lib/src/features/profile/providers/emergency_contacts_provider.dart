@@ -1,4 +1,4 @@
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -90,7 +90,7 @@ class EmergencyContactsNotifier extends StateNotifier<EmergencyContactsState> {
       contacts.sort((a, b) => b.isPrimary ? 1 : -1);
       state = state.copyWith(contacts: contacts, isLoading: false);
     } catch (e) {
-      developer.log('getEmergencyContacts error: $e',
+      developer.debugLog(() => 'getEmergencyContacts error: $e',
           name: 'EmergencyContacts');
       state = state.copyWith(
         isLoading: false,
@@ -123,7 +123,7 @@ class EmergencyContactsNotifier extends StateNotifier<EmergencyContactsState> {
       );
       return true;
     } catch (e) {
-      developer.log('createEmergencyContact error: $e',
+      developer.debugLog(() => 'createEmergencyContact error: $e',
           name: 'EmergencyContacts');
       state = state.copyWith(
         isSaving: false,
@@ -144,7 +144,7 @@ class EmergencyContactsNotifier extends StateNotifier<EmergencyContactsState> {
         clearDeleting: true,
       );
     } catch (e) {
-      developer.log('deleteEmergencyContact error: $e',
+      developer.debugLog(() => 'deleteEmergencyContact error: $e',
           name: 'EmergencyContacts');
       state = state.copyWith(
         clearDeleting: true,

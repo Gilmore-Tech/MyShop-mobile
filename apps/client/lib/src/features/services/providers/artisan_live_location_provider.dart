@@ -1,9 +1,10 @@
 import 'dart:async';
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/providers/app_lifecycle_provider.dart';
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,7 @@ const _livePollInterval = Duration(seconds: 10);
 final artisanLiveLocationsProvider =
     StreamProvider.autoDispose.family<Map<String, ArtisanLiveLocation>, String>(
   (ref, jobId) async* {
+    if (!ref.watch(appForegroundedProvider)) return;
     final jobService = ref.watch(jobServiceProvider);
 
     Future<Map<String, ArtisanLiveLocation>> fetch() async {
@@ -66,7 +68,7 @@ final artisanLiveLocationsProvider =
     try {
       yield await fetch();
     } catch (e) {
-      developer.log('bid locations: initial fetch failed — $e',
+      developer.debugLog(() => 'bid locations: initial fetch failed — $e',
           name: 'ArtisanLiveLocations', level: 900);
       yield const {};
     }
@@ -77,7 +79,7 @@ final artisanLiveLocationsProvider =
       try {
         yield await fetch();
       } catch (e) {
-        developer.log('bid locations: poll failed — $e',
+        developer.debugLog(() => 'bid locations: poll failed — $e',
             name: 'ArtisanLiveLocations', level: 900);
         // Keep the last good emission in place; don't yield empty here.
       }

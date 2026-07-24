@@ -1,7 +1,7 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:incoming_request_overlay/incoming_request_overlay.dart';
 
@@ -44,7 +44,7 @@ class IncomingRequestActionBridge {
     } on MissingPluginException {
       // Expected on non-iOS test hosts/background engines that are closing.
     } catch (error) {
-      debugPrint('[RequestAction] iOS notification removal failed: $error');
+      debugLog(() => '[RequestAction] iOS notification removal failed: $error');
     }
   }
 
@@ -61,7 +61,7 @@ class IncomingRequestActionBridge {
         }
       },
       onError: (Object error) {
-        debugPrint('[RequestAction] iOS event stream failed: $error');
+        debugLog(() => '[RequestAction] iOS event stream failed: $error');
       },
     );
 
@@ -78,7 +78,7 @@ class IncomingRequestActionBridge {
     } on MissingPluginException {
       // Expected on non-iOS test hosts.
     } catch (error) {
-      debugPrint('[RequestAction] iOS pending replay failed: $error');
+      debugLog(() => '[RequestAction] iOS pending replay failed: $error');
     }
   }
 
@@ -86,7 +86,7 @@ class IncomingRequestActionBridge {
     _androidSubscription ??= _androidOverlay.actions.listen(
       (action) => unawaited(_processAndroidAction(action)),
       onError: (Object error) {
-        debugPrint('[RequestAction] Android event stream failed: $error');
+        debugLog(() => '[RequestAction] Android event stream failed: $error');
       },
     );
 
@@ -100,7 +100,7 @@ class IncomingRequestActionBridge {
     } on MissingPluginException {
       // Expected on non-Android test hosts/background engines that are closing.
     } catch (error) {
-      debugPrint('[RequestAction] Android pending replay failed: $error');
+      debugLog(() => '[RequestAction] Android pending replay failed: $error');
     }
   }
 
@@ -144,9 +144,9 @@ class IncomingRequestActionBridge {
       await _handleAction(payload);
       await _androidOverlay.acknowledgeAction(event.actionId);
     } catch (error, stackTrace) {
-      debugPrint(
-        '[RequestAction] Android action $selectedAction failed: $error\n'
-        '$stackTrace',
+      debugLog(
+        () => '[RequestAction] Android action $selectedAction failed: $error\n'
+            '$stackTrace',
       );
       // Deliberately leave it pending for a later replay.
     } finally {
@@ -186,9 +186,9 @@ class IncomingRequestActionBridge {
         <String, String>{'actionId': queueId},
       );
     } catch (error, stackTrace) {
-      debugPrint(
-        '[RequestAction] iOS action $selectedAction failed: $error\n'
-        '$stackTrace',
+      debugLog(
+        () => '[RequestAction] iOS action $selectedAction failed: $error\n'
+            '$stackTrace',
       );
       // Deliberately leave it pending for a later replay.
     } finally {

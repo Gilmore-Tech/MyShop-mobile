@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -78,12 +79,12 @@ class AccountSettingsScreen extends ConsumerWidget {
         ],
       ),
     );
-    debugPrint('[AccountSettings] logout dialog confirmed=$confirmed '
+    debugLog(() => '[AccountSettings] logout dialog confirmed=$confirmed '
         'context.mounted=${context.mounted}');
     if (confirmed == true && context.mounted) {
-      debugPrint('[AccountSettings] invoking controller.logout()');
+      debugLog(() => '[AccountSettings] invoking controller.logout()');
       await ref.read(authControllerProvider.notifier).logout();
-      debugPrint('[AccountSettings] controller.logout() returned');
+      debugLog(() => '[AccountSettings] controller.logout() returned');
     }
   }
 

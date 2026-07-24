@@ -1,11 +1,12 @@
 import 'dart:async';
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:api_client/api_client.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/providers/app_lifecycle_provider.dart';
 import '../data/pending_payment_store.dart';
 
 // ── Settlement polling ────────────────────────────────────────────────────────
@@ -486,14 +487,23 @@ class PaymentState {
 // ── Notifier ──────────────────────────────────────────────────────────────────
 
 class PaymentNotifier extends StateNotifier<PaymentState> {
-  PaymentNotifier(this._paymentService, this._jobService, this._pendingStore)
-      : super(const PaymentState());
+  PaymentNotifier(
+    this._paymentService,
+    this._jobService,
+    this._pendingStore, {
+    bool Function()? isForegrounded,
+    Duration settlementPollInterval = _kSettlementPollInterval,
+  })  : _isForegrounded = isForegrounded ?? _alwaysForegrounded,
+        _settlementPollInterval = settlementPollInterval,
+        super(const PaymentState());
 
   static const _kBookingType = 'artisan_job';
 
   final PaymentService _paymentService;
   final JobService _jobService;
   final PendingPaymentStore _pendingStore;
+  final bool Function() _isForegrounded;
+  final Duration _settlementPollInterval;
 
   /// Periodic poll on /payments/:id/status while we're in awaitingSettlement.
   /// Belt-and-braces for missed socket events. Always cleared on terminal
@@ -526,15 +536,16 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     _pollStartedAt = null;
     final generation = ++_pollGeneration;
     if (paymentId == null) {
-      developer.log(
-        'Skipping settlement poll — no paymentId in state.',
+      developer.debugLog(
+        () => 'Skipping settlement poll — no paymentId in state.',
         name: 'Payment',
         level: 800,
       );
       return;
     }
     _pollStartedAt = DateTime.now();
-    _pollTimer = Timer.periodic(_kSettlementPollInterval, (_) {
+    _pollTimer = Timer.periodic(_settlementPollInterval, (_) {
+      if (!_isForegrounded()) return;
       _pollSettlementOnce(
         paymentId: paymentId,
         jobId: jobId,
@@ -575,9 +586,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     if (startedAt != null &&
         DateTime.now().difference(startedAt) >= _kSettlementPollMax) {
       _stopSettlementPolling();
-      developer.log(
-        'Settlement poll timed out after ${_kSettlementPollMax.inMinutes}m '
-        '— surfacing fallback message.',
+      developer.debugLog(
+        () =>
+            'Settlement poll timed out after ${_kSettlementPollMax.inMinutes}m '
+            '— surfacing fallback message.',
         name: 'Payment',
         level: 900,
       );
@@ -621,14 +633,14 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       // Transient — keep polling. A genuinely dead payment will eventually
       // hit the timeout cap above. Don't surface to the user here, the
       // intermediate "Approve on your phone" copy is still accurate.
-      developer.log(
-        'getPaymentStatus poll failed: ${e.errorCode} — ${e.message}',
+      developer.debugLog(
+        () => 'getPaymentStatus poll failed: ${e.errorCode} — ${e.message}',
         name: 'Payment',
         level: 700,
       );
     } catch (e) {
-      developer.log(
-        'getPaymentStatus poll crashed: $e',
+      developer.debugLog(
+        () => 'getPaymentStatus poll crashed: $e',
         name: 'Payment',
         level: 700,
       );
@@ -670,15 +682,15 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         bookingType: bookingType,
         bookingId: bookingId,
       );
-      developer.log('abandonByBooking completed', name: 'Payment');
+      developer.debugLog(() => 'abandonByBooking completed', name: 'Payment');
     } on ApiException catch (e) {
-      developer.log(
-        'abandonByBooking failed: ${e.errorCode} — ${e.message}',
+      developer.debugLog(
+        () => 'abandonByBooking failed: ${e.errorCode} — ${e.message}',
         name: 'Payment',
         level: 700,
       );
     } catch (e) {
-      developer.log('abandonByBooking crashed: $e',
+      developer.debugLog(() => 'abandonByBooking crashed: $e',
           name: 'Payment', level: 700);
     }
     await _pendingStore.clear(
@@ -726,9 +738,9 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
           bookingId: jobId,
         );
       } on ApiException catch (e) {
-        developer.log(
-          'acknowledgeCash failed: status=${e.statusCode} '
-          'code=${e.errorCode} — ${e.message}',
+        developer.debugLog(
+          () => 'acknowledgeCash failed: status=${e.statusCode} '
+              'code=${e.errorCode} — ${e.message}',
           name: 'Payment',
           level: 900,
         );
@@ -744,8 +756,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         );
         return;
       } catch (e) {
-        developer.log(
-          'acknowledgeCash crashed: $e',
+        developer.debugLog(
+          () => 'acknowledgeCash crashed: $e',
           name: 'Payment',
           level: 1000,
         );
@@ -798,10 +810,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       final paystackReference = _findPaystackReference(result);
       final chargeStatus = _findChargeStatus(result);
       final displayText = _safePaymentPrompt(chargeStatus);
-      developer.log(
-        'initiatePayment accepted: hasPaymentId=${paymentId != null} '
-        'hasReference=${paystackReference != null} '
-        'hasCheckout=${authUrl != null} status=${chargeStatus ?? 'pending'}',
+      developer.debugLog(
+        () => 'initiatePayment accepted: hasPaymentId=${paymentId != null} '
+            'hasReference=${paystackReference != null} '
+            'hasCheckout=${authUrl != null} status=${chargeStatus ?? 'pending'}',
         name: 'Payment',
       );
 
@@ -822,9 +834,9 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       // which expects the Paystack reference (NOT the local paymentId).
       if (chargeStatus == 'send_otp') {
         if (paystackReference == null) {
-          developer.log(
-            'send_otp returned but no Paystack reference — cannot submit '
-            'OTP. Backend should include `reference` in the response.',
+          developer.debugLog(
+            () => 'send_otp returned but no Paystack reference — cannot submit '
+                'OTP. Backend should include `reference` in the response.',
             name: 'Payment',
             level: 1000,
           );
@@ -878,8 +890,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       // ── Other send_* steps (send_pin / send_phone / send_birthday) —
       // not wired yet, treat like failure with a clear message.
       if (chargeStatus != null && chargeStatus.startsWith('send_')) {
-        developer.log(
-          'Unsupported Paystack next-step: $chargeStatus',
+        developer.debugLog(
+          () => 'Unsupported Paystack next-step: $chargeStatus',
           name: 'Payment',
           level: 1000,
         );
@@ -902,9 +914,9 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       // "authorize on your phone" state and wait on the webhook to
       // settle the job.
       if (authUrl == null) {
-        developer.log(
-          'initiatePayment returned no checkout URL — '
-          'awaiting webhook settlement (chargeStatus=$chargeStatus).',
+        developer.debugLog(
+          () => 'initiatePayment returned no checkout URL — '
+              'awaiting webhook settlement (chargeStatus=$chargeStatus).',
           name: 'Payment',
           level: 800,
         );
@@ -923,8 +935,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         summary: summary,
       );
     } on ApiException catch (e) {
-      developer.log(
-        'initiatePayment failed: ${e.errorCode} — ${e.message}',
+      developer.debugLog(
+        () => 'initiatePayment failed: ${e.errorCode} — ${e.message}',
         name: 'Payment',
         level: 1000,
       );
@@ -966,8 +978,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         errorMessage: _friendlyInitiateError(e),
       );
     } catch (e, st) {
-      developer.log(
-        'initiatePayment crashed: $e\n$st',
+      developer.debugLog(
+        () => 'initiatePayment crashed: $e\n$st',
         name: 'Payment',
         level: 1200,
       );
@@ -1128,9 +1140,9 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
           await _paymentService.submitOtp(reference: reference, otp: otp);
       final chargeStatus = _findChargeStatus(result);
       final displayText = _safePaymentPrompt(chargeStatus);
-      developer.log(
-        'submitOtp accepted: status=${chargeStatus ?? 'pending'} '
-        'hasCheckout=${_findCheckoutUrl(result) != null}',
+      developer.debugLog(
+        () => 'submitOtp accepted: status=${chargeStatus ?? 'pending'} '
+            'hasCheckout=${_findCheckoutUrl(result) != null}',
         name: 'Payment',
       );
 
@@ -1176,8 +1188,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
           return;
       }
     } on ApiException catch (e) {
-      developer.log(
-        'submitOtp failed: ${e.errorCode} — ${e.message}',
+      developer.debugLog(
+        () => 'submitOtp failed: ${e.errorCode} — ${e.message}',
         name: 'Payment',
         level: 1000,
       );
@@ -1209,7 +1221,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
           return;
       }
     } catch (e, st) {
-      developer.log('submitOtp crashed: $e\n$st', name: 'Payment', level: 1200);
+      developer.debugLog(() => 'submitOtp crashed: $e\n$st',
+          name: 'Payment', level: 1200);
       state = state.copyWith(
         phase: PaymentPhase.awaitingOtp,
         errorMessage: "Couldn't submit the OTP. Please try again.",
@@ -1235,15 +1248,17 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     if (pid != null) {
       try {
         await _paymentService.abandonPayment(pid);
-        developer.log('Abandoned payment $pid (OTP cancel)', name: 'Payment');
+        developer.debugLog(() => 'Abandoned payment $pid (OTP cancel)',
+            name: 'Payment');
       } on ApiException catch (e) {
-        developer.log(
-          'abandonPayment on OTP cancel failed: ${e.errorCode} — ${e.message}',
+        developer.debugLog(
+          () =>
+              'abandonPayment on OTP cancel failed: ${e.errorCode} — ${e.message}',
           name: 'Payment',
           level: 800,
         );
       } catch (e) {
-        developer.log('abandonPayment on OTP cancel crashed: $e',
+        developer.debugLog(() => 'abandonPayment on OTP cancel crashed: $e',
             name: 'Payment', level: 800);
       }
     } else if (bookingId != null) {
@@ -1333,10 +1348,10 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     );
     try {
       final result = await _paymentService.retryPayment(pid);
-      developer.log(
-        'job payment retry accepted: '
-        'status=${_findChargeStatus(result) ?? 'pending'} '
-        'hasCheckout=${_findCheckoutUrl(result) != null}',
+      developer.debugLog(
+        () => 'job payment retry accepted: '
+            'status=${_findChargeStatus(result) ?? 'pending'} '
+            'hasCheckout=${_findCheckoutUrl(result) != null}',
         name: 'Payment',
       );
       // Backend flips the payment to processing and re-sends the MoMo
@@ -1352,8 +1367,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         summary: summary,
       );
     } on ApiException catch (e) {
-      developer.log(
-        'job retryPayment failed: ${e.errorCode} — ${e.message}',
+      developer.debugLog(
+        () => 'job retryPayment failed: ${e.errorCode} — ${e.message}',
         name: 'Payment',
         level: 800,
       );
@@ -1379,7 +1394,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
         ),
       );
     } catch (e) {
-      developer.log('job retryPayment crashed: $e',
+      developer.debugLog(() => 'job retryPayment crashed: $e',
           name: 'Payment', level: 1200);
       state = state.copyWith(
         phase: PaymentPhase.failed,
@@ -1449,8 +1464,11 @@ final paymentNotifierProvider =
     ref.watch(paymentServiceProvider),
     ref.watch(jobServiceProvider),
     ref.watch(pendingPaymentStoreProvider),
+    isForegrounded: () => ref.read(appForegroundedProvider),
   ),
 );
+
+bool _alwaysForegrounded() => true;
 
 // ── Data Provider ─────────────────────────────────────────────────────────────
 
@@ -1465,8 +1483,8 @@ class _PaymentSummaryNotifier
   Future<PaymentSummary> build(String jobId) async {
     final jobService = ref.watch(jobServiceProvider);
     final data = await jobService.getJob(jobId);
-    developer.log(
-      'payment summary loaded: status=${data['status'] ?? 'unknown'}',
+    developer.debugLog(
+      () => 'payment summary loaded: status=${data['status'] ?? 'unknown'}',
       name: 'PaymentSummary',
     );
     return _parsePaymentSummary(data);
@@ -1539,8 +1557,8 @@ class _PaymentSummaryNotifier
         (serviceFeePesewas + materialsFeePesewas);
 
     if (totalPesewas == 0) {
-      developer.log(
-        'Parsed totalPesewas=0 — unrecognised cost shape. data=$data',
+      developer.debugLog(
+        () => 'Parsed totalPesewas=0 — unrecognised cost shape. data=$data',
         name: 'PaymentSummary',
         level: 900,
       );

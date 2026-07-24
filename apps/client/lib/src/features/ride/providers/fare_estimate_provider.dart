@@ -1,4 +1,4 @@
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -78,9 +78,9 @@ final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
   final durationMins = _durationMinsFromEstimate(result);
   final categories = (result['categories'] as List?) ?? const [];
 
-  developer.log(
-    'Estimate: ${categories.length} categories · ${distanceKm}km '
-    '· ${durationMins}min · ${pricedStops.length} stops · surge ${surgeMultiplier}x',
+  developer.debugLog(
+    () => 'Estimate: ${categories.length} categories · ${distanceKm}km '
+        '· ${durationMins}min · ${pricedStops.length} stops · surge ${surgeMultiplier}x',
     name: 'FareEstimate',
   );
 

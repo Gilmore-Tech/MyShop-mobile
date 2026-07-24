@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 import 'dart:convert';
 
@@ -74,14 +75,16 @@ class AppCallSocketService {
     try {
       var token = await _tokenStorage.readAccessToken();
       if (token == null) {
-        debugPrint('[CALL-WS] No access token — skipping call socket connect');
+        debugLog(
+          () => '[CALL-WS] No access token — skipping call socket connect',
+        );
         return;
       }
 
       if (_isTokenExpiringSoon(token)) {
         final refreshed = await _refreshWithRetry();
         if (refreshed == null) {
-          debugPrint('[CALL-WS] Token refresh failed — aborting connect');
+          debugLog(() => '[CALL-WS] Token refresh failed — aborting connect');
           return;
         }
         token = refreshed;
@@ -90,7 +93,7 @@ class AppCallSocketService {
       _socket?.dispose();
 
       final nsUrl = '${_config.wsBaseUrl}/calls';
-      debugPrint('[CALL-WS] Connecting to $nsUrl');
+      debugLog(() => '[CALL-WS] Connecting to $nsUrl');
 
       _socket = io.io(
         nsUrl,
@@ -99,7 +102,7 @@ class AppCallSocketService {
 
       _socket!
         ..onConnect((_) {
-          debugPrint('[CALL-WS] Connected (id: ${_socket?.id})');
+          debugLog(() => '[CALL-WS] Connected');
           if (!connection.isCompleted) connection.complete();
           for (final callId in _joinedCallIds) {
             _socket?.emit('call:join', {'callId': callId});
@@ -109,28 +112,28 @@ class AppCallSocketService {
             _connectionController.add(true);
           }
         })
-        ..onDisconnect((reason) {
-          debugPrint('[CALL-WS] Disconnected: $reason');
+        ..onDisconnect((_) {
+          debugLog(() => '[CALL-WS] Disconnected');
           if (!_connectionController.isClosed) {
             _connectionController.add(false);
           }
         })
         ..onConnectError((err) {
-          debugPrint('[CALL-WS] Connection error: $err');
+          debugLog(() => '[CALL-WS] Connection error type=${err.runtimeType}');
           if (!connection.isCompleted) connection.complete();
           if (_looksUnauthorized(err)) {
             _handleUnauthorized();
           }
         })
         ..onReconnectError((err) {
-          debugPrint('[CALL-WS] Reconnect error: $err');
+          debugLog(() => '[CALL-WS] Reconnect error type=${err.runtimeType}');
           if (_looksUnauthorized(err)) {
             _handleUnauthorized();
           }
         })
         ..on('exception', (data) {
           if (_errorCode(data) == 'SOCKET_REPLACED') {
-            debugPrint('[CALL-WS] Superseded socket stopped');
+            debugLog(() => '[CALL-WS] Superseded socket stopped');
             _socket?.dispose();
             _socket = null;
             if (!_connectionController.isClosed) {
@@ -139,15 +142,17 @@ class AppCallSocketService {
             return;
           }
           if (_looksUnauthorized(data)) {
-            debugPrint('[CALL-WS] Server reported UNAUTHORIZED — refreshing');
+            debugLog(
+              () => '[CALL-WS] Server reported UNAUTHORIZED — refreshing',
+            );
             _handleUnauthorized();
           }
         })
         ..on('call:state', _handleCallState)
         ..on('call:signal', _handleCallSignal)
         ..on('call:participant_joined', _handleParticipantJoined)
-        ..onAny((event, data) {
-          _logSocketEvent(event, data);
+        ..onAny((event, _) {
+          _logSocketEvent(event);
         });
       await connection.future.timeout(
         const Duration(seconds: 15),
@@ -170,7 +175,7 @@ class AppCallSocketService {
     }
     await connect();
     if (_socket?.connected != true) {
-      debugPrint('[CALL-WS] Cannot join "$callId" — socket not connected');
+      debugLog(() => '[CALL-WS] Cannot join call — socket not connected');
     }
     // onConnect emits every retained room, including this one. Keeping the
     // id in _joinedCallIds also makes reconnects automatically rejoin it.
@@ -237,26 +242,20 @@ class AppCallSocketService {
     _participantJoinedController.add(callId);
   }
 
-  void _logSocketEvent(String event, dynamic data) {
-    final json = _asJsonMap(data);
-    final callId = json?['callId'] ?? json?['id'];
+  void _logSocketEvent(String event) {
     switch (event) {
       case 'call:state':
-        debugPrint(
-          '[CALL-WS] Event: call:state callId=$callId '
-          'status=${json?['status']} rtcProvider=${json?['rtcProvider']}',
-        );
+        debugLog(() => '[CALL-WS] Event: call:state');
       case 'call:signal':
         // SDP, ICE candidates, and TURN credentials can contain sensitive
-        // network details. Log only correlation and signal type.
-        debugPrint(
-          '[CALL-WS] Event: call:signal callId=$callId '
-          'type=${json?['type']}',
-        );
+        // network details. Never inspect or log the payload here.
+        debugLog(() => '[CALL-WS] Event: call:signal');
       case 'call:participant_joined' || 'call:participant_left':
-        debugPrint('[CALL-WS] Event: $event callId=$callId');
+        debugLog(() => '[CALL-WS] Event: $event');
       default:
-        debugPrint('[CALL-WS] Event: $event');
+        // Do not log arbitrary server-controlled event names. Every reviewed
+        // call event that needs diagnostics is enumerated above.
+        break;
     }
   }
 
@@ -347,7 +346,7 @@ class AppCallSocketService {
         (pending) => pending.type == 'ice',
       );
       _pendingSignals.removeAt(oldestIce >= 0 ? oldestIce : 0);
-      debugPrint('[CALL-WS] Pending signal buffer reached its safe limit');
+      debugLog(() => '[CALL-WS] Pending signal buffer reached its safe limit');
     }
     _pendingSignals.add(signal);
   }
@@ -362,7 +361,7 @@ class AppCallSocketService {
       _emitSignal(signal);
       replayed += 1;
     }
-    debugPrint('[CALL-WS] Replayed $replayed queued signal(s)');
+    debugLog(() => '[CALL-WS] Replayed $replayed queued signal(s)');
   }
 
   String _errorCode(dynamic data) {

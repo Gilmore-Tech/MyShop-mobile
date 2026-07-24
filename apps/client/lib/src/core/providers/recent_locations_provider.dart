@@ -1,7 +1,7 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -80,7 +80,7 @@ class RecentLocationsNotifier extends StateNotifier<List<RecentLocation>> {
       if (!mounted) return;
       state = items;
     } catch (e) {
-      debugPrint('[RecentLocations] hydrate failed: $e');
+      debugLog(() => '[RecentLocations] hydrate failed: $e');
       // Drop a corrupt blob so the next save starts clean.
       try {
         final prefs = await SharedPreferences.getInstance();
@@ -130,7 +130,7 @@ class RecentLocationsNotifier extends StateNotifier<List<RecentLocation>> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_storageKey);
     } catch (e) {
-      debugPrint('[RecentLocations] clear failed: $e');
+      debugLog(() => '[RecentLocations] clear failed: $e');
     }
   }
 
@@ -146,7 +146,7 @@ class RecentLocationsNotifier extends StateNotifier<List<RecentLocation>> {
         jsonEncode(items.map((i) => i.toJson()).toList()),
       );
     } catch (e) {
-      debugPrint('[RecentLocations] persist failed: $e');
+      debugLog(() => '[RecentLocations] persist failed: $e');
     }
   }
 }

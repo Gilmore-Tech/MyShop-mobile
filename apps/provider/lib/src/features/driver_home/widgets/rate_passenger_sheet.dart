@@ -1,4 +1,4 @@
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
@@ -89,15 +89,15 @@ class _RatePassengerSheetState extends ConsumerState<RatePassengerSheet> {
         const SnackBar(content: Text('Thanks for rating your passenger.')),
       );
     } on ApiException catch (e) {
-      developer.log(
-        'submitRating failed: ${e.errorCode} — ${e.message}',
+      developer.debugLog(
+        () => 'submitRating failed: ${e.errorCode} — ${e.message}',
         name: 'RatePassenger',
         level: 900,
       );
       if (!mounted) return;
       setState(() => _errorMessage = _friendlyError(e));
     } catch (e) {
-      developer.log('submitRating crashed: $e',
+      developer.debugLog(() => 'submitRating crashed: $e',
           name: 'RatePassenger', level: 1000);
       if (!mounted) return;
       setState(() =>

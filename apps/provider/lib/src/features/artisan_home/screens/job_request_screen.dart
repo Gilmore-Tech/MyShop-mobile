@@ -1,5 +1,6 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 import 'dart:io' show Platform;
 
 import 'package:api_client/api_client.dart'
@@ -136,9 +137,9 @@ class _JobRequestScreenState extends ConsumerState<JobRequestScreen> {
       });
       _scheduleAutoOpenBidSheet();
     } catch (e) {
-      debugPrint('[JobRequest] hydration failed: ${e.runtimeType}');
-      developer.log(
-        'Job hydration failed: ${e.runtimeType}',
+      debugLog(() => '[JobRequest] hydration failed: ${e.runtimeType}');
+      developer.debugLog(
+        () => 'Job hydration failed: ${e.runtimeType}',
         name: 'JobRequest',
         level: 800,
       );

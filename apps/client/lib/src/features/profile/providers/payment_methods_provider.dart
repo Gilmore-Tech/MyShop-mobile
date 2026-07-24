@@ -1,4 +1,4 @@
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -166,7 +166,8 @@ class PaymentMethodsNotifier extends StateNotifier<PaymentMethodsState> {
           raw.cast<Map<String, dynamic>>().map(PaymentMethod.fromJson).toList();
       state = state.copyWith(methods: methods, isLoading: false);
     } catch (e) {
-      developer.log('getPaymentMethods error: $e', name: 'PaymentMethods');
+      developer.debugLog(() => 'getPaymentMethods error: $e',
+          name: 'PaymentMethods');
       state = state.copyWith(
         isLoading: false,
         errorMessage: 'Could not load payment methods',
@@ -193,7 +194,8 @@ class PaymentMethodsNotifier extends StateNotifier<PaymentMethodsState> {
       }).toList();
       state = state.copyWith(methods: updated, clearSettingDefault: true);
     } catch (e) {
-      developer.log('setDefaultMethod error: $e', name: 'PaymentMethods');
+      developer.debugLog(() => 'setDefaultMethod error: $e',
+          name: 'PaymentMethods');
       state = state.copyWith(
         clearSettingDefault: true,
         errorMessage: 'Could not update default. Please try again.',
@@ -211,7 +213,8 @@ class PaymentMethodsNotifier extends StateNotifier<PaymentMethodsState> {
         clearDeleting: true,
       );
     } catch (e) {
-      developer.log('deletePaymentMethod error: $e', name: 'PaymentMethods');
+      developer.debugLog(() => 'deletePaymentMethod error: $e',
+          name: 'PaymentMethods');
       state = state.copyWith(
         clearDeleting: true,
         errorMessage: 'Could not remove method. Please try again.',
@@ -232,7 +235,8 @@ class PaymentMethodsNotifier extends StateNotifier<PaymentMethodsState> {
       state = state.copyWith(methods: [...state.methods, method]);
       return true;
     } catch (e) {
-      developer.log('addMomoMethod error: $e', name: 'PaymentMethods');
+      developer.debugLog(() => 'addMomoMethod error: $e',
+          name: 'PaymentMethods');
       state = state.copyWith(
           errorMessage: 'Could not add method. Please try again.');
       return false;

@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -129,8 +130,8 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
         try {
           permission = await Geolocator.requestPermission();
         } catch (e) {
-          debugPrint(
-            '[LOC] requestPermission race — letting warm-up finish: $e',
+          debugLog(
+            () => '[LOC] requestPermission race — letting warm-up finish: $e',
           );
           return;
         }
@@ -138,13 +139,14 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
     }
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) {
-      debugPrint('[LOC] permission $permission — staying on Kumasi fallback');
+      debugLog(
+          () => '[LOC] permission $permission — staying on Kumasi fallback');
       return;
     }
 
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      debugPrint('[LOC] services disabled — staying on Kumasi fallback');
+      debugLog(() => '[LOC] services disabled — staying on Kumasi fallback');
       return;
     }
 
@@ -155,10 +157,10 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
     try {
       position = await Geolocator.getLastKnownPosition();
       if (position != null) {
-        debugPrint('[LOC] using last-known location fix');
+        debugLog(() => '[LOC] using last-known location fix');
       }
     } catch (e) {
-      debugPrint('[LOC] getLastKnownPosition failed: $e');
+      debugLog(() => '[LOC] getLastKnownPosition failed: $e');
     }
 
     try {
@@ -169,11 +171,11 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
         ),
       );
       position = fresh;
-      debugPrint('[LOC] got fresh location fix');
+      debugLog(() => '[LOC] got fresh location fix');
     } catch (e) {
       // Common on iOS when sensor isn't settled — fall back to lastKnown
       // (already loaded above) so the map at least leaves Kumasi.
-      debugPrint('[LOC] getCurrentPosition failed: $e');
+      debugLog(() => '[LOC] getCurrentPosition failed: $e');
     }
 
     if (position == null) return;

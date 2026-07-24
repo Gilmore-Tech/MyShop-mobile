@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 import 'dart:convert';
 
@@ -455,7 +456,7 @@ class LocalNotificationService {
         handler(payload);
       }
     } catch (e) {
-      debugPrint('[LocalNotificationService] bad payload: $e');
+      debugLog(() => '[LocalNotificationService] bad payload: $e');
     }
   }
 }

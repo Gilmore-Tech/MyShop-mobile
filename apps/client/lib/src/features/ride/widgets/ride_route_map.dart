@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -110,9 +111,10 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
       );
       if (!mounted) return;
       setState(() => _carIcon = icon);
-      debugPrint('[LIVE-TRACK] car bitmap ready');
+      debugLog(() => '[LIVE-TRACK] car bitmap ready');
     } catch (e) {
-      debugPrint('[LIVE-TRACK] car bitmap failed: $e — fallback marker used');
+      debugLog(
+          () => '[LIVE-TRACK] car bitmap failed: $e — fallback marker used');
     }
   }
 
@@ -138,8 +140,9 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
   // ── Pipeline helpers ─────────────────────────────────────────────────────
 
   void _onDriverPosition(LiveDriverPosition? next) {
-    debugPrint(
-      '[LIVE-TRACK] provider tick → ${next != null ? "(${next.latitude}, ${next.longitude})" : "null"}',
+    debugLog(
+      () =>
+          '[LIVE-TRACK] provider tick → ${next != null ? "(${next.latitude}, ${next.longitude})" : "null"}',
     );
     setState(() => _lastDriverPos = next);
     _diagnosticBus.value = _LiveTrackDiagnostic(
@@ -192,13 +195,13 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
           );
       if (!mounted || route.polyline.length < 2) return;
       if (route.isFallback) {
-        debugPrint(
-          '[LIVE-TRACK] ${route.warningMessage ?? 'Route unavailable.'}',
+        debugLog(
+          () => '[LIVE-TRACK] ${route.warningMessage ?? 'Route unavailable.'}',
         );
         if (!phaseChanged && _routePolyline.length >= 2) {
-          debugPrint(
-            '[LIVE-TRACK] Keeping previous road route; refresh returned '
-            'direct-line fallback.',
+          debugLog(
+            () => '[LIVE-TRACK] Keeping previous road route; refresh returned '
+                'direct-line fallback.',
           );
           return;
         }
@@ -209,7 +212,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
       }
       _lastRoutedPhase = widget.phase;
     } catch (e) {
-      debugPrint('[LIVE-TRACK] Directions fetch failed: $e');
+      debugLog(() => '[LIVE-TRACK] Directions fetch failed: $e');
     } finally {
       _routeFetchInFlight = false;
     }
@@ -302,7 +305,7 @@ class _RideRouteMapState extends ConsumerState<RideRouteMap> {
 
   Future<void> _onMapCreated(GoogleMapController mc) async {
     _mapController = mc;
-    debugPrint('[LIVE-TRACK] Google Map ready');
+    debugLog(() => '[LIVE-TRACK] Google Map ready');
     _diagnosticBus.value = _LiveTrackDiagnostic(
       provider: _diagnosticBus.value.provider,
       marker: 'map ready',

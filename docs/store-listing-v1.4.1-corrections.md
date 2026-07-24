@@ -8,28 +8,33 @@ features, unverified service levels, or payment timing. Store operators must
 compare the final rendered listing with this sheet before submitting version
 `1.4.1`.
 
-## Verified listing identities and public versions
+## Last captured listing identities and public versions
 
-| App | Platform | Exact public identity | Public version checked 2026-07-19 GMT |
+| App | Platform | Exact public identity | Public version last checked 2026-07-23 GMT |
 | --- | --- | --- | --- |
-| Client | Android | `com.gilmoretech.myshopclient` | `1.3.11` |
+| Client | Android | `com.gilmoretech.myshopclient` | `1.4.1` |
 | Client | iOS | bundle `com.gilmoretech.myshopclient`, Apple ID `6773658114` | `1.3.9` |
-| Provider | Android | `com.gilmoretech.myshopprovider` | `1.3.11` |
+| Provider | Android | `com.gilmoretech.myshopprovider` | `1.4.1` |
 | Provider | iOS | bundle `com.gilmoretech.myshopprovider`, Apple ID `6773660049` | `1.4.0` |
 
-The approved next marketing version is `1.4.1`. The highest private build
-number for each app/store is still required before choosing release build
-codes.
+This is the last recorded read-only public snapshot, not a live store-console
+or private-build check. The current release line in that snapshot is `1.4.1`:
+it is public on Android, while the iOS update remains pending. Recheck all four
+public listings and read the highest private build number for each app/store
+immediately before choosing a new build code.
 
 ## Claims that must be removed or corrected
 
 | Current claim pattern | Release-safe correction |
 | --- | --- |
+| “No surge surprises” | State that the user reviews the fare shown before requesting. Do not imply surge or other configured pricing adjustments can never apply. |
 | “Instant” or “same-day” payout after every ride/job | Do not promise payout timing. Automated scheduled/batch and aggregate payouts are disabled for this release, and dispute/payment state can hold settlement. |
 | Provider verification “within 24 hours” | Remove the SLA. Review is manual and requires the approved reviewer chain; no completion time is approved. |
 | Artisan requires both Business Registration and Trade Certificate | State Ghana Card plus **either** Business Registration **or** Trade Certificate. Each document is independently approved. |
 | Driver verification described as Ghana Card/selfie only | State Ghana Card, driver’s licence, profile picture, and separate roadworthiness and insurance evidence for the selected vehicle. Each item is independently approved. |
 | “One-tap” or “two-tap” emergency activation | State a deliberate three-second hold. The hold itself confirms activation; there is no second confirmation. |
+| Trip or emergency recording is available | Remove. Emergency audio/video recording is explicitly deferred and disabled. |
+| Phone numbers are always masked | Remove unless every exposed phone-call route is proved to use a masking proxy. In-app communication can be described without claiming that an external phone call hides the number. |
 | Full Twi/bilingual availability | Remove unless the exact signed app is independently localization-tested and Product approves the claim. |
 | Loyalty earning/redemption or promotion benefits | Remove for this release. Reward mutation and redemption stay disabled. |
 | USSD or automated SmileKYC | Remove. Both are deferred. Verification is manual in v1. |
@@ -60,8 +65,7 @@ Ghana.
 - Provider accounts are reviewed manually under MyShop's verification rules.
 - During an eligible active booking, hold the SOS control for three seconds to
   raise the platform alert and open the Ghana Police dialler.
-- Use MyShop's in-app communication tools without publishing your phone number
-  to the other booking party.
+- Use the communication tools made available for an eligible booking.
 
 MyShop is operating an open-beta pilot in the Ashanti Region. Availability and
 payment methods depend on the booking and current service coverage.
@@ -113,3 +117,12 @@ For verification or booking help, open a tracked support ticket inside the app.
 - [ ] Screenshots match the signed `1.4.1` artifacts and show no deferred or
       false-success state.
 - [ ] Release notes describe only behavior present in the exact signed build.
+- [ ] The selected build code is higher than every private build in both store
+      consoles for that exact app.
+- [ ] All four artifacts come from one reviewed, clean `origin/main` SHA and
+      pass `tool/verify-release-artifact.sh`; the historical `+23` set and lone
+      Provider `+24` APK are not submission candidates.
+- [ ] Fresh iOS archives pass app-owned dSYM verification. Matching vendor
+      dSYMs are obtained, or the exact Mapbox/WebRTC/`objective_c`
+      crash-symbolication limitation is explicitly accepted; empty UUID-only
+      dSYMs must never be manufactured to hide the warning.

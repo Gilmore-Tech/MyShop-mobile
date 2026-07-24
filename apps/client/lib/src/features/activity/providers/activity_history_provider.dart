@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_models/shared_models.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/providers/app_lifecycle_provider.dart';
 
 /// Background poll cadence. Acts as a safety net for missed socket events —
 /// when the socket is healthy this fetches the same data and the UI no-ops.
@@ -188,7 +190,10 @@ class ActivityHistoryNotifier extends StateNotifier<ActivityHistoryState> {
     _load();
     _pollTimer = Timer.periodic(
       _kActivityPollInterval,
-      (_) => silentReload(),
+      (_) {
+        if (!_ref.read(appForegroundedProvider)) return;
+        silentReload();
+      },
     );
   }
 
@@ -225,7 +230,7 @@ class ActivityHistoryNotifier extends StateNotifier<ActivityHistoryState> {
           final ride = Ride.fromJson(r);
           items.add(_rideToTransaction(ride));
         } catch (e) {
-          debugPrint(
+          debugLog(() =>
               '[Activity] rejected malformed ride entry: ${e.runtimeType}');
         }
       }
@@ -235,7 +240,7 @@ class ActivityHistoryNotifier extends StateNotifier<ActivityHistoryState> {
         try {
           items.add(_jobJsonToTransaction(j));
         } catch (e) {
-          debugPrint(
+          debugLog(() =>
               '[Activity] rejected malformed job entry: ${e.runtimeType}');
         }
       }
@@ -273,7 +278,7 @@ class ActivityHistoryNotifier extends StateNotifier<ActivityHistoryState> {
       final msg = e.toString();
       if (msg.contains('NOT_AUTHENTICATED') ||
           msg.contains('session is over')) {
-        debugPrint('[Activity] session ended — stopping poll timer');
+        debugLog(() => '[Activity] session ended — stopping poll timer');
         _pollTimer?.cancel();
         _pollTimer = null;
         return;

@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 import 'dart:math';
 
 import 'package:dio/dio.dart';
@@ -120,7 +120,7 @@ class GooglePlacesService {
         );
       }).toList();
     } catch (e) {
-      developer.log('[PLACES] backend autocomplete failed: $e',
+      developer.debugLog(() => '[PLACES] backend autocomplete failed: $e',
           name: 'GooglePlacesService', level: 900);
       return const [];
     }
@@ -152,7 +152,7 @@ class GooglePlacesService {
             (data['types'] as List?)?.whereType<String>().toList() ?? const [],
       );
     } catch (e) {
-      developer.log('[PLACES] backend place details failed: $e',
+      developer.debugLog(() => '[PLACES] backend place details failed: $e',
           name: 'GooglePlacesService', level: 900);
       return null;
     } finally {
@@ -190,7 +190,7 @@ class GooglePlacesService {
         address: address,
       );
     } catch (e) {
-      developer.log('[PLACES] backend reverse geocoding failed: $e',
+      developer.debugLog(() => '[PLACES] backend reverse geocoding failed: $e',
           name: 'GooglePlacesService', level: 900);
       return null;
     }

@@ -1,6 +1,6 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -82,7 +82,7 @@ class CurrentLocationService {
           _ref.read(currentDevicePositionProvider.notifier).state = last;
         }
       } catch (error) {
-        debugPrint('[LOC] getLastKnownPosition failed: $error');
+        debugLog(() => '[LOC] getLastKnownPosition failed: $error');
       }
 
       if (bestSoFar != null && !waitForFresh) {
@@ -92,7 +92,7 @@ class CurrentLocationService {
 
       return _refreshCurrentPosition(bestSoFar);
     } catch (error) {
-      debugPrint('[LOC] location permission/service check failed: $error');
+      debugLog(() => '[LOC] location permission/service check failed: $error');
       return _ref.read(currentDevicePositionProvider);
     }
   }
@@ -111,7 +111,7 @@ class CurrentLocationService {
       _coldStartRetryCount = 0;
       return position;
     } catch (error) {
-      debugPrint('[LOC] getCurrentPosition failed: $error — '
+      debugLog(() => '[LOC] getCurrentPosition failed: $error — '
           'using ${fallback == null ? 'no fallback' : 'last-known'}');
       _scheduleColdStartRetry();
       return fallback;

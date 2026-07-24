@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../di/providers.dart';
@@ -17,7 +17,7 @@ final currentLocationPlaceProvider =
   try {
     position ??= await ref.watch(currentLocationServiceProvider).ensure();
   } catch (error) {
-    debugPrint('[LOC] current-location GPS lookup failed: $error');
+    debugLog(() => '[LOC] current-location GPS lookup failed: $error');
   }
 
   if (position == null) return fallback;
@@ -30,7 +30,7 @@ final currentLocationPlaceProvider =
         ) ??
         _gpsFallback(position.latitude, position.longitude);
   } catch (error) {
-    debugPrint('[LOC] current-location label failed: $error');
+    debugLog(() => '[LOC] current-location label failed: $error');
     return _gpsFallback(position.latitude, position.longitude);
   }
 });

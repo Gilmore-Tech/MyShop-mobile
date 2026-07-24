@@ -234,6 +234,70 @@ void main() {
     paymentService.statusResponses[1].complete(const {'status': 'pending'});
     await currentRead;
   });
+
+  test('job settlement timer pauses REST reads while app is backgrounded',
+      () async {
+    var foregrounded = false;
+    final paymentService = _CountingPaymentService();
+    final notifier = PaymentNotifier(
+      paymentService,
+      _FakeJobService(
+        confirmation: const {'jobId': 'job-1', 'status': 'pending_payment'},
+        readBack: const {'jobId': 'job-1', 'status': 'pending_payment'},
+      ),
+      _MemoryPendingPaymentStore(),
+      isForegrounded: () => foregrounded,
+      settlementPollInterval: const Duration(milliseconds: 10),
+    );
+    addTearDown(notifier.dispose);
+
+    await notifier.confirmPayment(
+      jobId: 'job-1',
+      summary: summary,
+      momoPhone: '0240000000',
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 35));
+    expect(paymentService.statusCalls, 0);
+
+    foregrounded = true;
+    await Future<void>.delayed(const Duration(milliseconds: 35));
+    expect(paymentService.statusCalls, greaterThan(0));
+
+    foregrounded = false;
+    final callsAtBackground = paymentService.statusCalls;
+    await Future<void>.delayed(const Duration(milliseconds: 35));
+    expect(paymentService.statusCalls, callsAtBackground);
+  });
+
+  test('ride settlement timer pauses REST reads while app is backgrounded',
+      () async {
+    var foregrounded = false;
+    final paymentService = _CountingPaymentService();
+    final notifier = RidePaymentNotifier(
+      paymentService,
+      _MemoryPendingPaymentStore(),
+      isForegrounded: () => foregrounded,
+      settlementPollInterval: const Duration(milliseconds: 10),
+    );
+    addTearDown(notifier.dispose);
+
+    await notifier.initiate(
+      rideId: 'ride-1',
+      paymentMethod: 'momo_mtn',
+      momoPhone: '0240000000',
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 35));
+    expect(paymentService.statusCalls, 0);
+
+    foregrounded = true;
+    await Future<void>.delayed(const Duration(milliseconds: 35));
+    expect(paymentService.statusCalls, greaterThan(0));
+
+    foregrounded = false;
+    final callsAtBackground = paymentService.statusCalls;
+    await Future<void>.delayed(const Duration(milliseconds: 35));
+    expect(paymentService.statusCalls, callsAtBackground);
+  });
 }
 
 Map<String, dynamic> _acceptedPaymentResponse({String? message}) => {
@@ -283,6 +347,25 @@ class _ControlledPaymentService extends _FakePaymentService {
   Future<Map<String, dynamic>> getPaymentStatus(String paymentId) {
     statusCalls += 1;
     return statusResponse.future;
+  }
+}
+
+class _CountingPaymentService extends _FakePaymentService {
+  _CountingPaymentService()
+      : super(
+          initiateResponse: {
+            'paymentId': 'payment-1',
+            'reference': 'paystack-reference-1',
+            'data': {'status': 'pending'},
+          },
+        );
+
+  int statusCalls = 0;
+
+  @override
+  Future<Map<String, dynamic>> getPaymentStatus(String paymentId) async {
+    statusCalls += 1;
+    return const {'status': 'pending'};
   }
 }
 

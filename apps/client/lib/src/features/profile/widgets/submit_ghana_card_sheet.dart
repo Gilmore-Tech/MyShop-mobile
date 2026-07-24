@@ -232,8 +232,8 @@ class _Header extends StatelessWidget {
           ),
           SizedBox(height: h * 0.007),
           Text(
-            "We'll review your submission within 24 hours and let you know "
-            'once your account is verified.',
+            "We'll review your submission manually and let you know "
+            'when a decision is available.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: w * 0.031,

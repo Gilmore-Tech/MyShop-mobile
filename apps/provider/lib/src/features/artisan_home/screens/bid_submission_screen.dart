@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 import 'dart:io';
 
@@ -441,8 +442,7 @@ class _BidSubmissionScreenState extends ConsumerState<BidSubmissionScreen> {
     } on ApiException catch (e) {
       failureMessage = _friendlyBidError(e);
     } catch (e) {
-      // ignore: avoid_print
-      print('[BidSubmissionScreen] unexpected submit error: $e');
+      debugLog(() => '[BidSubmissionScreen] unexpected submit error: $e');
       failureMessage = widget.isEditing
           ? 'Failed to update bid. Please try again.'
           : 'Failed to submit bid. Please try again.';

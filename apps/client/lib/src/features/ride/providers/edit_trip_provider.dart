@@ -1,4 +1,4 @@
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart' as models;
@@ -287,8 +287,9 @@ class TripStopsNotifier extends StateNotifier<List<TripStop>> {
         address: stop.address.isEmpty ? null : stop.address,
       );
       submitted++;
-      developer.log(
-        'addStop OK rideId=$rideId stopId=${result['stopId'] ?? result['id']}',
+      developer.debugLog(
+        () =>
+            'addStop OK rideId=$rideId stopId=${result['stopId'] ?? result['id']}',
         name: 'TripStops',
       );
       // Mark local row as synced so a retry doesn't re-submit.

@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -100,14 +101,14 @@ class SecureTokenStorage implements TokenStorage {
       if (!_recoverOnFailure) {
         Error.throwWithStackTrace(error, stackTrace);
       }
-      debugPrint(
-        '[TokenStorage] $operation failed; clearing unreadable Android '
-        'secure storage and retrying: $error',
+      debugLog(
+        () => '[TokenStorage] $operation failed; clearing unreadable Android '
+            'secure storage and retrying: $error',
       );
       try {
         await _storage.deleteAll();
       } catch (clearError) {
-        debugPrint('[TokenStorage] recovery deleteAll failed: $clearError');
+        debugLog(() => '[TokenStorage] recovery deleteAll failed: $clearError');
         Error.throwWithStackTrace(error, stackTrace);
       }
       return action();
@@ -128,8 +129,9 @@ class SecureTokenStorage implements TokenStorage {
   @override
   Future<String?> readAccessToken() async {
     final value = await _read(_kAccessToken);
-    debugPrint(
-      '[TokenStorage] read access_token → ${value == null ? 'null' : 'present(${value.length})'}',
+    debugLog(
+      () =>
+          '[TokenStorage] read access_token → ${value == null ? 'null' : 'present(${value.length})'}',
     );
     return value;
   }
@@ -137,8 +139,9 @@ class SecureTokenStorage implements TokenStorage {
   @override
   Future<String?> readRefreshToken() async {
     final value = await _read(_kRefreshToken);
-    debugPrint(
-      '[TokenStorage] read refresh_token → ${value == null ? 'null' : 'present(${value.length})'}',
+    debugLog(
+      () =>
+          '[TokenStorage] read refresh_token → ${value == null ? 'null' : 'present(${value.length})'}',
     );
     return value;
   }
@@ -148,8 +151,9 @@ class SecureTokenStorage implements TokenStorage {
     required String accessToken,
     required String refreshToken,
   }) async {
-    debugPrint(
-      '[TokenStorage] writeTokens (access=${accessToken.length} refresh=${refreshToken.length})',
+    debugLog(
+      () =>
+          '[TokenStorage] writeTokens (access=${accessToken.length} refresh=${refreshToken.length})',
     );
     await _withRecovery('write tokens', () async {
       await _storage.write(key: _kAccessToken, value: accessToken);
@@ -158,22 +162,25 @@ class SecureTokenStorage implements TokenStorage {
       // keychain can silently swallow writes in some configurations; this
       // turns that into a loud log line instead of a mysterious logout.
       final readback = await _storage.read(key: _kAccessToken);
-      debugPrint(
-        '[TokenStorage] writeTokens readback → ${readback == null ? 'NULL (write failed!)' : 'ok'}',
+      debugLog(
+        () =>
+            '[TokenStorage] writeTokens readback → ${readback == null ? 'NULL (write failed!)' : 'ok'}',
       );
     });
   }
 
   @override
   Future<void> writeAccessToken(String accessToken) async {
-    debugPrint('[TokenStorage] writeAccessToken (len=${accessToken.length})');
+    debugLog(
+      () => '[TokenStorage] writeAccessToken (len=${accessToken.length})',
+    );
     await _write(_kAccessToken, accessToken);
   }
 
   @override
   Future<void> clearTokens() async {
-    debugPrint(
-      '[TokenStorage] clearTokens — called from:\n${StackTrace.current}',
+    debugLog(
+      () => '[TokenStorage] clearTokens — called from:\n${StackTrace.current}',
     );
     await _delete(_kAccessToken);
     await _delete(_kRefreshToken);
@@ -187,7 +194,7 @@ class SecureTokenStorage implements TokenStorage {
 
   @override
   Future<void> clearAuthTokensOnly() async {
-    debugPrint('[TokenStorage] clearAuthTokensOnly');
+    debugLog(() => '[TokenStorage] clearAuthTokensOnly');
     await _delete(_kAccessToken);
     await _delete(_kRefreshToken);
   }

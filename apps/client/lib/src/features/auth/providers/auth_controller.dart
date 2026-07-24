@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
 import 'package:api_client/api_client.dart';
@@ -198,7 +199,7 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
       try {
         profile = await _repo.bootstrap().timeout(const Duration(seconds: 8));
       } on TimeoutException {
-        debugPrint('[Auth] client bootstrap timed out after 8 seconds');
+        debugLog(() => '[Auth] client bootstrap timed out after 8 seconds');
       }
       if (profile != null) {
         state = AuthAuthenticated(profile);
@@ -206,7 +207,7 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
         state = const AuthUnauthenticated();
       }
     } catch (error, stackTrace) {
-      debugPrint('[Auth] client bootstrap failed: $error\n$stackTrace');
+      debugLog(() => '[Auth] client bootstrap failed: $error\n$stackTrace');
       state = const AuthUnauthenticated();
     }
   }
@@ -219,7 +220,8 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
     state = const AuthUnauthenticated(isLoading: true);
     try {
       if (kDebugMode) {
-        debugPrint('[Auth] submitPhone called with a normalized phone number');
+        debugLog(
+            () => '[Auth] submitPhone called with a normalized phone number');
       }
       // Attempt to send OTP directly. If a client account exists, OTP is sent.
       // If not, the backend returns a 404 and we redirect to sign-up.
@@ -228,7 +230,7 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
       await _repo.loginClient(phone);
       state = AuthOtpSent(phone: phone, isNewUser: false);
     } on ApiException catch (e) {
-      debugPrint('[Auth] loginClient ApiException: '
+      debugLog(() => '[Auth] loginClient ApiException: '
           'status=${e.statusCode} code=${e.errorCode} msg=${e.message}');
       // Backend returns 404 / USER_NOT_FOUND / CLIENT_PROFILE_NOT_FOUND when
       // the phone has no client account yet — redirect to registration.

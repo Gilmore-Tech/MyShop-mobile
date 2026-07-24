@@ -1,7 +1,7 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
 import 'package:api_client/api_client.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 
@@ -37,27 +37,28 @@ final activeRideRecoveryBridgeProvider = Provider<void>((ref) {
   // freshly-launched app actually finds a real active ride instead of
   // silently giving up on a transient network blip.
   Future<void> tryRecover() async {
-    debugPrint('[ActiveRideRecovery] checking server for active ride');
+    debugLog(() => '[ActiveRideRecovery] checking server for active ride');
     const attempts = 3;
     for (var attempt = 1; attempt <= attempts; attempt++) {
       try {
         final json = await ref.read(rideServiceProvider).getMyActiveRide();
         if (json == null) {
-          debugPrint('[ActiveRideRecovery] no active ride (attempt $attempt)');
+          debugLog(
+              () => '[ActiveRideRecovery] no active ride (attempt $attempt)');
           return;
         }
         final ride = Ride.fromJson(json);
         if (!ride.status.isActive) {
-          debugPrint('[ActiveRideRecovery] ride ${ride.id} returned with '
+          debugLog(() => '[ActiveRideRecovery] ride ${ride.id} returned with '
               'non-active status (${ride.status}) — ignoring');
           return;
         }
-        debugPrint('[ActiveRideRecovery] restoring active ride ${ride.id} '
+        debugLog(() => '[ActiveRideRecovery] restoring active ride ${ride.id} '
             '(status=${ride.status})');
         ref.read(activeRideProvider.notifier).restore(ride);
         return;
       } on ApiException catch (e) {
-        debugPrint('[ActiveRideRecovery] getMyActiveRide failed '
+        debugLog(() => '[ActiveRideRecovery] getMyActiveRide failed '
             '(attempt $attempt/$attempts, status ${e.statusCode}): '
             '${e.errorCode ?? e.message}');
         // Hard auth failures aren't transient — bail.
@@ -66,22 +67,24 @@ final activeRideRecoveryBridgeProvider = Provider<void>((ref) {
         // Wire-shape mismatch — retrying won't help; the next request
         // returns the same bad payload. Bail and surface in the log so
         // we can fix the parser instead of burning the 9s backoff.
-        debugPrint('[ActiveRideRecovery] getMyActiveRide parse failed: $e');
+        debugLog(() => '[ActiveRideRecovery] getMyActiveRide parse failed: $e');
         return;
       } on FormatException catch (e) {
-        debugPrint('[ActiveRideRecovery] getMyActiveRide parse failed: $e');
+        debugLog(() => '[ActiveRideRecovery] getMyActiveRide parse failed: $e');
         return;
       } catch (e) {
-        debugPrint('[ActiveRideRecovery] getMyActiveRide crashed '
+        debugLog(() => '[ActiveRideRecovery] getMyActiveRide crashed '
             '(attempt $attempt/$attempts): $e');
       }
       if (attempt < attempts) {
         final backoff = Duration(seconds: 3 * attempt);
-        debugPrint('[ActiveRideRecovery] retrying in ${backoff.inSeconds}s');
+        debugLog(
+            () => '[ActiveRideRecovery] retrying in ${backoff.inSeconds}s');
         await Future<void>.delayed(backoff);
       }
     }
-    debugPrint('[ActiveRideRecovery] exhausted retries — leaving state alone');
+    debugLog(
+        () => '[ActiveRideRecovery] exhausted retries — leaving state alone');
   }
 
   ref.listen<AuthState>(
@@ -94,7 +97,7 @@ final activeRideRecoveryBridgeProvider = Provider<void>((ref) {
       // Artisans hitting it always 403 — skip the call entirely instead of
       // burning a guaranteed-rejected request on every artisan sign-in.
       if (!ref.read(providerTypeProvider).isDriver) {
-        debugPrint('[ActiveRideRecovery] non-driver role — skipping');
+        debugLog(() => '[ActiveRideRecovery] non-driver role — skipping');
         return;
       }
       tryRecover();
@@ -122,7 +125,7 @@ final activeRideRecoveryBridgeProvider = Provider<void>((ref) {
       );
       return;
     }
-    debugPrint('[ActiveRideRecovery] socket connected — re-checking');
+    debugLog(() => '[ActiveRideRecovery] socket connected — re-checking');
     tryRecover();
   });
 });

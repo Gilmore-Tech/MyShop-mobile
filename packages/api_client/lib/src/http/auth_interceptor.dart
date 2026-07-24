@@ -1,7 +1,7 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 
 import '../models/auth_error_mapper.dart';
 import 'token_refresher.dart';
@@ -155,7 +155,7 @@ class AuthInterceptor extends Interceptor {
     // queue, and even if it succeeded, we're about to wipe tokens). Just
     // propagate so the caller can move on.
     if (path.contains('/auth/logout')) {
-      debugPrint('[Auth] 401 on /auth/logout — propagating (no refresh)');
+      debugLog(() => '[Auth] 401 on /auth/logout — propagating (no refresh)');
       handler.next(err);
       return;
     }
@@ -168,7 +168,7 @@ class AuthInterceptor extends Interceptor {
     // pair but preserve phone/role/cached profile so the user can sign
     // back in with one tap.
     if (errorCode == AuthErrorCodes.sessionTakenOver) {
-      debugPrint('[Auth] SESSION_TAKEN_OVER on $path — soft logout');
+      debugLog(() => '[Auth] SESSION_TAKEN_OVER on $path — soft logout');
       await _tokenStorage.clearAuthTokensOnly();
       _onForceLogout?.call();
       handler.next(err);
@@ -183,22 +183,24 @@ class AuthInterceptor extends Interceptor {
     // re-attach it. Do NOT call _tokenRefresher.refresh() again; that
     // would just hit the lock a second time.
     if (errorCode == AuthErrorCodes.refreshInFlight) {
-      debugPrint('[Auth] REFRESH_IN_FLIGHT on $path — backing off 250ms');
+      debugLog(() => '[Auth] REFRESH_IN_FLIGHT on $path — backing off 250ms');
       await Future<void>.delayed(const Duration(milliseconds: 250));
       final freshToken = await _tokenStorage.readAccessToken();
       if (freshToken != null) {
-        debugPrint('[Auth] retrying $path with refreshed token');
+        debugLog(() => '[Auth] retrying $path with refreshed token');
         await _retryWithToken(err.requestOptions, freshToken, handler);
         return;
       }
       // No fresh token after the backoff — propagate so the caller can
       // either surface the failure or trigger its own logout.
-      debugPrint('[Auth] no fresh token after REFRESH_IN_FLIGHT backoff');
+      debugLog(() => '[Auth] no fresh token after REFRESH_IN_FLIGHT backoff');
       handler.next(err);
       return;
     }
 
-    debugPrint('[Auth] 401 on $path (code=$errorCode) — attempting refresh');
+    debugLog(
+      () => '[Auth] 401 on $path (code=$errorCode) — attempting refresh',
+    );
 
     // Dedup: if another concurrent 401 already refreshed the token, the
     // stored access token will differ from the one we sent. Just retry
@@ -214,7 +216,9 @@ class AuthInterceptor extends Interceptor {
     if (currentStored != null &&
         attachedToken != null &&
         currentStored != attachedToken) {
-      debugPrint('[Auth] another request already refreshed — retrying $path');
+      debugLog(
+        () => '[Auth] another request already refreshed — retrying $path',
+      );
       await _retryWithToken(err.requestOptions, currentStored, handler);
       return;
     }
@@ -227,11 +231,11 @@ class AuthInterceptor extends Interceptor {
     // propagate on null.
     final refreshed = await _tokenRefresher.refresh();
     if (refreshed == null) {
-      debugPrint('[Auth] refresh failed — propagating 401 for $path');
+      debugLog(() => '[Auth] refresh failed — propagating 401 for $path');
       handler.next(err);
       return;
     }
-    debugPrint('[Auth] refresh succeeded — retrying $path');
+    debugLog(() => '[Auth] refresh succeeded — retrying $path');
     await _retryWithToken(err.requestOptions, refreshed, handler);
   }
 

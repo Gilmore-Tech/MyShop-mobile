@@ -1,4 +1,4 @@
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:api_client/api_client.dart';
@@ -102,8 +102,8 @@ class _RideDetailNotifier
       final ride = await rideService.getRide(rideId);
       return _parseRide(rideId, ride);
     } on ApiException catch (e) {
-      developer.log(
-        'getRide detail failed (${e.statusCode}): ${e.message}',
+      developer.debugLog(
+        () => 'getRide detail failed (${e.statusCode}): ${e.message}',
         name: 'RideDetailProvider',
       );
       rethrow;

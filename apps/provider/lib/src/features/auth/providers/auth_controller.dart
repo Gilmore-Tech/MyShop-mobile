@@ -1,7 +1,7 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
 import 'package:api_client/api_client.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 
@@ -224,7 +224,7 @@ final authControllerProvider =
                 shouldBeOnline: false,
               );
         } catch (error) {
-          debugPrint('[Auth] Online intent cleanup failed: $error');
+          debugLog(() => '[Auth] Online intent cleanup failed: $error');
         }
       }
       await Future.wait(cacheCleanup);
@@ -301,7 +301,7 @@ class AuthController extends StateNotifier<AuthState> {
       try {
         user = await _repo.bootstrap().timeout(const Duration(seconds: 8));
       } on TimeoutException {
-        debugPrint('[Auth] bootstrap timed out after 8 seconds');
+        debugLog(() => '[Auth] bootstrap timed out after 8 seconds');
       }
       if (user != null) {
         final savedRole = await _tokenStorage.readRole();
@@ -317,7 +317,7 @@ class AuthController extends StateNotifier<AuthState> {
         state = const AuthUnauthenticated();
       }
     } catch (error, stackTrace) {
-      debugPrint('[Auth] bootstrap failed: $error\n$stackTrace');
+      debugLog(() => '[Auth] bootstrap failed: $error\n$stackTrace');
       if (!mounted) return;
       state = const AuthUnauthenticated();
     }
@@ -736,21 +736,24 @@ class AuthController extends StateNotifier<AuthState> {
   /// User-initiated logout: revokes the refresh token server-side, then
   /// wipes local state.
   Future<void> logout() async {
-    debugPrint('[AuthController] logout() called from ${state.runtimeType}');
+    debugLog(
+        () => '[AuthController] logout() called from ${state.runtimeType}');
     final exitingUser = switch (state) {
       AuthAuthenticated(:final user) => user,
       _ => null,
     };
     try {
       await _repo.logout().timeout(const Duration(seconds: 8));
-      debugPrint('[AuthController] _repo.logout() returned');
+      debugLog(() => '[AuthController] _repo.logout() returned');
     } on TimeoutException {
-      debugPrint('[AuthController] _repo.logout() timed out — wiping locally');
+      debugLog(
+          () => '[AuthController] _repo.logout() timed out — wiping locally');
       try {
         await _repo.clear();
       } catch (_) {}
     } catch (e) {
-      debugPrint('[AuthController] _repo.logout() threw: $e — wiping locally');
+      debugLog(
+          () => '[AuthController] _repo.logout() threw: $e — wiping locally');
       try {
         await _repo.clear();
       } catch (_) {}
@@ -761,7 +764,7 @@ class AuthController extends StateNotifier<AuthState> {
       // Cache wipe is best-effort — never block logout on storage errors.
     }
     state = const AuthUnauthenticated();
-    debugPrint('[AuthController] state → AuthUnauthenticated');
+    debugLog(() => '[AuthController] state → AuthUnauthenticated');
   }
 
   /// User dismisses the "already signed in elsewhere" block dialog.

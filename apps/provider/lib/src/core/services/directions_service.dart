@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
@@ -160,8 +160,9 @@ class DirectionsService {
         steps: steps,
       );
     } catch (error, stack) {
-      developer.log(
-        'Authenticated route request failed; displaying an explicit direct-line fallback.',
+      developer.debugLog(
+        () =>
+            'Authenticated route request failed; displaying an explicit direct-line fallback.',
         name: 'DirectionsService',
         error: error,
         stackTrace: stack,

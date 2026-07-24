@@ -8,6 +8,7 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/router.dart';
+import '../../../core/providers/app_lifecycle_provider.dart';
 import '../../../core/providers/chat_controller_provider.dart';
 import '../../calls/helpers/start_in_app_call.dart';
 import '../providers/artisan_live_location_provider.dart';
@@ -50,7 +51,7 @@ class _BidDetailScreenState extends ConsumerState<BidDetailScreen> {
   void initState() {
     super.initState();
     _poll = Timer.periodic(_bidDetailPollInterval, (_) {
-      if (!mounted) return;
+      if (!mounted || !ref.read(appForegroundedProvider)) return;
       // Refresh the bid list (which `bidDetailProvider` watches) and the
       // parent job so both the bid status and the footer's job-status
       // badge stay live without depending on socket delivery.

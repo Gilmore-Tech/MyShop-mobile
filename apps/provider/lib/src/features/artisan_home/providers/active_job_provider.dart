@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -112,8 +112,8 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
         ),
       );
     } catch (e) {
-      developer.log(
-        'Active job client hydration failed for $jobId: $e',
+      developer.debugLog(
+        () => 'Active job client hydration failed for $jobId: $e',
         name: 'ActiveJob',
         level: 800,
       );
@@ -237,8 +237,8 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
       applyRemoteStatus(fresh.status);
       return fresh;
     } catch (e) {
-      developer.log(
-        'refreshFromServer failed: $e',
+      developer.debugLog(
+        () => 'refreshFromServer failed: $e',
         name: 'ActiveJob',
         level: 800,
       );
@@ -265,9 +265,10 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
       if (fresh == null ||
           fresh.id != job.id ||
           fresh.status != JobStatus.completed) {
-        developer.log(
-          'Cash confirmation response was not authoritative for ${job.id}; '
-          'reading the job back before showing completion',
+        developer.debugLog(
+          () =>
+              'Cash confirmation response was not authoritative for ${job.id}; '
+              'reading the job back before showing completion',
           name: 'ActiveJob',
           level: 900,
         );
@@ -296,9 +297,9 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
         _refreshUserProfile();
       } catch (_) {}
     } on ApiException catch (e) {
-      developer.log(
-        'confirmCashReceipt failed: status=${e.statusCode} '
-        'code=${e.errorCode} — ${e.message}',
+      developer.debugLog(
+        () => 'confirmCashReceipt failed: status=${e.statusCode} '
+            'code=${e.errorCode} — ${e.message}',
         name: 'ActiveJob',
         level: 900,
       );
@@ -311,8 +312,8 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
         unawaited(refreshFromServer());
       }
     } catch (e, st) {
-      developer.log(
-        'confirmCashReceipt crashed: $e\n$st',
+      developer.debugLog(
+        () => 'confirmCashReceipt crashed: $e\n$st',
         name: 'ActiveJob',
         level: 1000,
       );
@@ -470,9 +471,9 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
                 capturedAt: position?.timestamp,
               );
       if (acknowledgement['status']?.toString() != next.toJson()) {
-        developer.log(
-          'Job transition response was not authoritative for ${job.id}; '
-          'reading the job back before changing local status',
+        developer.debugLog(
+          () => 'Job transition response was not authoritative for ${job.id}; '
+              'reading the job back before changing local status',
           name: 'ActiveJob',
           level: 900,
         );
@@ -529,8 +530,8 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
       );
       return false;
     } on ApiException catch (e) {
-      developer.log(
-        'updateJobStatus failed: ${e.message}',
+      developer.debugLog(
+        () => 'updateJobStatus failed: ${e.message}',
         name: 'ActiveJob',
         level: 900,
       );
@@ -540,8 +541,8 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
       );
       return false;
     } catch (e) {
-      developer.log(
-        'updateJobStatus crashed: $e',
+      developer.debugLog(
+        () => 'updateJobStatus crashed: $e',
         name: 'ActiveJob',
         level: 1000,
       );

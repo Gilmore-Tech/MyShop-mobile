@@ -1,7 +1,7 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
 import 'package:api_client/api_client.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 
@@ -155,7 +155,7 @@ Future<Ride?> _recoverPendingRideRequest({
       return ride;
     }
   } catch (e) {
-    debugPrint('[PendingRequestRecovery] ride lookup failed: $e');
+    debugLog(() => '[PendingRequestRecovery] ride lookup failed: $e');
   }
   return null;
 }
@@ -186,7 +186,7 @@ Future<void> _recoverPendingRequests(Ref ref) async {
       }
     }
   } catch (e) {
-    debugPrint('[PendingRequestRecovery] failed: $e');
+    debugLog(() => '[PendingRequestRecovery] failed: $e');
   }
 }
 
@@ -224,7 +224,7 @@ Future<void> _surfaceRideRequest(
     ref.read(incomingRideRequestProvider.notifier).state = ride;
     ref.read(navBadgeProvider.notifier).increment('/home');
   } catch (e) {
-    debugPrint('[PendingRequestRecovery] ride ${request.id} failed: $e');
+    debugLog(() => '[PendingRequestRecovery] ride ${request.id} failed: $e');
   }
 }
 
@@ -256,6 +256,6 @@ Future<void> _surfaceJobRequest(Ref ref, ProviderPendingRequest request) async {
     ref.read(incomingJobRequestProvider.notifier).state = job;
     ref.read(navBadgeProvider.notifier).increment('/trips');
   } catch (e) {
-    debugPrint('[PendingRequestRecovery] job ${request.id} failed: $e');
+    debugLog(() => '[PendingRequestRecovery] job ${request.id} failed: $e');
   }
 }

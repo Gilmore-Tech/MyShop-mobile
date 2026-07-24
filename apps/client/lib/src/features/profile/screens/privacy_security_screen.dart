@@ -299,19 +299,18 @@ class _KycDescription extends StatelessWidget {
     final reason = kycRejectionReason?.trim();
     final text = switch (status) {
       KycStatus.verified =>
-        'Your identity documents have been verified against national '
-            'databases. Verified users enjoy higher transaction limits.',
+        'Your identity documents were approved through MyShop\'s manual '
+            'review process.',
       KycStatus.pending =>
-        'Your documents are under review. Verification typically '
-            'completes within 24 hours.',
+        'Your documents are awaiting manual review. We\'ll notify you '
+            'when a decision is available.',
       KycStatus.rejected => reason != null && reason.isNotEmpty
           ? 'Verification was unsuccessful: $reason. Please resubmit '
               'your documents to continue using all platform features.'
           : 'Verification was unsuccessful. Please resubmit your '
               'documents to continue using all platform features.',
       KycStatus.unverified =>
-        'Verify your identity to unlock higher transaction limits and '
-            'the ID Verified badge visible to artisans.',
+        'Submit your identity documents for MyShop\'s manual review.',
     };
 
     return Padding(

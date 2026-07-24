@@ -1,4 +1,4 @@
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
@@ -504,10 +504,10 @@ class _ActiveJobNotifier
     // these come back null after the client picked Cash on the payment
     // screen, the backend isn't persisting them and the "Proceed to
     // payment" CTA will keep looping.
-    developer.log(
-      'getJob → status=$status '
-      'clientPaymentAcknowledgedAt=$clientPaymentAck '
-      'clientPaymentMethod=$clientPaymentMethod',
+    developer.debugLog(
+      () => 'getJob → status=$status '
+          'clientPaymentAcknowledgedAt=$clientPaymentAck '
+          'clientPaymentMethod=$clientPaymentMethod',
       name: 'ActiveJob',
     );
     final phase = _parsePhase(status, clientPaymentAck: clientPaymentAck);
@@ -577,8 +577,8 @@ class _ActiveJobNotifier
       lat ??= (loc['latitude'] ?? loc['lat']) as num?;
       lng ??= (loc['longitude'] ?? loc['lng']) as num?;
     }
-    developer.log(
-      'getJob coords lat=$lat lng=$lng (topKeys=${data.keys.toList()})',
+    developer.debugLog(
+      () => 'getJob coords lat=$lat lng=$lng (topKeys=${data.keys.toList()})',
       name: 'ActiveJob',
     );
 

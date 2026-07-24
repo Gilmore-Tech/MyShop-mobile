@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,8 +26,9 @@ Future<void> startProviderInAppCall(
       try {
         await callService.endCall(session.callId);
       } catch (error) {
-        debugPrint(
-          '[Call] failed to clean up detached call ${session.callId}: $error',
+        debugLog(
+          () =>
+              '[Call] failed to clean up detached call ${session.callId}: $error',
         );
       }
       return;

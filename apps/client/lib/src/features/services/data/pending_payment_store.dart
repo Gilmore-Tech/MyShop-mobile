@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -112,7 +112,7 @@ class PendingPaymentStore {
       final decoded = jsonDecode(raw);
       if (decoded is Map<String, dynamic>) return decoded;
     } catch (e) {
-      developer.log('PendingPaymentStore: failed to decode — $e',
+      developer.debugLog(() => 'PendingPaymentStore: failed to decode — $e',
           name: 'Payment', level: 700);
     }
     return <String, dynamic>{};

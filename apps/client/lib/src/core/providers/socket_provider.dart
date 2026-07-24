@@ -1,5 +1,6 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
@@ -85,12 +86,13 @@ void _connectAndListen(Ref ref, SocketService socket) {
   // `ride:state` snapshots. Without this, an emit issued before the
   // handshake completes is dropped silently and the rider is stuck on the
   // matching screen indefinitely.
-  socket.connectionStream.listen((connected) {
+  final connectionSub = socket.connectionStream.listen((connected) {
     ref.container.read(socketConnectedProvider.notifier).state = connected;
     if (!connected) return;
     final rideId = ref.container.read(activeRideIdProvider);
     if (rideId != null && rideId.isNotEmpty) {
-      developer.log('Socket connected — joining ride room $rideId', name: 'WS');
+      developer.debugLog(() => 'Socket connected — joining ride room $rideId',
+          name: 'WS');
       socket.emit('client:track:ride', {'rideId': rideId});
     }
     // Re-join the job-tracking room on reconnect so the live artisan
@@ -99,10 +101,12 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // it on dispose; this listener mirrors the rider re-track flow.
     final jobId = ref.container.read(trackedJobIdProvider);
     if (jobId != null && jobId.isNotEmpty) {
-      developer.log('Socket connected — joining job room $jobId', name: 'WS');
+      developer.debugLog(() => 'Socket connected — joining job room $jobId',
+          name: 'WS');
       socket.emit('client:track:job', {'jobId': jobId});
     }
   });
+  ref.onDispose(connectionSub.cancel);
 
   // Attach all domain handlers via `onAfterCreate` so they re-bind on every
   // post-dispose reconnect (server restart, lifecycle observer kicking the
@@ -112,12 +116,12 @@ void _connectAndListen(Ref ref, SocketService socket) {
   // `ride:matcher_progress` etc. were no longer registered, so the rider
   // saw the connection succeed and the matching UI silently froze.
   void attachHandlers() {
-    debugPrint('[WS] (re-)attaching client domain handlers');
+    debugLog(() => '[WS] (re-)attaching client domain handlers');
 
     // Event names are useful diagnostics; payloads are not logged because
     // ride snapshots can contain exact addresses, coordinates, and identity.
     socket.onAnyEvent((event, _) {
-      developer.log('[event] $event', name: 'WS');
+      developer.debugLog(() => '[event] $event', name: 'WS');
     });
 
     ProviderLocationNotice? locationNoticeFrom(dynamic data,
@@ -363,7 +367,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
           driver['lng']) as num?;
       if (dLat != null && dLng != null) {
         final heading = (driver['heading'] ?? driver['bearing']) as num?;
-        debugPrint(
+        debugLog(() =>
             '[LIVE-TRACK] ride:state seeded driver position ($dLat, $dLng)');
         ref.container.read(liveDriverPositionProvider.notifier).state =
             LiveDriverPosition(
@@ -373,7 +377,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
           updatedAt: DateTime.now(),
         );
       } else {
-        debugPrint('[LIVE-TRACK] ride:state had no currentLat/currentLng — '
+        debugLog(() => '[LIVE-TRACK] ride:state had no currentLat/currentLng — '
             'marker waits for next driver:location fix');
       }
     }
@@ -392,8 +396,8 @@ void _connectAndListen(Ref ref, SocketService socket) {
         try {
           applyRideSnapshot(snap);
         } catch (e) {
-          developer.log(
-            'Failed to apply ride:state snapshot (${e.runtimeType})',
+          developer.debugLog(
+            () => 'Failed to apply ride:state snapshot (${e.runtimeType})',
             name: 'WS',
             level: 900,
           );
@@ -561,7 +565,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
         }
         final message = (map['message'] as String?) ??
             'Your driver is delayed, but the ride is still active.';
-        developer.log('ride:driver_delayed — $message', name: 'WS');
+        developer.debugLog(() => 'ride:driver_delayed — $message', name: 'WS');
 
         final router = ref.container.read(routerProvider);
         final ctx = router.routerDelegate.navigatorKey.currentContext;
@@ -588,7 +592,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
         // matcher_progress events on real-device tests; cast through Map
         // and read keys defensively instead.
         if (data is! Map) {
-          developer.log('matcher_progress: rejected non-map payload',
+          developer.debugLog(() => 'matcher_progress: rejected non-map payload',
               name: 'WS');
           return;
         }
@@ -599,10 +603,10 @@ void _connectAndListen(Ref ref, SocketService socket) {
             (map['driversRemaining'] as num?)?.toInt() ?? 0;
         final radiusKm = (map['radiusKm'] as num?)?.toDouble() ?? 0;
         final reason = parseMatcherReason(map['reason'] as String?);
-        developer.log(
-          'matcher_progress: reason=$reason attempt=$attempt '
-          'tried=$driversTried remaining=$driversRemaining '
-          'radiusKm=$radiusKm',
+        developer.debugLog(
+          () => 'matcher_progress: reason=$reason attempt=$attempt '
+              'tried=$driversTried remaining=$driversRemaining '
+              'radiusKm=$radiusKm',
           name: 'WS',
         );
         ref.container.read(matcherProgressProvider.notifier).state =
@@ -648,11 +652,11 @@ void _connectAndListen(Ref ref, SocketService socket) {
               existingStops: stops,
             );
           } catch (e) {
-            developer.log('route_updated parse failed: $e',
+            developer.debugLog(() => 'route_updated parse failed: $e',
                 name: 'WS', level: 800);
           }
         }).catchError((Object e) {
-          developer.log('route_updated refetch failed: $e',
+          developer.debugLog(() => 'route_updated refetch failed: $e',
               name: 'WS', level: 800);
         });
       });
@@ -665,32 +669,33 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // doesn't jitter from unrelated ride traffic.
     void handleDriverLocation(dynamic data) {
       if (data is! Map) {
-        debugPrint('[LIVE-TRACK] driver:location dropped — payload not Map');
+        debugLog(
+            () => '[LIVE-TRACK] driver:location dropped — payload not Map');
         return;
       }
       final payload = Map<String, dynamic>.from(data);
       final activeRideId = ref.container.read(activeRideIdProvider);
       if (activeRideId == null) {
-        debugPrint(
-            '[LIVE-TRACK] driver:location dropped — no activeRideId set');
+        debugLog(
+            () => '[LIVE-TRACK] driver:location dropped — no activeRideId set');
         return;
       }
       final eventRideId =
           payload['rideId'] as String? ?? payload['id'] as String?;
       if (eventRideId != null && eventRideId != activeRideId) {
-        debugPrint('[LIVE-TRACK] driver:location dropped — rideId mismatch '
+        debugLog(() => '[LIVE-TRACK] driver:location dropped — rideId mismatch '
             '(event=$eventRideId active=$activeRideId)');
         return;
       }
       final lat = (payload['latitude'] ?? payload['lat']) as num?;
       final lng = (payload['longitude'] ?? payload['lng']) as num?;
       if (lat == null || lng == null) {
-        debugPrint(
+        debugLog(() =>
             '[LIVE-TRACK] driver:location dropped — missing lat/lng in payload');
         return;
       }
       final heading = (payload['heading'] ?? payload['bearing']) as num?;
-      debugPrint(
+      debugLog(() =>
           '[LIVE-TRACK] driver:location accepted ($lat, $lng) heading=$heading');
       ref.container.read(liveDriverPositionProvider.notifier).state =
           LiveDriverPosition(
@@ -740,7 +745,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // contract); older code emitted `job:status`. Listen to both so the
     // UI reacts whichever one the server uses.
     void handleJobStatus(dynamic data) {
-      developer.log('Received job:status event', name: 'WS');
+      developer.debugLog(() => 'Received job:status event', name: 'WS');
       try {
         // If the payload carries a jobId, refresh that job's detail + bids
         // + active-job cache so any currently-open detail/summary/payment
@@ -771,7 +776,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
         }
         ref.container.read(navBadgeProvider.notifier).increment('/activity');
       } catch (e) {
-        developer.log('Failed to handle job:status: $e',
+        developer.debugLog(() => 'Failed to handle job:status: $e',
             name: 'WS', level: 900);
       }
     }
@@ -786,7 +791,8 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('job:artisan_confirmed')
       ..on('job:artisan_confirmed', (data) {
-        developer.log('Received job:artisan_confirmed event', name: 'WS');
+        developer.debugLog(() => 'Received job:artisan_confirmed event',
+            name: 'WS');
         try {
           final etaLabel = data is Map<String, dynamic>
               ? data['etaLabel'] as String? ?? ''
@@ -797,7 +803,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
                 .onArtisanConfirmed(etaLabel: etaLabel);
           }
         } catch (e) {
-          developer.log('Failed to handle job:artisan_confirmed: $e',
+          developer.debugLog(() => 'Failed to handle job:artisan_confirmed: $e',
               name: 'WS', level: 900);
         }
       });
@@ -814,7 +820,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
       ..off('job:bid:updated')
       ..off('job:bid_new')
       ..on('job:bid:received', (data) {
-        developer.log('Received job:bid:received event', name: 'WS');
+        developer.debugLog(() => 'Received job:bid:received event', name: 'WS');
         try {
           final jobId = data is Map<String, dynamic>
               ? (data['jobId'] as String? ?? data['id'] as String?)
@@ -828,12 +834,12 @@ void _connectAndListen(Ref ref, SocketService socket) {
           }
           ref.container.read(navBadgeProvider.notifier).increment('/activity');
         } catch (e) {
-          developer.log('Failed to handle job:bid:received: $e',
+          developer.debugLog(() => 'Failed to handle job:bid:received: $e',
               name: 'WS', level: 900);
         }
       })
       ..on('job:bid:updated', (data) {
-        developer.log('Received job:bid:updated event', name: 'WS');
+        developer.debugLog(() => 'Received job:bid:updated event', name: 'WS');
         try {
           final jobId = data is Map<String, dynamic>
               ? (data['jobId'] as String? ?? data['id'] as String?)
@@ -843,12 +849,13 @@ void _connectAndListen(Ref ref, SocketService socket) {
             ref.container.invalidate(bidsForJobProvider(jobId));
           }
         } catch (e) {
-          developer.log('Failed to handle job:bid:updated: $e',
+          developer.debugLog(() => 'Failed to handle job:bid:updated: $e',
               name: 'WS', level: 900);
         }
       })
       ..on('job:bid_new', (data) {
-        developer.log('Received job:bid_new event (legacy)', name: 'WS');
+        developer.debugLog(() => 'Received job:bid_new event (legacy)',
+            name: 'WS');
         try {
           final jobId = data is Map<String, dynamic>
               ? (data['jobId'] as String? ?? data['id'] as String?)
@@ -862,7 +869,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
           }
           ref.container.read(navBadgeProvider.notifier).increment('/activity');
         } catch (e) {
-          developer.log('Failed to handle job:bid_new: $e',
+          developer.debugLog(() => 'Failed to handle job:bid_new: $e',
               name: 'WS', level: 900);
         }
       });
@@ -871,14 +878,14 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('notification:new')
       ..on('notification:new', (data) {
-        developer.log('Received notification:new event', name: 'WS');
+        developer.debugLog(() => 'Received notification:new event', name: 'WS');
         try {
           if (ref.container.exists(notifsProvider)) {
             ref.container.read(notifsProvider.notifier).reload();
           }
           ref.container.read(navBadgeProvider.notifier).increment('/profile');
         } catch (e) {
-          developer.log('Failed to handle notification:new: $e',
+          developer.debugLog(() => 'Failed to handle notification:new: $e',
               name: 'WS', level: 900);
         }
       });
@@ -887,13 +894,13 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('profile:updated')
       ..on('profile:updated', (data) {
-        developer.log('Received profile:updated event', name: 'WS');
+        developer.debugLog(() => 'Received profile:updated event', name: 'WS');
         try {
           ref.container
               .read(clientAuthControllerProvider.notifier)
               .refreshProfile();
         } catch (e) {
-          developer.log('Failed to handle profile:updated: $e',
+          developer.debugLog(() => 'Failed to handle profile:updated: $e',
               name: 'WS', level: 900);
         }
       });
@@ -905,7 +912,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // app is open and connected).
     final shownRatingFor = <String>{};
     void handleRatingPrompt(dynamic data) {
-      developer.log('Received rating:prompt', name: 'WS');
+      developer.debugLog(() => 'Received rating:prompt', name: 'WS');
       if (data is! Map<String, dynamic>) return;
       final bookingType = data['bookingType'] as String?;
       final bookingId =
@@ -939,7 +946,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
               }
             }
           } catch (e) {
-            developer.log('hydrate ride for rating failed: $e',
+            developer.debugLog(() => 'hydrate ride for rating failed: $e',
                 name: 'WS', level: 800);
           }
           if (!ctx.mounted) return;
@@ -964,7 +971,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
               }
             }
           } catch (e) {
-            developer.log('hydrate job for rating failed: $e',
+            developer.debugLog(() => 'hydrate job for rating failed: $e',
                 name: 'WS', level: 800);
           }
           if (!ctx.mounted) return;

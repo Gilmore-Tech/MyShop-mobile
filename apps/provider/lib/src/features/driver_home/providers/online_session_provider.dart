@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
@@ -73,12 +73,13 @@ final onlineSessionRecorderProvider = Provider<void>((ref) {
         final key = _dayKey(DateTime.now());
         final current = prefs.getInt(key) ?? 0;
         await prefs.setInt(key, current + elapsedSecs);
-        developer.log(
-          'session ended — added ${elapsedSecs}s to $key (total ${current + elapsedSecs}s)',
+        developer.debugLog(
+          () =>
+              'session ended — added ${elapsedSecs}s to $key (total ${current + elapsedSecs}s)',
           name: 'OnlineSession',
         );
       } catch (e) {
-        developer.log('failed to persist online session: $e',
+        developer.debugLog(() => 'failed to persist online session: $e',
             name: 'OnlineSession', level: 800);
       }
     }

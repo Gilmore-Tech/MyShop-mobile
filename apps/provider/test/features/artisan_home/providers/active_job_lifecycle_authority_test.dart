@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:api_client/api_client.dart';
 import 'package:dio/dio.dart';
@@ -84,6 +85,19 @@ Map<String, dynamic> _jobJson(String status) => {
     };
 
 void main() {
+  test('active-job acknowledgement timer is foreground-only', () {
+    final source = File(
+      'lib/src/features/artisan_home/screens/active_job_screen.dart',
+    ).readAsStringSync();
+    expect(source, contains('appForegroundedProvider'));
+    expect(
+      source,
+      contains(
+        'if (!mounted || !ref.read(appForegroundedProvider)) return;',
+      ),
+    );
+  });
+
   test('active-job acknowledgement refreshes share one pending REST read',
       () async {
     final service = _ControlledRefreshJobService();

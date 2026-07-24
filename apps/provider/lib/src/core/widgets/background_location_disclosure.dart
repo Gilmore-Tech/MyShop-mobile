@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -17,7 +18,7 @@ Future<bool> confirmBackgroundLocationDisclosure(
     // Still show the disclosure. The controller will perform the authoritative
     // native permission check and surface a retryable error if the plugin is
     // unavailable; a platform failure must not bypass disclosure.
-    debugPrint('[LocationDisclosure] permission check failed: $error');
+    debugLog(() => '[LocationDisclosure] permission check failed: $error');
   }
   if (!context.mounted) return false;
 
@@ -57,7 +58,7 @@ Future<bool> showLocationRecoveryIfNeeded(BuildContext context) async {
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     permission = await Geolocator.checkPermission();
   } catch (error) {
-    debugPrint('[LocationDisclosure] recovery check failed: $error');
+    debugLog(() => '[LocationDisclosure] recovery check failed: $error');
     return false;
   }
 
@@ -95,8 +96,8 @@ Future<bool> showLocationRecoveryIfNeeded(BuildContext context) async {
                 await Geolocator.openAppSettings();
               }
             } catch (error) {
-              debugPrint(
-                  '[LocationDisclosure] opening Settings failed: $error');
+              debugLog(
+                  () => '[LocationDisclosure] opening Settings failed: $error');
             }
           },
           child: const Text('Open Settings'),

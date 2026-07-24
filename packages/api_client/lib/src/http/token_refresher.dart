@@ -1,7 +1,7 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 
 import '../models/auth_dtos.dart';
 import '../models/auth_error_mapper.dart';
@@ -54,22 +54,24 @@ class TokenRefresher {
       try {
         final refreshToken = await _tokenStorage.readRefreshToken();
         if (refreshToken == null) {
-          debugPrint('[TokenRefresher] no refresh token — forcing logout');
+          debugLog(() => '[TokenRefresher] no refresh token — forcing logout');
           _onForceLogout?.call();
           return null;
         }
 
-        debugPrint('[TokenRefresher] POST /auth/refresh →');
+        debugLog(() => '[TokenRefresher] POST /auth/refresh →');
         final response = await _dio.post(
           '/auth/refresh',
           data: RefreshRequest(refreshToken: refreshToken).toJson(),
         );
-        debugPrint('[TokenRefresher] POST /auth/refresh ← '
-            '${response.statusCode}');
+        debugLog(
+          () => '[TokenRefresher] POST /auth/refresh ← '
+              '${response.statusCode}',
+        );
 
         final body = response.data;
         if (body is! Map<String, dynamic>) {
-          debugPrint('[TokenRefresher] body not a map: $body');
+          debugLog(() => '[TokenRefresher] body not a map: $body');
           return null;
         }
         final payload = (body['data'] is Map<String, dynamic>
@@ -78,7 +80,7 @@ class TokenRefresher {
 
         final newAccessToken = payload['accessToken'] as String?;
         if (newAccessToken == null) {
-          debugPrint('[TokenRefresher] response missing accessToken');
+          debugLog(() => '[TokenRefresher] response missing accessToken');
           return null;
         }
 
@@ -95,12 +97,12 @@ class TokenRefresher {
         } else {
           await _tokenStorage.writeAccessToken(newAccessToken);
         }
-        debugPrint('[TokenRefresher] new tokens persisted');
+        debugLog(() => '[TokenRefresher] new tokens persisted');
         return newAccessToken;
       } on DioException catch (e) {
         return _handleRefreshError(e);
       } catch (e, st) {
-        debugPrint('[TokenRefresher] unexpected: $e\n$st');
+        debugLog(() => '[TokenRefresher] unexpected: $e\n$st');
         return null;
       } finally {
         _inFlight = null;
@@ -111,8 +113,8 @@ class TokenRefresher {
   Future<String?> _handleRefreshError(DioException e) async {
     final status = e.response?.statusCode;
     final code = _extractErrorCode(e.response);
-    debugPrint(
-      '[TokenRefresher] DioException: status=$status code=$code',
+    debugLog(
+      () => '[TokenRefresher] DioException: status=$status code=$code',
     );
 
     const terminalCodes = {
@@ -122,22 +124,22 @@ class TokenRefresher {
     };
     if (status == 401) {
       if (code != null && terminalCodes.contains(code)) {
-        debugPrint(
-          '[TokenRefresher] terminal failure ($code) — clearing tokens',
+        debugLog(
+          () => '[TokenRefresher] terminal failure ($code) — clearing tokens',
         );
         await _tokenStorage.clearTokens();
         _onForceLogout?.call();
       } else {
-        debugPrint(
-          '[TokenRefresher] 401 (code="$code") — soft logout',
+        debugLog(
+          () => '[TokenRefresher] 401 (code="$code") — soft logout',
         );
         await _tokenStorage.clearAuthTokensOnly();
         _onForceLogout?.call();
       }
     } else if (status != null && status >= 400 && status < 500) {
-      debugPrint(
-        '[TokenRefresher] non-401 4xx ($status, code="$code") — '
-        'NOT clearing tokens (treating as transient client error)',
+      debugLog(
+        () => '[TokenRefresher] non-401 4xx ($status, code="$code") — '
+            'NOT clearing tokens (treating as transient client error)',
       );
     }
     return null;

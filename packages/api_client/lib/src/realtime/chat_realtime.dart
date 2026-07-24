@@ -1,7 +1,7 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
@@ -103,19 +103,21 @@ class ChatRealtime {
 
     var token = await _tokenStorage.readAccessToken();
     if (token == null) {
-      debugPrint('[CHAT-WS] No access token — skipping connect');
+      debugLog(() => '[CHAT-WS] No access token — skipping connect');
       return;
     }
 
     if (_isTokenExpiringSoon(token)) {
-      debugPrint('[CHAT-WS] Token expired/expiring — refreshing pre-connect');
+      debugLog(
+        () => '[CHAT-WS] Token expired/expiring — refreshing pre-connect',
+      );
       // Shared TokenRefresher (single-flight across REST + main WS +
       // chat WS), so a concurrent refresh from any other path just
       // awaits the same future instead of racing the rotating token
       // through the backend.
       final refreshed = await _tokenRefresher.refresh();
       if (refreshed == null) {
-        debugPrint('[CHAT-WS] Pre-connect refresh failed — aborting');
+        debugLog(() => '[CHAT-WS] Pre-connect refresh failed — aborting');
         return;
       }
       token = refreshed;
@@ -124,7 +126,7 @@ class ChatRealtime {
     _socket?.dispose();
 
     final nsUrl = '${_config.wsBaseUrl}/chat';
-    debugPrint('[CHAT-WS] Connecting to $nsUrl');
+    debugLog(() => '[CHAT-WS] Connecting to $nsUrl');
 
     _socket = io.io(
       nsUrl,
@@ -133,7 +135,7 @@ class ChatRealtime {
 
     _socket!
       ..onConnect((_) {
-        debugPrint('[CHAT-WS] Connected (id: ${_socket?.id})');
+        debugLog(() => '[CHAT-WS] Connected');
         if (!_connectionController.isClosed) _connectionController.add(true);
         // If we had a channel before the disconnect, automatically re-join
         // so server-side delivery resumes without the orchestrator having
@@ -155,30 +157,35 @@ class ChatRealtime {
               pending.bookingId,
               timeout: const Duration(seconds: 15),
             ).catchError((Object e) {
-              debugPrint('[CHAT-WS] Auto-rejoin failed: $e');
+              debugLog(
+                () => '[CHAT-WS] Auto-rejoin failed type=${e.runtimeType}',
+              );
             }),
           );
         }
       })
-      ..onDisconnect((reason) {
-        debugPrint('[CHAT-WS] Disconnected: $reason');
+      ..onDisconnect((_) {
+        debugLog(() => '[CHAT-WS] Disconnected');
         if (!_connectionController.isClosed) _connectionController.add(false);
       })
       ..onConnectError((err) {
-        debugPrint('[CHAT-WS] Connect error: $err');
+        debugLog(() => '[CHAT-WS] Connect error type=${err.runtimeType}');
         if (_looksUnauthorized(err)) _handleUnauthorized();
       })
       ..onReconnect((_) {
-        debugPrint('[CHAT-WS] Reconnected');
+        debugLog(() => '[CHAT-WS] Reconnected');
       })
       ..onReconnectError((err) {
-        debugPrint('[CHAT-WS] Reconnect error: $err');
+        debugLog(() => '[CHAT-WS] Reconnect error type=${err.runtimeType}');
         if (_looksUnauthorized(err)) _handleUnauthorized();
       })
       ..on('exception', (data) {
-        debugPrint('[CHAT-WS] Server exception: $data');
-        if (_errorCode(data) == 'SOCKET_REPLACED') {
-          debugPrint('[CHAT-WS] Superseded socket stopped');
+        final code = _errorCode(data);
+        debugLog(
+          () => '[CHAT-WS] Server exception code=${_safeDiagnosticCode(code)}',
+        );
+        if (code == 'SOCKET_REPLACED') {
+          debugLog(() => '[CHAT-WS] Superseded socket stopped');
           _socket?.dispose();
           _socket = null;
           return;
@@ -191,8 +198,11 @@ class ChatRealtime {
         if (data is Map<String, dynamic>) {
           try {
             _incomingMessagesController.add(ChatMessage.fromJson(data));
-          } catch (e, st) {
-            debugPrint('[CHAT-WS] Bad chat:message:received payload: $e\n$st');
+          } catch (e) {
+            debugLog(
+              () =>
+                  '[CHAT-WS] Invalid chat:message:received type=${e.runtimeType}',
+            );
           }
         }
       })
@@ -200,8 +210,10 @@ class ChatRealtime {
         if (data is Map<String, dynamic>) {
           try {
             _readReceiptsController.add(ChatReadReceipt.fromJson(data));
-          } catch (e, st) {
-            debugPrint('[CHAT-WS] Bad chat:read:receipt payload: $e\n$st');
+          } catch (e) {
+            debugLog(
+              () => '[CHAT-WS] Invalid chat:read:receipt type=${e.runtimeType}',
+            );
           }
         }
       })
@@ -209,8 +221,11 @@ class ChatRealtime {
         if (data is Map<String, dynamic>) {
           try {
             _typingUpdatesController.add(ChatTypingUpdate.fromJson(data));
-          } catch (e, st) {
-            debugPrint('[CHAT-WS] Bad chat:typing:update payload: $e\n$st');
+          } catch (e) {
+            debugLog(
+              () =>
+                  '[CHAT-WS] Invalid chat:typing:update type=${e.runtimeType}',
+            );
           }
         }
       })
@@ -227,15 +242,13 @@ class ChatRealtime {
                 c.bookingId == evt.bookingId) {
               _channel = c.copyWith(status: ChatChannelStatus.closed);
             }
-          } catch (e, st) {
-            debugPrint('[CHAT-WS] Bad chat:channel:closed payload: $e\n$st');
+          } catch (e) {
+            debugLog(
+              () =>
+                  '[CHAT-WS] Invalid chat:channel:closed type=${e.runtimeType}',
+            );
           }
         }
-      })
-      ..onAny((event, data) {
-        // Verbose by design — easier than chasing Socket.IO trace logs
-        // when a new event shows up server-side.
-        debugPrint('[CHAT-WS] $event → $data');
       });
   }
 
@@ -470,8 +483,9 @@ class ChatRealtime {
 
         final refreshed = await _tokenRefresher.refresh();
         if (refreshed == null) {
-          debugPrint(
-            '[CHAT-WS] Refresh after UNAUTHORIZED failed — staying offline',
+          debugLog(
+            () =>
+                '[CHAT-WS] Refresh after UNAUTHORIZED failed — staying offline',
           );
           return;
         }
@@ -522,6 +536,13 @@ class ChatRealtime {
   String _errorCode(dynamic data) {
     if (data is Map) return data['error']?.toString().toUpperCase() ?? '';
     return '';
+  }
+
+  String _safeDiagnosticCode(String code) {
+    return switch (code) {
+      'SOCKET_REPLACED' || 'UNAUTHORIZED' || 'TOKEN_EXPIRED' => code,
+      _ => 'unknown',
+    };
   }
 }
 

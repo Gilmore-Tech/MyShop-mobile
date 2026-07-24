@@ -1,7 +1,7 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../config/api_config.dart';
@@ -78,7 +78,7 @@ class SocketService {
 
     var token = await _tokenStorage.readAccessToken();
     if (token == null) {
-      debugPrint('[WS] No access token — skipping socket connect');
+      debugLog(() => '[WS] No access token — skipping socket connect');
       return;
     }
 
@@ -92,10 +92,12 @@ class SocketService {
     // refresh token through the backend and one of them eating
     // REFRESH_TOKEN_REUSED.
     if (_isTokenExpiringSoon(token)) {
-      debugPrint('[WS] Access token expired/expiring — refreshing pre-connect');
+      debugLog(
+        () => '[WS] Access token expired/expiring — refreshing pre-connect',
+      );
       final refreshed = await _refreshWithRetry();
       if (refreshed == null) {
-        debugPrint('[WS] Pre-connect refresh failed — aborting connect');
+        debugLog(() => '[WS] Pre-connect refresh failed — aborting connect');
         return;
       }
       token = refreshed;
@@ -107,7 +109,7 @@ class SocketService {
     // auto-joins role-specific rooms (artisan:{userId} or driver:{userId})
     // based on the JWT payload.
     final nsUrl = '${_config.wsBaseUrl}/location/track';
-    debugPrint('[WS] Connecting to $nsUrl');
+    debugLog(() => '[WS] Connecting to $nsUrl');
 
     _socket = io.io(
       nsUrl,
@@ -124,19 +126,19 @@ class SocketService {
 
     _socket!
       ..onConnect((_) {
-        debugPrint('[WS] Connected (id: ${_socket?.id})');
+        debugLog(() => '[WS] Connected');
         if (!_connectionController.isClosed) {
           _connectionController.add(true);
         }
       })
-      ..onDisconnect((reason) {
-        debugPrint('[WS] Disconnected: $reason');
+      ..onDisconnect((_) {
+        debugLog(() => '[WS] Disconnected');
         if (!_connectionController.isClosed) {
           _connectionController.add(false);
         }
       })
       ..onConnectError((err) {
-        debugPrint('[WS] Connection error: $err');
+        debugLog(() => '[WS] Connection error type=${err.runtimeType}');
         // Some backends signal auth failure via the connect_error payload
         // rather than a post-connect `exception` event.
         if (_looksUnauthorized(err)) {
@@ -144,10 +146,10 @@ class SocketService {
         }
       })
       ..onReconnect((_) {
-        debugPrint('[WS] Reconnected');
+        debugLog(() => '[WS] Reconnected');
       })
       ..onReconnectError((err) {
-        debugPrint('[WS] Reconnect error: $err');
+        debugLog(() => '[WS] Reconnect error type=${err.runtimeType}');
         if (_looksUnauthorized(err)) {
           _handleUnauthorized();
         }
@@ -157,19 +159,15 @@ class SocketService {
       // token rather than leaving the socket in a half-dead state.
       ..on('exception', (data) {
         if (_errorCode(data) == 'SOCKET_REPLACED') {
-          debugPrint('[WS] Superseded socket stopped');
+          debugLog(() => '[WS] Superseded socket stopped');
           _socket?.dispose();
           _socket = null;
           return;
         }
         if (_looksUnauthorized(data)) {
-          debugPrint('[WS] Server reported UNAUTHORIZED — refreshing');
+          debugLog(() => '[WS] Server reported UNAUTHORIZED — refreshing');
           _handleUnauthorized();
         }
-      })
-      // Log ALL events from the server for debugging
-      ..onAny((event, data) {
-        debugPrint('[WS] Event: $event → $data');
       });
 
     // Re-bind app-level handlers (`job:new`, `ride:state`, etc.) to the
@@ -209,7 +207,7 @@ class SocketService {
   /// Emit an event to the server with optional data.
   void emit(String event, [dynamic data]) {
     if (_socket?.connected != true) {
-      debugPrint('[WS] Cannot emit "$event" — not connected');
+      debugLog(() => '[WS] Cannot emit "$event" — not connected');
       return;
     }
     _socket!.emit(event, data);
@@ -268,8 +266,8 @@ class SocketService {
 
         final refreshed = await _refreshWithRetry();
         if (refreshed == null) {
-          debugPrint(
-            '[WS] Refresh after UNAUTHORIZED failed — staying offline',
+          debugLog(
+            () => '[WS] Refresh after UNAUTHORIZED failed — staying offline',
           );
           return;
         }
@@ -296,8 +294,10 @@ class SocketService {
       if (!stillHaveRefreshToken) return null;
       if (i < attempts - 1) {
         final backoff = Duration(seconds: 3 * (i + 1));
-        debugPrint('[WS] Refresh attempt ${i + 1} failed — retrying in '
-            '${backoff.inSeconds}s');
+        debugLog(
+          () => '[WS] Refresh attempt ${i + 1} failed — retrying in '
+              '${backoff.inSeconds}s',
+        );
         await Future<void>.delayed(backoff);
       }
     }

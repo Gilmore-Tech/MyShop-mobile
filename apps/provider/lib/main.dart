@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:api_client/mobile_diagnostics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -18,8 +19,9 @@ import 'src/core/services/local_notification_service.dart';
 import 'src/features/auth/providers/auth_controller.dart';
 
 void main() {
+  installMobileProductionLogPolicy();
   WidgetsFlutterBinding.ensureInitialized();
-  debugPrint('[main] PROVIDER app starting — FCM build marker v3');
+  debugLog(() => '[main] PROVIDER app starting — FCM build marker v3');
 
   // Cap the in-memory image cache. Flutter's default is 100 MB / 1000
   // entries — a handful of full-resolution client-uploaded photos is
@@ -64,7 +66,7 @@ Future<void> _finishStartup(ProviderContainer container) async {
     try {
       activate();
     } catch (e) {
-      debugPrint('[main] startup bridge failed: $e');
+      debugLog(() => '[main] startup bridge failed: $e');
     }
   }
 
@@ -78,10 +80,10 @@ Future<void> _finishStartup(ProviderContainer container) async {
       container.read(firebaseReadyProvider.notifier).state = true;
       container.listen<void>(fcmAuthBridgeProvider, (_, __) {});
       unawaited(container.read(fcmServiceProvider).init().catchError(
-            (Object e) => debugPrint('[main] FCM init failed: $e'),
+            (Object e) => debugLog(() => '[main] FCM init failed: $e'),
           ));
     } catch (e) {
-      debugPrint('[main] FCM bridge setup failed: $e');
+      debugLog(() => '[main] FCM bridge setup failed: $e');
     }
   }
 
@@ -92,7 +94,7 @@ Future<void> _loadOnboardingPreferences(ProviderContainer container) async {
   try {
     await loadOnboardingFlag(container).timeout(const Duration(seconds: 3));
   } catch (e) {
-    debugPrint('[main] onboarding preferences unavailable: $e');
+    debugLog(() => '[main] onboarding preferences unavailable: $e');
   } finally {
     container.read(onboardingFlagLoadedProvider.notifier).state = true;
   }
@@ -106,7 +108,7 @@ Future<bool> _initializeFirebase() async {
     FirebaseMessaging.onBackgroundMessage(fcmBackgroundHandler);
     return true;
   } catch (e) {
-    debugPrint('[main] Firebase init failed — push disabled: $e');
+    debugLog(() => '[main] Firebase init failed — push disabled: $e');
     return false;
   }
 }
@@ -117,7 +119,7 @@ Future<void> _initializeLocalNotifications() async {
         .init()
         .timeout(const Duration(seconds: 5));
   } catch (e) {
-    debugPrint('[main] Local notifications init failed: $e');
+    debugLog(() => '[main] Local notifications init failed: $e');
   }
 }
 
@@ -140,6 +142,6 @@ Future<void> _warmLocation(ProviderContainer container) async {
     );
     container.read(lastKnownPositionProvider.notifier).state = position;
   } catch (e) {
-    debugPrint('[main] location warm-up failed: $e');
+    debugLog(() => '[main] location warm-up failed: $e');
   }
 }

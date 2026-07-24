@@ -15,6 +15,12 @@ void main() {
           .readAsStringSync(),
       File('lib/src/features/services/screens/job_complete_screen.dart')
           .readAsStringSync(),
+      File('lib/src/features/profile/widgets/submit_ghana_card_sheet.dart')
+          .readAsStringSync(),
+      File('lib/src/features/profile/screens/privacy_security_screen.dart')
+          .readAsStringSync(),
+      File('lib/src/features/ride/screens/ride_dispute_screen.dart')
+          .readAsStringSync(),
     ].join('\n');
 
     expect(source, contains('Regional Manager approval'));
@@ -29,6 +35,11 @@ void main() {
     expect(source, isNot(contains('Payment released from escrow')));
     expect(source, isNot(contains('3-hour safe period')));
     expect(source, isNot(contains('available for 48 hours')));
+    expect(source, isNot(contains('verified against national databases')));
+    expect(source, isNot(contains('higher transaction limits')));
+    expect(source, isNot(contains('review your submission within 24 hours')));
+    expect(source, isNot(contains('completes within 24 hours')));
+    expect(source, isNot(contains('will respond within 24 hours')));
     expect(source, contains('within 24 hours'));
   });
 }

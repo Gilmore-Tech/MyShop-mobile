@@ -1,4 +1,4 @@
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -221,15 +221,17 @@ class _BidsNotifier
       }
       rethrow;
     }
-    developer.log(
-      'Received ${data.length} bid(s) for job $jobId',
+    developer.debugLog(
+      () => 'Received ${data.length} bid(s) for job $jobId',
       name: 'BidsForJob',
     );
     final bids = <ArtisanBid>[];
     for (final item in data) {
       if (item is! Map<String, dynamic>) {
-        developer.log('Skipping non-map bid entry: ${item.runtimeType}',
-            name: 'BidsForJob', level: 900);
+        developer.debugLog(
+            () => 'Skipping non-map bid entry: ${item.runtimeType}',
+            name: 'BidsForJob',
+            level: 900);
         continue;
       }
       try {
@@ -237,8 +239,8 @@ class _BidsNotifier
       } catch (e, st) {
         // Log the offending payload so we can see which field has the wrong
         // shape, then skip it instead of failing the whole list.
-        developer.log(
-          'Failed to parse bid — skipping. raw=$item',
+        developer.debugLog(
+          () => 'Failed to parse bid — skipping. raw=$item',
           name: 'BidsForJob',
           level: 1000,
           error: e,

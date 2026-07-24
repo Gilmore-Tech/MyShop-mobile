@@ -1,4 +1,4 @@
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -47,7 +47,8 @@ Future<void> _launchCheckout(
 ) async {
   final uri = Uri.tryParse(url);
   if (uri == null) {
-    developer.log('Checkout URL is unparseable: $url', name: 'Payment');
+    developer.debugLog(() => 'Checkout URL is unparseable: $url',
+        name: 'Payment');
     return;
   }
 
@@ -55,13 +56,15 @@ Future<void> _launchCheckout(
   try {
     launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
   } catch (e) {
-    developer.log('externalApplication launch threw: $e', name: 'Payment');
+    developer.debugLog(() => 'externalApplication launch threw: $e',
+        name: 'Payment');
   }
   if (!launched) {
     try {
       launched = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
     } catch (e) {
-      developer.log('inAppBrowserView launch threw: $e', name: 'Payment');
+      developer.debugLog(() => 'inAppBrowserView launch threw: $e',
+          name: 'Payment');
     }
   }
 

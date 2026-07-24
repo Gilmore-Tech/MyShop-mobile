@@ -1410,7 +1410,7 @@ class _PolicyNote extends StatelessWidget {
           const SizedBox(width: MyShopSpacing.sm),
           Expanded(
             child: Text(
-              'Documents are encrypted in transit and reviewed by our compliance team within 24 hours.',
+              'Documents are encrypted in transit and reviewed manually by our compliance team.',
               style: MyShopTypography.body2.copyWith(height: 1.5),
             ),
           ),

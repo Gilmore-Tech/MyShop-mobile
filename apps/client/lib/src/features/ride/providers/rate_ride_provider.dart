@@ -1,4 +1,4 @@
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -109,8 +109,9 @@ class RideRatingNotifier extends StateNotifier<RideRatingState> {
         stars: state.selectedStars,
         comment: state.note.isNotEmpty ? state.note : null,
       );
-      developer.log(
-        'Rating submission accepted: revealed=${result['revealed'] == true}',
+      developer.debugLog(
+        () =>
+            'Rating submission accepted: revealed=${result['revealed'] == true}',
         name: 'RideRating',
       );
       // Only bust the cached ride receipt when the backend confirms
@@ -124,8 +125,8 @@ class RideRatingNotifier extends StateNotifier<RideRatingState> {
       state = state.copyWith(isSubmitting: false, isSubmitted: true);
       return true;
     } on ApiException catch (e) {
-      developer.log(
-        'submitRating failed (${e.statusCode}): ${e.message}',
+      developer.debugLog(
+        () => 'submitRating failed (${e.statusCode}): ${e.message}',
         name: 'RideRating',
       );
       state = state.copyWith(
@@ -134,7 +135,7 @@ class RideRatingNotifier extends StateNotifier<RideRatingState> {
       );
       return false;
     } catch (e) {
-      developer.log('submitRating error: $e', name: 'RideRating');
+      developer.debugLog(() => 'submitRating error: $e', name: 'RideRating');
       state = state.copyWith(
         isSubmitting: false,
         errorMessage: "Couldn't submit your rating. Please try again.",

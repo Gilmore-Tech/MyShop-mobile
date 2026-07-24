@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -76,7 +77,7 @@ class _IncomingRequestListenerState
     final currentLocation = GoRouterState.of(context).matchedLocation;
 
     if (ride.status == RideStatus.requested) {
-      debugPrint('[IncomingRequestListener] requested ride ${ride.id} '
+      debugLog(() => '[IncomingRequestListener] requested ride ${ride.id} '
           'surfaced via active slot — routing to /ride-request');
       // A requested ride is an offer, not an active ride. Clear the active
       // slot so the active-ride screen cannot render "No active ride" from
@@ -88,9 +89,9 @@ class _IncomingRequestListenerState
     }
 
     if (!ride.status.isActive) {
-      debugPrint(
-          '[IncomingRequestListener] ignoring non-active ride ${ride.id} '
-          '(status=${ride.status})');
+      debugLog(
+          () => '[IncomingRequestListener] ignoring non-active ride ${ride.id} '
+              '(status=${ride.status})');
       return;
     }
 
@@ -101,7 +102,7 @@ class _IncomingRequestListenerState
       _routedForCurrentActiveRide = true;
       return;
     }
-    debugPrint('[IncomingRequestListener] active ride ${ride.id} '
+    debugLog(() => '[IncomingRequestListener] active ride ${ride.id} '
         '(status=${ride.status}) — routing to /active-ride');
     _routedForCurrentActiveRide = true;
     context.go('/active-ride');
@@ -111,8 +112,9 @@ class _IncomingRequestListenerState
   Widget build(BuildContext context) {
     // Listen for new ride requests (driver)
     ref.listen<Ride?>(incomingRideRequestProvider, (prev, next) {
-      debugPrint(
-        '[IncomingRequestListener] ride event: prev=${prev?.id} next=${next?.id}',
+      debugLog(
+        () =>
+            '[IncomingRequestListener] ride event: prev=${prev?.id} next=${next?.id}',
       );
       // Pop up whenever a non-null ride lands in the provider. The handler
       // clears the state to null immediately after, so duplicate fires for
@@ -156,8 +158,9 @@ class _IncomingRequestListenerState
 
     // Listen for new job requests (artisan)
     ref.listen<Job?>(incomingJobRequestProvider, (prev, next) {
-      debugPrint(
-        '[IncomingRequestListener] job event: prev=${prev?.id} next=${next?.id}',
+      debugLog(
+        () =>
+            '[IncomingRequestListener] job event: prev=${prev?.id} next=${next?.id}',
       );
       if (next != null) {
         // IncomingJobModal now starts the looping ringtone in its own
@@ -175,12 +178,14 @@ class _IncomingRequestListenerState
     ref.read(incomingRideRequestProvider.notifier).state = null;
     final visibleId = ref.read(visibleRideRequestIdProvider);
     if (visibleId == ride.id) {
-      debugPrint('[IncomingRequestListener] ride ${ride.id} already visible');
+      debugLog(
+          () => '[IncomingRequestListener] ride ${ride.id} already visible');
       return;
     }
     if (ref.read(rideRequestNavigationInFlightProvider).contains(ride.id)) {
-      debugPrint(
-        '[IncomingRequestListener] ride ${ride.id} navigation already active',
+      debugLog(
+        () =>
+            '[IncomingRequestListener] ride ${ride.id} navigation already active',
       );
       return;
     }
@@ -200,7 +205,7 @@ class _IncomingRequestListenerState
 
     final currentLocation = GoRouterState.of(context).matchedLocation;
     if (currentLocation == '/ride-request') {
-      debugPrint('[IncomingRequestListener] replacing ride request with '
+      debugLog(() => '[IncomingRequestListener] replacing ride request with '
           '${ride.id}');
       context.pushReplacement('/ride-request', extra: ride);
       return;
@@ -210,7 +215,7 @@ class _IncomingRequestListenerState
   }
 
   void _showJobModal(BuildContext context, Job job, WidgetRef ref) {
-    debugPrint('[IncomingRequestListener] _showJobModal start id=${job.id} '
+    debugLog(() => '[IncomingRequestListener] _showJobModal start id=${job.id} '
         'mounted=${context.mounted}');
 
     // Clear the incoming state so the listener doesn't re-trigger on rebuild.
@@ -239,7 +244,8 @@ class _IncomingRequestListenerState
     }
 
     if (!context.mounted) {
-      debugPrint('[IncomingRequestListener] context unmounted — skip modal');
+      debugLog(
+          () => '[IncomingRequestListener] context unmounted — skip modal');
       return;
     }
 
@@ -249,9 +255,9 @@ class _IncomingRequestListenerState
       distanceKm: distanceKm,
       etaMinutes: etaMinutes,
     ).then((_) {
-      debugPrint('[IncomingRequestListener] modal closed id=${job.id}');
+      debugLog(() => '[IncomingRequestListener] modal closed id=${job.id}');
     });
-    debugPrint(
+    debugLog(() =>
         '[IncomingRequestListener] showModalBottomSheet invoked id=${job.id}');
   }
 }

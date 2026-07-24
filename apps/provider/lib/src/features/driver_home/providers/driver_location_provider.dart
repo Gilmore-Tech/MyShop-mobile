@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -90,10 +91,10 @@ final driverLocationStreamProvider =
     StreamProvider.autoDispose<Position>((ref) async* {
   final status = ref.watch(providerStatusProvider);
   if (status.isOffline) {
-    debugPrint('[LOC] stream provider: offline — not subscribing');
+    debugLog(() => '[LOC] stream provider: offline — not subscribing');
     return;
   }
-  debugPrint('[LOC] stream provider: online — checking permission');
+  debugLog(() => '[LOC] stream provider: online — checking permission');
 
   // Make sure we have permission before subscribing.
   var permission = await Geolocator.checkPermission();
@@ -102,13 +103,13 @@ final driverLocationStreamProvider =
   }
   if (permission == LocationPermission.denied ||
       permission == LocationPermission.deniedForever) {
-    debugPrint('[LOC] stream provider: permission $permission — bailing');
+    debugLog(() => '[LOC] stream provider: permission $permission — bailing');
     return;
   }
 
   final serviceEnabled = await Geolocator.isLocationServiceEnabled();
   if (!serviceEnabled) {
-    debugPrint('[LOC] stream provider: services disabled — bailing');
+    debugLog(() => '[LOC] stream provider: services disabled — bailing');
     return;
   }
 
@@ -118,11 +119,11 @@ final driverLocationStreamProvider =
   try {
     final last = await Geolocator.getLastKnownPosition();
     if (last != null) {
-      debugPrint('[LOC] stream provider: yielding last-known location fix');
+      debugLog(() => '[LOC] stream provider: yielding last-known location fix');
       yield last;
     }
   } catch (e) {
-    debugPrint('[LOC] stream provider: getLastKnownPosition failed: $e');
+    debugLog(() => '[LOC] stream provider: getLastKnownPosition failed: $e');
   }
 
   // Emit the current fix immediately so the marker appears without waiting
@@ -134,10 +135,10 @@ final driverLocationStreamProvider =
         timeLimit: Duration(seconds: 8),
       ),
     );
-    debugPrint('[LOC] stream provider: yielding fresh location fix');
+    debugLog(() => '[LOC] stream provider: yielding fresh location fix');
     yield initial;
   } catch (e) {
-    debugPrint('[LOC] stream provider: getCurrentPosition failed: $e — '
+    debugLog(() => '[LOC] stream provider: getCurrentPosition failed: $e — '
         'continuing to position stream');
   }
 

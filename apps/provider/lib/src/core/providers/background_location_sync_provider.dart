@@ -1,7 +1,7 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
 import 'package:api_client/api_client.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_models/shared_models.dart';
@@ -36,13 +36,13 @@ const double _idleHeartbeatMinMeters = 50;
 final backgroundLocationSyncProvider = Provider<void>((ref) {
   final user = ref.watch(currentUserProvider);
   if (user == null) {
-    debugPrint('[LOC] background sync: unauthenticated — idle');
+    debugLog(() => '[LOC] background sync: unauthenticated — idle');
     return;
   }
 
   final status = ref.watch(providerStatusProvider);
   if (status.isOffline) {
-    debugPrint('[LOC] background sync: offline — idle');
+    debugLog(() => '[LOC] background sync: offline — idle');
     return;
   }
 
@@ -141,14 +141,16 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
           loader: positionLoader,
         );
       } catch (error) {
-        debugPrint('[LOC] background sync: fresh-fix request failed: $error');
+        debugLog(
+            () => '[LOC] background sync: fresh-fix request failed: $error');
         return;
       }
       if (disposed) return;
       if (periodicOnlineFixRefreshRequired(latest) ||
           !isOnlineLocationFixAcceptable(latest)) {
-        debugPrint(
-          '[LOC] background sync: fresh-fix request returned an unusable sample',
+        debugLog(
+          () =>
+              '[LOC] background sync: fresh-fix request returned an unusable sample',
         );
         return;
       }
@@ -158,7 +160,8 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
 
       final locationSession = ref.read(providerLocationSessionProvider);
       if (locationSession == null) {
-        debugPrint('[LOC] background sync: no server location epoch — waiting');
+        debugLog(
+            () => '[LOC] background sync: no server location epoch — waiting');
         return;
       }
       if (isArtisan) {
@@ -203,12 +206,12 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
       markOnlineLocationPosted();
       lastSyncAt = DateTime.now();
       lastSyncedPosition = latest;
-      debugPrint(
-        '[LOC] background sync: sent ${isArtisan ? 'artisan' : 'driver'} '
-        'location update',
+      debugLog(
+        () => '[LOC] background sync: sent ${isArtisan ? 'artisan' : 'driver'} '
+            'location update',
       );
     } on ApiException catch (e) {
-      debugPrint('[LOC] background sync failed: $e');
+      debugLog(() => '[LOC] background sync failed: $e');
       if (e.errorCode == 'PROVIDER_LOCATION_SESSION_REQUIRED' ||
           e.errorCode == 'DRIVER_ONLINE_SESSION_REQUIRED' ||
           e.errorCode == 'ARTISAN_ONLINE_SESSION_REQUIRED') {
@@ -220,7 +223,7 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
         );
       }
     } catch (e) {
-      debugPrint('[LOC] background sync error: $e');
+      debugLog(() => '[LOC] background sync error: $e');
     } finally {
       flushInFlight = false;
       if (!disposed &&
@@ -250,8 +253,8 @@ final backgroundLocationSyncProvider = Provider<void>((ref) {
   ref.listen<AsyncValue<Position>>(driverLocationStreamProvider, (_, next) {
     next.when(
       data: onPosition,
-      loading: () => debugPrint('[LOC] background sync: stream loading'),
-      error: (e, _) => debugPrint('[LOC] background sync stream error: $e'),
+      loading: () => debugLog(() => '[LOC] background sync: stream loading'),
+      error: (e, _) => debugLog(() => '[LOC] background sync stream error: $e'),
     );
   });
 });

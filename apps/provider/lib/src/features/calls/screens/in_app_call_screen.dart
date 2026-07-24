@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 import 'dart:io' show Platform;
 
@@ -220,7 +221,7 @@ class _ProviderInAppCallScreenState
       try {
         await VoipCallBridgeService.instance.endCall(widget.callId);
       } catch (cleanupError) {
-        debugPrint('[Call] native end cleanup failed: $cleanupError');
+        debugLog(() => '[Call] native end cleanup failed: $cleanupError');
       }
       ended = true;
     } catch (error) {

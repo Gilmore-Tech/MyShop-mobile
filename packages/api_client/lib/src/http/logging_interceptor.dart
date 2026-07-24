@@ -1,4 +1,4 @@
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:dio/dio.dart';
 
@@ -7,8 +7,8 @@ import 'package:dio/dio.dart';
 class LoggingInterceptor extends Interceptor {
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
-    developer.log(
-      '→ ${options.method} ${options.path}',
+    developer.debugLog(
+      () => '→ ${options.method} ${options.path}',
       name: 'HTTP',
     );
     handler.next(options);
@@ -24,9 +24,9 @@ class LoggingInterceptor extends Interceptor {
             .inMilliseconds
             .toString()
         : '?';
-    developer.log(
-      '← ${response.statusCode} ${response.requestOptions.method} '
-      '${response.requestOptions.path} (${ms}ms)',
+    developer.debugLog(
+      () => '← ${response.statusCode} ${response.requestOptions.method} '
+          '${response.requestOptions.path} (${ms}ms)',
       name: 'HTTP',
     );
     handler.next(response);
@@ -34,10 +34,10 @@ class LoggingInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
-    developer.log(
-      '✗ ${err.response?.statusCode ?? 'NETWORK'} '
-      '${err.requestOptions.method} ${err.requestOptions.path} — '
-      '${err.message}',
+    developer.debugLog(
+      () => '✗ ${err.response?.statusCode ?? 'NETWORK'} '
+          '${err.requestOptions.method} ${err.requestOptions.path} — '
+          '${err.message}',
       name: 'HTTP',
       level: 900, // Warning level
     );

@@ -1,4 +1,4 @@
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -451,9 +451,9 @@ class _MapPreviewState extends ConsumerState<_MapPreview> {
       // real road route (many points, isFallback=false) or the straight-
       // line fallback (2 points, isFallback=true). Visible in `flutter
       // run` console. Safe to leave in: dart:developer.log is debug-only.
-      developer.log(
-        'Directions result: points=${route.polyline.length} '
-        'isFallback=${route.isFallback}',
+      developer.debugLog(
+        () => 'Directions result: points=${route.polyline.length} '
+            'isFallback=${route.isFallback}',
         name: 'TripDetailModal',
       );
       if (!mounted || route.polyline.isEmpty) return;
@@ -469,8 +469,8 @@ class _MapPreviewState extends ConsumerState<_MapPreview> {
         };
       });
     } catch (error, stack) {
-      developer.log(
-        'Directions fetch threw — staying on straight-line fallback',
+      developer.debugLog(
+        () => 'Directions fetch threw — staying on straight-line fallback',
         name: 'TripDetailModal',
         error: error,
         stackTrace: stack,

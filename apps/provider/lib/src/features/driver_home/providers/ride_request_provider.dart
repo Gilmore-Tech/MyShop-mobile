@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -157,17 +157,18 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
           'ride:accept',
           {'rideId': ride.id, 'offerId': offerId},
         );
-        developer.log('ride:accept ack: $ack', name: 'ActiveRide');
+        developer.debugLog(() => 'ride:accept ack: $ack', name: 'ActiveRide');
         ackMap = ack is Map ? Map<String, dynamic>.from(ack) : null;
       } on TimeoutException catch (error) {
-        developer.log(
-          'ride:accept socket ack timed out; reconciling over REST: $error',
+        developer.debugLog(
+          () =>
+              'ride:accept socket ack timed out; reconciling over REST: $error',
           name: 'ActiveRide',
           level: 900,
         );
       } on StateError catch (error) {
-        developer.log(
-          'ride:accept socket unavailable; reconciling over REST: $error',
+        developer.debugLog(
+          () => 'ride:accept socket unavailable; reconciling over REST: $error',
           name: 'ActiveRide',
           level: 900,
         );
@@ -213,7 +214,8 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       unawaited(markEnRoute());
       return true;
     } on ApiException catch (e) {
-      developer.log('acceptRide API error: $e', name: 'ActiveRide', level: 900);
+      developer.debugLog(() => 'acceptRide API error: $e',
+          name: 'ActiveRide', level: 900);
       state = ActiveRideState(
         errorMessage: e.errorCode == null
             ? userSafeApiErrorMessage(
@@ -226,7 +228,8 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       );
       return false;
     } catch (e) {
-      developer.log('acceptRide crashed: $e', name: 'ActiveRide', level: 1000);
+      developer.debugLog(() => 'acceptRide crashed: $e',
+          name: 'ActiveRide', level: 1000);
       state = const ActiveRideState(
         errorMessage: "Couldn't accept the ride. Please try again.",
       );
@@ -275,8 +278,8 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       unawaited(markEnRoute());
       return true;
     } on ApiException catch (e) {
-      developer.log(
-        'notification ride accept failed: ${e.errorCode} — ${e.message}',
+      developer.debugLog(
+        () => 'notification ride accept failed: ${e.errorCode} — ${e.message}',
         name: 'ActiveRide',
         level: 900,
       );
@@ -285,8 +288,8 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       );
       return false;
     } catch (e) {
-      developer.log(
-        'notification ride accept crashed: $e',
+      developer.debugLog(
+        () => 'notification ride accept crashed: $e',
         name: 'ActiveRide',
         level: 1000,
       );
@@ -317,15 +320,15 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       _clearOfferIdentity(rideId, activeOfferId);
       return true;
     } on ApiException catch (e) {
-      developer.log(
-        'notification ride decline failed: ${e.errorCode} — ${e.message}',
+      developer.debugLog(
+        () => 'notification ride decline failed: ${e.errorCode} — ${e.message}',
         name: 'ActiveRide',
         level: 900,
       );
       return false;
     } catch (e) {
-      developer.log(
-        'notification ride decline crashed: $e',
+      developer.debugLog(
+        () => 'notification ride decline crashed: $e',
         name: 'ActiveRide',
         level: 1000,
       );
@@ -371,8 +374,8 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
         return;
       }
     } catch (error) {
-      developer.log(
-        'ride:decline socket path failed; reconciling over REST: $error',
+      developer.debugLog(
+        () => 'ride:decline socket path failed; reconciling over REST: $error',
         name: 'ActiveRide',
         level: 900,
       );
@@ -385,8 +388,8 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
           );
       _clearOfferIdentity(rideId, offerId);
     } catch (error) {
-      developer.log(
-        'ride:decline REST fallback failed: $error',
+      developer.debugLog(
+        () => 'ride:decline REST fallback failed: $error',
         name: 'ActiveRide',
         level: 900,
       );
@@ -469,9 +472,10 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       if (updated == null ||
           updated.id != ride.id ||
           !_hasReachedRideStatus(updated.status, next)) {
-        developer.log(
-          'Ride transition response was not authoritative for ${ride.id}; '
-          'reading the ride back before changing local status',
+        developer.debugLog(
+          () =>
+              'Ride transition response was not authoritative for ${ride.id}; '
+              'reading the ride back before changing local status',
           name: 'ActiveRide',
           level: 900,
         );
@@ -510,8 +514,8 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       );
       return false;
     } on ApiException catch (e) {
-      developer.log(
-        'updateRideStatus failed: ${e.errorCode} — ${e.message}',
+      developer.debugLog(
+        () => 'updateRideStatus failed: ${e.errorCode} — ${e.message}',
         name: 'ActiveRide',
         level: 900,
       );
@@ -533,8 +537,8 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       }
       return false;
     } catch (e) {
-      developer.log(
-        'updateRideStatus crashed: $e',
+      developer.debugLog(
+        () => 'updateRideStatus crashed: $e',
         name: 'ActiveRide',
         level: 1000,
       );
@@ -596,15 +600,15 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
                 : null,
         notice: result['notice'] as String?,
       );
-      developer.log(
-        'cancelRide PATCH succeeded for ${ride.id} '
-        '(fee=${outcome.feePesewas} suspended=${outcome.driverSuspended})',
+      developer.debugLog(
+        () => 'cancelRide PATCH succeeded for ${ride.id} '
+            '(fee=${outcome.feePesewas} suspended=${outcome.driverSuspended})',
         name: 'ActiveRide',
       );
     } on ApiException catch (e) {
-      developer.log(
-        'cancelRide PATCH failed: ${e.errorCode} — ${e.message} '
-        '(reconciling authoritative ride)',
+      developer.debugLog(
+        () => 'cancelRide PATCH failed: ${e.errorCode} — ${e.message} '
+            '(reconciling authoritative ride)',
         name: 'ActiveRide',
         level: 900,
       );
@@ -622,8 +626,8 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       );
       return outcome;
     } catch (e) {
-      developer.log(
-        'cancelRide crashed: $e (reconciling authoritative ride)',
+      developer.debugLog(
+        () => 'cancelRide crashed: $e (reconciling authoritative ride)',
         name: 'ActiveRide',
         level: 1000,
       );
@@ -677,8 +681,9 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       // A requested ride is still an offer, not an active ride for this
       // driver. Keep it out of the active slot so the UI doesn't open the
       // active-ride screen before the driver has successfully accepted.
-      developer.log(
-        'Ignoring requested ride snapshot for active slot: ${snapshot.id}',
+      developer.debugLog(
+        () =>
+            'Ignoring requested ride snapshot for active slot: ${snapshot.id}',
         name: 'ActiveRide',
         level: 800,
       );
@@ -739,8 +744,9 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       if (snapshot.status == RideStatus.requested) return;
       applySnapshot(snapshot);
     } on ApiException catch (error) {
-      developer.log(
-        'active ride reconcile failed: ${error.errorCode} — ${error.message}',
+      developer.debugLog(
+        () =>
+            'active ride reconcile failed: ${error.errorCode} — ${error.message}',
         name: 'ActiveRide',
         level: 900,
       );
@@ -749,8 +755,8 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       // terminal transition used by socket/FCM cancellation.
       if (error.statusCode == 404) applyRemoteCancellation(tracked.id);
     } catch (error) {
-      developer.log(
-        'active ride reconcile crashed: $error',
+      developer.debugLog(
+        () => 'active ride reconcile crashed: $error',
         name: 'ActiveRide',
         level: 900,
       );
@@ -762,8 +768,8 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   /// (recovery means we're definitely on a live ride).
   void restore(Ride ride) {
     if (!ride.status.isActive) {
-      developer.log(
-        'Ignoring non-active ride restore: ${ride.id} (${ride.status})',
+      developer.debugLog(
+        () => 'Ignoring non-active ride restore: ${ride.id} (${ride.status})',
         name: 'ActiveRide',
         level: 800,
       );
@@ -848,7 +854,7 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
       applySnapshot(fresh);
       return fresh;
     } catch (e) {
-      developer.log('refreshFromBackend failed: $e',
+      developer.debugLog(() => 'refreshFromBackend failed: $e',
           name: 'ActiveRide', level: 800);
       return null;
     }

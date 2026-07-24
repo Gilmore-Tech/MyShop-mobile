@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 
@@ -28,7 +28,7 @@ class LiveJobFeedNotifier extends StateNotifier<List<LiveFeedJob>> {
       if (!mounted) return;
       state = jobs.take(_kLiveFeedMax).toList(growable: false);
     } catch (e) {
-      debugPrint('[LiveJobFeed] seed failed: $e');
+      debugLog(() => '[LiveJobFeed] seed failed: $e');
       // Keep state as empty list — carousel falls back to placeholder.
     }
   }

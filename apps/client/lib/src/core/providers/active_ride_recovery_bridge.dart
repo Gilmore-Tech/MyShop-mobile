@@ -1,5 +1,5 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'package:api_client/api_client.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 
@@ -29,7 +29,7 @@ import 'socket_provider.dart';
 /// listener subscription alive for the container's lifetime.
 final clientActiveRideRecoveryBridgeProvider = Provider<void>((ref) {
   Future<void> tryRecover() async {
-    debugPrint('[ClientActiveRideRecovery] checking for in-flight ride');
+    debugLog(() => '[ClientActiveRideRecovery] checking for in-flight ride');
     const attempts = 3;
     for (var attempt = 1; attempt <= attempts; attempt++) {
       try {
@@ -53,58 +53,59 @@ final clientActiveRideRecoveryBridgeProvider = Provider<void>((ref) {
           }
         }
         if (active == null) {
-          debugPrint(
+          debugLog(() =>
               '[ClientActiveRideRecovery] no in-flight ride (attempt $attempt)');
           return;
         }
-        debugPrint('[ClientActiveRideRecovery] resuming ${active.id} '
-            '(status=${active.status})');
+        final activeRide = active;
+        debugLog(() => '[ClientActiveRideRecovery] resuming ${activeRide.id} '
+            '(status=${activeRide.status})');
 
         // Drive the same providers a fresh `ride:state` event would. We
         // already have the parsed ride entity, but we need the raw map
         // shape to share the snapshot pipeline (it reads top-level fare
         // breakdown fields the model doesn't expose). Re-fetch the full
         // entity by id and apply.
-        ref.read(activeRideIdProvider.notifier).state = active.id;
+        ref.read(activeRideIdProvider.notifier).state = activeRide.id;
 
         // Join the ride room first so any in-flight `ride:state` /
         // `driver:location` emits start landing while we hydrate.
         try {
           final socket = ref.read(socketServiceProvider);
           if (socket.isConnected) {
-            socket.emit('client:track:ride', {'rideId': active.id});
+            socket.emit('client:track:ride', {'rideId': activeRide.id});
           }
         } catch (_) {}
 
         // Then push the snapshot through the same hydrate path the
         // matching-loop fallback uses — keeps every derived provider
         // identical to the live-flow case.
-        await _applyResumedRide(ref, active.id);
+        await _applyResumedRide(ref, activeRide.id);
         return;
       } on ApiException catch (e) {
-        debugPrint('[ClientActiveRideRecovery] listRides failed '
+        debugLog(() => '[ClientActiveRideRecovery] listRides failed '
             '(attempt $attempt/$attempts, status ${e.statusCode}): '
             '${e.errorCode ?? e.message}');
         if (e.statusCode == 401 || e.statusCode == 403) return;
       } on TypeError catch (e) {
         // Parse error — retrying won't help. Bail.
-        debugPrint('[ClientActiveRideRecovery] listRides parse failed: $e');
+        debugLog(() => '[ClientActiveRideRecovery] listRides parse failed: $e');
         return;
       } on FormatException catch (e) {
-        debugPrint('[ClientActiveRideRecovery] listRides parse failed: $e');
+        debugLog(() => '[ClientActiveRideRecovery] listRides parse failed: $e');
         return;
       } catch (e) {
-        debugPrint('[ClientActiveRideRecovery] listRides crashed '
+        debugLog(() => '[ClientActiveRideRecovery] listRides crashed '
             '(attempt $attempt/$attempts): $e');
       }
       if (attempt < attempts) {
         final backoff = Duration(seconds: 3 * attempt);
-        debugPrint(
+        debugLog(() =>
             '[ClientActiveRideRecovery] retrying in ${backoff.inSeconds}s');
         await Future<void>.delayed(backoff);
       }
     }
-    debugPrint(
+    debugLog(() =>
         '[ClientActiveRideRecovery] exhausted retries — leaving state alone');
   }
 
@@ -129,7 +130,7 @@ final clientActiveRideRecoveryBridgeProvider = Provider<void>((ref) {
     final isAuthed =
         ref.read(clientAuthControllerProvider) is AuthAuthenticated;
     if (hasActiveRide || !isAuthed) return;
-    debugPrint('[ClientActiveRideRecovery] socket connected — re-checking');
+    debugLog(() => '[ClientActiveRideRecovery] socket connected — re-checking');
     tryRecover();
   });
 });

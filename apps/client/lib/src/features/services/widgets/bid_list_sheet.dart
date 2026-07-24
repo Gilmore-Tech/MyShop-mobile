@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
+import '../../../core/providers/app_lifecycle_provider.dart';
 import '../providers/bid_list_provider.dart';
 import '../providers/job_data_refresh_coordinator.dart';
 
@@ -54,7 +55,7 @@ class _BidListSheetState extends ConsumerState<BidListSheet> {
   void initState() {
     super.initState();
     _poll = Timer.periodic(_bidsPollInterval, (_) {
-      if (!mounted) return;
+      if (!mounted || !ref.read(appForegroundedProvider)) return;
       unawaited(
         ref
             .read(jobDataRefreshCoordinatorProvider)

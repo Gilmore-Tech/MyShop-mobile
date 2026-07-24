@@ -13,6 +13,8 @@ void main() {
           .readAsStringSync(),
       File('lib/src/features/artisan_home/screens/active_job_screen.dart')
           .readAsStringSync(),
+      File('lib/src/features/profile/screens/documents_verification_screen.dart')
+          .readAsStringSync(),
       File('ios/Runner/PrivacyInfo.xcprivacy').readAsStringSync(),
     ].join('\n');
 
@@ -24,6 +26,8 @@ void main() {
     expect(source, isNot(contains('24/7 support')));
     expect(source, isNot(contains('Police Check')));
     expect(source, isNot(contains('24-48 hours')));
+    expect(source,
+        isNot(contains('reviewed by our compliance team within 24 hours')));
     expect(source, isNot(contains('NSPrivacyCollectedDataTypeSensitiveInfo')));
     expect(source, isNot(contains('paid the moment')));
     expect(source, isNot(contains('released to your wallet')));

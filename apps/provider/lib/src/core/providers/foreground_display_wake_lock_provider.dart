@@ -1,7 +1,7 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -37,13 +37,13 @@ Future<void> _setKeepScreenOn(bool enabled) async {
       'setKeepScreenOn',
       <String, Object?>{'enabled': enabled},
     );
-    debugPrint('[Display] keepScreenOn=$enabled');
+    debugLog(() => '[Display] keepScreenOn=$enabled');
   } on MissingPluginException catch (e) {
-    debugPrint('[Display] keepScreenOn unsupported: $e');
+    debugLog(() => '[Display] keepScreenOn unsupported: $e');
   } on PlatformException catch (e) {
-    debugPrint('[Display] keepScreenOn failed: ${e.message ?? e.code}');
+    debugLog(() => '[Display] keepScreenOn failed: ${e.message ?? e.code}');
   } catch (e) {
-    debugPrint('[Display] keepScreenOn error: $e');
+    debugLog(() => '[Display] keepScreenOn error: $e');
   }
 }
 
@@ -57,12 +57,12 @@ Future<void> setCallLockScreenAccess(bool enabled) async {
       <String, Object?>{'enabled': enabled},
     );
   } on MissingPluginException catch (e) {
-    debugPrint('[Display] call lock-screen access unsupported: $e');
+    debugLog(() => '[Display] call lock-screen access unsupported: $e');
   } on PlatformException catch (e) {
-    debugPrint(
-      '[Display] call lock-screen access failed: ${e.message ?? e.code}',
+    debugLog(
+      () => '[Display] call lock-screen access failed: ${e.message ?? e.code}',
     );
   } catch (e) {
-    debugPrint('[Display] call lock-screen access error: $e');
+    debugLog(() => '[Display] call lock-screen access error: $e');
   }
 }

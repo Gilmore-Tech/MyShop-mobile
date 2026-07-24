@@ -1,8 +1,8 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 import 'dart:convert';
 
 import 'package:api_client/api_client.dart';
-import 'package:flutter/foundation.dart';
 
 /// Wraps [AuthService] with token persistence via [TokenStorage].
 class AuthRepository {
@@ -281,42 +281,42 @@ class AuthRepository {
   Future<AuthUser?> bootstrap() async {
     final token = await _tokenStorage.readAccessToken();
     if (token == null) {
-      debugPrint('[Bootstrap] no access token — unauthenticated');
+      debugLog(() => '[Bootstrap] no access token — unauthenticated');
       return null;
     }
-    debugPrint('[Bootstrap] access token present (len=${token.length})');
+    debugLog(() => '[Bootstrap] access token present (len=${token.length})');
 
     final startedAt = await _tokenStorage.readSessionStartedAt();
     if (startedAt != null &&
         DateTime.now().difference(startedAt) > kSessionTtl) {
-      debugPrint(
+      debugLog(() =>
           '[Bootstrap] session TTL expired (started $startedAt) — clearing');
       await _tokenStorage.clearTokens();
       return null;
     }
-    debugPrint('[Bootstrap] session started $startedAt — within TTL');
+    debugLog(() => '[Bootstrap] session started $startedAt — within TTL');
 
     final cachedJson = await _tokenStorage.readCachedProfileJson();
     if (cachedJson != null) {
       try {
         final map = jsonDecode(cachedJson) as Map<String, dynamic>;
         final profile = UserProfile.fromJson(map);
-        debugPrint('[Bootstrap] restored from cached profile');
+        debugLog(() => '[Bootstrap] restored from cached profile');
         return AuthUser.fromProfile(profile, activeRole: await _activeRole());
       } catch (e) {
-        debugPrint(
+        debugLog(() =>
             '[Bootstrap] cached profile corrupt: $e — falling back to network');
       }
     } else {
-      debugPrint('[Bootstrap] no cached profile — fetching /users/me');
+      debugLog(() => '[Bootstrap] no cached profile — fetching /users/me');
     }
 
     try {
       final profile = await fetchProfile();
-      debugPrint('[Bootstrap] fetched profile from network');
+      debugLog(() => '[Bootstrap] fetched profile from network');
       return profile;
     } catch (e) {
-      debugPrint('[Bootstrap] fetchProfile failed: $e');
+      debugLog(() => '[Bootstrap] fetchProfile failed: $e');
       return null;
     }
   }
@@ -373,20 +373,20 @@ class AuthRepository {
   /// we don't promise that. Local tokens are cleared in every path so
   /// the user is always "signed out" from the device's perspective.
   Future<void> logout() async {
-    debugPrint('[AuthRepo] logout — awaiting backend revocation');
+    debugLog(() => '[AuthRepo] logout — awaiting backend revocation');
     try {
       await _service.logout().timeout(const Duration(seconds: 5));
-      debugPrint('[AuthRepo] backend logout ok');
+      debugLog(() => '[AuthRepo] backend logout ok');
     } on TimeoutException {
-      debugPrint('[AuthRepo] backend logout timed out — '
+      debugLog(() => '[AuthRepo] backend logout timed out — '
           'session may linger until refresh-token TTL');
     } catch (e) {
-      debugPrint('[AuthRepo] backend logout failed: $e — '
+      debugLog(() => '[AuthRepo] backend logout failed: $e — '
           'session may linger until refresh-token TTL');
     }
-    debugPrint('[AuthRepo] clearing local tokens');
+    debugLog(() => '[AuthRepo] clearing local tokens');
     await _tokenStorage.clearTokens();
-    debugPrint('[AuthRepo] logout() done');
+    debugLog(() => '[AuthRepo] logout() done');
   }
 
   /// Clear all stored tokens and identity context — does NOT call the

@@ -1,4 +1,4 @@
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -203,7 +203,8 @@ final loyaltyProvider = FutureProvider.autoDispose<LoyaltyData>((ref) async {
     // History fetch failed (offline, or first launch with no transactions
     // yet). Fall through with an empty ledger — the screen still renders
     // balance + tier + earn-tutorial + redeem-tutorial sections.
-    developer.log('getTransactions error: $e', name: 'LoyaltyProvider');
+    developer.debugLog(() => 'getTransactions error: $e',
+        name: 'LoyaltyProvider');
   }
 
   return LoyaltyData(

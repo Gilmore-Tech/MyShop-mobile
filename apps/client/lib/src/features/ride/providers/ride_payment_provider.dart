@@ -1,10 +1,11 @@
 import 'dart:async';
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/providers/app_lifecycle_provider.dart';
 import '../../services/data/pending_payment_store.dart';
 
 // ── Settlement polling ────────────────────────────────────────────────────────
@@ -110,13 +111,21 @@ class RidePaymentState {
 /// driver's PATCH /rides/:id/status; the rider only needs the charge to
 /// settle so escrow holds.
 class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
-  RidePaymentNotifier(this._paymentService, this._pendingStore)
-      : super(const RidePaymentState());
+  RidePaymentNotifier(
+    this._paymentService,
+    this._pendingStore, {
+    bool Function()? isForegrounded,
+    Duration settlementPollInterval = _kPollInterval,
+  })  : _isForegrounded = isForegrounded ?? _alwaysForegrounded,
+        _settlementPollInterval = settlementPollInterval,
+        super(const RidePaymentState());
 
   static const _kBookingType = 'ride';
 
   final PaymentService _paymentService;
   final PendingPaymentStore _pendingStore;
+  final bool Function() _isForegrounded;
+  final Duration _settlementPollInterval;
 
   Timer? _pollTimer;
   DateTime? _pollStartedAt;
@@ -133,15 +142,16 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
         bookingType: _kBookingType,
         bookingId: rideId,
       );
-      developer.log('abandonByBooking completed', name: 'RidePayment');
+      developer.debugLog(() => 'abandonByBooking completed',
+          name: 'RidePayment');
     } on ApiException catch (e) {
-      developer.log(
-        'ride abandonByBooking failed: ${e.errorCode} — ${e.message}',
+      developer.debugLog(
+        () => 'ride abandonByBooking failed: ${e.errorCode} — ${e.message}',
         name: 'RidePayment',
         level: 700,
       );
     } catch (e) {
-      developer.log('ride abandonByBooking crashed: $e',
+      developer.debugLog(() => 'ride abandonByBooking crashed: $e',
           name: 'RidePayment', level: 700);
     }
     await _pendingStore.clear(
@@ -183,10 +193,10 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
       final paystackReference = _findPaystackReference(result);
       final chargeStatus = _findChargeStatus(result);
       final displayText = _safeRidePaymentPrompt(chargeStatus);
-      developer.log(
-        'ride payment accepted: hasPaymentId=${paymentId != null} '
-        'hasReference=${paystackReference != null} '
-        'hasCheckout=${authUrl != null} status=${chargeStatus ?? 'pending'}',
+      developer.debugLog(
+        () => 'ride payment accepted: hasPaymentId=${paymentId != null} '
+            'hasReference=${paystackReference != null} '
+            'hasCheckout=${authUrl != null} status=${chargeStatus ?? 'pending'}',
         name: 'RidePayment',
       );
 
@@ -259,8 +269,8 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
       );
       _startPolling(paymentId);
     } on ApiException catch (e) {
-      developer.log(
-        'ride initiatePayment failed: ${e.errorCode} — ${e.message}',
+      developer.debugLog(
+        () => 'ride initiatePayment failed: ${e.errorCode} — ${e.message}',
         name: 'RidePayment',
         level: 1000,
       );
@@ -297,7 +307,7 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
         errorMessage: _friendlyError(e),
       );
     } catch (e) {
-      developer.log('ride initiatePayment crashed: $e',
+      developer.debugLog(() => 'ride initiatePayment crashed: $e',
           name: 'RidePayment', level: 1200);
       state = state.copyWith(
         phase: RidePaymentPhase.failed,
@@ -505,10 +515,10 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
     );
     try {
       final result = await _paymentService.retryPayment(pid);
-      developer.log(
-        'ride payment retry accepted: '
-        'status=${_findChargeStatus(result) ?? 'pending'} '
-        'hasCheckout=${_findCheckoutUrl(result) != null}',
+      developer.debugLog(
+        () => 'ride payment retry accepted: '
+            'status=${_findChargeStatus(result) ?? 'pending'} '
+            'hasCheckout=${_findCheckoutUrl(result) != null}',
         name: 'RidePayment',
       );
       // Backend flips the payment to processing and re-sends the MoMo
@@ -520,8 +530,8 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
       );
       _startPolling(pid);
     } on ApiException catch (e) {
-      developer.log(
-        'ride retryPayment failed: ${e.errorCode} — ${e.message}',
+      developer.debugLog(
+        () => 'ride retryPayment failed: ${e.errorCode} — ${e.message}',
         name: 'RidePayment',
         level: 800,
       );
@@ -543,7 +553,7 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
         errorMessage: _friendlyError(e),
       );
     } catch (e) {
-      developer.log('ride retryPayment crashed: $e',
+      developer.debugLog(() => 'ride retryPayment crashed: $e',
           name: 'RidePayment', level: 1200);
       state = state.copyWith(
         phase: RidePaymentPhase.failed,
@@ -559,7 +569,8 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
     final generation = ++_pollGeneration;
     if (paymentId == null) return;
     _pollStartedAt = DateTime.now();
-    _pollTimer = Timer.periodic(_kPollInterval, (_) {
+    _pollTimer = Timer.periodic(_settlementPollInterval, (_) {
+      if (!_isForegrounded()) return;
       _pollOnce(paymentId, generation: generation);
     });
   }
@@ -620,7 +631,7 @@ class RidePaymentNotifier extends StateNotifier<RidePaymentState> {
       }
     } catch (e) {
       // Transient — let the next tick try again.
-      developer.log('ride payment poll error: $e',
+      developer.debugLog(() => 'ride payment poll error: $e',
           name: 'RidePayment', level: 700);
     } finally {
       if (_pollInFlightGeneration == expectedGeneration) {
@@ -809,5 +820,8 @@ final ridePaymentNotifierProvider =
   (ref) => RidePaymentNotifier(
     ref.watch(paymentServiceProvider),
     ref.watch(pendingPaymentStoreProvider),
+    isForegrounded: () => ref.read(appForegroundedProvider),
   ),
 );
+
+bool _alwaysForegrounded() => true;

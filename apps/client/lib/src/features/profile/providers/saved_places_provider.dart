@@ -1,4 +1,4 @@
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -137,7 +137,8 @@ class SavedPlacesNotifier extends StateNotifier<SavedPlacesState> {
       final places = raw.cast<Map<String, dynamic>>().map(_fromJson).toList();
       state = state.copyWith(places: places, isLoading: false);
     } catch (e) {
-      developer.log('getSavedLocations error: $e', name: 'SavedPlaces');
+      developer.debugLog(() => 'getSavedLocations error: $e',
+          name: 'SavedPlaces');
       state = state.copyWith(
           isLoading: false, errorMessage: 'Could not load saved places');
     }
@@ -179,7 +180,8 @@ class SavedPlacesNotifier extends StateNotifier<SavedPlacesState> {
       );
       return null;
     } catch (e) {
-      developer.log('createSavedLocation error: $e', name: 'SavedPlaces');
+      developer.debugLog(() => 'createSavedLocation error: $e',
+          name: 'SavedPlaces');
       return 'Could not save place. Please try again.';
     }
   }
@@ -207,7 +209,8 @@ class SavedPlacesNotifier extends StateNotifier<SavedPlacesState> {
       );
       return null;
     } catch (e) {
-      developer.log('updateSavedLocation error: $e', name: 'SavedPlaces');
+      developer.debugLog(() => 'updateSavedLocation error: $e',
+          name: 'SavedPlaces');
       return 'Could not rename place. Please try again.';
     }
   }
@@ -224,7 +227,8 @@ class SavedPlacesNotifier extends StateNotifier<SavedPlacesState> {
         clearDeleting: true,
       );
     } catch (e) {
-      developer.log('deleteSavedLocation error: $e', name: 'SavedPlaces');
+      developer.debugLog(() => 'deleteSavedLocation error: $e',
+          name: 'SavedPlaces');
       state = state.copyWith(
         clearDeleting: true,
         errorMessage: 'Could not remove place. Please try again.',

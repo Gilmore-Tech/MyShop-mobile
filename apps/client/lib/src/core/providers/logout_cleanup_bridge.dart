@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/activity/providers/activity_provider.dart';
@@ -33,7 +33,7 @@ final logoutCleanupBridgeProvider = Provider<void>((ref) {
     final isAuthed = next is AuthAuthenticated;
     if (!wasAuthed || isAuthed) return;
 
-    debugPrint('[Logout] tearing down session-scoped state');
+    debugLog(() => '[Logout] tearing down session-scoped state');
 
     // Tear down the socket so the old JWT isn't reused for any further
     // emits. Disposes the SocketService via ref.onDispose in the
@@ -82,20 +82,20 @@ final logoutCleanupBridgeProvider = Provider<void>((ref) {
     // these without a per-user namespace means logout is the only
     // safe place to drop them.
     ref.read(pendingPaymentStoreProvider).clearAll().catchError((Object _) {
-      debugPrint('[Logout] pending payment cleanup failed');
+      debugLog(() => '[Logout] pending payment cleanup failed');
     });
 
     // An idempotency key belongs to the authenticated client identity. Keeping
     // it across logout could let the next user recover the previous user's
     // booking attempt, so clear it at the same boundary as payment records.
     ref.read(rideBookingAttemptStoreProvider).clearAll().catchError((Object _) {
-      debugPrint('[Logout] ride booking attempt cleanup failed');
+      debugLog(() => '[Logout] ride booking attempt cleanup failed');
     });
 
     // Recent location inputs are also persisted to SharedPreferences
     // and per-user — same reasoning as pendingPaymentStore above.
     ref.read(recentLocationsProvider.notifier).clear().catchError((Object _) {
-      debugPrint('[Logout] recent locations cleanup failed');
+      debugLog(() => '[Logout] recent locations cleanup failed');
     });
   });
 });

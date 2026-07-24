@@ -1,7 +1,7 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
 import 'package:api_client/api_client.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_models/shared_models.dart';
@@ -70,7 +70,7 @@ final locationGuardProvider = Provider<void>((ref) {
     serviceSub = ref.read(locationServiceStatusStreamProvider).listen((status) {
       if (generation != guardGeneration) return;
       if (status == ServiceStatus.disabled) {
-        debugPrint('[LocationGuard] services disabled — reporting loss');
+        debugLog(() => '[LocationGuard] services disabled — reporting loss');
         unawaited(
           reportUnavailable(LocationUnavailableReason.serviceDisabled),
         );
@@ -92,8 +92,8 @@ final locationGuardProvider = Provider<void>((ref) {
         if (generation != guardGeneration) return;
         if (permission == LocationPermission.denied ||
             permission == LocationPermission.deniedForever) {
-          debugPrint(
-            '[LocationGuard] location permission lost — reporting loss',
+          debugLog(
+            () => '[LocationGuard] location permission lost — reporting loss',
           );
           await reportUnavailable(LocationUnavailableReason.permissionLost);
           return;
@@ -101,16 +101,16 @@ final locationGuardProvider = Provider<void>((ref) {
 
         final foregrounded = ref.read(appForegroundedProvider);
         if (!foregrounded && permission != LocationPermission.always) {
-          debugPrint(
-            '[LocationGuard] app backgrounded without Always '
-            'permission — reporting loss',
+          debugLog(
+            () => '[LocationGuard] app backgrounded without Always '
+                'permission — reporting loss',
           );
           await reportUnavailable(
             LocationUnavailableReason.backgroundPermissionLost,
           );
         }
       } catch (error) {
-        debugPrint('[LocationGuard] permission check failed: $error');
+        debugLog(() => '[LocationGuard] permission check failed: $error');
       } finally {
         if (permissionCheckGeneration == generation) {
           permissionCheckGeneration = null;

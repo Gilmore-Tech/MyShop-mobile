@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/chat/chat_entry_button.dart';
 import '../../../core/di/providers.dart' show jobServiceProvider;
+import '../../../core/providers/app_lifecycle_provider.dart';
 import '../../../core/providers/socket_provider.dart' show ratingSheetShownFor;
 import '../../../core/services/directions_service.dart';
 import '../../../core/services/nav_guidance.dart';
@@ -197,7 +198,7 @@ class _ActiveJobScreenState extends ConsumerState<ActiveJobScreen> {
       // the global limit without making the wait state feel laggy.
       ref.read(activeJobProvider.notifier).refreshFromServer();
       _ackPollTimer = Timer.periodic(const Duration(seconds: 12), (_) {
-        if (!mounted) return;
+        if (!mounted || !ref.read(appForegroundedProvider)) return;
         ref.read(activeJobProvider.notifier).refreshFromServer();
       });
     } else {

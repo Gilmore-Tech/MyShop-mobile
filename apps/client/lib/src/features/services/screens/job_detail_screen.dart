@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
 import '../../../core/di/providers.dart';
+import '../../../core/providers/app_lifecycle_provider.dart';
 import '../data/job_cancellation_coordinator.dart';
 import '../providers/bid_list_provider.dart';
 import '../providers/job_detail_provider.dart';
@@ -40,7 +41,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
   void initState() {
     super.initState();
     _poll = Timer.periodic(_jobDetailPollInterval, (_) {
-      if (!mounted) return;
+      if (!mounted || !ref.read(appForegroundedProvider)) return;
       // Invalidate both the job AND its bids — the timeline-summary card
       // shows the live bid count, and a stale bid list under it is what
       // made new bids feel like they only "arrived" after opening the

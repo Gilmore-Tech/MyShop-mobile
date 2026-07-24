@@ -1,6 +1,6 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Launches Google Maps turn-by-turn navigation to a destination.
@@ -34,7 +34,7 @@ class ExternalNavService {
           if (ok) return true;
         }
       } catch (e) {
-        debugPrint('[ExternalNav] launch failed for $uri: $e');
+        debugLog(() => '[ExternalNav] launch failed for $uri: $e');
       }
     }
     return false;

@@ -1,7 +1,7 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
 import 'package:api_client/api_client.dart';
-import 'package:flutter/foundation.dart';
 import 'package:shared_models/shared_models.dart';
 
 /// Wraps [AuthService] with token persistence via [TokenStorage].
@@ -173,20 +173,20 @@ class ClientAuthRepository {
   /// we don't promise that. Local tokens are cleared in every path so
   /// the user is always "signed out" from the device's perspective.
   Future<void> logout() async {
-    debugPrint('[ClientAuthRepo] logout — awaiting backend revocation');
+    debugLog(() => '[ClientAuthRepo] logout — awaiting backend revocation');
     try {
       await _service.logout().timeout(const Duration(seconds: 5));
-      debugPrint('[ClientAuthRepo] backend logout ok');
+      debugLog(() => '[ClientAuthRepo] backend logout ok');
     } on TimeoutException {
-      debugPrint('[ClientAuthRepo] backend logout timed out — '
+      debugLog(() => '[ClientAuthRepo] backend logout timed out — '
           'session may linger until refresh-token TTL');
     } catch (_) {
-      debugPrint('[ClientAuthRepo] backend logout failed — '
+      debugLog(() => '[ClientAuthRepo] backend logout failed — '
           'session may linger until refresh-token TTL');
     }
-    debugPrint('[ClientAuthRepo] clearing local tokens');
+    debugLog(() => '[ClientAuthRepo] clearing local tokens');
     await _tokenStorage.clearTokens();
-    debugPrint('[ClientAuthRepo] logout() done');
+    debugLog(() => '[ClientAuthRepo] logout() done');
   }
 
   /// Clear all stored tokens and identity context — does NOT call the

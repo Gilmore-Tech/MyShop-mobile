@@ -259,7 +259,8 @@ class _InfoBanner extends StatelessWidget {
                     )),
                 SizedBox(height: 4),
                 Text(
-                    'Our team reviews GPS data against the optimal route and will respond within 24 hours.',
+                    'Our team reviews the available trip and route evidence. '
+                    'You can follow the dispute status in the app.',
                     style: TextStyle(
                         color: MyShopColors.error.withAlpha(180),
                         fontSize: w * 0.030,

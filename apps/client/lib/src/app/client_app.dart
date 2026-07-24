@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import 'router.dart';
 import 'theme_provider.dart';
+import '../core/providers/app_lifecycle_provider.dart';
 import '../core/providers/app_update_provider.dart';
 import '../core/providers/provider_location_notice_provider.dart';
+import '../core/providers/socket_provider.dart';
 import '../core/widgets/provider_location_notice_banner.dart';
 import '../core/di/providers.dart' show systemTelemetryProvider;
 
@@ -43,6 +47,18 @@ class _MyShopMaterialAppState extends ConsumerState<_MyShopMaterialApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    final foregrounded = isForegroundLifecycleState(state);
+    ref.read(appForegroundedProvider.notifier).state = foregrounded;
+    if (foregrounded) {
+      // Push is the background reachability channel. Recreate the general
+      // ride/job socket only when visible; SocketService reattaches all
+      // handlers through onAfterCreate before the connection opens.
+      unawaited(ref.read(socketServiceProvider).connect());
+    } else {
+      // Do not retain an idle client WebSocket for every backgrounded DAU.
+      // In-app calls use their separate call socket and are unaffected.
+      ref.read(socketServiceProvider).disconnect();
+    }
     ref.read(systemTelemetryProvider).trackLifecycle(state);
   }
 

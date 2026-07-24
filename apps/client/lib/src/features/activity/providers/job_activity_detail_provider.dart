@@ -1,4 +1,4 @@
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:api_client/api_client.dart';
@@ -108,8 +108,8 @@ class _JobActivityDetailNotifier
       final job = await jobService.getJob(jobId);
       return _parseJob(jobId, job);
     } on ApiException catch (e) {
-      developer.log(
-        'getJob detail failed (${e.statusCode}): ${e.message}',
+      developer.debugLog(
+        () => 'getJob detail failed (${e.statusCode}): ${e.message}',
         name: 'JobActivityDetailProvider',
       );
       rethrow;

@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/artisan_home/providers/active_job_provider.dart';
@@ -30,7 +30,7 @@ final logoutCleanupBridgeProvider = Provider<void>((ref) {
     final isAuthed = next is AuthAuthenticated;
     if (!wasAuthed || isAuthed) return;
 
-    debugPrint('[Logout] tearing down session-scoped state');
+    debugLog(() => '[Logout] tearing down session-scoped state');
 
     // AuthController owns exact-role Online-intent deletion; this bridge owns
     // only the in-memory identity and notice teardown.

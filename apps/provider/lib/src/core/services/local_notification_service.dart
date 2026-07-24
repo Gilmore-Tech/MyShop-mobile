@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 import 'dart:convert';
 
@@ -691,7 +692,8 @@ class LocalNotificationService {
           ),
         );
       } catch (e) {
-        debugPrint('[LocalNotificationService] audio context setup failed: $e');
+        debugLog(
+            () => '[LocalNotificationService] audio context setup failed: $e');
       }
       if (!_isCurrentRingtoneSession(generation)) return;
       await player.play(AssetSource('audio/incoming_request.mp3'));
@@ -702,11 +704,11 @@ class LocalNotificationService {
         await player.stop();
         return;
       }
-      debugPrint('[LocalNotificationService] ringtone playing');
+      debugLog(() => '[LocalNotificationService] ringtone playing');
     } catch (e) {
-      debugPrint(
-        '[LocalNotificationService] ringtone asset unavailable, '
-        'falling back to haptic-only: $e',
+      debugLog(
+        () => '[LocalNotificationService] ringtone asset unavailable, '
+            'falling back to haptic-only: $e',
       );
     }
   }
@@ -723,7 +725,7 @@ class LocalNotificationService {
     try {
       await _ringtonePlayer?.stop();
     } catch (e) {
-      debugPrint('[LocalNotificationService] ringtone stop failed: $e');
+      debugLog(() => '[LocalNotificationService] ringtone stop failed: $e');
     }
   }
 
@@ -779,7 +781,7 @@ class LocalNotificationService {
         handler(payload);
       }
     } catch (e) {
-      debugPrint('[LocalNotificationService] bad payload: $e');
+      debugLog(() => '[LocalNotificationService] bad payload: $e');
     }
   }
 }

@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -107,16 +107,16 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
 
   Future<void> _onCancel() async {
     if (_cancellingNow) {
-      developer.log('[CANCEL] re-entry blocked — already cancelling',
+      developer.debugLog(() => '[CANCEL] re-entry blocked — already cancelling',
           name: 'RideTrackingScreen');
       return;
     }
     final rideId = ref.read(activeRideIdProvider);
-    developer.log('[CANCEL] tapped — rideId=$rideId',
+    developer.debugLog(() => '[CANCEL] tapped — rideId=$rideId',
         name: 'RideTrackingScreen');
     if (rideId == null || rideId.isEmpty) {
       // No active ride to cancel — just bail out to home.
-      developer.log('[CANCEL] no active rideId, navigating home',
+      developer.debugLog(() => '[CANCEL] no active rideId, navigating home',
           name: 'RideTrackingScreen');
       if (mounted) context.go(AppRoutes.home);
       return;
@@ -124,7 +124,7 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
     final phase = ref.read(rideTrackingPhaseProvider);
     if (phase != RideTrackingPhase.enRoute &&
         phase != RideTrackingPhase.arrived) {
-      developer.log('[CANCEL] blocked for phase=$phase',
+      developer.debugLog(() => '[CANCEL] blocked for phase=$phase',
           name: 'RideTrackingScreen');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -159,15 +159,16 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
       ),
     );
     if (confirmed != true || !mounted) {
-      developer.log('[CANCEL] dialog dismissed without confirmation',
+      developer.debugLog(() => '[CANCEL] dialog dismissed without confirmation',
           name: 'RideTrackingScreen');
       return;
     }
     final phaseAfterConfirm = ref.read(rideTrackingPhaseProvider);
     if (phaseAfterConfirm != RideTrackingPhase.enRoute &&
         phaseAfterConfirm != RideTrackingPhase.arrived) {
-      developer.log(
-          '[CANCEL] blocked after confirmation for phase=$phaseAfterConfirm',
+      developer.debugLog(
+          () =>
+              '[CANCEL] blocked after confirmation for phase=$phaseAfterConfirm',
           name: 'RideTrackingScreen');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -181,7 +182,7 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
 
     _cancellingNow = true;
     final messenger = ScaffoldMessenger.of(context);
-    developer.log('[CANCEL] PATCH /rides/$rideId/cancel',
+    developer.debugLog(() => '[CANCEL] PATCH /rides/$rideId/cancel',
         name: 'RideTrackingScreen');
     final cancellation = await cancelRideWithAuthority(
       rideService: ref.read(rideServiceProvider),
@@ -189,9 +190,9 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
       reason: 'rider_cancelled',
     );
     if (!cancellation.confirmedCancelled) {
-      developer.log(
-        '[CANCEL] not confirmed; local ride preserved '
-        '(reconciled=${cancellation.reconciled})',
+      developer.debugLog(
+        () => '[CANCEL] not confirmed; local ride preserved '
+            '(reconciled=${cancellation.reconciled})',
         name: 'RideTrackingScreen',
         level: 900,
       );
@@ -213,9 +214,9 @@ class _RideTrackingScreenState extends ConsumerState<RideTrackingScreen> {
       final fee = (feePesewas / 100).toStringAsFixed(2);
       message = 'Ride cancelled. Cancellation fee: GHS $fee';
     }
-    developer.log(
-      '[CANCEL] confirmed — fee=${feePesewas}p '
-      'reconciled=${cancellation.reconciled}',
+    developer.debugLog(
+      () => '[CANCEL] confirmed — fee=${feePesewas}p '
+          'reconciled=${cancellation.reconciled}',
       name: 'RideTrackingScreen',
     );
 

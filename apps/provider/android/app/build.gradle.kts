@@ -60,6 +60,14 @@ android {
             localProps.getProperty("MAPS_API_KEY", "")
         }
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
+        // Release provenance is supplied only by tool/build.sh after it has
+        // proved HEAD is the reviewed origin/main commit. Keeping it in the
+        // native manifest makes the exact store artifact independently
+        // auditable instead of relying on a filename or build timestamp.
+        manifestPlaceholders["MYSHOP_SOURCE_COMMIT"] =
+            (project.findProperty("MYSHOP_SOURCE_COMMIT") as String?)?.trim().orEmpty()
+        manifestPlaceholders["MYSHOP_MARKETING_VERSION"] = flutter.versionName
+        manifestPlaceholders["MYSHOP_BUILD_NUMBER"] = flutter.versionCode.toString()
     }
 
     signingConfigs {

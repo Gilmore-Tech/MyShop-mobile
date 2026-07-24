@@ -334,12 +334,17 @@ tool/build.sh client android
 
 Expected end:
 ```
-→ wrote MAPS_API_KEY to apps/client/android/gradle.properties
+→ wrote release Maps configuration and source provenance to apps/client/android/gradle.properties
 → flutter build appbundle (release) for apps/client with production dart-defines
 ✓ Built apps/client/build/app/outputs/bundle/release/app-release.aab
+Release artifact verified: client/android 1.4.1+<build> @ <reviewed-main-sha>
 ```
 
-Sideload it on a phone or upload to Play Console Internal manually to confirm the map + autocomplete work before letting CI touch anything.
+The final line is mandatory: it binds the package ID, marketing/build version,
+reviewed source SHA, pinned upload identity, production endpoint and absence of
+the staging endpoint to that exact AAB. Sideload the separately verified APK or
+upload the AAB to Play Console Internal to confirm map and autocomplete behavior
+before production promotion.
 
 ### 5.2 Local — iOS Match smoke test
 
@@ -398,8 +403,14 @@ export RELEASE_SOURCE_COMMIT="$(git rev-parse HEAD)"
 export RELEASE_BUILD_NUMBER=<greater-than-both-console-values-and-23>
 tool/build.sh client android
 tool/build.sh client ios
+tool/build.sh provider android
+tool/build.sh provider ios
 
-# 3. Tag only after the exact artifacts pass internal/device QA. Do not commit
+# 3. Each build must end with "Release artifact verified". Fresh iOS archives
+#    must also report their exact app-owned and vendor dSYM state. The historical
+#    +23 files and lone Provider +24 APK are quarantined and must not be reused.
+#
+# 4. Tag only after the exact artifacts pass internal/device QA. Do not commit
 #    after building: the tag and artifacts must identify RELEASE_SOURCE_COMMIT.
 test "$(git rev-parse HEAD)" = "$RELEASE_SOURCE_COMMIT"
 test -z "$(git status --porcelain --untracked-files=all)"

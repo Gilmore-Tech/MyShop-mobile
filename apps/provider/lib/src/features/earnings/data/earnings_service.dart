@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:dio/dio.dart';
 import 'package:shared_models/shared_models.dart';
@@ -137,15 +137,16 @@ class EarningsService {
           body['data'] is Map<String, dynamic>) {
         return body['data'] as Map<String, dynamic>;
       }
-      developer.log(
-        'GET $path returned an unexpected response envelope',
+      developer.debugLog(
+        () => 'GET $path returned an unexpected response envelope',
         name: 'Earnings.$tag',
         level: 900,
       );
       throw const EarningsApiException(code: 'UNKNOWN');
     } on TimeoutException {
-      developer.log(
-        'GET $path timed out after ${_kEarningsRequestTimeout.inSeconds}s',
+      developer.debugLog(
+        () =>
+            'GET $path timed out after ${_kEarningsRequestTimeout.inSeconds}s',
         name: 'Earnings.$tag',
         level: 1000,
       );
@@ -154,9 +155,9 @@ class EarningsService {
         message: "Taking too long to load. Check your connection and retry.",
       );
     } on DioException catch (e) {
-      developer.log(
-        'GET $path failed: status=${e.response?.statusCode} '
-        'type=${e.type.name}',
+      developer.debugLog(
+        () => 'GET $path failed: status=${e.response?.statusCode} '
+            'type=${e.type.name}',
         name: 'Earnings.$tag',
         level: 1000,
       );

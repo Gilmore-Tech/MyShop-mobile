@@ -63,9 +63,8 @@
             </array>
         </dict>
         <!-- Disk space: cached_network_image computes free disk before
-             writing tiles; Firebase Crashlytics uses this for crash
-             reports. Reason E174.1 — used to check whether there is
-             sufficient disk space to write files. -->
+             writing tiles. Reason E174.1 — used to check whether there
+             is sufficient disk space to write files. -->
         <dict>
             <key>NSPrivacyAccessedAPIType</key>
             <string>NSPrivacyAccessedAPICategoryDiskSpace</string>
@@ -232,20 +231,6 @@
             <string>NSPrivacyCollectedDataTypeSensitiveInfo</string>
             <key>NSPrivacyCollectedDataTypeLinked</key>
             <true/>
-            <key>NSPrivacyCollectedDataTypeTracking</key>
-            <false/>
-            <key>NSPrivacyCollectedDataTypePurposes</key>
-            <array>
-                <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
-            </array>
-        </dict>
-        <!-- Crash data — Firebase Crashlytics (if enabled). Not
-             linked to user identity by the SDK. -->
-        <dict>
-            <key>NSPrivacyCollectedDataType</key>
-            <string>NSPrivacyCollectedDataTypeCrashData</string>
-            <key>NSPrivacyCollectedDataTypeLinked</key>
-            <false/>
             <key>NSPrivacyCollectedDataTypeTracking</key>
             <false/>
             <key>NSPrivacyCollectedDataTypePurposes</key>

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:api_client/mobile_diagnostics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -32,8 +33,9 @@ import 'src/features/auth/providers/auth_controller.dart';
 // google-services plugin in the android gradle files.
 
 void main() {
+  installMobileProductionLogPolicy();
   WidgetsFlutterBinding.ensureInitialized();
-  debugPrint('[main] CLIENT app starting — FCM build marker v3');
+  debugLog(() => '[main] CLIENT app starting — FCM build marker v3');
 
   MapboxOptions.setAccessToken(MapboxConfig.accessToken);
 
@@ -79,7 +81,7 @@ Future<void> _finishStartup(ProviderContainer container) async {
     try {
       activate();
     } catch (e) {
-      debugPrint('[main] startup bridge failed: $e');
+      debugLog(() => '[main] startup bridge failed: $e');
     }
   }
 
@@ -95,17 +97,17 @@ Future<void> _finishStartup(ProviderContainer container) async {
       container.listen<void>(fcmAuthBridgeProvider, (_, __) {});
       container.read(fcmTapBridgeProvider);
       unawaited(container.read(fcmServiceProvider).init().catchError(
-            (Object e) => debugPrint('[main] FCM init failed: $e'),
+            (Object e) => debugLog(() => '[main] FCM init failed: $e'),
           ));
     } catch (e) {
-      debugPrint('[main] FCM bridge setup failed: $e');
+      debugLog(() => '[main] FCM bridge setup failed: $e');
     }
   }
 
   // Warm up GPS without delaying navigation.
   unawaited(container.read(currentLocationServiceProvider).ensure().catchError(
     (Object e) {
-      debugPrint('[main] current-location warm-up failed: $e');
+      debugLog(() => '[main] current-location warm-up failed: $e');
       return null;
     },
   ));
@@ -115,7 +117,7 @@ Future<void> _loadOnboardingPreferences(ProviderContainer container) async {
   try {
     await loadOnboardingFlag(container).timeout(const Duration(seconds: 3));
   } catch (e) {
-    debugPrint('[main] onboarding preferences unavailable: $e');
+    debugLog(() => '[main] onboarding preferences unavailable: $e');
   } finally {
     container.read(onboardingFlagLoadedProvider.notifier).state = true;
   }
@@ -129,7 +131,7 @@ Future<bool> _initializeFirebase() async {
     FirebaseMessaging.onBackgroundMessage(fcmBackgroundHandler);
     return true;
   } catch (e) {
-    debugPrint('[main] Firebase init failed — push disabled: $e');
+    debugLog(() => '[main] Firebase init failed — push disabled: $e');
     return false;
   }
 }
@@ -140,6 +142,6 @@ Future<void> _initializeLocalNotifications() async {
         .init()
         .timeout(const Duration(seconds: 5));
   } catch (e) {
-    debugPrint('[main] Local notifications init failed: $e');
+    debugLog(() => '[main] Local notifications init failed: $e');
   }
 }

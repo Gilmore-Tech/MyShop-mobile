@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -465,7 +466,7 @@ class AppCallRtcService {
   }
 
   void _log(String message) {
-    debugPrint('[CALL-RTC][${_callId ?? 'unassigned'}] $message');
+    debugLog(() => '[CALL-RTC][${_callId ?? 'unassigned'}] $message');
   }
 }
 

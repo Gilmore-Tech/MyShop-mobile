@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:flutter/material.dart' show DateTimeRange;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -244,8 +244,9 @@ class ArtisanJobsNotifier extends StateNotifier<ArtisanJobsState> {
           .read(jobServiceProvider)
           .listJobs(page: 1, limit: 100)
           .timeout(_kFetchTimeout);
-      developer.log(
-        'Fetched ${raw.length} jobs for artisan${silent ? ' (silent)' : ''}',
+      developer.debugLog(
+        () =>
+            'Fetched ${raw.length} jobs for artisan${silent ? ' (silent)' : ''}',
         name: 'ArtisanJobs',
       );
       final entries = <ArtisanJobEntry>[];
@@ -254,13 +255,13 @@ class ArtisanJobsNotifier extends StateNotifier<ArtisanJobsState> {
         try {
           entries.add(_parse(item));
         } catch (e) {
-          developer.log('Skipping unparseable job entry: $e',
+          developer.debugLog(() => 'Skipping unparseable job entry: $e',
               name: 'ArtisanJobs', level: 800);
         }
       }
       final withBid = entries.where((e) => e.hasBid).length;
-      developer.log(
-        'Parsed ${entries.length} entries ($withBid with a bid attached)',
+      developer.debugLog(
+        () => 'Parsed ${entries.length} entries ($withBid with a bid attached)',
         name: 'ArtisanJobs',
       );
       if (!mounted) return;
@@ -270,7 +271,7 @@ class ArtisanJobsNotifier extends StateNotifier<ArtisanJobsState> {
         clearError: true,
       );
     } on TimeoutException {
-      developer.log('Artisan jobs fetch timed out',
+      developer.debugLog(() => 'Artisan jobs fetch timed out',
           name: 'ArtisanJobs', level: 900);
       if (silent || !mounted) return;
       state = state.copyWith(
@@ -287,13 +288,14 @@ class ArtisanJobsNotifier extends StateNotifier<ArtisanJobsState> {
       final msg = e.toString();
       if (msg.contains('NOT_AUTHENTICATED') ||
           msg.contains('session is over')) {
-        developer.log('[ArtisanJobs] session ended — stopping poll timer',
+        developer.debugLog(
+            () => '[ArtisanJobs] session ended — stopping poll timer',
             name: 'ArtisanJobs');
         _pollTimer?.cancel();
         _pollTimer = null;
         return;
       }
-      developer.log('Failed to load artisan jobs: $e\n$st',
+      developer.debugLog(() => 'Failed to load artisan jobs: $e\n$st',
           name: 'ArtisanJobs', level: 900);
       // Silent refreshes must never clobber the last-good list with an
       // error — the user just sees the data they already had.

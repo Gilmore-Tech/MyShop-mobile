@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 import 'dart:io' show Platform;
 
@@ -210,7 +211,7 @@ class LiveActivityService {
     } on MissingPluginException {
       return const LiveActivityBridgeState();
     } catch (error) {
-      debugPrint('[LiveActivity] getState failed: $error');
+      debugLog(() => '[LiveActivity] getState failed: $error');
       return const LiveActivityBridgeState();
     }
   }
@@ -233,7 +234,7 @@ class LiveActivityService {
     } on MissingPluginException {
       // Expected in tests and builds without the iOS 16.1 extension.
     } catch (error) {
-      debugPrint('[LiveActivity] endRequest failed: $error');
+      debugLog(() => '[LiveActivity] endRequest failed: $error');
     }
   }
 
@@ -247,7 +248,7 @@ class LiveActivityService {
     } on MissingPluginException {
       // Expected in tests and builds without the iOS 16.1 extension.
     } catch (error) {
-      debugPrint('[LiveActivity] endAll failed: $error');
+      debugLog(() => '[LiveActivity] endAll failed: $error');
     }
   }
 }

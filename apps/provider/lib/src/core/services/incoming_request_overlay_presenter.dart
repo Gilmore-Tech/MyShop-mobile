@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:convert';
 import 'dart:io' show Platform;
 
@@ -85,7 +86,7 @@ class IncomingRequestOverlayPresenter {
     try {
       return await _overlay.showOffer(offer);
     } catch (error) {
-      debugPrint('[RequestOverlay] show failed: $error');
+      debugLog(() => '[RequestOverlay] show failed: $error');
       return false;
     }
   }
@@ -119,7 +120,7 @@ class IncomingRequestOverlayPresenter {
         offerId: _nonEmpty(offerId) ?? requestId,
       );
     } catch (error) {
-      debugPrint('[RequestOverlay] dismiss failed: $error');
+      debugLog(() => '[RequestOverlay] dismiss failed: $error');
     }
   }
 

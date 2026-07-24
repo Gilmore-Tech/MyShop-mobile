@@ -1,8 +1,8 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:api_client/api_client.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:incoming_request_overlay/incoming_request_overlay.dart';
@@ -324,13 +324,15 @@ class AvailabilityController {
 
     final status = _ref.read(providerStatusProvider);
     if (!status.isOffline) {
-      debugPrint('[Availability] online requested while status=$status — noop');
+      debugLog(
+          () => '[Availability] online requested while status=$status — noop');
       return Future<String?>.value(null);
     }
 
     final inFlight = _goOnlineInFlight;
     if (inFlight != null) {
-      debugPrint('[Availability] online request already in flight — joining');
+      debugLog(
+          () => '[Availability] online request already in flight — joining');
       return inFlight;
     }
 
@@ -401,7 +403,7 @@ class AvailabilityController {
         );
         _ref.read(lastKnownPositionProvider.notifier).state = position;
       } catch (e) {
-        debugPrint('[Availability] online: position fetch failed — $e');
+        debugLog(() => '[Availability] online: position fetch failed — $e');
         return "Couldn't get your location. Check signal and try again.";
       }
     }
@@ -447,12 +449,12 @@ class AvailabilityController {
       // Seed the dedup so the bridge's kick-once POST (which fires the
       // moment we flip providerStatusProvider below) is suppressed.
       markOnlineLocationPosted();
-      debugPrint('[Availability] online POST sent');
+      debugLog(() => '[Availability] online POST sent');
     } on ApiException catch (e) {
-      debugPrint('[Availability] online POST failed: $e');
+      debugLog(() => '[Availability] online POST failed: $e');
       return friendlyAvailabilityApiError(e);
     } catch (e) {
-      debugPrint('[Availability] online POST error: $e');
+      debugLog(() => '[Availability] online POST error: $e');
       return "Couldn't reach the server. Check your connection and try again.";
     }
 
@@ -479,7 +481,7 @@ class AvailabilityController {
       // retry path if they decline.
       await overlay.openOverlaySettings();
     } catch (error) {
-      debugPrint('[Availability] overlay permission prompt failed: $error');
+      debugLog(() => '[Availability] overlay permission prompt failed: $error');
     }
   }
 
@@ -525,7 +527,7 @@ class AvailabilityController {
         return 'Turn on Location Services to go online.';
       }
     } catch (error) {
-      debugPrint('[Availability] location readiness check failed: $error');
+      debugLog(() => '[Availability] location readiness check failed: $error');
       return "Couldn't check location access. Restart the app and try again.";
     }
     return null;
@@ -545,8 +547,8 @@ class AvailabilityController {
   Future<void> refreshHeartbeat() {
     final inFlight = _heartbeatRefreshInFlight;
     if (inFlight != null) {
-      debugPrint(
-          '[Availability] heartbeat refresh already in flight — joining');
+      debugLog(
+          () => '[Availability] heartbeat refresh already in flight — joining');
       return inFlight;
     }
 
@@ -566,15 +568,16 @@ class AvailabilityController {
         loader: _ref.read(onlinePositionLoaderProvider),
       );
     } catch (error) {
-      debugPrint(
-        '[Availability] heartbeat refresh fresh-fix request failed: $error',
+      debugLog(
+        () =>
+            '[Availability] heartbeat refresh fresh-fix request failed: $error',
       );
       return;
     }
     if (periodicOnlineFixRefreshRequired(pos) ||
         !isOnlineLocationFixAcceptable(pos)) {
-      debugPrint(
-        '[Availability] heartbeat refresh skipped — fresh fix unusable',
+      debugLog(
+        () => '[Availability] heartbeat refresh skipped — fresh fix unusable',
       );
       return;
     }
@@ -585,7 +588,7 @@ class AvailabilityController {
     // only spends rate-limit budget. Skip — the periodic tick we just
     // observed already did this work.
     if (shouldSkipOnlineLocationPost()) {
-      debugPrint('[Availability] heartbeat refresh skipped — recent POST');
+      debugLog(() => '[Availability] heartbeat refresh skipped — recent POST');
       return;
     }
 
@@ -594,7 +597,7 @@ class AvailabilityController {
     try {
       final locationSession = _ref.read(providerLocationSessionProvider);
       if (locationSession == null) {
-        debugPrint(
+        debugLog(() =>
             '[Availability] heartbeat refresh skipped — no location epoch');
         return;
       }
@@ -622,11 +625,11 @@ class AvailabilityController {
         );
       }
       markOnlineLocationPosted();
-      debugPrint('[Availability] heartbeat refreshed for backgrounding');
+      debugLog(() => '[Availability] heartbeat refreshed for backgrounding');
     } on ApiException catch (e) {
-      debugPrint('[Availability] heartbeat refresh failed: $e');
+      debugLog(() => '[Availability] heartbeat refresh failed: $e');
     } catch (e) {
-      debugPrint('[Availability] heartbeat refresh error: $e');
+      debugLog(() => '[Availability] heartbeat refresh error: $e');
     }
   }
 
@@ -644,19 +647,20 @@ class AvailabilityController {
       reason: reason,
       hasActiveWork: status.isBusy,
     );
-    debugPrint('[Availability] reporting location unavailable');
+    debugLog(() => '[Availability] reporting location unavailable');
     try {
       await _ref.read(locationServiceProvider).reportUnavailable(reason);
       await _ref
           .read(availabilityReconciliationControllerProvider)
           .reconcile(trigger: 'location_unavailable_report');
     } on ApiException catch (error) {
-      debugPrint(
-        '[Availability] location-unavailable report failed: '
-        '${error.errorCode ?? error.message}',
+      debugLog(
+        () => '[Availability] location-unavailable report failed: '
+            '${error.errorCode ?? error.message}',
       );
     } catch (error) {
-      debugPrint('[Availability] location-unavailable report error: $error');
+      debugLog(
+          () => '[Availability] location-unavailable report error: $error');
     }
   }
 
@@ -690,13 +694,13 @@ class AvailabilityController {
       _ref.read(providerLocationSessionProvider.notifier).clear();
       _ref.read(availabilityRestoreNoticeProvider.notifier).state = null;
       clearOnlineLocationPostAt();
-      debugPrint('[Availability] authoritative offline confirmed');
+      debugLog(() => '[Availability] authoritative offline confirmed');
       return null;
     } on ApiException catch (e) {
-      debugPrint('[Availability] offline POST failed: $e');
+      debugLog(() => '[Availability] offline POST failed: $e');
       return friendlyAvailabilityApiError(e);
     } catch (e) {
-      debugPrint('[Availability] offline POST error: $e');
+      debugLog(() => '[Availability] offline POST error: $e');
       return "Couldn't reach the server. Check your connection and try again.";
     }
   }
@@ -713,7 +717,7 @@ class AvailabilityController {
       // Storage failure must never claim an Online transition failed after the
       // server accepted it. The safe consequence is simply no auto-restore on
       // the next process launch.
-      debugPrint('[Availability] Online intent persistence failed: $error');
+      debugLog(() => '[Availability] Online intent persistence failed: $error');
     }
   }
 }

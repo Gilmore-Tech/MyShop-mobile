@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -203,8 +203,8 @@ class NavVoiceCoach {
       await _tts.setVolume(1.0);
       _ready = true;
     } catch (e) {
-      developer.log(
-        'TTS init failed — voice coach disabled: $e',
+      developer.debugLog(
+        () => 'TTS init failed — voice coach disabled: $e',
         name: 'NavVoiceCoach',
         level: 700,
       );
@@ -227,7 +227,8 @@ class NavVoiceCoach {
       await _tts.stop();
       await _tts.speak(phrase);
     } catch (e) {
-      developer.log('TTS speak failed: $e', name: 'NavVoiceCoach', level: 700);
+      developer.debugLog(() => 'TTS speak failed: $e',
+          name: 'NavVoiceCoach', level: 700);
     }
   }
 

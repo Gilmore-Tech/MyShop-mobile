@@ -1,4 +1,4 @@
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -93,7 +93,7 @@ final referralProvider = FutureProvider.autoDispose<ReferralData>((ref) async {
     final json = await ref.read(userServiceProvider).getReferral();
     return ReferralData.fromJson(json);
   } catch (e) {
-    developer.log('getReferral error: $e', name: 'ReferralProvider');
+    developer.debugLog(() => 'getReferral error: $e', name: 'ReferralProvider');
     // Never convert an unavailable or quarantined role-owned referral ledger
     // into a plausible-looking zero history. The screen must report failure.
     rethrow;

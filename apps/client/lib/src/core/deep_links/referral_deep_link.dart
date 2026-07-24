@@ -13,10 +13,10 @@
 ///   myshop://open?referralCode=AMA10
 library;
 
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
 import 'package:app_links/app_links.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Holds a referral code captured from a deep link for the paused-programme
@@ -92,7 +92,7 @@ final referralDeepLinkBridgeProvider = Provider<void>((ref) {
     appLinks = ref.read(appLinksProvider);
   } catch (e) {
     // Platform without the plugin (e.g. some test/desktop runs) — skip.
-    debugPrint('[ReferralDeepLink] AppLinks unavailable: $e');
+    debugLog(() => '[ReferralDeepLink] AppLinks unavailable: $e');
     return;
   }
 
@@ -100,7 +100,7 @@ final referralDeepLinkBridgeProvider = Provider<void>((ref) {
     if (uri == null) return;
     final code = parseReferralCode(uri);
     if (code == null) return;
-    debugPrint('[ReferralDeepLink] captured "$code" from $source ($uri)');
+    debugLog(() => '[ReferralDeepLink] captured "$code" from $source ($uri)');
     ref.read(pendingReferralCodeProvider.notifier).state = code;
   }
 
@@ -109,14 +109,15 @@ final referralDeepLinkBridgeProvider = Provider<void>((ref) {
     try {
       capture(await appLinks.getInitialLink(), source: 'initial');
     } catch (e) {
-      debugPrint('[ReferralDeepLink] getInitialLink failed: $e');
+      debugLog(() => '[ReferralDeepLink] getInitialLink failed: $e');
     }
   }());
 
   // Warm: links delivered while the app is already running.
   final sub = appLinks.uriLinkStream.listen(
     (uri) => capture(uri, source: 'stream'),
-    onError: (Object e) => debugPrint('[ReferralDeepLink] stream error: $e'),
+    onError: (Object e) =>
+        debugLog(() => '[ReferralDeepLink] stream error: $e'),
   );
   ref.onDispose(sub.cancel);
 });

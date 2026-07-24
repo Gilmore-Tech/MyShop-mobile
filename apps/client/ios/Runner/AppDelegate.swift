@@ -6,6 +6,12 @@ import CallKit
 import AVFAudio
 import WebRTC
 
+private func mobileDebugLog(_ message: @autoclosure () -> String) {
+  #if DEBUG
+  NSLog("%@", message())
+  #endif
+}
+
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var rootVoipBridgeRegistered = false
@@ -47,7 +53,7 @@ import WebRTC
     _ application: UIApplication,
     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
   ) {
-    NSLog("[APNs] registered")
+    mobileDebugLog("[APNs] registered")
     super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
   }
 
@@ -55,7 +61,7 @@ import WebRTC
     _ application: UIApplication,
     didFailToRegisterForRemoteNotificationsWithError error: Error
   ) {
-    NSLog("[APNs] registration FAILED: \(error.localizedDescription) (full: \(error))")
+    mobileDebugLog("[APNs] registration failed")
     super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
   }
 
@@ -67,12 +73,12 @@ import WebRTC
   private func registerRootVoipBridge() {
     guard !rootVoipBridgeRegistered else { return }
     guard let controller = window?.rootViewController as? FlutterViewController else {
-      NSLog("[VoIP] root FlutterViewController unavailable during launch")
+      mobileDebugLog("[VoIP] root FlutterViewController unavailable during launch")
       return
     }
     VoipCallBridge.shared.register(binaryMessenger: controller.binaryMessenger)
     rootVoipBridgeRegistered = true
-    NSLog("[VoIP] bridge registered on root FlutterViewController")
+    mobileDebugLog("[VoIP] bridge registered on root FlutterViewController")
   }
 }
 
@@ -219,7 +225,7 @@ private final class VoipCallBridge: NSObject, PKPushRegistryDelegate, CXProvider
     guard type == .voIP else { return }
     let token = pushCredentials.token.map { String(format: "%02x", $0) }.joined()
     voipToken = token
-    NSLog("[VoIP] PushKit token updated")
+    mobileDebugLog("[VoIP] PushKit token updated")
     emit("voipToken", payload: ["token": token])
   }
 
@@ -230,7 +236,7 @@ private final class VoipCallBridge: NSObject, PKPushRegistryDelegate, CXProvider
     guard type == .voIP else { return }
     let token = voipToken
     voipToken = nil
-    NSLog("[VoIP] PushKit token invalidated")
+    mobileDebugLog("[VoIP] PushKit token invalidated")
     emit("voipTokenInvalidated", payload: token == nil ? [:] : ["token": token!])
   }
 
@@ -245,7 +251,7 @@ private final class VoipCallBridge: NSObject, PKPushRegistryDelegate, CXProvider
       return
     }
     let callPayload = normalisePayload(payload.dictionaryPayload)
-    NSLog("[VoIP] incoming PushKit payload callId=\(callPayload["callId"] ?? "missing")")
+    mobileDebugLog("[VoIP] incoming PushKit payload received")
     reportIncomingCall(payload: callPayload) { _ in
       completion()
     }
@@ -263,7 +269,7 @@ private final class VoipCallBridge: NSObject, PKPushRegistryDelegate, CXProvider
     if let existing = activeCallIds.first(where: { $0.value == callId })?.key {
       activePayloads[existing] = payload
       scheduleExpiry(for: existing, payload: payload)
-      NSLog("[VoIP] duplicate incoming call ignored callId=\(callId)")
+      mobileDebugLog("[VoIP] duplicate incoming call ignored")
       completion(nil)
       return
     }
@@ -281,11 +287,11 @@ private final class VoipCallBridge: NSObject, PKPushRegistryDelegate, CXProvider
     update.hasVideo = false
 
     provider.reportNewIncomingCall(with: uuid, update: update) { [weak self] error in
-      if let error = error {
-        NSLog("[VoIP] report incoming call failed: \(error.localizedDescription)")
+      if error != nil {
+        mobileDebugLog("[VoIP] report incoming call failed")
         self?.cleanup(uuid)
       } else {
-        NSLog("[VoIP] CallKit incoming call reported callId=\(callId)")
+        mobileDebugLog("[VoIP] CallKit incoming call reported")
         self?.emit("incomingCall", payload: payload)
       }
       completion(error)
@@ -329,7 +335,7 @@ private final class VoipCallBridge: NSObject, PKPushRegistryDelegate, CXProvider
         options: [.allowBluetooth, .allowBluetoothA2DP]
       )
     } catch {
-      NSLog("[VoIP] audio session activation failed: \(error.localizedDescription)")
+      mobileDebugLog("[VoIP] audio session activation failed")
     }
     // CallKit owns activation. WebRTC must still be informed even when an
     // optional category override fails, otherwise both tracks can stay silent.
@@ -413,10 +419,9 @@ private final class VoipCallBridge: NSObject, PKPushRegistryDelegate, CXProvider
 
     let workItem = DispatchWorkItem { [weak self] in
       guard let self = self, self.activeCallIds[uuid] != nil else { return }
-      let callId = self.activeCallIds[uuid] ?? uuid.uuidString
       self.callProvider?.reportCall(with: uuid, endedAt: Date(), reason: .unanswered)
       self.cleanup(uuid)
-      NSLog("[VoIP] unanswered call expired callId=\(callId)")
+      mobileDebugLog("[VoIP] unanswered call expired")
     }
     expiryWorkItems[uuid] = workItem
     DispatchQueue.main.asyncAfter(

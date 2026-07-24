@@ -1,3 +1,4 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
 import 'package:api_client/api_client.dart';
@@ -99,8 +100,8 @@ final visibleJobRequestIdProvider = StateProvider<String?>((_) => null);
 /// Useful for showing a live indicator on the home screen.
 final socketConnectedProvider = StateProvider<bool>((ref) => false);
 
-/// The last event received from the socket — helpful for debugging.
-/// Format: `"{event-name}: {truncated-data}"`.
+/// The last event name received from the socket — helpful for debugging
+/// without retaining booking, identity, message, or location payloads.
 final lastSocketEventProvider = StateProvider<String?>((ref) => null);
 
 /// Manages the Socket.IO connection lifecycle.
@@ -139,7 +140,7 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   // `socketServiceProvider`.
   final user = ref.watch(currentUserProvider);
   if (user == null) {
-    debugPrint('[LOC] bridge: unauthenticated — idle');
+    debugLog(() => '[LOC] bridge: unauthenticated — idle');
     return;
   }
 
@@ -148,13 +149,13 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   // depends on this heartbeat to track the car; if we gated on `isOnline`
   // alone the marker would freeze the moment the trip moved to `busy`.
   if (status == DriverStatus.offline) {
-    debugPrint('[LOC] bridge: status=$status — idle');
+    debugLog(() => '[LOC] bridge: status=$status — idle');
     return;
   }
 
   final connected = ref.watch(socketConnectedProvider);
   if (!connected) {
-    debugPrint('[LOC] bridge: online but socket not connected — waiting');
+    debugLog(() => '[LOC] bridge: online but socket not connected — waiting');
     return;
   }
 
@@ -164,8 +165,9 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   var disposed = false;
   DateTime? lastEmittedCapturedAt;
   ref.onDispose(() => disposed = true);
-  debugPrint('[LOC] bridge: active (role=${isArtisan ? 'artisan' : 'driver'})'
-      ' — listening for fixes');
+  debugLog(
+      () => '[LOC] bridge: active (role=${isArtisan ? 'artisan' : 'driver'})'
+          ' — listening for fixes');
 
   // Driver-only: emit `driver:location:update` over the socket for the live
   // map path. The backend has no artisan equivalent — every artisan emit
@@ -235,7 +237,9 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
         container.read(lastKnownPositionProvider.notifier).state = fresh;
         emitDriverLocation(fresh);
       } catch (e) {
-        debugPrint('[LOC] bridge: cold-fix fetch failed: $e');
+        debugLog(
+          () => '[LOC] bridge: cold-fix fetch failed type=${e.runtimeType}',
+        );
       }
     });
   }
@@ -258,8 +262,11 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
         // coords between heartbeat ticks while the driver is moving.
         emitDriverLocation(position);
       },
-      loading: () => debugPrint('[LOC] bridge: stream loading — no fix yet'),
-      error: (e, _) => debugPrint('[LOC] bridge: stream error — $e'),
+      loading: () =>
+          debugLog(() => '[LOC] bridge: stream loading — no fix yet'),
+      error: (e, _) => debugLog(
+        () => '[LOC] bridge: stream error type=${e.runtimeType}',
+      ),
     );
   });
 });
@@ -304,15 +311,12 @@ void _connectAndListen(Ref ref, SocketService socket) {
   // socket; the `off+on` pattern below keeps it idempotent if it ever
   // runs twice against the same socket.
   void attachHandlers() {
-    debugPrint('[WS] (re-)attaching domain event handlers');
+    debugLog(() => '[WS] (re-)attaching domain event handlers');
 
-    // Mirror every incoming event into a state provider for visual debugging.
-    socket.onAnyEvent((event, data) {
-      final preview = data.toString();
-      final trimmed =
-          preview.length > 200 ? '${preview.substring(0, 200)}…' : preview;
-      ref.container.read(lastSocketEventProvider.notifier).state =
-          '$event: $trimmed';
+    // Mirror the event name only. Payloads may include exact coordinates,
+    // addresses, chat content, account identifiers, and offer metadata.
+    socket.onAnyEvent((event, _) {
+      ref.container.read(lastSocketEventProvider.notifier).state = event;
     });
 
     // The backend heartbeat sweeper is authoritative for idle availability.
@@ -351,12 +355,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // Listen for incoming ride requests (driver) — new + legacy event names
     Future<void> receiveRide(dynamic data) async {
       if (data is Map) {
-        debugPrint(
-          '[WS] Received ride event id=${data['id'] ?? data['rideId']} '
-          'keys=${data.keys.join(',')}',
-        );
+        debugLog(() => '[WS] Received ride event');
       } else {
-        debugPrint('[WS] Received ride event type=${data.runtimeType}');
+        debugLog(() => '[WS] Received ride event type=${data.runtimeType}');
       }
       if (data is Map) {
         try {
@@ -367,7 +368,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
             rides: ref.container.read(rideServiceProvider),
           );
           if (received == null) {
-            debugPrint(
+            debugLog(() =>
                 '[WS] Ride offer was not receipted in time; not surfacing');
             return;
           }
@@ -387,7 +388,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
           // the request screen back over the active-ride screen.
           final active = ref.container.read(activeRideProvider).ride;
           if (active != null && active.id == ride.id) {
-            debugPrint('[WS] Skipping re-broadcast for active ride ${ride.id}');
+            debugLog(() => '[WS] Skipping re-broadcast for active ride');
             return;
           }
 
@@ -406,9 +407,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
             if (current?.id == ride.id) {
               ref.container.read(incomingRideRequestProvider.notifier).state =
                   ride;
-              debugPrint('[WS] Enriched already-surfaced ride ${ride.id}');
+              debugLog(() => '[WS] Enriched already-surfaced ride');
             } else {
-              debugPrint('[WS] Ride ${ride.id} already surfaced — skipping');
+              debugLog(() => '[WS] Ride already surfaced — skipping');
             }
             return;
           }
@@ -420,10 +421,10 @@ void _connectAndListen(Ref ref, SocketService socket) {
           ref.container.read(incomingRideRequestProvider.notifier).state = ride;
           ref.container.read(navBadgeProvider.notifier).increment('/home');
         } catch (e) {
-          debugPrint('[WS] Failed to parse ride: $e');
+          debugLog(() => '[WS] Failed to parse ride type=${e.runtimeType}');
         }
       } else {
-        debugPrint('[WS] Ride payload not a Map — got ${data.runtimeType}');
+        debugLog(() => '[WS] Ride payload not a Map — got ${data.runtimeType}');
       }
     }
 
@@ -479,12 +480,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
       // exact address, description and photo URLs. Keep only routing metadata
       // in release/device logs.
       if (data is Map) {
-        debugPrint(
-          '[WS] Received job event id=${data['id'] ?? data['jobId']} '
-          'keys=${data.keys.join(',')}',
-        );
+        debugLog(() => '[WS] Received job event');
       } else {
-        debugPrint('[WS] Received job event type=${data.runtimeType}');
+        debugLog(() => '[WS] Received job event type=${data.runtimeType}');
       }
       if (data is Map<String, dynamic>) {
         try {
@@ -493,7 +491,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
           // surfaced this job, skip the duplicate modal.
           final surfaced = ref.container.read(surfacedJobIdsProvider);
           if (surfaced.contains(job.id)) {
-            debugPrint('[WS] Job ${job.id} already surfaced — skipping');
+            debugLog(() => '[WS] Job already surfaced — skipping');
             return;
           }
           ref.container.read(surfacedJobIdsProvider.notifier).update(
@@ -506,12 +504,12 @@ void _connectAndListen(Ref ref, SocketService socket) {
           ref.container.read(incomingJobRequestProvider.notifier).state = null;
           ref.container.read(incomingJobRequestProvider.notifier).state = job;
           ref.container.read(navBadgeProvider.notifier).increment('/home');
-          debugPrint('[WS] Job ${job.id} pushed to incomingJobRequestProvider');
-        } catch (e, st) {
-          debugPrint('[WS] Failed to parse job: $e\n$st');
+          debugLog(() => '[WS] Job pushed to incomingJobRequestProvider');
+        } catch (e) {
+          debugLog(() => '[WS] Failed to parse job type=${e.runtimeType}');
         }
       } else {
-        debugPrint('[WS] Job payload not a Map — got ${data.runtimeType}');
+        debugLog(() => '[WS] Job payload not a Map — got ${data.runtimeType}');
       }
     }
 
@@ -525,15 +523,18 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // category/radius eligibility. Drives the read-only artisan-home carousel.
     void handleJobFeed(dynamic data) {
       if (data is! Map<String, dynamic>) {
-        debugPrint(
+        debugLog(() =>
             '[WS] job:feed:new payload not a Map — got ${data.runtimeType}');
         return;
       }
       try {
         final snapshot = LiveFeedJob.fromJson(data);
         ref.container.read(liveJobFeedProvider.notifier).prepend(snapshot);
-      } catch (e, st) {
-        debugPrint('[WS] Failed to parse job:feed:new payload: $e\n$st');
+      } catch (e) {
+        debugLog(
+          () =>
+              '[WS] Failed to parse job:feed:new payload type=${e.runtimeType}',
+        );
       }
     }
 
@@ -541,7 +542,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
       ..off('job:feed:new')
       ..on('job:feed:new', handleJobFeed);
 
-    debugPrint('[WS] Job/ride listeners attached (id=${socket.isConnected})');
+    debugLog(
+      () => '[WS] Job/ride listeners attached connected=${socket.isConnected}',
+    );
 
     // Canonical ride snapshot — fired by the backend on every ride state
     // change (status transition, fare update, location bump while active,
@@ -577,7 +580,10 @@ void _connectAndListen(Ref ref, SocketService socket) {
         if (active != null && active.id != ride.id) return;
         ref.container.read(activeRideProvider.notifier).applySnapshot(ride);
       } catch (e) {
-        debugPrint('[WS] Failed to apply ride:state snapshot: $e');
+        debugLog(
+          () =>
+              '[WS] Failed to apply ride:state snapshot type=${e.runtimeType}',
+        );
       }
     }
 
@@ -626,10 +632,14 @@ void _connectAndListen(Ref ref, SocketService socket) {
           final ride = Ride.fromJson(json);
           ref.container.read(activeRideProvider.notifier).applySnapshot(ride);
         } catch (e) {
-          debugPrint('[WS] route_updated parse failed: $e');
+          debugLog(
+            () => '[WS] route_updated parse failed type=${e.runtimeType}',
+          );
         }
       }).catchError((Object e) {
-        debugPrint('[WS] route_updated refetch failed: $e');
+        debugLog(
+          () => '[WS] route_updated refetch failed type=${e.runtimeType}',
+        );
       });
     }
 
@@ -642,7 +652,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // it advances through the active-work phases. Refreshing the jobs
     // list re-fetches `myBid.status`, which the JobRequest banner reads.
     void handleJobStatus(dynamic data) {
-      debugPrint('[WS] Received job:status');
+      debugLog(() => '[WS] Received job:status');
       // Prefer silentReload over invalidate: invalidate tears down the
       // notifier and the constructor-triggered load() flips isLoading back
       // to true, which flashes the spinner on the My Jobs screen. A silent
@@ -720,7 +730,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // active job's clientPaymentAcknowledgedAt/clientPaymentMethod so the
     // CompletionOverlay's "Yes, I received payment" CTA enables.
     void handleClientPaymentAck(dynamic data) {
-      debugPrint('[WS] Received job:client_payment_acknowledged');
+      debugLog(() => '[WS] Received job:client_payment_acknowledged');
       if (data is! Map<String, dynamic>) return;
       final jobId = data['jobId'] as String? ?? data['id'] as String?;
       final method = data['paymentMethod'] as String?;
@@ -752,7 +762,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // background→resume cycle would reset the set and pop a duplicate
     // sheet for any rating event the server re-delivers on reconnect.
     void handleRatingPrompt(dynamic data) {
-      debugPrint('[WS] Received rating:prompt');
+      debugLog(() => '[WS] Received rating:prompt');
       if (data is! Map<String, dynamic>) return;
       final bookingType = data['bookingType'] as String?;
       final bookingId =
@@ -794,7 +804,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
               firstName = name.trim().split(RegExp(r'\s+')).first;
             }
           } catch (e) {
-            debugPrint('[WS] hydrate ride for rating failed: $e');
+            debugLog(
+              () => '[WS] hydrate ride for rating failed type=${e.runtimeType}',
+            );
           }
           if (!ctx.mounted) return;
           await showRatePassengerSheet(
@@ -813,7 +825,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
               firstName = name.trim().split(RegExp(r'\s+')).first;
             }
           } catch (e) {
-            debugPrint('[WS] hydrate job for rating failed: $e');
+            debugLog(
+              () => '[WS] hydrate job for rating failed type=${e.runtimeType}',
+            );
           }
           if (!ctx.mounted) return;
           await showRateClientSheet(

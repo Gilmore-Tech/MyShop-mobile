@@ -1,6 +1,6 @@
+import 'package:api_client/mobile_diagnostics.dart' show debugLog;
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 
@@ -76,7 +76,7 @@ final jobPollerProvider = Provider<void>((ref) {
         if (job.status != JobStatus.open) continue;
         jobs.add(job);
       } catch (e) {
-        debugPrint('[JobPoller] skip unparseable entry: $e');
+        debugLog(() => '[JobPoller] skip unparseable entry: $e');
       }
     }
     return jobs;
@@ -115,7 +115,7 @@ final jobPollerProvider = Provider<void>((ref) {
 
       if (fresh.isEmpty) return;
 
-      debugPrint('[JobPoller] found ${fresh.length} new open job(s)');
+      debugLog(() => '[JobPoller] found ${fresh.length} new open job(s)');
 
       // Mark all as surfaced up front so a poll racing with the socket
       // doesn't double-fire.
@@ -135,7 +135,7 @@ final jobPollerProvider = Provider<void>((ref) {
         ref.read(pendingIncomingJobsProvider.notifier).enqueue(j);
       }
     } catch (e) {
-      debugPrint('[JobPoller] poll failed: $e');
+      debugLog(() => '[JobPoller] poll failed: $e');
     } finally {
       pollInFlight = false;
     }
@@ -143,7 +143,7 @@ final jobPollerProvider = Provider<void>((ref) {
 
   void start() {
     if (timer != null) return;
-    debugPrint('[JobPoller] starting');
+    debugLog(() => '[JobPoller] starting');
     // Poll immediately so a job created in the moments between the artisan
     // tapping online (or the app coming back to foreground) and the
     // timer's first tick still surfaces.
@@ -153,7 +153,7 @@ final jobPollerProvider = Provider<void>((ref) {
 
   void stop() {
     if (timer == null) return;
-    debugPrint('[JobPoller] paused');
+    debugLog(() => '[JobPoller] paused');
     timer!.cancel();
     timer = null;
   }
@@ -176,7 +176,7 @@ final jobPollerProvider = Provider<void>((ref) {
   });
 
   ref.onDispose(() {
-    debugPrint('[JobPoller] stopped');
+    debugLog(() => '[JobPoller] stopped');
     timer?.cancel();
   });
 });

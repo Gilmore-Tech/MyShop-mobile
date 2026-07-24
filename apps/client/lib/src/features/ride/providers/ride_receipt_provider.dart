@@ -1,4 +1,4 @@
-import 'dart:developer' as developer;
+import 'package:api_client/mobile_diagnostics.dart' as developer;
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -123,13 +123,14 @@ class _RideReceiptNotifier
         paymentMethodType: pmType,
       );
     } on ApiException catch (e) {
-      developer.log(
-        'getRide receipt failed (${e.statusCode}): ${e.message}',
+      developer.debugLog(
+        () => 'getRide receipt failed (${e.statusCode}): ${e.message}',
         name: 'RideReceiptProvider',
       );
       rethrow;
     } catch (e) {
-      developer.log('getRide receipt error: $e', name: 'RideReceiptProvider');
+      developer.debugLog(() => 'getRide receipt error: $e',
+          name: 'RideReceiptProvider');
       rethrow;
     }
   }
