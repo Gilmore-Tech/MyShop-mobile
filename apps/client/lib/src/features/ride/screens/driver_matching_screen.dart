@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
+import '../providers/edit_trip_provider.dart';
 import '../providers/ride_provider.dart';
 import '../widgets/driver_info_card.dart';
 import '../widgets/driver_radar.dart';
@@ -132,6 +133,7 @@ class _FailureView extends ConsumerWidget {
         );
         return;
       }
+      resetRideRequestDraft(container.read);
       context.go(AppRoutes.home);
     }
 
