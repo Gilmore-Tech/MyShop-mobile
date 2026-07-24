@@ -7,10 +7,12 @@ store update. The larger production audit and 100k-DAU roadmap remain evidence
 and future-work registers; they do not expand this release unless an item is
 explicitly copied into this file with owner approval.
 
-Current counted progress is **66/98 checklist items (67%)**. The stricter final
-release-gate subset is **4/15 (27%)** because signed builds, physical-device
+Current counted progress is **75/114 checklist items (66%)**. The stricter
+final release-gate subset is **4/17 (24%)** because signed builds,
+physical-device
 acceptance, store declarations and canary evidence can only close after scope
-and version approval. These are evidence counts, not estimates of effort.
+reconciliation, the private-console build-number check and physical testing.
+These are evidence counts, not estimates of effort.
 
 ## 1. Fixed release baseline
 
@@ -67,6 +69,22 @@ and version approval. These are evidence counts, not estimates of effort.
 - [x] A confirmed no-driver/matching cancellation also clears the same
       uncommitted draft before returning home; active/recoverable ride state is
       not touched.
+- [x] Exact-role referrals were explicitly added to this release by the owner
+      on 2026-07-24 GMT. Client, Driver and Artisan codes, referral history,
+      reward accounts and balances remain strictly role-owned.
+- [x] Referral migration `20260724000000_role_owned_referrals` is applied on
+      staging. All nine post-migration invariants are zero; 53 role accounts
+      migrated and 20 ambiguous legacy role accounts remain quarantined rather
+      than being guessed.
+- [x] Referral rollout remains fail-closed behind both environment flags and
+      the audited database flag `role_account_referrals_enabled`. The database
+      flag is still `false`; Admin showing
+      `ROLE_ACCOUNT_REFERRALS_SUSPENDED` is therefore expected.
+- [ ] Enable both referral environment flags on staging, use Super Admin to
+      enable the database gate, and canary exact-role display, copy/share,
+      registration attribution, rewards and disable rollback before production.
+- [ ] Physically prove one phone with multiple roles never exposes or accepts a
+      sibling role's code, history, points or reward balance.
 - [ ] Physically prove an upgraded Client remains authenticated through an
       expired-access-token refresh and a controlled missing Client Redis cache
       row.
@@ -79,6 +97,10 @@ and version approval. These are evidence counts, not estimates of effort.
 - [ ] Physically prove on staging that a completed partial payment reduces
       `Owings` by the exact amount and a cancelled attempt becomes terminal
       without changing `Owings`.
+- [ ] Merge and deploy Backend PR `#122`, then prove the two existing staging
+      reconciliation candidates leave `processing`: the completed partial
+      payment must settle once and the cancelled attempt must close without
+      changing debt.
 - [x] Release provenance tooling: require a clean exact `origin/main` SHA,
       embed it in Android, iOS and telemetry, and automatically inspect every
       built APK/AAB/IPA for identity, version, build, source, signature,
@@ -113,6 +135,27 @@ business rules, migrations, tests and rollback, then receive an explicit owner
 approval recorded here.
 
 ## 3. Current isolated candidates
+
+### Current combined release heads
+
+- Backend reviewed base: `origin/main`
+  `11021d36a98c80d22c94c88a2e7592ae20c44b24`; production is still serving
+  older commit `d918243cd7c6bda778fa54dec6ac0fdbe8140595`.
+- Backend staging: `b904e516244e761d25013978bb33a1c8f596deb3`;
+  staging health reports this exact commit with PostgreSQL and Redis healthy.
+- Backend payment-lock fix: PR `#122`, commit
+  `c5d8badf57424745d26eb8f32ebc94857715e3ee`
+  (`fix(payments): return typed advisory lock result`), awaiting
+  staging merge/deploy/canary.
+- Mobile staging: `4daa9fdff57229920639a4cba677cb415063fa9a`.
+- Admin staging: `71fb1597707826fdfc15b35148952838ff89853d`.
+- [x] All three local workspaces were clean before release validation began.
+- [ ] Merge validated Mobile staging to Mobile main.
+- [ ] Merge validated Admin staging to Admin main.
+- [ ] Merge the payment fix through Backend staging and Backend main after its
+      staging canary.
+
+### Historical isolated telemetry/payment candidate
 
 - Main-based audit branch: `codex/audit-telemetry-mobile-rc`
 - Production base: `origin/main` `61241f89dd48adef0c23d4bf9dbd2373b505947d`
@@ -221,6 +264,16 @@ approval recorded here.
 - [x] Regression proves a generation-zero Client row cannot be bound when the
       Redis session proof is absent, while an already durable exact Client SID
       survives cache loss.
+- [x] Exact current Mobile staging `4daa9fdf` passes the complete monorepo test
+      command: Client **93/93**, Provider **174/174**, API client **175/175**,
+      plus shared-package tests; all seven fatal-info analyzers are clean.
+- [x] Exact current Mobile staging passes release-version, release-source and
+      release-artifact contracts plus `git diff --check`.
+- [x] Exact current Backend plus payment-lock fix passes **211/211 suites,
+      4,112/4,112 tests**, API typecheck, production build, formatting and an
+      executable PostgreSQL lock-shape check returning `lockAcquired = 1`.
+- [x] Exact current Admin staging builds all 48 routes, has zero lint errors
+      (existing warnings remain), and passes **39/39** contract tests.
 - [ ] The same policy does not expressly say that named screen, lifecycle and
       meaningful-action events are collected. Product/qualified Legal must
       decide whether the existing disclosure is sufficient or publish a new
@@ -229,8 +282,7 @@ approval recorded here.
 ## 5. Decisions still required
 
 - [ ] Read the highest private build number for all four app/store targets.
-- [ ] Select the next marketing version. Current recommendation is `1.4.2`,
-      but it is not approved or applied.
+- [x] Marketing version remains the previously approved `1.4.1` for both apps.
 - [ ] Select one build number higher than every private-console maximum.
       `+25` is valid only if no target already contains a build above `24`.
 - [ ] Confirm whether the existing Privacy Policy/store declarations already
@@ -325,6 +377,32 @@ following 32 paths.
 - `packages/api_client/lib/src/http/token_refresher.dart`
 - `packages/api_client/test/http/token_refresher_test.dart`
 
+### Exact-role referral delta
+
+- `apps/client/lib/src/core/deep_links/referral_deep_link.dart`
+- `apps/client/lib/src/features/auth/screens/sign_up_screen.dart`
+- `apps/client/lib/src/features/profile/providers/referral_provider.dart`
+- `apps/client/lib/src/features/profile/screens/referral_screen.dart`
+- `apps/client/test/core/deep_links/referral_deep_link_test.dart`
+- `apps/client/test/features/auth/signup_redirect_test.dart`
+- `apps/client/test/features/profile/referral_buttons_test.dart`
+- `apps/client/test/features/profile/role_owned_data_error_test.dart`
+- `apps/provider/lib/src/app/router.dart`
+- `apps/provider/lib/src/features/auth/screens/phone_input_screen.dart`
+- `apps/provider/lib/src/features/profile/providers/referral_provider.dart`
+- `apps/provider/lib/src/features/profile/screens/account_settings_screen.dart`
+- `apps/provider/lib/src/features/profile/screens/referral_screen.dart`
+- `apps/provider/lib/src/features/registration/providers/registration_controller.dart`
+- `apps/provider/lib/src/features/registration/screens/artisan_registration_screen.dart`
+- `apps/provider/lib/src/features/registration/screens/driver_registration_screen.dart`
+- `apps/provider/lib/src/features/registration/widgets/artisan_profile_step.dart`
+- `apps/provider/lib/src/features/registration/widgets/driver_profile_step.dart`
+- `apps/provider/pubspec.lock`
+- `apps/provider/pubspec.yaml`
+- `apps/provider/test/features/registration/referral_registration_test.dart`
+- `docs/production-release-audit-checklist.md`
+- `docs/staging-release-candidate-runbook.md`
+
 The paired Backend delta is restricted to exact session authority and tests:
 
 - `apps/api/src/common/guards/jwt-auth.guard.ts`
@@ -364,6 +442,11 @@ first updating this checklist and obtaining owner approval.
       restart must retain the authenticated role without another OTP.
 - [ ] Physical-device ride-draft tests: Android/iOS back, Cancel and no-driver
       dismissal must clear pickup, destination, stops, vehicle and fare.
+- [ ] Staging cash-remittance canary after PR `#122`: completed partial payment
+      settles once, cancelled payment becomes terminal, balances refresh, and
+      no row remains indefinitely in `processing`.
+- [ ] Staging exact-role referral canary with gates on, followed by a tested
+      gates-off rollback; ambiguous quarantined legacy ownership remains hidden.
 - [ ] Build, sign, inspect and install all four artifacts from the same reviewed
       `main` SHA.
 - [ ] Complete App Store privacy and Play Data Safety declarations before
@@ -393,3 +476,6 @@ first updating this checklist and obtaining owner approval.
 | 2026-07-23 | Added provider `Owings` reconciliation candidate | Backend verifies missed/misdirected Paystack callbacks, settles partial commission debt idempotently, closes cancelled attempts without touching debt, and exposes an owned status endpoint. Provider now waits for that authoritative state. Focused Backend **159/159**, migration contract **418/418**, Provider **3/3** and API-client **4/4** pass; staging deploy and physical payment proof remain open. |
 | 2026-07-24 | Merged provider `Owings` reconciliation to staging | Backend PR `#117` and Mobile PR `#94` are present in `origin/staging`; deployment and physical staging proof remain open. |
 | 2026-07-24 | Added Client session and ride-draft incident fixes | Durable exact Client sessions survive Redis cache loss; refresh contention no longer clears tokens; the last authenticated Client profile is cached; and back/Cancel/no-driver exits clear only the next-ride draft. Backend focused **188/188**, all mobile suites and all analyzers pass. Physical staging proof remains open. |
+| 2026-07-24 | Added exact-role referrals to this update | Backend, Mobile and Admin referral changes are merged to staging; the staging migration is applied with all invariants zero. Runtime remains disabled until exact-role canary and rollback proof. |
+| 2026-07-24 | Reconciled exact combined release heads | Backend main is `11021d3`, Mobile staging is `4daa9fdf`, Admin staging is `71fb1597`; production Backend still serves older `d918243`. Current automated gates pass. |
+| 2026-07-24 | Isolated the staging cash-remittance blocker | Direct selection of PostgreSQL's `void` advisory-lock result caused Prisma settlement failure. Backend PR `#122` returns a typed integer lock result; full API tests/build and live local SQL-shape proof pass. Staging deployment and payment canary remain open. |
