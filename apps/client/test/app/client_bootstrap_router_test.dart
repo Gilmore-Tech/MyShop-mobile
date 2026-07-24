@@ -60,6 +60,7 @@ void main() {
       (tester) async {
     final storage = _MockTokenStorage();
     when(storage.readAccessToken).thenAnswer((_) async => 'stale-token');
+    when(storage.readCachedProfileJson).thenAnswer((_) async => null);
     final container = ProviderContainer(
       overrides: [
         authServiceProvider.overrideWithValue(_HangingAuthService()),

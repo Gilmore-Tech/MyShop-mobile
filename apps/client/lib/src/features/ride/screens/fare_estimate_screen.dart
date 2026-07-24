@@ -31,9 +31,7 @@ class FareEstimateScreen extends ConsumerWidget {
   /// visit shows the previous pickup + destination + vehicle, which the
   /// user reads as "the app remembered a trip I already cancelled".
   void _resetTripState(WidgetRef ref) {
-    ref.read(rideSearchProvider.notifier).reset();
-    ref.read(tripStopsProvider.notifier).clear();
-    ref.read(selectedVehicleProvider.notifier).state = '';
+    resetRideRequestDraft(ref.read);
   }
 
   void _seedPreTripStops(WidgetRef ref, RideSearchState search) {

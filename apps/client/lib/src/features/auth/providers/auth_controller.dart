@@ -202,12 +202,27 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
       }
       if (profile != null) {
         state = AuthAuthenticated(profile);
+        unawaited(_refreshRestoredProfile());
       } else {
         state = const AuthUnauthenticated();
       }
     } catch (error, stackTrace) {
       debugPrint('[Auth] client bootstrap failed: $error\n$stackTrace');
       state = const AuthUnauthenticated();
+    }
+  }
+
+  Future<void> _refreshRestoredProfile() async {
+    try {
+      final profile = await _repo.fetchProfile();
+      if (mounted && state is AuthAuthenticated) {
+        state = AuthAuthenticated(profile);
+      }
+    } catch (error) {
+      // The cached authenticated profile remains usable. A terminal 401 is
+      // handled centrally by the interceptor; transport/5xx failures must not
+      // convert a stored session into an OTP login.
+      debugPrint('[Auth] quiet client profile refresh deferred: $error');
     }
   }
 

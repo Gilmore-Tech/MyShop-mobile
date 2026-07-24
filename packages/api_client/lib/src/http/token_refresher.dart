@@ -36,13 +36,16 @@ class TokenRefresher {
     required Dio dio,
     required TokenStorage tokenStorage,
     void Function()? onForceLogout,
+    Future<void> Function(Duration duration)? delay,
   })  : _dio = dio,
         _tokenStorage = tokenStorage,
-        _onForceLogout = onForceLogout;
+        _onForceLogout = onForceLogout,
+        _delay = delay ?? ((duration) => Future<void>.delayed(duration));
 
   final Dio _dio;
   final TokenStorage _tokenStorage;
   final void Function()? _onForceLogout;
+  final Future<void> Function(Duration duration) _delay;
 
   Future<String?>? _inFlight;
 
@@ -52,53 +55,71 @@ class TokenRefresher {
   Future<String?> refresh() {
     return _inFlight ??= () async {
       try {
-        final refreshToken = await _tokenStorage.readRefreshToken();
-        if (refreshToken == null) {
-          debugPrint('[TokenRefresher] no refresh token — forcing logout');
-          _onForceLogout?.call();
-          return null;
-        }
+        for (var attempt = 1; attempt <= 3; attempt += 1) {
+          final refreshToken = await _tokenStorage.readRefreshToken();
+          if (refreshToken == null) {
+            debugPrint('[TokenRefresher] no refresh token — forcing logout');
+            _onForceLogout?.call();
+            return null;
+          }
 
-        debugPrint('[TokenRefresher] POST /auth/refresh →');
-        final response = await _dio.post(
-          '/auth/refresh',
-          data: RefreshRequest(refreshToken: refreshToken).toJson(),
-        );
-        debugPrint('[TokenRefresher] POST /auth/refresh ← '
-            '${response.statusCode}');
+          try {
+            debugPrint('[TokenRefresher] POST /auth/refresh →');
+            final response = await _dio.post(
+              '/auth/refresh',
+              data: RefreshRequest(refreshToken: refreshToken).toJson(),
+            );
+            debugPrint(
+              '[TokenRefresher] POST /auth/refresh ← ${response.statusCode}',
+            );
 
-        final body = response.data;
-        if (body is! Map<String, dynamic>) {
-          debugPrint('[TokenRefresher] body not a map: $body');
-          return null;
-        }
-        final payload = (body['data'] is Map<String, dynamic>
-            ? body['data']
-            : body) as Map<String, dynamic>;
+            final body = response.data;
+            if (body is! Map<String, dynamic>) {
+              debugPrint('[TokenRefresher] body not a map: $body');
+              return null;
+            }
+            final payload = (body['data'] is Map<String, dynamic>
+                ? body['data']
+                : body) as Map<String, dynamic>;
 
-        final newAccessToken = payload['accessToken'] as String?;
-        if (newAccessToken == null) {
-          debugPrint('[TokenRefresher] response missing accessToken');
-          return null;
-        }
+            final newAccessToken = payload['accessToken'] as String?;
+            if (newAccessToken == null) {
+              debugPrint('[TokenRefresher] response missing accessToken');
+              return null;
+            }
 
-        // Rotation: when the response includes a new refreshToken we
-        // MUST persist it. Otherwise the next refresh would reuse the
-        // already-consumed token and the backend would reject with
-        // REFRESH_TOKEN_REUSED → forced logout.
-        final newRefreshToken = payload['refreshToken'] as String?;
-        if (newRefreshToken != null && newRefreshToken != refreshToken) {
-          await _tokenStorage.writeTokens(
-            accessToken: newAccessToken,
-            refreshToken: newRefreshToken,
-          );
-        } else {
-          await _tokenStorage.writeAccessToken(newAccessToken);
+            // Rotation: when the response includes a new refreshToken we
+            // MUST persist it. Otherwise the next refresh would reuse the
+            // already-consumed token and the backend would reject with
+            // REFRESH_TOKEN_REUSED → forced logout.
+            final newRefreshToken = payload['refreshToken'] as String?;
+            if (newRefreshToken != null && newRefreshToken != refreshToken) {
+              await _tokenStorage.writeTokens(
+                accessToken: newAccessToken,
+                refreshToken: newRefreshToken,
+              );
+            } else {
+              await _tokenStorage.writeAccessToken(newAccessToken);
+            }
+            debugPrint('[TokenRefresher] new tokens persisted');
+            return newAccessToken;
+          } on DioException catch (error) {
+            final code = _extractErrorCode(error.response);
+            if (error.response?.statusCode == 401 &&
+                code == AuthErrorCodes.refreshInFlight &&
+                attempt < 3) {
+              final backoff = Duration(milliseconds: 250 * attempt);
+              debugPrint(
+                '[TokenRefresher] refresh contention — retrying in '
+                '${backoff.inMilliseconds}ms',
+              );
+              await _delay(backoff);
+              continue;
+            }
+            return _handleRefreshError(error);
+          }
         }
-        debugPrint('[TokenRefresher] new tokens persisted');
-        return newAccessToken;
-      } on DioException catch (e) {
-        return _handleRefreshError(e);
+        return null;
       } catch (e, st) {
         debugPrint('[TokenRefresher] unexpected: $e\n$st');
         return null;
@@ -120,6 +141,13 @@ class TokenRefresher {
       AuthErrorCodes.invalidToken,
       AuthErrorCodes.refreshTokenReused,
     };
+    if (status == 401 && code == AuthErrorCodes.refreshInFlight) {
+      debugPrint(
+        '[TokenRefresher] refresh contention remained after retries — '
+        'keeping the local session',
+      );
+      return null;
+    }
     if (status == 401) {
       if (code != null && terminalCodes.contains(code)) {
         debugPrint(

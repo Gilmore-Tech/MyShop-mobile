@@ -1,14 +1,14 @@
 # Current Mobile Update Checklist
 
-Status captured: **2026-07-23 GMT**
+Status captured: **2026-07-24 GMT**
 
 This is the single authoritative checklist for the next Client and Provider
 store update. The larger production audit and 100k-DAU roadmap remain evidence
 and future-work registers; they do not expand this release unless an item is
 explicitly copied into this file with owner approval.
 
-Current counted progress is **52/79 checklist items (66%)**. The stricter final
-release-gate subset is **4/13 (31%)** because signed builds, physical-device
+Current counted progress is **66/98 checklist items (67%)**. The stricter final
+release-gate subset is **4/15 (27%)** because signed builds, physical-device
 acceptance, store declarations and canary evidence can only close after scope
 and version approval. These are evidence counts, not estimates of effort.
 
@@ -47,6 +47,33 @@ and version approval. These are evidence counts, not estimates of effort.
 - [x] Provider payment UX polls an owned remittance status and reports success
       only after the backend completes settlement; delayed verification does
       not invite a duplicate payment.
+- [x] Client session resilience was explicitly added to this release on
+      2026-07-24 GMT: a temporary ride/API failure, Redis eviction/restart or
+      refresh-lock contention must not convert the active Client role into an
+      OTP login.
+- [x] PostgreSQL remains authoritative for an already-bound Client session.
+      Missing/malformed Redis cache state is recoverable only when the exact
+      durable SID matches; explicit replacement SID, logout/recovery fence and
+      generation-zero legacy state still fail closed.
+- [x] The Client app caches the last successfully authenticated role-scoped
+      profile and restores it before a quiet refresh; a temporary profile
+      request failure does not erase tokens or redirect a returning user to
+      OTP.
+- [x] `REFRESH_IN_FLIGHT` is retried with bounded backoff and never clears
+      tokens. True terminal refresh errors retain their existing logout
+      behaviour.
+- [x] Abandoning a ride estimate via system back, app back or Cancel clears
+      pickup, destination, stops, vehicle choice and therefore the old fare.
+- [x] A confirmed no-driver/matching cancellation also clears the same
+      uncommitted draft before returning home; active/recoverable ride state is
+      not touched.
+- [ ] Physically prove an upgraded Client remains authenticated through an
+      expired-access-token refresh and a controlled missing Client Redis cache
+      row.
+- [ ] Physically prove a no-driver `503` leaves the Client authenticated and
+      that the next request starts with an empty trip/fare draft.
+- [ ] Physically prove Android back, iOS back gesture, app back and Cancel each
+      start the next ride request from an empty draft.
 - [ ] Deploy the two reconciliation migrations and exact Backend candidate to
       staging before installing the corresponding Provider candidate.
 - [ ] Physically prove on staging that a completed partial payment reduces
@@ -73,6 +100,8 @@ and version approval. These are evidence counts, not estimates of effort.
 - [x] Automated batch/aggregate payouts remain disabled.
 - [x] Promo/loyalty redemption remains disabled.
 - [x] No call-duration, one-active-call or signalling-limit behavior change.
+- [x] No provider-session relaxation: Driver and Artisan authentication
+      remains Redis-and-PostgreSQL fail-closed.
 - [x] No wholesale merge of the 136-path Mobile stability candidate.
 - [x] No wholesale Backend/Admin scale candidate, realtime chat/GPS tranche,
       role recovery/purge, scheduled jobs, SmileKYC/police automation,
@@ -120,16 +149,16 @@ approval recorded here.
       `origin` without merging it.
 - [x] Merge the normal feature → staging review pull request; PR `#93` is
       present in `origin/staging` at merge commit `2a860ad`.
-- Cash-remittance reconciliation branches:
-  `codex/cash-remit-reconciliation` in clean Backend and Mobile worktrees,
-  both based on their current `origin/staging`.
-- Cash-remittance reconciliation implementation: **17 paths** — 12 Backend/
-  database paths and five Provider/API-client paths. It remains uncommitted,
-  unpushed and undeployed while validation and review finish.
-
-The reconciliation checklist is versioned separately from its runtime changes.
-No reconciliation pull request, merge, signed build, store upload or production
-mutation has occurred.
+- [x] Cash-remittance reconciliation was committed and reviewed as Backend PR
+      `#117` and Mobile PR `#94`.
+- [x] Both reconciliation PRs are merged into `origin/staging`: Backend merge
+      `0f4ca89` and Mobile merge `a86ff4a`. This is not evidence of deployment
+      or physical payment acceptance.
+- Client session/ride reset branches:
+  `codex/client-session-ride-reset` in cleanly isolated Backend and Mobile
+  worktrees. They branch from the already-reviewed reconciliation commits,
+  which are ancestors of the current `origin/staging`; their PR diffs therefore
+  contain only the new bug-fix delta.
 
 ## 4. Current verification evidence
 
@@ -180,6 +209,18 @@ mutation has occurred.
 - [x] Cash-remittance Mobile verification passed: Provider reconciliation
       poller **3/3**, API-client status contract **4/4**, all three complete
       suites **433/433**, and the complete Provider analyzer with no issues.
+- [x] Session/auth focused Backend verification passed: JWT guard,
+      durable-role fence and AuthService suites **188/188**; complete API suite
+      **4,140/4,140** and API build passed.
+- [x] Client session/ride focused verification passed: cached restoration,
+      refresh contention, draft reset and booking coordinator tests all pass.
+- [x] Complete Client, Provider and API-client suites pass after the bug fix;
+      Provider is **172/172** and API client is **175/175**.
+- [x] Client, Provider and API-client analyzers report no issues after the bug
+      fix.
+- [x] Regression proves a generation-zero Client row cannot be bound when the
+      Redis session proof is absent, while an already durable exact Client SID
+      survives cache loss.
 - [ ] The same policy does not expressly say that named screen, lifecycle and
       meaningful-action events are collected. Product/qualified Legal must
       decide whether the existing disclosure is sufficient or publish a new
@@ -225,7 +266,10 @@ communications or third-party SDKs.
       from this delta alone; compare the complete current form with the exact
       signed artifact before submission.
 
-## 7. Exact 32-path candidate inventory
+## 7. Exact candidate inventories
+
+The original approved telemetry/payment/provenance/privacy baseline remains the
+following 32 paths.
 
 ### Telemetry and payment reliability
 
@@ -268,8 +312,30 @@ communications or third-party SDKs.
 - `apps/client/ios/Runner/PrivacyInfo.xcprivacy`
 - `apps/provider/ios/Runner/PrivacyInfo.xcprivacy`
 
-No file outside this inventory is authorised for this update without first
-updating this checklist and obtaining owner approval.
+### Client session and ride-reset bug-fix delta
+
+- `apps/client/lib/src/features/auth/data/auth_repository.dart`
+- `apps/client/lib/src/features/auth/providers/auth_controller.dart`
+- `apps/client/lib/src/features/ride/providers/edit_trip_provider.dart`
+- `apps/client/lib/src/features/ride/screens/driver_matching_screen.dart`
+- `apps/client/lib/src/features/ride/screens/fare_estimate_screen.dart`
+- `apps/client/test/app/client_bootstrap_router_test.dart`
+- `apps/client/test/features/auth/client_auth_repository_session_test.dart`
+- `apps/client/test/features/ride/providers/ride_request_draft_reset_test.dart`
+- `packages/api_client/lib/src/http/token_refresher.dart`
+- `packages/api_client/test/http/token_refresher_test.dart`
+
+The paired Backend delta is restricted to exact session authority and tests:
+
+- `apps/api/src/common/guards/jwt-auth.guard.ts`
+- `apps/api/src/common/guards/jwt-auth.guard.spec.ts`
+- `apps/api/src/modules/account-exit/account-exit.service.ts`
+- `apps/api/src/modules/account-exit/account-exit.service.spec.ts`
+- `apps/api/src/modules/auth/auth.service.ts`
+- `apps/api/src/modules/auth/auth.service.spec.ts`
+
+No file outside the recorded inventories is authorised for this update without
+first updating this checklist and obtaining owner approval.
 
 ## 8. Release gates
 
@@ -293,6 +359,11 @@ updating this checklist and obtaining owner approval.
       success, decline and timeout.
 - [ ] Physical-device telemetry tests: foreground, background, offline,
       reconnect, low-activity session and authenticated retry.
+- [ ] Physical-device Client session tests: background/foreground, access-token
+      refresh, controlled Client Redis cache loss, no-driver response and app
+      restart must retain the authenticated role without another OTP.
+- [ ] Physical-device ride-draft tests: Android/iOS back, Cancel and no-driver
+      dismissal must clear pickup, destination, stops, vehicle and fare.
 - [ ] Build, sign, inspect and install all four artifacts from the same reviewed
       `main` SHA.
 - [ ] Complete App Store privacy and Play Data Safety declarations before
@@ -320,3 +391,5 @@ updating this checklist and obtaining owner approval.
 | 2026-07-23 | Published the review branch | `codex/audit-telemetry-payment-staging` was pushed to `origin` with the runtime and checklist commits. It has not been merged or deployed; draft PR creation remains pending. |
 | 2026-07-23 | Merged the approved telemetry/payment candidate to staging | PR `#93` is present in `origin/staging` merge commit `2a860ad`; this does not constitute a store release. |
 | 2026-07-23 | Added provider `Owings` reconciliation candidate | Backend verifies missed/misdirected Paystack callbacks, settles partial commission debt idempotently, closes cancelled attempts without touching debt, and exposes an owned status endpoint. Provider now waits for that authoritative state. Focused Backend **159/159**, migration contract **418/418**, Provider **3/3** and API-client **4/4** pass; staging deploy and physical payment proof remain open. |
+| 2026-07-24 | Merged provider `Owings` reconciliation to staging | Backend PR `#117` and Mobile PR `#94` are present in `origin/staging`; deployment and physical staging proof remain open. |
+| 2026-07-24 | Added Client session and ride-draft incident fixes | Durable exact Client sessions survive Redis cache loss; refresh contention no longer clears tokens; the last authenticated Client profile is cached; and back/Cancel/no-driver exits clear only the next-ride draft. Backend focused **188/188**, all mobile suites and all analyzers pass. Physical staging proof remains open. |
