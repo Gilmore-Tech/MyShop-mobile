@@ -290,6 +290,13 @@ class AccountSettingsScreen extends ConsumerWidget {
                     subtitle: payoutSubtitle,
                     onTap: () => context.push('/account/payouts'),
                   ),
+                  SettingsListTile(
+                    icon: Icons.card_giftcard_outlined,
+                    title: 'Refer & Earn',
+                    subtitle:
+                        'Your separate ${isDriver ? 'driver' : 'artisan'} referral code',
+                    onTap: () => context.push('/account/referrals'),
+                  ),
                 ],
               ),
             ),

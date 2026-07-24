@@ -26,17 +26,17 @@ database URLs into this checklist, logs, issues, or chat.
 
 ## 0. Package the reviewed source trees
 
-This gate happens before suspending or mutating staging. The 2026-07-19
-inventory established these release-branch bases after fetching `origin/staging`:
+This gate happens before suspending or mutating staging. The 2026-07-24
+role-owned-referral worktrees are based exactly on these local
+`origin/staging` references:
 
-- mobile: `f88f43c85e52ecf9f7d69b0f6e0a500665a0edcb`;
-- backend: `1f1ada8b7ad3b9b8ab937fe8fab3dad611aae7bd`;
-- admin: `78fabd15d8235e399dba45933bbe125b13c81077`.
+- mobile: `ecde3c12430c2be59d5a2cff2e16c9cc3731637b`;
+- backend: `fa5552df7f0d745101eb54e6455803cb631a76b4`;
+- admin: `b4bebb5a6b961a66b17c27ad13bf3c792fb9af02`.
 
-The mobile worktree HEAD `d200d3d…` is one merge commit behind by graph but its
-committed tree is byte-identical to current mobile staging. Create the release
-branch from `f88f43c…`; do not base the PR on the old feature-branch graph or
-re-include the already-merged overlay work.
+All three current worktrees use `feat/role-owned-referrals-release`. Re-fetch
+and prove that each reviewed parent is still the intended staging tip before
+commit; do not silently merge unrelated newer work into the release slice.
 
 1. Freeze all three working trees while packaging. Use one release PR per
    repository and review the backend in schema/migration, API/domain,
@@ -73,7 +73,8 @@ re-include the already-merged overlay work.
    PII-free procedure in the backend staging-isolation runbook.
 5. Confirm these release fences remain false:
    `FF_USSD_CHANNEL`, `FF_BATCH_PAYOUTS`, `FF_PROVIDER_AGGREGATE_PAYOUTS`,
-   `FF_ROLE_ACCOUNT_REWARDS`, `FF_CANCELLATION_CONSEQUENCES`,
+   `FF_ROLE_ACCOUNT_REWARDS`, `FF_ROLE_ACCOUNT_REFERRALS`,
+   `FF_CANCELLATION_CONSEQUENCES`,
    `FF_SESSION_RECOVERY`, `FF_ROLE_ACCOUNT_RECOVERY`, support/dispute
    attachments, and active-trip fallback. The admin artifact must initially use
    `NEXT_PUBLIC_FF_ROLE_ACCOUNT_RECOVERY=false`. Confirm the obsolete
@@ -107,6 +108,30 @@ paging, and begins a database-enforced `REPEATABLE READ READ ONLY` transaction
 with a two-minute statement timeout and five-second lock timeout. Its output is
 aggregate-only. Do not weaken those controls, add identifier flags, or capture
 the output in a public/shared log.
+
+### Controlled role-owned referral activation
+
+Keep both referral switches OFF through migration and post-migration
+verification.
+
+1. Confirm the reviewed backend SHA contains
+   `20260724000000_role_owned_referrals` and preserve a staging restore point.
+2. Rerun `preflight-role-account-separation.sql`; compare its aggregate result
+   with the owner-approved inventory and stop on any unexplained increase.
+3. Run `prisma migrate deploy` against the protected staging direct URL. Do not
+   apply this SQL manually or mark it applied without execution.
+4. Run `packages/database/scripts/verify-role-owned-referrals.sql`. Every row in
+   its first invariant table must be zero. Retain only aggregate ownership-state
+   and quarantine-reason counts.
+5. Deploy the exact backend and Admin commits with
+   `FF_ROLE_ACCOUNT_REFERRALS=true`, then change
+   `role_account_referrals_enabled` to JSON boolean `true` through the audited
+   configuration path. Keep `FF_ROLE_ACCOUNT_REWARDS=false`; referral awards
+   use the new exact-role ledger and do not authorize general loyalty
+   redemption.
+6. If a canary fails, set the database referral switch false first, set the
+   environment flag false, and redeploy/restart only the reviewed artifact. Do
+   not drop the additive tables, triggers or quarantine evidence.
 
 Required outcomes:
 
@@ -222,6 +247,12 @@ Use internal-track/TestFlight builds with unused private build numbers.
    sibling roles remain usable, the deleted role cannot log in or be restored
    through the suspension-reinstatement route, and the stored recovery deadline
    is exactly `deletedAt + 2,160 hours`.
+   - For referrals, prove the three roles have different codes and no response
+     returns a private shared auth identity. A sibling code must be rejected; a
+     different phone identity may use the code for any exact role; and only the
+     selected referrer role wallet receives one reward after the referee's first
+     qualifying activity. Repeat registration, completion and webhook requests
+     to prove there is no duplicate link or award.
    - With `FF_ROLE_ACCOUNT_RECOVERY=false`, both new OTP endpoints and every
      admin recovery mutation must fail closed. Registration must keep returning
      `ROLE_ACCOUNT_RETAINED` without sending a registration OTP or creating a

@@ -54,7 +54,8 @@ class _DriverRegistrationScreenState
       case 0:
         return Validators.fullName(d.fullName) == null &&
             Validators.email(d.email) == null &&
-            Validators.ghanaCard(d.ghanaCardNumber) == null;
+            Validators.ghanaCard(d.ghanaCardNumber) == null &&
+            validateOptionalReferralCode(d.referralCode) == null;
       case 1:
         return d.vehicleMake.isNotEmpty &&
             d.vehicleModel.isNotEmpty &&

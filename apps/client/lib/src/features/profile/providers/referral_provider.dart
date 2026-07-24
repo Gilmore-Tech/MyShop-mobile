@@ -55,6 +55,7 @@ String _formatDate(String? iso) {
 class ReferralData {
   final String code;
   final String? shareLink;
+  final int rewardPesewas;
   final int totalReferrals;
   final int pendingPesewas;
   final int earnedPesewas;
@@ -63,6 +64,7 @@ class ReferralData {
   const ReferralData({
     required this.code,
     this.shareLink,
+    required this.rewardPesewas,
     required this.totalReferrals,
     required this.pendingPesewas,
     required this.earnedPesewas,
@@ -71,6 +73,7 @@ class ReferralData {
 
   double get pendingGhs => pendingPesewas / 100.0;
   double get earnedGhs => earnedPesewas / 100.0;
+  double get rewardGhs => rewardPesewas / 100.0;
 
   factory ReferralData.fromJson(Map<String, dynamic> json) {
     final rawList = (json['recentReferrals'] as List<dynamic>? ?? [])
@@ -78,6 +81,7 @@ class ReferralData {
     return ReferralData(
       code: json['code'] as String? ?? '',
       shareLink: json['shareLink'] as String?,
+      rewardPesewas: (json['rewardPesewas'] as num?)?.toInt() ?? 0,
       totalReferrals: (json['totalReferrals'] as num?)?.toInt() ?? 0,
       pendingPesewas: (json['pendingPesewas'] as num?)?.toInt() ?? 0,
       earnedPesewas: (json['earnedPesewas'] as num?)?.toInt() ?? 0,

@@ -29,6 +29,7 @@ class SignUpScreen extends ConsumerStatefulWidget {
 class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
+  final _referralController = TextEditingController();
   final _nameFocus = FocusNode();
 
   // Phone state — IntlPhoneField manages its own text controller; we just
@@ -52,6 +53,8 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     // The number arrives as full E.164 (e.g. +233241234567, +447911123456);
     // split it into country + national parts for IntlPhoneField.
     final authState = ref.read(clientAuthControllerProvider);
+    _referralController.text =
+        ref.read(pendingReferralCodeProvider)?.trim().toUpperCase() ?? '';
     final prefill = authState is AuthNeedsRegistration ? authState.phone : null;
     if (prefill != null && prefill.isNotEmpty) {
       final parsed = _splitE164(prefill);
@@ -82,6 +85,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
+    _referralController.dispose();
     _nameFocus.dispose();
     super.dispose();
   }
@@ -89,7 +93,6 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(clientAuthControllerProvider);
-    final pendingReferralCode = ref.watch(pendingReferralCodeProvider);
     final w = MediaQuery.sizeOf(context).width;
     final h = MediaQuery.sizeOf(context).height;
 
@@ -209,28 +212,6 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                     ),
                   ),
                 ],
-                if (pendingReferralCode != null) ...[
-                  SizedBox(height: h * 0.015),
-                  Container(
-                    width: double.infinity,
-                    padding: EdgeInsets.all(w * 0.035),
-                    decoration: BoxDecoration(
-                      color: MyShopColors.warning.withAlpha(20),
-                      borderRadius: BorderRadius.circular(w * 0.02),
-                      border: Border.all(
-                        color: MyShopColors.warning.withAlpha(70),
-                      ),
-                    ),
-                    child: Text(
-                      'Referral code $pendingReferralCode was not applied. Referrals are temporarily paused, but you can continue signing up.',
-                      style: TextStyle(
-                        fontSize: w * 0.032,
-                        color: MyShopColors.warning,
-                        height: 1.35,
-                      ),
-                    ),
-                  ),
-                ],
                 SizedBox(height: h * 0.025),
 
                 // ── Form fields ──
@@ -306,6 +287,33 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                           w: w,
                           h: h,
                         ),
+                        SizedBox(height: h * 0.022),
+
+                        _FieldLabel(
+                          label: 'Referral Code',
+                          w: w,
+                          optional: true,
+                        ),
+                        SizedBox(height: h * 0.008),
+                        _StyledTextField(
+                          controller: _referralController,
+                          hint: 'MYSHOP-ABC123',
+                          textCapitalization: TextCapitalization.characters,
+                          w: w,
+                          h: h,
+                          onChanged: (_) => setState(() {}),
+                        ),
+                        if (_referralController.text.trim().isNotEmpty &&
+                            !_validReferralCode) ...[
+                          SizedBox(height: h * 0.006),
+                          Text(
+                            'Use the format MYSHOP- followed by 6 letters or numbers.',
+                            style: TextStyle(
+                              fontSize: w * 0.029,
+                              color: MyShopColors.error,
+                            ),
+                          ),
+                        ],
                         SizedBox(height: h * 0.022),
 
                         // Error message
@@ -448,26 +456,33 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       _nameController.text.trim().length >= 2 &&
       _isValidPhone &&
       _phone != null &&
+      _validReferralCode &&
       !_loadingLegal &&
       _requiredLegal?.documents.length == 2 &&
       _termsAccepted &&
       _privacyAccepted;
 
-  void _submit() {
+  bool get _validReferralCode {
+    final code = _referralController.text.trim().toUpperCase();
+    return code.isEmpty || RegExp(r'^MYSHOP-[A-Z0-9]{6}$').hasMatch(code);
+  }
+
+  Future<void> _submit() async {
     final legal = _requiredLegal;
     if (legal == null || !_termsAccepted || !_privacyAccepted) return;
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
-    ref.read(clientAuthControllerProvider.notifier).register(
+    final referralCode = _referralController.text.trim().toUpperCase();
+    await ref.read(clientAuthControllerProvider.notifier).register(
           phone: _phone!.completeNumber,
           fullName: name,
           legalAcceptances: legal.selections,
           email: email.isNotEmpty ? email : null,
-          referralCode: null,
+          referralCode: referralCode.isNotEmpty ? referralCode : null,
         );
-    // One-shot: clear the captured code so it can't bleed into a later,
-    // unrelated registration on the same install.
-    ref.read(pendingReferralCodeProvider.notifier).state = null;
+    if (ref.read(clientAuthControllerProvider) is AuthOtpSent) {
+      ref.read(pendingReferralCodeProvider.notifier).state = null;
+    }
   }
 
   Future<void> _loadLegal({bool refresh = false}) async {
