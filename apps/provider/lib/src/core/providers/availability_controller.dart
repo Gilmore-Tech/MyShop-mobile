@@ -388,22 +388,22 @@ class AvailabilityController {
     // Need a fix to send with the online POST — backend requires
     // current_location to be non-null before it'll mark us online.
     Position position;
-    final cached = _ref.read(lastKnownPositionProvider);
-    if (cached != null && isOnlineLocationFixAcceptable(cached)) {
-      position = cached;
-    } else {
-      try {
-        position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-            timeLimit: Duration(seconds: 8),
-          ),
-        );
-        _ref.read(lastKnownPositionProvider.notifier).state = position;
-      } catch (e) {
-        debugPrint('[Availability] online: position fetch failed — $e');
-        return "Couldn't get your location. Check signal and try again.";
+    try {
+      position = await resolveOnlineEntryPosition(
+        _ref.read(lastKnownPositionProvider),
+        lastKnownLoader: _ref.read(lastKnownPositionLoaderProvider),
+        currentLoader: _ref.read(onlineEntryPositionLoaderProvider),
+      );
+      _ref.read(lastKnownPositionProvider.notifier).state = position;
+    } catch (e) {
+      debugPrint('[Availability] online: position fetch failed — $e');
+      if (e is TimeoutException) {
+        return 'GPS could not get an accurate fix within '
+            '${onlineEntryFixTimeout.inSeconds} seconds. Move near a window '
+            'or outdoors, keep Location Services on, and try again.';
       }
+      return "Couldn't get your location. Keep Location Services on and try "
+          'again.';
     }
 
     if (!isOnlineLocationFixAcceptable(position)) {
@@ -716,6 +716,30 @@ class AvailabilityController {
       debugPrint('[Availability] Online intent persistence failed: $error');
     }
   }
+}
+
+@visibleForTesting
+Future<Position> resolveOnlineEntryPosition(
+  Position? cached, {
+  required LastKnownPositionLoader lastKnownLoader,
+  required OnlinePositionLoader currentLoader,
+  DateTime? now,
+}) async {
+  if (cached != null && isOnlineLocationFixAcceptable(cached, now: now)) {
+    return cached;
+  }
+
+  try {
+    final lastKnown = await lastKnownLoader();
+    if (lastKnown != null &&
+        isOnlineLocationFixAcceptable(lastKnown, now: now)) {
+      return lastKnown;
+    }
+  } catch (error) {
+    debugPrint('[Availability] last-known position fetch failed — $error');
+  }
+
+  return currentLoader();
 }
 
 final availabilityControllerProvider = Provider<AvailabilityController>((ref) {
