@@ -74,4 +74,79 @@ void main() {
       isFalse,
     );
   });
+
+  test('online entry reuses an acceptable in-process fix', () async {
+    final cached = _position(timestamp: now);
+    var lastKnownCalled = false;
+    var currentCalled = false;
+
+    final resolved = await resolveOnlineEntryPosition(
+      cached,
+      now: now,
+      lastKnownLoader: () async {
+        lastKnownCalled = true;
+        return null;
+      },
+      currentLoader: () async {
+        currentCalled = true;
+        return _position(timestamp: now);
+      },
+    );
+
+    expect(resolved, same(cached));
+    expect(lastKnownCalled, isFalse);
+    expect(currentCalled, isFalse);
+  });
+
+  test('online entry safely reuses an acceptable OS last-known fix', () async {
+    final lastKnown = _position(
+      timestamp: now.subtract(const Duration(seconds: 20)),
+      accuracy: 40,
+    );
+    var currentCalled = false;
+
+    final resolved = await resolveOnlineEntryPosition(
+      _position(timestamp: now.subtract(const Duration(minutes: 1))),
+      now: now,
+      lastKnownLoader: () async => lastKnown,
+      currentLoader: () async {
+        currentCalled = true;
+        return _position(timestamp: now);
+      },
+    );
+
+    expect(resolved, same(lastKnown));
+    expect(currentCalled, isFalse);
+  });
+
+  test('online entry requests a fresh fix when cached fixes are unusable',
+      () async {
+    final fresh = _position(timestamp: now);
+
+    final resolved = await resolveOnlineEntryPosition(
+      _position(timestamp: now.subtract(const Duration(minutes: 1))),
+      now: now,
+      lastKnownLoader: () async => _position(
+        timestamp: now,
+        accuracy: 300,
+      ),
+      currentLoader: () async => fresh,
+    );
+
+    expect(resolved, same(fresh));
+  });
+
+  test('online entry still requests a fresh fix if last-known lookup throws',
+      () async {
+    final fresh = _position(timestamp: now);
+
+    final resolved = await resolveOnlineEntryPosition(
+      null,
+      now: now,
+      lastKnownLoader: () => Future<Position?>.error(StateError('unavailable')),
+      currentLoader: () async => fresh,
+    );
+
+    expect(resolved, same(fresh));
+  });
 }
