@@ -239,6 +239,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
       // the tracking screen listens for `rideTrackingPhase` transitions to
       // drive timers and the eventual `/ride-complete` redirect.
       final status = data['status'] as String? ?? '';
+      if (status != 'requested' && status.isNotEmpty) {
+        ref.container.read(rideOfferDecisionCountdownProvider.notifier).clear();
+      }
       if (status == 'completed' ||
           status == 'cancelled' ||
           status == 'no_drivers') {
@@ -421,6 +424,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
       }
       switch (status) {
         case 'driver_en_route':
+          ref.container
+              .read(rideOfferDecisionCountdownProvider.notifier)
+              .clear();
           ref.container.read(bookingPhaseProvider.notifier).accepted();
           ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
           ref.container.read(rideTrackingPhaseProvider.notifier).state =
@@ -449,6 +455,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
             ),
           );
         case 'cancelled' || 'no_drivers':
+          ref.container
+              .read(rideOfferDecisionCountdownProvider.notifier)
+              .clear();
           ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
           ref.container.read(bookingFailureMessageProvider.notifier).state =
               status == 'no_drivers'
@@ -593,7 +602,25 @@ void _connectAndListen(Ref ref, SocketService socket) {
           return;
         }
         final map = Map<String, dynamic>.from(data);
+        final activeRideId = ref.container.read(activeRideIdProvider);
+        final eventRideId = (map['rideId'] ?? map['id'])?.toString();
+        if (eventRideId != null &&
+            activeRideId != null &&
+            eventRideId != activeRideId) {
+          return;
+        }
         final attempt = (map['attempt'] as num?)?.toInt() ?? 0;
+        final currentProgress = ref.container.read(matcherProgressProvider);
+        if (attempt > 0 &&
+            currentProgress != null &&
+            currentProgress.attempt > attempt) {
+          developer.log(
+            'matcher_progress: ignored stale attempt=$attempt '
+            'current=${currentProgress.attempt}',
+            name: 'WS',
+          );
+          return;
+        }
         final driversTried = (map['driversTried'] as num?)?.toInt() ?? 0;
         final driversRemaining =
             (map['driversRemaining'] as num?)?.toInt() ?? 0;
@@ -615,6 +642,43 @@ void _connectAndListen(Ref ref, SocketService socket) {
         );
         ref.container.read(driversNotifiedProvider.notifier).state =
             driversTried;
+        if (reason == MatcherReason.decline ||
+            reason == MatcherReason.timeout) {
+          ref.container
+              .read(rideOfferDecisionCountdownProvider.notifier)
+              .clear();
+        }
+      });
+
+    // A real driver countdown begins only after the provider's authenticated
+    // receipt activates the database decision deadline. This event contains
+    // no driver/offer identity; it is safe for the rider room and replayed on
+    // reconnect by client:track:ride.
+    socket
+      ..off('ride:offer_received')
+      ..on('ride:offer_received', (data) {
+        if (data is! Map) return;
+        final map = Map<String, dynamic>.from(data);
+        final activeRideId = ref.container.read(activeRideIdProvider);
+        final eventRideId = map['rideId']?.toString();
+        if (eventRideId == null ||
+            eventRideId.isEmpty ||
+            activeRideId == null ||
+            eventRideId != activeRideId) {
+          return;
+        }
+        final serverNow = DateTime.tryParse(map['serverNow']?.toString() ?? '');
+        final decisionExpiresAt =
+            DateTime.tryParse(map['decisionExpiresAt']?.toString() ?? '');
+        final totalSeconds =
+            (map['acceptanceWindowSeconds'] as num?)?.toInt() ?? 30;
+        if (serverNow == null || decisionExpiresAt == null) return;
+        ref.container.read(bookingPhaseProvider.notifier).driverFound();
+        ref.container.read(rideOfferDecisionCountdownProvider.notifier).start(
+              serverNow: serverNow,
+              decisionExpiresAt: decisionExpiresAt,
+              totalSeconds: totalSeconds,
+            );
       });
 
     // ── Route changes (rider added / cancelled a stop) ──────────────────

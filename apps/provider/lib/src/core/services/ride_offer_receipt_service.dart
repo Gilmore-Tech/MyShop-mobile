@@ -32,7 +32,7 @@ bool isReceiptRideOffer(Map<String, dynamic> payload) {
 }
 
 /// Persist before acknowledging. A process kill after the server activates the
-/// 45-second window can then be reconciled by the pending-request endpoint;
+/// 30-second window can then be reconciled by the pending-request endpoint;
 /// the server never mistakes transport success for device receipt.
 Future<bool> persistIncomingRideOffer(Map<String, dynamic> payload) async {
   final offerId = _offerId(payload);
@@ -240,7 +240,7 @@ ReceivedRideOffer? buildReceivedRideOfferForTesting({
     'acceptanceExpiresAt': presentationDeadline.toIso8601String(),
     'decisionExpiresAt': presentationDeadline.toIso8601String(),
     'acceptanceWindowSeconds':
-        receipt['acceptanceWindowSeconds']?.toString() ?? '45',
+        receipt['acceptanceWindowSeconds']?.toString() ?? '30',
   };
   return ReceivedRideOffer(
     rideId: rideId,
