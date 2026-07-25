@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter/foundation.dart';
@@ -132,19 +133,44 @@ class ClientAuthRepository {
   }) =>
       _service.resendOtp(phone: phone, channel: channel);
 
-  /// Fetch the user's full profile from GET /users/me.
+  /// Fetch the user's full profile from GET /users/me and persist the raw
+  /// role-scoped response. A later network/Render interruption must not turn
+  /// an otherwise valid stored session into an OTP login.
   Future<UserProfile> fetchProfile() async {
-    return _service.getMe();
+    final result = await _service.getMeWithRaw();
+    if (result.raw.isNotEmpty) {
+      await _tokenStorage.writeCachedProfileJson(jsonEncode(result.raw));
+    }
+    return result.profile;
   }
 
   /// Try to restore a session from stored tokens.
-  /// Returns null if no valid session exists.
+  ///
+  /// A stored access token remains the session signal. Return the last
+  /// authenticated profile immediately when available; the controller
+  /// refreshes it quietly after rendering. This prevents a temporary profile
+  /// request failure from redirecting a signed-in client to OTP.
   Future<UserProfile?> bootstrap() async {
     final token = await _tokenStorage.readAccessToken();
     if (token == null) return null;
+
+    final cachedJson = await _tokenStorage.readCachedProfileJson();
+    if (cachedJson != null) {
+      try {
+        return UserProfile.fromJson(
+          jsonDecode(cachedJson) as Map<String, dynamic>,
+        );
+      } catch (error) {
+        debugPrint('[ClientAuthRepo] cached profile unreadable: $error');
+      }
+    }
+
     try {
-      return await _service.getMe();
-    } catch (_) {
+      return await fetchProfile();
+    } catch (error) {
+      debugPrint(
+        '[ClientAuthRepo] session profile unavailable; keeping tokens: $error',
+      );
       return null;
     }
   }

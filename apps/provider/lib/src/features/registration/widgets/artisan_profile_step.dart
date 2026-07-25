@@ -18,10 +18,12 @@ class _ArtisanProfileStepState extends ConsumerState<ArtisanProfileStep>
   late final TextEditingController _nameCtrl;
   late final TextEditingController _emailCtrl;
   late final TextEditingController _ghanaCardCtrl;
+  late final TextEditingController _referralCtrl;
 
   bool _nameTouched = false;
   bool _emailTouched = false;
   bool _ghanaCardTouched = false;
+  bool _referralTouched = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -33,6 +35,7 @@ class _ArtisanProfileStepState extends ConsumerState<ArtisanProfileStep>
     _nameCtrl = TextEditingController(text: draft.fullName);
     _emailCtrl = TextEditingController(text: draft.email);
     _ghanaCardCtrl = TextEditingController(text: draft.ghanaCardNumber);
+    _referralCtrl = TextEditingController(text: draft.referralCode);
   }
 
   @override
@@ -40,6 +43,7 @@ class _ArtisanProfileStepState extends ConsumerState<ArtisanProfileStep>
     _nameCtrl.dispose();
     _emailCtrl.dispose();
     _ghanaCardCtrl.dispose();
+    _referralCtrl.dispose();
     super.dispose();
   }
 
@@ -101,6 +105,24 @@ class _ArtisanProfileStepState extends ConsumerState<ArtisanProfileStep>
               if (_ghanaCardTouched || showAll) setState(() {});
             },
             onSubmitted: (_) => setState(() => _ghanaCardTouched = true),
+          ),
+          const SizedBox(height: MyShopSpacing.md),
+          MyShopTextField(
+            label: 'Referral code (optional)',
+            hint: 'MYSHOP-ABC123',
+            controller: _referralCtrl,
+            textCapitalization: TextCapitalization.characters,
+            errorText: (_referralTouched || showAll)
+                ? validateOptionalReferralCode(_referralCtrl.text)
+                : null,
+            onChanged: (value) {
+              _apply(
+                (draft) =>
+                    draft.copyWith(referralCode: value.trim().toUpperCase()),
+              );
+              if (_referralTouched || showAll) setState(() {});
+            },
+            onSubmitted: (_) => setState(() => _referralTouched = true),
           ),
           const SizedBox(height: MyShopSpacing.sm),
           Text(

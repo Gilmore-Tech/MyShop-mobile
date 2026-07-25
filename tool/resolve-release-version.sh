@@ -19,7 +19,9 @@ esac
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 PUBSPEC="$ROOT_DIR/apps/$APP/pubspec.yaml"
 APPROVED_MARKETING_VERSION=1.4.1
-LOCAL_BUILD_NUMBER_FLOOR=21
+# The owner confirmed that build 24 was released on all four targets. It is
+# permanently occupied even if a private console later hides an old artifact.
+LOCAL_BUILD_NUMBER_FLOOR=24
 MAX_PORTABLE_BUILD_NUMBER=2100000000
 
 PUBSPEC_VERSION=$(awk '$1 == "version:" { print $2; exit }' "$PUBSPEC")

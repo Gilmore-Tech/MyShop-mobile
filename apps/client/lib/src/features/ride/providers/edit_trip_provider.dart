@@ -4,7 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart' as models;
 
 import '../../../core/di/providers.dart';
-import 'ride_provider.dart' show activeRideIdProvider, matchedDriverProvider;
+import 'ride_provider.dart'
+    show activeRideIdProvider, matchedDriverProvider, selectedVehicleProvider;
 import 'ride_search_provider.dart';
 
 // ── Models ────────────────────────────────────────────────────────────────────
@@ -345,6 +346,18 @@ void seedTripStopsFromCurrentRide(WidgetReader read) {
       lng: search.destination?.lng,
     ),
   );
+}
+
+/// Clears only the uncommitted next-ride draft after an explicit back/cancel
+/// or after matching cancellation has been authoritatively confirmed.
+///
+/// Active/recoverable ride state is deliberately owned elsewhere. Resetting
+/// these inputs forces the next booking to obtain a fresh pickup, destination,
+/// stop list, vehicle category and fare estimate.
+void resetRideRequestDraft(WidgetReader read) {
+  read(rideSearchProvider.notifier).reset();
+  read(tripStopsProvider.notifier).clear();
+  read(selectedVehicleProvider.notifier).state = '';
 }
 
 /// Tiny abstraction so the seed helper works with both `Ref.read` and

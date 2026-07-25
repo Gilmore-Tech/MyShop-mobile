@@ -139,6 +139,7 @@ final clientAuthControllerProvider =
     StateNotifierProvider<ClientAuthController, ClientAuthState>((ref) {
   final controller = ClientAuthController(
     ref.watch(clientAuthRepositoryProvider),
+    ref.watch(systemTelemetryProvider),
   );
   // Register with the Dio interceptor's force-logout dispatcher so that
   // SESSION_TAKEN_OVER / TOKEN_EXPIRED / etc. flip the controller to
@@ -183,9 +184,11 @@ Future<void> loadOnboardingFlag(ProviderContainer container) async {
 // ---------------------------------------------------------------------------
 
 class ClientAuthController extends StateNotifier<ClientAuthState> {
-  ClientAuthController(this._repo) : super(const AuthUnknown());
+  ClientAuthController(this._repo, [this._telemetry])
+      : super(const AuthUnknown());
 
   final ClientAuthRepository _repo;
+  final SystemTelemetryService? _telemetry;
   bool _requesting = false;
 
   /// Try to restore session from stored tokens.
@@ -199,12 +202,27 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
       }
       if (profile != null) {
         state = AuthAuthenticated(profile);
+        unawaited(_refreshRestoredProfile());
       } else {
         state = const AuthUnauthenticated();
       }
     } catch (error, stackTrace) {
       debugPrint('[Auth] client bootstrap failed: $error\n$stackTrace');
       state = const AuthUnauthenticated();
+    }
+  }
+
+  Future<void> _refreshRestoredProfile() async {
+    try {
+      final profile = await _repo.fetchProfile();
+      if (mounted && state is AuthAuthenticated) {
+        state = AuthAuthenticated(profile);
+      }
+    } catch (error) {
+      // The cached authenticated profile remains usable. A terminal 401 is
+      // handled centrally by the interceptor; transport/5xx failures must not
+      // convert a stored session into an OTP login.
+      debugPrint('[Auth] quiet client profile refresh deferred: $error');
     }
   }
 
@@ -375,6 +393,7 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
       // tutorial yet. Authenticated users without the seen flag get
       // routed to /onboarding by the router redirect.
       state = AuthAuthenticated(profile);
+      _telemetry?.trackAction('client_login_completed');
     } on ApiException catch (e) {
       state = AuthOtpSent(
         phone: current.phone,

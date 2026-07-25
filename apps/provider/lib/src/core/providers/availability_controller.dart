@@ -306,6 +306,10 @@ class AvailabilityController {
     required bool backgroundLocationDisclosureAccepted,
     String? vehicleId,
   }) {
+    _ref.read(systemTelemetryProvider).trackAction(
+      'provider_go_online_requested',
+      metadata: {'vehicleSelected': vehicleId != null},
+    );
     // Keep the sensitive iOS Always request coupled to the provider's explicit
     // Go Online action and the disclosure immediately preceding it. This also
     // prevents future startup/reconciliation callers from triggering the OS
@@ -663,6 +667,9 @@ class AvailabilityController {
   /// fix. For drivers, the same transaction clears activeVehicleId so every
   /// later Go Online requires a fresh explicit vehicle selection.
   Future<String?> goOffline() {
+    _ref
+        .read(systemTelemetryProvider)
+        .trackAction('provider_go_offline_requested');
     final inFlight = _goOfflineInFlight;
     if (inFlight != null) return inFlight;
 

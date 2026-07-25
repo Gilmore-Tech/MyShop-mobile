@@ -60,6 +60,10 @@ android {
             localProps.getProperty("MAPS_API_KEY", "")
         }
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
+        manifestPlaceholders["MYSHOP_SOURCE_COMMIT"] =
+            (project.findProperty("MYSHOP_SOURCE_COMMIT") as String?).orEmpty().trim()
+        manifestPlaceholders["MYSHOP_MARKETING_VERSION"] = flutter.versionName
+        manifestPlaceholders["MYSHOP_BUILD_NUMBER"] = flutter.versionCode.toString()
     }
 
     signingConfigs {

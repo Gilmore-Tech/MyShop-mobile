@@ -63,6 +63,7 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
   ActiveJobNotifier(this._ref) : super(const ActiveJobState());
 
   final Ref _ref;
+  Future<Job?>? _refreshInFlight;
 
   /// Seed the active-job slot with a freshly-accepted job. Called from the
   /// bid-accepted banner's "Accept & Start Job" action.
@@ -197,7 +198,19 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
   /// fire whether the transition came from the socket or this poll —
   /// without that, a poll-detected `completed` would leave the dashboard
   /// staring at stale earnings.
-  Future<Job?> refreshFromServer() async {
+  Future<Job?> refreshFromServer() {
+    final running = _refreshInFlight;
+    if (running != null) return running;
+
+    late final Future<Job?> operation;
+    operation = _refreshFromServer().whenComplete(() {
+      if (identical(_refreshInFlight, operation)) _refreshInFlight = null;
+    });
+    _refreshInFlight = operation;
+    return operation;
+  }
+
+  Future<Job?> _refreshFromServer() async {
     final job = state.job;
     if (job == null) return null;
     try {

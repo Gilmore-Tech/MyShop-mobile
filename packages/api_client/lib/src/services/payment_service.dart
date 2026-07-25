@@ -2,6 +2,54 @@ import 'package:dio/dio.dart';
 
 import '../models/api_exception.dart';
 
+class CashCommissionRemittanceStatus {
+  const CashCommissionRemittanceStatus({
+    required this.remitId,
+    required this.status,
+    required this.amountPesewas,
+    required this.owedPesewas,
+    this.gatewayStatus,
+    this.completedAt,
+  });
+
+  factory CashCommissionRemittanceStatus.fromJson(Map<String, dynamic> json) {
+    final remitId = json['remitId'];
+    final status = json['status'];
+    final amount = json['amountPesewas'];
+    final owed = json['owedPesewas'];
+    if (remitId is! String ||
+        status is! String ||
+        amount is! num ||
+        owed is! num) {
+      throw const FormatException(
+        'Invalid cash-commission remittance response',
+      );
+    }
+    final completedAtRaw = json['completedAt'];
+    return CashCommissionRemittanceStatus(
+      remitId: remitId,
+      status: status,
+      amountPesewas: amount.toInt(),
+      owedPesewas: owed.toInt(),
+      gatewayStatus: json['gatewayStatus'] as String?,
+      completedAt: completedAtRaw is String
+          ? DateTime.tryParse(completedAtRaw)
+          : null,
+    );
+  }
+
+  final String remitId;
+  final String status;
+  final String? gatewayStatus;
+  final int amountPesewas;
+  final int owedPesewas;
+  final DateTime? completedAt;
+
+  bool get isCompleted => status == 'completed';
+  bool get isFailed => status == 'failed';
+  bool get isTerminal => isCompleted || isFailed;
+}
+
 /// Service for payment API endpoints.
 /// EDD § 5.2 — Payments (6 endpoints)
 class PaymentService {
@@ -74,10 +122,7 @@ class PaymentService {
     try {
       final response = await _dio.post(
         '/payments/acknowledge-cash',
-        data: {
-          'bookingType': bookingType,
-          'bookingId': bookingId,
-        },
+        data: {'bookingType': bookingType, 'bookingId': bookingId},
       );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
@@ -98,10 +143,7 @@ class PaymentService {
     try {
       final response = await _dio.post(
         '/payments/submit-otp',
-        data: {
-          'reference': reference,
-          'otp': otp,
-        },
+        data: {'reference': reference, 'otp': otp},
       );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
@@ -208,10 +250,7 @@ class PaymentService {
     try {
       final response = await _dio.post(
         '/payments/abandon-by-booking',
-        data: {
-          'bookingType': bookingType,
-          'bookingId': bookingId,
-        },
+        data: {'bookingType': bookingType, 'bookingId': bookingId},
       );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
@@ -245,10 +284,7 @@ class PaymentService {
     try {
       final response = await _dio.post(
         '/payment-methods/momo',
-        data: {
-          'provider': provider,
-          'phone': phone,
-        },
+        data: {'provider': provider, 'phone': phone},
       );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
@@ -282,9 +318,7 @@ class PaymentService {
     try {
       final response = await _dio.post(
         '/payments/$paymentId/tip',
-        data: {
-          'amountPesewas': amountPesewas,
-        },
+        data: {'amountPesewas': amountPesewas},
       );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
@@ -309,10 +343,7 @@ class PaymentService {
     try {
       final response = await _dio.post(
         '/payments/payout-method/request-otp',
-        data: {
-          'method': method,
-          'accountNumber': accountNumber,
-        },
+        data: {'method': method, 'accountNumber': accountNumber},
       );
       return _unwrap(response) as Map<String, dynamic>;
     } on DioException catch (e) {
@@ -423,6 +454,25 @@ class PaymentService {
         },
       );
       return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
+  /// GET /payments/cash-commission/remittances/:id — reads the provider-owned
+  /// remittance state. The backend verifies in-flight references with Paystack,
+  /// so this also repairs a missed or environment-misdirected webhook.
+  Future<CashCommissionRemittanceStatus> getCashCommissionRemittanceStatus(
+    String remittanceId,
+  ) async {
+    try {
+      final encodedId = Uri.encodeComponent(remittanceId);
+      final response = await _dio.get(
+        '/payments/cash-commission/remittances/$encodedId',
+      );
+      return CashCommissionRemittanceStatus.fromJson(
+        _unwrap(response) as Map<String, dynamic>,
+      );
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
     }

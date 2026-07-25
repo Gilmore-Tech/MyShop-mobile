@@ -2,15 +2,13 @@
 ///
 /// Catches `myshop://refer?code=XXXX` links (cold-start + while running),
 /// parses out the referral code, and parks it in [pendingReferralCodeProvider]
-/// so the sign-up screen can explain that the code was not applied while the
-/// programme is paused. The code is one-shot and is cleared on submit so it
-/// cannot leak into a later, unrelated registration.
+/// so the sign-up screen can prefill it. The code is one-shot and is cleared
+/// only after the registration request is accepted.
 ///
 /// Accepted shapes (host OR first path segment may be `refer`/`referral`):
-///   myshop://refer?code=AMA10
-///   myshop://referral?ref=AMA10
-///   myshop://refer/AMA10
-///   myshop://open?referralCode=AMA10
+///   myshop://refer?code=MYSHOP-ABC123
+///   myshop://referral?ref=MYSHOP-ABC123
+///   myshop://refer/MYSHOP-ABC123
 library;
 
 import 'dart:async';
@@ -19,8 +17,8 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Holds a referral code captured from a deep link for the paused-programme
-/// notice. It is never submitted to registration in this release.
+/// Holds a referral code captured from a deep link until registration accepts
+/// it.
 ///
 /// Top-level (not autoDispose) so the value survives across the splash →
 /// onboarding → phone → sign-up navigation that happens between the OS
@@ -70,10 +68,7 @@ String? parseReferralCode(Uri uri) {
 String? _clean(String? raw) {
   if (raw == null) return null;
   final trimmed = raw.trim().toUpperCase();
-  // Referral codes are short alphanumerics; guard against junk / overlong
-  // input so we never prefill the form with garbage from a crafted link.
-  if (trimmed.isEmpty || trimmed.length > 32) return null;
-  if (!RegExp(r'^[A-Z0-9_-]+$').hasMatch(trimmed)) return null;
+  if (!RegExp(r'^MYSHOP-[A-Z0-9]{6}$').hasMatch(trimmed)) return null;
   return trimmed;
 }
 

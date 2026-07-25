@@ -202,7 +202,9 @@ class _ProviderPhoneInputScreenState
           rideCategories:
               draft.rideCategories.isNotEmpty ? draft.rideCategories : null,
           regionId: draft.regionId.isNotEmpty ? draft.regionId : null,
-          referralCode: null,
+          referralCode: draft.referralCode.trim().isNotEmpty
+              ? draft.referralCode.trim().toUpperCase()
+              : null,
           vehicleMake: draft.vehicleMake.trim().isNotEmpty
               ? draft.vehicleMake.trim()
               : null,
@@ -232,7 +234,9 @@ class _ProviderPhoneInputScreenState
               ? draft.serviceCategories
               : null,
           regionId: draft.regionId.isNotEmpty ? draft.regionId : null,
-          referralCode: null,
+          referralCode: draft.referralCode.trim().isNotEmpty
+              ? draft.referralCode.trim().toUpperCase()
+              : null,
         );
       }
     }

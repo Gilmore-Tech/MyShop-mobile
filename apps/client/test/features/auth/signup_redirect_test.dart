@@ -104,10 +104,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        find.textContaining('Referral code MYSHOP-ABC123 was not applied'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('was not applied'), findsNothing);
+      expect(find.text('MYSHOP-ABC123'), findsWidgets);
 
       await tester.enterText(find.byType(TextField).first, 'Ama Mensah');
       await tester.pump();
@@ -143,7 +141,7 @@ void main() {
       await tester.pump();
 
       expect(controller.registeredPhone, '+233241234567');
-      expect(controller.registeredReferralCode, isNull);
+      expect(controller.registeredReferralCode, 'MYSHOP-ABC123');
     },
   );
 

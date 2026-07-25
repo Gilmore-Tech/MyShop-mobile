@@ -55,6 +55,7 @@ import '../features/profile/screens/emergency_contacts_screen.dart';
 import '../features/profile/screens/notification_settings_screen.dart';
 import '../features/profile/screens/payout_methods_screen.dart';
 import '../features/profile/screens/privacy_security_screen.dart';
+import '../features/profile/screens/referral_screen.dart';
 import '../features/support/screens/help_article_route_screen.dart';
 import '../features/support/screens/help_category_route_screen.dart';
 import '../features/support/screens/help_search_route_screen.dart';
@@ -75,6 +76,7 @@ import '../features/trips/screens/trips_history_screen.dart';
 /// Full-screen routes (ride request, active ride, trip complete) are outside the shell.
 final goRouterProvider = Provider<GoRouter>((ref) {
   final refresh = _AuthRouterRefresh(ref);
+  final telemetry = ref.read(systemTelemetryProvider);
   return GoRouter(
     initialLocation: '/splash',
     refreshListenable: refresh,
@@ -88,6 +90,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
               ref.read(activeJobProvider).hasJob);
       final onboardingFlagLoaded = ref.read(onboardingFlagLoadedProvider);
       final loc = state.matchedLocation;
+      telemetry.trackScreen(state.fullPath ?? state.matchedLocation);
 
       // Still bootstrapping — keep the Flutter splash visible. Both waits
       // have deadlines, so this route can no longer strand the user.
@@ -316,6 +319,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/account/privacy',
         builder: (context, state) => const PrivacySecurityScreen(),
+      ),
+      GoRoute(
+        path: '/account/referrals',
+        builder: (context, state) => const ProviderReferralScreen(),
       ),
       GoRoute(
         path: '/account/support',

@@ -15,6 +15,25 @@ final appTokenStorageProvider = Provider<TokenStorage>((ref) {
   return SecureTokenStorage();
 });
 
+final deviceIdProvider = Provider<DeviceIdProvider>((ref) {
+  return DeviceIdProvider(ref.watch(appTokenStorageProvider));
+});
+
+final systemTelemetryProvider = Provider<SystemTelemetryService>((ref) {
+  final tokenStorage = ref.watch(appTokenStorageProvider);
+  final service = SystemTelemetryService(
+    dio: ref.watch(dioProvider),
+    deviceIdProvider: ref.watch(deviceIdProvider),
+    app: 'provider',
+    deliveryAuthority: () async {
+      final token = await tokenStorage.readAccessToken();
+      return token?.isNotEmpty ?? false;
+    },
+  );
+  ref.onDispose(service.dispose);
+  return service;
+});
+
 /// Configured Dio HTTP client + the shared [TokenRefresher].
 ///
 /// `onForceLogout` fires when the refresher decides the session is
