@@ -132,7 +132,7 @@ WHERE key = 'rides_enabled';
 - [ ] Run authenticated staging canaries: unused booking-key lookup returns the
       stable 404; a lost create response resolves to the same ride; a reused key with
       a changed body returns 409; one provider receipts within ten seconds and gets a
-      fresh database-clock 45 seconds; delayed/duplicate actions stay idempotent.
+      fresh database-clock 30 seconds; delayed/duplicate actions stay idempotent.
 - [ ] Prove restart, Redis loss, worker lease recovery, five-minute matching
       cutoff, two-minute never-ready cleanup, and no duplicate ride/offer/driver
       holder under real PostgreSQL concurrency.

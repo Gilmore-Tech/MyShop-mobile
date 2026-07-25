@@ -4,7 +4,7 @@ import 'dart:io' show Platform;
 
 import 'package:api_client/api_client.dart' show ApiException, AppCallSession;
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,6 +24,7 @@ import '../providers/pending_request_recovery_provider.dart';
 import '../providers/socket_provider.dart';
 import '../providers/nav_badge_provider.dart';
 import 'local_notification_service.dart';
+import 'ride_cancellation_notice.dart';
 import 'incoming_request_action_bridge.dart';
 import 'incoming_request_overlay_presenter.dart';
 import 'live_activity_service.dart';
@@ -190,12 +191,26 @@ Future<bool> _handleOfferRevokedFromRemote(
           : null;
 
   if (inferredType != null && requestId != null && requestId.isNotEmpty) {
+    final reason = message.data['reason']?.toString() ?? 'revoked';
     await clearIncomingRequestAlert(
       type: inferredType,
       requestId: requestId,
       offerId: message.data[NotificationPayload.keyOfferId]?.toString(),
-      reason: message.data['reason']?.toString() ?? 'revoked',
+      reason: reason,
     );
+    if (inferredType == NotificationPayload.typeRideRequest &&
+        isRiderCancellationRevocation(reason)) {
+      await LocalNotificationService.instance.init();
+      await LocalNotificationService.instance.showTimelineUpdate(
+        type: NotificationPayload.typeRideCancelled,
+        title: 'Ride request cancelled',
+        body: 'The rider cancelled this ride request.',
+        extras: {
+          NotificationPayload.keyRideId: requestId,
+          'reason': reason,
+        },
+      );
+    }
     debugPrint('[FCM] $source cleared revoked $inferredType $requestId');
   } else {
     debugPrint('[FCM] $source offer_revoked missing request identity');
@@ -727,6 +742,24 @@ class FcmService {
           _ref.read(pendingIncomingJobsProvider.notifier).remove(jobId);
           if (_ref.read(incomingJobRequestProvider)?.id == jobId) {
             _ref.read(incomingJobRequestProvider.notifier).state = null;
+          }
+        }
+        final reason = message.data['reason']?.toString();
+        if (rideId != null &&
+            rideId.isNotEmpty &&
+            isRiderCancellationRevocation(reason) &&
+            claimRiderCancellationInAppNotice(rideId)) {
+          final router = _ref.read(goRouterProvider);
+          final context = router.routerDelegate.navigatorKey.currentContext;
+          if (context != null && context.mounted) {
+            ScaffoldMessenger.of(context)
+              ..hideCurrentSnackBar()
+              ..showSnackBar(
+                const SnackBar(
+                  content: Text('The rider cancelled this ride request.'),
+                  duration: Duration(seconds: 5),
+                ),
+              );
           }
         }
         return;

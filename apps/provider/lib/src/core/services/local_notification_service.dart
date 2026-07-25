@@ -197,12 +197,10 @@ class NotificationPayload {
 
   /// Legacy auto-dismiss fallback when a backend request has no `expiresAt`.
   ///
-  /// Ride requests are only actionable for the backend matcher window
-  /// (`ride_driver_acceptance_window_secs`, currently 45 s). Keeping the
-  /// OS notification alive beyond that creates a dead-tap window where the
-  /// driver can open an already-expired request and land on the unavailable
-  /// fallback screen.
+  /// Job offers retain the legacy 45-second fallback. Ride offers use the
+  /// receipt-based deadline and the dedicated 30-second fallback below.
   static const Duration persistentRequestTimeout = Duration(seconds: 45);
+  static const Duration rideRequestTimeout = Duration(seconds: 30);
 
   /// Types that should render through the dedicated `chat_messages` channel
   /// (Android) / `MESSAGE` category (iOS) so the OS treats them like
@@ -315,8 +313,8 @@ class LocalNotificationService {
     'incoming_requests_v3',
     'Incoming Job & Ride Requests',
     description:
-        'New job and ride request alerts. Plays the MyShop ringtone for up '
-        'to 45 seconds so you can hear it across the room.',
+        'New job and ride request alerts. Plays the MyShop ringtone until '
+        'the request decision deadline.',
     importance: Importance.max,
     playSound: true,
     sound: RawResourceAndroidNotificationSound('incoming_request'),
@@ -487,7 +485,7 @@ class LocalNotificationService {
     final isPersistentRequest =
         NotificationPayload.persistentRequestTypes.contains(type);
     // Order matters: the incoming-request channel is the "most specific"
-    // urgent path (custom ringtone, sticky, 45 s timeout). Falling back
+    // urgent path (custom ringtone, sticky, server-authoritative timeout). Falling back
     // to _urgentChannel for the rest of the urgent set keeps bid_accepted
     // / reminder pings on the original sound profile users have already
     // tuned.
@@ -581,12 +579,15 @@ class LocalNotificationService {
           // behavior). Incoming-request types additionally stick
           // (`ongoing: true`) so the user can't accidentally swipe the
           // call-style banner away mid-pocket; the OS clears it via
-          // `timeoutAfter` after the 45 s window OR when the user taps.
+          // `timeoutAfter` at the request deadline OR when the user taps.
           autoCancel: true,
           ongoing: isPersistentRequest,
           timeoutAfter: isPersistentRequest
               ? _timeoutMilliseconds(
-                  timeoutAfter ?? NotificationPayload.persistentRequestTimeout,
+                  timeoutAfter ??
+                      (type == NotificationPayload.typeRideRequest
+                          ? NotificationPayload.rideRequestTimeout
+                          : NotificationPayload.persistentRequestTimeout),
                 )
               : null,
           styleInformation: BigTextStyleInformation(body),

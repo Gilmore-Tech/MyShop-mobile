@@ -369,7 +369,7 @@ Use internal-track/TestFlight builds with unused private build numbers.
      confirm Offline truthfully, and show only stable actionable copy. Repeat
      during active ride/job recovery and prove current work is not discarded.
 4. **Ride delivery:** foreground, background, terminated, and locked provider;
-   authenticated receipt within ten seconds; 45 seconds independently for A
+   authenticated receipt within ten seconds; 30 seconds independently for A
    then B; decline, expiry, duplicate socket/push, reconnect, and process death.
 5. **Artisan lifecycle:** solo capacity one, non-solo configured capacity,
    bids/selection, arrival/start/end geofence warning, dual completion, payment,

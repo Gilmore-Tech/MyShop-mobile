@@ -46,7 +46,7 @@ bool isConfirmedRideAcceptResponse(Object? raw, String rideId) {
 ///
 /// The backend's pending-request endpoint can return `expiresAt`; FCM/socket
 /// payloads may also carry it. The request screen falls back to
-/// `ride.createdAt + 45s` when no explicit deadline is available.
+/// `ride.createdAt + 30s` when no explicit deadline is available.
 final rideRequestDeadlineByIdProvider =
     StateProvider<Map<String, DateTime>>((_) => <String, DateTime>{});
 
