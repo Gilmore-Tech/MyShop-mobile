@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
@@ -27,6 +28,8 @@ class IncomingRequestActionBridge {
 
   final Future<void> Function(Map<String, dynamic>) _handleAction;
   final Set<String> _processingIds = <String>{};
+  final Set<String> _completedIosActionIds = <String>{};
+  final ListQueue<String> _completedIosActionOrder = ListQueue<String>();
   final IncomingRequestOverlay _androidOverlay =
       IncomingRequestOverlay.instance;
   StreamSubscription<IncomingRequestOverlayAction>? _androidSubscription;
@@ -161,7 +164,15 @@ class IncomingRequestActionBridge {
     if (queueId == null ||
         queueId.isEmpty ||
         selectedAction == null ||
-        selectedAction.isEmpty ||
+        selectedAction.isEmpty) {
+      return;
+    }
+    // iOS publishes newly queued actions through EventChannel and also returns
+    // a durable pending snapshot during startup. The same action can therefore
+    // arrive once through each path. [_processingIds] closes the concurrent
+    // race; this bounded completed cache also closes the sequential race where
+    // the EventChannel copy finishes before the pending snapshot is replayed.
+    if (_completedIosActionIds.contains(queueId) ||
         !_processingIds.add(queueId)) {
       return;
     }
@@ -185,6 +196,7 @@ class IncomingRequestActionBridge {
         'acknowledgeRequestAction',
         <String, String>{'actionId': queueId},
       );
+      _rememberCompletedIosAction(queueId);
     } catch (error, stackTrace) {
       debugPrint(
         '[RequestAction] iOS action $selectedAction failed: $error\n'
@@ -194,6 +206,21 @@ class IncomingRequestActionBridge {
     } finally {
       _processingIds.remove(queueId);
     }
+  }
+
+  static const int _completedIosActionLimit = 128;
+
+  void _rememberCompletedIosAction(String actionId) {
+    if (!_completedIosActionIds.add(actionId)) return;
+    _completedIosActionOrder.addLast(actionId);
+    while (_completedIosActionOrder.length > _completedIosActionLimit) {
+      _completedIosActionIds.remove(_completedIosActionOrder.removeFirst());
+    }
+  }
+
+  @visibleForTesting
+  Future<void> processIosActionForTesting(Map<String, dynamic> event) {
+    return _processIosAction(event);
   }
 
   Future<void> dispose() async {

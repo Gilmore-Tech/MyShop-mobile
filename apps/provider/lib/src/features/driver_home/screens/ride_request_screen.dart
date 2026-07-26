@@ -42,10 +42,15 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
   bool _isDeclining = false;
   bool _expired = false;
   bool _expiryHandled = false;
+  late final StateController<String?> _visibleRequestController;
 
   @override
   void initState() {
     super.initState();
+    // Riverpod deliberately disallows `ref.read` once unmount has begun.
+    // Cache this controller while mounted so dispose can conditionally release
+    // only this ride's marker without overwriting a newer request screen.
+    _visibleRequestController = ref.read(visibleRideRequestIdProvider.notifier);
     _mountRequest(widget.ride);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -90,7 +95,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
   void _markVisibleAfterBuild(String rideId) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || widget.ride.id != rideId) return;
-      ref.read(visibleRideRequestIdProvider.notifier).state = rideId;
+      _visibleRequestController.state = rideId;
     });
   }
 
@@ -105,6 +110,33 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     final explicit = ref.read(rideRequestDeadlineByIdProvider)[ride.id];
     if (explicit != null) return explicit.toLocal();
     return ride.createdAt.toLocal().add(_acceptanceWindow);
+  }
+
+  void _adoptLaterAuthoritativeDeadline(DateTime candidate) {
+    if (!mounted ||
+        _isAccepting ||
+        _isDeclining ||
+        _expired ||
+        _expiryHandled) {
+      return;
+    }
+    final nextDeadline = candidate.toLocal();
+    // Delivery receipt and socket hydration may update the same mounted ride.
+    // Only move the clock forward: a delayed delivery payload carrying the
+    // earlier 10-second transport deadline must never shorten an already
+    // authoritative 30-second decision window.
+    if (!nextDeadline.toUtc().isAfter(_expiresAt.toUtc())) return;
+    final remaining = _secondsUntil(nextDeadline);
+    if (remaining <= 0) return;
+
+    _timer?.cancel();
+    setState(() {
+      _expiresAt = nextDeadline;
+      _secondsRemaining = remaining;
+    });
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      _syncRemaining();
+    });
   }
 
   int _secondsUntil(DateTime deadline) {
@@ -184,13 +216,15 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     // silence the ring. Without this, accepting a ride would leave
     // the alert chiming on top of the active-ride map.
     LocalNotificationService.instance.stopIncomingRingtone();
+    // Clear only our own marker. A replacement request screen may already
+    // have claimed the shared marker before this screen is disposed.
+    _clearVisibleMarker();
     super.dispose();
   }
 
   void _clearVisibleMarker() {
-    final visibleId = ref.read(visibleRideRequestIdProvider);
-    if (visibleId == widget.ride.id) {
-      ref.read(visibleRideRequestIdProvider.notifier).state = null;
+    if (_visibleRequestController.state == widget.ride.id) {
+      _visibleRequestController.state = null;
     }
   }
 
@@ -278,6 +312,13 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
         (previous, next) {
       if (next != null && next.rideId == widget.ride.id) {
         _handleRemoteDismissal(next);
+      }
+    });
+    ref.listen<Map<String, DateTime>>(rideRequestDeadlineByIdProvider,
+        (previous, next) {
+      final deadline = next[widget.ride.id];
+      if (deadline != null) {
+        _adoptLaterAuthoritativeDeadline(deadline);
       }
     });
     final ride = widget.ride;

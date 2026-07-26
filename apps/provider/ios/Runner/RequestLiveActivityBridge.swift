@@ -466,7 +466,11 @@ final class RequestLiveActivityBridge: NSObject, FlutterStreamHandler, @unchecke
       }
       NSLog("[LiveActivity] ride receipt acknowledged for offerId=%@", offerId)
       return .acknowledged(
-        Int(floor(Date().timeIntervalSince1970 + remainingSeconds))
+        // Use the backend's absolute deadline rather than adding the original
+        // remaining interval after this HTTP response arrives. That keeps the
+        // Live Activity aligned with the in-app timer and avoids extending the
+        // actionable-looking surface by network or token-binding latency.
+        Int(ceil(deadline.timeIntervalSince1970))
       )
     } catch {
       NSLog(
