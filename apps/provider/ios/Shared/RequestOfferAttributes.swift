@@ -23,4 +23,8 @@ struct RequestOfferAttributes: ActivityAttributes {
   let requestId: String
   let offerId: String
   let requestType: String
+  let attempt: Int?
+  let notificationReceiptVersion: Int?
+  let notificationReceiptUrl: String?
+  let notificationReceiptToken: String?
 }

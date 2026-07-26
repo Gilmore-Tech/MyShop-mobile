@@ -2,11 +2,37 @@ import ActivityKit
 import Flutter
 import Foundation
 
+/// Receipt capabilities must never be forwarded through an HTTP redirect. The
+/// URL itself is signed by the backend, but URLSession follows redirects by
+/// default and would otherwise copy the short-lived bearer capability to the
+/// redirect target.
+private final class NoRedirectReceiptSessionDelegate:
+  NSObject,
+  URLSessionTaskDelegate,
+  @unchecked Sendable
+{
+  func urlSession(
+    _ session: URLSession,
+    task: URLSessionTask,
+    willPerformHTTPRedirection response: HTTPURLResponse,
+    newRequest request: URLRequest,
+    completionHandler: @escaping (URLRequest?) -> Void
+  ) {
+    completionHandler(nil)
+  }
+}
+
 /// Durable Flutter bridge for ActivityKit push-to-start and per-activity update
 /// tokens. The backend needs both tokens: one starts an offer while Runner is
 /// terminated, and the other updates or ends that exact activity afterwards.
 final class RequestLiveActivityBridge: NSObject, FlutterStreamHandler, @unchecked Sendable {
   static let shared = RequestLiveActivityBridge()
+
+  private enum RideReceiptOutcome {
+    case acknowledged(Int)
+    case terminal
+    case retryable
+  }
 
   private let methodChannelName = "com.gilmoretech.myshop/live_activity"
   private let eventChannelName = "com.gilmoretech.myshop/live_activity/events"
@@ -14,6 +40,17 @@ final class RequestLiveActivityBridge: NSObject, FlutterStreamHandler, @unchecke
   private let activityTokensKey = "myshop.liveActivity.updateTokens"
   private let pendingEventsKey = "myshop.liveActivity.pendingEvents"
   private let maximumPendingEvents = 100
+  private static let receiptSessionDelegate = NoRedirectReceiptSessionDelegate()
+  private static let receiptSession: URLSession = {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.timeoutIntervalForRequest = 2
+    configuration.timeoutIntervalForResource = 3
+    return URLSession(
+      configuration: configuration,
+      delegate: receiptSessionDelegate,
+      delegateQueue: nil
+    )
+  }()
 
   private var methodChannel: FlutterMethodChannel?
   private var eventChannel: FlutterEventChannel?
@@ -26,6 +63,10 @@ final class RequestLiveActivityBridge: NSObject, FlutterStreamHandler, @unchecke
   private var stateTasks: [String: Task<Void, Never>] = [:]
   private var contentTasks: [String: Task<Void, Never>] = [:]
   private var expiryTasks: [String: Task<Void, Never>] = [:]
+  private var receiptTasks: [String: Task<Void, Never>] = [:]
+  private var receiptBindingTasks: [String: Task<Void, Never>] = [:]
+  private var acknowledgedReceiptActivityIds = Set<String>()
+  private var boundReceiptTokens: [String: String] = [:]
   private var endedActivityIds = Set<String>()
   private var activityTokens: [String: String] = [:]
   private var pendingEvents: [[String: Any]] = []
@@ -226,6 +267,7 @@ final class RequestLiveActivityBridge: NSObject, FlutterStreamHandler, @unchecke
     if let token = activity.pushToken {
       recordActivityToken(token, activity: activity)
     }
+    acknowledgeRideReceiptIfNeeded(activity)
     if tokenTasks[activity.id] == nil {
       tokenTasks[activity.id] = Task { [weak self] in
         guard let self else { return }
@@ -258,19 +300,328 @@ final class RequestLiveActivityBridge: NSObject, FlutterStreamHandler, @unchecke
     scheduleExpiry(for: activity)
   }
 
+  /// A remotely started Live Activity does not pass through the notification
+  /// service extension. ActivityKit wakes Runner after a successful start, so
+  /// acknowledge the same short-lived, offer-scoped HMAC here. This keeps the
+  /// Live Activity as the single visible iOS request surface while preserving
+  /// the server-authoritative 10-second delivery and 30-second decision clocks.
+  @available(iOS 16.1, *)
+  private func acknowledgeRideReceiptIfNeeded(
+    _ activity: Activity<RequestOfferAttributes>
+  ) {
+    let attributes = activity.attributes
+    guard Self.normalisedRequestType(attributes.requestType) == "ride",
+          attributes.notificationReceiptVersion == 1,
+          let receiptURL = Self.validReceiptURL(attributes.notificationReceiptUrl),
+          let receiptToken = attributes.notificationReceiptToken,
+          receiptToken.range(
+            of: #"^[A-Za-z0-9_-]{43}$"#,
+            options: .regularExpression
+          ) != nil,
+          !acknowledgedReceiptActivityIds.contains(activity.id),
+          receiptTasks[activity.id] == nil
+    else { return }
+
+    receiptTasks[activity.id] = Task { [weak self] in
+      guard let self else { return }
+      let updateToken = await MainActor.run {
+        activity.pushToken.map(Self.hex) ?? self.activityTokens[activity.id]
+      }
+      var receiptOutcome = RideReceiptOutcome.retryable
+      for attempt in 1 ... 3 {
+        guard !Task.isCancelled else { break }
+        receiptOutcome = await Self.postRideReceipt(
+          url: receiptURL,
+          rideId: attributes.requestId,
+          offerId: attributes.offerId,
+          attempt: attributes.attempt,
+          receiptToken: receiptToken,
+          activityId: updateToken == nil ? nil : activity.id,
+          updateToken: updateToken
+        )
+        if case .retryable = receiptOutcome {
+          // Retry only transport/server failures while the 10-second delivery
+          // capability can still be valid.
+        } else {
+          break
+        }
+        if Task.isCancelled { break }
+        if attempt < 3 {
+          try? await Task.sleep(
+            nanoseconds: UInt64(attempt) * 400_000_000
+          )
+        }
+      }
+      guard !Task.isCancelled, Self.canUpdate(activity) else {
+        await MainActor.run { self.receiptTasks.removeValue(forKey: activity.id) }
+        return
+      }
+      switch receiptOutcome {
+      case let .acknowledged(decisionExpiry):
+        await self.applyDecisionExpiry(decisionExpiry, to: activity)
+        guard !Task.isCancelled, Self.canUpdate(activity) else {
+          await MainActor.run { self.receiptTasks.removeValue(forKey: activity.id) }
+          return
+        }
+        await MainActor.run {
+          self.acknowledgedReceiptActivityIds.insert(activity.id)
+          if let updateToken {
+            self.boundReceiptTokens[activity.id] = updateToken
+          }
+          self.scheduleExpiry(for: activity)
+          self.bindRideActivityIfNeeded(activity)
+        }
+      case .terminal:
+        _ = await self.endActivities(
+          requestId: attributes.requestId,
+          offerId: attributes.offerId,
+          requestType: attributes.requestType,
+          reason: "expired"
+        )
+      case .retryable:
+        break
+      }
+      await MainActor.run {
+        self.receiptTasks.removeValue(forKey: activity.id)
+      }
+    }
+  }
+
+  private static func validReceiptURL(_ raw: String?) -> URL? {
+    guard let raw,
+          let url = URL(string: raw),
+          url.scheme?.lowercased() == "https",
+          url.user == nil,
+          url.password == nil,
+          url.host != nil,
+          url.query == nil,
+          url.fragment == nil,
+          url.path.hasSuffix("/v1/rides/offers/notification-receipt")
+    else { return nil }
+    return url
+  }
+
+  private static func postRideReceipt(
+    url: URL,
+    rideId: String,
+    offerId: String,
+    attempt: Int?,
+    receiptToken: String,
+    activityId: String?,
+    updateToken: String?
+  ) async -> RideReceiptOutcome {
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.timeoutInterval = 2
+    request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    var body: [String: Any] = [
+      "rideId": rideId,
+      "offerId": offerId,
+      "receiptToken": receiptToken,
+    ]
+    if let activityId, let updateToken {
+      body["activityId"] = activityId
+      body["updateToken"] = updateToken
+    }
+    request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+    do {
+      let (data, response) = try await Self.receiptSession.data(for: request)
+      guard let http = response as? HTTPURLResponse else {
+        return .retryable
+      }
+      guard (200 ... 299).contains(http.statusCode) else {
+        NSLog("[LiveActivity] ride receipt rejected for offerId=%@", offerId)
+        if [408, 425, 429].contains(http.statusCode) {
+          return .retryable
+        }
+        return (400 ... 499).contains(http.statusCode) ? .terminal : .retryable
+      }
+      guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        return .retryable
+      }
+      let payload = root["data"] as? [String: Any] ?? root
+      guard payload["rideId"] as? String == rideId,
+            payload["offerId"] as? String == offerId,
+            attempt == nil || (payload["attempt"] as? NSNumber)?.intValue == attempt
+      else {
+        NSLog("[LiveActivity] ride receipt identity mismatch for offerId=%@", offerId)
+        return .terminal
+      }
+      guard let rawDeadline = payload["decisionExpiresAt"] as? String
+              ?? payload["acceptanceExpiresAt"] as? String
+              ?? payload["expiresAt"] as? String,
+            let rawServerNow = payload["serverNow"] as? String,
+            let deadline = Self.parseISO8601(rawDeadline),
+            let serverNow = Self.parseISO8601(rawServerNow)
+      else {
+        NSLog("[LiveActivity] ride receipt omitted decision deadline for offerId=%@", offerId)
+        return .retryable
+      }
+      let remainingSeconds = deadline.timeIntervalSince(serverNow)
+      guard remainingSeconds > 0, remainingSeconds <= 31 else {
+        NSLog("[LiveActivity] ride receipt deadline invalid for offerId=%@", offerId)
+        return .terminal
+      }
+      NSLog("[LiveActivity] ride receipt acknowledged for offerId=%@", offerId)
+      return .acknowledged(
+        Int(floor(Date().timeIntervalSince1970 + remainingSeconds))
+      )
+    } catch {
+      NSLog(
+        "[LiveActivity] ride receipt failed for offerId=%@ error=%@",
+        offerId,
+        String(describing: error)
+      )
+      return .retryable
+    }
+  }
+
+  private static func parseISO8601(_ value: String) -> Date? {
+    let fractional = ISO8601DateFormatter()
+    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let parsed = fractional.date(from: value) {
+      return parsed
+    }
+    return ISO8601DateFormatter().date(from: value)
+  }
+
+  @available(iOS 16.1, *)
+  private func applyDecisionExpiry(
+    _ expiresAtEpochSeconds: Int,
+    to activity: Activity<RequestOfferAttributes>
+  ) async {
+    let current: RequestOfferAttributes.ContentState
+    if #available(iOS 16.2, *) {
+      current = activity.content.state
+    } else {
+      current = activity.contentState
+    }
+    let updated = RequestOfferAttributes.ContentState(
+      status: current.status,
+      farePesewas: current.farePesewas,
+      minimumBidPesewas: current.minimumBidPesewas,
+      distanceKm: current.distanceKm,
+      durationMinutes: current.durationMinutes,
+      category: current.category,
+      expiresAtEpochSeconds: expiresAtEpochSeconds,
+      endReason: current.endReason
+    )
+    if #available(iOS 16.2, *) {
+      await activity.update(
+        ActivityContent(
+          state: updated,
+          staleDate: Date(timeIntervalSince1970: TimeInterval(expiresAtEpochSeconds))
+        )
+      )
+    } else {
+      await activity.update(using: updated)
+    }
+  }
+
   @available(iOS 16.1, *)
   private func recordActivityToken(
     _ data: Data,
     activity: Activity<RequestOfferAttributes>
   ) {
     let token = Self.hex(data)
-    guard activityTokens[activity.id] != token else { return }
-    activityTokens[activity.id] = token
-    persistActivityTokens()
-    var event = activityPayload(activity)
-    event["type"] = "activityUpdateToken"
-    event["token"] = token
-    emitOrQueue(event)
+    if activityTokens[activity.id] != token {
+      activityTokens[activity.id] = token
+      persistActivityTokens()
+      var event = activityPayload(activity)
+      event["type"] = "activityUpdateToken"
+      event["token"] = token
+      emitOrQueue(event)
+    }
+    bindRideActivityIfNeeded(activity)
+  }
+
+  /// Bind the per-activity update token through the same signed, offer-scoped
+  /// receipt endpoint. This path is native because Flutter may not initialise
+  /// after ActivityKit wakes a terminated app. Without this binding, the
+  /// backend could start an activity but could not reliably end it.
+  @available(iOS 16.1, *)
+  private func bindRideActivityIfNeeded(
+    _ activity: Activity<RequestOfferAttributes>
+  ) {
+    let attributes = activity.attributes
+    guard Self.normalisedRequestType(attributes.requestType) == "ride",
+          attributes.notificationReceiptVersion == 1,
+          acknowledgedReceiptActivityIds.contains(activity.id),
+          receiptBindingTasks[activity.id] == nil,
+          Self.canUpdate(activity),
+          let receiptURL = Self.validReceiptURL(attributes.notificationReceiptUrl),
+          let receiptToken = attributes.notificationReceiptToken,
+          receiptToken.range(
+            of: #"^[A-Za-z0-9_-]{43}$"#,
+            options: .regularExpression
+          ) != nil,
+          let updateToken = activity.pushToken.map(Self.hex) ?? activityTokens[activity.id],
+          boundReceiptTokens[activity.id] != updateToken
+    else { return }
+
+    receiptBindingTasks[activity.id] = Task { [weak self] in
+      guard let self else { return }
+      var outcome = RideReceiptOutcome.retryable
+      for attempt in 1 ... 3 {
+        guard !Task.isCancelled else { break }
+        outcome = await Self.postRideReceipt(
+          url: receiptURL,
+          rideId: attributes.requestId,
+          offerId: attributes.offerId,
+          attempt: attributes.attempt,
+          receiptToken: receiptToken,
+          activityId: activity.id,
+          updateToken: updateToken
+        )
+        if case .retryable = outcome {
+          if attempt < 3 {
+            try? await Task.sleep(nanoseconds: UInt64(attempt) * 400_000_000)
+          }
+        } else {
+          break
+        }
+      }
+
+      guard !Task.isCancelled, Self.canUpdate(activity) else {
+        await MainActor.run {
+          self.receiptBindingTasks.removeValue(forKey: activity.id)
+        }
+        return
+      }
+      var shouldCheckForRotatedToken = false
+      switch outcome {
+      case let .acknowledged(decisionExpiry):
+        await self.applyDecisionExpiry(decisionExpiry, to: activity)
+        guard !Task.isCancelled, Self.canUpdate(activity) else {
+          await MainActor.run {
+            self.receiptBindingTasks.removeValue(forKey: activity.id)
+          }
+          return
+        }
+        await MainActor.run {
+          self.boundReceiptTokens[activity.id] = updateToken
+          self.scheduleExpiry(for: activity)
+        }
+        shouldCheckForRotatedToken = true
+      case .terminal:
+        _ = await self.endActivities(
+          requestId: attributes.requestId,
+          offerId: attributes.offerId,
+          requestType: attributes.requestType,
+          reason: "expired"
+        )
+      case .retryable:
+        break
+      }
+      await MainActor.run {
+        self.receiptBindingTasks.removeValue(forKey: activity.id)
+        if shouldCheckForRotatedToken {
+          self.bindRideActivityIfNeeded(activity)
+        }
+      }
+    }
   }
 
   @available(iOS 16.1, *)
@@ -280,6 +631,10 @@ final class RequestLiveActivityBridge: NSObject, FlutterStreamHandler, @unchecke
     stateTasks.removeValue(forKey: activity.id)?.cancel()
     contentTasks.removeValue(forKey: activity.id)?.cancel()
     expiryTasks.removeValue(forKey: activity.id)?.cancel()
+    receiptTasks.removeValue(forKey: activity.id)?.cancel()
+    receiptBindingTasks.removeValue(forKey: activity.id)?.cancel()
+    acknowledgedReceiptActivityIds.remove(activity.id)
+    boundReceiptTokens.removeValue(forKey: activity.id)
     activityTokens.removeValue(forKey: activity.id)
     persistActivityTokens()
     var event = activityPayload(activity)
@@ -449,10 +804,16 @@ final class RequestLiveActivityBridge: NSObject, FlutterStreamHandler, @unchecke
     stateTasks.values.forEach { $0.cancel() }
     contentTasks.values.forEach { $0.cancel() }
     expiryTasks.values.forEach { $0.cancel() }
+    receiptTasks.values.forEach { $0.cancel() }
+    receiptBindingTasks.values.forEach { $0.cancel() }
     tokenTasks.removeAll()
     stateTasks.removeAll()
     contentTasks.removeAll()
     expiryTasks.removeAll()
+    receiptTasks.removeAll()
+    receiptBindingTasks.removeAll()
+    acknowledgedReceiptActivityIds.removeAll()
+    boundReceiptTokens.removeAll()
     activityTokens.removeAll()
     persistActivityTokens()
     pendingEvents.removeAll { event in
@@ -468,6 +829,13 @@ final class RequestLiveActivityBridge: NSObject, FlutterStreamHandler, @unchecke
 
   private static func hex(_ data: Data) -> String {
     data.map { String(format: "%02x", $0) }.joined()
+  }
+
+  @available(iOS 16.1, *)
+  private static func canUpdate(
+    _ activity: Activity<RequestOfferAttributes>
+  ) -> Bool {
+    activity.activityState != .ended && activity.activityState != .dismissed
   }
 
   private static func normalisedRequestType(_ value: String) -> String {

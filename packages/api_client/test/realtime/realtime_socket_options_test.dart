@@ -5,7 +5,7 @@ void main() {
   test('realtime sockets use indefinite exponential reconnect with jitter', () {
     final options = buildRealtimeSocketOptions(
       token: 'private-token',
-      auth: const {'offerReceiptVersion': 1},
+      auth: const {'offerReceiptVersion': 2},
     );
 
     expect(options['transports'], ['websocket']);
@@ -18,7 +18,7 @@ void main() {
     expect(options['timeout'], 15000);
     expect(options['auth'], {
       'token': 'private-token',
-      'offerReceiptVersion': 1,
+      'offerReceiptVersion': 2,
     });
   });
 }

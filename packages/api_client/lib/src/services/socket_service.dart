@@ -31,7 +31,8 @@ class SocketService {
         _tokenStorage = tokenStorage,
         _tokenRefresher = tokenRefresher;
 
-  static const int rideOfferReceiptVersion = 1;
+  // v2 includes the native ActivityKit receipt path used by iOS remote starts.
+  static const int rideOfferReceiptVersion = 2;
 
   final ApiConfig _config;
   final TokenStorage _tokenStorage;
