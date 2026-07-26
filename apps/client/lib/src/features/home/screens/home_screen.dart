@@ -5,6 +5,7 @@ import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:intl/intl.dart';
 
 import '../../../app/router.dart';
 import '../../../core/di/providers.dart';
@@ -70,7 +71,8 @@ class HomeScreen extends ConsumerWidget {
                     _ServiceCardsRow(),
                     SizedBox(height: h * 0.028),
                     _SpecialOffersSection(),
-                    SizedBox(height: h * 0.028),
+                    const _RecentActivitySection(),
+                    SizedBox(height: h * 0.03),
                     const SafetyBanner(),
                     SizedBox(height: h * 0.028),
                   ],
@@ -283,11 +285,18 @@ class _ServiceCardsRow extends ConsumerWidget {
         .timeout(const Duration(seconds: 8), onTimeout: () => null);
     if (pos == null) return;
 
-    final cachedPlace = ref.read(currentLocationPlaceProvider).valueOrNull;
-    final place = _isGenericCurrentPlace(cachedPlace)
-        ? await _reverseGeocodePosition(ref, pos)
-            .timeout(const Duration(seconds: 2), onTimeout: () => null)
-        : cachedPlace;
+    // Await the place tied to the provider's current GPS dependency rather
+    // than reading `valueOrNull`: Riverpod retains the previous value while a
+    // FutureProvider refreshes, which could pair an old address with these new
+    // exact coordinates.
+    ReverseGeocodePlace? place;
+    try {
+      place = await ref
+          .read(currentLocationPlaceProvider.future)
+          .timeout(const Duration(seconds: 2));
+    } on TimeoutException {
+      place = null;
+    }
 
     _writePickup(ref, pos, place);
 
@@ -358,6 +367,32 @@ class _SpecialOffersSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final offersAsync = ref.watch(specialOffersProvider);
 
+    return offersAsync.when(
+      // Offers are intentionally unavailable in this release. Do not flash a
+      // temporary promo skeleton that immediately disappears into empty data.
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (offers) {
+        if (offers.isEmpty) return const SizedBox.shrink();
+        return _content(
+          context,
+          ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.symmetric(
+              horizontal: MediaQuery.sizeOf(context).width * 0.041,
+            ),
+            itemCount: offers.length,
+            separatorBuilder: (_, __) =>
+                SizedBox(width: MediaQuery.sizeOf(context).width * 0.031),
+            itemBuilder: (_, i) => SpecialOfferCard(offer: offers[i]),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _content(BuildContext context, Widget child) {
+    final h = MediaQuery.sizeOf(context).height;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -366,40 +401,415 @@ class _SpecialOffersSection extends ConsumerWidget {
           title: 'SPECIAL OFFERS',
           leadingIcon: Icons.local_offer_rounded,
         ),
-        SizedBox(height: MediaQuery.sizeOf(context).height * 0.014),
+        SizedBox(height: h * 0.014),
         SizedBox(
-          height: MediaQuery.sizeOf(context).height * 0.175,
-          child: offersAsync.when(
-            loading: () => _OffersSkeletonList(),
-            error: (_, __) => const SizedBox.shrink(),
-            data: (offers) => ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.symmetric(
-                  horizontal: MediaQuery.sizeOf(context).width * 0.041),
-              itemCount: offers.length,
-              separatorBuilder: (_, __) =>
-                  SizedBox(width: MediaQuery.sizeOf(context).width * 0.031),
-              itemBuilder: (_, i) => SpecialOfferCard(offer: offers[i]),
-            ),
-          ),
+          height: h * 0.175,
+          child: child,
         ),
+        SizedBox(height: h * 0.028),
       ],
     );
   }
 }
 
-class _OffersSkeletonList extends StatelessWidget {
+// ── Recent activity ───────────────────────────────────────────────────────────
+
+class _RecentActivitySection extends ConsumerWidget {
+  const _RecentActivitySection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final activity = ref.watch(homeRecentActivityProvider);
+    final w = MediaQuery.sizeOf(context).width;
+    final h = MediaQuery.sizeOf(context).height;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: w * 0.041),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.history_rounded,
+                size: w * 0.042,
+                color: MyShopColors.primaryGold,
+              ),
+              SizedBox(width: w * 0.015),
+              Expanded(
+                child: Text(
+                  'RECENT ACTIVITY',
+                  style: TextStyle(
+                    fontSize: w * 0.026,
+                    fontWeight: FontWeight.w900,
+                    color: MyShopColors.textSecondary,
+                    letterSpacing: 1.4,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => context.go(AppRoutes.activity),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(44, 36),
+                  padding: EdgeInsets.symmetric(horizontal: w * 0.012),
+                  foregroundColor: MyShopColors.darkSlate,
+                  textStyle: TextStyle(
+                    fontSize: w * 0.031,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                child: const Text('View all'),
+              ),
+            ],
+          ),
+          SizedBox(height: h * 0.012),
+          activity.when(
+            loading: () => const _RecentActivitySkeleton(),
+            error: (_, __) => _RecentActivityError(
+              onRetry: () =>
+                  ref.read(homeRecentActivityProvider.notifier).refresh(),
+            ),
+            data: (items) => items.isEmpty
+                ? const _RecentActivityEmpty()
+                : Column(
+                    children: [
+                      for (var i = 0; i < items.length; i++) ...[
+                        _RecentActivityCard(item: items[i]),
+                        if (i != items.length - 1) SizedBox(height: h * 0.01),
+                      ],
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecentActivityCard extends StatelessWidget {
+  final HomeRecentActivityItem item;
+
+  const _RecentActivityCard({required this.item});
+
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
-    return ListView.separated(
-      scrollDirection: Axis.horizontal,
-      padding: EdgeInsets.symmetric(horizontal: w * 0.041),
-      itemCount: 2,
-      separatorBuilder: (_, __) => SizedBox(width: w * 0.031),
-      itemBuilder: (_, __) => const SpecialOfferCardSkeleton(),
+    final route = item.type == HomeActivityType.ride
+        ? AppRoutes.activityRidePath(item.id)
+        : AppRoutes.activityJobPath(item.id);
+    final icon = item.type == HomeActivityType.ride
+        ? Icons.directions_car_rounded
+        : Icons.home_repair_service_rounded;
+    final (badgeBackground, badgeForeground) = switch (item.status) {
+      HomeActivityStatus.completed => (
+          MyShopColors.successLight,
+          MyShopColors.success,
+        ),
+      HomeActivityStatus.cancelled => (
+          MyShopColors.errorLight,
+          MyShopColors.error,
+        ),
+      HomeActivityStatus.inProgress => (
+          MyShopColors.warningLight,
+          MyShopColors.warning,
+        ),
+      HomeActivityStatus.pending => (
+          MyShopColors.infoLight,
+          MyShopColors.info,
+        ),
+    };
+
+    return Material(
+      color: MyShopColors.surfaceWhite,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: () => context.push(route),
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: MyShopColors.divider),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: const BoxDecoration(
+                  color: MyShopColors.primaryGoldLight,
+                  shape: BoxShape.circle,
+                ),
+                child:
+                    Icon(icon, color: MyShopColors.primaryGoldDark, size: 21),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: w * 0.036,
+                        fontWeight: FontWeight.w700,
+                        color: MyShopColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      item.subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: w * 0.029,
+                        height: 1.3,
+                        color: MyShopColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 9),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _activityTimeLabel(item.createdAt),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: w * 0.028,
+                              color: MyShopColors.textSecondary,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: badgeBackground,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            item.status.label,
+                            style: TextStyle(
+                              fontSize: w * 0.025,
+                              fontWeight: FontWeight.w700,
+                              color: badgeForeground,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 5),
+              const Padding(
+                padding: EdgeInsets.only(top: 10),
+                child: Icon(
+                  Icons.chevron_right_rounded,
+                  size: 20,
+                  color: MyShopColors.textHint,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
+}
+
+class _RecentActivityEmpty extends StatelessWidget {
+  const _RecentActivityEmpty();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
+      decoration: BoxDecoration(
+        color: MyShopColors.surfaceWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: MyShopColors.divider),
+      ),
+      child: const Column(
+        children: [
+          _RecentActivityEmptyIcon(),
+          SizedBox(height: 12),
+          Text(
+            'Your activity will appear here',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: MyShopColors.textPrimary,
+            ),
+          ),
+          SizedBox(height: 5),
+          Text(
+            'Your latest rides and service jobs will be easy to revisit after you book.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.4,
+              color: MyShopColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecentActivityEmptyIcon extends StatelessWidget {
+  const _RecentActivityEmptyIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: const BoxDecoration(
+        color: MyShopColors.primaryGoldLight,
+        shape: BoxShape.circle,
+      ),
+      child: const Icon(
+        Icons.route_rounded,
+        color: MyShopColors.primaryGoldDark,
+        size: 24,
+      ),
+    );
+  }
+}
+
+class _RecentActivityError extends StatelessWidget {
+  final VoidCallback onRetry;
+
+  const _RecentActivityError({required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: MyShopColors.surfaceWhite,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: MyShopColors.divider),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.cloud_off_rounded,
+            color: MyShopColors.textSecondary,
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              "We couldn't load your recent activity.",
+              style: TextStyle(
+                fontSize: 12,
+                color: MyShopColors.textSecondary,
+              ),
+            ),
+          ),
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecentActivitySkeleton extends StatelessWidget {
+  const _RecentActivitySkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: List.generate(
+        2,
+        (index) => Padding(
+          padding: EdgeInsets.only(bottom: index == 0 ? 8 : 0),
+          child: Container(
+            height: 94,
+            decoration: BoxDecoration(
+              color: MyShopColors.surfaceWhite,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: MyShopColors.divider),
+            ),
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                const _SkeletonBlock(width: 42, height: 42, radius: 21),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      _SkeletonBlock(width: 130, height: 12, radius: 6),
+                      SizedBox(height: 9),
+                      _SkeletonBlock(
+                        width: double.infinity,
+                        height: 10,
+                        radius: 5,
+                      ),
+                      SizedBox(height: 9),
+                      _SkeletonBlock(width: 85, height: 9, radius: 5),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SkeletonBlock extends StatelessWidget {
+  final double width;
+  final double height;
+  final double radius;
+
+  const _SkeletonBlock({
+    required this.width,
+    required this.height,
+    required this.radius,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: MyShopColors.shimmerBase,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+    );
+  }
+}
+
+String _activityTimeLabel(DateTime createdAt) {
+  final local = createdAt.toLocal();
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final date = DateTime(local.year, local.month, local.day);
+  final dayLabel = date == today
+      ? 'Today'
+      : date == today.subtract(const Duration(days: 1))
+          ? 'Yesterday'
+          : DateFormat.MMMd().format(local);
+  return '$dayLabel · ${DateFormat.jm().format(local)}';
 }
 
 // ── Section header ────────────────────────────────────────────────────────────

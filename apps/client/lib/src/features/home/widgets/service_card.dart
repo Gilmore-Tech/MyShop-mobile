@@ -61,12 +61,16 @@ class ServiceCard extends StatelessWidget {
             SizedBox(height: h * 0.012),
             Row(
               children: [
-                Text(
-                  'Get started',
-                  style: TextStyle(
-                    fontSize: w * 0.031,
-                    fontWeight: FontWeight.w600,
-                    color: MyShopColors.primaryGold,
+                Expanded(
+                  child: Text(
+                    'Get started',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: w * 0.031,
+                      fontWeight: FontWeight.w600,
+                      color: MyShopColors.primaryGold,
+                    ),
                   ),
                 ),
                 SizedBox(width: w * 0.005),
