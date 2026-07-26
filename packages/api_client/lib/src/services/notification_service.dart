@@ -65,7 +65,10 @@ class NotificationService {
     required String fcmToken,
     required String platform,
     required String role,
-    int? offerReceiptVersion = 1,
+    // v2 adds native ActivityKit delivery receipts so a Live Activity can be
+    // the only visible iOS request surface. Older v1 installs remain on the
+    // standard APNs fallback during a staged rollout.
+    int? offerReceiptVersion = 2,
   }) async {
     try {
       await _dio.post(

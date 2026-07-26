@@ -36,6 +36,22 @@ final visibleRideRequestIdProvider = StateProvider<String?>((_) => null);
 final rideRequestNavigationInFlightProvider =
     StateProvider<Set<String>>((_) => <String>{});
 
+class RideOfferDismissal {
+  const RideOfferDismissal({
+    required this.rideId,
+    required this.reason,
+  });
+
+  final String rideId;
+  final String reason;
+}
+
+/// Terminal signal for a pre-acceptance ride offer already visible on the
+/// full-screen request route. Clearing the incoming payload alone cannot pop a
+/// route that received an immutable Ride through GoRouter.
+final rideOfferDismissalProvider =
+    StateProvider<RideOfferDismissal?>((_) => null);
+
 bool isConfirmedRideAcceptResponse(Object? raw, String rideId) {
   if (raw is! Map) return false;
   return raw['rideId']?.toString() == rideId &&
@@ -46,7 +62,7 @@ bool isConfirmedRideAcceptResponse(Object? raw, String rideId) {
 ///
 /// The backend's pending-request endpoint can return `expiresAt`; FCM/socket
 /// payloads may also carry it. The request screen falls back to
-/// `ride.createdAt + 45s` when no explicit deadline is available.
+/// `ride.createdAt + 30s` when no explicit deadline is available.
 final rideRequestDeadlineByIdProvider =
     StateProvider<Map<String, DateTime>>((_) => <String, DateTime>{});
 

@@ -10,6 +10,7 @@ import '../../app/router.dart' show AppRoutes, routerProvider;
 import '../../features/auth/providers/auth_controller.dart';
 import '../../features/activity/providers/activity_history_provider.dart';
 import '../../features/activity/providers/activity_provider.dart';
+import '../../features/home/providers/home_provider.dart';
 import '../../features/notifications/providers/notifications_provider.dart';
 import '../../features/ride/providers/edit_trip_provider.dart';
 import '../../features/ride/providers/ride_provider.dart';
@@ -85,13 +86,24 @@ void _connectAndListen(Ref ref, SocketService socket) {
   // `ride:state` snapshots. Without this, an emit issued before the
   // handshake completes is dropped silently and the rider is stuck on the
   // matching screen indefinitely.
+  var hasConnectedOnce = false;
   socket.connectionStream.listen((connected) {
     ref.container.read(socketConnectedProvider.notifier).state = connected;
     if (!connected) return;
+    if (hasConnectedOnce && ref.container.exists(homeRecentActivityProvider)) {
+      // Reconcile a session-cached Home preview after a genuine reconnect.
+      // The initial connection is excluded to avoid duplicating Home's first
+      // one-shot load.
+      ref.container.invalidate(homeRecentActivityProvider);
+    }
+    hasConnectedOnce = true;
     final rideId = ref.container.read(activeRideIdProvider);
     if (rideId != null && rideId.isNotEmpty) {
       developer.log('Socket connected — joining ride room $rideId', name: 'WS');
-      socket.emit('client:track:ride', {'rideId': rideId});
+      socket.emit('client:track:ride', {
+        'rideId': rideId,
+        'replayProgress': true,
+      });
     }
     // Re-join the job-tracking room on reconnect so the live artisan
     // marker keeps flowing without the screen having to re-mount. The
@@ -113,6 +125,23 @@ void _connectAndListen(Ref ref, SocketService socket) {
   // saw the connection succeed and the matching UI silently froze.
   void attachHandlers() {
     debugPrint('[WS] (re-)attaching client domain handlers');
+
+    // A booking can arrive through both its lightweight and canonical socket
+    // events. Refresh the session-cached home preview once per authoritative
+    // status so duplicate packets do not multiply history reads.
+    final refreshedHomeActivityEvents = <String>{};
+    void invalidateHomeActivityOnce(
+      String type,
+      String? id,
+      String status,
+    ) {
+      final normalizedId = id?.trim() ?? '';
+      if (normalizedId.isEmpty || status.isEmpty) return;
+      if (!refreshedHomeActivityEvents.add('$type:$normalizedId:$status')) {
+        return;
+      }
+      ref.container.invalidate(homeRecentActivityProvider);
+    }
 
     // Event names are useful diagnostics; payloads are not logged because
     // ride snapshots can contain exact addresses, coordinates, and identity.
@@ -239,10 +268,14 @@ void _connectAndListen(Ref ref, SocketService socket) {
       // the tracking screen listens for `rideTrackingPhase` transitions to
       // drive timers and the eventual `/ride-complete` redirect.
       final status = data['status'] as String? ?? '';
+      final rideId = (data['rideId'] ?? data['id'])?.toString();
+      invalidateHomeActivityOnce('ride', rideId, status);
+      if (status != 'requested' && status.isNotEmpty) {
+        ref.container.read(rideOfferDecisionCountdownProvider.notifier).clear();
+      }
       if (status == 'completed' ||
           status == 'cancelled' ||
           status == 'no_drivers') {
-        final rideId = (data['rideId'] ?? data['id'])?.toString();
         final notice = ref.container.read(providerLocationNoticeProvider);
         if (notice?.bookingType == 'ride' && notice?.bookingId == rideId) {
           ref.container.read(providerLocationNoticeProvider.notifier).state =
@@ -414,6 +447,11 @@ void _connectAndListen(Ref ref, SocketService socket) {
       if (eventRideId.isNotEmpty && eventRideId != activeRideId) return;
 
       final status = map['status'] as String? ?? '';
+      invalidateHomeActivityOnce(
+        'ride',
+        eventRideId.isEmpty ? activeRideId : eventRideId,
+        status,
+      );
       if (status == 'completed' || status == 'cancelled') {
         unawaited(
           ref.container.read(rideBookingAttemptStoreProvider).clear(),
@@ -421,6 +459,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
       }
       switch (status) {
         case 'driver_en_route':
+          ref.container
+              .read(rideOfferDecisionCountdownProvider.notifier)
+              .clear();
           ref.container.read(bookingPhaseProvider.notifier).accepted();
           ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
           ref.container.read(rideTrackingPhaseProvider.notifier).state =
@@ -449,6 +490,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
             ),
           );
         case 'cancelled' || 'no_drivers':
+          ref.container
+              .read(rideOfferDecisionCountdownProvider.notifier)
+              .clear();
           ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
           ref.container.read(bookingFailureMessageProvider.notifier).state =
               status == 'no_drivers'
@@ -479,8 +523,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
         if (data is! Map) return;
         final map = Map<String, dynamic>.from(data);
         final cancelledBy = (map['cancelledBy'] as String?) ?? '';
-        if (cancelledBy == 'client') return;
         final rideId = (map['rideId'] ?? map['id']) as String? ?? '';
+        invalidateHomeActivityOnce('ride', rideId, 'cancelled');
+        if (cancelledBy == 'client') return;
         if (rideId.isNotEmpty && !shownCancelledFor.add(rideId)) return;
         unawaited(
           ref.container.read(rideBookingAttemptStoreProvider).clear(),
@@ -593,16 +638,48 @@ void _connectAndListen(Ref ref, SocketService socket) {
           return;
         }
         final map = Map<String, dynamic>.from(data);
+        final activeRideId = ref.container.read(activeRideIdProvider);
+        final eventRideId = (map['rideId'] ?? map['id'])?.toString();
+        if (eventRideId == null ||
+            eventRideId.isEmpty ||
+            activeRideId == null ||
+            eventRideId != activeRideId) {
+          return;
+        }
         final attempt = (map['attempt'] as num?)?.toInt() ?? 0;
+        final currentProgress = ref.container.read(matcherProgressProvider);
+        if (attempt > 0 &&
+            currentProgress != null &&
+            currentProgress.attempt > attempt) {
+          developer.log(
+            'matcher_progress: ignored stale attempt=$attempt '
+            'current=${currentProgress.attempt}',
+            name: 'WS',
+          );
+          return;
+        }
         final driversTried = (map['driversTried'] as num?)?.toInt() ?? 0;
         final driversRemaining =
             (map['driversRemaining'] as num?)?.toInt() ?? 0;
         final radiusKm = (map['radiusKm'] as num?)?.toDouble() ?? 0;
+        final expanded = map['expanded'] == true;
         final reason = parseMatcherReason(map['reason'] as String?);
+        if (currentProgress != null &&
+            attempt == currentProgress.attempt &&
+            (radiusKm < currentProgress.radiusKm ||
+                (radiusKm == currentProgress.radiusKm &&
+                    currentProgress.expanded &&
+                    !expanded))) {
+          developer.log(
+            'matcher_progress: ignored regressive same-attempt radius/state',
+            name: 'WS',
+          );
+          return;
+        }
         developer.log(
           'matcher_progress: reason=$reason attempt=$attempt '
           'tried=$driversTried remaining=$driversRemaining '
-          'radiusKm=$radiusKm',
+          'radiusKm=$radiusKm expanded=$expanded',
           name: 'WS',
         );
         ref.container.read(matcherProgressProvider.notifier).state =
@@ -611,10 +688,101 @@ void _connectAndListen(Ref ref, SocketService socket) {
           driversTried: driversTried,
           driversRemaining: driversRemaining,
           radiusKm: radiusKm,
+          expanded: expanded,
           reason: reason,
         );
         ref.container.read(driversNotifiedProvider.notifier).state =
             driversTried;
+        if (reason == MatcherReason.decline ||
+            reason == MatcherReason.timeout) {
+          final countdown =
+              ref.container.read(rideOfferDecisionCountdownProvider);
+          // Redispatch publishes attempt N before its offer is receipted. Clear
+          // an older driver's countdown, but never let replayed context for the
+          // same active attempt erase its authoritative decision window.
+          if (countdown == null || attempt > countdown.attempt) {
+            ref.container
+                .read(rideOfferDecisionCountdownProvider.notifier)
+                .clear();
+          }
+        }
+      });
+
+    // A real driver countdown begins only after the provider's authenticated
+    // receipt activates the database decision deadline. This event contains
+    // no driver/offer identity; it is safe for the rider room and replayed on
+    // reconnect by client:track:ride.
+    socket
+      ..off('ride:offer_received')
+      ..on('ride:offer_received', (data) {
+        if (data is! Map) return;
+        final map = Map<String, dynamic>.from(data);
+        final activeRideId = ref.container.read(activeRideIdProvider);
+        final eventRideId = map['rideId']?.toString();
+        if (eventRideId == null ||
+            eventRideId.isEmpty ||
+            activeRideId == null ||
+            eventRideId != activeRideId) {
+          return;
+        }
+        final phase = ref.container.read(bookingPhaseProvider);
+        if (ref.container.read(rideSearchCancellationRequestedProvider) ||
+            (phase != BookingPhase.searching &&
+                phase != BookingPhase.driverFound)) {
+          return;
+        }
+        final serverNow = DateTime.tryParse(map['serverNow']?.toString() ?? '');
+        final decisionExpiresAt =
+            DateTime.tryParse(map['decisionExpiresAt']?.toString() ?? '');
+        final totalSeconds =
+            (map['acceptanceWindowSeconds'] as num?)?.toInt() ?? 30;
+        final attempt = (map['attempt'] as num?)?.toInt() ??
+            ref.container.read(matcherProgressProvider)?.attempt ??
+            1;
+        final progressAttempt =
+            ref.container.read(matcherProgressProvider)?.attempt ?? 0;
+        final countdownAttempt =
+            ref.container.read(rideOfferDecisionCountdownProvider)?.attempt ??
+                0;
+        final knownAttempt = progressAttempt > countdownAttempt
+            ? progressAttempt
+            : countdownAttempt;
+        if (serverNow == null ||
+            decisionExpiresAt == null ||
+            !decisionExpiresAt.isAfter(serverNow) ||
+            attempt < knownAttempt) {
+          return;
+        }
+        ref.container.read(bookingPhaseProvider.notifier).driverFound();
+        ref.container.read(rideOfferDecisionCountdownProvider.notifier).start(
+              attempt: attempt,
+              serverNow: serverNow,
+              decisionExpiresAt: decisionExpiresAt,
+              totalSeconds: totalSeconds,
+            );
+      });
+
+    // Authoritative combined replay. This is also embedded in the REST ride
+    // snapshot so a missed room event cannot strand the rider at Searching.
+    socket
+      ..off('ride:matching_state')
+      ..on('ride:matching_state', (data) {
+        if (data is! Map) return;
+        final map = Map<String, dynamic>.from(data);
+        final activeRideId = ref.container.read(activeRideIdProvider);
+        final eventRideId = map['rideId']?.toString();
+        if (activeRideId == null ||
+            eventRideId == null ||
+            eventRideId != activeRideId) {
+          return;
+        }
+        final phase = ref.container.read(bookingPhaseProvider);
+        if (ref.container.read(rideSearchCancellationRequestedProvider) ||
+            (phase != BookingPhase.searching &&
+                phase != BookingPhase.driverFound)) {
+          return;
+        }
+        applyRideMatchingState(ref.container.read, map);
       });
 
     // ── Route changes (rider added / cancelled a stop) ──────────────────
@@ -737,23 +905,23 @@ void _connectAndListen(Ref ref, SocketService socket) {
 
     // ── Job status updates ───────────────────────────────────────────────
     // The backend emits `job:status:changed` (new name per the Paystack
-    // contract); older code emitted `job:status`. Listen to both so the
-    // UI reacts whichever one the server uses.
-    void handleJobStatus(dynamic data) {
+    // contract); older code emitted `job:status`, while authoritative client
+    // cancellation emits `job:cancelled`. Listen to all three.
+    void handleJobStatus(dynamic data, {String? fallbackStatus}) {
       developer.log('Received job:status event', name: 'WS');
       try {
+        if (data is! Map) return;
+        final map = Map<String, dynamic>.from(data);
         // If the payload carries a jobId, refresh that job's detail + bids
         // + active-job cache so any currently-open detail/summary/payment
         // screen updates live (including pending_payment → completed).
-        final jobId = data is Map<String, dynamic>
-            ? (data['jobId'] as String? ?? data['id'] as String?)
-            : null;
-        if (jobId != null) {
+        final jobId = (map['jobId'] ?? map['id'])?.toString().trim();
+        if (jobId != null && jobId.isNotEmpty) {
           ref.container.invalidate(jobDetailProvider(jobId));
           ref.container.invalidate(bidsForJobProvider(jobId));
           ref.container.invalidate(activeJobProvider(jobId));
-          final status =
-              data is Map<String, dynamic> ? data['status']?.toString() : null;
+          final status = map['status']?.toString() ?? fallbackStatus;
+          invalidateHomeActivityOnce('job', jobId, status ?? 'updated');
           final notice = ref.container.read(providerLocationNoticeProvider);
           if ((status == 'completed' || status == 'cancelled') &&
               notice?.bookingType == 'job' &&
@@ -779,8 +947,13 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('job:status')
       ..off('job:status:changed')
-      ..on('job:status', handleJobStatus)
-      ..on('job:status:changed', handleJobStatus);
+      ..off('job:cancelled')
+      ..on('job:status', (data) => handleJobStatus(data))
+      ..on('job:status:changed', (data) => handleJobStatus(data))
+      ..on(
+        'job:cancelled',
+        (data) => handleJobStatus(data, fallbackStatus: 'cancelled'),
+      );
 
     // ── Artisan confirmed a bid ──────────────────────────────────────────
     socket

@@ -4,7 +4,7 @@ import 'dart:io' show Platform;
 
 import 'package:api_client/api_client.dart' show ApiException, AppCallSession;
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,6 +24,7 @@ import '../providers/pending_request_recovery_provider.dart';
 import '../providers/socket_provider.dart';
 import '../providers/nav_badge_provider.dart';
 import 'local_notification_service.dart';
+import 'ride_cancellation_notice.dart';
 import 'incoming_request_action_bridge.dart';
 import 'incoming_request_overlay_presenter.dart';
 import 'live_activity_service.dart';
@@ -37,6 +38,31 @@ const _terminalCallTombstonePrefix = 'myshop.call_terminal.';
 bool notificationAuthorizationAllowsOnline(AuthorizationStatus status) {
   return status == AuthorizationStatus.authorized ||
       status == AuthorizationStatus.provisional;
+}
+
+@visibleForTesting
+bool rideRequestNavigationAlreadyActive({
+  required String rideId,
+  required String? visibleRideId,
+  required Set<String> navigationInFlightRideIds,
+}) {
+  return visibleRideId == rideId || navigationInFlightRideIds.contains(rideId);
+}
+
+@visibleForTesting
+const rideRequestNavigationFallbackDuration = Duration(seconds: 12);
+
+@visibleForTesting
+bool releaseRideRequestNavigationLatchIfOwned({
+  required Map<String, Object> latchTokens,
+  required String rideId,
+  required Object token,
+  required VoidCallback onRelease,
+}) {
+  if (!identical(latchTokens[rideId], token)) return false;
+  latchTokens.remove(rideId);
+  onRelease();
+  return true;
 }
 
 Future<void> _recordTerminalCallTombstone(
@@ -190,12 +216,26 @@ Future<bool> _handleOfferRevokedFromRemote(
           : null;
 
   if (inferredType != null && requestId != null && requestId.isNotEmpty) {
+    final reason = message.data['reason']?.toString() ?? 'revoked';
     await clearIncomingRequestAlert(
       type: inferredType,
       requestId: requestId,
       offerId: message.data[NotificationPayload.keyOfferId]?.toString(),
-      reason: message.data['reason']?.toString() ?? 'revoked',
+      reason: reason,
     );
+    if (inferredType == NotificationPayload.typeRideRequest &&
+        isRiderCancellationRevocation(reason)) {
+      await LocalNotificationService.instance.init();
+      await LocalNotificationService.instance.showTimelineUpdate(
+        type: NotificationPayload.typeRideCancelled,
+        title: 'Ride request cancelled',
+        body: 'The rider cancelled this ride request.',
+        extras: {
+          NotificationPayload.keyRideId: requestId,
+          'reason': reason,
+        },
+      );
+    }
     debugPrint('[FCM] $source cleared revoked $inferredType $requestId');
   } else {
     debugPrint('[FCM] $source offer_revoked missing request identity');
@@ -718,6 +758,11 @@ class FcmService {
         final rideId = message.data[NotificationPayload.keyRideId]?.toString();
         final jobId = message.data[NotificationPayload.keyJobId]?.toString();
         if (rideId != null && rideId.isNotEmpty) {
+          _ref.read(rideOfferDismissalProvider.notifier).state =
+              RideOfferDismissal(
+            rideId: rideId,
+            reason: message.data['reason']?.toString() ?? 'revoked',
+          );
           _ref.read(incomingRideRequestProvider.notifier).state = null;
           _ref.read(rideRequestDeadlineByIdProvider.notifier).update(
                 (deadlines) => {...deadlines}..remove(rideId),
@@ -727,6 +772,24 @@ class FcmService {
           _ref.read(pendingIncomingJobsProvider.notifier).remove(jobId);
           if (_ref.read(incomingJobRequestProvider)?.id == jobId) {
             _ref.read(incomingJobRequestProvider.notifier).state = null;
+          }
+        }
+        final reason = message.data['reason']?.toString();
+        if (rideId != null &&
+            rideId.isNotEmpty &&
+            isRiderCancellationRevocation(reason) &&
+            claimRiderCancellationInAppNotice(rideId)) {
+          final router = _ref.read(goRouterProvider);
+          final context = router.routerDelegate.navigatorKey.currentContext;
+          if (context != null && context.mounted) {
+            ScaffoldMessenger.of(context)
+              ..hideCurrentSnackBar()
+              ..showSnackBar(
+                const SnackBar(
+                  content: Text('The rider cancelled this ride request.'),
+                  duration: Duration(seconds: 5),
+                ),
+              );
           }
         }
         return;
@@ -854,7 +917,18 @@ class FcmService {
     });
 
     // Cold-start tap: app was terminated, user tapped a push to open it.
-    final initialMessage = await _fcm.getInitialMessage();
+    //
+    // This plugin call has been observed hanging on a real iOS device. FCM
+    // handler setup must not remain permanently "initialising" because Go
+    // Online also verifies notification reachability. Pending-request recovery
+    // remains the fallback when the cold-start payload cannot be read in time.
+    RemoteMessage? initialMessage;
+    try {
+      initialMessage =
+          await _fcm.getInitialMessage().timeout(const Duration(seconds: 5));
+    } catch (error) {
+      debugPrint('[FCM] initial message lookup unavailable: $error');
+    }
     if (initialMessage != null) {
       debugPrint(
         '[FCM] initial message: type=${initialMessage.data['type']} '
@@ -906,8 +980,18 @@ class FcmService {
     }
 
     try {
+      // Permission and token authority come directly from the operating system
+      // and Firebase Messaging. Do not await the separate message-handler
+      // initialisation path here: cold-start payload recovery can be slow or
+      // unavailable, but that must never suppress the OS permission prompt or
+      // falsely report a Settings problem.
       if (!_initialised) {
-        await init().timeout(const Duration(seconds: 10));
+        unawaited(
+          init().catchError(
+            (Object error) =>
+                debugPrint('[FCM] deferred handler init failed: $error'),
+          ),
+        );
       }
 
       var settings = await _fcm
@@ -1066,15 +1150,39 @@ class FcmService {
                   fcmToken: token,
                   platform: _platform,
                   role: role,
-                  offerReceiptVersion: null,
+                  offerReceiptVersion: 1,
                 );
             debugPrint(
-              '[FCM] token registered against legacy backend; receipt capability will sync after backend upgrade',
+              '[FCM] token registered with v1 receipt capability against an older backend; v2 will sync after backend upgrade',
             );
             return true;
+          } on ApiException catch (v1Error) {
+            if (v1Error.statusCode == 400 &&
+                v1Error.message.toLowerCase().contains('offerreceiptversion')) {
+              try {
+                await _ref.read(apiNotificationServiceProvider).registerDevice(
+                      fcmToken: token,
+                      platform: _platform,
+                      role: role,
+                      offerReceiptVersion: null,
+                    );
+                debugPrint(
+                  '[FCM] token registered against a pre-receipt backend; capability will sync after backend upgrade',
+                );
+                return true;
+              } catch (legacyError) {
+                debugPrint(
+                  '[FCM] pre-receipt backend registration fallback failed: $legacyError',
+                );
+              }
+            } else {
+              debugPrint(
+                '[FCM] v1 receipt registration fallback failed: $v1Error',
+              );
+            }
           } catch (legacyError) {
             debugPrint(
-              '[FCM] legacy-backend registration fallback failed: $legacyError',
+              '[FCM] v1 receipt registration fallback failed: $legacyError',
             );
           }
         }
@@ -1583,6 +1691,7 @@ final fcmAuthBridgeProvider = Provider<void>((ref) {
 /// `goRouterProvider` is ready to receive navigation calls.
 final fcmTapBridgeProvider = Provider<void>((ref) {
   final fcm = ref.read(fcmServiceProvider);
+  final rideNavigationLatchTokens = <String, Object>{};
 
   Future<bool> waitForAuthenticatedCall(
     String callId,
@@ -1710,12 +1819,28 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       }
     }
 
-    void clearRideRequestInFlightLater(String rideId) {
-      unawaited(
-        Future<void>.delayed(const Duration(seconds: 4), () {
+    void releaseRideRequestNavigationLatch(String rideId, Object token) {
+      releaseRideRequestNavigationLatchIfOwned(
+        latchTokens: rideNavigationLatchTokens,
+        rideId: rideId,
+        token: token,
+        onRelease: () {
           ref.read(rideRequestNavigationInFlightProvider.notifier).update(
                 (s) => {...s}..remove(rideId),
               );
+        },
+      );
+    }
+
+    void clearRideRequestInFlightFallback(VoidCallback releaseLatch) {
+      // The loader releases this latch as soon as it either opens the
+      // request screen, becomes unavailable, or is removed. This fallback is
+      // only for a routing interruption before the loader can release it. It
+      // is deliberately just beyond the loader's bounded 10-second hydrate,
+      // not the full 30-second offer window.
+      unawaited(
+        Future<void>.delayed(rideRequestNavigationFallbackDuration, () {
+          releaseLatch();
         }),
       );
     }
@@ -1736,23 +1861,36 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
               (m) => {...m, rideId: deadline},
             );
       }
-      ref.read(surfacedRideIdsProvider.notifier).update((s) => {...s, rideId});
-      ref.read(incomingRideRequestProvider.notifier).state = null;
       final visibleId = ref.read(visibleRideRequestIdProvider);
-      if (visibleId == rideId) {
+      final navigationInFlight =
+          ref.read(rideRequestNavigationInFlightProvider);
+      if (rideRequestNavigationAlreadyActive(
+        rideId: rideId,
+        visibleRideId: visibleId,
+        navigationInFlightRideIds: navigationInFlight,
+      )) {
         debugPrint(
-          '[FCM-tap] ride_request $rideId already visible — keeping details',
+          '[FCM-tap] ride_request $rideId already visible or opening '
+          '— keeping current route',
         );
         return;
       }
+      ref.read(surfacedRideIdsProvider.notifier).update((s) => {...s, rideId});
+      ref.read(incomingRideRequestProvider.notifier).state = null;
       ref.read(rideRequestNavigationInFlightProvider.notifier).update(
             (s) => {...s, rideId},
           );
-      clearRideRequestInFlightLater(rideId);
+      final latchToken = Object();
+      rideNavigationLatchTokens[rideId] = latchToken;
+      void releaseLatch() =>
+          releaseRideRequestNavigationLatch(rideId, latchToken);
+      clearRideRequestInFlightFallback(releaseLatch);
 
       final currentPath = router.routerDelegate.currentConfiguration.uri.path;
       final routeExtra = RideRequestRouteExtra(
         rideId: rideId,
+        navigationLatchToken: latchToken,
+        releaseNavigationLatch: releaseLatch,
         expiresAt: deadline,
       );
       debugPrint(
@@ -1807,6 +1945,52 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           openBidSheet: openBidSheet,
         ),
       );
+    }
+
+    // A visible iOS receipt-protocol alert can be delivered while Dart is
+    // suspended. Receipt it as soon as the provider taps the alert/action so
+    // the backend starts the fresh 30-second decision window before any View,
+    // Accept, or Skip path tries to hydrate or resolve the offer.
+    if (type == NotificationPayload.typeRideRequest &&
+        (int.tryParse(payload['offerVersion']?.toString() ?? '') ?? 0) >=
+            rideOfferReceiptProtocolVersion) {
+      if (!await waitForAuthenticatedRequest(payload)) {
+        debugPrint('[FCM-tap] ride receipt auth unavailable');
+        return;
+      }
+      final received = await acknowledgeRideOfferWithSocket(
+        payload: payload,
+        socket: ref.read(socketServiceProvider),
+        rides: ref.read(rideServiceProvider),
+      );
+      if (received == null) {
+        final rideId = payload[NotificationPayload.keyRideId]?.toString() ??
+            payload['ride_id']?.toString();
+        if (rideId != null && rideId.isNotEmpty) {
+          await clearIncomingRequestAlert(
+            type: NotificationPayload.typeRideRequest,
+            requestId: rideId,
+            offerId: payload[NotificationPayload.keyOfferId]?.toString(),
+            reason: 'receipt_unavailable',
+          );
+        }
+        router.go('/home');
+        debugPrint('[FCM-tap] ride offer no longer receipt-capable');
+        return;
+      }
+      payload.addAll(received.payload);
+      ref.read(rideOfferIdByRideProvider.notifier).update(
+            (offers) => {
+              ...offers,
+              received.rideId: received.offerId,
+            },
+          );
+      ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+            (deadlines) => {
+              ...deadlines,
+              received.rideId: received.decisionExpiresAt,
+            },
+          );
     }
 
     // Local-notification and native overlay actions all converge here. The

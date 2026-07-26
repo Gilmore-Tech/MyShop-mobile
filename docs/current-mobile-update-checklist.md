@@ -1,14 +1,14 @@
 # Current Mobile Update Checklist
 
-Status captured: **2026-07-24 GMT**
+Status captured: **2026-07-26 GMT**
 
 This is the single authoritative checklist for the next Client and Provider
 store update. The larger production audit and 100k-DAU roadmap remain evidence
 and future-work registers; they do not expand this release unless an item is
 explicitly copied into this file with owner approval.
 
-Current counted progress is **75/114 checklist items (66%)**. The stricter
-final release-gate subset is **4/17 (24%)** because signed builds,
+Current counted progress is **92/137 checklist items (67%)**. The stricter
+final release-gate subset is **4/19 (21%)** because signed builds,
 physical-device
 acceptance, store declarations and canary evidence can only close after scope
 reconciliation, the private-console build-number check and physical testing.
@@ -80,6 +80,55 @@ These are evidence counts, not estimates of effort.
       the audited database flag `role_account_referrals_enabled`. The database
       flag is still `false`; Admin showing
       `ROLE_ACCOUNT_REFERRALS_SUSPENDED` is therefore expected.
+- [x] Rider matching status and pre-accept cancellation were explicitly added
+      to this release by the owner on 2026-07-25 GMT.
+- [x] Sequential ride decisions are reduced from 45 to **30 seconds per
+      provider**, beginning only after that provider's authenticated receipt.
+      The separate ten-second delivery allowance and five-minute search cutoff
+      remain unchanged.
+- [x] The Client receives only server-authoritative receipt/deadline data and
+      displays a real 30-second countdown corrected against server time; it
+      never starts or extends the provider decision clock from handset time.
+- [x] The matching screen distinguishes initial search, driver receipt,
+      declined/expired driver, next-driver search and radius expansion. It
+      shows only a generic driver icon before acceptance.
+- [x] A rider may cancel at any point before acceptance after a confirmation
+      prompt. This cancellation is free and has no rider or provider strike.
+      A create/cancel race remains fail-closed until the authoritative ride ID
+      is known and cancelled.
+- [x] Rider cancellation immediately closes the provider ringtone, overlay and
+      request UI. The provider receives both an in-app notice and a normal
+      system notification, including while the app is backgrounded.
+- [x] Edit pickup is deliberately excluded from this release.
+- [x] Client homepage usability was explicitly added to this release by the
+      owner on 2026-07-26 GMT.
+- [x] Restore the homepage current-location label to the user's
+      human-readable resolved location. Reverse-geocoding must use bounded
+      retry and must not present the synthetic `Using GPS location` label as
+      though it were an address.
+- [x] Add a Recent Activity section containing the latest three combined
+      rides/jobs, newest first across all statuses. Tapping an item opens its
+      existing detail view and `View all` opens the existing Activity screen.
+      It is one-shot and session-cached, fetches at most three records from
+      each source without 15-second polling, and is invalidated after
+      create/status/cancel changes, reconnect and logout.
+- [x] Hide the entire Special Offers section, including its heading and
+      reserved space, whenever there are no offers.
+- [x] Show a polished activity empty state when the Client has no recent rides
+      or jobs.
+- [x] Fix compact-width service-card overflow with a responsive call-to-action
+      that remains usable without overflowing constrained cards.
+- [ ] Apply migration
+      `20260725000000_ride_acceptance_window_30s` to staging before testing
+      this candidate.
+- [ ] Physically prove the countdown begins only after receipt, survives
+      reconnect without resetting, and gives each sequential provider a fresh
+      30 seconds.
+- [ ] Physically prove cancellation during initial search, provider ringing,
+      another-driver search and radius expansion closes the ride with no fee
+      or strike and immediately dismisses the provider UI.
+- [ ] Physically prove the provider sees the cancellation in-app in foreground
+      and as a normal system notification in background/locked states.
 - [ ] Enable both referral environment flags on staging, use Super Admin to
       enable the database gate, and canary exact-role display, copy/share,
       registration attribution, rewards and disable rollback before production.
@@ -129,6 +178,9 @@ These are evidence counts, not estimates of effort.
       role recovery/purge, scheduled jobs, SmileKYC/police automation,
       emergency recording, support/dispute attachments, cancellation
       consequences or active-trip fallback.
+- [x] No pickup editing from the matching screen in this release.
+- [x] No offers API or Admin-to-Mobile offer-population build in this release;
+      that integration is explicitly deferred to the next update.
 
 Any request to add one of these items must first identify its exact paths,
 business rules, migrations, tests and rollback, then receive an explicit owner
@@ -274,6 +326,11 @@ approval recorded here.
       executable PostgreSQL lock-shape check returning `lockAcquired = 1`.
 - [x] Exact current Admin staging builds all 48 routes, has zero lint errors
       (existing warnings remain), and passes **39/39** contract tests.
+- [x] Client homepage focused verification passes **9/9**: Recent Activity
+      provider **3/3**, current-location provider **4/4**, and homepage widget
+      behavior **2/2**. The final complete Client suite passes **111/111**,
+      `flutter analyze --fatal-infos --fatal-warnings` reports zero issues,
+      and `git diff --check` passes.
 - [ ] The same policy does not expressly say that named screen, lifecycle and
       meaningful-action events are collected. Product/qualified Legal must
       decide whether the existing disclosure is sufficient or publish a new
@@ -290,6 +347,10 @@ approval recorded here.
       found broad technical/audit disclosure but no explicit named-action
       wording. If Product/qualified Legal requires a change, publish a new
       immutable version and obtain the required acceptance.
+- [x] The owner decided on 2026-07-25 GMT that changing the operational
+      decision window from 45 to 30 seconds does not require provider
+      re-consent. Existing accepted Driver Terms `1.4.1` remain immutable and
+      are not edited in place by this candidate.
 - [ ] Add the real DPC registration number when available; never fabricate it.
 
 ## 6. Exact store privacy answers for this update
@@ -403,6 +464,43 @@ following 32 paths.
 - `docs/production-release-audit-checklist.md`
 - `docs/staging-release-candidate-runbook.md`
 
+### Ride matching status, cancellation and 30-second decision delta
+
+- `apps/client/lib/src/core/providers/socket_provider.dart`
+- `apps/client/lib/src/features/ride/providers/ride_provider.dart`
+- `apps/client/lib/src/features/ride/screens/driver_matching_screen.dart`
+- `apps/client/test/features/ride/providers/cancel_in_flight_ride_request_test.dart`
+- `apps/client/test/features/ride/screens/driver_matching_status_test.dart`
+- `apps/provider/lib/src/core/providers/socket_provider.dart`
+- `apps/provider/lib/src/core/services/fcm_service.dart`
+- `apps/provider/lib/src/core/services/local_notification_service.dart`
+- `apps/provider/lib/src/core/services/ride_cancellation_notice.dart`
+- `apps/provider/lib/src/core/services/ride_offer_receipt_service.dart`
+- `apps/provider/lib/src/features/driver_home/providers/ride_request_provider.dart`
+- `apps/provider/lib/src/features/driver_home/screens/ride_request_screen.dart`
+- `apps/provider/test/core/services/ride_cancellation_notice_test.dart`
+
+The paired Backend delta is restricted to receipt-authoritative countdown
+events, the approved 30-second configuration and their tests/migration:
+
+- `apps/api/src/modules/location/location.gateway.spec.ts`
+- `apps/api/src/modules/location/location.gateway.ts`
+- `apps/api/src/modules/notification/dto/register-device.dto.ts`
+- `apps/api/src/modules/notification/push.service.ts`
+- `apps/api/src/modules/providers/provider-eligibility.service.ts`
+- `apps/api/src/modules/ride/ride-cancellation.service.ts`
+- `apps/api/src/modules/ride/ride-migration-contract.spec.ts`
+- `apps/api/src/modules/ride/ride-offer.constants.ts`
+- `apps/api/src/modules/ride/ride-offer.service.spec.ts`
+- `apps/api/src/modules/ride/ride-offer.service.ts`
+- `apps/api/src/modules/ride/ride.controller.ts`
+- `apps/api/src/modules/ride/ride.redispatch.spec.ts`
+- `apps/api/src/modules/ride/ride.service.spec.ts`
+- `apps/api/src/modules/ride/ride.service.ts`
+- `docs/active-trip-fallback-release-gaps.md`
+- `packages/database/prisma/migrations/20260725000000_ride_acceptance_window_30s/migration.sql`
+- `packages/database/prisma/seed.ts`
+
 The paired Backend delta is restricted to exact session authority and tests:
 
 - `apps/api/src/common/guards/jwt-auth.guard.ts`
@@ -442,6 +540,14 @@ first updating this checklist and obtaining owner approval.
       restart must retain the authenticated role without another OTP.
 - [ ] Physical-device ride-draft tests: Android/iOS back, Cancel and no-driver
       dismissal must clear pickup, destination, stops, vehicle and fare.
+- [ ] Physical-device sequential matching tests: each provider receives a
+      fresh server-authoritative 30 seconds only after receipt; delayed
+      delivery, decline, expiry, reconnect and radius expansion show the
+      correct Client state without losing or duplicating the request.
+- [ ] Physical-device pre-accept cancellation tests: Android back, iOS back
+      gesture and Cancel require confirmation, remain free/penalty-free, close
+      every active offer immediately, and produce foreground plus
+      background/locked provider notices.
 - [ ] Staging cash-remittance canary after PR `#122`: completed partial payment
       settles once, cancelled payment becomes terminal, balances refresh, and
       no row remains indefinitely in `processing`.
@@ -479,3 +585,5 @@ first updating this checklist and obtaining owner approval.
 | 2026-07-24 | Added exact-role referrals to this update | Backend, Mobile and Admin referral changes are merged to staging; the staging migration is applied with all invariants zero. Runtime remains disabled until exact-role canary and rollback proof. |
 | 2026-07-24 | Reconciled exact combined release heads | Backend main is `11021d3`, Mobile staging is `4daa9fdf`, Admin staging is `71fb1597`; production Backend still serves older `d918243`. Current automated gates pass. |
 | 2026-07-24 | Isolated the staging cash-remittance blocker | Direct selection of PostgreSQL's `void` advisory-lock result caused Prisma settlement failure. Backend PR `#122` returns a typed integer lock result; full API tests/build and live local SQL-shape proof pass. Staging deployment and payment canary remain open. |
+| 2026-07-25 | Added rider-visible matching progress and safe pre-accept cancellation | Client now shows server-driven search/receipt/next-driver/radius states and a receipt-authoritative countdown; cancellation is confirmation-gated and race-safe; Provider request UI closes immediately and receives in-app plus system notices. Backend **211/211 suites and 4,117/4,117 tests**, Client **99/99**, Provider **176/176**, both fatal analyzers and the API build pass. Owner decided no provider re-consent is required; accepted Terms `1.4.1` remain unmodified. Staging migration/device proof remains open. |
+| 2026-07-26 | Added Client homepage usability to this update | Implemented a human-readable current-location label with bounded reverse-geocoding retry, a one-shot session-cached Recent Activity view without 15-second polling, the latest three combined rides/jobs with existing detail/Activity navigation, hidden empty offers, an activity empty state and responsive compact service cards. The cache is invalidated after create/status/cancel changes, reconnect and logout. Focused verification is **9/9**, the full Client suite is **111/111**, the fatal analyzer is clean and `git diff --check` passes. Offers API and Admin-to-Mobile offer population are deferred to the next update. |

@@ -8,6 +8,7 @@ import 'package:shared_models/shared_models.dart' show kFreeWaitAtPickupSeconds;
 import '../../../core/di/providers.dart';
 import '../../../core/providers/current_location_provider.dart';
 import '../../../core/providers/socket_provider.dart';
+import '../../home/providers/home_provider.dart';
 import '../data/ride_booking_attempt_store.dart';
 import '../data/ride_booking_coordinator.dart';
 import '../data/ride_cancellation_coordinator.dart';
@@ -22,8 +23,8 @@ import 'ride_search_provider.dart';
 /// - [idle]: no request in flight.
 /// - [searching]: POST /rides is in flight; we don't yet know whether any
 ///   driver was notified.
-/// - [driverFound]: backend reported `driversNotified > 0` — a driver has
-///   the request open and the rider is waiting for them to tap Accept.
+/// - [driverFound]: the backend has an acknowledged, live driver decision
+///   window and the rider is waiting for that provider to accept.
 /// - [accepted]: a driver acked acceptance — surfaced via the `ride:state`
 ///   socket event with `status` in `accepted | driver_en_route | …`.
 ///   UI navigates to the tracking screen.
@@ -701,6 +702,7 @@ class MatcherProgress {
     required this.driversTried,
     required this.driversRemaining,
     required this.radiusKm,
+    required this.expanded,
     required this.reason,
   });
 
@@ -716,23 +718,236 @@ class MatcherProgress {
   /// Radius the matcher just searched at, in kilometres.
   final double radiusKm;
 
+  /// True only when this attempt widened the approved search ring.
+  final bool expanded;
+
   /// What triggered this event — set by the backend.
   final MatcherReason reason;
 }
 
 final matcherProgressProvider = StateProvider<MatcherProgress?>((_) => null);
 
+/// Receipt-based decision countdown shown to the rider.
+///
+/// The backend supplies both its database clock and the decision deadline.
+/// We convert that delta once, then use a monotonic [Stopwatch] so changing the
+/// handset clock cannot invent or extend a driver's decision window.
+class RideOfferDecisionCountdown {
+  const RideOfferDecisionCountdown({
+    required this.attempt,
+    required this.decisionExpiresAt,
+    required this.secondsRemaining,
+    required this.totalSeconds,
+  });
+
+  final int attempt;
+  final DateTime decisionExpiresAt;
+  final int secondsRemaining;
+  final int totalSeconds;
+
+  double get progress => totalSeconds <= 0
+      ? 0
+      : (secondsRemaining / totalSeconds).clamp(0, 1).toDouble();
+}
+
+class RideOfferDecisionCountdownNotifier
+    extends StateNotifier<RideOfferDecisionCountdown?> {
+  RideOfferDecisionCountdownNotifier() : super(null);
+
+  Timer? _timer;
+  Stopwatch? _elapsed;
+  int _initialRemainingMs = 0;
+  int _totalSeconds = 0;
+  int _attempt = 0;
+  DateTime? _decisionExpiresAt;
+
+  void start({
+    required int attempt,
+    required DateTime serverNow,
+    required DateTime decisionExpiresAt,
+    required int totalSeconds,
+  }) {
+    if (_attempt == attempt &&
+        _decisionExpiresAt == decisionExpiresAt.toUtc() &&
+        state != null) {
+      return;
+    }
+    clear();
+    _attempt = attempt;
+    _decisionExpiresAt = decisionExpiresAt.toUtc();
+    _totalSeconds = totalSeconds > 0 ? totalSeconds : 30;
+    _initialRemainingMs = decisionExpiresAt
+        .difference(serverNow)
+        .inMilliseconds
+        .clamp(
+          0,
+          _totalSeconds * 1000,
+        )
+        .toInt();
+    _elapsed = Stopwatch()..start();
+    _publish();
+    if (_initialRemainingMs <= 0) return;
+    _timer =
+        Timer.periodic(const Duration(milliseconds: 250), (_) => _publish());
+  }
+
+  void _publish() {
+    final elapsedMs = _elapsed?.elapsedMilliseconds ?? 0;
+    final remainingMs =
+        (_initialRemainingMs - elapsedMs).clamp(0, _initialRemainingMs).toInt();
+    final seconds = remainingMs <= 0 ? 0 : (remainingMs / 1000).ceil();
+    if (state?.secondsRemaining == seconds &&
+        state?.totalSeconds == _totalSeconds) {
+      return;
+    }
+    state = RideOfferDecisionCountdown(
+      attempt: _attempt,
+      decisionExpiresAt: _decisionExpiresAt!,
+      secondsRemaining: seconds,
+      totalSeconds: _totalSeconds,
+    );
+    if (remainingMs <= 0) {
+      _timer?.cancel();
+      _timer = null;
+      _elapsed?.stop();
+    }
+  }
+
+  void clear() {
+    _timer?.cancel();
+    _timer = null;
+    _elapsed?.stop();
+    _elapsed = null;
+    _initialRemainingMs = 0;
+    _totalSeconds = 0;
+    _attempt = 0;
+    _decisionExpiresAt = null;
+    state = null;
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _elapsed?.stop();
+    super.dispose();
+  }
+}
+
+final rideOfferDecisionCountdownProvider = StateNotifierProvider<
+    RideOfferDecisionCountdownNotifier, RideOfferDecisionCountdown?>(
+  (_) => RideOfferDecisionCountdownNotifier(),
+);
+
+/// Applies the backend's combined, rider-safe matching projection atomically.
+///
+/// Socket events can arrive before the rider has joined a room, and separate
+/// timeout/decision packets can be reordered. Both Socket.IO replay and
+/// `GET /rides/:id` carry this same durable shape so neither transport is a
+/// single point of truth.
+bool applyRideMatchingState(
+  RideStateReader read,
+  Object? raw,
+) {
+  if (raw is! Map) return false;
+  final state = Map<String, dynamic>.from(raw);
+  final rawProgress = state['matcherProgress'];
+  final rawDecision = state['decisionWindow'];
+  final currentProgress = read(matcherProgressProvider);
+  final currentCountdown = read(rideOfferDecisionCountdownProvider);
+
+  final responseProgressAttempt =
+      rawProgress is Map ? (rawProgress['attempt'] as num?)?.toInt() ?? 0 : 0;
+  final responseDecisionAttempt =
+      rawDecision is Map ? (rawDecision['attempt'] as num?)?.toInt() ?? 0 : 0;
+  final responseAttempt = responseProgressAttempt > responseDecisionAttempt
+      ? responseProgressAttempt
+      : responseDecisionAttempt;
+  final currentProgressAttempt = currentProgress?.attempt ?? 0;
+  final currentDecisionAttempt = currentCountdown?.attempt ?? 0;
+  final knownAttempt = currentProgressAttempt > currentDecisionAttempt
+      ? currentProgressAttempt
+      : currentDecisionAttempt;
+  if ((responseAttempt == 0 && knownAttempt > 0) ||
+      responseAttempt < knownAttempt) {
+    return false;
+  }
+
+  MatcherProgress? progress = currentProgress;
+  if (rawProgress is Map) {
+    final map = Map<String, dynamic>.from(rawProgress);
+    final candidate = MatcherProgress(
+      attempt: (map['attempt'] as num?)?.toInt() ?? 0,
+      driversTried: (map['driversTried'] as num?)?.toInt() ?? 0,
+      driversRemaining: (map['driversRemaining'] as num?)?.toInt() ?? 0,
+      radiusKm: (map['radiusKm'] as num?)?.toDouble() ?? 0,
+      expanded: map['expanded'] == true,
+      reason: parseMatcherReason(map['reason']?.toString()),
+    );
+    final sameAttemptWouldRegress = currentProgress != null &&
+        candidate.attempt == currentProgress.attempt &&
+        (candidate.radiusKm < currentProgress.radiusKm ||
+            (candidate.radiusKm == currentProgress.radiusKm &&
+                currentProgress.expanded &&
+                !candidate.expanded));
+    if (candidate.attempt >= currentProgressAttempt &&
+        !sameAttemptWouldRegress) {
+      progress = candidate;
+      read(matcherProgressProvider.notifier).state = candidate;
+      read(driversNotifiedProvider.notifier).state = candidate.driversTried;
+    }
+  }
+
+  if (rawDecision is Map) {
+    final map = Map<String, dynamic>.from(rawDecision);
+    final attempt = (map['attempt'] as num?)?.toInt() ?? 0;
+    final serverNow =
+        DateTime.tryParse(map['serverNow']?.toString() ?? '')?.toUtc();
+    final decisionExpiresAt =
+        DateTime.tryParse(map['decisionExpiresAt']?.toString() ?? '')?.toUtc();
+    final totalSeconds =
+        (map['acceptanceWindowSeconds'] as num?)?.toInt() ?? 30;
+    // A newer matcher attempt means this decision window became stale between
+    // the two database reads. Never regress the rider to an earlier driver.
+    if (attempt > 0 &&
+        serverNow != null &&
+        decisionExpiresAt != null &&
+        decisionExpiresAt.isAfter(serverNow) &&
+        (progress == null || attempt >= progress.attempt)) {
+      read(bookingPhaseProvider.notifier).driverFound();
+      read(rideOfferDecisionCountdownProvider.notifier).start(
+        attempt: attempt,
+        serverNow: serverNow,
+        decisionExpiresAt: decisionExpiresAt,
+        totalSeconds: totalSeconds,
+      );
+      return true;
+    }
+  }
+
+  read(rideOfferDecisionCountdownProvider.notifier).clear();
+  final phase = read(bookingPhaseProvider);
+  if (phase == BookingPhase.driverFound) {
+    read(bookingPhaseProvider.notifier).startSearch();
+  }
+  return progress != null;
+}
+
+/// Set as soon as the rider confirms cancellation, including the short period
+/// before POST /rides has returned its authoritative ride id.
+final rideSearchCancellationRequestedProvider =
+    StateProvider<bool>((_) => false);
+
 /// Rider-side worst-case matching wait ceiling.
 ///
 /// BR-39 allows new delivery attempts for five minutes after dispatch becomes
 /// ready. An attempt whose full ten-second receipt window fits may then retain
-/// a fresh 45-second decision window, so the authoritative worst case is 345
+/// a fresh 30-second decision window, so the authoritative worst case is 330
 /// seconds. Keep another 30 seconds for worker/socket propagation and the
 /// final REST reconciliation.
 ///
 /// The backend remains the source of truth for the final outcome; this local
 /// ceiling only bounds our socket re-join / REST hydration loop.
-const int kRideMatchingSearchCeilingSeconds = 375;
+const int kRideMatchingSearchCeilingSeconds = 360;
 
 class BookingPhaseNotifier extends StateNotifier<BookingPhase> {
   BookingPhaseNotifier() : super(BookingPhase.idle);
@@ -752,7 +967,7 @@ final activeRideIdProvider = StateProvider<String?>((_) => null);
 
 /// Countdown timer (seconds remaining during search phase). Sized to cover
 /// the backend's full BR-39 matching budget: five minutes in which a new
-/// delivery attempt may start, the final timely recipient's fresh 45-second
+/// delivery attempt may start, the final timely recipient's fresh 30-second
 /// decision window, and a 30-second propagation/reconciliation buffer. Without this buffer the
 /// local loop fires `failWith` ahead of the backend's real verdict — the
 /// rider sees a generic "couldn't find a driver in time" while the matcher
@@ -966,6 +1181,8 @@ Future<void> requestRideAndMatchDriver(
   ref.read(bookingFailureMessageProvider.notifier).state = null;
   ref.read(driversNotifiedProvider.notifier).state = 0;
   ref.read(matcherProgressProvider.notifier).state = null;
+  ref.read(rideOfferDecisionCountdownProvider.notifier).clear();
+  ref.read(rideSearchCancellationRequestedProvider.notifier).state = false;
   ref.read(liveDriverPositionProvider.notifier).state = null;
   ref.read(rideArrivalAnchorProvider.notifier).state = null;
 
@@ -1036,18 +1253,16 @@ Future<void> requestRideAndMatchDriver(
     // strand the client at "no ride id". Order matches likelihood.
     rideId = _extractRideId(result);
     ref.read(activeRideIdProvider.notifier).state = rideId;
+    if (rideId != null) {
+      ref.invalidate(homeRecentActivityProvider);
+    }
 
-    // POST /rides returns `driversNotified` — the count of drivers the
-    // matcher pushed the request to. As soon as that's > 0 we know a
-    // driver has the request open on their screen, so we flip the rider
-    // out of the "searching" radar into the "driver found" state. The
-    // final `accepted` transition (and the navigation to the tracking
-    // screen) only happens once a driver actually taps Accept.
+    // POST /rides returns how many delivery attempts were opened, not proof
+    // that a provider device received one. Keep the rider in Searching until
+    // `ride:offer_received` confirms the authenticated device receipt and
+    // starts that driver's fresh decision window.
     final notified = (result['driversNotified'] as num?)?.toInt() ?? 0;
     ref.read(driversNotifiedProvider.notifier).state = notified;
-    if (notified > 0) {
-      ref.read(bookingPhaseProvider.notifier).driverFound();
-    }
 
     // Try to join the ride's tracking room immediately. If the socket is
     // still mid-handshake at this point the emit silently no-ops — the
@@ -1057,7 +1272,9 @@ Future<void> requestRideAndMatchDriver(
       try {
         final socket = ref.read(socketServiceProvider);
         if (socket.isConnected) {
-          socket.emit('client:track:ride', {'rideId': rideId});
+          unawaited(
+            _reconcileMatchingViaSocket(ref.read, socket, rideId),
+          );
           developer.log('Joined ride room: $rideId', name: 'RideProvider');
         } else {
           developer.log(
@@ -1070,6 +1287,19 @@ Future<void> requestRideAndMatchDriver(
           name: 'RideProvider',
         );
       }
+    }
+
+    // The rider may cancel during the POST /rides round-trip, before this id
+    // exists locally. The cancellation action waits for this assignment and
+    // owns the authoritative PATCH; do not start the matching loop underneath
+    // it or allow later polling to repaint the cancelled request.
+    if (ref.read(rideSearchCancellationRequestedProvider)) {
+      for (var i = 0;
+          i < 600 && ref.read(rideSearchCancellationRequestedProvider);
+          i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      if (ref.read(bookingPhaseProvider) == BookingPhase.idle) return;
     }
   } on RideBookingLookupUncertainException catch (e) {
     developer.log(
@@ -1122,15 +1352,17 @@ Future<void> requestRideAndMatchDriver(
   //      one-shot at the 10s mark — fine when the driver accepts in <10s,
   //      but if the driver took 11s+ the hydrate saw `status: requested`
   //      and bailed, leaving the rider stranded for the rest of the
-  //      45s window. Polling at 10s intervals (≈ 5 calls per matching
-  //      window) sits well under the backend's 30 req/min throttle.
-  // 375 s == BR-39's 300 s new-attempt budget + the final timely recipient's
-  // 45 s decision window + 30 s for worker/socket/REST reconciliation.
+  //      30s window. Polling at 10s intervals sits well under the
+  //      backend's 30 req/min throttle.
+  // 360 s == BR-39's 300 s new-attempt budget + the final timely recipient's
+  // 30 s decision window + 30 s for worker/socket/REST reconciliation.
   // Loop bails early on success, failure, or rider cancel — this is just
   // the worst-case ceiling so we don't outlast the backend's verdict.
   final socket = ref.read(socketServiceProvider);
   for (var i = 0; i < kRideMatchingSearchCeilingSeconds; i++) {
     await Future<void>.delayed(const Duration(seconds: 1));
+    if (ref.read(bookingPhaseProvider) == BookingPhase.idle) return;
+    if (ref.read(rideSearchCancellationRequestedProvider)) continue;
     if (ref.read(rideMatchedViaSocketProvider)) return;
     if (ref.read(bookingPhaseProvider) == BookingPhase.failed) return;
     ref.read(searchCountdownProvider.notifier).tick();
@@ -1138,7 +1370,11 @@ Future<void> requestRideAndMatchDriver(
     // Belt 1 — re-emit the room join every 2s while still waiting.
     if (i % 2 == 0 && socket.isConnected) {
       try {
-        socket.emit('client:track:ride', {'rideId': rideId});
+        if (i % 10 == 0) {
+          unawaited(_reconcileMatchingViaSocket(ref.read, socket, rideId));
+        } else {
+          socket.emit('client:track:ride', {'rideId': rideId});
+        }
       } catch (_) {
         // Socket may have flipped to disconnected mid-emit; the next
         // tick will retry.
@@ -1176,6 +1412,7 @@ Future<void> requestRideAndMatchDriver(
       reason: 'client_matching_timeout_recovery',
     );
     await ref.read(rideBookingAttemptStoreProvider).clear();
+    ref.invalidate(homeRecentActivityProvider);
   } on ApiException catch (e) {
     developer.log(
       'cancel stale matching ride failed (status=${e.statusCode}, '
@@ -1217,6 +1454,46 @@ Future<void> requestRideAndMatchDriver(
 /// bridge (which lives inside another Provider and also uses a ref).
 typedef RideStateReader = T Function<T>(ProviderListenable<T>);
 
+Future<void> _reconcileMatchingViaSocket(
+  RideStateReader read,
+  SocketService socket,
+  String rideId,
+) async {
+  try {
+    final raw = await socket.emitWithAck(
+      'client:track:ride',
+      {
+        'rideId': rideId,
+        'replayProgress': true,
+      },
+      timeout: const Duration(seconds: 3),
+    );
+    if (raw is! Map) return;
+    final response = Map<String, dynamic>.from(raw);
+    if (!_isCurrentMatchingContext(read, rideId)) return;
+    applyRideMatchingState(read, response['matchingState']);
+  } catch (error) {
+    developer.log(
+      'Matching-state socket reconciliation unavailable '
+      '(${error.runtimeType})',
+      name: 'RideProvider',
+      level: 800,
+    );
+  }
+}
+
+bool _isCurrentMatchingContext(
+  RideStateReader read,
+  String rideId,
+) {
+  if (read(activeRideIdProvider) != rideId ||
+      read(rideSearchCancellationRequestedProvider)) {
+    return false;
+  }
+  final phase = read(bookingPhaseProvider);
+  return phase == BookingPhase.searching || phase == BookingPhase.driverFound;
+}
+
 /// Public re-entry point for hydrating the rider's ride state from REST.
 /// Used by the matching loop's belt, the tracking screen's maintenance
 /// loop, and the cold-start recovery bridge — all of which need the same
@@ -1241,9 +1518,16 @@ Future<void> _hydrateFromRest(
     final cancelledBy = json['cancelledBy'] as String?;
     final cancellationReason =
         (json['cancellationReason'] ?? json['reason']) as String?;
-    // Only fire the hydrate path when the backend has actually moved past
-    // `requested` — otherwise we'd push a half-built MatchedDriver.
-    if (status == 'requested') return;
+    if (status == 'requested') {
+      // Requested no longer means "nothing useful changed": the durable offer
+      // ledger may contain an acknowledged driver and exact decision window.
+      // Applying this projection makes REST a real fallback when Socket.IO room
+      // join/replay was missed.
+      if (_isCurrentMatchingContext(read, rideId)) {
+        applyRideMatchingState(read, json['matchingState']);
+      }
+      return;
+    }
     // Apply through the same handler the socket uses so all derived
     // providers flip identically. We're not in socket_provider's scope
     // here, but `applyRideSnapshot` is private; instead, push the raw
@@ -1432,7 +1716,26 @@ bool _isNoDriversTerminal(
 /// reset only after the API response or a read-back proves the backend row is
 /// cancelled; otherwise the caller must keep the ride visible.
 Future<bool> cancelInFlightRideRequest(ProviderContainer ref) async {
-  final rideId = ref.read(activeRideIdProvider);
+  ref.read(rideSearchCancellationRequestedProvider.notifier).state = true;
+
+  var rideId = ref.read(activeRideIdProvider);
+  if (rideId == null || rideId.isEmpty) {
+    // POST /rides may still be resolving. Never clear the screen while that
+    // request could create a live backend ride; wait for its authoritative id.
+    for (var i = 0; i < 600; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      rideId = ref.read(activeRideIdProvider);
+      if (rideId != null && rideId.isNotEmpty) break;
+      if (ref.read(bookingPhaseProvider) == BookingPhase.failed) {
+        ref.read(bookingFailureMessageProvider.notifier).state =
+            "We couldn't confirm that the ride request was cancelled.";
+        ref.read(rideSearchCancellationRequestedProvider.notifier).state =
+            false;
+        return false;
+      }
+    }
+  }
+
   if (rideId != null && rideId.isNotEmpty) {
     final cancellation = await cancelRideWithAuthority(
       rideService: ref.read(rideServiceProvider),
@@ -1448,18 +1751,27 @@ Future<bool> cancelInFlightRideRequest(ProviderContainer ref) async {
       );
       ref.read(bookingFailureMessageProvider.notifier).state =
           cancellation.message;
+      ref.read(rideSearchCancellationRequestedProvider.notifier).state = false;
       return false;
     }
     await ref.read(rideBookingAttemptStoreProvider).clear();
+    ref.invalidate(homeRecentActivityProvider);
+  } else {
+    ref.read(bookingFailureMessageProvider.notifier).state =
+        "We couldn't confirm that the ride request was cancelled.";
+    ref.read(rideSearchCancellationRequestedProvider.notifier).state = false;
+    return false;
   }
   ref.read(activeRideIdProvider.notifier).state = null;
   ref.read(matchedDriverProvider.notifier).state = null;
   ref.read(bookingFailureMessageProvider.notifier).state = null;
   ref.read(driversNotifiedProvider.notifier).state = 0;
   ref.read(matcherProgressProvider.notifier).state = null;
+  ref.read(rideOfferDecisionCountdownProvider.notifier).clear();
   ref.read(liveDriverPositionProvider.notifier).state = null;
   ref.read(rideArrivalAnchorProvider.notifier).state = null;
   ref.read(bookingPhaseProvider.notifier).reset();
+  ref.read(rideSearchCancellationRequestedProvider.notifier).state = false;
   return true;
 }
 

@@ -12,6 +12,9 @@ import 'socket_provider.dart';
 /// Keeps authoritative availability reconciliation active for the authenticated
 /// app lifetime. Network failures are best-effort and never change local state.
 final availabilityReconciliationBridgeProvider = Provider<void>((ref) {
+  var disposed = false;
+  ref.onDispose(() => disposed = true);
+
   void reconcile(String trigger) {
     if (ref.read(authControllerProvider) is! AuthAuthenticated) return;
     unawaited(
@@ -21,9 +24,14 @@ final availabilityReconciliationBridgeProvider = Provider<void>((ref) {
     );
   }
 
-  ref.listen<AuthState>(
-    authControllerProvider,
-    (previous, next) {
+  void installIdentity(AuthState next, {required bool reconcileAfterInstall}) {
+    // A fireImmediately listener runs while this bridge provider is itself
+    // being constructed. Riverpod forbids synchronously changing another
+    // provider in that phase and throws an unhandled assertion. Defer only the
+    // state write to the next microtask, then reconcile against that installed
+    // exact-role identity.
+    Future<void>.microtask(() {
+      if (disposed) return;
       if (next is AuthAuthenticated) {
         try {
           ref.read(currentProviderOnlineIntentIdentityProvider.notifier).state =
@@ -32,13 +40,22 @@ final availabilityReconciliationBridgeProvider = Provider<void>((ref) {
           ref.read(currentProviderOnlineIntentIdentityProvider.notifier).state =
               null;
         }
-        if (previous is! AuthAuthenticated) {
-          reconcile('authentication');
-        }
-      } else {
-        ref.read(currentProviderOnlineIntentIdentityProvider.notifier).state =
-            null;
+        if (reconcileAfterInstall) reconcile('authentication');
+        return;
       }
+      ref.read(currentProviderOnlineIntentIdentityProvider.notifier).state =
+          null;
+    });
+  }
+
+  ref.listen<AuthState>(
+    authControllerProvider,
+    (previous, next) {
+      installIdentity(
+        next,
+        reconcileAfterInstall:
+            next is AuthAuthenticated && previous is! AuthAuthenticated,
+      );
     },
     fireImmediately: true,
   );

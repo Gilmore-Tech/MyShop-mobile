@@ -31,10 +31,10 @@ class RideRequestScreen extends ConsumerStatefulWidget {
 }
 
 class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
-  // Aligned with backend `ride_driver_acceptance_window_secs` (45 s).
+  // Aligned with backend `ride_driver_acceptance_window_secs` (30 s).
   // Keep these in lockstep — if the UI counts past the backend window,
   // an Accept tap will fail with ACCEPTANCE_TIMEOUT.
-  static const _acceptanceWindow = Duration(seconds: 45);
+  static const _acceptanceWindow = Duration(seconds: 30);
   late int _secondsRemaining;
   late DateTime _expiresAt;
   Timer? _timer;
@@ -42,11 +42,23 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
   bool _isDeclining = false;
   bool _expired = false;
   bool _expiryHandled = false;
+  late final StateController<String?> _visibleRequestController;
 
   @override
   void initState() {
     super.initState();
+    // Riverpod deliberately disallows `ref.read` once unmount has begun.
+    // Cache this controller while mounted so dispose can conditionally release
+    // only this ride's marker without overwriting a newer request screen.
+    _visibleRequestController = ref.read(visibleRideRequestIdProvider.notifier);
     _mountRequest(widget.ride);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final dismissal = ref.read(rideOfferDismissalProvider);
+      if (dismissal?.rideId == widget.ride.id) {
+        _handleRemoteDismissal(dismissal!);
+      }
+    });
   }
 
   @override
@@ -83,7 +95,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
   void _markVisibleAfterBuild(String rideId) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || widget.ride.id != rideId) return;
-      ref.read(visibleRideRequestIdProvider.notifier).state = rideId;
+      _visibleRequestController.state = rideId;
     });
   }
 
@@ -98,6 +110,33 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     final explicit = ref.read(rideRequestDeadlineByIdProvider)[ride.id];
     if (explicit != null) return explicit.toLocal();
     return ride.createdAt.toLocal().add(_acceptanceWindow);
+  }
+
+  void _adoptLaterAuthoritativeDeadline(DateTime candidate) {
+    if (!mounted ||
+        _isAccepting ||
+        _isDeclining ||
+        _expired ||
+        _expiryHandled) {
+      return;
+    }
+    final nextDeadline = candidate.toLocal();
+    // Delivery receipt and socket hydration may update the same mounted ride.
+    // Only move the clock forward: a delayed delivery payload carrying the
+    // earlier 10-second transport deadline must never shorten an already
+    // authoritative 30-second decision window.
+    if (!nextDeadline.toUtc().isAfter(_expiresAt.toUtc())) return;
+    final remaining = _secondsUntil(nextDeadline);
+    if (remaining <= 0) return;
+
+    _timer?.cancel();
+    setState(() {
+      _expiresAt = nextDeadline;
+      _secondsRemaining = remaining;
+    });
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      _syncRemaining();
+    });
   }
 
   int _secondsUntil(DateTime deadline) {
@@ -146,6 +185,29 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     });
   }
 
+  void _handleRemoteDismissal(RideOfferDismissal dismissal) {
+    if (!mounted || dismissal.rideId != widget.ride.id || _expiryHandled) {
+      return;
+    }
+    _expiryHandled = true;
+    _timer?.cancel();
+    LocalNotificationService.instance.stopIncomingRingtone();
+    ref.read(incomingRideRequestProvider.notifier).state = null;
+    _clearVisibleMarker();
+    ref.read(rideOfferDismissalProvider.notifier).state = null;
+    // Route state is the provider-facing source of truth. Close it before
+    // best-effort native notification cleanup so a plugin/platform failure
+    // can never leave a cancelled request visible until its timer expires.
+    _closeRequest('dismissed');
+    unawaited(
+      clearIncomingRequestAlert(
+        type: NotificationPayload.typeRideRequest,
+        requestId: widget.ride.id,
+        reason: dismissal.reason,
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
@@ -154,14 +216,15 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     // silence the ring. Without this, accepting a ride would leave
     // the alert chiming on top of the active-ride map.
     LocalNotificationService.instance.stopIncomingRingtone();
+    // Clear only our own marker. A replacement request screen may already
+    // have claimed the shared marker before this screen is disposed.
     _clearVisibleMarker();
     super.dispose();
   }
 
   void _clearVisibleMarker() {
-    final visibleId = ref.read(visibleRideRequestIdProvider);
-    if (visibleId == widget.ride.id) {
-      ref.read(visibleRideRequestIdProvider.notifier).state = null;
+    if (_visibleRequestController.state == widget.ride.id) {
+      _visibleRequestController.state = null;
     }
   }
 
@@ -213,7 +276,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     _timer?.cancel();
     setState(() => _isDeclining = true);
     // Tell the matcher to move on immediately — without this, the next
-    // driver in the queue doesn't get the request until the 45 s window
+    // driver in the queue doesn't get the request until the 30 s window
     // expires and the matcher times us out.
     final notifier = ref.read(activeRideProvider.notifier);
     final acknowledged = await notifier.declineRideFromNotification(
@@ -235,15 +298,29 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
   void _closeRequest(String result) {
     if (!mounted) return;
     _clearVisibleMarker();
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop(result);
-    } else {
-      context.go('/home');
-    }
+    final navigator = Navigator.of(context);
+    unawaited(
+      navigator.maybePop(result).then((didPop) {
+        if (!didPop && mounted) context.go('/home');
+      }),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<RideOfferDismissal?>(rideOfferDismissalProvider,
+        (previous, next) {
+      if (next != null && next.rideId == widget.ride.id) {
+        _handleRemoteDismissal(next);
+      }
+    });
+    ref.listen<Map<String, DateTime>>(rideRequestDeadlineByIdProvider,
+        (previous, next) {
+      final deadline = next[widget.ride.id];
+      if (deadline != null) {
+        _adoptLaterAuthoritativeDeadline(deadline);
+      }
+    });
     final ride = widget.ride;
     final progress = (_secondsRemaining / _acceptanceWindow.inSeconds)
         .clamp(0.0, 1.0)

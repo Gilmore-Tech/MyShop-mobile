@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:api_client/api_client.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_models/shared_models.dart';
@@ -28,6 +28,7 @@ import 'nav_badge_provider.dart';
 import '../di/providers.dart';
 import '../services/incoming_request_overlay_presenter.dart';
 import '../services/local_notification_service.dart';
+import '../services/ride_cancellation_notice.dart';
 import '../services/ride_offer_receipt_service.dart';
 
 /// Provides the [SocketService] singleton for the app.
@@ -448,6 +449,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
       if (data is! Map) return;
       final rideId = data['rideId']?.toString() ?? data['id']?.toString();
       if (rideId == null || rideId.isEmpty) return;
+      final reason = data['reason']?.toString() ?? 'revoked';
+      ref.container.read(rideOfferDismissalProvider.notifier).state =
+          RideOfferDismissal(rideId: rideId, reason: reason);
       final current = ref.container.read(incomingRideRequestProvider);
       if (current?.id == rideId) {
         ref.container.read(incomingRideRequestProvider.notifier).state = null;
@@ -467,6 +471,21 @@ void _connectAndListen(Ref ref, SocketService socket) {
           offerId: offerId,
         ),
       );
+      if (isRiderCancellationRevocation(reason) &&
+          claimRiderCancellationInAppNotice(rideId)) {
+        final router = ref.container.read(goRouterProvider);
+        final context = router.routerDelegate.navigatorKey.currentContext;
+        if (context != null) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(
+                content: Text('The rider cancelled this ride request.'),
+                duration: Duration(seconds: 5),
+              ),
+            );
+        }
+      }
     }
 
     socket

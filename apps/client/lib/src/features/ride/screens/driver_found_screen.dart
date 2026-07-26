@@ -5,6 +5,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../../app/router.dart';
 import '../../../core/di/providers.dart';
+import '../../home/providers/home_provider.dart';
 import '../data/ride_cancellation_coordinator.dart';
 import '../providers/ride_provider.dart';
 import '../widgets/driver_profile_header.dart';
@@ -100,6 +101,7 @@ class DriverFoundScreen extends ConsumerWidget {
     }
 
     await ref.read(rideBookingAttemptStoreProvider).clear();
+    ref.invalidate(homeRecentActivityProvider);
     final result = cancellation.response;
     final feePesewas = (result['cancellationFeePesewas'] as num?)?.toInt() ?? 0;
     var message = cancellation.message;

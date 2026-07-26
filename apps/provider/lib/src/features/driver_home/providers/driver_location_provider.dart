@@ -5,11 +5,28 @@ import 'package:geolocator/geolocator.dart';
 import '../../../core/providers/provider_status_provider.dart';
 
 typedef OnlinePositionLoader = Future<Position> Function();
+typedef LastKnownPositionLoader = Future<Position?> Function();
 
 /// A 10-second acquisition threshold leaves enough time for the 15-second
 /// durable writer and network latency while the server enforces its strict
 /// 30-second dispatch boundary.
 const Duration periodicOnlineFixMaxAge = Duration(seconds: 10);
+const Duration onlineEntryFixTimeout = Duration(seconds: 20);
+
+/// Entering the matching pool is an explicit user action and can tolerate a
+/// longer cold-start wait than the periodic writer. Eight seconds proved too
+/// short on real Android hardware indoors even with every permission granted.
+final onlineEntryPositionLoaderProvider = Provider<OnlinePositionLoader>((_) {
+  return () => Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: onlineEntryFixTimeout,
+        ),
+      );
+});
+
+final lastKnownPositionLoaderProvider =
+    Provider<LastKnownPositionLoader>((_) => Geolocator.getLastKnownPosition);
 
 final onlinePositionLoaderProvider = Provider<OnlinePositionLoader>((_) {
   return () => Geolocator.getCurrentPosition(
