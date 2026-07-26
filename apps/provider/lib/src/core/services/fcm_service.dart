@@ -733,6 +733,11 @@ class FcmService {
         final rideId = message.data[NotificationPayload.keyRideId]?.toString();
         final jobId = message.data[NotificationPayload.keyJobId]?.toString();
         if (rideId != null && rideId.isNotEmpty) {
+          _ref.read(rideOfferDismissalProvider.notifier).state =
+              RideOfferDismissal(
+            rideId: rideId,
+            reason: message.data['reason']?.toString() ?? 'revoked',
+          );
           _ref.read(incomingRideRequestProvider.notifier).state = null;
           _ref.read(rideRequestDeadlineByIdProvider.notifier).update(
                 (deadlines) => {...deadlines}..remove(rideId),
@@ -887,7 +892,18 @@ class FcmService {
     });
 
     // Cold-start tap: app was terminated, user tapped a push to open it.
-    final initialMessage = await _fcm.getInitialMessage();
+    //
+    // This plugin call has been observed hanging on a real iOS device. FCM
+    // handler setup must not remain permanently "initialising" because Go
+    // Online also verifies notification reachability. Pending-request recovery
+    // remains the fallback when the cold-start payload cannot be read in time.
+    RemoteMessage? initialMessage;
+    try {
+      initialMessage =
+          await _fcm.getInitialMessage().timeout(const Duration(seconds: 5));
+    } catch (error) {
+      debugPrint('[FCM] initial message lookup unavailable: $error');
+    }
     if (initialMessage != null) {
       debugPrint(
         '[FCM] initial message: type=${initialMessage.data['type']} '
@@ -939,8 +955,18 @@ class FcmService {
     }
 
     try {
+      // Permission and token authority come directly from the operating system
+      // and Firebase Messaging. Do not await the separate message-handler
+      // initialisation path here: cold-start payload recovery can be slow or
+      // unavailable, but that must never suppress the OS permission prompt or
+      // falsely report a Settings problem.
       if (!_initialised) {
-        await init().timeout(const Duration(seconds: 10));
+        unawaited(
+          init().catchError(
+            (Object error) =>
+                debugPrint('[FCM] deferred handler init failed: $error'),
+          ),
+        );
       }
 
       var settings = await _fcm
@@ -1840,6 +1866,52 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           openBidSheet: openBidSheet,
         ),
       );
+    }
+
+    // A visible iOS receipt-protocol alert can be delivered while Dart is
+    // suspended. Receipt it as soon as the provider taps the alert/action so
+    // the backend starts the fresh 30-second decision window before any View,
+    // Accept, or Skip path tries to hydrate or resolve the offer.
+    if (type == NotificationPayload.typeRideRequest &&
+        (int.tryParse(payload['offerVersion']?.toString() ?? '') ?? 0) >=
+            rideOfferReceiptProtocolVersion) {
+      if (!await waitForAuthenticatedRequest(payload)) {
+        debugPrint('[FCM-tap] ride receipt auth unavailable');
+        return;
+      }
+      final received = await acknowledgeRideOfferWithSocket(
+        payload: payload,
+        socket: ref.read(socketServiceProvider),
+        rides: ref.read(rideServiceProvider),
+      );
+      if (received == null) {
+        final rideId = payload[NotificationPayload.keyRideId]?.toString() ??
+            payload['ride_id']?.toString();
+        if (rideId != null && rideId.isNotEmpty) {
+          await clearIncomingRequestAlert(
+            type: NotificationPayload.typeRideRequest,
+            requestId: rideId,
+            offerId: payload[NotificationPayload.keyOfferId]?.toString(),
+            reason: 'receipt_unavailable',
+          );
+        }
+        router.go('/home');
+        debugPrint('[FCM-tap] ride offer no longer receipt-capable');
+        return;
+      }
+      payload.addAll(received.payload);
+      ref.read(rideOfferIdByRideProvider.notifier).update(
+            (offers) => {
+              ...offers,
+              received.rideId: received.offerId,
+            },
+          );
+      ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+            (deadlines) => {
+              ...deadlines,
+              received.rideId: received.decisionExpiresAt,
+            },
+          );
     }
 
     // Local-notification and native overlay actions all converge here. The

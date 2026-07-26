@@ -625,11 +625,12 @@ void _connectAndListen(Ref ref, SocketService socket) {
         final driversRemaining =
             (map['driversRemaining'] as num?)?.toInt() ?? 0;
         final radiusKm = (map['radiusKm'] as num?)?.toDouble() ?? 0;
+        final expanded = map['expanded'] == true;
         final reason = parseMatcherReason(map['reason'] as String?);
         developer.log(
           'matcher_progress: reason=$reason attempt=$attempt '
           'tried=$driversTried remaining=$driversRemaining '
-          'radiusKm=$radiusKm',
+          'radiusKm=$radiusKm expanded=$expanded',
           name: 'WS',
         );
         ref.container.read(matcherProgressProvider.notifier).state =
@@ -638,6 +639,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
           driversTried: driversTried,
           driversRemaining: driversRemaining,
           radiusKm: radiusKm,
+          expanded: expanded,
           reason: reason,
         );
         ref.container.read(driversNotifiedProvider.notifier).state =

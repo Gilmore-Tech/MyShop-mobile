@@ -701,6 +701,7 @@ class MatcherProgress {
     required this.driversTried,
     required this.driversRemaining,
     required this.radiusKm,
+    required this.expanded,
     required this.reason,
   });
 
@@ -715,6 +716,9 @@ class MatcherProgress {
 
   /// Radius the matcher just searched at, in kilometres.
   final double radiusKm;
+
+  /// True only when this attempt widened the approved search ring.
+  final bool expanded;
 
   /// What triggered this event — set by the backend.
   final MatcherReason reason;
@@ -1137,17 +1141,12 @@ Future<void> requestRideAndMatchDriver(
     rideId = _extractRideId(result);
     ref.read(activeRideIdProvider.notifier).state = rideId;
 
-    // POST /rides returns `driversNotified` — the count of drivers the
-    // matcher pushed the request to. As soon as that's > 0 we know a
-    // driver has the request open on their screen, so we flip the rider
-    // out of the "searching" radar into the "driver found" state. The
-    // final `accepted` transition (and the navigation to the tracking
-    // screen) only happens once a driver actually taps Accept.
+    // POST /rides returns how many delivery attempts were opened, not proof
+    // that a provider device received one. Keep the rider in Searching until
+    // `ride:offer_received` confirms the authenticated device receipt and
+    // starts that driver's fresh decision window.
     final notified = (result['driversNotified'] as num?)?.toInt() ?? 0;
     ref.read(driversNotifiedProvider.notifier).state = notified;
-    if (notified > 0) {
-      ref.read(bookingPhaseProvider.notifier).driverFound();
-    }
 
     // Try to join the ride's tracking room immediately. If the socket is
     // still mid-handshake at this point the emit silently no-ops — the
@@ -1253,7 +1252,13 @@ Future<void> requestRideAndMatchDriver(
     // Belt 1 — re-emit the room join every 2s while still waiting.
     if (i % 2 == 0 && socket.isConnected) {
       try {
-        socket.emit('client:track:ride', {'rideId': rideId});
+        socket.emit('client:track:ride', {
+          'rideId': rideId,
+          // Every ten seconds, request an authoritative replay from the
+          // durable offer ledger. Ordinary two-second emits remain cheap room
+          // membership safety belts.
+          if (i % 10 == 0) 'replayProgress': true,
+        });
       } catch (_) {
         // Socket may have flipped to disconnected mid-emit; the next
         // tick will retry.

@@ -43,26 +43,52 @@ Future<void> clearIncomingRequestAlert({
       NotificationPayload.keyOfferId: offerId,
   };
   await Future.wait<void>([
-    LocalNotificationService.instance.stopIncomingRingtone(),
-    LocalNotificationService.instance.cancelIncomingRequest(
-      type: type,
-      requestId: requestId,
+    _bestEffortAlertCleanup(
+      'ringtone',
+      LocalNotificationService.instance.stopIncomingRingtone,
     ),
-    IncomingRequestOverlayPresenter.instance.dismissByNotificationType(
-      type: type,
-      requestId: requestId,
-      offerId: offerId,
+    _bestEffortAlertCleanup(
+      'local notification',
+      () => LocalNotificationService.instance.cancelIncomingRequest(
+        type: type,
+        requestId: requestId,
+      ),
     ),
-    LiveActivityService.instance.endRequest(
-      requestId: requestId,
-      offerId: offerId,
-      requestType: type,
-      reason: reason,
+    _bestEffortAlertCleanup(
+      'native overlay',
+      () => IncomingRequestOverlayPresenter.instance.dismissByNotificationType(
+        type: type,
+        requestId: requestId,
+        offerId: offerId,
+      ),
     ),
-    IncomingRequestActionBridge.removeDeliveredNotification(
-      notificationIdentity,
+    _bestEffortAlertCleanup(
+      'Live Activity',
+      () => LiveActivityService.instance.endRequest(
+        requestId: requestId,
+        offerId: offerId,
+        requestType: type,
+        reason: reason,
+      ),
+    ),
+    _bestEffortAlertCleanup(
+      'delivered iOS notification',
+      () => IncomingRequestActionBridge.removeDeliveredNotification(
+        notificationIdentity,
+      ),
     ),
   ]);
+}
+
+Future<void> _bestEffortAlertCleanup(
+  String surface,
+  Future<void> Function() cleanup,
+) async {
+  try {
+    await cleanup();
+  } catch (error) {
+    debugPrint('[RequestAlert] $surface cleanup failed: $error');
+  }
 }
 
 /// Converts the versioned backend offer contract (and the previous ride/job

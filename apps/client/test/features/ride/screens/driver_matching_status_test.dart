@@ -33,6 +33,23 @@ void main() {
     expect(countdown.progress, closeTo(0.9, 0.001));
   });
 
+  test('moves on immediately when the driver decision countdown reaches zero',
+      () {
+    const countdown = RideOfferDecisionCountdown(
+      secondsRemaining: 0,
+      totalSeconds: 30,
+    );
+
+    final status = matcherStatusPresentation(
+      phase: BookingPhase.driverFound,
+      progress: null,
+      countdown: countdown,
+    );
+
+    expect(status.headline, "Driver didn't respond");
+    expect(status.subtitle, 'Looking for another driver');
+  });
+
   test('shows another-driver and radius-expansion states', () {
     final another = matcherStatusPresentation(
       phase: BookingPhase.driverFound,
@@ -41,6 +58,7 @@ void main() {
         driversTried: 1,
         driversRemaining: 1,
         radiusKm: 5,
+        expanded: false,
         reason: MatcherReason.decline,
       ),
       countdown: null,
@@ -52,6 +70,7 @@ void main() {
         driversTried: 2,
         driversRemaining: 0,
         radiusKm: 7,
+        expanded: true,
         reason: MatcherReason.timeout,
       ),
       countdown: null,
