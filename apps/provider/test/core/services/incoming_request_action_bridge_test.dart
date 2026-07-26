@@ -1,0 +1,85 @@
+import 'dart:async';
+
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:myshop_provider/src/core/services/incoming_request_action_bridge.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  const methodChannel = MethodChannel(
+    'com.gilmoretech.myshop/request_action',
+  );
+  late List<MethodCall> nativeCalls;
+
+  setUp(() {
+    nativeCalls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(methodChannel, (call) async {
+      nativeCalls.add(call);
+      return null;
+    });
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(methodChannel, null);
+  });
+
+  Map<String, dynamic> action(String actionId) => <String, dynamic>{
+        'actionId': actionId,
+        'action': 'ride_view',
+        'rideId': 'ride-1',
+        'requestType': 'ride_request',
+      };
+
+  test('suppresses a completed iOS action replayed by the pending snapshot',
+      () async {
+    var handled = 0;
+    final bridge = IncomingRequestActionBridge(
+      handleAction: (_) async => handled += 1,
+    );
+
+    await bridge.processIosActionForTesting(action('action-1'));
+    await bridge.processIosActionForTesting(action('action-1'));
+
+    expect(handled, 1);
+    expect(
+      nativeCalls.where((call) => call.method == 'acknowledgeRequestAction'),
+      hasLength(1),
+    );
+  });
+
+  test('suppresses EventChannel and pending-snapshot race for one action',
+      () async {
+    var handled = 0;
+    final handlerEntered = Completer<void>();
+    final releaseHandler = Completer<void>();
+    final bridge = IncomingRequestActionBridge(
+      handleAction: (_) async {
+        handled += 1;
+        handlerEntered.complete();
+        await releaseHandler.future;
+      },
+    );
+
+    final eventDelivery =
+        bridge.processIosActionForTesting(action('action-race'));
+    await handlerEntered.future;
+    final pendingReplay =
+        bridge.processIosActionForTesting(action('action-race'));
+    await pendingReplay;
+    releaseHandler.complete();
+    await eventDelivery;
+
+    // A stale copy from the startup snapshot can be iterated after the event
+    // handler has completed. It must remain idempotently suppressed.
+    await bridge.processIosActionForTesting(action('action-race'));
+
+    expect(handled, 1);
+    expect(
+      nativeCalls.where((call) => call.method == 'acknowledgeRequestAction'),
+      hasLength(1),
+    );
+  });
+}

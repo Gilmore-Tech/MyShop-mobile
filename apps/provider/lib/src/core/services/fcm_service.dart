@@ -40,6 +40,31 @@ bool notificationAuthorizationAllowsOnline(AuthorizationStatus status) {
       status == AuthorizationStatus.provisional;
 }
 
+@visibleForTesting
+bool rideRequestNavigationAlreadyActive({
+  required String rideId,
+  required String? visibleRideId,
+  required Set<String> navigationInFlightRideIds,
+}) {
+  return visibleRideId == rideId || navigationInFlightRideIds.contains(rideId);
+}
+
+@visibleForTesting
+const rideRequestNavigationFallbackDuration = Duration(seconds: 12);
+
+@visibleForTesting
+bool releaseRideRequestNavigationLatchIfOwned({
+  required Map<String, Object> latchTokens,
+  required String rideId,
+  required Object token,
+  required VoidCallback onRelease,
+}) {
+  if (!identical(latchTokens[rideId], token)) return false;
+  latchTokens.remove(rideId);
+  onRelease();
+  return true;
+}
+
 Future<void> _recordTerminalCallTombstone(
   String callId,
   Map<String, dynamic> data,
@@ -1666,6 +1691,7 @@ final fcmAuthBridgeProvider = Provider<void>((ref) {
 /// `goRouterProvider` is ready to receive navigation calls.
 final fcmTapBridgeProvider = Provider<void>((ref) {
   final fcm = ref.read(fcmServiceProvider);
+  final rideNavigationLatchTokens = <String, Object>{};
 
   Future<bool> waitForAuthenticatedCall(
     String callId,
@@ -1793,12 +1819,28 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       }
     }
 
-    void clearRideRequestInFlightLater(String rideId) {
-      unawaited(
-        Future<void>.delayed(const Duration(seconds: 4), () {
+    void releaseRideRequestNavigationLatch(String rideId, Object token) {
+      releaseRideRequestNavigationLatchIfOwned(
+        latchTokens: rideNavigationLatchTokens,
+        rideId: rideId,
+        token: token,
+        onRelease: () {
           ref.read(rideRequestNavigationInFlightProvider.notifier).update(
                 (s) => {...s}..remove(rideId),
               );
+        },
+      );
+    }
+
+    void clearRideRequestInFlightFallback(VoidCallback releaseLatch) {
+      // The loader releases this latch as soon as it either opens the
+      // request screen, becomes unavailable, or is removed. This fallback is
+      // only for a routing interruption before the loader can release it. It
+      // is deliberately just beyond the loader's bounded 10-second hydrate,
+      // not the full 30-second offer window.
+      unawaited(
+        Future<void>.delayed(rideRequestNavigationFallbackDuration, () {
+          releaseLatch();
         }),
       );
     }
@@ -1819,23 +1861,36 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
               (m) => {...m, rideId: deadline},
             );
       }
-      ref.read(surfacedRideIdsProvider.notifier).update((s) => {...s, rideId});
-      ref.read(incomingRideRequestProvider.notifier).state = null;
       final visibleId = ref.read(visibleRideRequestIdProvider);
-      if (visibleId == rideId) {
+      final navigationInFlight =
+          ref.read(rideRequestNavigationInFlightProvider);
+      if (rideRequestNavigationAlreadyActive(
+        rideId: rideId,
+        visibleRideId: visibleId,
+        navigationInFlightRideIds: navigationInFlight,
+      )) {
         debugPrint(
-          '[FCM-tap] ride_request $rideId already visible — keeping details',
+          '[FCM-tap] ride_request $rideId already visible or opening '
+          '— keeping current route',
         );
         return;
       }
+      ref.read(surfacedRideIdsProvider.notifier).update((s) => {...s, rideId});
+      ref.read(incomingRideRequestProvider.notifier).state = null;
       ref.read(rideRequestNavigationInFlightProvider.notifier).update(
             (s) => {...s, rideId},
           );
-      clearRideRequestInFlightLater(rideId);
+      final latchToken = Object();
+      rideNavigationLatchTokens[rideId] = latchToken;
+      void releaseLatch() =>
+          releaseRideRequestNavigationLatch(rideId, latchToken);
+      clearRideRequestInFlightFallback(releaseLatch);
 
       final currentPath = router.routerDelegate.currentConfiguration.uri.path;
       final routeExtra = RideRequestRouteExtra(
         rideId: rideId,
+        navigationLatchToken: latchToken,
+        releaseNavigationLatch: releaseLatch,
         expiresAt: deadline,
       );
       debugPrint(

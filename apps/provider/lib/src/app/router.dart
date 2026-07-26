@@ -573,10 +573,14 @@ class _AuthRouterRefresh extends ChangeNotifier {
 class RideRequestRouteExtra {
   const RideRequestRouteExtra({
     required this.rideId,
+    required this.navigationLatchToken,
+    required this.releaseNavigationLatch,
     this.expiresAt,
   });
 
   final String rideId;
+  final Object navigationLatchToken;
+  final VoidCallback releaseNavigationLatch;
   final DateTime? expiresAt;
 }
 
@@ -607,9 +611,25 @@ class _RideRequestLoaderScreenState
   void didUpdateWidget(covariant _RideRequestLoaderScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.extra.rideId != widget.extra.rideId ||
-        oldWidget.extra.expiresAt != widget.extra.expiresAt) {
+        oldWidget.extra.expiresAt != widget.extra.expiresAt ||
+        !identical(
+          oldWidget.extra.navigationLatchToken,
+          widget.extra.navigationLatchToken,
+        )) {
+      // The callback is ownership checked by the tap bridge. If this widget is
+      // being reused for a same-ride retry, releasing the old token cannot
+      // clear the newer navigation claim.
+      oldWidget.extra.releaseNavigationLatch();
       _hydrate();
     }
+  }
+
+  void _openRideRequest(Ride ride) {
+    // Mark the request visible before replacing the loader. The loader's
+    // dispose releases the navigation latch, so this ordering leaves no frame
+    // where a duplicate iOS notification tap can stack the same route.
+    ref.read(visibleRideRequestIdProvider.notifier).state = ride.id;
+    context.pushReplacement('/ride-request', extra: ride);
   }
 
   Future<void> _hydrate() async {
@@ -635,7 +655,7 @@ class _RideRequestLoaderScreenState
     if (!mounted || generation != _generation) return;
 
     if (ride != null) {
-      context.pushReplacement('/ride-request', extra: ride);
+      _openRideRequest(ride);
       return;
     }
 
@@ -705,7 +725,7 @@ class _RideRequestLoaderScreenState
     if (!mounted || generation != _generation) return;
 
     if (ride != null) {
-      context.pushReplacement('/ride-request', extra: ride);
+      _openRideRequest(ride);
       return;
     }
 
@@ -722,8 +742,18 @@ class _RideRequestLoaderScreenState
       await Future<void>.delayed(minimumLoading - elapsed);
     }
     if (mounted && generation == _generation) {
+      // A failed/terminal hydrate must not block a deliberate retry for the
+      // remainder of the 30-second offer. The timeout fallback in the tap
+      // bridge is only for cases where this loader never mounts.
+      widget.extra.releaseNavigationLatch();
       setState(() => _showUnavailable = true);
     }
+  }
+
+  @override
+  void dispose() {
+    widget.extra.releaseNavigationLatch();
+    super.dispose();
   }
 
   @override
