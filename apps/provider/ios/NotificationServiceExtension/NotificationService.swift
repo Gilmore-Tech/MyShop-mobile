@@ -39,6 +39,81 @@ final class NotificationService: UNNotificationServiceExtension {
       content.relevanceScore = 1
     }
 
+    if requestType == "ride_request",
+       Self.stringValue(payload["notificationReceiptVersion"]) == "1",
+       let receiptURL = Self.validReceiptURL(payload["notificationReceiptUrl"]),
+       let rideId = Self.stringValue(payload["rideId"] ?? payload["id"]),
+       let offerId = Self.stringValue(payload["offerId"]),
+       let receiptToken = Self.stringValue(payload["notificationReceiptToken"]) {
+      acknowledgeRideDelivery(
+        url: receiptURL,
+        rideId: rideId,
+        offerId: offerId,
+        receiptToken: receiptToken,
+        content: content,
+        payload: payload
+      )
+      return
+    }
+
+    enrichAndFinish(content: content, payload: payload)
+  }
+
+  private func acknowledgeRideDelivery(
+    url: URL,
+    rideId: String,
+    offerId: String,
+    receiptToken: String,
+    content: UNMutableNotificationContent,
+    payload: [String: Any]
+  ) {
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.timeoutInterval = 4
+    request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpBody = try? JSONSerialization.data(withJSONObject: [
+      "rideId": rideId,
+      "offerId": offerId,
+      "receiptToken": receiptToken,
+    ])
+
+    downloadTask = URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+      guard let self else { return }
+      self.downloadTask = nil
+      var updatedPayload = payload
+      if let http = response as? HTTPURLResponse,
+         (200 ... 299).contains(http.statusCode),
+         let receipt = Self.receiptPayload(from: data) {
+        for key in [
+          "attempt",
+          "serverNow",
+          "decisionExpiresAt",
+          "acceptanceExpiresAt",
+          "expiresAt",
+          "acceptanceWindowSeconds",
+        ] {
+          if let value = receipt[key] {
+            updatedPayload[key] = value
+          }
+        }
+        updatedPayload["offerVersion"] = "2"
+        updatedPayload["notificationReceiptAcknowledged"] = "true"
+        var userInfo = content.userInfo
+        for (key, value) in updatedPayload {
+          userInfo[key] = value
+        }
+        content.userInfo = userInfo
+      }
+      self.enrichAndFinish(content: content, payload: updatedPayload)
+    }
+    downloadTask?.resume()
+  }
+
+  private func enrichAndFinish(
+    content: UNMutableNotificationContent,
+    payload: [String: Any]
+  ) {
     // The current backend map contains exact offer coordinates. It is never
     // attached to a lock-screen notification unless a future backend renderer
     // explicitly marks a redacted image as privacy safe. The opaque, expiring
@@ -169,5 +244,26 @@ final class NotificationService: UNNotificationServiceExtension {
     if let value = value as? NSNumber { return value.boolValue }
     guard let value = value as? String else { return false }
     return ["1", "true", "yes"].contains(value.lowercased())
+  }
+
+  private static func validReceiptURL(_ value: Any?) -> URL? {
+    guard let raw = stringValue(value),
+          let url = URL(string: raw),
+          url.scheme?.lowercased() == "https",
+          url.user == nil,
+          url.password == nil,
+          url.host != nil
+    else { return nil }
+    return url
+  }
+
+  private static func receiptPayload(from data: Data?) -> [String: Any]? {
+    guard let data,
+          let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else { return nil }
+    if let nested = root["data"] as? [String: Any] {
+      return nested
+    }
+    return root
   }
 }

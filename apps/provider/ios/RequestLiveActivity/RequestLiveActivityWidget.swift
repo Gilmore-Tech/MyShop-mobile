@@ -238,6 +238,10 @@ struct RequestLiveActivityWidget: Widget {
       URLQueryItem(name: "requestId", value: context.attributes.requestId),
       URLQueryItem(name: "offerId", value: context.attributes.offerId),
       URLQueryItem(name: "requestType", value: context.attributes.requestType),
+      URLQueryItem(
+        name: "offerVersion",
+        value: context.attributes.requestType.lowercased().contains("ride") ? "2" : nil
+      ),
       URLQueryItem(name: "action", value: action),
       URLQueryItem(
         name: "expiresAt",

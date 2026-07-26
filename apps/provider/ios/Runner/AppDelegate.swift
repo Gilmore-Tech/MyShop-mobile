@@ -633,6 +633,7 @@ final class IncomingRequestActionBridge: NSObject, FlutterStreamHandler {
     ]
     event[isRide ? "rideId" : "jobId"] = requestId
     if let offerId = query["offerId"] { event["offerId"] = offerId }
+    if let offerVersion = query["offerVersion"] { event["offerVersion"] = offerVersion }
     if let expiresAt = query["expiresAt"] { event["expiresAt"] = expiresAt }
     queue(event)
     NSLog("[RequestAction] queued Live Activity action=\(action) request=\(requestId)")

@@ -22,8 +22,8 @@ import 'ride_search_provider.dart';
 /// - [idle]: no request in flight.
 /// - [searching]: POST /rides is in flight; we don't yet know whether any
 ///   driver was notified.
-/// - [driverFound]: backend reported `driversNotified > 0` — a driver has
-///   the request open and the rider is waiting for them to tap Accept.
+/// - [driverFound]: the backend has an acknowledged, live driver decision
+///   window and the rider is waiting for that provider to accept.
 /// - [accepted]: a driver acked acceptance — surfaced via the `ride:state`
 ///   socket event with `status` in `accepted | driver_en_route | …`.
 ///   UI navigates to the tracking screen.
@@ -733,10 +733,14 @@ final matcherProgressProvider = StateProvider<MatcherProgress?>((_) => null);
 /// handset clock cannot invent or extend a driver's decision window.
 class RideOfferDecisionCountdown {
   const RideOfferDecisionCountdown({
+    required this.attempt,
+    required this.decisionExpiresAt,
     required this.secondsRemaining,
     required this.totalSeconds,
   });
 
+  final int attempt;
+  final DateTime decisionExpiresAt;
   final int secondsRemaining;
   final int totalSeconds;
 
@@ -753,13 +757,23 @@ class RideOfferDecisionCountdownNotifier
   Stopwatch? _elapsed;
   int _initialRemainingMs = 0;
   int _totalSeconds = 0;
+  int _attempt = 0;
+  DateTime? _decisionExpiresAt;
 
   void start({
+    required int attempt,
     required DateTime serverNow,
     required DateTime decisionExpiresAt,
     required int totalSeconds,
   }) {
+    if (_attempt == attempt &&
+        _decisionExpiresAt == decisionExpiresAt.toUtc() &&
+        state != null) {
+      return;
+    }
     clear();
+    _attempt = attempt;
+    _decisionExpiresAt = decisionExpiresAt.toUtc();
     _totalSeconds = totalSeconds > 0 ? totalSeconds : 30;
     _initialRemainingMs = decisionExpiresAt
         .difference(serverNow)
@@ -786,6 +800,8 @@ class RideOfferDecisionCountdownNotifier
       return;
     }
     state = RideOfferDecisionCountdown(
+      attempt: _attempt,
+      decisionExpiresAt: _decisionExpiresAt!,
       secondsRemaining: seconds,
       totalSeconds: _totalSeconds,
     );
@@ -803,6 +819,8 @@ class RideOfferDecisionCountdownNotifier
     _elapsed = null;
     _initialRemainingMs = 0;
     _totalSeconds = 0;
+    _attempt = 0;
+    _decisionExpiresAt = null;
     state = null;
   }
 
@@ -818,6 +836,100 @@ final rideOfferDecisionCountdownProvider = StateNotifierProvider<
     RideOfferDecisionCountdownNotifier, RideOfferDecisionCountdown?>(
   (_) => RideOfferDecisionCountdownNotifier(),
 );
+
+/// Applies the backend's combined, rider-safe matching projection atomically.
+///
+/// Socket events can arrive before the rider has joined a room, and separate
+/// timeout/decision packets can be reordered. Both Socket.IO replay and
+/// `GET /rides/:id` carry this same durable shape so neither transport is a
+/// single point of truth.
+bool applyRideMatchingState(
+  RideStateReader read,
+  Object? raw,
+) {
+  if (raw is! Map) return false;
+  final state = Map<String, dynamic>.from(raw);
+  final rawProgress = state['matcherProgress'];
+  final rawDecision = state['decisionWindow'];
+  final currentProgress = read(matcherProgressProvider);
+  final currentCountdown = read(rideOfferDecisionCountdownProvider);
+
+  final responseProgressAttempt =
+      rawProgress is Map ? (rawProgress['attempt'] as num?)?.toInt() ?? 0 : 0;
+  final responseDecisionAttempt =
+      rawDecision is Map ? (rawDecision['attempt'] as num?)?.toInt() ?? 0 : 0;
+  final responseAttempt = responseProgressAttempt > responseDecisionAttempt
+      ? responseProgressAttempt
+      : responseDecisionAttempt;
+  final currentProgressAttempt = currentProgress?.attempt ?? 0;
+  final currentDecisionAttempt = currentCountdown?.attempt ?? 0;
+  final knownAttempt = currentProgressAttempt > currentDecisionAttempt
+      ? currentProgressAttempt
+      : currentDecisionAttempt;
+  if ((responseAttempt == 0 && knownAttempt > 0) ||
+      responseAttempt < knownAttempt) {
+    return false;
+  }
+
+  MatcherProgress? progress = currentProgress;
+  if (rawProgress is Map) {
+    final map = Map<String, dynamic>.from(rawProgress);
+    final candidate = MatcherProgress(
+      attempt: (map['attempt'] as num?)?.toInt() ?? 0,
+      driversTried: (map['driversTried'] as num?)?.toInt() ?? 0,
+      driversRemaining: (map['driversRemaining'] as num?)?.toInt() ?? 0,
+      radiusKm: (map['radiusKm'] as num?)?.toDouble() ?? 0,
+      expanded: map['expanded'] == true,
+      reason: parseMatcherReason(map['reason']?.toString()),
+    );
+    final sameAttemptWouldRegress = currentProgress != null &&
+        candidate.attempt == currentProgress.attempt &&
+        (candidate.radiusKm < currentProgress.radiusKm ||
+            (candidate.radiusKm == currentProgress.radiusKm &&
+                currentProgress.expanded &&
+                !candidate.expanded));
+    if (candidate.attempt >= currentProgressAttempt &&
+        !sameAttemptWouldRegress) {
+      progress = candidate;
+      read(matcherProgressProvider.notifier).state = candidate;
+      read(driversNotifiedProvider.notifier).state = candidate.driversTried;
+    }
+  }
+
+  if (rawDecision is Map) {
+    final map = Map<String, dynamic>.from(rawDecision);
+    final attempt = (map['attempt'] as num?)?.toInt() ?? 0;
+    final serverNow =
+        DateTime.tryParse(map['serverNow']?.toString() ?? '')?.toUtc();
+    final decisionExpiresAt =
+        DateTime.tryParse(map['decisionExpiresAt']?.toString() ?? '')?.toUtc();
+    final totalSeconds =
+        (map['acceptanceWindowSeconds'] as num?)?.toInt() ?? 30;
+    // A newer matcher attempt means this decision window became stale between
+    // the two database reads. Never regress the rider to an earlier driver.
+    if (attempt > 0 &&
+        serverNow != null &&
+        decisionExpiresAt != null &&
+        decisionExpiresAt.isAfter(serverNow) &&
+        (progress == null || attempt >= progress.attempt)) {
+      read(bookingPhaseProvider.notifier).driverFound();
+      read(rideOfferDecisionCountdownProvider.notifier).start(
+        attempt: attempt,
+        serverNow: serverNow,
+        decisionExpiresAt: decisionExpiresAt,
+        totalSeconds: totalSeconds,
+      );
+      return true;
+    }
+  }
+
+  read(rideOfferDecisionCountdownProvider.notifier).clear();
+  final phase = read(bookingPhaseProvider);
+  if (phase == BookingPhase.driverFound) {
+    read(bookingPhaseProvider.notifier).startSearch();
+  }
+  return progress != null;
+}
 
 /// Set as soon as the rider confirms cancellation, including the short period
 /// before POST /rides has returned its authoritative ride id.
@@ -1156,7 +1268,9 @@ Future<void> requestRideAndMatchDriver(
       try {
         final socket = ref.read(socketServiceProvider);
         if (socket.isConnected) {
-          socket.emit('client:track:ride', {'rideId': rideId});
+          unawaited(
+            _reconcileMatchingViaSocket(ref.read, socket, rideId),
+          );
           developer.log('Joined ride room: $rideId', name: 'RideProvider');
         } else {
           developer.log(
@@ -1252,13 +1366,11 @@ Future<void> requestRideAndMatchDriver(
     // Belt 1 — re-emit the room join every 2s while still waiting.
     if (i % 2 == 0 && socket.isConnected) {
       try {
-        socket.emit('client:track:ride', {
-          'rideId': rideId,
-          // Every ten seconds, request an authoritative replay from the
-          // durable offer ledger. Ordinary two-second emits remain cheap room
-          // membership safety belts.
-          if (i % 10 == 0) 'replayProgress': true,
-        });
+        if (i % 10 == 0) {
+          unawaited(_reconcileMatchingViaSocket(ref.read, socket, rideId));
+        } else {
+          socket.emit('client:track:ride', {'rideId': rideId});
+        }
       } catch (_) {
         // Socket may have flipped to disconnected mid-emit; the next
         // tick will retry.
@@ -1337,6 +1449,46 @@ Future<void> requestRideAndMatchDriver(
 /// bridge (which lives inside another Provider and also uses a ref).
 typedef RideStateReader = T Function<T>(ProviderListenable<T>);
 
+Future<void> _reconcileMatchingViaSocket(
+  RideStateReader read,
+  SocketService socket,
+  String rideId,
+) async {
+  try {
+    final raw = await socket.emitWithAck(
+      'client:track:ride',
+      {
+        'rideId': rideId,
+        'replayProgress': true,
+      },
+      timeout: const Duration(seconds: 3),
+    );
+    if (raw is! Map) return;
+    final response = Map<String, dynamic>.from(raw);
+    if (!_isCurrentMatchingContext(read, rideId)) return;
+    applyRideMatchingState(read, response['matchingState']);
+  } catch (error) {
+    developer.log(
+      'Matching-state socket reconciliation unavailable '
+      '(${error.runtimeType})',
+      name: 'RideProvider',
+      level: 800,
+    );
+  }
+}
+
+bool _isCurrentMatchingContext(
+  RideStateReader read,
+  String rideId,
+) {
+  if (read(activeRideIdProvider) != rideId ||
+      read(rideSearchCancellationRequestedProvider)) {
+    return false;
+  }
+  final phase = read(bookingPhaseProvider);
+  return phase == BookingPhase.searching || phase == BookingPhase.driverFound;
+}
+
 /// Public re-entry point for hydrating the rider's ride state from REST.
 /// Used by the matching loop's belt, the tracking screen's maintenance
 /// loop, and the cold-start recovery bridge — all of which need the same
@@ -1361,9 +1513,16 @@ Future<void> _hydrateFromRest(
     final cancelledBy = json['cancelledBy'] as String?;
     final cancellationReason =
         (json['cancellationReason'] ?? json['reason']) as String?;
-    // Only fire the hydrate path when the backend has actually moved past
-    // `requested` — otherwise we'd push a half-built MatchedDriver.
-    if (status == 'requested') return;
+    if (status == 'requested') {
+      // Requested no longer means "nothing useful changed": the durable offer
+      // ledger may contain an acknowledged driver and exact decision window.
+      // Applying this projection makes REST a real fallback when Socket.IO room
+      // join/replay was missed.
+      if (_isCurrentMatchingContext(read, rideId)) {
+        applyRideMatchingState(read, json['matchingState']);
+      }
+      return;
+    }
     // Apply through the same handler the socket uses so all derived
     // providers flip identically. We're not in socket_provider's scope
     // here, but `applyRideSnapshot` is private; instead, push the raw
