@@ -1125,15 +1125,39 @@ class FcmService {
                   fcmToken: token,
                   platform: _platform,
                   role: role,
-                  offerReceiptVersion: null,
+                  offerReceiptVersion: 1,
                 );
             debugPrint(
-              '[FCM] token registered against legacy backend; receipt capability will sync after backend upgrade',
+              '[FCM] token registered with v1 receipt capability against an older backend; v2 will sync after backend upgrade',
             );
             return true;
+          } on ApiException catch (v1Error) {
+            if (v1Error.statusCode == 400 &&
+                v1Error.message.toLowerCase().contains('offerreceiptversion')) {
+              try {
+                await _ref.read(apiNotificationServiceProvider).registerDevice(
+                      fcmToken: token,
+                      platform: _platform,
+                      role: role,
+                      offerReceiptVersion: null,
+                    );
+                debugPrint(
+                  '[FCM] token registered against a pre-receipt backend; capability will sync after backend upgrade',
+                );
+                return true;
+              } catch (legacyError) {
+                debugPrint(
+                  '[FCM] pre-receipt backend registration fallback failed: $legacyError',
+                );
+              }
+            } else {
+              debugPrint(
+                '[FCM] v1 receipt registration fallback failed: $v1Error',
+              );
+            }
           } catch (legacyError) {
             debugPrint(
-              '[FCM] legacy-backend registration fallback failed: $legacyError',
+              '[FCM] v1 receipt registration fallback failed: $legacyError',
             );
           }
         }

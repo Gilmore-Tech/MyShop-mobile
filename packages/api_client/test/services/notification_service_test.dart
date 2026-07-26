@@ -41,7 +41,7 @@ void main() {
     expect(capturedRequest.data, {
       'fcmToken': 'fcm-token',
       'platform': 'android',
-      'offerReceiptVersion': 1,
+      'offerReceiptVersion': 2,
     });
   });
 
