@@ -91,7 +91,10 @@ void _connectAndListen(Ref ref, SocketService socket) {
     final rideId = ref.container.read(activeRideIdProvider);
     if (rideId != null && rideId.isNotEmpty) {
       developer.log('Socket connected — joining ride room $rideId', name: 'WS');
-      socket.emit('client:track:ride', {'rideId': rideId});
+      socket.emit('client:track:ride', {
+        'rideId': rideId,
+        'replayProgress': true,
+      });
     }
     // Re-join the job-tracking room on reconnect so the live artisan
     // marker keeps flowing without the screen having to re-mount. The
@@ -604,8 +607,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
         final map = Map<String, dynamic>.from(data);
         final activeRideId = ref.container.read(activeRideIdProvider);
         final eventRideId = (map['rideId'] ?? map['id'])?.toString();
-        if (eventRideId != null &&
-            activeRideId != null &&
+        if (eventRideId == null ||
+            eventRideId.isEmpty ||
+            activeRideId == null ||
             eventRideId != activeRideId) {
           return;
         }
@@ -627,6 +631,18 @@ void _connectAndListen(Ref ref, SocketService socket) {
         final radiusKm = (map['radiusKm'] as num?)?.toDouble() ?? 0;
         final expanded = map['expanded'] == true;
         final reason = parseMatcherReason(map['reason'] as String?);
+        if (currentProgress != null &&
+            attempt == currentProgress.attempt &&
+            (radiusKm < currentProgress.radiusKm ||
+                (radiusKm == currentProgress.radiusKm &&
+                    currentProgress.expanded &&
+                    !expanded))) {
+          developer.log(
+            'matcher_progress: ignored regressive same-attempt radius/state',
+            name: 'WS',
+          );
+          return;
+        }
         developer.log(
           'matcher_progress: reason=$reason attempt=$attempt '
           'tried=$driversTried remaining=$driversRemaining '
@@ -646,9 +662,16 @@ void _connectAndListen(Ref ref, SocketService socket) {
             driversTried;
         if (reason == MatcherReason.decline ||
             reason == MatcherReason.timeout) {
-          ref.container
-              .read(rideOfferDecisionCountdownProvider.notifier)
-              .clear();
+          final countdown =
+              ref.container.read(rideOfferDecisionCountdownProvider);
+          // Redispatch publishes attempt N before its offer is receipted. Clear
+          // an older driver's countdown, but never let replayed context for the
+          // same active attempt erase its authoritative decision window.
+          if (countdown == null || attempt > countdown.attempt) {
+            ref.container
+                .read(rideOfferDecisionCountdownProvider.notifier)
+                .clear();
+          }
         }
       });
 
@@ -669,18 +692,64 @@ void _connectAndListen(Ref ref, SocketService socket) {
             eventRideId != activeRideId) {
           return;
         }
+        final phase = ref.container.read(bookingPhaseProvider);
+        if (ref.container.read(rideSearchCancellationRequestedProvider) ||
+            (phase != BookingPhase.searching &&
+                phase != BookingPhase.driverFound)) {
+          return;
+        }
         final serverNow = DateTime.tryParse(map['serverNow']?.toString() ?? '');
         final decisionExpiresAt =
             DateTime.tryParse(map['decisionExpiresAt']?.toString() ?? '');
         final totalSeconds =
             (map['acceptanceWindowSeconds'] as num?)?.toInt() ?? 30;
-        if (serverNow == null || decisionExpiresAt == null) return;
+        final attempt = (map['attempt'] as num?)?.toInt() ??
+            ref.container.read(matcherProgressProvider)?.attempt ??
+            1;
+        final progressAttempt =
+            ref.container.read(matcherProgressProvider)?.attempt ?? 0;
+        final countdownAttempt =
+            ref.container.read(rideOfferDecisionCountdownProvider)?.attempt ??
+                0;
+        final knownAttempt = progressAttempt > countdownAttempt
+            ? progressAttempt
+            : countdownAttempt;
+        if (serverNow == null ||
+            decisionExpiresAt == null ||
+            !decisionExpiresAt.isAfter(serverNow) ||
+            attempt < knownAttempt) {
+          return;
+        }
         ref.container.read(bookingPhaseProvider.notifier).driverFound();
         ref.container.read(rideOfferDecisionCountdownProvider.notifier).start(
+              attempt: attempt,
               serverNow: serverNow,
               decisionExpiresAt: decisionExpiresAt,
               totalSeconds: totalSeconds,
             );
+      });
+
+    // Authoritative combined replay. This is also embedded in the REST ride
+    // snapshot so a missed room event cannot strand the rider at Searching.
+    socket
+      ..off('ride:matching_state')
+      ..on('ride:matching_state', (data) {
+        if (data is! Map) return;
+        final map = Map<String, dynamic>.from(data);
+        final activeRideId = ref.container.read(activeRideIdProvider);
+        final eventRideId = map['rideId']?.toString();
+        if (activeRideId == null ||
+            eventRideId == null ||
+            eventRideId != activeRideId) {
+          return;
+        }
+        final phase = ref.container.read(bookingPhaseProvider);
+        if (ref.container.read(rideSearchCancellationRequestedProvider) ||
+            (phase != BookingPhase.searching &&
+                phase != BookingPhase.driverFound)) {
+          return;
+        }
+        applyRideMatchingState(ref.container.read, map);
       });
 
     // ── Route changes (rider added / cancelled a stop) ──────────────────
