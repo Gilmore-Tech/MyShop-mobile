@@ -1,13 +1,13 @@
 # Current Mobile Update Checklist
 
-Status captured: **2026-07-25 GMT**
+Status captured: **2026-07-26 GMT**
 
 This is the single authoritative checklist for the next Client and Provider
 store update. The larger production audit and 100k-DAU roadmap remain evidence
 and future-work registers; they do not expand this release unless an item is
 explicitly copied into this file with owner approval.
 
-Current counted progress is **84/129 checklist items (65%)**. The stricter
+Current counted progress is **92/137 checklist items (67%)**. The stricter
 final release-gate subset is **4/19 (21%)** because signed builds,
 physical-device
 acceptance, store declarations and canary evidence can only close after scope
@@ -100,6 +100,24 @@ These are evidence counts, not estimates of effort.
       request UI. The provider receives both an in-app notice and a normal
       system notification, including while the app is backgrounded.
 - [x] Edit pickup is deliberately excluded from this release.
+- [x] Client homepage usability was explicitly added to this release by the
+      owner on 2026-07-26 GMT.
+- [x] Restore the homepage current-location label to the user's
+      human-readable resolved location. Reverse-geocoding must use bounded
+      retry and must not present the synthetic `Using GPS location` label as
+      though it were an address.
+- [x] Add a Recent Activity section containing the latest three combined
+      rides/jobs, newest first across all statuses. Tapping an item opens its
+      existing detail view and `View all` opens the existing Activity screen.
+      It is one-shot and session-cached, fetches at most three records from
+      each source without 15-second polling, and is invalidated after
+      create/status/cancel changes, reconnect and logout.
+- [x] Hide the entire Special Offers section, including its heading and
+      reserved space, whenever there are no offers.
+- [x] Show a polished activity empty state when the Client has no recent rides
+      or jobs.
+- [x] Fix compact-width service-card overflow with a responsive call-to-action
+      that remains usable without overflowing constrained cards.
 - [ ] Apply migration
       `20260725000000_ride_acceptance_window_30s` to staging before testing
       this candidate.
@@ -161,6 +179,8 @@ These are evidence counts, not estimates of effort.
       emergency recording, support/dispute attachments, cancellation
       consequences or active-trip fallback.
 - [x] No pickup editing from the matching screen in this release.
+- [x] No offers API or Admin-to-Mobile offer-population build in this release;
+      that integration is explicitly deferred to the next update.
 
 Any request to add one of these items must first identify its exact paths,
 business rules, migrations, tests and rollback, then receive an explicit owner
@@ -306,6 +326,11 @@ approval recorded here.
       executable PostgreSQL lock-shape check returning `lockAcquired = 1`.
 - [x] Exact current Admin staging builds all 48 routes, has zero lint errors
       (existing warnings remain), and passes **39/39** contract tests.
+- [x] Client homepage focused verification passes **9/9**: Recent Activity
+      provider **3/3**, current-location provider **4/4**, and homepage widget
+      behavior **2/2**. The final complete Client suite passes **111/111**,
+      `flutter analyze --fatal-infos --fatal-warnings` reports zero issues,
+      and `git diff --check` passes.
 - [ ] The same policy does not expressly say that named screen, lifecycle and
       meaningful-action events are collected. Product/qualified Legal must
       decide whether the existing disclosure is sufficient or publish a new
@@ -561,3 +586,4 @@ first updating this checklist and obtaining owner approval.
 | 2026-07-24 | Reconciled exact combined release heads | Backend main is `11021d3`, Mobile staging is `4daa9fdf`, Admin staging is `71fb1597`; production Backend still serves older `d918243`. Current automated gates pass. |
 | 2026-07-24 | Isolated the staging cash-remittance blocker | Direct selection of PostgreSQL's `void` advisory-lock result caused Prisma settlement failure. Backend PR `#122` returns a typed integer lock result; full API tests/build and live local SQL-shape proof pass. Staging deployment and payment canary remain open. |
 | 2026-07-25 | Added rider-visible matching progress and safe pre-accept cancellation | Client now shows server-driven search/receipt/next-driver/radius states and a receipt-authoritative countdown; cancellation is confirmation-gated and race-safe; Provider request UI closes immediately and receives in-app plus system notices. Backend **211/211 suites and 4,117/4,117 tests**, Client **99/99**, Provider **176/176**, both fatal analyzers and the API build pass. Owner decided no provider re-consent is required; accepted Terms `1.4.1` remain unmodified. Staging migration/device proof remains open. |
+| 2026-07-26 | Added Client homepage usability to this update | Implemented a human-readable current-location label with bounded reverse-geocoding retry, a one-shot session-cached Recent Activity view without 15-second polling, the latest three combined rides/jobs with existing detail/Activity navigation, hidden empty offers, an activity empty state and responsive compact service cards. The cache is invalidated after create/status/cancel changes, reconnect and logout. Focused verification is **9/9**, the full Client suite is **111/111**, the fatal analyzer is clean and `git diff --check` passes. Offers API and Admin-to-Mobile offer population are deferred to the next update. |

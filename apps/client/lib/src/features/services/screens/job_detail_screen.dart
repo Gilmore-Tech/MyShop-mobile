@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
 import '../../../core/di/providers.dart';
+import '../../home/providers/home_provider.dart';
 import '../data/job_cancellation_coordinator.dart';
 import '../providers/bid_list_provider.dart';
 import '../providers/job_detail_provider.dart';
@@ -297,6 +298,7 @@ class _MoreMenuSheetState extends ConsumerState<_MoreMenuSheet> {
     // after they navigate away and back.
     ref.invalidate(jobDetailProvider(widget.jobId));
     ref.invalidate(bidsForJobProvider(widget.jobId));
+    ref.invalidate(homeRecentActivityProvider);
 
     if (!mounted) return;
     navigator.pop(); // close the menu sheet

@@ -48,9 +48,10 @@ final logoutCleanupBridgeProvider = Provider<void>((ref) {
     // entries flash until refetch.
     ref.invalidate(activityNotifierProvider);
 
-    // Home surfaces — special offers aren't strictly per-user but cheap
-    // to refetch.
+    // Home surfaces. Recent activity is exact-user data and must never survive
+    // a role/account change on the same install.
     ref.invalidate(specialOffersProvider);
+    ref.invalidate(homeRecentActivityProvider);
 
     // Ride booking + tracking state. The ride-flow screens hold a deep
     // graph of in-memory state; reset everything that could carry the

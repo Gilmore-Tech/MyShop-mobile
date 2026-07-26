@@ -8,6 +8,7 @@ import 'package:shared_models/shared_models.dart' show kFreeWaitAtPickupSeconds;
 import '../../../core/di/providers.dart';
 import '../../../core/providers/current_location_provider.dart';
 import '../../../core/providers/socket_provider.dart';
+import '../../home/providers/home_provider.dart';
 import '../data/ride_booking_attempt_store.dart';
 import '../data/ride_booking_coordinator.dart';
 import '../data/ride_cancellation_coordinator.dart';
@@ -1252,6 +1253,9 @@ Future<void> requestRideAndMatchDriver(
     // strand the client at "no ride id". Order matches likelihood.
     rideId = _extractRideId(result);
     ref.read(activeRideIdProvider.notifier).state = rideId;
+    if (rideId != null) {
+      ref.invalidate(homeRecentActivityProvider);
+    }
 
     // POST /rides returns how many delivery attempts were opened, not proof
     // that a provider device received one. Keep the rider in Searching until
@@ -1408,6 +1412,7 @@ Future<void> requestRideAndMatchDriver(
       reason: 'client_matching_timeout_recovery',
     );
     await ref.read(rideBookingAttemptStoreProvider).clear();
+    ref.invalidate(homeRecentActivityProvider);
   } on ApiException catch (e) {
     developer.log(
       'cancel stale matching ride failed (status=${e.statusCode}, '
@@ -1750,6 +1755,7 @@ Future<bool> cancelInFlightRideRequest(ProviderContainer ref) async {
       return false;
     }
     await ref.read(rideBookingAttemptStoreProvider).clear();
+    ref.invalidate(homeRecentActivityProvider);
   } else {
     ref.read(bookingFailureMessageProvider.notifier).state =
         "We couldn't confirm that the ride request was cancelled.";

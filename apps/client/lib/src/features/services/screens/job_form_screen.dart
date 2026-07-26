@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../app/router.dart';
 import '../../../app/widgets/app_bottom_nav.dart';
 import '../../activity/providers/activity_provider.dart';
+import '../../home/providers/home_provider.dart';
 import '../providers/job_detail_provider.dart';
 import '../providers/job_form_provider.dart';
 import '../providers/services_provider.dart';
@@ -151,6 +152,7 @@ class _JobFormScreenState extends ConsumerState<JobFormScreen> {
                       // this the user wouldn't see their newly posted job
                       // until a hot reload.
                       ref.invalidate(activityNotifierProvider);
+                      ref.invalidate(homeRecentActivityProvider);
                       ref.invalidate(jobDetailProvider(jobId));
 
                       context.pushReplacement(
