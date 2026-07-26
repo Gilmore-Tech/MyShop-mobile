@@ -373,6 +373,18 @@ class AvailabilityController {
     required bool allowPermissionPrompts,
     required bool promptOverlayPermission,
   }) async {
+    // iOS does not add the app to Settings > Location Services until Core
+    // Location receives its first authorization request. Run that explicit
+    // Go Online gate before the notification reachability probe so an FCM
+    // timeout cannot prevent the provider from ever granting location access.
+    // We still fail closed below unless both location and notifications pass.
+    if (Platform.isIOS) {
+      final locationGate = await _checkLocationReady(
+        allowPermissionPrompts: allowPermissionPrompts,
+      );
+      if (locationGate != null) return locationGate;
+    }
+
     final notificationGate = await _ref.read(
       allowPermissionPrompts
           ? onlineNotificationReachabilityCheckProvider
@@ -380,10 +392,12 @@ class AvailabilityController {
     )();
     if (notificationGate != null) return notificationGate;
 
-    final gate = await _checkLocationReady(
-      allowPermissionPrompts: allowPermissionPrompts,
-    );
-    if (gate != null) return gate;
+    if (!Platform.isIOS) {
+      final locationGate = await _checkLocationReady(
+        allowPermissionPrompts: allowPermissionPrompts,
+      );
+      if (locationGate != null) return locationGate;
+    }
 
     // Need a fix to send with the online POST — backend requires
     // current_location to be non-null before it'll mark us online.
@@ -490,26 +504,21 @@ class AvailabilityController {
     required bool allowPermissionPrompts,
   }) async {
     try {
+      if (Platform.isIOS) {
+        return _checkIosLocationReady(
+          allowPermissionPrompts: allowPermissionPrompts,
+        );
+      }
+
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied && allowPermissionPrompts) {
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.whileInUse &&
           allowPermissionPrompts) {
-        if (Platform.isIOS) {
-          // geolocator_apple does not elevate an existing When In Use grant.
-          // Invoke Core Location's second-stage request, then re-read the
-          // plugin's authoritative state. iOS may keep While In Use, in which
-          // case the caller presents the Settings recovery path.
-          await _ref
-              .read(iosAlwaysLocationPermissionBridgeProvider)
-              .requestAlwaysAuthorization();
-          permission = await Geolocator.checkPermission();
-        } else {
-          // Preserve Android's existing flow. Android 11+ may still require
-          // the user to select Allow all the time in system Settings.
-          permission = await Geolocator.requestPermission();
-        }
+        // Android 11+ may still require the user to select Allow all the time
+        // from system Settings after this request.
+        permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
@@ -529,6 +538,63 @@ class AvailabilityController {
       return "Couldn't check location access. Restart the app and try again.";
     }
     return null;
+  }
+
+  Future<String?> _checkIosLocationReady({
+    required bool allowPermissionPrompts,
+  }) async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      return 'Turn on Location Services to go online.';
+    }
+
+    final authorization = _ref.read(iosAlwaysLocationPermissionBridgeProvider);
+    var status = await authorization.getAuthorizationStatus();
+
+    if (status == IosLocationAuthorizationStatus.notDetermined) {
+      if (!allowPermissionPrompts) {
+        return 'Tap Go Online to allow location access before restoring your '
+            'previous Online session.';
+      }
+      status = await authorization.requestWhenInUseAuthorization();
+    }
+
+    if (status == IosLocationAuthorizationStatus.restricted) {
+      return 'Location access is restricted by Screen Time or device '
+          'management. Allow Location Services changes, then try again.';
+    }
+    if (status == IosLocationAuthorizationStatus.denied) {
+      return 'Location permission was denied. Enable Location for MyShop '
+          'Provider in Settings, then try again.';
+    }
+    if (status == IosLocationAuthorizationStatus.notDetermined) {
+      return 'iOS did not show the location permission prompt. Keep MyShop '
+          'Provider open and tap Go Online again.';
+    }
+    if (status == IosLocationAuthorizationStatus.whileInUse) {
+      if (!allowPermissionPrompts) {
+        return 'Set Location to Always before restoring your previous Online '
+            'session.';
+      }
+
+      await authorization.requestAlwaysAuthorization();
+      status = await authorization.getAuthorizationStatus();
+      if (status == IosLocationAuthorizationStatus.always) return null;
+      if (status == IosLocationAuthorizationStatus.restricted) {
+        return 'Background location is restricted by Screen Time or device '
+            'management. Allow Location Services changes, then try again.';
+      }
+      if (status == IosLocationAuthorizationStatus.denied) {
+        return 'Background location was denied. Enable Location for MyShop '
+            'Provider in Settings, then try again.';
+      }
+      return 'Set Location to Always so MyShop can keep you online when the '
+          'screen is off. If you selected Allow Once, tap Go Online again and '
+          'choose While Using the App first.';
+    }
+    if (status == IosLocationAuthorizationStatus.always) return null;
+
+    return "Couldn't check iOS location access. Restart the app and try again.";
   }
 
   /// Refresh the backend's liveness heartbeat without flipping local

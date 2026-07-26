@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../../app/router.dart';
+import '../../../core/providers/socket_provider.dart';
 import '../providers/edit_trip_provider.dart';
 import '../providers/ride_provider.dart';
 import '../widgets/driver_radar.dart';
@@ -46,6 +47,26 @@ class _DriverMatchingScreenState extends ConsumerState<DriverMatchingScreen> {
     _navigatedToTracking = true;
     ref.read(rideOfferDecisionCountdownProvider.notifier).clear();
     context.go(AppRoutes.rideTracking, extra: driver);
+  }
+
+  Future<void> _requestMatcherProgressReplay() async {
+    final rideId = ref.read(activeRideIdProvider);
+    if (rideId == null || rideId.isEmpty) return;
+    final socket = ref.read(socketServiceProvider);
+    if (!socket.isConnected) return;
+    socket.emit('client:track:ride', {
+      'rideId': rideId,
+      'replayProgress': true,
+    });
+    // The backend expiry worker runs once per second. One bounded follow-up
+    // covers the race where the local countdown reaches zero just before the
+    // durable offer ledger is advanced.
+    await Future<void>.delayed(const Duration(milliseconds: 1500));
+    if (!mounted || !socket.isConnected) return;
+    socket.emit('client:track:ride', {
+      'rideId': rideId,
+      'replayProgress': true,
+    });
   }
 
   Future<void> _confirmAndCancel() async {
@@ -96,6 +117,15 @@ class _DriverMatchingScreenState extends ConsumerState<DriverMatchingScreen> {
     ref.listen<BookingPhase>(bookingPhaseProvider, (previous, next) {
       if (next == BookingPhase.accepted) _goToTracking();
     });
+    ref.listen<RideOfferDecisionCountdown?>(
+      rideOfferDecisionCountdownProvider,
+      (previous, next) {
+        if ((previous?.secondsRemaining ?? 0) > 0 &&
+            next?.secondsRemaining == 0) {
+          unawaited(_requestMatcherProgressReplay());
+        }
+      },
+    );
 
     final phase = ref.watch(bookingPhaseProvider);
     final failed = phase == BookingPhase.failed;
@@ -203,6 +233,13 @@ MatcherStatusPresentation matcherStatusPresentation({
   required RideOfferDecisionCountdown? countdown,
 }) {
   if (countdown != null) {
+    if (countdown.secondsRemaining <= 0) {
+      return const MatcherStatusPresentation(
+        headline: "Driver didn't respond",
+        subtitle: 'Looking for another driver',
+        icon: Icons.sync_rounded,
+      );
+    }
     return MatcherStatusPresentation(
       headline: 'Driver found',
       subtitle:
@@ -234,12 +271,21 @@ MatcherStatusPresentation matcherStatusPresentation({
   switch (progress.reason) {
     case MatcherReason.initial:
       return const MatcherStatusPresentation(
-        headline: 'Driver found',
-        subtitle: 'Waiting for the driver to receive your request',
-        icon: Icons.person_pin_circle_rounded,
+        headline: 'Searching for a driver',
+        subtitle: 'Notifying a nearby available driver',
+        icon: Icons.search_rounded,
       );
     case MatcherReason.decline:
     case MatcherReason.timeout:
+      if (progress.expanded) {
+        return MatcherStatusPresentation(
+          headline: 'Expanding search',
+          subtitle: radiusText == null
+              ? 'Searching a wider area for available drivers'
+              : 'Searching within $radiusText km',
+          icon: Icons.radar_rounded,
+        );
+      }
       if (progress.driversRemaining > 0) {
         return const MatcherStatusPresentation(
           headline: 'Driver unavailable',
@@ -248,11 +294,11 @@ MatcherStatusPresentation matcherStatusPresentation({
         );
       }
       return MatcherStatusPresentation(
-        headline: 'Expanding search',
+        headline: 'Still searching',
         subtitle: radiusText == null
-            ? 'Searching a wider area for available drivers'
-            : 'Searching within $radiusText km',
-        icon: Icons.radar_rounded,
+            ? 'Checking for another available driver'
+            : 'Checking again within $radiusText km',
+        icon: Icons.sync_rounded,
       );
   }
 }

@@ -47,6 +47,13 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
   void initState() {
     super.initState();
     _mountRequest(widget.ride);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final dismissal = ref.read(rideOfferDismissalProvider);
+      if (dismissal?.rideId == widget.ride.id) {
+        _handleRemoteDismissal(dismissal!);
+      }
+    });
   }
 
   @override
@@ -146,6 +153,29 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     });
   }
 
+  void _handleRemoteDismissal(RideOfferDismissal dismissal) {
+    if (!mounted || dismissal.rideId != widget.ride.id || _expiryHandled) {
+      return;
+    }
+    _expiryHandled = true;
+    _timer?.cancel();
+    LocalNotificationService.instance.stopIncomingRingtone();
+    ref.read(incomingRideRequestProvider.notifier).state = null;
+    _clearVisibleMarker();
+    ref.read(rideOfferDismissalProvider.notifier).state = null;
+    // Route state is the provider-facing source of truth. Close it before
+    // best-effort native notification cleanup so a plugin/platform failure
+    // can never leave a cancelled request visible until its timer expires.
+    _closeRequest('dismissed');
+    unawaited(
+      clearIncomingRequestAlert(
+        type: NotificationPayload.typeRideRequest,
+        requestId: widget.ride.id,
+        reason: dismissal.reason,
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
@@ -154,7 +184,6 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     // silence the ring. Without this, accepting a ride would leave
     // the alert chiming on top of the active-ride map.
     LocalNotificationService.instance.stopIncomingRingtone();
-    _clearVisibleMarker();
     super.dispose();
   }
 
@@ -235,15 +264,22 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
   void _closeRequest(String result) {
     if (!mounted) return;
     _clearVisibleMarker();
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop(result);
-    } else {
-      context.go('/home');
-    }
+    final navigator = Navigator.of(context);
+    unawaited(
+      navigator.maybePop(result).then((didPop) {
+        if (!didPop && mounted) context.go('/home');
+      }),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<RideOfferDismissal?>(rideOfferDismissalProvider,
+        (previous, next) {
+      if (next != null && next.rideId == widget.ride.id) {
+        _handleRemoteDismissal(next);
+      }
+    });
     final ride = widget.ride;
     final progress = (_secondsRemaining / _acceptanceWindow.inSeconds)
         .clamp(0.0, 1.0)

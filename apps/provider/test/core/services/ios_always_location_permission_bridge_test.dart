@@ -14,6 +14,57 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
+  test('reads the exact native status without collapsing notDetermined',
+      () async {
+    MethodCall? receivedCall;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      receivedCall = call;
+      return 'notDetermined';
+    });
+    final bridge = IosAlwaysLocationPermissionBridge(
+      channel: channel,
+      isIos: () => true,
+    );
+
+    final result = await bridge.getAuthorizationStatus();
+
+    expect(receivedCall?.method, 'getAuthorizationStatus');
+    expect(result, IosLocationAuthorizationStatus.notDetermined);
+  });
+
+  test('requests the first While In Use authorization on iOS', () async {
+    MethodCall? receivedCall;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      receivedCall = call;
+      return 'whileInUse';
+    });
+    final bridge = IosAlwaysLocationPermissionBridge(
+      channel: channel,
+      isIos: () => true,
+    );
+
+    final result = await bridge.requestWhenInUseAuthorization();
+
+    expect(receivedCall?.method, 'requestWhenInUseAuthorization');
+    expect(result, IosLocationAuthorizationStatus.whileInUse);
+  });
+
+  test('preserves the native restricted status for actionable recovery',
+      () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (_) async => 'restricted');
+    final bridge = IosAlwaysLocationPermissionBridge(
+      channel: channel,
+      isIos: () => true,
+    );
+
+    final result = await bridge.getAuthorizationStatus();
+
+    expect(result, IosLocationAuthorizationStatus.restricted);
+  });
+
   test('invokes the native Always request on iOS and reports a grant',
       () async {
     MethodCall? receivedCall;

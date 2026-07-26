@@ -12,12 +12,22 @@ enum IosAlwaysAuthorizationRequestResult {
   failed,
 }
 
-/// Invokes the iOS-only second-stage location prompt.
+enum IosLocationAuthorizationStatus {
+  notDetermined,
+  restricted,
+  denied,
+  whileInUse,
+  always,
+  unsupported,
+  unavailable,
+}
+
+/// Owns the provider app's explicit, staged iOS location authorization flow.
 ///
-/// The geolocator iOS implementation requests When In Use authorization for
-/// an undetermined permission, but it does not upgrade an existing When In Use
-/// grant to Always. Core Location requires a separate
-/// `CLLocationManager.requestAlwaysAuthorization()` call for that transition.
+/// Core Location requires When In Use authorization before the separate Always
+/// request. Reading the exact native state also preserves the distinction
+/// between notDetermined and restricted, which geolocator_apple intentionally
+/// maps to the same Dart enum value.
 ///
 /// This bridge never grants permission itself: iOS owns the decision and may
 /// keep the app at When In Use. Callers must re-read the authoritative
@@ -39,36 +49,74 @@ class IosAlwaysLocationPermissionBridge {
   final MethodChannel _channel;
   final bool Function() _isIos;
 
+  Future<IosLocationAuthorizationStatus> getAuthorizationStatus() {
+    return _invokeStatus('getAuthorizationStatus');
+  }
+
+  Future<IosLocationAuthorizationStatus> requestWhenInUseAuthorization() {
+    return _invokeStatus('requestWhenInUseAuthorization');
+  }
+
   Future<IosAlwaysAuthorizationRequestResult>
       requestAlwaysAuthorization() async {
     if (!_isIos()) {
       return IosAlwaysAuthorizationRequestResult.unsupported;
     }
 
+    final status = await _invokeStatus('requestAlwaysAuthorization');
+    switch (status) {
+      case IosLocationAuthorizationStatus.always:
+        return IosAlwaysAuthorizationRequestResult.granted;
+      case IosLocationAuthorizationStatus.unsupported:
+        return IosAlwaysAuthorizationRequestResult.unsupported;
+      case IosLocationAuthorizationStatus.unavailable:
+        return IosAlwaysAuthorizationRequestResult.failed;
+      case IosLocationAuthorizationStatus.notDetermined:
+      case IosLocationAuthorizationStatus.restricted:
+      case IosLocationAuthorizationStatus.denied:
+      case IosLocationAuthorizationStatus.whileInUse:
+        return IosAlwaysAuthorizationRequestResult.notGranted;
+    }
+  }
+
+  Future<IosLocationAuthorizationStatus> _invokeStatus(String method) async {
+    if (!_isIos()) return IosLocationAuthorizationStatus.unsupported;
+
     try {
       final status = await _channel
-          .invokeMethod<String>('requestAlwaysAuthorization')
-          // The native side bounds the system decision window. Keep a second
-          // guard here so a broken channel can never leave Go Online spinning.
+          .invokeMethod<String>(method)
+          // Native permission requests are bounded to 30 seconds. Keep a
+          // second guard so a broken channel cannot leave Go Online spinning.
           .timeout(const Duration(seconds: 35));
-      if (status == 'always') {
-        return IosAlwaysAuthorizationRequestResult.granted;
-      }
-      if (status == null || status == 'unavailable') {
-        return IosAlwaysAuthorizationRequestResult.failed;
-      }
-      return IosAlwaysAuthorizationRequestResult.notGranted;
+      return _parseStatus(status);
     } on TimeoutException catch (error) {
-      debugPrint('[LocationAuthorization] iOS request timed out: $error');
-      return IosAlwaysAuthorizationRequestResult.failed;
+      debugPrint('[LocationAuthorization] $method timed out: $error');
+      return IosLocationAuthorizationStatus.unavailable;
     } on PlatformException catch (error) {
       debugPrint(
-        '[LocationAuthorization] iOS request failed: ${error.code}',
+        '[LocationAuthorization] $method failed: ${error.code}',
       );
-      return IosAlwaysAuthorizationRequestResult.failed;
+      return IosLocationAuthorizationStatus.unavailable;
     } on MissingPluginException catch (error) {
       debugPrint('[LocationAuthorization] iOS bridge unavailable: $error');
-      return IosAlwaysAuthorizationRequestResult.failed;
+      return IosLocationAuthorizationStatus.unavailable;
+    }
+  }
+
+  IosLocationAuthorizationStatus _parseStatus(String? status) {
+    switch (status) {
+      case 'notDetermined':
+        return IosLocationAuthorizationStatus.notDetermined;
+      case 'restricted':
+        return IosLocationAuthorizationStatus.restricted;
+      case 'denied':
+        return IosLocationAuthorizationStatus.denied;
+      case 'whileInUse':
+        return IosLocationAuthorizationStatus.whileInUse;
+      case 'always':
+        return IosLocationAuthorizationStatus.always;
+      default:
+        return IosLocationAuthorizationStatus.unavailable;
     }
   }
 }

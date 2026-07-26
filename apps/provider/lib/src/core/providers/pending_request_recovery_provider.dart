@@ -166,7 +166,17 @@ Future<void> _recoverPendingRequests(Ref ref) async {
         .read(providerRequestServiceProvider)
         .listPendingRequests()
         .timeout(const Duration(seconds: 10));
-    if (requests.isEmpty) return;
+    if (requests.isEmpty) {
+      final visibleRideId = ref.read(visibleRideRequestIdProvider);
+      if (visibleRideId != null && visibleRideId.isNotEmpty) {
+        ref.read(rideOfferDismissalProvider.notifier).state =
+            RideOfferDismissal(
+          rideId: visibleRideId,
+          reason: 'no_longer_pending',
+        );
+      }
+      return;
+    }
 
     final router = ref.read(goRouterProvider);
     final currentPath = router.routerDelegate.currentConfiguration.uri.path;

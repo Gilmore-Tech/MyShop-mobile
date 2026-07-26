@@ -1,5 +1,9 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+
+import '../services/ios_always_location_permission_bridge.dart';
 
 /// Shows the prominent disclosure required before asking a provider for
 /// background location access.
@@ -52,33 +56,60 @@ Future<bool> confirmBackgroundLocationDisclosure(
 /// Returns whether a recovery dialog was shown.
 Future<bool> showLocationRecoveryIfNeeded(BuildContext context) async {
   late final bool serviceEnabled;
-  late final LocationPermission permission;
+  LocationPermission? permission;
+  IosLocationAuthorizationStatus? iosStatus;
   try {
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    permission = await Geolocator.checkPermission();
+    if (Platform.isIOS) {
+      iosStatus =
+          await IosAlwaysLocationPermissionBridge().getAuthorizationStatus();
+    } else {
+      permission = await Geolocator.checkPermission();
+    }
   } catch (error) {
     debugPrint('[LocationDisclosure] recovery check failed: $error');
     return false;
   }
 
-  if (serviceEnabled && permission == LocationPermission.always) return false;
+  if (serviceEnabled &&
+      (iosStatus == IosLocationAuthorizationStatus.always ||
+          permission == LocationPermission.always)) {
+    return false;
+  }
+  if (Platform.isIOS &&
+      serviceEnabled &&
+      (iosStatus == IosLocationAuthorizationStatus.notDetermined ||
+          iosStatus == IosLocationAuthorizationStatus.unavailable ||
+          iosStatus == IosLocationAuthorizationStatus.unsupported)) {
+    // App Settings has no Location row until Core Location has registered a
+    // first-stage decision. The controller owns that foreground request; do
+    // not send the provider to a Settings page that cannot help yet.
+    return false;
+  }
   if (!context.mounted) return false;
 
   final needsService = !serviceEnabled;
+  final isRestricted = iosStatus == IosLocationAuthorizationStatus.restricted;
   await showDialog<void>(
     context: context,
     builder: (dialogContext) => AlertDialog(
       title: Text(
         needsService
             ? 'Turn on Location Services'
-            : 'Background location is off',
+            : isRestricted
+                ? 'Location access is restricted'
+                : 'Background location is off',
       ),
       content: Text(
         needsService
             ? 'Location Services must be on before you can go online.'
-            : 'To stay online and receive requests when the app is in the '
-                'background, set Location to Always / Allow all the time in '
-                'MyShop Settings.',
+            : isRestricted
+                ? 'Screen Time or device management is preventing MyShop '
+                    'Provider from requesting location. Allow changes to '
+                    'Location Services, then return and tap Go Online.'
+                : 'To stay online and receive requests when the app is in the '
+                    'background, set Location to Always / Allow all the time in '
+                    'MyShop Settings.',
       ),
       actions: [
         TextButton(
@@ -88,6 +119,7 @@ Future<bool> showLocationRecoveryIfNeeded(BuildContext context) async {
         FilledButton(
           onPressed: () async {
             Navigator.of(dialogContext).pop();
+            if (isRestricted) return;
             try {
               if (needsService) {
                 await Geolocator.openLocationSettings();
@@ -99,7 +131,7 @@ Future<bool> showLocationRecoveryIfNeeded(BuildContext context) async {
                   '[LocationDisclosure] opening Settings failed: $error');
             }
           },
-          child: const Text('Open Settings'),
+          child: Text(isRestricted ? 'OK' : 'Open Settings'),
         ),
       ],
     ),

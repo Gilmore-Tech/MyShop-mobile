@@ -449,6 +449,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
       if (data is! Map) return;
       final rideId = data['rideId']?.toString() ?? data['id']?.toString();
       if (rideId == null || rideId.isEmpty) return;
+      final reason = data['reason']?.toString() ?? 'revoked';
+      ref.container.read(rideOfferDismissalProvider.notifier).state =
+          RideOfferDismissal(rideId: rideId, reason: reason);
       final current = ref.container.read(incomingRideRequestProvider);
       if (current?.id == rideId) {
         ref.container.read(incomingRideRequestProvider.notifier).state = null;
@@ -468,7 +471,6 @@ void _connectAndListen(Ref ref, SocketService socket) {
           offerId: offerId,
         ),
       );
-      final reason = data['reason']?.toString();
       if (isRiderCancellationRevocation(reason) &&
           claimRiderCancellationInAppNotice(rideId)) {
         final router = ref.container.read(goRouterProvider);

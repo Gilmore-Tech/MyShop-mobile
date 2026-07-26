@@ -178,13 +178,20 @@ import CoreLocation
 final class AlwaysLocationAuthorizationBridge: NSObject, CLLocationManagerDelegate {
   static let shared = AlwaysLocationAuthorizationBridge()
 
+  private enum AuthorizationRequestKind {
+    case whenInUse
+    case always
+  }
+
   private let channelName = "com.gilmoretech.myshopprovider/location_authorization"
   private let requestAttemptedKey = "myshop.didRequestAlwaysLocationAuthorization"
   private let decisionTimeout: TimeInterval = 30
+  private let foregroundActivationTimeout: TimeInterval = 5
 
   private var methodChannel: FlutterMethodChannel?
   private var locationManager: CLLocationManager?
   private var pendingResult: FlutterResult?
+  private var pendingRequestKind: AuthorizationRequestKind?
   private var pollTimer: Timer?
   private var timeoutWorkItem: DispatchWorkItem?
   private var requestIssuedAt: Date?
@@ -195,18 +202,105 @@ final class AlwaysLocationAuthorizationBridge: NSObject, CLLocationManagerDelega
       binaryMessenger: binaryMessenger
     )
     methodChannel?.setMethodCallHandler { [weak self] call, result in
-      guard call.method == "requestAlwaysAuthorization" else {
-        result(FlutterMethodNotImplemented)
+      guard let self else {
+        result(FlutterError(
+          code: "BRIDGE_UNAVAILABLE",
+          message: "The location authorization bridge is unavailable.",
+          details: nil
+        ))
         return
       }
-      DispatchQueue.main.async {
-        self?.requestAlwaysAuthorization(result: result)
+      switch call.method {
+      case "getAuthorizationStatus":
+        let manager = CLLocationManager()
+        let status = self.statusName(manager.authorizationStatus)
+        NSLog("[LocationAuthorization] status query: \(status)")
+        result(status)
+      case "requestWhenInUseAuthorization":
+        DispatchQueue.main.async {
+          self.requestWhenInUseAuthorization(result: result)
+        }
+      case "requestAlwaysAuthorization":
+        DispatchQueue.main.async {
+          self.requestAlwaysAuthorization(result: result)
+        }
+      default:
+        result(FlutterMethodNotImplemented)
       }
     }
   }
 
-  private func requestAlwaysAuthorization(result: @escaping FlutterResult) {
+  private func requestWhenInUseAuthorization(result: @escaping FlutterResult) {
     guard UIApplication.shared.applicationState == .active else {
+      result(FlutterError(
+        code: "NOT_FOREGROUND",
+        message: "Location authorization must be requested in the foreground.",
+        details: nil
+      ))
+      return
+    }
+
+    guard pendingResult == nil else {
+      result(FlutterError(
+        code: "REQUEST_IN_PROGRESS",
+        message: "A location authorization request is already in progress.",
+        details: nil
+      ))
+      return
+    }
+
+    let manager = CLLocationManager()
+    let currentStatus = manager.authorizationStatus
+    NSLog(
+      "[LocationAuthorization] When In Use request from \(statusName(currentStatus))"
+    )
+    guard currentStatus == .notDetermined else {
+      result(statusName(currentStatus))
+      return
+    }
+
+    guard hasWhenInUseUsageDescription else {
+      result(FlutterError(
+        code: "MISSING_USAGE_DESCRIPTION",
+        message: "The iOS foreground-location usage description is missing.",
+        details: nil
+      ))
+      return
+    }
+
+    manager.delegate = self
+    locationManager = manager
+    pendingResult = result
+    pendingRequestKind = .whenInUse
+
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self, weak manager] in
+      guard let self, let manager, self.pendingResult != nil else { return }
+      self.requestIssuedAt = Date()
+      manager.requestWhenInUseAuthorization()
+      self.startPolling()
+      self.startTimeout()
+    }
+  }
+
+  private func requestAlwaysAuthorization(
+    result: @escaping FlutterResult,
+    foregroundWaitStartedAt: Date? = nil
+  ) {
+    guard UIApplication.shared.applicationState == .active else {
+      // Dismissing the first-stage When In Use system sheet can deliver the
+      // Core Location callback while UIApplication is still briefly inactive.
+      // A second-stage request made in that window is ignored by iOS. Wait for
+      // the app to become active instead of making the provider tap again.
+      let waitStartedAt = foregroundWaitStartedAt ?? Date()
+      if Date().timeIntervalSince(waitStartedAt) < foregroundActivationTimeout {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+          self?.requestAlwaysAuthorization(
+            result: result,
+            foregroundWaitStartedAt: waitStartedAt
+          )
+        }
+        return
+      }
       result(FlutterError(
         code: "NOT_FOREGROUND",
         message: "Always location authorization must be requested in the foreground.",
@@ -226,6 +320,9 @@ final class AlwaysLocationAuthorizationBridge: NSObject, CLLocationManagerDelega
 
     let manager = CLLocationManager()
     let currentStatus = manager.authorizationStatus
+    NSLog(
+      "[LocationAuthorization] Always request from \(statusName(currentStatus))"
+    )
     guard currentStatus == .authorizedWhenInUse else {
       result(statusName(currentStatus))
       return
@@ -252,6 +349,7 @@ final class AlwaysLocationAuthorizationBridge: NSObject, CLLocationManagerDelega
     manager.delegate = self
     locationManager = manager
     pendingResult = result
+    pendingRequestKind = .always
 
     // Let Core Location deliver any initial delegate state generated by
     // constructing the manager before treating a While In Use callback as the
@@ -277,12 +375,19 @@ final class AlwaysLocationAuthorizationBridge: NSObject, CLLocationManagerDelega
     return !(whenInUse?.isEmpty ?? true) && !(always?.isEmpty ?? true)
   }
 
+  private var hasWhenInUseUsageDescription: Bool {
+    let value = Bundle.main.object(
+      forInfoDictionaryKey: "NSLocationWhenInUseUsageDescription"
+    ) as? String
+    return !(value?.isEmpty ?? true)
+  }
+
   private func startPolling() {
     pollTimer?.invalidate()
     let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
       guard let self, let manager = self.locationManager else { return }
       let status = manager.authorizationStatus
-      if status == .authorizedAlways || status == .denied || status == .restricted {
+      if self.isTerminal(status, for: self.pendingRequestKind) {
         self.finish(status: status)
       }
     }
@@ -304,8 +409,21 @@ final class AlwaysLocationAuthorizationBridge: NSObject, CLLocationManagerDelega
   }
 
   func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-    guard pendingResult != nil, let issuedAt = requestIssuedAt else { return }
+    guard
+      pendingResult != nil,
+      let requestKind = pendingRequestKind,
+      let issuedAt = requestIssuedAt
+    else {
+      return
+    }
     let status = manager.authorizationStatus
+
+    if requestKind == .whenInUse {
+      if status != .notDetermined {
+        finish(status: status)
+      }
+      return
+    }
 
     if status == .authorizedAlways || status == .denied || status == .restricted {
       finish(status: status)
@@ -321,14 +439,30 @@ final class AlwaysLocationAuthorizationBridge: NSObject, CLLocationManagerDelega
     }
   }
 
+  private func isTerminal(
+    _ status: CLAuthorizationStatus,
+    for requestKind: AuthorizationRequestKind?
+  ) -> Bool {
+    switch requestKind {
+    case .whenInUse:
+      return status != .notDetermined
+    case .always:
+      return status == .authorizedAlways || status == .denied || status == .restricted
+    case nil:
+      return false
+    }
+  }
+
   private func finish(status: CLAuthorizationStatus) {
     guard let result = pendingResult else { return }
+    NSLog("[LocationAuthorization] request finished: \(statusName(status))")
     pendingResult = nil
     pollTimer?.invalidate()
     pollTimer = nil
     timeoutWorkItem?.cancel()
     timeoutWorkItem = nil
     requestIssuedAt = nil
+    pendingRequestKind = nil
     locationManager?.delegate = nil
     locationManager = nil
     result(statusName(status))
