@@ -61,3 +61,4 @@ export 'src/auth/auth_service.dart';
 export 'src/auth/device_id.dart';
 export 'src/auth/mock_auth_service.dart';
 export 'src/auth/real_auth_service.dart';
+export 'src/auth/role_session_identity.dart';

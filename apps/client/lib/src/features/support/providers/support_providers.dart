@@ -7,6 +7,8 @@ import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart' show SupportLegalAsync;
 
 import '../../../core/di/providers.dart';
+import '../../../core/providers/service_notice_provider.dart';
+import '../../auth/providers/auth_controller.dart';
 
 // ── Audience ─────────────────────────────────────────────────────────────────
 // The client app talks to the `client` audience for help articles + legal
@@ -37,17 +39,75 @@ final clientRegistrationLegalDocumentsProvider =
   return ref.watch(legalServiceProvider).getRequired(role: 'client');
 });
 
+final clientRoleSessionIdentityProvider =
+    FutureProvider.autoDispose<RoleSessionIdentity?>((ref) async {
+  ref.watch(serviceNoticeProvider.select((state) => state.recoveryEpoch));
+  final auth = ref.watch(clientAuthControllerProvider);
+  if (auth is! AuthAuthenticated) return null;
+
+  final roleAccountId = auth.profile.client?.id;
+  if (roleAccountId == null ||
+      roleAccountId.isEmpty ||
+      auth.profile.id != roleAccountId) {
+    throw const FormatException('Invalid client role account identity.');
+  }
+  final token = await ref.read(tokenStorageProvider).readAccessToken();
+  final identity = RoleSessionIdentity.tryParseAccessToken(token);
+  if (identity == null ||
+      identity.role != 'client' ||
+      identity.roleAccountId != roleAccountId) {
+    throw const FormatException('Invalid client role-session identity.');
+  }
+  return identity;
+});
+
 final legalConsentStatusProvider =
-    FutureProvider<LegalConsentStatus>((ref) async {
-  ref.keepAlive();
+    FutureProvider.autoDispose<ScopedLegalConsentStatus?>((ref) async {
+  final identity = await ref.watch(clientRoleSessionIdentityProvider.future);
+  if (identity == null) return null;
   final status = await ref.read(legalServiceProvider).getConsentStatus();
+  if (status.role != identity.role) {
+    throw const FormatException('Consent status role mismatch.');
+  }
   Timer? refresh;
   if (status.requiresConsent && status.hasActiveWork) {
     refresh = Timer(const Duration(seconds: 60), ref.invalidateSelf);
   }
   ref.onDispose(() => refresh?.cancel());
-  return status;
+  return ScopedLegalConsentStatus(identity: identity, status: status);
 });
+
+/// Returns only a successful response owned by the exact current client
+/// role-account session. Unknown/loading/error states never imply that consent
+/// is missing.
+LegalConsentStatus? usableClientLegalConsentStatus(
+  ClientAuthState auth,
+  AsyncValue<RoleSessionIdentity?>? currentIdentity,
+  AsyncValue<ScopedLegalConsentStatus?>? scoped,
+) {
+  if (auth is! AuthAuthenticated ||
+      currentIdentity == null ||
+      currentIdentity.isLoading ||
+      currentIdentity.hasError ||
+      scoped == null ||
+      scoped.isLoading ||
+      scoped.hasError) {
+    return null;
+  }
+  final roleAccountId = auth.profile.client?.id;
+  final identity = currentIdentity.valueOrNull;
+  final snapshot = scoped.valueOrNull;
+  if (roleAccountId == null ||
+      auth.profile.id != roleAccountId ||
+      identity == null ||
+      identity.role != 'client' ||
+      identity.roleAccountId != roleAccountId ||
+      snapshot == null ||
+      !snapshot.belongsTo(identity)) {
+    return null;
+  }
+  return snapshot.status;
+}
 
 // ── Help categories (support home) ───────────────────────────────────────────
 

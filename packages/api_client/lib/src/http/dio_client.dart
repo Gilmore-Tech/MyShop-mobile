@@ -29,6 +29,8 @@ DioClient createDioClient({
   required TokenStorage tokenStorage,
   required MobileAppKind appKind,
   required void Function(AppUpdateRequirement requirement) onAppUpdateRequired,
+  void Function(MobileServiceIssue issue)? onServiceIssue,
+  void Function()? onServiceRecovered,
   void Function()? onForceLogout,
   bool? enableLogging,
 }) {
@@ -49,6 +51,8 @@ DioClient createDioClient({
     MobileClientInterceptor(
       app: appKind,
       onUpdateRequired: onAppUpdateRequired,
+      onServiceIssue: onServiceIssue,
+      onServiceRecovered: onServiceRecovered,
     ),
   );
 

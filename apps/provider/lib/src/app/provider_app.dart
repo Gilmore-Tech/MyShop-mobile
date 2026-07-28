@@ -1,10 +1,11 @@
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../core/providers/app_lifecycle_provider.dart';
-import '../core/di/providers.dart' show systemTelemetryProvider;
+import '../core/di/providers.dart' show dioProvider, systemTelemetryProvider;
 import '../core/providers/app_update_provider.dart';
 import '../core/providers/availability_controller.dart';
 import '../core/providers/availability_reconciliation_bridge.dart';
@@ -13,15 +14,19 @@ import '../core/providers/foreground_display_wake_lock_provider.dart';
 import '../core/providers/pending_request_recovery_provider.dart';
 import '../core/providers/provider_status_provider.dart';
 import '../core/providers/location_degradation_provider.dart';
+import '../core/providers/service_notice_provider.dart';
 import '../core/providers/socket_provider.dart';
 import '../core/widgets/location_degradation_banner.dart';
 import '../core/services/fcm_service.dart';
 import '../features/driver_home/providers/online_session_provider.dart';
+import '../features/driver_home/providers/ride_request_provider.dart';
+import '../features/artisan_home/providers/active_job_provider.dart';
 import '../features/artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../features/auth/providers/auth_controller.dart';
 import '../features/earnings/providers/earnings_providers.dart';
 import '../features/earnings/providers/ratings_provider.dart';
 import '../features/profile/providers/verification_provider.dart';
+import '../features/support/providers/support_providers.dart';
 import '../features/trips/providers/driver_trips_provider.dart';
 import 'router.dart';
 
@@ -130,10 +135,27 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
     }
   }
 
+  Future<void> _retryService() async {
+    try {
+      await probeMobileServiceReadiness(
+        ref.read(dioProvider),
+        onReady: () => ref.invalidate(legalConsentStatusProvider),
+      );
+    } catch (_) {
+      // The interceptor keeps the notice visible with safe local copy.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(goRouterProvider);
     final updateRequirement = ref.watch(appUpdateRequirementProvider);
+    final serviceIssue = ref.watch(serviceNoticeProvider).issue;
+    final currentPath = router.routerDelegate.currentConfiguration.uri.path;
+    final hasActiveWork = ref.watch(activeRideProvider).hasRide ||
+        ref.watch(activeJobProvider).hasJob ||
+        currentPath.startsWith('/active-ride') ||
+        currentPath.startsWith('/active-job');
     final locationDegradation = ref.watch(providerLocationDegradationProvider);
 
     // Keep the display awake only while the provider is online/busy and the
@@ -142,6 +164,13 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
     ref.watch(foregroundDisplayWakeLockProvider);
 
     final auth = ref.watch(authControllerProvider);
+    final legalConsent = auth is AuthAuthenticated
+        ? ref.watch(legalConsentStatusProvider)
+        : null;
+    final legalStatusError =
+        legalConsent?.hasError == true ? legalConsent?.error : null;
+    final effectiveServiceIssue =
+        mobileServiceIssueForLegalStatusError(legalStatusError) ?? serviceIssue;
     if (auth is AuthAuthenticated) {
       // Keep provider availability infrastructure alive across every
       // authenticated route, not only the bottom-tab shell. Full-screen flows
@@ -179,21 +208,27 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
             storeUrl: updateRequirement.storeUrl,
           );
         }
-        return Stack(
-          children: [
-            child ?? const SizedBox.shrink(),
+        return MyShopServiceNoticeOverlay(
+          kind: effectiveServiceIssue == null
+              ? null
+              : _noticeKind(effectiveServiceIssue),
+          hasActiveWork: hasActiveWork,
+          onRetry: _retryService,
+          topNotices: [
             if (locationDegradation.isDegraded)
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: LocationDegradationBanner(
-                  state: locationDegradation,
-                ),
-              ),
+              LocationDegradationBanner(state: locationDegradation),
           ],
+          child: child ?? const SizedBox.shrink(),
         );
       },
     );
   }
+}
+
+MyShopServiceNoticeKind _noticeKind(MobileServiceIssue issue) {
+  return switch (issue) {
+    MobileServiceIssue.offline => MyShopServiceNoticeKind.offline,
+    MobileServiceIssue.timeout => MyShopServiceNoticeKind.timeout,
+    MobileServiceIssue.unavailable => MyShopServiceNoticeKind.unavailable,
+  };
 }

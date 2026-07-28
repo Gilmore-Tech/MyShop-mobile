@@ -17,10 +17,17 @@ String userSafeApiErrorMessage(
   String? validationMessage,
 }) {
   if (error is NetworkException) {
-    return 'No internet connection. Check your network and try again.';
+    return switch (error.kind) {
+      NetworkFailureKind.offline =>
+        'No internet connection. Check your network and try again.',
+      NetworkFailureKind.timeout =>
+        'The connection timed out. Check your network and try again.',
+      NetworkFailureKind.unavailable =>
+        'Service temporarily unavailable. Please try again in a moment.',
+    };
   }
   if (error.isServerError) {
-    return 'Internal error, please try again in a moment.';
+    return 'Service temporarily unavailable. Please try again in a moment.';
   }
 
   if (error.errorCode == 'RATE_LIMITED' ||

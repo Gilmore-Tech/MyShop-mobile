@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../models/api_exception.dart';
+
 enum MobileAppKind {
   client('client'),
   provider('provider');
@@ -17,6 +19,72 @@ enum MobilePlatform {
 
   const MobilePlatform(this.headerValue);
   final String headerValue;
+}
+
+/// A transient transport/service condition safe for app-owned UI.
+///
+/// This intentionally carries no backend prose.
+enum MobileServiceIssue { offline, timeout, unavailable }
+
+/// Converts only the legal-consent status request's explicit error into the
+/// global notice model.
+///
+/// Ordinary HTTP failures are feature-owned and never pass through this
+/// function. The app root calls it specifically for the authoritative legal
+/// status provider, where a 5xx or malformed response must preserve the route
+/// while explaining that revalidation is temporarily unavailable.
+MobileServiceIssue? mobileServiceIssueForLegalStatusError(Object? error) {
+  if (error is NetworkException) {
+    return switch (error.kind) {
+      NetworkFailureKind.offline => MobileServiceIssue.offline,
+      NetworkFailureKind.timeout => MobileServiceIssue.timeout,
+      NetworkFailureKind.unavailable => MobileServiceIssue.unavailable,
+    };
+  }
+  return error == null ? null : MobileServiceIssue.unavailable;
+}
+
+/// Probes the public readiness endpoint and runs [onReady] only after a
+/// successful HTTP response.
+///
+/// Apps use [onReady] to invalidate/revalidate legal consent. A failed probe
+/// throws through to the caller and deliberately leaves the confirmed legal
+/// snapshot and visible notice unchanged.
+Future<void> probeMobileServiceReadiness(
+  Dio dio, {
+  required void Function() onReady,
+}) async {
+  final response = await dio.get<dynamic>(
+    MobileClientInterceptor.readinessPath,
+  );
+  if (!_isHealthyReadinessResponse(response.data)) {
+    throw const FormatException('Invalid service readiness response.');
+  }
+  onReady();
+}
+
+/// Accept only the backend's authenticated-by-shape public readiness contract.
+///
+/// A 200 status alone is insufficient: captive portals commonly answer every
+/// request with HTML or their own JSON. Treating that as recovery would hide
+/// the outage notice and re-run legal-consent routing against the wrong
+/// service. The API's global response interceptor wraps the health payload in
+/// `{success: true, data: ...}`, so require both dependency checks as well as
+/// the healthy marker before announcing recovery.
+bool _isHealthyReadinessResponse(Object? body) {
+  if (body is! Map) return false;
+  final envelope = Map<Object?, Object?>.from(body);
+  if (envelope['success'] != true) return false;
+
+  final rawData = envelope['data'];
+  if (rawData is! Map) return false;
+  final data = Map<Object?, Object?>.from(rawData);
+  if (data['status'] != 'healthy') return false;
+
+  final rawChecks = data['checks'];
+  if (rawChecks is! Map) return false;
+  final checks = Map<Object?, Object?>.from(rawChecks);
+  return checks['database'] == 'ok' && checks['redis'] == 'ok';
 }
 
 class MobileClientMetadata {
@@ -57,18 +125,27 @@ class MobileClientInterceptor extends Interceptor {
   MobileClientInterceptor({
     required MobileAppKind app,
     required void Function(AppUpdateRequirement requirement) onUpdateRequired,
+    void Function(MobileServiceIssue issue)? onServiceIssue,
+    void Function()? onServiceRecovered,
     MobileClientMetadataLoader? metadataLoader,
   })  : _app = app,
         _onUpdateRequired = onUpdateRequired,
+        _onServiceIssue = onServiceIssue,
+        _onServiceRecovered = onServiceRecovered,
         _metadataLoader = metadataLoader;
 
   static const appHeader = 'X-MyShop-App';
   static const platformHeader = 'X-MyShop-Platform';
   static const buildHeader = 'X-MyShop-Build';
   static const updateRequiredCode = 'APP_UPDATE_REQUIRED';
+  static const readinessPath = '/health/ready';
+  static const safeUpdateMessage =
+      'A newer version of MyShop is required to continue.';
 
   final MobileAppKind _app;
   final void Function(AppUpdateRequirement requirement) _onUpdateRequired;
+  final void Function(MobileServiceIssue issue)? _onServiceIssue;
+  final void Function()? _onServiceRecovered;
   final MobileClientMetadataLoader? _metadataLoader;
   Future<MobileClientMetadata>? _metadataFuture;
 
@@ -91,12 +168,55 @@ class MobileClientInterceptor extends Interceptor {
   }
 
   @override
+  void onResponse(
+    Response<dynamic> response,
+    ResponseInterceptorHandler handler,
+  ) {
+    // Recovery is explicit. A successful background poll or unrelated
+    // feature request must not clear the outage notice or advance the legal
+    // revalidation epoch. Only the user's public readiness probe may do so.
+    if (response.requestOptions.path == readinessPath &&
+        _isHealthyReadinessResponse(response.data)) {
+      _onServiceRecovered?.call();
+    }
+    handler.next(response);
+  }
+
+  @override
   void onError(DioException error, ErrorInterceptorHandler handler) {
+    final serviceIssue = _classifyServiceIssue(error);
+    if (serviceIssue != null) {
+      _onServiceIssue?.call(serviceIssue);
+    }
     final requirement = _parseRequirement(error.response);
     if (requirement != null) {
       _onUpdateRequired(requirement);
     }
     handler.next(error);
+  }
+
+  MobileServiceIssue? _classifyServiceIssue(DioException error) {
+    // Any trusted HTTP response belongs to the request's owning feature.
+    // A document/payment/background-poll 5xx must never cover the whole app
+    // with a global outage modal. Legal-consent failures are handled
+    // explicitly by the legal gate, and a user retry probes readiness.
+    if (error.response != null) return null;
+
+    return switch (error.type) {
+      DioExceptionType.connectionTimeout ||
+      DioExceptionType.sendTimeout ||
+      DioExceptionType.receiveTimeout ||
+      DioExceptionType.transformTimeout =>
+        MobileServiceIssue.timeout,
+      DioExceptionType.connectionError => MobileServiceIssue.offline,
+      // Unknown no-response failures include malformed transport responses.
+      // Keep the copy neutral instead of incorrectly blaming user consent.
+      DioExceptionType.unknown ||
+      DioExceptionType.badCertificate =>
+        MobileServiceIssue.unavailable,
+      // User/app cancellation is deliberate, not a connectivity incident.
+      DioExceptionType.cancel || DioExceptionType.badResponse => null,
+    };
   }
 
   Future<MobileClientMetadata> _loadMetadata() async {
@@ -131,18 +251,15 @@ class MobileClientInterceptor extends Interceptor {
     final rawError = envelope['error'];
 
     String? code;
-    String? message;
     Map<String, dynamic>? details;
     if (rawError is Map) {
       final error = Map<String, dynamic>.from(rawError);
       code = _string(error['code']);
-      message = _string(error['message']);
       if (error['details'] is Map) {
         details = Map<String, dynamic>.from(error['details'] as Map);
       }
     } else {
       code = _string(rawError) ?? _string(envelope['code']);
-      message = _string(envelope['message']);
       if (envelope['details'] is Map) {
         details = Map<String, dynamic>.from(envelope['details'] as Map);
       }
@@ -150,7 +267,9 @@ class MobileClientInterceptor extends Interceptor {
     if (code != updateRequiredCode) return null;
 
     return AppUpdateRequirement(
-      message: message ?? 'A newer version of MyShop is required to continue.',
+      // The server controls only the stable machine contract and metadata.
+      // Never render arbitrary response prose in a non-dismissible screen.
+      message: safeUpdateMessage,
       app: _appKind(details?['app']),
       platform: _platform(details?['platform']),
       minimumBuild: _integer(details?['minimumBuild']),

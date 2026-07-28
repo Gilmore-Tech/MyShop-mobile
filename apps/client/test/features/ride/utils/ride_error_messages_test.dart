@@ -53,7 +53,51 @@ void main() {
 
     expect(
       rideRequestErrorMessage(error),
-      'Internal error, please try again in a moment.',
+      'Service temporarily unavailable. Please try again in a moment.',
     );
+  });
+
+  test('socket cancellation never renders free-form server prose', () {
+    final message = rideSocketCancellationMessage(
+      reason: 'SQLSTATE 23505: customer_phone_idx',
+      cancelledBy: 'unknown_actor',
+    );
+
+    expect(message, 'This ride was cancelled.');
+    expect(message, isNot(contains('SQLSTATE')));
+  });
+
+  test('socket cancellation maps only known actor and no-driver fields', () {
+    expect(
+      rideSocketCancellationMessage(
+        reason: 'driver_cancelled',
+        cancelledBy: 'driver',
+      ),
+      'The driver cancelled this ride.',
+    );
+    expect(
+      rideSocketCancellationMessage(
+        reason: 'no_drivers_available',
+        cancelledBy: 'system',
+      ),
+      noDriversAvailableMessage,
+    );
+    expect(
+      rideSocketDriverDelayMessage,
+      'Your driver is delayed, but the ride is still active.',
+    );
+  });
+
+  test('system initialization timeout is not mislabeled as no drivers', () {
+    final message = rideSocketCancellationMessage(
+      reason: 'initialization_timeout',
+      cancelledBy: 'system',
+    );
+
+    expect(
+      message,
+      "We couldn't finish requesting your ride. Please try again.",
+    );
+    expect(message, isNot(noDriversAvailableMessage));
   });
 }

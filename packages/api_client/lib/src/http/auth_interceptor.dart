@@ -81,6 +81,10 @@ class AuthInterceptor extends Interceptor {
     '/legal/community-guidelines',
     '/legal/third-party-licenses',
     '/legal/cookie-policy',
+    // Public dependency-readiness probe used by the offline recovery overlay.
+    // It must remain reachable before login; otherwise a recovered user can
+    // be stranded behind the notice by a local NOT_AUTHENTICATED rejection.
+    '/health/ready',
     '/config/',
     '/surge/current',
     // Categories are read during artisan registration (category picker)

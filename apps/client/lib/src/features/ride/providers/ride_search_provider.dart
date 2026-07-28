@@ -9,8 +9,11 @@ RideSearchField parseRideSearchField(String? raw) =>
     raw == 'destination' ? RideSearchField.destination : RideSearchField.pickup;
 
 /// A selected location — rendered in the home card and carried into the
-/// fare-estimate flow. Real implementation will carry lat/lng from Google
-/// Places / reverse geocoding.
+/// fare-estimate flow.
+///
+/// A label or saved address without coordinates is intentionally not a precise
+/// location. Fare calculation and booking must only use a point confirmed by
+/// Places, GPS, or the map pin picker.
 class RideLocation {
   final String name;
   final String address;
@@ -26,7 +29,21 @@ class RideLocation {
     this.precision = RideLocationPrecision.point,
   });
 
-  bool get isPrecise => precision == RideLocationPrecision.point;
+  bool get hasCoordinates {
+    final latitude = lat;
+    final longitude = lng;
+    return latitude != null &&
+        longitude != null &&
+        latitude.isFinite &&
+        longitude.isFinite &&
+        latitude >= -90 &&
+        latitude <= 90 &&
+        longitude >= -180 &&
+        longitude <= 180;
+  }
+
+  bool get isPrecise =>
+      precision == RideLocationPrecision.point && hasCoordinates;
 }
 
 class RideSearchState {

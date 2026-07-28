@@ -136,10 +136,14 @@ class AuthErrorMapper {
   }
 
   static String _networkMessage(NetworkException e) {
-    if (e.message.contains('timed out')) {
-      return 'Connection timed out. Check your internet and try again.';
-    }
-    return 'No internet connection. Check your network and try again.';
+    return switch (e.kind) {
+      NetworkFailureKind.offline =>
+        'No internet connection. Check your network and try again.',
+      NetworkFailureKind.timeout =>
+        'Connection timed out. Check your internet and try again.',
+      NetworkFailureKind.unavailable =>
+        'Service temporarily unavailable. Please try again in a moment.',
+    };
   }
 
   static String _apiMessage(ApiException e) {
@@ -285,7 +289,7 @@ class AuthErrorMapper {
       // ── Server ──────────────────────────────────────────────────────
       case 'INTERNAL_ERROR':
       case 'SERVER_ERROR':
-        return 'Internal error, please try again in a moment.';
+        return 'Service temporarily unavailable. Please try again in a moment.';
 
       default:
         return userSafeApiErrorMessage(

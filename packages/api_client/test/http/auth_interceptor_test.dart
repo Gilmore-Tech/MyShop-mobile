@@ -19,8 +19,11 @@ class _RecordingAdapter implements HttpClientAdapter {
     Future<void>? cancelFuture,
   ) async {
     paths.add(options.path);
+    final body = options.path == MobileClientInterceptor.readinessPath
+        ? '{"success":true,"data":{"status":"healthy","checks":{"database":"ok","redis":"ok"}}}'
+        : '{"success":true,"data":{}}';
     return ResponseBody.fromString(
-      '{"success":true,"data":{}}',
+      body,
       200,
       headers: {
         Headers.contentTypeHeader: [Headers.jsonContentType],
@@ -80,6 +83,20 @@ void main() {
     );
 
     expect(adapter.paths, ['/legal/required', '/legal/terms']);
+    verifyNever(() => tokenStorage.readAccessToken());
+  });
+
+  test('allows the exact readiness retry through before login', () async {
+    when(() => tokenStorage.readAccessToken()).thenAnswer((_) async => null);
+    var recoveries = 0;
+
+    await probeMobileServiceReadiness(
+      dio,
+      onReady: () => recoveries++,
+    );
+
+    expect(adapter.paths, [MobileClientInterceptor.readinessPath]);
+    expect(recoveries, 1);
     verifyNever(() => tokenStorage.readAccessToken());
   });
 

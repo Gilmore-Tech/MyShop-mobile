@@ -7,6 +7,7 @@ import '../../features/ride/data/ride_booking_attempt_store.dart';
 import '../../features/ride/data/ride_booking_coordinator.dart';
 import '../providers/current_location_provider.dart';
 import '../providers/app_update_provider.dart';
+import '../providers/service_notice_provider.dart';
 import '../services/google_places_service.dart';
 import 'force_logout_handler.dart';
 
@@ -62,6 +63,8 @@ final dioClientProvider = Provider<DioClient>((ref) {
     appKind: MobileAppKind.client,
     onAppUpdateRequired:
         ref.read(appUpdateRequirementProvider.notifier).requireUpdate,
+    onServiceIssue: ref.read(serviceNoticeProvider.notifier).report,
+    onServiceRecovered: ref.read(serviceNoticeProvider.notifier).recovered,
     onForceLogout: handler.call,
   );
 });

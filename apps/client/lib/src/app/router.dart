@@ -1,7 +1,7 @@
 import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_models/shared_models.dart'
-    show ChatBookingType, LegalConsentStatus, TicketCategory;
+    show ChatBookingType, TicketCategory;
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -90,7 +90,10 @@ import '../features/support/screens/help_search_route_screen.dart';
 import '../features/support/screens/legal_document_route_screen.dart';
 import '../features/support/screens/legal_consent_route_screen.dart';
 import '../features/support/providers/support_providers.dart'
-    show legalConsentStatusProvider;
+    show
+        clientRoleSessionIdentityProvider,
+        legalConsentStatusProvider,
+        usableClientLegalConsentStatus;
 import '../features/profile/screens/referral_screen.dart';
 import '../features/profile/screens/payment_methods_screen.dart';
 import '../features/profile/screens/emergency_contacts_screen.dart';
@@ -261,11 +264,15 @@ final routerProvider = Provider<GoRouter>((ref) {
   final legalConsent = authState is AuthAuthenticated
       ? ref.watch(legalConsentStatusProvider)
       : null;
+  final roleSessionIdentity = authState is AuthAuthenticated
+      ? ref.watch(clientRoleSessionIdentityProvider)
+      : null;
   return _buildRouter(
     authState: authState,
     hasSeen: hasSeen,
     onboardingFlagLoaded: onboardingFlagLoaded,
     pendingReplay: pendingReplay,
+    roleSessionIdentity: roleSessionIdentity,
     legalConsent: legalConsent,
     telemetry: ref.read(systemTelemetryProvider),
   );
@@ -276,7 +283,8 @@ GoRouter _buildRouter({
   required bool hasSeen,
   required bool onboardingFlagLoaded,
   required bool pendingReplay,
-  required AsyncValue<LegalConsentStatus>? legalConsent,
+  required AsyncValue<RoleSessionIdentity?>? roleSessionIdentity,
+  required AsyncValue<ScopedLegalConsentStatus?>? legalConsent,
   required SystemTelemetryService telemetry,
 }) {
   return GoRouter(
@@ -347,9 +355,12 @@ GoRouter _buildRouter({
         if (needsOnboarding) {
           return path == AppRoutes.onboarding ? null : AppRoutes.onboarding;
         }
-        final consentRequiresReview =
-            legalConsent?.valueOrNull?.requiresConsent == true ||
-                legalConsent?.hasError == true;
+        final consentStatus = usableClientLegalConsentStatus(
+          authState,
+          roleSessionIdentity,
+          legalConsent,
+        );
+        final consentRequiresReview = consentStatus?.requiresConsent == true;
         final consentExemptRoute = path == AppRoutes.legalConsent ||
             path.startsWith('/legal/') ||
             path == AppRoutes.rideTracking ||
@@ -357,11 +368,12 @@ GoRouter _buildRouter({
             path.startsWith('/safety/') ||
             path.startsWith(AppRoutes.profileSupport);
         if (consentRequiresReview &&
-            legalConsent?.valueOrNull?.hasActiveWork != true &&
+            consentStatus?.hasActiveWork != true &&
             !consentExemptRoute) {
           return AppRoutes.legalConsent;
         }
-        if (!consentRequiresReview && path == AppRoutes.legalConsent) {
+        if (consentStatus?.requiresConsent == false &&
+            path == AppRoutes.legalConsent) {
           return AppRoutes.home;
         }
         // Past onboarding — redirect away from any auth/onboarding routes.
