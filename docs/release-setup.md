@@ -328,7 +328,7 @@ git fetch origin
 git checkout main
 git pull --ff-only origin main
 export RELEASE_SOURCE_COMMIT="$(git rev-parse HEAD)"
-export RELEASE_BUILD_NUMBER=<greater-than-both-console-values-and-23>
+export RELEASE_BUILD_NUMBER=<greater-than-both-console-values-and-25>
 tool/build.sh client android
 ```
 
@@ -388,14 +388,14 @@ Once Part 5 passes, every release is:
 #    and provider are checked independently; never infer a console value.
 
 # 2. Build only the clean, reviewed origin/main commit that already passed
-#    staging. Build 23 is treated as occupied because signed/upload-attempted
-#    artifacts exist locally; still check both private store consoles because
-#    either may contain a higher number.
+#    staging. Build 25 is released on all four targets and is permanently
+#    occupied; still check both private store consoles because either may
+#    contain a higher number.
 git fetch origin
 git checkout main
 git pull --ff-only origin main
 export RELEASE_SOURCE_COMMIT="$(git rev-parse HEAD)"
-export RELEASE_BUILD_NUMBER=<greater-than-both-console-values-and-23>
+export RELEASE_BUILD_NUMBER=<greater-than-both-console-values-and-25>
 tool/build.sh client android
 tool/build.sh client ios
 

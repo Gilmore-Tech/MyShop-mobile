@@ -8,6 +8,88 @@ import 'package:myshop_client/src/features/ride/providers/fare_estimate_provider
 import 'package:myshop_client/src/features/ride/providers/ride_search_provider.dart';
 
 void main() {
+  test('address-only locations are never precise booking points', () {
+    const addressOnly = RideLocation(
+      name: 'Home',
+      address: 'Suame, Kumasi',
+    );
+    const coordinateBacked = RideLocation(
+      name: 'Kejetia',
+      address: 'Kejetia Market',
+      lat: 6.6930,
+      lng: -1.6100,
+    );
+
+    expect(addressOnly.hasCoordinates, isFalse);
+    expect(addressOnly.isPrecise, isFalse);
+    expect(coordinateBacked.hasCoordinates, isTrue);
+    expect(coordinateBacked.isPrecise, isTrue);
+  });
+
+  test('booking coordinates must be finite and inside geographic bounds', () {
+    final invalidLocations = <RideLocation>[
+      const RideLocation(
+        name: 'NaN latitude',
+        address: 'Invalid',
+        lat: double.nan,
+        lng: 0,
+      ),
+      const RideLocation(
+        name: 'Infinite longitude',
+        address: 'Invalid',
+        lat: 0,
+        lng: double.infinity,
+      ),
+      const RideLocation(
+        name: 'Latitude above range',
+        address: 'Invalid',
+        lat: 90.0001,
+        lng: 0,
+      ),
+      const RideLocation(
+        name: 'Latitude below range',
+        address: 'Invalid',
+        lat: -90.0001,
+        lng: 0,
+      ),
+      const RideLocation(
+        name: 'Longitude above range',
+        address: 'Invalid',
+        lat: 0,
+        lng: 180.0001,
+      ),
+      const RideLocation(
+        name: 'Longitude below range',
+        address: 'Invalid',
+        lat: 0,
+        lng: -180.0001,
+      ),
+    ];
+
+    for (final location in invalidLocations) {
+      expect(location.hasCoordinates, isFalse, reason: location.name);
+      expect(location.isPrecise, isFalse, reason: location.name);
+    }
+
+    for (final location in const <RideLocation>[
+      RideLocation(
+        name: 'North east boundary',
+        address: 'Boundary',
+        lat: 90,
+        lng: 180,
+      ),
+      RideLocation(
+        name: 'South west boundary',
+        address: 'Boundary',
+        lat: -90,
+        lng: -180,
+      ),
+    ]) {
+      expect(location.hasCoordinates, isTrue, reason: location.name);
+      expect(location.isPrecise, isTrue, reason: location.name);
+    }
+  });
+
   test('does not request a fare for a broad area centroid', () async {
     var requestCount = 0;
     final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test/v1'));

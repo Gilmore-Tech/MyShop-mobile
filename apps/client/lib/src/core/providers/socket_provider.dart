@@ -364,14 +364,11 @@ void _connectAndListen(Ref ref, SocketService socket) {
 
           final reason = (data['cancellationReason'] as String?) ?? '';
           final cancelledBy = (data['cancelledBy'] as String?) ?? '';
-          final isNoDrivers = status == 'no_drivers' ||
-              reason == 'no_drivers_available' ||
-              cancelledBy == 'system';
-          final friendlyMessage = isNoDrivers
-              ? noDriversAvailableMessage
-              : cancelledBy == 'driver'
-                  ? 'The driver cancelled this ride.'
-                  : (reason.isNotEmpty ? reason : 'This ride was cancelled.');
+          final friendlyMessage = rideSocketCancellationMessage(
+            status: status,
+            reason: reason,
+            cancelledBy: cancelledBy,
+          );
           ref.container.read(bookingFailureMessageProvider.notifier).state =
               friendlyMessage;
           ref.container.read(bookingPhaseProvider.notifier).fail();
@@ -532,12 +529,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
         );
 
         final reason = (map['reason'] as String?) ?? '';
-        final messageFromPayload = (map['message'] as String?) ?? '';
-        final noDrivers = _isNoDriversCancellation(
-          reason: reason,
-          cancelledBy: cancelledBy,
-          message: messageFromPayload,
-        );
+        final noDrivers = _isNoDriversCancellation(reason: reason);
         if (noDrivers) {
           // Backend system expiry emits `ride:cancelled` first, followed by
           // `ride:status no_drivers` and `ride:state`. If those later packets
@@ -557,13 +549,10 @@ void _connectAndListen(Ref ref, SocketService socket) {
           return;
         }
 
-        final message = cancelledBy == 'driver'
-            ? 'The driver cancelled this ride.'
-            : cancelledBy == 'admin'
-                ? 'Your ride was cancelled by support.'
-                : (reason.isNotEmpty && reason != 'driver_cancelled'
-                    ? reason
-                    : 'This ride was cancelled.');
+        final message = rideSocketCancellationMessage(
+          reason: reason,
+          cancelledBy: cancelledBy,
+        );
 
         // Clear local ride state so the next booking starts clean. Don't flip
         // rideTrackingPhase here — the dialog + home navigation is the single
@@ -604,8 +593,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
             eventRideId != activeRideId) {
           return;
         }
-        final message = (map['message'] as String?) ??
-            'Your driver is delayed, but the ride is still active.';
+        const message = rideSocketDriverDelayMessage;
         developer.log('ride:driver_delayed — $message', name: 'WS');
 
         final router = ref.container.read(routerProvider);
@@ -1176,18 +1164,8 @@ void _connectAndListen(Ref ref, SocketService socket) {
 
 bool _isNoDriversCancellation({
   required String reason,
-  required String cancelledBy,
-  required String message,
 }) {
-  final normalizedReason = reason.toLowerCase();
-  final normalizedCancelledBy = cancelledBy.toLowerCase();
-  final normalizedMessage = message.toLowerCase();
-
-  return normalizedReason == 'no_drivers_available' ||
-      normalizedReason == 'no_driver_available' ||
-      normalizedReason == 'no_drivers' ||
-      normalizedReason == 'no_driver' ||
-      normalizedMessage.contains('no drivers available') ||
-      normalizedMessage.contains('no driver available') ||
-      normalizedCancelledBy == 'system';
+  return isNoDriversSocketCancellation(
+    reason: reason,
+  );
 }

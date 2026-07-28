@@ -3,6 +3,20 @@ import 'package:dio/dio.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('unknown trusted-service failures do not blame user connectivity', () {
+    const exception = NetworkException(
+      message: 'malformed upstream detail',
+      kind: NetworkFailureKind.unavailable,
+    );
+
+    expect(
+      AuthErrorMapper.message(exception),
+      'Service temporarily unavailable. Please try again in a moment.',
+    );
+    expect(AuthErrorMapper.message(exception), isNot(contains('network')));
+    expect(AuthErrorMapper.message(exception), isNot(contains('internet')));
+  });
+
   test('unknown auth errors never expose backend prose', () {
     const exception = ApiException(
       message: 'SQLSTATE 23505 internal_auth_identity_phone_key',
@@ -83,29 +97,31 @@ void main() {
     expect(AuthErrorMapper.isAlreadyLoggedInElsewhere(exception), isTrue);
   });
 
-  test('parses top-level errorCode when backend does not nest error object',
-      () {
-    final exception = ApiException.fromDioException(
-      DioException(
-        requestOptions: RequestOptions(path: '/auth/login/client'),
-        response: Response(
+  test(
+    'parses top-level errorCode when backend does not nest error object',
+    () {
+      final exception = ApiException.fromDioException(
+        DioException(
           requestOptions: RequestOptions(path: '/auth/login/client'),
-          statusCode: 409,
-          data: const {
-            'statusCode': 409,
-            'error': 'Conflict',
-            'errorCode': 'ALREADY_LOGGED_IN_ELSEWHERE',
-            'message': 'Active session already exists for this device role.',
-          },
+          response: Response(
+            requestOptions: RequestOptions(path: '/auth/login/client'),
+            statusCode: 409,
+            data: const {
+              'statusCode': 409,
+              'error': 'Conflict',
+              'errorCode': 'ALREADY_LOGGED_IN_ELSEWHERE',
+              'message': 'Active session already exists for this device role.',
+            },
+          ),
+          type: DioExceptionType.badResponse,
         ),
-        type: DioExceptionType.badResponse,
-      ),
-    );
+      );
 
-    expect(exception, isA<ConflictException>());
-    expect(exception.errorCode, AuthErrorCodes.alreadyLoggedInElsewhere);
-    expect(AuthErrorMapper.isAlreadyLoggedInElsewhere(exception), isTrue);
-  });
+      expect(exception, isA<ConflictException>());
+      expect(exception.errorCode, AuthErrorCodes.alreadyLoggedInElsewhere);
+      expect(AuthErrorMapper.isAlreadyLoggedInElsewhere(exception), isTrue);
+    },
+  );
 
   test('preserves active-OTP details on 503 delivery failure', () {
     final exception = ApiException.fromDioException(
@@ -218,19 +234,21 @@ void main() {
     );
   });
 
-  test('maps Redis-authority failures without exposing infrastructure details',
-      () {
-    const verificationUnavailable = ServerException(
-      message: 'redis://user:secret@example.invalid',
-      statusCode: 503,
-      errorCode: 'OTP_VERIFICATION_CONTROL_UNAVAILABLE',
-    );
+  test(
+    'maps Redis-authority failures without exposing infrastructure details',
+    () {
+      const verificationUnavailable = ServerException(
+        message: 'redis://user:secret@example.invalid',
+        statusCode: 503,
+        errorCode: 'OTP_VERIFICATION_CONTROL_UNAVAILABLE',
+      );
 
-    expect(
-      AuthErrorMapper.message(verificationUnavailable),
-      'Code verification is temporarily unavailable. Please try again shortly.',
-    );
-  });
+      expect(
+        AuthErrorMapper.message(verificationUnavailable),
+        'Code verification is temporarily unavailable. Please try again shortly.',
+      );
+    },
+  );
 
   test('preserves only machine-readable provider eligibility reason codes', () {
     final exception = ApiException.fromDioException(
@@ -258,9 +276,8 @@ void main() {
 
     expect(exception.errorCode, 'PROVIDER_NOT_ELIGIBLE');
     expect(exception.details?['correlationId'], 'safe-test-id');
-    expect(
-      exception.details?['reasonCodes'],
-      ['DOCUMENT_EXPIRED_DRIVERS_LICENCE'],
-    );
+    expect(exception.details?['reasonCodes'], [
+      'DOCUMENT_EXPIRED_DRIVERS_LICENCE',
+    ]);
   });
 }

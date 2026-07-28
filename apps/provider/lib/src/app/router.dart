@@ -62,7 +62,10 @@ import '../features/support/screens/help_search_route_screen.dart';
 import '../features/support/screens/legal_document_route_screen.dart';
 import '../features/support/screens/legal_consent_route_screen.dart';
 import '../features/support/providers/support_providers.dart'
-    show legalConsentStatusProvider;
+    show
+        legalConsentStatusProvider,
+        providerRoleSessionIdentityProvider,
+        usableProviderLegalConsentStatus;
 import '../features/support/screens/new_ticket_route_screen.dart';
 import '../features/support/screens/support_legal_route_screen.dart';
 import '../features/support/screens/ticket_detail_route_screen.dart';
@@ -85,6 +88,14 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       final legalConsent = auth is AuthAuthenticated
           ? ref.read(legalConsentStatusProvider)
           : null;
+      final roleSessionIdentity = auth is AuthAuthenticated
+          ? ref.read(providerRoleSessionIdentityProvider)
+          : null;
+      final consentStatus = usableProviderLegalConsentStatus(
+        auth,
+        roleSessionIdentity,
+        legalConsent,
+      );
       final hasActiveWork = auth is AuthAuthenticated &&
           (ref.read(activeRideProvider).hasRide ||
               ref.read(activeJobProvider).hasJob);
@@ -109,9 +120,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       };
 
       if (auth is AuthAuthenticated) {
-        final consentRequiresReview =
-            legalConsent?.valueOrNull?.requiresConsent == true ||
-                legalConsent?.hasError == true;
+        final consentRequiresReview = consentStatus?.requiresConsent == true;
         final consentExemptRoute = loc == '/legal-consent' ||
             loc.startsWith('/legal/') ||
             loc.startsWith('/active-ride') ||
@@ -120,11 +129,14 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             loc.startsWith('/account/support');
         if (consentRequiresReview &&
             !hasActiveWork &&
-            legalConsent?.valueOrNull?.hasActiveWork != true &&
+            consentStatus?.hasActiveWork != true &&
             !consentExemptRoute) {
           return '/legal-consent';
         }
-        if (!consentRequiresReview && loc == '/legal-consent') return '/home';
+        if (consentStatus?.requiresConsent == false &&
+            loc == '/legal-consent') {
+          return '/home';
+        }
         if (!loc.startsWith('/home') &&
             !loc.startsWith('/account') &&
             !loc.startsWith('/earnings') &&
@@ -527,13 +539,13 @@ class _AuthRouterRefresh extends ChangeNotifier {
   late final ProviderSubscription<AuthState> _authSub;
   late final ProviderSubscription<bool> _onboardingSub;
   late final ProviderSubscription<bool> _hasSeenSub;
-  ProviderSubscription<AsyncValue<LegalConsentStatus>>? _legalConsentSub;
+  ProviderSubscription<AsyncValue<ScopedLegalConsentStatus?>>? _legalConsentSub;
   ProviderSubscription<bool>? _activeRideSub;
   ProviderSubscription<bool>? _activeJobSub;
 
   void _syncAuthenticatedDependencies(AuthState auth) {
     if (auth is AuthAuthenticated) {
-      _legalConsentSub ??= _ref.listen<AsyncValue<LegalConsentStatus>>(
+      _legalConsentSub ??= _ref.listen<AsyncValue<ScopedLegalConsentStatus?>>(
         legalConsentStatusProvider,
         (_, __) => notifyListeners(),
       );

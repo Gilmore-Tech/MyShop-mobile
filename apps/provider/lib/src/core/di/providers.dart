@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/auth/providers/auth_controller.dart';
 import '../providers/app_update_provider.dart';
+import '../providers/service_notice_provider.dart';
 
 /// API configuration (base URL).
 final apiConfigProvider = Provider<ApiConfig>((ref) {
@@ -55,6 +56,8 @@ final dioClientProvider = Provider<DioClient>((ref) {
     appKind: MobileAppKind.provider,
     onAppUpdateRequired:
         ref.read(appUpdateRequirementProvider.notifier).requireUpdate,
+    onServiceIssue: ref.read(serviceNoticeProvider.notifier).report,
+    onServiceRecovered: ref.read(serviceNoticeProvider.notifier).recovered,
     onForceLogout: () {
       ref.read(authControllerProvider.notifier).onForceLogoutFromInterceptor();
     },

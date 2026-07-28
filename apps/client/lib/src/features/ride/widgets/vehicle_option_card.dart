@@ -17,6 +17,7 @@ class VehicleOptionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final available = option.driversAvailable;
+    final useStackedLayout = MediaQuery.textScalerOf(context).scale(14) > 21;
     // When no drivers are available the card is informational only — it shows
     // the fare but can't be picked. Gray it out, drop the tap handler, and
     // never paint it as selected so it reads as disabled (Semantics flag keeps
@@ -48,14 +49,39 @@ class VehicleOptionCard extends StatelessWidget {
                     width: selected ? 2 : 1,
                   ),
                 ),
-                child: Row(
-                  children: [
-                    _VehicleIcon(isMotorcycle: option.isMotorcycle),
-                    const SizedBox(width: 12),
-                    Expanded(child: _VehicleInfo(option: option)),
-                    _FareInfo(option: option, isSelected: selected),
-                  ],
-                ),
+                child: useStackedLayout
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _VehicleIcon(
+                                isMotorcycle: option.isMotorcycle,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(child: _VehicleInfo(option: option)),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: _FareInfo(
+                              option: option,
+                              isSelected: selected,
+                            ),
+                          ),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          _VehicleIcon(isMotorcycle: option.isMotorcycle),
+                          const SizedBox(width: 12),
+                          Expanded(child: _VehicleInfo(option: option)),
+                          _FareInfo(option: option, isSelected: selected),
+                        ],
+                      ),
               ),
               if (selected)
                 const Positioned(
@@ -125,12 +151,16 @@ class _VehicleInfo extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text(
-              option.name,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: MyShopColors.textPrimary,
+            Flexible(
+              child: Text(
+                option.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: MyShopColors.textPrimary,
+                ),
               ),
             ),
             const SizedBox(width: 6),

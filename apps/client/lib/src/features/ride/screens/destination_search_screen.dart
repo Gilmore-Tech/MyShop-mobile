@@ -16,39 +16,8 @@ import '../providers/ride_search_provider.dart';
 /// intermediate stop" instead of editing an existing one.
 const kNewStopSentinel = '__new_stop__';
 
-// ── Saved places (static for now — will come from user profile API) ──────────
-
-class _SavedPlace {
-  final String name;
-  final String address;
-  final IconData icon;
-  final Color iconBg;
-
-  const _SavedPlace({
-    required this.name,
-    required this.address,
-    required this.icon,
-    required this.iconBg,
-  });
-}
-
-const _savedPlaces = [
-  _SavedPlace(
-    name: 'Home',
-    address: 'Suame, Kumasi',
-    icon: Icons.home_rounded,
-    iconBg: MyShopColors.info,
-  ),
-  _SavedPlace(
-    name: 'Work',
-    address: 'Adum Commercial Area, Kumasi',
-    icon: Icons.work_rounded,
-    iconBg: MyShopColors.success,
-  ),
-];
-
 // ── Screen ─────────────────────────────────────────────────────────────────────
-// PRD § 4.3 — Client enters destination; saved locations and recents shown.
+// PRD § 4.3 — Client enters destination; coordinate-backed recents are shown.
 // On selection → fare estimate screen.
 // EDD: POST /v1/rides/estimate  { origin, destination }
 
@@ -191,15 +160,6 @@ class _DestinationSearchScreenState
     if (mounted) await _openPinPicker();
   }
 
-  void _selectSavedPlace(_SavedPlace place) {
-    // Saved places don't have coordinates yet — use name+address.
-    // In production these will carry lat/lng from the user profile.
-    _applyLocation(
-      name: place.name,
-      address: place.address,
-    );
-  }
-
   void _applyLocation({
     required String name,
     required String address,
@@ -215,8 +175,12 @@ class _DestinationSearchScreenState
         // requires real coords, not just the typed address.
         stops.addIntermediateStop(fullAddress, lat: lat, lng: lng);
       } else {
-        stops.updateStopAddress(widget.stopId!, fullAddress,
-            lat: lat, lng: lng);
+        stops.updateStopAddress(
+          widget.stopId!,
+          fullAddress,
+          lat: lat,
+          lng: lng,
+        );
       }
     } else {
       ref.read(rideSearchProvider.notifier).setLocation(
@@ -226,12 +190,9 @@ class _DestinationSearchScreenState
     }
     if (lat != null && lng != null) {
       // Fire-and-forget — recents persistence shouldn't block navigation.
-      ref.read(recentLocationsProvider.notifier).add(
-            name: name,
-            address: address,
-            lat: lat,
-            lng: lng,
-          );
+      ref
+          .read(recentLocationsProvider.notifier)
+          .add(name: name, address: address, lat: lat, lng: lng);
     }
     if (context.canPop()) context.pop();
   }
@@ -276,19 +237,11 @@ class _DestinationSearchScreenState
   }
 
   void _selectRecent(RecentLocation r) {
-    _applyLocation(
-      name: r.name,
-      address: r.address,
-      lat: r.lat,
-      lng: r.lng,
-    );
+    _applyLocation(name: r.name, address: r.address, lat: r.lat, lng: r.lng);
   }
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final w = size.width;
-    final h = size.height;
     final top = MediaQuery.paddingOf(context).top;
 
     return Scaffold(
@@ -299,8 +252,6 @@ class _DestinationSearchScreenState
             controller: _controller,
             focusNode: _focusNode,
             top: top,
-            w: w,
-            h: h,
             title: _isPickup ? 'Pickup location' : 'Where to?',
             hintText: _isPickup ? 'Search pickup' : 'Search destination',
             onChanged: _onSearchChanged,
@@ -308,7 +259,7 @@ class _DestinationSearchScreenState
           ),
           Expanded(
             child: _isLoading
-                ? _LoadingIndicator(w: w, h: h)
+                ? const _LoadingIndicator()
                 : ListView(
                     padding: EdgeInsets.zero,
                     children: [
@@ -319,43 +270,34 @@ class _DestinationSearchScreenState
                         title: 'Set location on map',
                         subtitle: 'Drop a pin to choose any location',
                         onTap: _openPinPicker,
-                        w: w,
-                        h: h,
                       ),
 
                       // When searching — show autocomplete results
                       if (_hasQuery) ...[
                         if (_suggestions.isEmpty)
-                          _EmptySearch(query: _controller.text, w: w, h: h)
+                          _EmptySearch(query: _controller.text)
                         else
-                          ..._suggestions.map((s) => _SuggestionTile(
-                                suggestion: s,
-                                onTap: () => _selectSuggestion(s),
-                                w: w,
-                                h: h,
-                              )),
+                          ..._suggestions.map(
+                            (s) => _SuggestionTile(
+                              suggestion: s,
+                              onTap: () => _selectSuggestion(s),
+                            ),
+                          ),
                       ],
 
-                      // When idle — show recent + saved
+                      // Only coordinate-backed recents are actionable. The old
+                      // static Home/Work placeholders carried addresses but no
+                      // coordinates and could strand riders without a fare.
                       if (!_hasQuery) ...[
                         if (ref.watch(recentLocationsProvider).isNotEmpty) ...[
-                          _SectionLabel(label: 'RECENT', w: w),
+                          const _SectionLabel(label: 'RECENT'),
                           ...ref.watch(recentLocationsProvider).map(
                                 (r) => _RecentLocationTile(
                                   recent: r,
                                   onTap: () => _selectRecent(r),
-                                  w: w,
-                                  h: h,
                                 ),
                               ),
                         ],
-                        _SectionLabel(label: 'SAVED PLACES', w: w),
-                        ..._savedPlaces.map((p) => _SavedPlaceTile(
-                              place: p,
-                              onTap: () => _selectSavedPlace(p),
-                              w: w,
-                              h: h,
-                            )),
                       ],
                     ],
                   ),
@@ -371,7 +313,7 @@ class _DestinationSearchScreenState
 class _SearchHeader extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
-  final double top, w, h;
+  final double top;
   final String title;
   final String hintText;
   final ValueChanged<String> onChanged;
@@ -381,8 +323,6 @@ class _SearchHeader extends StatelessWidget {
     required this.controller,
     required this.focusNode,
     required this.top,
-    required this.w,
-    required this.h,
     required this.title,
     required this.hintText,
     required this.onChanged,
@@ -393,71 +333,93 @@ class _SearchHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: MyShopColors.surfaceWhite,
-      padding: EdgeInsets.fromLTRB(0, top, w * 0.04, h * 0.016),
+      padding: EdgeInsets.fromLTRB(0, top, 16, 12),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Back + title
           Row(
             children: [
               IconButton(
                 onPressed: onBack,
-                icon: const Icon(Icons.arrow_back,
-                    color: MyShopColors.textPrimary),
-              ),
-              Text(
-                title,
-                style: TextStyle(
+                icon: const Icon(
+                  Icons.arrow_back,
                   color: MyShopColors.textPrimary,
-                  fontSize: w * 0.048,
-                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: MyShopColors.textPrimary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
           ),
-          SizedBox(height: h * 0.008),
+          const SizedBox(height: 6),
           // Search field
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: w * 0.04),
-            child: Container(
-              height: h * 0.058,
-              decoration: BoxDecoration(
-                color: MyShopColors.surfaceGrey,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  SizedBox(width: w * 0.04),
-                  const Icon(Icons.search_rounded,
-                      color: MyShopColors.textSecondary, size: 20),
-                  SizedBox(width: w * 0.024),
-                  Expanded(
-                    child: TextField(
-                      controller: controller,
-                      focusNode: focusNode,
-                      onChanged: onChanged,
-                      style: TextStyle(
-                          color: MyShopColors.textPrimary, fontSize: w * 0.038),
-                      decoration: InputDecoration(
-                        hintText: hintText,
-                        hintStyle: TextStyle(
-                          color: MyShopColors.textSecondary.withAlpha(140),
-                          fontSize: w * 0.036,
+            padding: const EdgeInsets.only(left: 16),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 52),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: MyShopColors.surfaceGrey,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const SizedBox(width: 14),
+                    const Icon(
+                      Icons.search_rounded,
+                      color: MyShopColors.textSecondary,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: controller,
+                        focusNode: focusNode,
+                        onChanged: onChanged,
+                        maxLines: 1,
+                        style: const TextStyle(
+                          color: MyShopColors.textPrimary,
+                          fontSize: 16,
                         ),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
+                        decoration: InputDecoration(
+                          hintText: hintText,
+                          hintStyle: TextStyle(
+                            color: MyShopColors.textSecondary.withAlpha(140),
+                            fontSize: 16,
+                          ),
+                          border: InputBorder.none,
+                          isDense: false,
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 12),
+                        ),
                       ),
                     ),
-                  ),
-                  if (controller.text.isNotEmpty)
-                    IconButton(
-                      onPressed: () {
-                        controller.clear();
-                        onChanged('');
-                      },
-                      icon: const Icon(Icons.close_rounded,
-                          color: MyShopColors.textSecondary, size: 18),
-                    ),
-                ],
+                    if (controller.text.isNotEmpty)
+                      IconButton(
+                        tooltip: 'Clear search',
+                        onPressed: () {
+                          controller.clear();
+                          onChanged('');
+                        },
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: MyShopColors.textSecondary,
+                          size: 20,
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -471,18 +433,17 @@ class _SearchHeader extends StatelessWidget {
 
 class _SectionLabel extends StatelessWidget {
   final String label;
-  final double w;
-  const _SectionLabel({required this.label, required this.w});
+  const _SectionLabel({required this.label});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(w * 0.05, w * 0.042, w * 0.05, w * 0.02),
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
       child: Text(
         label,
-        style: TextStyle(
+        style: const TextStyle(
           color: MyShopColors.textSecondary,
-          fontSize: w * 0.028,
+          fontSize: 12,
           fontWeight: FontWeight.w900,
           letterSpacing: 1.4,
         ),
@@ -497,7 +458,6 @@ class _ActionTile extends StatelessWidget {
   final String title;
   final String subtitle;
   final VoidCallback onTap;
-  final double w, h;
 
   const _ActionTile({
     required this.icon,
@@ -505,8 +465,6 @@ class _ActionTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
-    required this.w,
-    required this.h,
   });
 
   @override
@@ -514,31 +472,37 @@ class _ActionTile extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding:
-            EdgeInsets.symmetric(horizontal: w * 0.05, vertical: h * 0.016),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
-              width: w * 0.10,
-              height: w * 0.10,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
-              child: Icon(icon, color: Colors.white, size: w * 0.050),
+              child: Icon(icon, color: Colors.white, size: 22),
             ),
-            SizedBox(width: w * 0.036),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title,
-                      style: TextStyle(
-                          color: MyShopColors.textPrimary,
-                          fontSize: w * 0.038,
-                          fontWeight: FontWeight.w600)),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: MyShopColors.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Text(subtitle,
-                      style: TextStyle(
-                          color: MyShopColors.textSecondary,
-                          fontSize: w * 0.032)),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: MyShopColors.textSecondary,
+                      fontSize: 14,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -553,13 +517,10 @@ class _ActionTile extends StatelessWidget {
 class _SuggestionTile extends StatelessWidget {
   final PlaceSuggestion suggestion;
   final VoidCallback onTap;
-  final double w, h;
 
   const _SuggestionTile({
     required this.suggestion,
     required this.onTap,
-    required this.w,
-    required this.h,
   });
 
   @override
@@ -569,52 +530,57 @@ class _SuggestionTile extends StatelessWidget {
         InkWell(
           onTap: onTap,
           child: Padding(
-            padding:
-                EdgeInsets.symmetric(horizontal: w * 0.05, vertical: h * 0.016),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
                 Container(
-                  width: w * 0.10,
-                  height: w * 0.10,
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
                     color: MyShopColors.textSecondary.withAlpha(24),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.location_on_outlined,
-                      color: MyShopColors.textSecondary, size: w * 0.048),
+                  child: Icon(
+                    Icons.location_on_outlined,
+                    color: MyShopColors.textSecondary,
+                    size: 22,
+                  ),
                 ),
-                SizedBox(width: w * 0.036),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         suggestion.mainText,
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: MyShopColors.textPrimary,
-                          fontSize: w * 0.038,
+                          fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
                       if (suggestion.secondaryText.isNotEmpty) ...[
                         const SizedBox(height: 2),
                         Text(
                           suggestion.secondaryText,
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: MyShopColors.textSecondary,
-                            fontSize: w * 0.032,
+                            fontSize: 14,
                           ),
-                          maxLines: 1,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ],
                   ),
                 ),
-                const Icon(Icons.north_west_rounded,
-                    color: MyShopColors.textSecondary, size: 16),
+                const Icon(
+                  Icons.north_west_rounded,
+                  color: MyShopColors.textSecondary,
+                  size: 16,
+                ),
               ],
             ),
           ),
@@ -622,7 +588,7 @@ class _SuggestionTile extends StatelessWidget {
         Divider(
           height: 1,
           color: MyShopColors.divider,
-          indent: w * 0.05 + w * 0.10 + w * 0.036,
+          indent: 74,
         ),
       ],
     );
@@ -633,13 +599,10 @@ class _SuggestionTile extends StatelessWidget {
 class _RecentLocationTile extends StatelessWidget {
   final RecentLocation recent;
   final VoidCallback onTap;
-  final double w, h;
 
   const _RecentLocationTile({
     required this.recent,
     required this.onTap,
-    required this.w,
-    required this.h,
   });
 
   @override
@@ -649,50 +612,55 @@ class _RecentLocationTile extends StatelessWidget {
         InkWell(
           onTap: onTap,
           child: Padding(
-            padding:
-                EdgeInsets.symmetric(horizontal: w * 0.05, vertical: h * 0.016),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
                 Container(
-                  width: w * 0.10,
-                  height: w * 0.10,
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
                     color: MyShopColors.textSecondary.withAlpha(24),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.history_rounded,
-                      color: MyShopColors.textSecondary, size: w * 0.048),
+                  child: Icon(
+                    Icons.history_rounded,
+                    color: MyShopColors.textSecondary,
+                    size: 22,
+                  ),
                 ),
-                SizedBox(width: w * 0.036),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         recent.name,
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: MyShopColors.textPrimary,
-                          fontSize: w * 0.038,
+                          fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
                       Text(
                         recent.address,
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: MyShopColors.textSecondary,
-                          fontSize: w * 0.032,
+                          fontSize: 14,
                         ),
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
-                const Icon(Icons.north_west_rounded,
-                    color: MyShopColors.textSecondary, size: 16),
+                const Icon(
+                  Icons.north_west_rounded,
+                  color: MyShopColors.textSecondary,
+                  size: 16,
+                ),
               ],
             ),
           ),
@@ -700,74 +668,7 @@ class _RecentLocationTile extends StatelessWidget {
         Divider(
           height: 1,
           color: MyShopColors.divider,
-          indent: w * 0.05 + w * 0.10 + w * 0.036,
-        ),
-      ],
-    );
-  }
-}
-
-/// Tile for a saved place (Home, Work, etc.).
-class _SavedPlaceTile extends StatelessWidget {
-  final _SavedPlace place;
-  final VoidCallback onTap;
-  final double w, h;
-
-  const _SavedPlaceTile({
-    required this.place,
-    required this.onTap,
-    required this.w,
-    required this.h,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding:
-                EdgeInsets.symmetric(horizontal: w * 0.05, vertical: h * 0.016),
-            child: Row(
-              children: [
-                Container(
-                  width: w * 0.10,
-                  height: w * 0.10,
-                  decoration: BoxDecoration(
-                    color: place.iconBg.withAlpha(24),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(place.icon, color: place.iconBg, size: w * 0.048),
-                ),
-                SizedBox(width: w * 0.036),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(place.name,
-                          style: TextStyle(
-                              color: MyShopColors.textPrimary,
-                              fontSize: w * 0.038,
-                              fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 2),
-                      Text(place.address,
-                          style: TextStyle(
-                              color: MyShopColors.textSecondary,
-                              fontSize: w * 0.032)),
-                    ],
-                  ),
-                ),
-                const Icon(Icons.north_west_rounded,
-                    color: MyShopColors.textSecondary, size: 16),
-              ],
-            ),
-          ),
-        ),
-        Divider(
-          height: 1,
-          color: MyShopColors.divider,
-          indent: w * 0.05 + w * 0.10 + w * 0.036,
+          indent: 74,
         ),
       ],
     );
@@ -777,18 +678,17 @@ class _SavedPlaceTile extends StatelessWidget {
 // ── Loading indicator ─────────────────────────────────────────────────────────
 
 class _LoadingIndicator extends StatelessWidget {
-  final double w, h;
-  const _LoadingIndicator({required this.w, required this.h});
+  const _LoadingIndicator();
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(top: h * 0.05),
+    return const Padding(
+      padding: EdgeInsets.only(top: 32),
       child: Center(
         child: SizedBox(
-          width: w * 0.056,
-          height: w * 0.056,
-          child: const CircularProgressIndicator(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(
             strokeWidth: 2,
             color: MyShopColors.primaryGold,
           ),
@@ -802,22 +702,27 @@ class _LoadingIndicator extends StatelessWidget {
 
 class _EmptySearch extends StatelessWidget {
   final String query;
-  final double w, h;
-  const _EmptySearch({required this.query, required this.w, required this.h});
+  const _EmptySearch({required this.query});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: h * 0.08),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 40),
       child: Column(
         children: [
-          Icon(Icons.search_off_rounded,
-              color: MyShopColors.textSecondary.withAlpha(80), size: w * 0.14),
-          SizedBox(height: h * 0.016),
+          Icon(
+            Icons.search_off_rounded,
+            color: MyShopColors.textSecondary.withAlpha(80),
+            size: 56,
+          ),
+          const SizedBox(height: 12),
           Text(
             'No results for "$query"',
-            style: TextStyle(
-                color: MyShopColors.textSecondary, fontSize: w * 0.038),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: MyShopColors.textSecondary,
+              fontSize: 16,
+            ),
           ),
         ],
       ),

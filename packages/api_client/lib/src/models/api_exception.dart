@@ -22,17 +22,26 @@ class ApiException implements Exception {
         case DioExceptionType.connectionTimeout:
         case DioExceptionType.sendTimeout:
         case DioExceptionType.receiveTimeout:
+        case DioExceptionType.transformTimeout:
           return const NetworkException(
             message: 'Connection timed out. Please try again.',
+            kind: NetworkFailureKind.timeout,
           );
         case DioExceptionType.connectionError:
           return const NetworkException(
             message:
                 'No internet connection. Check your network and try again.',
+            kind: NetworkFailureKind.offline,
+          );
+        case DioExceptionType.cancel:
+          return const ApiException(
+            message: 'The request was cancelled.',
+            errorCode: 'REQUEST_CANCELLED',
           );
         default:
           return NetworkException(
             message: error.message ?? 'A network error occurred.',
+            kind: NetworkFailureKind.unavailable,
           );
       }
     }
@@ -49,9 +58,7 @@ class ApiException implements Exception {
       final envelope = Map<String, dynamic>.from(data);
       final rawError = envelope['error'];
       if (rawError is Map) {
-        final apiError = ApiError.fromJson(
-          Map<String, dynamic>.from(rawError),
-        );
+        final apiError = ApiError.fromJson(Map<String, dynamic>.from(rawError));
         errorCode = apiError.code;
         message = apiError.message;
         details = apiError.details;
@@ -96,10 +103,7 @@ class ApiException implements Exception {
             .toSet()
             .toList(growable: false);
         if (reasonCodes.isNotEmpty) {
-          details = <String, dynamic>{
-            ...?details,
-            'reasonCodes': reasonCodes,
-          };
+          details = <String, dynamic>{...?details, 'reasonCodes': reasonCodes};
         }
       }
     }
@@ -202,9 +206,16 @@ class ValidationException extends ApiException {
   }) : super(statusCode: 422);
 }
 
-/// Thrown when the device has no network connectivity or the request timed out.
+enum NetworkFailureKind { offline, timeout, unavailable }
+
+/// Thrown when a request cannot obtain a trusted server response.
 class NetworkException extends ApiException {
-  const NetworkException({required super.message}) : super(statusCode: null);
+  const NetworkException({
+    required super.message,
+    this.kind = NetworkFailureKind.unavailable,
+  }) : super(statusCode: null);
+
+  final NetworkFailureKind kind;
 }
 
 /// Thrown on 5xx server errors.

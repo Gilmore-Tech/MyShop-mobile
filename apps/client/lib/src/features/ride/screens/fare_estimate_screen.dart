@@ -13,16 +13,16 @@ import 'destination_search_screen.dart' show kNewStopSentinel;
 import '../utils/ride_error_messages.dart';
 import '../widgets/payment_method_row.dart';
 import '../widgets/pickup_destination_fields.dart';
-import '../widgets/recent_destination_card.dart';
+import '../widgets/fare_estimate_action_bar.dart';
 import '../widgets/route_stop_list.dart';
 import '../widgets/surge_pricing_banner.dart';
 import '../widgets/vehicle_option_card.dart';
 
 /// PRD 4.3 — Plan Your Trip
 ///
-/// Vehicle selection, surge banner, payment, and the confirm CTA only appear
-/// once both pickup and destination are set — EDD POST /v1/rides/estimate
-/// requires both endpoints before the backend can return ride categories.
+/// The screen always exposes one persistent next action. Vehicle selection,
+/// surge, payment, and the final confirm CTA appear only after both endpoints
+/// are exact and the backend returns a bookable fare category.
 class FareEstimateScreen extends ConsumerWidget {
   const FareEstimateScreen({super.key});
 
@@ -58,8 +58,10 @@ class FareEstimateScreen extends ConsumerWidget {
     if (!multistopEnabled) return const [];
     return ref
         .read(tripStopsProvider)
-        .where((s) =>
-            s.type == StopType.intermediate && s.lat != null && s.lng != null)
+        .where(
+          (s) =>
+              s.type == StopType.intermediate && s.lat != null && s.lng != null,
+        )
         .map(
           (s) => {
             'lat': s.lat!,
@@ -73,8 +75,6 @@ class FareEstimateScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final search = ref.watch(rideSearchProvider);
-    final hasPickup = search.pickup != null;
-    final hasDestination = search.destination != null;
     final needsExactPoint =
         (search.pickup != null && !search.pickup!.isPrecise) ||
             (search.destination != null && !search.destination!.isPrecise);
@@ -87,14 +87,12 @@ class FareEstimateScreen extends ConsumerWidget {
       _seedPreTripStops(ref, search);
     }
     final estimate = ref.watch(fareEstimateProvider);
-    final options = estimate.valueOrNull;
-    final estimateReady = options?.isNotEmpty == true;
-    // The fare on the currently-selected vehicle is what the client will pay —
-    // surface it boldly in the confirm bar so it's the clearest number on the
-    // screen before they commit.
     final selectedId = ref.watch(selectedVehicleProvider);
-    final selectedOption =
-        estimateReady ? availableRideOptionById(options!, selectedId) : null;
+    final actionState = resolveFareEstimateAction(
+      search: search,
+      estimate: estimate,
+      selectedVehicleId: selectedId,
+    );
 
     return PopScope(
       canPop: true,
@@ -123,10 +121,12 @@ class FareEstimateScreen extends ConsumerWidget {
                         destinationLabel: search.destination?.name,
                         onPickupTap: () =>
                             context.push(AppRoutes.rideSearchPath('pickup')),
-                        onDestinationTap: () => context
-                            .push(AppRoutes.rideSearchPath('destination')),
-                        onDestinationPinTap: () => context
-                            .push(AppRoutes.ridePinPickerPath('destination')),
+                        onDestinationTap: () => context.push(
+                          AppRoutes.rideSearchPath('destination'),
+                        ),
+                        onDestinationPinTap: () => context.push(
+                          AppRoutes.ridePinPickerPath('destination'),
+                        ),
                       ),
                     ),
                     if (needsExactPoint) ...[
@@ -144,15 +144,6 @@ class FareEstimateScreen extends ConsumerWidget {
                       ),
                     ],
                     const SizedBox(height: 20),
-                    if (!hasPickup || !hasDestination)
-                      _RecentDestinationsSection(
-                        onSelect: (d) => ref
-                            .read(rideSearchProvider.notifier)
-                            .setLocation(
-                              RideSearchField.destination,
-                              RideLocation(name: d.label, address: d.address),
-                            ),
-                      ),
                     if (hasCoords) ...[
                       if (estimate.valueOrNull?.any((v) => v.surgeActive) ==
                           true) ...[
@@ -189,36 +180,107 @@ class FareEstimateScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            if (estimateReady)
-              _BottomActions(
-                // No drivers in range → block the confirm path entirely so the
-                // user can't kick off a match that has nobody to match against.
-                enabled: selectedOption != null,
-                // What the client pays for the selected vehicle — shown bold
-                // above the Confirm button. Hidden when no drivers are available
-                // (nothing is bookable, so a price would be misleading).
-                fareDisplay: selectedOption?.fareDisplay,
-                onConfirm: () {
-                  // Hand the long-running matcher a container instead of
-                  // `ref` — the screen disposes on the next line's `go`,
-                  // and `WidgetRef` becomes unusable past the next await.
-                  final container =
-                      ProviderScope.containerOf(context, listen: false);
-                  requestRideAndMatchDriver(
-                    container,
-                    pretripStops: _bookingStops(ref, multistopEnabled),
-                  );
-                  context.go(AppRoutes.rideMatching);
-                },
-                onCancel: () {
-                  _resetTripState(ref);
-                  context.pop();
-                },
+            FareEstimateActionBar(
+              state: actionState,
+              onPrimary: _primaryAction(
+                context,
+                ref,
+                actionState,
+                multistopEnabled: multistopEnabled,
               ),
+              onCancel: () {
+                _resetTripState(ref);
+                context.pop();
+              },
+            ),
           ],
         ),
       ),
     );
+  }
+
+  VoidCallback? _primaryAction(
+    BuildContext context,
+    WidgetRef ref,
+    FareEstimateActionState state, {
+    required bool multistopEnabled,
+  }) {
+    switch (state.action) {
+      case FareEstimateAction.choosePickup:
+        return () => context.push(AppRoutes.rideSearchPath('pickup'));
+      case FareEstimateAction.chooseDestination:
+        return () => context.push(AppRoutes.rideSearchPath('destination'));
+      case FareEstimateAction.chooseExactPickup:
+        return () => context.push(AppRoutes.ridePinPickerPath('pickup'));
+      case FareEstimateAction.chooseExactDestination:
+        return () => context.push(AppRoutes.ridePinPickerPath('destination'));
+      case FareEstimateAction.retryFare:
+      case FareEstimateAction.serviceUnavailable:
+      case FareEstimateAction.noDrivers:
+        return () => ref.invalidate(fareEstimateProvider);
+      case FareEstimateAction.changeLocations:
+        return () => _showLocationChangeOptions(context);
+      case FareEstimateAction.confirm:
+        return () {
+          final option = state.option;
+          if (option == null) return;
+          // The action resolver can select the first available category before
+          // the post-frame vehicle-card update lands. Persist that exact
+          // category synchronously so the request cannot race with stale state.
+          ref.read(selectedVehicleProvider.notifier).state = option.id;
+          // Hand the long-running matcher a container instead of `ref` — this
+          // screen is disposed immediately after navigation.
+          final container = ProviderScope.containerOf(context, listen: false);
+          requestRideAndMatchDriver(
+            container,
+            pretripStops: _bookingStops(ref, multistopEnabled),
+          );
+          context.go(AppRoutes.rideMatching);
+        };
+      case FareEstimateAction.calculating:
+        return null;
+    }
+  }
+
+  Future<void> _showLocationChangeOptions(BuildContext context) async {
+    final field = await showModalBottomSheet<RideSearchField>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheetContext) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 4, 20, 12),
+            child: Text(
+              'Which location would you like to change?',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: MyShopColors.textPrimary,
+              ),
+            ),
+          ),
+          ListTile(
+            key: const Key('change-pickup-location'),
+            leading: const Icon(Icons.my_location_rounded),
+            title: const Text('Change pickup'),
+            onTap: () => Navigator.of(sheetContext).pop(RideSearchField.pickup),
+          ),
+          ListTile(
+            key: const Key('change-destination-location'),
+            leading: const Icon(Icons.location_on_outlined),
+            title: const Text('Change destination'),
+            onTap: () =>
+                Navigator.of(sheetContext).pop(RideSearchField.destination),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+    if (field == null || !context.mounted) return;
+    await context.push(AppRoutes.rideSearchPath(field.name));
   }
 
   PreferredSizeWidget _buildAppBar(BuildContext context, WidgetRef ref) {
@@ -234,8 +296,10 @@ class FareEstimateScreen extends ConsumerWidget {
           _resetTripState(ref);
           context.pop();
         },
-        icon: const Icon(Icons.arrow_back_rounded,
-            color: MyShopColors.textPrimary),
+        icon: const Icon(
+          Icons.arrow_back_rounded,
+          color: MyShopColors.textPrimary,
+        ),
       ),
       title: const Text(
         'Plan Your Trip',
@@ -259,15 +323,16 @@ class _ExactPointNotice extends StatelessWidget {
       decoration: BoxDecoration(
         color: MyShopColors.warning.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: MyShopColors.warning.withValues(alpha: 0.35),
-        ),
+        border: Border.all(color: MyShopColors.warning.withValues(alpha: 0.35)),
       ),
       child: const Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.location_searching_rounded,
-              size: 20, color: MyShopColors.warning),
+          Icon(
+            Icons.location_searching_rounded,
+            size: 20,
+            color: MyShopColors.warning,
+          ),
           SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -287,48 +352,6 @@ class _ExactPointNotice extends StatelessWidget {
 }
 
 // ── Sections ──────────────────────────────────────────────────────────────────
-
-class _RecentDestinationsSection extends StatelessWidget {
-  final ValueChanged<RecentDestination> onSelect;
-
-  const _RecentDestinationsSection({required this.onSelect});
-
-  @override
-  Widget build(BuildContext context) {
-    // Fixed card width so cards stay compact and the 3rd peeks past the edge.
-    const cardWidth = 150.0;
-    const cardHeight = 72.0;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: _SectionHeader(
-              title: 'RECENT DESTINATIONS', actionLabel: 'View All'),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: cardHeight,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: recentDestinations.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 10),
-            itemBuilder: (_, i) => SizedBox(
-              width: cardWidth,
-              child: RecentDestinationCard(
-                destination: recentDestinations[i],
-                onTap: () => onSelect(recentDestinations[i]),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 class _PreTripStopsSection extends ConsumerWidget {
   const _PreTripStopsSection();
@@ -368,11 +391,9 @@ class _PreTripStopsSection extends ConsumerWidget {
           const SizedBox(height: 12),
           RouteStopList(
             stops: stops,
-            onReorder: (oldIndex, newIndex) =>
-                ref.read(tripStopsProvider.notifier).reorder(
-                      oldIndex,
-                      newIndex,
-                    ),
+            onReorder: (oldIndex, newIndex) => ref
+                .read(tripStopsProvider.notifier)
+                .reorder(oldIndex, newIndex),
             onRemove: (id) =>
                 ref.read(tripStopsProvider.notifier).removeStop(id),
             onEditStop: (stop) => context.push(
@@ -403,18 +424,13 @@ class _VehicleSelectionSection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Select Vehicle',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: MyShopColors.textPrimary,
-              ),
-            ),
-          ],
+        const Text(
+          'Select Vehicle',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: MyShopColors.textPrimary,
+          ),
         ),
         const SizedBox(height: 12),
         estimate.when(
@@ -492,10 +508,7 @@ class _VehicleLoadingSkeleton extends StatelessWidget {
 class _VehicleEstimateError extends StatelessWidget {
   final Object error;
   final VoidCallback onRetry;
-  const _VehicleEstimateError({
-    required this.error,
-    required this.onRetry,
-  });
+  const _VehicleEstimateError({required this.error, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -652,136 +665,6 @@ class _PaymentSection extends ConsumerWidget {
             }
           },
         ),
-      ],
-    );
-  }
-}
-
-// ── Bottom actions ────────────────────────────────────────────────────────────
-
-class _BottomActions extends StatelessWidget {
-  final VoidCallback onConfirm;
-  final VoidCallback onCancel;
-  final bool enabled;
-
-  /// Formatted fare for the selected vehicle (e.g. "GHS 23"). When non-null it
-  /// renders as a bold "Total to pay" row above the Confirm button.
-  final String? fareDisplay;
-
-  const _BottomActions({
-    required this.onConfirm,
-    required this.onCancel,
-    this.enabled = true,
-    this.fareDisplay,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (fareDisplay != null) ...[
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Total to pay',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: MyShopColors.textSecondary,
-                  ),
-                ),
-                Text(
-                  fareDisplay!,
-                  style: const TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w900,
-                    color: MyShopColors.darkSlate,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-          ],
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              // Null onPressed renders the button in its disabled style — the
-              // user can't dispatch a ride when no driver is available.
-              onPressed: enabled ? onConfirm : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: MyShopColors.darkSlate,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: MyShopColors.divider,
-                disabledForegroundColor: MyShopColors.textSecondary,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                elevation: 0,
-              ),
-              child: Text(
-                enabled ? 'Confirm Ride' : 'No Drivers Available',
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          GestureDetector(
-            onTap: onCancel,
-            child: const Text(
-              'Cancel Request',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: MyShopColors.textPrimary,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Shared section header ─────────────────────────────────────────────────────
-
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  final String? actionLabel;
-
-  const _SectionHeader({required this.title, this.actionLabel});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w900,
-            color: MyShopColors.textSecondary,
-            letterSpacing: 1.4,
-          ),
-        ),
-        if (actionLabel != null)
-          Text(
-            actionLabel!,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: MyShopColors.primaryGold,
-            ),
-          ),
       ],
     );
   }

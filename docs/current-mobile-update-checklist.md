@@ -1,13 +1,101 @@
 # Current Mobile Update Checklist
 
-Status captured: **2026-07-26 GMT**
+Status captured: **2026-07-28 GMT**
+
+## Authoritative post-`1.4.1+25` release control block
+
+This block supersedes older baseline versions and progress percentages retained
+later in this file as historical evidence.
+
+- Released baseline on all four store targets: **`1.4.1+25`**.
+- Exact released source:
+  `66c4f9c7f5ab958271bfef0ddb6e9ad086c982e4`.
+- Clean candidate branch:
+  `fix/release-p0-graceful-ios-rc-20260728`.
+- Candidate worktree:
+  `/private/tmp/myshop-mobile-p0-graceful-ios-rc-20260728`.
+- Candidate source scope: graceful connectivity/legal recovery, confirmed
+  safe-error sinks, deterministic Client ride booking actions and the iOS App
+  Review evidence runbook. No native background mode is removed.
+- Deferred and excluded from this candidate: the unfinished auth/session
+  recovery, login-OTP redesign, Provider location/dispatch fence,
+  Backend/Admin audit candidates, telemetry expansion and unrelated
+  primary-worktree changes. The only auth-interceptor delta is the exact public
+  `/health/ready` route required by pre-login Retry; payout-method OTP changes
+  are limited to fixed safe error copy.
+- Primary Mobile workspace and its Provider `ios/Podfile.lock` modification are
+  preserved and must not be staged into this candidate.
+- No database migration is required by this narrowed Mobile-only candidate.
+- Approved execution path for this update is a **manual build from the exact
+  reviewed `origin/main` commit**. GitHub Actions release automation remains
+  deferred; the current tag workflows do not supply the source/build-number
+  inputs required by `tool/build.sh` and must not be used for this submission.
+
+### Candidate implementation gates
+
+- [x] Final candidate contains exactly **50 reviewed code/evidence paths plus
+      this checklist**. The original 45-path allowlist is extended only by the
+      exact readiness exception and its regression test
+      (`auth_interceptor.dart` and `auth_interceptor_test.dart`) plus the
+      release-version guard and its contract test
+      (`resolve-release-version.sh` and
+      `test-release-version-contract.sh`) and the matching operator release
+      instructions (`docs/release-setup.md`). The scoped
+      readiness-auth public path, payout-OTP safe-copy sink and Client ride
+      realtime safe-copy are included; there is no auth/session redesign,
+      login-OTP delivery redesign, Provider location/dispatch change, FCM,
+      native or Podfile change.
+- [x] Offline, timeout, malformed legal status and temporary service failure
+      preserve the current route/form and never imply missing legal consent.
+- [x] Retry clears the notice only after `/health/ready` confirms healthy
+      database and Redis dependencies.
+- [x] Active rides/jobs retain usable lifecycle controls beneath a
+      non-blocking top notice.
+- [x] Confirmed user-facing error sinks render only fixed app-owned copy.
+- [x] Client fare flow exposes a truthful state-aware action at every reviewed
+      loading/error/location/availability state on iPhone and iPad layouts.
+- [x] Complete repository test and analyzer gates pass on the combined
+      candidate. Evidence: API client **194/194**, shared UI **41/41**, Client
+      **129/129**, Provider **201/201**, `melos run test` across all six test
+      packages, `melos run analyze` across all seven packages, formatting and
+      `git diff --check`. The post-review readiness interceptor chain also
+      passes **19/19** focused tests, the final ride regression slice passes
+      **21/21**, and the release-version contract rejects the already-used
+      `+25` while accepting `+26`.
+- [x] Existing production configuration validates without exposing secrets for
+      Client Android, Client iOS, Provider Android and Provider iOS through
+      `tool/build.sh ... --validate-only`.
+- [ ] Fresh-install and in-place upgrade from `1.4.1+25` pass on physical
+      Android, iPhone and supported iPad devices.
+
+### Apple submission gates
+
+- [x] Retain the real booking-scoped `voip`, PushKit, CallKit and WebRTC
+      functionality in both apps, including both apps' background `audio`
+      during an accepted audible call. Candidate native/Pod diffs from `+25`
+      are empty.
+- [ ] Record the required two-device physical call/background-audio evidence
+      and complete `docs/app-review-ios-voip-evidence.md`.
+- [ ] Remove Mainland China from both apps' App Store availability while
+      CallKit remains enabled.
+- [ ] Read all four private-console maxima and select one unused build number
+      greater than `25` and every maximum.
+- [ ] Build, sign, inspect and install all four artifacts from one reviewed
+      `main` commit, then submit with the exact review notes and video links.
 
 This is the single authoritative checklist for the next Client and Provider
 store update. The larger production audit and 100k-DAU roadmap remain evidence
 and future-work registers; they do not expand this release unless an item is
 explicitly copied into this file with owner approval.
 
-Current counted progress is **92/137 checklist items (67%)**. The stricter
+## Historical pre-`+25` ledger — superseded
+
+The remainder below is retained only to preserve decisions and evidence from
+earlier releases. Its `+24` baseline, percentages and included-scope wording
+must not be used to build or submit the current candidate.
+
+At that historical checkpoint, counted progress was **92/137 checklist items
+(67%)**. The stricter
 final release-gate subset is **4/19 (21%)** because signed builds,
 physical-device
 acceptance, store declarations and canary evidence can only close after scope

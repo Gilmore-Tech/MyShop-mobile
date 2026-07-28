@@ -7,6 +7,8 @@ import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart' show SupportLegalAsync;
 
 import '../../../core/di/providers.dart';
+import '../../../core/providers/service_notice_provider.dart';
+import '../../auth/providers/auth_controller.dart';
 import '../../profile/providers/provider_type_provider.dart';
 
 const SupportAudience kProviderSupportAudience = SupportAudience.provider;
@@ -33,17 +35,85 @@ final legalServiceProvider = Provider<LegalService>((ref) {
   return LegalService(ref.watch(dioProvider));
 });
 
+final providerRoleSessionIdentityProvider =
+    FutureProvider.autoDispose<RoleSessionIdentity?>((ref) async {
+  ref.watch(serviceNoticeProvider.select((state) => state.recoveryEpoch));
+  final auth = ref.watch(authControllerProvider);
+  if (auth is! AuthAuthenticated) return null;
+
+  final (expectedRole, roleAccountId) = switch (auth.user.role) {
+    AuthRole.driver => ('driver', auth.user.driverProfile?.id),
+    AuthRole.artisan => ('artisan', auth.user.artisanProfile?.id),
+    AuthRole.client => (null, null),
+  };
+  if (expectedRole == null ||
+      roleAccountId == null ||
+      roleAccountId.isEmpty ||
+      auth.user.id != roleAccountId) {
+    throw const FormatException('Invalid provider role account identity.');
+  }
+  final token = await ref.read(tokenStorageProvider).readAccessToken();
+  final identity = RoleSessionIdentity.tryParseAccessToken(token);
+  if (identity == null ||
+      identity.role != expectedRole ||
+      identity.roleAccountId != roleAccountId) {
+    throw const FormatException('Invalid provider role-session identity.');
+  }
+  return identity;
+});
+
 final legalConsentStatusProvider =
-    FutureProvider<LegalConsentStatus>((ref) async {
-  ref.keepAlive();
+    FutureProvider.autoDispose<ScopedLegalConsentStatus?>((ref) async {
+  final identity = await ref.watch(providerRoleSessionIdentityProvider.future);
+  if (identity == null) return null;
   final status = await ref.read(legalServiceProvider).getConsentStatus();
+  if (status.role != identity.role) {
+    throw const FormatException('Consent status role mismatch.');
+  }
   Timer? refresh;
   if (status.requiresConsent && status.hasActiveWork) {
     refresh = Timer(const Duration(seconds: 60), ref.invalidateSelf);
   }
   ref.onDispose(() => refresh?.cancel());
-  return status;
+  return ScopedLegalConsentStatus(identity: identity, status: status);
 });
+
+/// Returns only a successful response owned by the exact current provider
+/// role-account session. Unknown/loading/error states never imply that consent
+/// is missing.
+LegalConsentStatus? usableProviderLegalConsentStatus(
+  AuthState auth,
+  AsyncValue<RoleSessionIdentity?>? currentIdentity,
+  AsyncValue<ScopedLegalConsentStatus?>? scoped,
+) {
+  if (auth is! AuthAuthenticated ||
+      currentIdentity == null ||
+      currentIdentity.isLoading ||
+      currentIdentity.hasError ||
+      scoped == null ||
+      scoped.isLoading ||
+      scoped.hasError) {
+    return null;
+  }
+  final (role, roleAccountId) = switch (auth.user.role) {
+    AuthRole.driver => ('driver', auth.user.driverProfile?.id),
+    AuthRole.artisan => ('artisan', auth.user.artisanProfile?.id),
+    AuthRole.client => (null, null),
+  };
+  final identity = currentIdentity.valueOrNull;
+  final snapshot = scoped.valueOrNull;
+  if (role == null ||
+      roleAccountId == null ||
+      auth.user.id != roleAccountId ||
+      identity == null ||
+      identity.role != role ||
+      identity.roleAccountId != roleAccountId ||
+      snapshot == null ||
+      !snapshot.belongsTo(identity)) {
+    return null;
+  }
+  return snapshot.status;
+}
 
 final helpCategoriesProvider =
     AsyncNotifierProvider<HelpCategoriesNotifier, List<HelpCategory>>(
