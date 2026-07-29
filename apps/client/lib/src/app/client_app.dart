@@ -141,8 +141,7 @@ class _MyShopMaterialAppState extends ConsumerState<_MyShopMaterialApp>
         return ListenableBuilder(
           listenable: router.routeInformationProvider,
           builder: (context, _) {
-            final currentPath =
-                router.routeInformationProvider.value.uri.path;
+            final currentPath = router.routeInformationProvider.value.uri.path;
             final isRideLifecycleRoute =
                 currentPath == AppRoutes.rideMatching ||
                     currentPath == AppRoutes.rideDriverFound ||

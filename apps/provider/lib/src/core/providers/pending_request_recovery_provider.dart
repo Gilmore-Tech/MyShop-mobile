@@ -294,9 +294,7 @@ Future<ProviderRequestRecoveryResult?> fetchProviderRequestRecovery({
   try {
     final storedOffers = await readStoredOffers();
     return await recover(
-      storedOffers
-          .map((identity) => identity.offerId)
-          .toList(growable: false),
+      storedOffers.map((identity) => identity.offerId).toList(growable: false),
     );
   } catch (error) {
     debugPrint('[PendingRequestRecovery] request fetch failed: $error');

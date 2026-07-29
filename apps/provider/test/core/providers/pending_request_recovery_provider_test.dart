@@ -189,7 +189,8 @@ void main() {
     expect(notices, 0);
   });
 
-  test('an exact rider tombstone is not eligible for generic empty-list dismissal',
+  test(
+      'an exact rider tombstone is not eligible for generic empty-list dismissal',
       () {
     expect(
       shouldApplyGenericPendingRideDismissal(

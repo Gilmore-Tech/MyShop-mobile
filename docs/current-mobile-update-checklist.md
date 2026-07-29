@@ -1,18 +1,15 @@
 # Current Mobile Update Checklist
 
-Status captured: **2026-07-28 GMT**
+Status captured: **2026-07-29 GMT**
 
 ## Authoritative post-`1.4.1+25` release control block
 
 This block supersedes older baseline versions and progress percentages retained
 later in this file as historical evidence.
 
-- **Release status: NO-GO pending a new integrated staging candidate and
-  physical retest.** The 2026-07-28 connectivity test disproved the earlier
-  route/session acceptance: connectivity recovery could return the Client
-  Home, both apps could clear a valid session after a lost refresh response,
-  and a Provider could retain an offer after the rider cancelled while the
-  device was offline.
+- **Release status: NO-GO pending staging deployment and physical retest.**
+  The combined Mobile and Backend candidates are committed, pushed and
+  repository-gate clean; neither has been merged, deployed or migrated.
 - Released baseline on all four store targets: **`1.4.1+25`**.
 - Exact released source:
   `66c4f9c7f5ab958271bfef0ddb6e9ad086c982e4`.
@@ -20,6 +17,12 @@ later in this file as historical evidence.
   `b863d2b455cf1486aa29f7e71fa12257ace0e700`.
 - Current Backend staging base:
   `18b3cd37c8337b7317297851f7c731e3688ba559`.
+- Combined Mobile candidate:
+  `agent/reconnect-session-recovery-staging-20260729`, component commits
+  `a473b6a`, `31cbb43` and `ff39c90`.
+- Combined Backend candidate:
+  `agent/reconnect-session-recovery-backend-staging-20260729`, component
+  commits `c1b51ae` and `dd0135d`.
 - Current repair scope: automatic readiness recovery without route
   replacement; exact active ride/request reconciliation; and durable,
   attempt-bound recovery of the immediate refresh-token predecessor after a
@@ -41,26 +44,28 @@ later in this file as historical evidence.
 
 ### Candidate implementation gates
 
-- [ ] Freeze and record the exact combined Mobile and Backend path inventory,
+- [x] Freeze and record the exact combined Mobile and Backend path inventory,
       branch, commit and migration after the three isolated repair slices are
       integrated. No primary-worktree, Podfile, OTP, location/dispatch,
       telemetry-expansion or Admin change may enter by accident.
-- [ ] Offline, timeout, malformed legal status and temporary service failure
+- [x] Offline, timeout, malformed legal status and temporary service failure
       preserve the exact current route/form and never imply missing legal
       consent. The notice body must be exactly
       `Connect to the internet and try again.`
-- [ ] The notice disappears automatically only after `/health/ready` confirms
+- [x] The notice disappears automatically only after `/health/ready` confirms
       healthy database and Redis dependencies; Retry must perform the same
       single-flight check without navigating.
-- [ ] Client matching, driver-found and tracking routes plus active ride/job
+- [x] Client matching, driver-found and tracking routes plus active ride/job
       routes retain usable lifecycle controls beneath a non-blocking top
       notice, including before an active ride ID has hydrated.
 - [x] Confirmed user-facing error sinks render only fixed app-owned copy.
 - [x] Client fare flow exposes a truthful state-aware action at every reviewed
       loading/error/location/availability state on iPhone and iPad layouts.
-- [ ] Complete repository test, analyzer, formatting, diff and release-contract
-      gates on the final integrated candidate. Earlier passing counts remain
-      baseline evidence only.
+- [x] Complete combined test, analyzer, changed-source formatting, diff and
+      release-contract gates on the final integrated candidate: Backend
+      **222 suites / 4,345 tests**, build, typecheck and cutover verifier
+      **4/4**; Mobile API-client **199**, Client **139**, Provider **215**,
+      Shared UI **41**, all seven analyzers and diff checks pass.
 - [x] Existing production configuration validates without exposing secrets for
       Client Android, Client iOS, Provider Android and Provider iOS through
       `tool/build.sh ... --validate-only`.
@@ -101,7 +106,7 @@ later in this file as historical evidence.
       the crash-consistent 256-bit Mobile `refreshAttemptId`: Backend
       **250/250**, cutover verifier **4/4**, Mobile API-client **199/199**,
       Backend build, Mobile analyze and both diff checks pass.
-- [ ] Integrate the three isolated repair slices on their exact staging bases,
+- [x] Integrate the three isolated repair slices on their exact staging bases,
       preserving both API-client barrel exports, then run the combined gates.
 - [ ] Apply `20260727000000_durable_role_refresh_lineage` on staging; verify
       `role_refresh_sessions` and `role_refresh_lineage_cutover_status`; verify
@@ -129,24 +134,25 @@ later in this file as historical evidence.
 - [ ] Repeat all physical checks on fresh installs and upgrades from
       `1.4.1+25` on Android, iPhone and a supported iPad.
 
-### Isolated, uncommitted repair evidence
+### Committed repair evidence
 
 - Mobile connectivity/router:
   `/private/tmp/myshop-mobile-offline-active-recovery-20260728`,
-  `fix/offline-active-state-recovery-20260728`.
+  `fix/offline-active-state-recovery-20260728`, commit `5e29c1a`.
 - Mobile cancellation recovery:
   `/private/tmp/myshop-cancellation-recovery-mobile`,
-  `codex/cancellation-recovery-mobile-20260728`.
+  `codex/cancellation-recovery-mobile-20260728`, commit `f4a804f`.
 - Backend cancellation recovery:
   `/private/tmp/myshop-cancellation-recovery-backend`,
-  `codex/cancellation-recovery-backend-20260728`.
+  `codex/cancellation-recovery-backend-20260728`, commit `86b44a9`.
 - Mobile refresh-attempt binding:
   `/private/tmp/myshop-mobile-refresh-attempt-staging-rc`,
-  `fix/staging-refresh-attempt-binding-rc`.
+  `fix/staging-refresh-attempt-binding-rc`, commit `6adf508`.
 - Backend durable refresh lineage:
   `/private/tmp/myshop-refresh-lineage-staging-rc`,
-  `fix/staging-durable-refresh-lineage-rc`.
-- No repair branch has been committed, pushed, deployed or migrated.
+  `fix/staging-durable-refresh-lineage-rc`, commit `1ddd3de`.
+- The two combined branches are pushed. They have not been merged, deployed or
+  migrated; all staging and physical acceptance gates above remain open.
 
 This is the single authoritative checklist for the next Client and Provider
 store update. The larger production audit and 100k-DAU roadmap remain evidence
