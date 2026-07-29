@@ -109,8 +109,7 @@ class _MyShopLegalConsentScreenState extends State<MyShopLegalConsentScreen> {
           ),
           const SizedBox(height: MyShopSpacing.md),
           const Text(
-            'We could not refresh this page. Please try again in a moment. '
-            'Your current screen and session are unchanged.',
+            'Connect to the internet and try again.',
             textAlign: TextAlign.center,
             style: MyShopTypography.body1,
           ),

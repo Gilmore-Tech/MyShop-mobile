@@ -30,6 +30,19 @@ import '../features/support/providers/support_providers.dart';
 import '../features/trips/providers/driver_trips_provider.dart';
 import 'router.dart';
 
+final providerServiceReadinessProbeProvider =
+    Provider<MobileServiceReadinessProbe>((ref) {
+  return () => probeMobileServiceReadiness(
+        ref.read(dioProvider),
+        onReady: () {},
+      );
+});
+
+final providerServiceRecoveryDelayProvider =
+    Provider<MobileServiceRecoveryDelayResolver>(
+  (_) => defaultMobileServiceRecoveryDelay,
+);
+
 /// Root widget for the MyShop Provider App.
 /// PRD Reference: Section 5 (Provider App)
 class ProviderApp extends ConsumerStatefulWidget {
@@ -41,14 +54,24 @@ class ProviderApp extends ConsumerStatefulWidget {
 
 class _ProviderAppState extends ConsumerState<ProviderApp>
     with WidgetsBindingObserver {
+  late final MobileServiceRecoveryCoordinator _serviceRecovery;
+  bool _foreground = true;
+  bool _recoveryNeeded = false;
+  bool _recoverySyncQueued = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _serviceRecovery = MobileServiceRecoveryCoordinator(
+      probe: _probeServiceReadiness,
+      delayResolver: ref.read(providerServiceRecoveryDelayProvider),
+    );
   }
 
   @override
   void dispose() {
+    _serviceRecovery.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -56,6 +79,11 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     ref.read(systemTelemetryProvider).trackLifecycle(state);
+    _foreground = state == AppLifecycleState.resumed;
+    _serviceRecovery.update(
+      recoveryNeeded: _recoveryNeeded,
+      foreground: _foreground,
+    );
     switch (state) {
       case AppLifecycleState.resumed:
         // Flip the foreground flag first so any provider listening on
@@ -135,15 +163,27 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
     }
   }
 
-  Future<void> _retryService() async {
-    try {
-      await probeMobileServiceReadiness(
-        ref.read(dioProvider),
-        onReady: () => ref.invalidate(legalConsentStatusProvider),
+  Future<void> _probeServiceReadiness() async {
+    await ref.read(providerServiceReadinessProbeProvider)();
+    if (!mounted) return;
+    ref.read(serviceNoticeProvider.notifier).recovered();
+    ref.invalidate(legalConsentStatusProvider);
+  }
+
+  Future<void> _retryService() => _serviceRecovery.retryNow();
+
+  void _queueRecoveryState(bool recoveryNeeded) {
+    _recoveryNeeded = recoveryNeeded;
+    if (_recoverySyncQueued) return;
+    _recoverySyncQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _recoverySyncQueued = false;
+      if (!mounted) return;
+      _serviceRecovery.update(
+        recoveryNeeded: _recoveryNeeded,
+        foreground: _foreground,
       );
-    } catch (_) {
-      // The interceptor keeps the notice visible with safe local copy.
-    }
+    });
   }
 
   @override
@@ -171,6 +211,7 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
         legalConsent?.hasError == true ? legalConsent?.error : null;
     final effectiveServiceIssue =
         mobileServiceIssueForLegalStatusError(legalStatusError) ?? serviceIssue;
+    _queueRecoveryState(effectiveServiceIssue != null);
     if (auth is AuthAuthenticated) {
       // Keep provider availability infrastructure alive across every
       // authenticated route, not only the bottom-tab shell. Full-screen flows

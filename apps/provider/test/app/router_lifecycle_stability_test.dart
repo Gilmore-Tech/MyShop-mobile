@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   final source = File('lib/src/app/router.dart').readAsStringSync();
+  final appSource = File('lib/src/app/provider_app.dart').readAsStringSync();
   final providerStart = source.indexOf(
     'final goRouterProvider = Provider<GoRouter>',
   );
@@ -27,5 +28,25 @@ void main() {
     expect(refreshBody, contains('legalConsentStatusProvider'));
     expect(refreshBody, contains('activeRideProvider.select'));
     expect(refreshBody, contains('activeJobProvider.select'));
+  });
+
+  test('service recovery is automatic, foreground-aware and single-flight', () {
+    expect(
+      appSource,
+      contains('MobileServiceRecoveryCoordinator _serviceRecovery'),
+    );
+    expect(appSource, contains('probe: _probeServiceReadiness'));
+    expect(
+      appSource,
+      contains('_queueRecoveryState(effectiveServiceIssue != null)'),
+    );
+    expect(
+      appSource,
+      contains('Future<void> _retryService() => _serviceRecovery.retryNow()'),
+    );
+    expect(
+      appSource,
+      contains('foreground: _foreground'),
+    );
   });
 }

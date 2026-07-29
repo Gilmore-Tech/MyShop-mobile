@@ -252,46 +252,41 @@ final _profileNavKey = GlobalKey<NavigatorState>(debugLabel: 'profile');
 // ── Router Provider ────────────────────────────────────────────────────────────
 // NOT autoDispose — the router must live for the full app lifetime.
 //
-// We watch [clientAuthControllerProvider] so the router rebuilds when auth
-// state changes. GoRouter is cheap to recreate — it's just config. The
-// navigator keys are module-level so navigation state is preserved.
+// The router itself is stable for the full app lifetime. Riverpod state
+// changes only refresh redirects through [_ClientRouterRefresh]; recreating
+// GoRouter would reset an active ride route to [initialLocation].
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(clientAuthControllerProvider);
-  final hasSeen = ref.watch(hasSeenOnboardingProvider);
-  final onboardingFlagLoaded = ref.watch(onboardingFlagLoadedProvider);
-  final pendingReplay = ref.watch(pendingReplayOnboardingProvider);
-  final legalConsent = authState is AuthAuthenticated
-      ? ref.watch(legalConsentStatusProvider)
-      : null;
-  final roleSessionIdentity = authState is AuthAuthenticated
-      ? ref.watch(clientRoleSessionIdentityProvider)
-      : null;
+  final refresh = _ClientRouterRefresh(ref);
+  ref.onDispose(refresh.dispose);
   return _buildRouter(
-    authState: authState,
-    hasSeen: hasSeen,
-    onboardingFlagLoaded: onboardingFlagLoaded,
-    pendingReplay: pendingReplay,
-    roleSessionIdentity: roleSessionIdentity,
-    legalConsent: legalConsent,
+    ref: ref,
+    refresh: refresh,
     telemetry: ref.read(systemTelemetryProvider),
   );
 });
 
 GoRouter _buildRouter({
-  required ClientAuthState authState,
-  required bool hasSeen,
-  required bool onboardingFlagLoaded,
-  required bool pendingReplay,
-  required AsyncValue<RoleSessionIdentity?>? roleSessionIdentity,
-  required AsyncValue<ScopedLegalConsentStatus?>? legalConsent,
+  required Ref ref,
+  required Listenable refresh,
   required SystemTelemetryService telemetry,
 }) {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: AppRoutes.splash,
+    refreshListenable: refresh,
     debugLogDiagnostics: false,
     redirect: (context, state) {
+      final authState = ref.read(clientAuthControllerProvider);
+      final hasSeen = ref.read(hasSeenOnboardingProvider);
+      final onboardingFlagLoaded = ref.read(onboardingFlagLoadedProvider);
+      final pendingReplay = ref.read(pendingReplayOnboardingProvider);
+      final legalConsent = authState is AuthAuthenticated
+          ? ref.read(legalConsentStatusProvider)
+          : null;
+      final roleSessionIdentity = authState is AuthAuthenticated
+          ? ref.read(clientRoleSessionIdentityProvider)
+          : null;
       final path = state.uri.path;
       telemetry.trackScreen(state.fullPath ?? state.matchedLocation);
       final isAuthRoute = path == AppRoutes.splash ||
@@ -363,6 +358,8 @@ GoRouter _buildRouter({
         final consentRequiresReview = consentStatus?.requiresConsent == true;
         final consentExemptRoute = path == AppRoutes.legalConsent ||
             path.startsWith('/legal/') ||
+            path == AppRoutes.rideMatching ||
+            path == AppRoutes.rideDriverFound ||
             path == AppRoutes.rideTracking ||
             (path.startsWith('/services/job/') && path.endsWith('/active')) ||
             path.startsWith('/safety/') ||
@@ -880,4 +877,68 @@ GoRouter _buildRouter({
       ),
     ),
   );
+}
+
+/// Bridges Riverpod state to GoRouter redirects without replacing the router.
+class _ClientRouterRefresh extends ChangeNotifier {
+  _ClientRouterRefresh(this._ref) {
+    _authSub = _ref.listen<ClientAuthState>(
+      clientAuthControllerProvider,
+      (_, next) {
+        _syncAuthenticatedDependencies(next);
+        notifyListeners();
+      },
+    );
+    _onboardingLoadedSub = _ref.listen<bool>(
+      onboardingFlagLoadedProvider,
+      (_, __) => notifyListeners(),
+    );
+    _hasSeenSub = _ref.listen<bool>(
+      hasSeenOnboardingProvider,
+      (_, __) => notifyListeners(),
+    );
+    _pendingReplaySub = _ref.listen<bool>(
+      pendingReplayOnboardingProvider,
+      (_, __) => notifyListeners(),
+    );
+    _syncAuthenticatedDependencies(_ref.read(clientAuthControllerProvider));
+  }
+
+  final Ref _ref;
+  late final ProviderSubscription<ClientAuthState> _authSub;
+  late final ProviderSubscription<bool> _onboardingLoadedSub;
+  late final ProviderSubscription<bool> _hasSeenSub;
+  late final ProviderSubscription<bool> _pendingReplaySub;
+  ProviderSubscription<AsyncValue<ScopedLegalConsentStatus?>>? _legalSub;
+  ProviderSubscription<AsyncValue<RoleSessionIdentity?>>? _roleSessionSub;
+
+  void _syncAuthenticatedDependencies(ClientAuthState auth) {
+    if (auth is AuthAuthenticated) {
+      _legalSub ??= _ref.listen<AsyncValue<ScopedLegalConsentStatus?>>(
+        legalConsentStatusProvider,
+        (_, __) => notifyListeners(),
+      );
+      _roleSessionSub ??= _ref.listen<AsyncValue<RoleSessionIdentity?>>(
+        clientRoleSessionIdentityProvider,
+        (_, __) => notifyListeners(),
+      );
+      return;
+    }
+
+    _legalSub?.close();
+    _legalSub = null;
+    _roleSessionSub?.close();
+    _roleSessionSub = null;
+  }
+
+  @override
+  void dispose() {
+    _authSub.close();
+    _onboardingLoadedSub.close();
+    _hasSeenSub.close();
+    _pendingReplaySub.close();
+    _legalSub?.close();
+    _roleSessionSub?.close();
+    super.dispose();
+  }
 }

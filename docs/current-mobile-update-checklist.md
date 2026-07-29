@@ -7,25 +7,33 @@ Status captured: **2026-07-28 GMT**
 This block supersedes older baseline versions and progress percentages retained
 later in this file as historical evidence.
 
+- **Release status: NO-GO pending a new integrated staging candidate and
+  physical retest.** The 2026-07-28 connectivity test disproved the earlier
+  route/session acceptance: connectivity recovery could return the Client
+  Home, both apps could clear a valid session after a lost refresh response,
+  and a Provider could retain an offer after the rider cancelled while the
+  device was offline.
 - Released baseline on all four store targets: **`1.4.1+25`**.
 - Exact released source:
   `66c4f9c7f5ab958271bfef0ddb6e9ad086c982e4`.
-- Clean candidate branch:
-  `fix/release-p0-graceful-ios-rc-20260728`.
-- Candidate worktree:
-  `/private/tmp/myshop-mobile-p0-graceful-ios-rc-20260728`.
-- Candidate source scope: graceful connectivity/legal recovery, confirmed
-  safe-error sinks, deterministic Client ride booking actions and the iOS App
-  Review evidence runbook. No native background mode is removed.
-- Deferred and excluded from this candidate: the unfinished auth/session
-  recovery, login-OTP redesign, Provider location/dispatch fence,
-  Backend/Admin audit candidates, telemetry expansion and unrelated
-  primary-worktree changes. The only auth-interceptor delta is the exact public
-  `/health/ready` route required by pre-login Retry; payout-method OTP changes
-  are limited to fixed safe error copy.
+- Current Mobile staging base:
+  `b863d2b455cf1486aa29f7e71fa12257ace0e700`.
+- Current Backend staging base:
+  `18b3cd37c8337b7317297851f7c731e3688ba559`.
+- Current repair scope: automatic readiness recovery without route
+  replacement; exact active ride/request reconciliation; and durable,
+  attempt-bound recovery of the immediate refresh-token predecessor after a
+  lost response.
+- Still deferred and excluded: login-OTP delivery redesign, Provider
+  location/dispatch fence, Backend/Admin audit candidates, telemetry
+  expansion and unrelated primary-worktree changes.
 - Primary Mobile workspace and its Provider `ios/Podfile.lock` modification are
   preserved and must not be staged into this candidate.
-- No database migration is required by this narrowed Mobile-only candidate.
+- The connectivity and ride-cancellation slices require no migration. The
+  session slice adds only
+  `20260727000000_durable_role_refresh_lineage`; it must first deploy with both
+  `refresh_lineage_authority_enabled` and
+  `refresh_lineage_cutover_quiesced` exactly `false`.
 - Approved execution path for this update is a **manual build from the exact
   reviewed `origin/main` commit**. GitHub Actions release automation remains
   deferred; the current tag workflows do not supply the source/build-number
@@ -33,35 +41,26 @@ later in this file as historical evidence.
 
 ### Candidate implementation gates
 
-- [x] Final candidate contains exactly **50 reviewed code/evidence paths plus
-      this checklist**. The original 45-path allowlist is extended only by the
-      exact readiness exception and its regression test
-      (`auth_interceptor.dart` and `auth_interceptor_test.dart`) plus the
-      release-version guard and its contract test
-      (`resolve-release-version.sh` and
-      `test-release-version-contract.sh`) and the matching operator release
-      instructions (`docs/release-setup.md`). The scoped
-      readiness-auth public path, payout-OTP safe-copy sink and Client ride
-      realtime safe-copy are included; there is no auth/session redesign,
-      login-OTP delivery redesign, Provider location/dispatch change, FCM,
-      native or Podfile change.
-- [x] Offline, timeout, malformed legal status and temporary service failure
-      preserve the current route/form and never imply missing legal consent.
-- [x] Retry clears the notice only after `/health/ready` confirms healthy
-      database and Redis dependencies.
-- [x] Active rides/jobs retain usable lifecycle controls beneath a
-      non-blocking top notice.
+- [ ] Freeze and record the exact combined Mobile and Backend path inventory,
+      branch, commit and migration after the three isolated repair slices are
+      integrated. No primary-worktree, Podfile, OTP, location/dispatch,
+      telemetry-expansion or Admin change may enter by accident.
+- [ ] Offline, timeout, malformed legal status and temporary service failure
+      preserve the exact current route/form and never imply missing legal
+      consent. The notice body must be exactly
+      `Connect to the internet and try again.`
+- [ ] The notice disappears automatically only after `/health/ready` confirms
+      healthy database and Redis dependencies; Retry must perform the same
+      single-flight check without navigating.
+- [ ] Client matching, driver-found and tracking routes plus active ride/job
+      routes retain usable lifecycle controls beneath a non-blocking top
+      notice, including before an active ride ID has hydrated.
 - [x] Confirmed user-facing error sinks render only fixed app-owned copy.
 - [x] Client fare flow exposes a truthful state-aware action at every reviewed
       loading/error/location/availability state on iPhone and iPad layouts.
-- [x] Complete repository test and analyzer gates pass on the combined
-      candidate. Evidence: API client **194/194**, shared UI **41/41**, Client
-      **129/129**, Provider **201/201**, `melos run test` across all six test
-      packages, `melos run analyze` across all seven packages, formatting and
-      `git diff --check`. The post-review readiness interceptor chain also
-      passes **19/19** focused tests, the final ride regression slice passes
-      **21/21**, and the release-version contract rejects the already-used
-      `+25` while accepting `+26`.
+- [ ] Complete repository test, analyzer, formatting, diff and release-contract
+      gates on the final integrated candidate. Earlier passing counts remain
+      baseline evidence only.
 - [x] Existing production configuration validates without exposing secrets for
       Client Android, Client iOS, Provider Android and Provider iOS through
       `tool/build.sh ... --validate-only`.
@@ -82,6 +81,72 @@ later in this file as historical evidence.
       greater than `25` and every maximum.
 - [ ] Build, sign, inspect and install all four artifacts from one reviewed
       `main` commit, then submit with the exact review notes and video links.
+
+### 2026-07-28 physical-failure repair and retest gates
+
+- [x] Isolated connectivity/router candidate uses a foreground-aware,
+      single-flight, bounded-backoff readiness probe. Its focused tests pass
+      **26/26**, including automatic dismissal, stable Client GoRouter
+      identity, usable matching/driver-found/tracking controls with no
+      hydrated ride ID, and the exact approved connection copy with no
+      retained “current screen/session” sentence.
+- [x] Isolated cancellation/reconciliation candidates pass Backend
+      **218 suites / 4,279 tests**, API-client **198**, Provider **208** and
+      Client **132** tests, Backend typecheck/build and targeted Mobile
+      analyzers. Exact cancellation reasons cannot be overwritten by a generic
+      empty-pending result. A queued/coalesced Provider recovery follow-up also
+      passes **25/25** targeted tests, including reconnects at one through four
+      seconds and retained offer identities after a transient fetch failure.
+- [x] Finish and independently review the durable refresh-lineage Backend plus
+      the crash-consistent 256-bit Mobile `refreshAttemptId`: Backend
+      **250/250**, cutover verifier **4/4**, Mobile API-client **199/199**,
+      Backend build, Mobile analyze and both diff checks pass.
+- [ ] Integrate the three isolated repair slices on their exact staging bases,
+      preserving both API-client barrel exports, then run the combined gates.
+- [ ] Apply `20260727000000_durable_role_refresh_lineage` on staging; verify
+      `role_refresh_sessions` and `role_refresh_lineage_cutover_status`; verify
+      both rollout flags are JSON boolean `false`; keep Redis intact throughout
+      the shadow deployment.
+- [ ] Deploy and verify the migration plus Backend before installing the new
+      Mobile candidate. Do not reverse this order: Mobile may send
+      `refreshAttemptId` only after every serving Backend replica accepts and
+      records it.
+- [ ] Do not use a mixed-version rolling interval for this auth change. Drain
+      or stop every old Backend replica before a new replica is allowed to
+      rotate refresh credentials, then pass readiness before reopening
+      traffic. An old replica can interpret a new replica's immediate
+      predecessor as terminal reuse and destroy the recovered session.
+- [ ] Prove an expired access token plus concurrent REST/socket/call refresh
+      callers and a lost refresh HTTP response do not clear tokens, log out, or
+      request OTP. The same stored attempt ID must recover the same successor;
+      a missing or mismatched ID must not recover an attempt-bound rotation.
+- [ ] Disconnect/reconnect on Client matching, driver-found and active tracking.
+      Restore the same route and authoritative ride state. If the ride ended
+      while offline, show the correct rider/driver/admin/system notice.
+- [ ] Cancel from the Client while the Provider is foregrounded, backgrounded
+      and offline. The Provider request, ringtone, overlay and durable offer
+      must disappear immediately or on reconnect and must not replay.
+- [ ] Repeat all physical checks on fresh installs and upgrades from
+      `1.4.1+25` on Android, iPhone and a supported iPad.
+
+### Isolated, uncommitted repair evidence
+
+- Mobile connectivity/router:
+  `/private/tmp/myshop-mobile-offline-active-recovery-20260728`,
+  `fix/offline-active-state-recovery-20260728`.
+- Mobile cancellation recovery:
+  `/private/tmp/myshop-cancellation-recovery-mobile`,
+  `codex/cancellation-recovery-mobile-20260728`.
+- Backend cancellation recovery:
+  `/private/tmp/myshop-cancellation-recovery-backend`,
+  `codex/cancellation-recovery-backend-20260728`.
+- Mobile refresh-attempt binding:
+  `/private/tmp/myshop-mobile-refresh-attempt-staging-rc`,
+  `fix/staging-refresh-attempt-binding-rc`.
+- Backend durable refresh lineage:
+  `/private/tmp/myshop-refresh-lineage-staging-rc`,
+  `fix/staging-durable-refresh-lineage-rc`.
+- No repair branch has been committed, pushed, deployed or migrated.
 
 This is the single authoritative checklist for the next Client and Provider
 store update. The larger production audit and 100k-DAU roadmap remain evidence
