@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/auth_dtos.dart';
 import '../models/auth_error_mapper.dart';
+import 'refresh_attempt_store.dart';
 import 'token_storage.dart';
 
 /// Process-wide single-flight for `/auth/refresh`.
@@ -35,15 +36,21 @@ class TokenRefresher {
   TokenRefresher({
     required Dio dio,
     required TokenStorage tokenStorage,
+    RefreshAttemptStore? refreshAttemptStore,
     void Function()? onForceLogout,
     Future<void> Function(Duration duration)? delay,
   })  : _dio = dio,
         _tokenStorage = tokenStorage,
+        _refreshAttemptStore = refreshAttemptStore ??
+            (tokenStorage is RefreshAttemptStore
+                ? tokenStorage as RefreshAttemptStore
+                : VolatileRefreshAttemptStore()),
         _onForceLogout = onForceLogout,
         _delay = delay ?? ((duration) => Future<void>.delayed(duration));
 
   final Dio _dio;
   final TokenStorage _tokenStorage;
+  final RefreshAttemptStore _refreshAttemptStore;
   final void Function()? _onForceLogout;
   final Future<void> Function(Duration duration) _delay;
 
@@ -62,12 +69,18 @@ class TokenRefresher {
             _onForceLogout?.call();
             return null;
           }
+          final refreshAttemptId = await _refreshAttemptStore.readOrCreate(
+            refreshToken,
+          );
 
           try {
             debugPrint('[TokenRefresher] POST /auth/refresh →');
             final response = await _dio.post(
               '/auth/refresh',
-              data: RefreshRequest(refreshToken: refreshToken).toJson(),
+              data: RefreshRequest(
+                refreshToken: refreshToken,
+                refreshAttemptId: refreshAttemptId,
+              ).toJson(),
             );
             debugPrint(
               '[TokenRefresher] POST /auth/refresh ← ${response.statusCode}',
@@ -100,6 +113,18 @@ class TokenRefresher {
               );
             } else {
               await _tokenStorage.writeAccessToken(newAccessToken);
+            }
+            try {
+              await _refreshAttemptStore.clearIfMatches(
+                refreshToken: refreshToken,
+                attemptId: refreshAttemptId,
+              );
+            } catch (error) {
+              // The successor pair is already durable. A stale attempt record
+              // is harmless and will be replaced when its token digest changes.
+              debugPrint(
+                '[TokenRefresher] refresh-attempt cleanup deferred: $error',
+              );
             }
             debugPrint('[TokenRefresher] new tokens persisted');
             return newAccessToken;
