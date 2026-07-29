@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:api_client/api_client.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 
@@ -11,12 +11,16 @@ import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dar
 import '../../features/auth/providers/auth_controller.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
 import '../di/providers.dart';
+import '../services/incoming_request_overlay_presenter.dart';
+import '../services/local_notification_service.dart';
+import '../services/ride_cancellation_notice.dart';
+import '../services/ride_offer_receipt_service.dart';
 import 'app_lifecycle_provider.dart';
 import 'nav_badge_provider.dart';
+import 'service_notice_provider.dart';
 import 'socket_provider.dart';
 
-Future<void>? _recoveryInFlight;
-DateTime? _lastRecoveryStartedAt;
+final _pendingRequestRecoveryScheduler = PendingRequestRecoveryScheduler();
 
 /// Reconciles provider-targeted ride/job requests that arrived while the app
 /// was backgrounded, terminated, or opened manually instead of via a push tap.
@@ -27,24 +31,92 @@ DateTime? _lastRecoveryStartedAt;
 final pendingRequestRecoveryBridgeProvider = Provider<void>((ref) {
   final auth = ref.watch(authControllerProvider);
   final foregrounded = ref.watch(appForegroundedProvider);
+  ref.watch(serviceNoticeProvider.select((state) => state.recoveryEpoch));
   if (auth is! AuthAuthenticated || !foregrounded) return;
   _schedulePendingRequestRecovery(ref);
 });
 
 void _schedulePendingRequestRecovery(Ref ref) {
-  if (_recoveryInFlight != null) return;
-  final now = DateTime.now();
-  final last = _lastRecoveryStartedAt;
-  if (last != null && now.difference(last) < const Duration(seconds: 5)) {
-    return;
-  }
-  _lastRecoveryStartedAt = now;
-  _recoveryInFlight = _recoverPendingRequests(ref).whenComplete(() {
-    _recoveryInFlight = null;
-  });
+  _pendingRequestRecoveryScheduler.schedule(
+    () => _recoverPendingRequests(ref),
+  );
 }
 
 Future<void> recoverPendingRequestsNow(Ref ref) => _recoverPendingRequests(ref);
+
+/// Coalesces recovery triggers while preserving one request that arrives
+/// during the five-second cooldown. The retained trigger runs after only the
+/// remaining delay, so a readiness recovery cannot be lost merely because an
+/// earlier offline attempt started moments before connectivity returned.
+@visibleForTesting
+class PendingRequestRecoveryScheduler {
+  PendingRequestRecoveryScheduler({
+    this.minimumInterval = const Duration(seconds: 5),
+    DateTime Function()? now,
+    Future<void> Function(Duration duration)? delay,
+  })  : _now = now ?? DateTime.now,
+        _delay = delay ?? Future<void>.delayed;
+
+  final Duration minimumInterval;
+  final DateTime Function() _now;
+  final Future<void> Function(Duration duration) _delay;
+
+  DateTime? _lastStartedAt;
+  Future<void>? _inFlight;
+  Future<void>? _delayedPump;
+  Future<void> Function()? _latestRecovery;
+  bool _pending = false;
+
+  void schedule(Future<void> Function() recovery) {
+    _latestRecovery = recovery;
+    _pending = true;
+    _pump();
+  }
+
+  void _pump() {
+    if (!_pending || _inFlight != null || _delayedPump != null) return;
+
+    final now = _now();
+    final last = _lastStartedAt;
+    if (last != null) {
+      final elapsed = now.isAfter(last) ? now.difference(last) : Duration.zero;
+      if (elapsed < minimumInterval) {
+        final wait = _delay(minimumInterval - elapsed);
+        _delayedPump = wait;
+        unawaited(
+          wait.whenComplete(() {
+            if (!identical(_delayedPump, wait)) return;
+            _delayedPump = null;
+            _pump();
+          }),
+        );
+        return;
+      }
+    }
+
+    final recovery = _latestRecovery;
+    if (recovery == null) return;
+    _pending = false;
+    _lastStartedAt = now;
+    final attempt = _runRecovery(recovery);
+    _inFlight = attempt;
+    unawaited(
+      attempt.whenComplete(() {
+        if (!identical(_inFlight, attempt)) return;
+        _inFlight = null;
+        _pump();
+      }),
+    );
+  }
+
+  Future<void> _runRecovery(Future<void> Function() recovery) async {
+    try {
+      await recovery();
+    } catch (error) {
+      debugPrint('[PendingRequestRecovery] scheduled attempt failed: $error');
+    }
+  }
+}
 
 /// Fetch the first still-actionable pending ride request without relying on
 /// the shell-level IncomingRequestListener. Used by the /ride-request fallback
@@ -162,16 +234,26 @@ Future<Ride?> _recoverPendingRideRequest({
 
 Future<void> _recoverPendingRequests(Ref ref) async {
   try {
-    final requests = await ref
-        .read(providerRequestServiceProvider)
-        .listPendingRequests()
-        .timeout(const Duration(seconds: 10));
+    final recovery = await fetchProviderRequestRecovery(
+      readStoredOffers: readStoredRideOfferIdentities,
+      recover: (knownOfferIds) => ref
+          .read(providerRequestServiceProvider)
+          .recoverPendingRequests(knownOfferIds: knownOfferIds)
+          .timeout(const Duration(seconds: 10)),
+    );
+    if (recovery == null) return;
+    final resolvedRideIds =
+        await _applyRideOfferResolutions(ref, recovery.resolutions);
+    final requests = recovery.requests;
     if (requests.isEmpty) {
       final visibleRideId = ref.read(visibleRideRequestIdProvider);
-      if (visibleRideId != null && visibleRideId.isNotEmpty) {
+      if (shouldApplyGenericPendingRideDismissal(
+        visibleRideId: visibleRideId,
+        resolvedRideIds: resolvedRideIds,
+      )) {
         ref.read(rideOfferDismissalProvider.notifier).state =
             RideOfferDismissal(
-          rideId: visibleRideId,
+          rideId: visibleRideId!,
           reason: 'no_longer_pending',
         );
       }
@@ -199,6 +281,122 @@ Future<void> _recoverPendingRequests(Ref ref) async {
     debugPrint('[PendingRequestRecovery] failed: $e');
   }
 }
+
+/// Reads durable identities and asks the server for their exact state without
+/// consuming any local identity on a transient fetch failure.
+@visibleForTesting
+Future<ProviderRequestRecoveryResult?> fetchProviderRequestRecovery({
+  required Future<List<StoredRideOfferIdentity>> Function() readStoredOffers,
+  required Future<ProviderRequestRecoveryResult> Function(
+    List<String> knownOfferIds,
+  ) recover,
+}) async {
+  try {
+    final storedOffers = await readStoredOffers();
+    return await recover(
+      storedOffers
+          .map((identity) => identity.offerId)
+          .toList(growable: false),
+    );
+  } catch (error) {
+    debugPrint('[PendingRequestRecovery] request fetch failed: $error');
+    return null;
+  }
+}
+
+Future<Set<String>> _applyRideOfferResolutions(
+  Ref ref,
+  List<ProviderRequestResolution> resolutions,
+) async {
+  await consumeProviderRideOfferResolutions(
+    resolutions: resolutions,
+    dismiss: (resolution) {
+      final rideId = resolution.rideId;
+      final reason = resolution.resolutionReason ?? 'resolved';
+      final visibleRideId = ref.read(visibleRideRequestIdProvider);
+      final incomingRideId = ref.read(incomingRideRequestProvider)?.id;
+      if (visibleRideId == rideId || incomingRideId == rideId) {
+        ref.read(rideOfferDismissalProvider.notifier).state =
+            RideOfferDismissal(
+          rideId: rideId,
+          reason: reason,
+        );
+        if (incomingRideId == rideId) {
+          ref.read(incomingRideRequestProvider.notifier).state = null;
+        }
+      }
+      ref
+          .read(rideRequestDeadlineByIdProvider.notifier)
+          .update((deadlines) => {...deadlines}..remove(rideId));
+      ref
+          .read(rideOfferIdByRideProvider.notifier)
+          .update((offers) => {...offers}..remove(rideId));
+    },
+    consume: (resolution) async {
+      final reason = resolution.resolutionReason ?? 'resolved';
+      await clearIncomingRequestAlert(
+        type: NotificationPayload.typeRideRequest,
+        requestId: resolution.rideId,
+        offerId: resolution.offerId,
+        reason: reason,
+      );
+      await clearStoredRideOffer(resolution.offerId);
+    },
+    claimNotice: claimRideOfferResolutionInAppNotice,
+    showNotice: (message) {
+      final router = ref.read(goRouterProvider);
+      final context = router.routerDelegate.navigatorKey.currentContext;
+      if (context != null && context.mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(message),
+              duration: const Duration(seconds: 5),
+            ),
+          );
+      }
+    },
+  );
+  return resolutions
+      .where((resolution) => resolution.kind == ProviderRequestKind.ride)
+      .map((resolution) => resolution.rideId)
+      .toSet();
+}
+
+@visibleForTesting
+Future<void> consumeProviderRideOfferResolutions({
+  required List<ProviderRequestResolution> resolutions,
+  required void Function(ProviderRequestResolution resolution) dismiss,
+  required Future<void> Function(ProviderRequestResolution resolution) consume,
+  required bool Function(String rideId) claimNotice,
+  required void Function(String message) showNotice,
+}) async {
+  var noticeShown = false;
+  for (final resolution in resolutions) {
+    if (resolution.kind != ProviderRequestKind.ride) continue;
+    dismiss(resolution);
+    await consume(resolution);
+
+    final message = providerOfferCancellationMessage(
+      reason: resolution.resolutionReason,
+      cancelledBy: resolution.cancelledBy,
+    );
+    if (!noticeShown && message != null && claimNotice(resolution.rideId)) {
+      showNotice(message);
+      noticeShown = true;
+    }
+  }
+}
+
+@visibleForTesting
+bool shouldApplyGenericPendingRideDismissal({
+  required String? visibleRideId,
+  required Set<String> resolvedRideIds,
+}) =>
+    visibleRideId != null &&
+    visibleRideId.isNotEmpty &&
+    !resolvedRideIds.contains(visibleRideId);
 
 Future<void> _surfaceRideRequest(
   Ref ref,
