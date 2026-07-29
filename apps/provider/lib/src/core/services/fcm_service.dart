@@ -217,12 +217,18 @@ Future<bool> _handleOfferRevokedFromRemote(
 
   if (inferredType != null && requestId != null && requestId.isNotEmpty) {
     final reason = message.data['reason']?.toString() ?? 'revoked';
+    final offerId = message.data[NotificationPayload.keyOfferId]?.toString();
     await clearIncomingRequestAlert(
       type: inferredType,
       requestId: requestId,
-      offerId: message.data[NotificationPayload.keyOfferId]?.toString(),
+      offerId: offerId,
       reason: reason,
     );
+    if (inferredType == NotificationPayload.typeRideRequest &&
+        offerId != null &&
+        offerId.isNotEmpty) {
+      await clearStoredRideOffer(offerId);
+    }
     if (inferredType == NotificationPayload.typeRideRequest &&
         isRiderCancellationRevocation(reason)) {
       await LocalNotificationService.instance.init();

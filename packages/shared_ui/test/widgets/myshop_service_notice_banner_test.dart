@@ -74,17 +74,20 @@ void main() {
   testWidgets('uses service copy without exposing an error payload', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: MyShopServiceNoticeBanner(
-          kind: MyShopServiceNoticeKind.unavailable,
-          onRetry: () {},
+    for (final kind in MyShopServiceNoticeKind.values) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MyShopServiceNoticeBanner(kind: kind, onRetry: () {}),
         ),
-      ),
-    );
+      );
 
-    expect(find.text('Service temporarily unavailable'), findsOneWidget);
-    expect(find.textContaining('Internal Server Error'), findsNothing);
+      expect(
+        find.text('Connect to the internet and try again.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('current screen'), findsNothing);
+      expect(find.textContaining('Internal Server Error'), findsNothing);
+    }
   });
 
   testWidgets(

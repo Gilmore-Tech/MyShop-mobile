@@ -151,9 +151,7 @@ class MyShopServiceNoticeBanner extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      kind == MyShopServiceNoticeKind.offline
-                          ? 'Your current screen is unchanged. Reconnect, then retry.'
-                          : 'Your current screen is unchanged. Please retry in a moment.',
+                      'Connect to the internet and try again.',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: colors.onInverseSurface,
                           ),

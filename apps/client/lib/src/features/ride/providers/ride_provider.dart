@@ -1532,20 +1532,22 @@ Future<void> _hydrateFromRest(
     // providers flip identically. We're not in socket_provider's scope
     // here, but `applyRideSnapshot` is private; instead, push the raw
     // status fields into the public providers.
-    if (status == 'cancelled' || _isNoDriversTerminal(status)) {
+    if (status == 'cancelled' ||
+        isNoDriversSocketCancellation(status: status)) {
       if (status == 'cancelled') {
         unawaited(read(rideBookingAttemptStoreProvider).clear());
       }
-      final noDrivers = _isNoDriversTerminal(
-        status,
+      final noDrivers = isNoDriversSocketCancellation(
+        status: status,
         reason: cancellationReason,
-        cancelledBy: cancelledBy,
       );
       read(bookingFailureMessageProvider.notifier).state = noDrivers
           ? noDriversAvailableMessage
-          : cancelledBy == 'driver'
-              ? 'The driver cancelled this ride.'
-              : 'This ride was cancelled.';
+          : rideSocketCancellationMessage(
+              status: status,
+              reason: cancellationReason,
+              cancelledBy: cancelledBy,
+            );
       read(bookingPhaseProvider.notifier).fail();
       // CRITICAL: also flip the tracking phase. The live-map tracking screen
       // watches rideTrackingPhaseProvider (NOT bookingPhase), so without this a
@@ -1693,23 +1695,6 @@ Future<void> _hydrateFromRest(
       level: 800,
     );
   }
-}
-
-bool _isNoDriversTerminal(
-  String status, {
-  String? reason,
-  String? cancelledBy,
-}) {
-  final normalizedStatus = status.toLowerCase();
-  final normalizedReason = (reason ?? '').toLowerCase();
-  final normalizedCancelledBy = (cancelledBy ?? '').toLowerCase();
-
-  return normalizedStatus == 'no_drivers' ||
-      normalizedStatus == 'no_driver' ||
-      normalizedReason == 'no_drivers_available' ||
-      normalizedReason == 'no_driver_available' ||
-      normalizedReason == 'no_drivers' ||
-      normalizedCancelledBy == 'system';
 }
 
 /// Cancel an in-flight ride request from the matching screen. Local state is

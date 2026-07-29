@@ -17,6 +17,19 @@ import '../features/services/providers/active_job_provider.dart'
     show trackedJobIdProvider;
 import '../features/support/providers/support_providers.dart';
 
+final clientServiceReadinessProbeProvider =
+    Provider<MobileServiceReadinessProbe>((ref) {
+  return () => probeMobileServiceReadiness(
+        ref.read(dioProvider),
+        onReady: () {},
+      );
+});
+
+final clientServiceRecoveryDelayProvider =
+    Provider<MobileServiceRecoveryDelayResolver>(
+  (_) => defaultMobileServiceRecoveryDelay,
+);
+
 /// Root widget for the MyShop Client App.
 /// PRD Reference: Section 4 (Client App)
 class ClientApp extends StatelessWidget {
@@ -37,14 +50,24 @@ class _MyShopMaterialApp extends ConsumerStatefulWidget {
 
 class _MyShopMaterialAppState extends ConsumerState<_MyShopMaterialApp>
     with WidgetsBindingObserver {
+  late final MobileServiceRecoveryCoordinator _serviceRecovery;
+  bool _foreground = true;
+  bool _recoveryNeeded = false;
+  bool _recoverySyncQueued = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _serviceRecovery = MobileServiceRecoveryCoordinator(
+      probe: _probeServiceReadiness,
+      delayResolver: ref.read(clientServiceRecoveryDelayProvider),
+    );
   }
 
   @override
   void dispose() {
+    _serviceRecovery.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -52,17 +75,34 @@ class _MyShopMaterialAppState extends ConsumerState<_MyShopMaterialApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     ref.read(systemTelemetryProvider).trackLifecycle(state);
+    _foreground = state == AppLifecycleState.resumed;
+    _serviceRecovery.update(
+      recoveryNeeded: _recoveryNeeded,
+      foreground: _foreground,
+    );
   }
 
-  Future<void> _retryService() async {
-    try {
-      await probeMobileServiceReadiness(
-        ref.read(dioProvider),
-        onReady: () => ref.invalidate(legalConsentStatusProvider),
+  Future<void> _probeServiceReadiness() async {
+    await ref.read(clientServiceReadinessProbeProvider)();
+    if (!mounted) return;
+    ref.read(serviceNoticeProvider.notifier).recovered();
+    ref.invalidate(legalConsentStatusProvider);
+  }
+
+  Future<void> _retryService() => _serviceRecovery.retryNow();
+
+  void _queueRecoveryState(bool recoveryNeeded) {
+    _recoveryNeeded = recoveryNeeded;
+    if (_recoverySyncQueued) return;
+    _recoverySyncQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _recoverySyncQueued = false;
+      if (!mounted) return;
+      _serviceRecovery.update(
+        recoveryNeeded: _recoveryNeeded,
+        foreground: _foreground,
       );
-    } catch (_) {
-      // The interceptor keeps the notice visible with safe local copy.
-    }
+    });
   }
 
   @override
@@ -71,13 +111,8 @@ class _MyShopMaterialAppState extends ConsumerState<_MyShopMaterialApp>
     final themeMode = ref.watch(themeNotifierProvider);
     final updateRequirement = ref.watch(appUpdateRequirementProvider);
     final serviceIssue = ref.watch(serviceNoticeProvider).issue;
-    final currentPath = router.routerDelegate.currentConfiguration.uri.path;
-    final hasActiveWork = ref.watch(activeRideIdProvider) != null ||
-        ref.watch(trackedJobIdProvider) != null ||
-        currentPath == AppRoutes.rideTracking ||
-        (currentPath.startsWith('/services/job/') &&
-            (currentPath.endsWith('/active') ||
-                currentPath.endsWith('/tracking')));
+    final hasPersistedActiveWork = ref.watch(activeRideIdProvider) != null ||
+        ref.watch(trackedJobIdProvider) != null;
     final providerLocationNotice = ref.watch(providerLocationNoticeProvider);
     final auth = ref.watch(clientAuthControllerProvider);
     final legalConsent = auth is AuthAuthenticated
@@ -87,6 +122,7 @@ class _MyShopMaterialAppState extends ConsumerState<_MyShopMaterialApp>
         legalConsent?.hasError == true ? legalConsent?.error : null;
     final effectiveServiceIssue =
         mobileServiceIssueForLegalStatusError(legalStatusError) ?? serviceIssue;
+    _queueRecoveryState(effectiveServiceIssue != null);
 
     return MaterialApp.router(
       title: 'MyShop',
@@ -102,17 +138,35 @@ class _MyShopMaterialAppState extends ConsumerState<_MyShopMaterialApp>
             storeUrl: updateRequirement.storeUrl,
           );
         }
-        return MyShopServiceNoticeOverlay(
-          kind: effectiveServiceIssue == null
-              ? null
-              : _noticeKind(effectiveServiceIssue),
-          hasActiveWork: hasActiveWork,
-          onRetry: _retryService,
-          topNotices: [
-            if (providerLocationNotice != null)
-              ProviderLocationNoticeBanner(notice: providerLocationNotice),
-          ],
-          child: child ?? const SizedBox.shrink(),
+        return ListenableBuilder(
+          listenable: router.routeInformationProvider,
+          builder: (context, _) {
+            final currentPath = router.routeInformationProvider.value.uri.path;
+            final isRideLifecycleRoute =
+                currentPath == AppRoutes.rideMatching ||
+                    currentPath == AppRoutes.rideDriverFound ||
+                    currentPath == AppRoutes.rideTracking;
+            final isJobLifecycleRoute =
+                currentPath.startsWith('/services/job/') &&
+                    (currentPath.endsWith('/active') ||
+                        currentPath.endsWith('/tracking'));
+            return MyShopServiceNoticeOverlay(
+              kind: effectiveServiceIssue == null
+                  ? null
+                  : _noticeKind(effectiveServiceIssue),
+              hasActiveWork: hasPersistedActiveWork ||
+                  isRideLifecycleRoute ||
+                  isJobLifecycleRoute,
+              onRetry: _retryService,
+              topNotices: [
+                if (providerLocationNotice != null)
+                  ProviderLocationNoticeBanner(
+                    notice: providerLocationNotice,
+                  ),
+              ],
+              child: child ?? const SizedBox.shrink(),
+            );
+          },
         );
       },
     );

@@ -100,4 +100,43 @@ void main() {
     );
     expect(message, isNot(noDriversAvailableMessage));
   });
+
+  test('uses fixed copy for every authoritative cancellation actor', () {
+    expect(
+      rideSocketCancellationMessage(cancelledBy: 'client'),
+      'You cancelled this ride.',
+    );
+    expect(
+      rideSocketCancellationMessage(cancelledBy: 'driver'),
+      'The driver cancelled this ride.',
+    );
+    expect(
+      rideSocketCancellationMessage(cancelledBy: 'admin'),
+      'MyShop support cancelled this ride.',
+    );
+    expect(
+      rideSocketCancellationMessage(
+        reason: 'private_backend_reason',
+        cancelledBy: 'system',
+      ),
+      'MyShop ended this ride because it could not continue.',
+    );
+  });
+
+  test('does not classify every system cancellation as no drivers', () {
+    expect(
+      isNoDriversSocketCancellation(
+        status: 'cancelled',
+        reason: 'initialization_timeout',
+      ),
+      isFalse,
+    );
+    expect(
+      isNoDriversSocketCancellation(
+        status: 'cancelled',
+        reason: 'no_drivers_available',
+      ),
+      isTrue,
+    );
+  });
 }

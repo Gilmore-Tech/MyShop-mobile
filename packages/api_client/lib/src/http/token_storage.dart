@@ -1,5 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+import 'refresh_attempt_store.dart';
 
 /// How long a stored session is trusted before forcing the user to re-login,
 /// regardless of backend token expiry. Lets providers stay signed-in across
@@ -63,7 +67,7 @@ abstract class TokenStorage {
 
 /// Production implementation backed by Flutter Secure Storage
 /// (Keychain on iOS, EncryptedSharedPreferences on Android).
-class SecureTokenStorage implements TokenStorage {
+class SecureTokenStorage implements TokenStorage, RefreshAttemptStore {
   SecureTokenStorage([
     FlutterSecureStorage? storage,
     bool? recoverOnFailure,
@@ -82,6 +86,7 @@ class SecureTokenStorage implements TokenStorage {
   static const _kSessionStartedAt = 'auth_session_started_at';
   static const _kCachedProfile = 'auth_cached_profile';
   static const _kDeviceId = 'auth_device_id';
+  static const _kRefreshAttempt = 'auth_refresh_attempt_v1';
 
   final FlutterSecureStorage _storage;
   final bool _recoverOnFailure;
@@ -157,11 +162,71 @@ class SecureTokenStorage implements TokenStorage {
       // Read back to verify the write actually landed. On iOS simulator
       // keychain can silently swallow writes in some configurations; this
       // turns that into a loud log line instead of a mysterious logout.
-      final readback = await _storage.read(key: _kAccessToken);
+      final accessReadback = await _storage.read(key: _kAccessToken);
+      final refreshReadback = await _storage.read(key: _kRefreshToken);
       debugPrint(
-        '[TokenStorage] writeTokens readback → ${readback == null ? 'NULL (write failed!)' : 'ok'}',
+        '[TokenStorage] writeTokens readback → '
+        '${accessReadback == accessToken && refreshReadback == refreshToken ? 'ok' : 'MISMATCH'}',
       );
+      if (accessReadback != accessToken || refreshReadback != refreshToken) {
+        throw StateError('Secure token-pair persistence verification failed');
+      }
     });
+  }
+
+  @override
+  Future<String> readOrCreate(String refreshToken) async {
+    final tokenDigest = refreshTokenDigest(refreshToken);
+    final raw = await _read(_kRefreshAttempt);
+    if (raw != null) {
+      try {
+        final record = jsonDecode(raw);
+        if (record is Map<String, dynamic> &&
+            record['version'] == 1 &&
+            record['refreshTokenDigest'] == tokenDigest &&
+            record['attemptId'] is String &&
+            isCanonicalRefreshAttemptId(record['attemptId'] as String)) {
+          return record['attemptId'] as String;
+        }
+      } on FormatException {
+        // Replace corrupt/non-current metadata without touching auth tokens.
+      }
+    }
+
+    final attemptId = generateRefreshAttemptId();
+    final encoded = jsonEncode({
+      'version': 1,
+      'refreshTokenDigest': tokenDigest,
+      'attemptId': attemptId,
+    });
+    await _write(_kRefreshAttempt, encoded);
+    if (await _read(_kRefreshAttempt) != encoded) {
+      throw StateError(
+        'Secure refresh-attempt persistence verification failed',
+      );
+    }
+    return attemptId;
+  }
+
+  @override
+  Future<void> clearIfMatches({
+    required String refreshToken,
+    required String attemptId,
+  }) async {
+    final raw = await _read(_kRefreshAttempt);
+    if (raw == null) return;
+    try {
+      final record = jsonDecode(raw);
+      if (record is Map<String, dynamic> &&
+          record['version'] == 1 &&
+          record['refreshTokenDigest'] == refreshTokenDigest(refreshToken) &&
+          record['attemptId'] == attemptId) {
+        await _delete(_kRefreshAttempt);
+      }
+    } on FormatException {
+      // A corrupt record cannot match this completed attempt. The next refresh
+      // replaces it before sending a request.
+    }
   }
 
   @override
@@ -181,6 +246,7 @@ class SecureTokenStorage implements TokenStorage {
     await _delete(_kRole);
     await _delete(_kSessionStartedAt);
     await _delete(_kCachedProfile);
+    await _delete(_kRefreshAttempt);
     // _kDeviceId is intentionally preserved — stable per install.
     // _kOnboardingSeen is also preserved.
   }
@@ -190,6 +256,7 @@ class SecureTokenStorage implements TokenStorage {
     debugPrint('[TokenStorage] clearAuthTokensOnly');
     await _delete(_kAccessToken);
     await _delete(_kRefreshToken);
+    await _delete(_kRefreshAttempt);
   }
 
   @override

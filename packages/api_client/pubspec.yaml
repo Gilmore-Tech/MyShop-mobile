@@ -17,6 +17,7 @@ dependencies:
   package_info_plus: ^8.3.1
   uuid: ^4.5.1
   clock: ^1.1.1
+  crypto: ^3.0.6
   # Used for `debugPrint` and `@visibleForTesting`. Declared explicitly
   # so this package's Flutter dependency is no longer implicit through
   # the consumer apps.

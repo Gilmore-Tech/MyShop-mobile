@@ -59,12 +59,13 @@ void main() {
     expect(find.text('Log out'), findsNothing);
     expect(
       find.text(
-        'We could not refresh this page. Please try again in a moment. '
-        'Your current screen and session are unchanged.',
+        'Connect to the internet and try again.',
       ),
       findsOneWidget,
     );
     expect(find.textContaining('connection'), findsNothing);
+    expect(find.textContaining('current screen'), findsNothing);
+    expect(find.textContaining('DNS and internal server detail'), findsNothing);
 
     await tester.tap(find.text('Retry'));
     await tester.pump();

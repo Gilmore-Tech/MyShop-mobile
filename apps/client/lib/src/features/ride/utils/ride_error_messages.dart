@@ -54,8 +54,10 @@ String rideSocketCancellationMessage({
     return "We couldn't finish requesting your ride. Please try again.";
   }
   return switch (cancelledBy?.trim().toLowerCase()) {
+    'client' => 'You cancelled this ride.',
     'driver' => 'The driver cancelled this ride.',
-    'admin' => 'Your ride was cancelled by support.',
+    'admin' => 'MyShop support cancelled this ride.',
+    'system' => 'MyShop ended this ride because it could not continue.',
     _ => 'This ride was cancelled.',
   };
 }
