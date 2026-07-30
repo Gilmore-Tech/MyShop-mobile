@@ -160,6 +160,37 @@ void main() {
       },
     );
 
+    test(
+      'delayed platform copies stay coalesced through the replay window',
+      () async {
+        coordinator.dispose();
+        coordinator = IncomingRequestTapCoordinator(
+          viewReplayWindow: const Duration(milliseconds: 80),
+        );
+        var opens = 0;
+        final payload = ridePayload(
+          action: NotificationPayload.actionRideView,
+        );
+
+        expect(
+          await coordinator.dispatch(payload, () async => opens += 1),
+          isTrue,
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(
+          await coordinator.dispatch(payload, () async => opens += 1),
+          isFalse,
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(
+          await coordinator.dispatch(payload, () async => opens += 1),
+          isFalse,
+        );
+
+        expect(opens, 1);
+      },
+    );
+
     test('concurrent View callbacks share one in-flight owner', () async {
       var opens = 0;
       final entered = Completer<void>();

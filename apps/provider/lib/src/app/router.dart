@@ -478,16 +478,50 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/ride-request',
         pageBuilder: (context, state) {
           final extra = state.extra;
-          if (extra is Ride) {
-            return MaterialPage<void>(
-              key: state.pageKey,
-              child: RideRequestScreen(ride: extra),
-            );
-          }
           final Widget child;
-          if (extra is RideRequestRouteExtra) {
+          if (extra is Ride) {
+            debugPrint(
+              '[RideRequestRoute] phase=details rideId=${extra.id} '
+              'source=runtime-snapshot',
+            );
+            child = _RideRequestLoaderScreen(
+              extra: RideRequestRouteExtra(
+                rideId: extra.id,
+                navigationLatchToken: Object(),
+                releaseNavigationLatch: _noopRideRequestRouteCallback,
+                allowNotificationRetry: _noopRideRequestRouteCallback,
+                initialRide: extra,
+              ),
+            );
+          } else if (extra is RideRequestRouteExtra) {
+            debugPrint(
+              '[RideRequestRoute] phase=loader rideId=${extra.rideId} '
+              'source=runtime-extra',
+            );
             child = _RideRequestLoaderScreen(extra: extra);
+          } else if (rideRequestIdentityFromUri(state.uri)
+              case final identity?) {
+            // GoRouter cannot serialize Ride/RideRequestRouteExtra. Mobile OS
+            // route restoration therefore retains the URI but may discard
+            // `extra`. Rebuild a bounded loader from the durable URI identity
+            // rather than entering an unowned spinner.
+            debugPrint(
+              '[RideRequestRoute] phase=loader rideId=${identity.rideId} '
+              'source=restored-uri',
+            );
+            child = _RideRequestLoaderScreen(
+              extra: RideRequestRouteExtra(
+                rideId: identity.rideId,
+                navigationLatchToken: Object(),
+                releaseNavigationLatch: _noopRideRequestRouteCallback,
+                allowNotificationRetry: _noopRideRequestRouteCallback,
+                expiresAt: identity.expiresAt,
+              ),
+            );
           } else {
+            debugPrint(
+              '[RideRequestRoute] phase=fallback source=missing-identity',
+            );
             child = const _InvalidRideRequestScreen();
           }
           return CustomTransitionPage<void>(
@@ -591,6 +625,7 @@ class RideRequestRouteExtra {
     required this.releaseNavigationLatch,
     required this.allowNotificationRetry,
     this.expiresAt,
+    this.initialRide,
   });
 
   final String rideId;
@@ -598,84 +633,414 @@ class RideRequestRouteExtra {
   final VoidCallback releaseNavigationLatch;
   final VoidCallback allowNotificationRetry;
   final DateTime? expiresAt;
+  final Ride? initialRide;
+}
+
+void _noopRideRequestRouteCallback() {}
+
+typedef RideRequestRouteIdentity = ({
+  String rideId,
+  DateTime? expiresAt,
+});
+
+/// Builds a route URI that survives Android/iOS state restoration even when
+/// GoRouter has to discard the non-serializable runtime `extra`.
+String rideRequestRouteLocation(
+  String rideId, {
+  DateTime? expiresAt,
+}) {
+  final trimmedRideId = rideId.trim();
+  final query = <String, String>{
+    if (trimmedRideId.isNotEmpty) 'rideId': trimmedRideId,
+    if (expiresAt != null) 'expiresAt': expiresAt.toUtc().toIso8601String(),
+  };
+  return Uri(path: '/ride-request', queryParameters: query).toString();
+}
+
+@visibleForTesting
+RideRequestRouteIdentity? rideRequestIdentityFromUri(Uri uri) {
+  final rideId = uri.queryParameters['rideId']?.trim();
+  if (rideId == null || rideId.isEmpty) return null;
+  final rawDeadline = uri.queryParameters['expiresAt'];
+  return (
+    rideId: rideId,
+    expiresAt:
+        rawDeadline == null ? null : DateTime.tryParse(rawDeadline)?.toUtc(),
+  );
+}
+
+@visibleForTesting
+bool canCommitRideRequestLoaderResult({
+  required bool mounted,
+  required bool routeIsCurrent,
+  required int generation,
+  required int activeGeneration,
+  DateTime? deadline,
+  DateTime? now,
+}) {
+  if (!mounted || !routeIsCurrent || generation != activeGeneration) {
+    return false;
+  }
+  if (deadline == null) return true;
+  return (now ?? DateTime.now()).toUtc().isBefore(deadline.toUtc());
+}
+
+enum RideRequestLoaderFetchStatus {
+  actionable,
+  unavailable,
+  expired,
+}
+
+class RideRequestLoaderFetchResult<T> {
+  const RideRequestLoaderFetchResult._(this.status, this.value);
+
+  const RideRequestLoaderFetchResult.actionable(T value)
+      : this._(RideRequestLoaderFetchStatus.actionable, value);
+
+  const RideRequestLoaderFetchResult.unavailable()
+      : this._(RideRequestLoaderFetchStatus.unavailable, null);
+
+  const RideRequestLoaderFetchResult.expired()
+      : this._(RideRequestLoaderFetchStatus.expired, null);
+
+  final RideRequestLoaderFetchStatus status;
+  final T? value;
+}
+
+/// Resolves request hydration against the absolute server deadline.
+///
+/// The deadline wins even when REST never completes, and a response that
+/// arrives at or after the deadline can never reopen an expired offer.
+@visibleForTesting
+Future<RideRequestLoaderFetchResult<T>> awaitRideRequestLoaderFetch<T>({
+  required Future<T?> fetch,
+  DateTime? deadline,
+  DateTime Function()? now,
+  Future<void> Function(Duration duration)? delay,
+}) async {
+  final currentTime = now ?? DateTime.now;
+  final wait = delay ?? Future<void>.delayed;
+
+  Future<RideRequestLoaderFetchResult<T>> resolveFetch() async {
+    try {
+      final value = await fetch;
+      if (deadline != null &&
+          !currentTime().toUtc().isBefore(deadline.toUtc())) {
+        return RideRequestLoaderFetchResult<T>.expired();
+      }
+      if (value == null) {
+        return RideRequestLoaderFetchResult<T>.unavailable();
+      }
+      return RideRequestLoaderFetchResult<T>.actionable(value);
+    } catch (_) {
+      if (deadline != null &&
+          !currentTime().toUtc().isBefore(deadline.toUtc())) {
+        return RideRequestLoaderFetchResult<T>.expired();
+      }
+      return RideRequestLoaderFetchResult<T>.unavailable();
+    }
+  }
+
+  if (deadline == null) return resolveFetch();
+  final remaining = deadline.toUtc().difference(currentTime().toUtc());
+  if (remaining <= Duration.zero) {
+    return RideRequestLoaderFetchResult<T>.expired();
+  }
+  return Future.any<RideRequestLoaderFetchResult<T>>([
+    resolveFetch(),
+    wait(remaining).then(
+      (_) => RideRequestLoaderFetchResult<T>.expired(),
+    ),
+  ]);
 }
 
 class _RideRequestLoaderScreen extends ConsumerStatefulWidget {
-  const _RideRequestLoaderScreen({required this.extra});
+  const _RideRequestLoaderScreen({
+    required this.extra,
+    this.recoverPendingRideOverride,
+    this.fetchRideDataOverride,
+  });
 
   final RideRequestRouteExtra extra;
+  final PendingRideRequestRecovery? recoverPendingRideOverride;
+  final Future<Map<String, dynamic>> Function(String rideId)?
+      fetchRideDataOverride;
 
   @override
   ConsumerState<_RideRequestLoaderScreen> createState() =>
       _RideRequestLoaderScreenState();
 }
 
+@visibleForTesting
+Widget buildRideRequestLoaderForTesting({
+  required RideRequestRouteExtra extra,
+  required PendingRideRequestRecovery recoverPendingRide,
+  required Future<Map<String, dynamic>> Function(String rideId) fetchRideData,
+}) {
+  return _RideRequestLoaderScreen(
+    extra: extra,
+    recoverPendingRideOverride: recoverPendingRide,
+    fetchRideDataOverride: fetchRideData,
+  );
+}
+
 class _RideRequestLoaderScreenState
     extends ConsumerState<_RideRequestLoaderScreen> {
+  static const _maximumIdentitylessLoaderLifetime = Duration(seconds: 12);
+
   bool _showUnavailable = false;
   int _generation = 0;
+  Timer? _deadlineTimer;
+  Completer<void>? _deadlineSignal;
+  ModalRoute<dynamic>? _route;
+  late GoRouter _router;
+  late final PendingRideRequestRecovery _recoverPendingRide;
+  late final Future<Map<String, dynamic>> Function(String rideId)
+      _fetchRideData;
+  late final StateController<Map<String, DateTime>> _deadlineController;
+  late final StateController<String?> _visibleRequestController;
+  late final StateController<VisibleRideRequestOwner?>
+      _visibleRequestOwnerController;
+  late RideRequestRouteExtra _ownedExtra;
+  Ride? _hydratedRide;
+  bool _routeOwnershipReleased = false;
 
   @override
   void initState() {
     super.initState();
+    _ownedExtra = widget.extra;
+    _hydratedRide = widget.extra.initialRide;
+    _recoverPendingRide = widget.recoverPendingRideOverride ??
+        capturePendingRideRequestRecovery(ref);
+    _fetchRideData =
+        widget.fetchRideDataOverride ?? ref.read(rideServiceProvider).getRide;
+    _deadlineController = ref.read(rideRequestDeadlineByIdProvider.notifier);
+    _visibleRequestController = ref.read(visibleRideRequestIdProvider.notifier);
+    _visibleRequestOwnerController =
+        ref.read(visibleRideRequestOwnerProvider.notifier);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _hydrate();
+      if (!mounted) return;
+      if (_hydratedRide == null) {
+        _hydrate();
+      } else {
+        _releaseRouteOwnership();
+      }
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route = ModalRoute.of(context);
+    _router = GoRouter.of(context);
   }
 
   @override
   void didUpdateWidget(covariant _RideRequestLoaderScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.extra.rideId != widget.extra.rideId ||
-        oldWidget.extra.expiresAt != widget.extra.expiresAt ||
-        !identical(
-          oldWidget.extra.navigationLatchToken,
-          widget.extra.navigationLatchToken,
-        )) {
-      // The callback is ownership checked by the tap bridge. If this widget is
-      // being reused for a same-ride retry, releasing the old token cannot
-      // clear the newer navigation claim.
-      oldWidget.extra.releaseNavigationLatch();
-      _hydrate();
+    final identityChanged = _ownedExtra.rideId != widget.extra.rideId ||
+        _ownedExtra.expiresAt != widget.extra.expiresAt;
+    if (identityChanged) {
+      final oldRelease = _ownedExtra.releaseNavigationLatch;
+      final releaseOldOwnership = !_routeOwnershipReleased;
+      _generation += 1;
+      _cancelDeadlineWait();
+      _ownedExtra = widget.extra;
+      _hydratedRide = widget.extra.initialRide;
+      _routeOwnershipReleased = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (releaseOldOwnership) oldRelease();
+        if (!mounted) return;
+        if (_hydratedRide == null) {
+          _hydrate();
+        } else {
+          _releaseRouteOwnership();
+        }
+      });
+      return;
+    }
+
+    // GoRouter may rebuild this same URI after serializing complex `extra` to
+    // null. The page builder then supplies a new no-op ownership token. Keep
+    // the original callbacks and in-flight hydration for the same ride instead
+    // of treating that rebuild as a second notification.
+    final incomingSnapshot = widget.extra.initialRide;
+    if (_hydratedRide == null &&
+        incomingSnapshot != null &&
+        incomingSnapshot.id == _ownedExtra.rideId) {
+      _generation += 1;
+      _cancelDeadlineWait();
+      _hydratedRide = incomingSnapshot;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _releaseRouteOwnership();
+      });
     }
   }
 
-  void _openRideRequest(Ride ride) {
+  void _releaseRouteOwnership() {
+    if (_routeOwnershipReleased) return;
+    _routeOwnershipReleased = true;
+    _ownedExtra.releaseNavigationLatch();
+  }
+
+  bool _canCommit(int generation, {DateTime? deadline}) {
+    return canCommitRideRequestLoaderResult(
+      mounted: mounted,
+      routeIsCurrent: _route?.isCurrent == true,
+      generation: generation,
+      activeGeneration: _generation,
+      deadline: deadline,
+    );
+  }
+
+  Future<void> _scheduleDeadline(DateTime deadline, int generation) {
+    _cancelDeadlineWait();
+    final signal = Completer<void>();
+    _deadlineSignal = signal;
+    final remaining = deadline.toUtc().difference(DateTime.now().toUtc());
+    if (remaining <= Duration.zero) {
+      scheduleMicrotask(() {
+        if (!signal.isCompleted) signal.complete();
+        _leaveExpiredLoader(generation);
+      });
+      return signal.future;
+    }
+    _deadlineTimer = Timer(
+      remaining,
+      () {
+        if (!signal.isCompleted) signal.complete();
+        _leaveExpiredLoader(generation);
+      },
+    );
+    return signal.future;
+  }
+
+  void _cancelDeadlineWait() {
+    _deadlineTimer?.cancel();
+    _deadlineTimer = null;
+    final signal = _deadlineSignal;
+    _deadlineSignal = null;
+    if (signal != null && !signal.isCompleted) signal.complete();
+  }
+
+  void _leaveExpiredLoader(int generation) {
+    // Expiry is terminal even if another transient route currently covers this
+    // loader. Otherwise its one-shot timer is consumed while covered and the
+    // stale spinner reappears when that route pops.
+    if (!mounted || generation != _generation) {
+      return;
+    }
+    _generation += 1;
+    _cancelDeadlineWait();
+    _releaseRouteOwnership();
+    _router.go('/home');
+  }
+
+  void _openRideRequest(
+    Ride ride, {
+    required int generation,
+    DateTime? deadline,
+  }) {
+    if (!_canCommit(generation, deadline: deadline)) {
+      if (deadline != null &&
+          !DateTime.now().toUtc().isBefore(deadline.toUtc())) {
+        _leaveExpiredLoader(generation);
+      }
+      return;
+    }
     // Mark the request visible before replacing the loader. The loader's
     // dispose releases the navigation latch, so this ordering leaves no frame
     // where a duplicate iOS notification tap can stack the same route.
-    ref.read(visibleRideRequestIdProvider.notifier).state = ride.id;
-    context.pushReplacement('/ride-request', extra: ride);
+    _cancelDeadlineWait();
+    _visibleRequestOwnerController.state = null;
+    _visibleRequestController.state = ride.id;
+    _releaseRouteOwnership();
+    setState(() => _hydratedRide = ride);
   }
 
   Future<void> _hydrate() async {
     final generation = ++_generation;
     final startedAt = DateTime.now();
-    final rideId = widget.extra.rideId;
-    final deadline = widget.extra.expiresAt;
+    final rideId = _ownedExtra.rideId;
+    final authoritativeDeadline = _ownedExtra.expiresAt;
+    // Missing deadline data must never create an immortal loader. Twelve
+    // seconds covers the bounded recovery calls while remaining below the
+    // server's 30-second provider decision window.
+    final loaderDeadline = authoritativeDeadline ??
+        DateTime.now().toUtc().add(_maximumIdentitylessLoaderLifetime);
 
-    setState(() => _showUnavailable = false);
+    try {
+      if (authoritativeDeadline != null) {
+        _deadlineController.update(
+          (m) => {...m, rideId: authoritativeDeadline},
+        );
+        if (!_isBeforeDeadline(authoritativeDeadline)) {
+          debugPrint('[RideRequestLoader] $rideId expired before hydrate');
+          _leaveExpiredLoader(generation);
+          return;
+        }
+      } else {
+        debugPrint(
+          '[RideRequestLoader] $rideId has no authoritative deadline; '
+          'applying bounded loader lifetime',
+        );
+      }
+      final deadlineReached = _scheduleDeadline(loaderDeadline, generation);
 
-    if (deadline != null) {
-      ref.read(rideRequestDeadlineByIdProvider.notifier).update(
-            (m) => {...m, rideId: deadline},
-          );
-      if (!_isBeforeDeadline(deadline)) {
-        debugPrint('[RideRequestLoader] $rideId expired before hydrate');
-        await _recoverOrShowUnavailable(startedAt, generation);
+      // Schedule terminal expiry even when another route covered this loader
+      // before its first frame. Only actionable hydration/navigation requires
+      // the loader itself to remain the current route.
+      if (!_canCommit(generation)) return;
+      setState(() => _showUnavailable = false);
+
+      final fetchResult = await awaitRideRequestLoaderFetch<Ride>(
+        fetch: _loadFastestActionableRide(rideId),
+        deadline: loaderDeadline,
+        delay: (_) => deadlineReached,
+      );
+      if (!mounted || _route?.isCurrent != true || generation != _generation) {
         return;
       }
+
+      if (fetchResult.status == RideRequestLoaderFetchStatus.expired) {
+        _leaveExpiredLoader(generation);
+        return;
+      }
+
+      final ride = fetchResult.value;
+      if (fetchResult.status == RideRequestLoaderFetchStatus.actionable &&
+          ride != null) {
+        _openRideRequest(
+          ride,
+          generation: generation,
+          deadline: loaderDeadline,
+        );
+        return;
+      }
+
+      await _showUnavailableAfterMinimumLoading(
+        startedAt,
+        generation,
+        deadline: loaderDeadline,
+      );
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[RideRequestLoader] hydrate failed for $rideId: '
+        '$error\n$stackTrace',
+      );
+      if (!_canCommit(generation, deadline: loaderDeadline)) {
+        if (!_isBeforeDeadline(loaderDeadline)) {
+          _leaveExpiredLoader(generation);
+        }
+        return;
+      }
+      await _showUnavailableAfterMinimumLoading(
+        startedAt,
+        generation,
+        deadline: loaderDeadline,
+      );
     }
-
-    final ride = await _loadFastestActionableRide(rideId);
-    if (!mounted || generation != _generation) return;
-
-    if (ride != null) {
-      _openRideRequest(ride);
-      return;
-    }
-
-    await _showUnavailableAfterMinimumLoading(startedAt, generation);
   }
 
   bool _isBeforeDeadline(DateTime deadline) {
@@ -708,7 +1073,7 @@ class _RideRequestLoaderScreenState
     }
 
     track('ride snapshot', _fetchRideSnapshot(rideId));
-    track('pending request', recoverPendingRideRequestById(ref, rideId));
+    track('pending request', _recoverPendingRide(rideId));
 
     return completer.future.timeout(
       const Duration(seconds: 10),
@@ -720,10 +1085,8 @@ class _RideRequestLoaderScreenState
   }
 
   Future<Ride?> _fetchRideSnapshot(String rideId) async {
-    final data = await ref
-        .read(rideServiceProvider)
-        .getRide(rideId)
-        .timeout(const Duration(seconds: 8));
+    final data =
+        await _fetchRideData(rideId).timeout(const Duration(seconds: 8));
     final ride = Ride.fromJson(data);
     if (ride.status == RideStatus.requested) return ride;
     debugPrint(
@@ -733,54 +1096,59 @@ class _RideRequestLoaderScreenState
     return null;
   }
 
-  Future<void> _recoverOrShowUnavailable(
-    DateTime startedAt,
-    int generation,
-  ) async {
-    final ride = await recoverPendingRideRequest(ref);
-    if (!mounted || generation != _generation) return;
-
-    if (ride != null) {
-      _openRideRequest(ride);
-      return;
-    }
-
-    await _showUnavailableAfterMinimumLoading(startedAt, generation);
-  }
-
   Future<void> _showUnavailableAfterMinimumLoading(
     DateTime startedAt,
-    int generation,
-  ) async {
+    int generation, {
+    DateTime? deadline,
+  }) async {
     final elapsed = DateTime.now().difference(startedAt);
     const minimumLoading = Duration(milliseconds: 700);
     if (elapsed < minimumLoading) {
       await Future<void>.delayed(minimumLoading - elapsed);
     }
-    if (mounted && generation == _generation) {
+    if (deadline != null && !_isBeforeDeadline(deadline)) {
+      _leaveExpiredLoader(generation);
+      return;
+    }
+    if (_canCommit(generation, deadline: deadline)) {
       // A failed/terminal hydrate must not block a deliberate retry for the
       // remainder of the 30-second offer. The timeout fallback in the tap
       // bridge is only for cases where this loader never mounts.
-      widget.extra.releaseNavigationLatch();
-      widget.extra.allowNotificationRetry();
+      _releaseRouteOwnership();
+      _ownedExtra.allowNotificationRetry();
       setState(() => _showUnavailable = true);
     }
   }
 
   @override
   void dispose() {
-    widget.extra.releaseNavigationLatch();
+    _generation += 1;
+    _cancelDeadlineWait();
+    final releaseOwnership = !_routeOwnershipReleased;
+    final release = _ownedExtra.releaseNavigationLatch;
+    _routeOwnershipReleased = true;
+    if (releaseOwnership) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => release());
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final ride = _hydratedRide;
+    if (ride != null) return RideRequestScreen(ride: ride);
     return _RideRequestOpeningScaffold(showUnavailable: _showUnavailable);
   }
 }
 
 class _InvalidRideRequestScreen extends ConsumerStatefulWidget {
-  const _InvalidRideRequestScreen();
+  const _InvalidRideRequestScreen({
+    this.recoverPendingRideOverride,
+    this.recoveryTimeout = const Duration(seconds: 10),
+  });
+
+  final PendingRideRequestRecovery? recoverPendingRideOverride;
+  final Duration recoveryTimeout;
 
   @override
   ConsumerState<_InvalidRideRequestScreen> createState() =>
@@ -789,41 +1157,91 @@ class _InvalidRideRequestScreen extends ConsumerStatefulWidget {
 
 class _InvalidRideRequestScreenState
     extends ConsumerState<_InvalidRideRequestScreen> {
-  bool _showUnavailable = false;
+  late final PendingRideRequestRecovery _recoverPendingRide;
+  late final StateController<String?> _visibleRequestController;
+  late final StateController<VisibleRideRequestOwner?>
+      _visibleRequestOwnerController;
+  ModalRoute<dynamic>? _route;
+  late GoRouter _router;
+  var _generation = 0;
+  Timer? _recoveryTimer;
 
   @override
   void initState() {
     super.initState();
+    _recoverPendingRide = widget.recoverPendingRideOverride ??
+        capturePendingRideRequestRecovery(ref);
+    _visibleRequestController = ref.read(visibleRideRequestIdProvider.notifier);
+    _visibleRequestOwnerController =
+        ref.read(visibleRideRequestOwnerProvider.notifier);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _recover();
     });
   }
 
-  Future<void> _recover() async {
-    final startedAt = DateTime.now();
-    final ride = await recoverPendingRideRequest(ref);
-    if (!mounted) return;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route = ModalRoute.of(context);
+    _router = GoRouter.of(context);
+  }
 
-    if (ride != null) {
-      context.pushReplacement('/ride-request', extra: ride);
+  Future<void> _recover() async {
+    final generation = ++_generation;
+    final timedOut = Completer<Ride?>();
+    _recoveryTimer?.cancel();
+    _recoveryTimer = Timer(widget.recoveryTimeout, () {
+      if (!timedOut.isCompleted) timedOut.complete(null);
+    });
+    final ride = await Future.any<Ride?>([
+      _recoverPendingRide(null),
+      timedOut.future,
+    ]);
+    _recoveryTimer?.cancel();
+    _recoveryTimer = null;
+    if (!mounted || generation != _generation || _route?.isCurrent != true) {
       return;
     }
 
-    // Avoid a jarring flash of "unavailable" during notification cold-start
-    // handoff. FCM tap hydration often wins within a few hundred milliseconds;
-    // keep this screen in a neutral loading state until that race settles.
-    final elapsed = DateTime.now().difference(startedAt);
-    const minimumLoading = Duration(milliseconds: 700);
-    if (elapsed < minimumLoading) {
-      await Future<void>.delayed(minimumLoading - elapsed);
+    if (ride != null) {
+      _visibleRequestOwnerController.state = null;
+      _visibleRequestController.state = ride.id;
+      _router.pushReplacement(
+        rideRequestRouteLocation(ride.id),
+        extra: ride,
+      );
+      return;
     }
-    if (mounted) setState(() => _showUnavailable = true);
+
+    debugPrint(
+      '[RideRequestRoute] fallback recovery ended without an actionable ride',
+    );
+    _generation += 1;
+    _router.go('/home');
+  }
+
+  @override
+  void dispose() {
+    _generation += 1;
+    _recoveryTimer?.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return _RideRequestOpeningScaffold(showUnavailable: _showUnavailable);
+    return const _RideRequestOpeningScaffold(showUnavailable: false);
   }
+}
+
+@visibleForTesting
+Widget buildInvalidRideRequestFallbackForTesting({
+  required PendingRideRequestRecovery recoverPendingRide,
+  Duration recoveryTimeout = const Duration(seconds: 10),
+}) {
+  return _InvalidRideRequestScreen(
+    recoverPendingRideOverride: recoverPendingRide,
+    recoveryTimeout: recoveryTimeout,
+  );
 }
 
 class _RideRequestOpeningScaffold extends StatelessWidget {

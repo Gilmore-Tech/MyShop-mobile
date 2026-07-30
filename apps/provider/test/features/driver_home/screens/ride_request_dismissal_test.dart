@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:myshop_provider/src/core/providers/socket_provider.dart';
+import 'package:myshop_provider/src/core/widgets/incoming_request_listener.dart';
 import 'package:myshop_provider/src/features/driver_home/providers/ride_request_provider.dart';
 import 'package:myshop_provider/src/features/driver_home/screens/ride_request_screen.dart';
 import 'package:shared_models/shared_models.dart';
@@ -28,6 +30,37 @@ Ride _pendingRide({
     );
 
 void main() {
+  testWidgets(
+      'notification route preclaim preserves socket ride without a second route',
+      (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    const rideId = 'ride-owned-by-notification-tap';
+    final socketRide = _pendingRide(id: rideId);
+    container.read(rideRequestNavigationInFlightProvider.notifier).state = {
+      rideId,
+    };
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: IncomingRequestListener(
+            child: Scaffold(body: Text('Provider home')),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    container.read(incomingRideRequestProvider.notifier).state = socketRide;
+    await tester.pump();
+
+    expect(container.read(incomingRideRequestProvider), same(socketRide));
+    expect(find.byType(RideRequestScreen), findsNothing);
+    expect(find.text('Provider home'), findsOneWidget);
+  });
+
   testWidgets('rider cancellation closes an already-open provider request',
       (tester) async {
     final container = ProviderContainer();
@@ -146,6 +179,38 @@ void main() {
       container.read(visibleRideRequestIdProvider),
       'newer-ride-request',
     );
+    // Flush the detached map preview's bounded route-request timeout.
+    await tester.pump(const Duration(seconds: 11));
+  });
+
+  testWidgets(
+      'disposing an owned request marker defers cleanup without Riverpod error',
+      (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    const rideId = 'ride-owned-during-dispose';
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: RideRequestScreen(ride: _pendingRide(id: rideId)),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(container.read(visibleRideRequestIdProvider), rideId);
+    expect(
+      container.read(visibleRideRequestOwnerProvider)?.rideId,
+      rideId,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(container.read(visibleRideRequestIdProvider), isNull);
+    expect(container.read(visibleRideRequestOwnerProvider), isNull);
     // Flush the detached map preview's bounded route-request timeout.
     await tester.pump(const Duration(seconds: 11));
   });

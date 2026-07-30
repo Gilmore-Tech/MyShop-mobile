@@ -15,6 +15,16 @@ import '../providers/availability_controller.dart';
 import '../providers/nav_badge_provider.dart';
 import '../providers/socket_provider.dart';
 
+String _rideRequestLocation(String rideId, DateTime? deadline) {
+  return Uri(
+    path: '/ride-request',
+    queryParameters: <String, String>{
+      'rideId': rideId,
+      if (deadline != null) 'expiresAt': deadline.toUtc().toIso8601String(),
+    },
+  ).toString();
+}
+
 /// A transparent widget that listens for incoming ride/job requests via
 /// Socket.IO and surfaces them to the user.
 ///
@@ -73,7 +83,8 @@ class _IncomingRequestListenerState
   void _maybeRouteToActiveRide(Ride ride) {
     if (_routedForCurrentActiveRide) return;
     if (!mounted) return;
-    final currentLocation = GoRouterState.of(context).matchedLocation;
+    final currentLocation =
+        GoRouter.of(context).routerDelegate.currentConfiguration.uri.path;
 
     if (ride.status == RideStatus.requested) {
       debugPrint('[IncomingRequestListener] requested ride ${ride.id} '
@@ -141,7 +152,8 @@ class _IncomingRequestListenerState
       // active ride that came back through ref.listen but didn't trigger
       // a state change couldn't be recovered.
       if (mounted) {
-        final loc = GoRouterState.of(context).matchedLocation;
+        final loc =
+            GoRouter.of(context).routerDelegate.currentConfiguration.uri.path;
         if (loc != '/active-ride' && loc != '/ride-request') {
           _routedForCurrentActiveRide = false;
         }
@@ -171,23 +183,33 @@ class _IncomingRequestListenerState
   }
 
   void _goToRideRequest(BuildContext context, Ride ride, WidgetRef ref) {
-    // Clear the incoming state so the listener doesn't re-trigger on rebuild.
-    ref.read(incomingRideRequestProvider.notifier).state = null;
     final visibleId = ref.read(visibleRideRequestIdProvider);
     if (visibleId == ride.id) {
+      // The mounted screen already owns this delivery.
+      ref.read(incomingRideRequestProvider.notifier).state = null;
       debugPrint('[IncomingRequestListener] ride ${ride.id} already visible');
       return;
     }
     if (ref.read(rideRequestNavigationInFlightProvider).contains(ride.id)) {
+      // A notification tap claimed navigation before its receipt/hydration
+      // network work. Preserve this richer socket payload so that path can
+      // open it directly instead of discarding it and fetching it again.
       debugPrint(
         '[IncomingRequestListener] ride ${ride.id} navigation already active',
       );
       return;
     }
 
+    // This listener owns navigation, so consume the transient delivery before
+    // pushing. Clearing earlier would lose it when a notification tap already
+    // held the route claim.
+    ref.read(incomingRideRequestProvider.notifier).state = null;
     ref.read(rideRequestNavigationInFlightProvider.notifier).update(
           (s) => {...s, ride.id},
         );
+    // Transfer ownership to the route that is about to mount. The outgoing
+    // screen's deferred dispose cleanup must not clear this preclaim.
+    ref.read(visibleRideRequestOwnerProvider.notifier).state = null;
     ref.read(visibleRideRequestIdProvider.notifier).state = ride.id;
     unawaited(
       Future<void>.delayed(const Duration(seconds: 4), () {
@@ -198,15 +220,18 @@ class _IncomingRequestListenerState
       }),
     );
 
-    final currentLocation = GoRouterState.of(context).matchedLocation;
+    final router = GoRouter.of(context);
+    final currentLocation = router.routerDelegate.currentConfiguration.uri.path;
+    final deadline = ref.read(rideRequestDeadlineByIdProvider)[ride.id];
+    final location = _rideRequestLocation(ride.id, deadline);
     if (currentLocation == '/ride-request') {
       debugPrint('[IncomingRequestListener] replacing ride request with '
           '${ride.id}');
-      context.pushReplacement('/ride-request', extra: ride);
+      router.pushReplacement(location, extra: ride);
       return;
     }
 
-    context.push('/ride-request', extra: ride);
+    router.push(location, extra: ride);
   }
 
   void _showJobModal(BuildContext context, Job job, WidgetRef ref) {
