@@ -123,7 +123,7 @@ void main() {
     );
     expect(
       usableClientLegalConsentStatus(
-        _clientAuth('client-a', topLevelId: 'client-b'),
+        _clientAuth('client-b', topLevelId: 'private-auth-id'),
         AsyncData(_identity('client-a')),
         AsyncData(_snapshot('client-a')),
       ),

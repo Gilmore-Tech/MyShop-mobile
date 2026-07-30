@@ -1,3 +1,4 @@
+import '../http/token_storage.dart';
 import '../models/auth_dtos.dart';
 import '../models/user_dtos.dart';
 import 'auth_service.dart';
@@ -92,7 +93,10 @@ class MockAuthService implements AuthService {
   }
 
   @override
-  Future<void> logout() async {
+  Future<void> logout({
+    AuthSessionIdentity? expectedIdentity,
+    AuthTokenSnapshot? explicitLogoutSession,
+  }) async {
     await _delay();
   }
 

@@ -105,7 +105,9 @@ final goRouterProvider = Provider<GoRouter>((ref) {
 
       // Still bootstrapping — keep the Flutter splash visible. Both waits
       // have deadlines, so this route can no longer strand the user.
-      if (auth is AuthUnknown || !onboardingFlagLoaded) {
+      if (auth is AuthUnknown ||
+          auth is AuthSessionRestorePending ||
+          !onboardingFlagLoaded) {
         return loc == '/splash' ? null : '/splash';
       }
 

@@ -1,6 +1,7 @@
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../features/auth/providers/auth_controller.dart';
 import '../di/providers.dart';
 
 /// Singleton [ChatRealtime] for the provider app.
@@ -15,6 +16,7 @@ import '../di/providers.dart';
 /// realtime layers coalesce onto one `/auth/refresh` and one storage
 /// write per token-expiry cycle.
 final chatRealtimeProvider = Provider<ChatRealtime>((ref) {
+  ref.watch(currentAuthSessionIdentityProvider);
   final realtime = ChatRealtime(
     config: ref.watch(apiConfigProvider),
     tokenStorage: ref.watch(appTokenStorageProvider),

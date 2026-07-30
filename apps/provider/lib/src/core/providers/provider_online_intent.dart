@@ -35,6 +35,19 @@ class ProviderOnlineIntentIdentity {
     }
   }
 
+  factory ProviderOnlineIntentIdentity.fromSession(
+    AuthUser user,
+    AuthSessionIdentity session,
+  ) {
+    final identity = ProviderOnlineIntentIdentity.fromUser(user);
+    if (session.role != identity.role.name ||
+        session.roleAccountId != identity.roleAccountId ||
+        user.id != identity.roleAccountId) {
+      throw const StaleAuthSessionException();
+    }
+    return identity;
+  }
+
   final ProviderOnlineIntentRole role;
   final String roleAccountId;
 }

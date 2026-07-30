@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 
+import '../http/auth_interceptor.dart';
+import '../http/token_storage.dart';
 import '../models/api_exception.dart';
 
 /// Service for notification API endpoints.
@@ -7,6 +9,12 @@ import '../models/api_exception.dart';
 class NotificationService {
   NotificationService(this._dio);
   final Dio _dio;
+
+  Options _ownedSessionOptions(AuthSessionIdentity expectedIdentity) => Options(
+        extra: {
+          AuthInterceptor.expectedSessionIdentityExtra: expectedIdentity,
+        },
+      );
 
   dynamic _unwrap(Response response) {
     final body = response.data as Map<String, dynamic>;
@@ -65,6 +73,7 @@ class NotificationService {
     required String fcmToken,
     required String platform,
     required String role,
+    required AuthSessionIdentity expectedIdentity,
     // v2 adds native ActivityKit delivery receipts so a Live Activity can be
     // the only visible iOS request surface. Older v1 installs remain on the
     // standard APNs fallback during a staged rollout.
@@ -84,6 +93,7 @@ class NotificationService {
           // disagreed. Kept on the method signature so callers must
           // think about which role they're registering.
         },
+        options: _ownedSessionOptions(expectedIdentity),
       );
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -98,6 +108,7 @@ class NotificationService {
   /// app's `.voip` topic and are only valid on iOS.
   Future<void> registerVoipDevice({
     required String voipToken,
+    required AuthSessionIdentity expectedIdentity,
   }) async {
     try {
       await _dio.post(
@@ -106,6 +117,7 @@ class NotificationService {
           'voipToken': voipToken,
           'platform': 'ios',
         },
+        options: _ownedSessionOptions(expectedIdentity),
       );
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -116,6 +128,7 @@ class NotificationService {
   /// binding when PushKit invalidates it or the app logs out.
   Future<void> unregisterVoipDevice({
     String? voipToken,
+    required AuthSessionIdentity expectedIdentity,
   }) async {
     try {
       await _dio.delete(
@@ -124,6 +137,7 @@ class NotificationService {
           'platform': 'ios',
           if (voipToken != null && voipToken.isNotEmpty) 'voipToken': voipToken,
         },
+        options: _ownedSessionOptions(expectedIdentity),
       );
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -138,6 +152,7 @@ class NotificationService {
   /// invoke this on login and whenever the native token update stream emits.
   Future<void> registerLiveActivityDevice({
     required String pushToStartToken,
+    required AuthSessionIdentity expectedIdentity,
   }) async {
     try {
       await _dio.post(
@@ -146,6 +161,7 @@ class NotificationService {
           'platform': 'ios',
           'pushToStartToken': pushToStartToken,
         },
+        options: _ownedSessionOptions(expectedIdentity),
       );
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -156,6 +172,7 @@ class NotificationService {
   /// provider/device push-to-start binding on logout or native invalidation.
   Future<void> unregisterLiveActivityDevice({
     String? pushToStartToken,
+    required AuthSessionIdentity expectedIdentity,
   }) async {
     try {
       await _dio.delete(
@@ -165,6 +182,7 @@ class NotificationService {
           if (pushToStartToken != null && pushToStartToken.isNotEmpty)
             'pushToStartToken': pushToStartToken,
         },
+        options: _ownedSessionOptions(expectedIdentity),
       );
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -181,6 +199,7 @@ class NotificationService {
     required String requestType,
     required String requestId,
     required DateTime expiresAt,
+    required AuthSessionIdentity expectedIdentity,
   }) async {
     try {
       await _dio.post(
@@ -194,6 +213,7 @@ class NotificationService {
           'requestId': requestId,
           'expiresAt': expiresAt.toUtc().toIso8601String(),
         },
+        options: _ownedSessionOptions(expectedIdentity),
       );
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
@@ -205,6 +225,7 @@ class NotificationService {
   Future<void> unregisterLiveActivity({
     required String activityId,
     String? updateToken,
+    required AuthSessionIdentity expectedIdentity,
   }) async {
     try {
       await _dio.delete(
@@ -215,6 +236,7 @@ class NotificationService {
           if (updateToken != null && updateToken.isNotEmpty)
             'updateToken': updateToken,
         },
+        options: _ownedSessionOptions(expectedIdentity),
       );
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);

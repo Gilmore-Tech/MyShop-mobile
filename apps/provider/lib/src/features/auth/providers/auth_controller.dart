@@ -11,6 +11,7 @@ import '../../artisan_jobs/providers/submitted_bids_provider.dart';
 import '../../profile/providers/provider_type_provider.dart';
 import '../data/auth_repository.dart';
 import '../../../core/providers/provider_online_intent.dart';
+import '../../../core/providers/service_notice_provider.dart';
 
 // ---------------------------------------------------------------------------
 // Auth states
@@ -24,6 +25,20 @@ sealed class AuthState {
 /// Initial state while checking for stored tokens.
 class AuthUnknown extends AuthState {
   const AuthUnknown();
+}
+
+/// Stored credentials still exist, but the provider profile is temporarily
+/// unavailable. Retry restores the same session and never requests a new OTP.
+class AuthSessionRestorePending extends AuthState {
+  const AuthSessionRestorePending({
+    this.isRetrying = false,
+    this.error,
+    this.intendedRole,
+  });
+
+  final bool isRetrying;
+  final String? error;
+  final ProviderType? intendedRole;
 }
 
 /// No valid session — show login / onboarding.
@@ -169,16 +184,36 @@ final tokenStorageProvider = Provider<TokenStorage>((ref) {
   return SecureTokenStorage();
 });
 
+/// Exact authenticated SID currently allowed to own provider-side async work.
+///
+/// This stays null during bootstrap, session replacement, recovery, and
+/// logout. It is published synchronously only after the token snapshot,
+/// profile subject/role, and all awaited authentication side effects agree.
+final currentAuthSessionIdentityProvider =
+    StateProvider<AuthSessionIdentity?>((_) => null);
+
 /// Persistent per-install device ID + device info collector.
 final deviceIdProviderRef = Provider<DeviceIdProvider>((ref) {
   return DeviceIdProvider(ref.watch(tokenStorageProvider));
 });
+
+/// Bridge to the shared REST/WebSocket refresher without introducing an
+/// auth-controller ↔ core-DI import cycle. Production overrides this in
+/// `main.dart`; repository tests may inject a deterministic callback.
+final authSessionRepairProvider =
+    Provider<Future<String?> Function(AuthTokenSnapshot)?>((_) => null);
+
+final authLogoutSessionRepairProvider =
+    Provider<Future<AuthTokenSnapshot?> Function(AuthExplicitLogoutFence)?>(
+        (_) => null);
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepository(
     service: ref.watch(authServiceProvider),
     tokenStorage: ref.watch(tokenStorageProvider),
     deviceIdProvider: ref.watch(deviceIdProviderRef),
+    refreshSession: ref.watch(authSessionRepairProvider),
+    refreshLogoutSession: ref.watch(authLogoutSessionRepairProvider),
   );
 });
 
@@ -191,6 +226,9 @@ final authControllerProvider =
   final controller = AuthController(
     ref.watch(authRepositoryProvider),
     tokenStorage: ref.watch(tokenStorageProvider),
+    onSessionIdentityChanged: (identity) {
+      ref.read(currentAuthSessionIdentityProvider.notifier).state = identity;
+    },
     onAuthenticated: (AuthUser user, ProviderType? intendedRole) async {
       // Mark onboarding as seen whenever a user successfully authenticates.
       final storage = ref.read(tokenStorageProvider);
@@ -201,12 +239,18 @@ final authControllerProvider =
       // preserve the current role — never override it from backend data,
       // as that causes artisan→driver leakage for dual-role accounts.
       if (intendedRole != null) {
+        final currentIdentity = (await storage.readTokenSnapshot()).identity;
+        if (currentIdentity?.roleAccountId != user.id ||
+            currentIdentity?.role != intendedRole.name) {
+          return;
+        }
         ref.read(providerTypeProvider.notifier).state = intendedRole;
-        // Persist so bootstrap restores the correct role after restart
-        await storage.writeRole(intendedRole.name);
       }
     },
-    onLocalStateClear: (AuthUser? exitingUser) async {
+    onLocalStateClear: (
+      AuthUser? exitingUser,
+      AuthSessionIdentity? exitingSession,
+    ) async {
       // Wipe per-account artisan caches that live outside TokenStorage.
       // Without this, "BID SENT" entries (artisan_submitted_bids) and
       // in-progress drafts (artisan_bid_drafts_v1) leak across logouts and
@@ -216,9 +260,12 @@ final authControllerProvider =
         ref.read(submittedBidsProvider.notifier).clear(),
         ref.read(bidDraftsProvider.notifier).clear(),
       ];
-      if (exitingUser != null) {
+      if (exitingUser != null && exitingSession != null) {
         try {
-          final identity = ProviderOnlineIntentIdentity.fromUser(exitingUser);
+          final identity = ProviderOnlineIntentIdentity.fromSession(
+            exitingUser,
+            exitingSession,
+          );
           await ref.read(providerOnlineIntentStoreProvider).write(
                 identity,
                 shouldBeOnline: false,
@@ -229,6 +276,15 @@ final authControllerProvider =
       }
       await Future.wait(cacheCleanup);
       ref.read(pendingIncomingJobsProvider.notifier).clear();
+    },
+  );
+  ref.listen<int>(
+    serviceNoticeProvider.select((notice) => notice.recoveryEpoch),
+    (previous, next) {
+      if (previous == next) return;
+      if (controller.isSessionRestorePending) {
+        unawaited(controller.retrySessionRestore());
+      }
     },
   );
   controller.bootstrap();
@@ -264,18 +320,26 @@ class AuthController extends StateNotifier<AuthState> {
     this._repo, {
     this.onAuthenticated,
     this.onLocalStateClear,
+    this.onSessionIdentityChanged,
     required TokenStorage tokenStorage,
+    Duration bootstrapTimeout = const Duration(seconds: 8),
   })  : _tokenStorage = tokenStorage,
+        _bootstrapTimeout = bootstrapTimeout,
         super(const AuthUnknown());
 
   final AuthRepository _repo;
   final TokenStorage _tokenStorage;
+  final Duration _bootstrapTimeout;
 
   /// Called when authentication succeeds. [intendedRole] is the role the user
   /// chose during sign-up or sign-in (from [AuthOtpSent.role]). When restoring
   /// a session via [bootstrap], it is null — derive from the profile instead.
   final FutureOr<void> Function(AuthUser user, ProviderType? intendedRole)?
       onAuthenticated;
+
+  /// Synchronous publication fence for consumers whose async work must be
+  /// owned by the exact authenticated SID.
+  final void Function(AuthSessionIdentity? identity)? onSessionIdentityChanged;
 
   /// Called when the session ends (explicit logout or force-logout from the
   /// 401 interceptor). Wires per-account local caches that live outside
@@ -286,8 +350,14 @@ class AuthController extends StateNotifier<AuthState> {
   /// writes flush before the user navigates away. The interceptor path is
   /// sync and fires-and-forgets — safe because the next app start re-runs
   /// the same wipe via [bootstrap]'s 401 path.
-  final Future<void> Function(AuthUser? exitingUser)? onLocalStateClear;
+  final Future<void> Function(
+    AuthUser? exitingUser,
+    AuthSessionIdentity? exitingSession,
+  )? onLocalStateClear;
   bool _requesting = false;
+  bool _restoringSession = false;
+  int _sessionInvalidationEpoch = 0;
+  AuthSessionIdentity? _ownedSessionIdentity;
 
   /// Try to restore session from stored tokens.
   ///
@@ -295,37 +365,106 @@ class AuthController extends StateNotifier<AuthState> {
   /// a cold start with no network. Then kicks off a background `/users/me`
   /// refresh to pull the latest data — failures are intentionally swallowed
   /// (only the 401 interceptor may force a logout).
-  Future<void> bootstrap() async {
+  Future<void> bootstrap() => _restoreStoredSession(isRetry: false);
+
+  bool get isSessionRestorePending => state is AuthSessionRestorePending;
+
+  Future<void> retrySessionRestore() => _restoreStoredSession(isRetry: true);
+
+  Future<void> _restoreStoredSession({required bool isRetry}) async {
+    if (_restoringSession) return;
+    _restoringSession = true;
+    final pendingBeforeRetry = state is AuthSessionRestorePending
+        ? state as AuthSessionRestorePending
+        : null;
+    final intendedRole = pendingBeforeRetry?.intendedRole;
+    final attemptEpoch = _sessionInvalidationEpoch;
+    if (isRetry) {
+      state = AuthSessionRestorePending(
+        isRetrying: true,
+        intendedRole: intendedRole,
+      );
+    }
+
     try {
-      AuthUser? user;
+      ProviderBootstrapResult result;
       try {
-        user = await _repo.bootstrap().timeout(const Duration(seconds: 8));
+        final bootstrap = intendedRole == null
+            ? _repo.bootstrap()
+            : _repo.bootstrap(activeRole: _authRoleFor(intendedRole));
+        result = await bootstrap.timeout(_bootstrapTimeout);
       } on TimeoutException {
-        debugPrint('[Auth] bootstrap timed out after 8 seconds');
+        debugPrint(
+          '[Auth] bootstrap timed out after '
+          '${_bootstrapTimeout.inSeconds} seconds',
+        );
+        if (mounted && attemptEpoch == _sessionInvalidationEpoch) {
+          state = AuthSessionRestorePending(
+            error: 'Connect to the internet and try again.',
+            intendedRole: intendedRole,
+          );
+        }
+        return;
       }
-      if (user != null) {
-        final savedRole = await _tokenStorage.readRole();
-        final restoredRole = savedRole != null
-            ? ProviderType.values.where((e) => e.name == savedRole).firstOrNull
-            : null;
-        await onAuthenticated?.call(user, restoredRole);
-        if (!mounted) return;
-        state = AuthAuthenticated(user);
-        unawaited(_refreshInBackground());
-      } else {
-        if (!mounted) return;
-        state = const AuthUnauthenticated();
+
+      if (!mounted || attemptEpoch != _sessionInvalidationEpoch) return;
+      switch (result) {
+        case ProviderBootstrapReady(:final user, :final identity):
+          final restoredRole = intendedRole ?? _providerTypeFromUser(user);
+          if (!_identityMatchesUser(identity, user) ||
+              await _currentSessionIdentity() != identity) {
+            return;
+          }
+          _ownedSessionIdentity = identity;
+          await onAuthenticated?.call(user, restoredRole);
+          if (!mounted || attemptEpoch != _sessionInvalidationEpoch) return;
+          if (await _currentSessionIdentity() != identity) {
+            return;
+          }
+          onSessionIdentityChanged?.call(identity);
+          state = AuthAuthenticated(user);
+          unawaited(_refreshInBackground());
+        case ProviderBootstrapNoSession():
+          _ownedSessionIdentity = null;
+          onSessionIdentityChanged?.call(null);
+          state = const AuthUnauthenticated();
+        case ProviderBootstrapDeferred():
+          state = AuthSessionRestorePending(
+            error: 'Connect to the internet and try again.',
+            intendedRole: intendedRole,
+          );
       }
     } catch (error, stackTrace) {
       debugPrint('[Auth] bootstrap failed: $error\n$stackTrace');
-      if (!mounted) return;
-      state = const AuthUnauthenticated();
+      if (mounted && attemptEpoch == _sessionInvalidationEpoch) {
+        state = AuthSessionRestorePending(
+          error: 'Connect to the internet and try again.',
+          intendedRole: intendedRole,
+        );
+      }
+    } finally {
+      _restoringSession = false;
     }
   }
 
+  ProviderType? _providerTypeFromUser(AuthUser user) => switch (user.role) {
+        AuthRole.driver => ProviderType.driver,
+        AuthRole.artisan => ProviderType.artisan,
+        _ => null,
+      };
+
   Future<void> _refreshInBackground() async {
+    final refreshEpoch = _sessionInvalidationEpoch;
+    final expectedIdentity = _ownedSessionIdentity;
+    if (expectedIdentity == null) return;
     final fresh = await _repo.refreshProfileQuiet();
-    if (mounted && fresh != null && state is AuthAuthenticated) {
+    if (mounted &&
+        refreshEpoch == _sessionInvalidationEpoch &&
+        _ownedSessionIdentity == expectedIdentity &&
+        fresh != null &&
+        _identityMatchesUser(expectedIdentity, fresh) &&
+        await _currentSessionIdentity() == expectedIdentity &&
+        state is AuthAuthenticated) {
       state = AuthAuthenticated(fresh);
     }
   }
@@ -459,6 +598,7 @@ class AuthController extends StateNotifier<AuthState> {
       final session = await _repo.providerSelectRole(
         selectionToken: current.selectionToken,
         role: role,
+        phone: current.phone,
       );
       await _completeProviderSession(session);
     } on ApiException catch (e) {
@@ -501,15 +641,62 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> _completeProviderSession(ProviderSession session) async {
     final providerType =
         session.role == 'artisan' ? ProviderType.artisan : ProviderType.driver;
-    // Pass the freshly-selected role into fetchProfile. Storage still holds
-    // the previous session's role at this point (onAuthenticated writes the
-    // new one below), so without this the AuthUser would resolve its
-    // name/email/photo from the wrong role — e.g. the artisan business name
-    // showing up on a driver login.
-    final user =
-        await _repo.fetchProfile(activeRole: _authRoleFor(providerType));
-    await onAuthenticated?.call(user, providerType);
-    state = AuthAuthenticated(user);
+    await _completePersistedSession(providerType);
+  }
+
+  Future<void> _completePersistedSession(ProviderType? providerType) async {
+    // The backend has already issued and the repository has already persisted
+    // the token pair. From this point onward, a profile/network failure is a
+    // deferred session restore — never another OTP request.
+    final completionEpoch = ++_sessionInvalidationEpoch;
+    onSessionIdentityChanged?.call(null);
+    state = AuthSessionRestorePending(
+      isRetrying: true,
+      intendedRole: providerType,
+    );
+    // Pass the freshly-selected role into fetchProfile so the AuthUser resolves
+    // its role-scoped name/email/photo deterministically for dual-role users.
+    AuthSessionIdentity? completionIdentity;
+    try {
+      completionIdentity = await _currentSessionIdentity();
+      if (completionIdentity == null ||
+          (providerType != null &&
+              completionIdentity.role != providerType.name)) {
+        throw const StaleAuthSessionException();
+      }
+      // Track the newly-issued SID internally while keeping provider-side
+      // work fenced off until profile/bootstrap side effects finish.
+      _ownedSessionIdentity = completionIdentity;
+      final user = await _repo
+          .fetchProfile(activeRole: _authRoleFor(providerType))
+          .timeout(_bootstrapTimeout);
+      if (!mounted || completionEpoch != _sessionInvalidationEpoch) return;
+      if (!_identityMatchesUser(completionIdentity, user) ||
+          await _currentSessionIdentity() != completionIdentity) {
+        return;
+      }
+      await onAuthenticated?.call(user, providerType);
+      if (!mounted || completionEpoch != _sessionInvalidationEpoch) return;
+      if (await _currentSessionIdentity() != completionIdentity) {
+        return;
+      }
+      onSessionIdentityChanged?.call(completionIdentity);
+      state = AuthAuthenticated(user);
+    } catch (error) {
+      if (!mounted || completionEpoch != _sessionInvalidationEpoch) return;
+      if (completionIdentity != null &&
+          await _currentSessionIdentity() != completionIdentity) {
+        return;
+      }
+      debugPrint(
+        '[Auth] provider session issued but profile is temporarily '
+        'unavailable: $error',
+      );
+      state = AuthSessionRestorePending(
+        error: 'Connect to the internet and try again.',
+        intendedRole: providerType,
+      );
+    }
   }
 
   /// Map the app's [ProviderType] to the api_client [AuthRole] used to
@@ -518,6 +705,15 @@ class AuthController extends StateNotifier<AuthState> {
   AuthRole? _authRoleFor(ProviderType? type) => type == null
       ? null
       : (type.isArtisan ? AuthRole.artisan : AuthRole.driver);
+
+  Future<AuthSessionIdentity?> _currentSessionIdentity() async =>
+      (await _tokenStorage.readTokenSnapshot()).identity;
+
+  bool _identityMatchesUser(
+    AuthSessionIdentity identity,
+    AuthUser user,
+  ) =>
+      identity.roleAccountId == user.id && identity.role == user.role.name;
 
   /// Verify OTP code.
   ///
@@ -540,13 +736,7 @@ class AuthController extends StateNotifier<AuthState> {
       if (current.isNewUser) {
         // Registration: role already chosen at sign-up; legacy verify.
         await _repo.verifyOtp(phone: current.phone, code: code);
-        // Same stale-role guard as _completeProviderSession: pass the role
-        // chosen at sign-up so identity resolves from the right profile
-        // before onAuthenticated persists it.
-        final user =
-            await _repo.fetchProfile(activeRole: _authRoleFor(current.role));
-        await onAuthenticated?.call(user, current.role);
-        state = AuthAuthenticated(user);
+        await _completePersistedSession(current.role);
         return;
       }
 
@@ -666,9 +856,25 @@ class AuthController extends StateNotifier<AuthState> {
   /// Returns null on success, or an error message on failure.
   Future<String?> refreshProfile() async {
     if (state is! AuthAuthenticated) return 'Not authenticated';
+    final expectedIdentity = _ownedSessionIdentity;
+    final operationEpoch = _sessionInvalidationEpoch;
+    if (expectedIdentity == null) return 'Not authenticated';
     try {
       final user = await _repo.fetchProfile();
+      if (!mounted ||
+          operationEpoch != _sessionInvalidationEpoch ||
+          _ownedSessionIdentity != expectedIdentity ||
+          !_identityMatchesUser(expectedIdentity, user) ||
+          await _currentSessionIdentity() != expectedIdentity) {
+        return 'The authenticated session changed.';
+      }
       await onAuthenticated?.call(user, null);
+      if (!mounted ||
+          operationEpoch != _sessionInvalidationEpoch ||
+          _ownedSessionIdentity != expectedIdentity ||
+          await _currentSessionIdentity() != expectedIdentity) {
+        return 'The authenticated session changed.';
+      }
       state = AuthAuthenticated(user);
       return null;
     } catch (_) {
@@ -681,8 +887,18 @@ class AuthController extends StateNotifier<AuthState> {
   /// Returns null on success, or an error message on failure.
   Future<String?> updateProfile(UpdateProfileRequest request) async {
     if (state is! AuthAuthenticated) return 'Not authenticated';
+    final expectedIdentity = _ownedSessionIdentity;
+    final operationEpoch = _sessionInvalidationEpoch;
+    if (expectedIdentity == null) return 'Not authenticated';
     try {
       final updatedUser = await _repo.updateProfile(request);
+      if (!mounted ||
+          operationEpoch != _sessionInvalidationEpoch ||
+          _ownedSessionIdentity != expectedIdentity ||
+          !_identityMatchesUser(expectedIdentity, updatedUser) ||
+          await _currentSessionIdentity() != expectedIdentity) {
+        return 'The authenticated session changed.';
+      }
       state = AuthAuthenticated(updatedUser);
       return null;
     } on ApiException catch (e) {
@@ -699,8 +915,18 @@ class AuthController extends StateNotifier<AuthState> {
     UpdateDriverProfileRequest request,
   ) async {
     if (state is! AuthAuthenticated) return 'Not authenticated';
+    final expectedIdentity = _ownedSessionIdentity;
+    final operationEpoch = _sessionInvalidationEpoch;
+    if (expectedIdentity == null) return 'Not authenticated';
     try {
       final updatedUser = await _repo.updateDriverProfile(request);
+      if (!mounted ||
+          operationEpoch != _sessionInvalidationEpoch ||
+          _ownedSessionIdentity != expectedIdentity ||
+          !_identityMatchesUser(expectedIdentity, updatedUser) ||
+          await _currentSessionIdentity() != expectedIdentity) {
+        return 'The authenticated session changed.';
+      }
       state = AuthAuthenticated(updatedUser);
       return null;
     } on ApiException catch (e) {
@@ -717,8 +943,18 @@ class AuthController extends StateNotifier<AuthState> {
     UpdateArtisanProfileRequest request,
   ) async {
     if (state is! AuthAuthenticated) return 'Not authenticated';
+    final expectedIdentity = _ownedSessionIdentity;
+    final operationEpoch = _sessionInvalidationEpoch;
+    if (expectedIdentity == null) return 'Not authenticated';
     try {
       final updatedUser = await _repo.updateArtisanProfile(request);
+      if (!mounted ||
+          operationEpoch != _sessionInvalidationEpoch ||
+          _ownedSessionIdentity != expectedIdentity ||
+          !_identityMatchesUser(expectedIdentity, updatedUser) ||
+          await _currentSessionIdentity() != expectedIdentity) {
+        return 'The authenticated session changed.';
+      }
       state = AuthAuthenticated(updatedUser);
       return null;
     } on ApiException catch (e) {
@@ -730,38 +966,56 @@ class AuthController extends StateNotifier<AuthState> {
 
   /// Drop back to unauthenticated landing.
   void reset() {
+    _sessionInvalidationEpoch += 1;
+    _ownedSessionIdentity = null;
+    onSessionIdentityChanged?.call(null);
     state = const AuthUnauthenticated();
   }
 
   /// User-initiated logout: revokes the refresh token server-side, then
   /// wipes local state.
   Future<void> logout() async {
+    final logoutEpoch = ++_sessionInvalidationEpoch;
+    final exitingSession = _ownedSessionIdentity;
+    _ownedSessionIdentity = null;
+    onSessionIdentityChanged?.call(null);
     debugPrint('[AuthController] logout() called from ${state.runtimeType}');
     final exitingUser = switch (state) {
       AuthAuthenticated(:final user) => user,
       _ => null,
     };
+    // Start exact server/local teardown while A is still the captured owner.
+    // The router transition waits only for local cleanup; the server request
+    // may remain in flight, but its interceptor and storage CAS stay bound to
+    // [exitingSession] and can never attach/clear a later B session.
+    final serverLogout = _logoutExactOwner().then<void>(
+      (_) => debugPrint('[AuthController] _repo.logout() returned'),
+      onError: (Object error, StackTrace stackTrace) {
+        if (error is TimeoutException) {
+          debugPrint('[AuthController] exact-owner logout cleanup timed out');
+        } else {
+          debugPrint(
+            '[AuthController] exact-owner logout cleanup failed: $error',
+          );
+        }
+      },
+    );
     try {
-      await _repo.logout().timeout(const Duration(seconds: 8));
-      debugPrint('[AuthController] _repo.logout() returned');
-    } on TimeoutException {
-      debugPrint('[AuthController] _repo.logout() timed out — wiping locally');
-      try {
-        await _repo.clear();
-      } catch (_) {}
-    } catch (e) {
-      debugPrint('[AuthController] _repo.logout() threw: $e — wiping locally');
-      try {
-        await _repo.clear();
-      } catch (_) {}
-    }
-    try {
-      await onLocalStateClear?.call(exitingUser);
+      await onLocalStateClear?.call(exitingUser, exitingSession);
     } catch (_) {
       // Cache wipe is best-effort — never block logout on storage errors.
     }
-    state = const AuthUnauthenticated();
+    if (mounted && logoutEpoch == _sessionInvalidationEpoch) {
+      state = const AuthUnauthenticated();
+    }
+    await serverLogout;
     debugPrint('[AuthController] state → AuthUnauthenticated');
+  }
+
+  /// Starts logout in an async boundary so even a synchronous repository
+  /// failure is observed by the best-effort cleanup handler below.
+  Future<bool> _logoutExactOwner() async {
+    return _repo.logout().timeout(const Duration(seconds: 8));
   }
 
   /// User dismisses the "already signed in elsewhere" block dialog.
@@ -857,6 +1111,7 @@ class AuthController extends StateNotifier<AuthState> {
         final session = await _repo.providerSelectRole(
           selectionToken: current.selectionToken!,
           role: current.role!.name,
+          phone: current.phone,
           forceLogin: true,
         );
         await _completeProviderSession(session);
@@ -922,30 +1177,23 @@ class AuthController extends StateNotifier<AuthState> {
   /// fires for [AuthUnknown] — without that, a session that died while
   /// the app was force-quit gets bounced from /users/me on bootstrap, the
   /// interceptor wipes tokens, but the UI stays stuck on splash.
-  void onForceLogoutFromInterceptor() {
+  void onForceLogoutFromInterceptor([AuthForceLogoutEvent? event]) {
+    final owned = _ownedSessionIdentity;
+    if (event != null && owned != null && !event.owns(owned)) {
+      return;
+    }
+    _sessionInvalidationEpoch += 1;
+    _ownedSessionIdentity = null;
+    onSessionIdentityChanged?.call(null);
     if (state is AuthUnauthenticated) return;
     final exitingUser = switch (state) {
       AuthAuthenticated(:final user) => user,
       _ => null,
     };
-    final clear = onLocalStateClear?.call(exitingUser);
+    final clear = onLocalStateClear?.call(exitingUser, owned);
     if (clear != null) unawaited(clear);
     state = const AuthUnauthenticated(
       error: 'Your session ended. Please sign in again.',
     );
-  }
-
-  /// Re-validate the session against [kSessionTtl]. Called on app resume
-  /// so a session that crossed the TTL while the app was backgrounded
-  /// gets invalidated immediately rather than on the next 401.
-  ///
-  /// Noop if the user isn't authenticated.
-  Future<void> recheckSessionOnResume() async {
-    if (state is! AuthAuthenticated) return;
-    final startedAt = await _tokenStorage.readSessionStartedAt();
-    if (startedAt == null) return;
-    if (DateTime.now().difference(startedAt) > kSessionTtl) {
-      await logout();
-    }
   }
 }

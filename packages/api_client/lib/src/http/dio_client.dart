@@ -31,7 +31,7 @@ DioClient createDioClient({
   required void Function(AppUpdateRequirement requirement) onAppUpdateRequired,
   void Function(MobileServiceIssue issue)? onServiceIssue,
   void Function()? onServiceRecovered,
-  void Function()? onForceLogout,
+  void Function(AuthForceLogoutEvent event)? onForceLogout,
   bool? enableLogging,
 }) {
   final dio = Dio(

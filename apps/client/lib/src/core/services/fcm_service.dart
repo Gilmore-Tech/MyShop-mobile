@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
-import 'package:api_client/api_client.dart' show AppCallSession;
+import 'package:api_client/api_client.dart'
+    show AppCallSession, AuthSessionIdentity;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -370,6 +371,9 @@ class FcmService {
   StreamSubscription<VoipCallBridgeEvent>? _voipEventSub;
   StreamSubscription<AppCallSession>? _incomingCallStateSub;
   final Set<String> _trackedIncomingCallIds = <String>{};
+  AuthSessionIdentity? _deviceRegistrationIdentity;
+  AuthSessionIdentity? _voipRegistrationIdentity;
+  int _lifecycleEpoch = 0;
   bool _initialised = false;
   Future<void>? _initializing;
 
@@ -497,17 +501,34 @@ class FcmService {
 
   Future<void> syncToken() async {
     debugPrint('[FCM] syncToken() entered');
+    final operationEpoch = ++_lifecycleEpoch;
+    final identity =
+        (await _ref.read(appTokenStorageProvider).readTokenSnapshot()).identity;
+    if (identity == null || operationEpoch != _lifecycleEpoch) return;
 
     // Register the token-refresh listener FIRST. On iOS, APNs registration
     // on a fresh install can take longer than our initial retry window.
     // If we exhaust retries here, the FCM token still arrives later via
     // onTokenRefresh — and we need the listener already wired so the
     // _register call fires the moment the token shows up.
-    _tokenRefreshSub?.cancel();
-    _tokenRefreshSub = _fcm.onTokenRefresh.listen(_register);
+    final previousTokenRefreshSub = _tokenRefreshSub;
+    await previousTokenRefreshSub?.cancel();
+    if (_tokenRefreshSub == previousTokenRefreshSub) {
+      _tokenRefreshSub = null;
+    }
+    if (!await _ownsLifecycle(operationEpoch, identity)) return;
+    _tokenRefreshSub = _fcm.onTokenRefresh.listen(
+      (token) => _register(token, expectedIdentity: identity),
+    );
     if (Platform.isIOS) {
-      _wireVoipBridge();
-      unawaited(_syncVoipTokenOnce());
+      final previousVoipSub = _voipEventSub;
+      await previousVoipSub?.cancel();
+      if (_voipEventSub == previousVoipSub) {
+        _voipEventSub = null;
+      }
+      if (!await _ownsLifecycle(operationEpoch, identity)) return;
+      _wireVoipBridge(identity);
+      unawaited(_syncVoipTokenOnce(expectedIdentity: identity));
     }
 
     // iOS: FCM derives its token from the APNs device token. On cold
@@ -516,7 +537,7 @@ class FcmService {
     // within our budget, return and let onTokenRefresh catch it.
     if (Platform.isIOS) {
       final apnsReady = await _awaitApnsToken();
-      if (!apnsReady) {
+      if (!apnsReady || !await _ownsLifecycle(operationEpoch, identity)) {
         debugPrint('[FCM] APNs not ready within budget — '
             'onTokenRefresh will register the token when it arrives');
         return;
@@ -535,6 +556,7 @@ class FcmService {
       }
       debugPrint('[FCM] getToken null (attempt $attempt/3) — retrying');
       await Future<void>.delayed(Duration(seconds: attempt * 2));
+      if (!await _ownsLifecycle(operationEpoch, identity)) return;
     }
     if (token == null) {
       debugPrint('[FCM] initial getToken exhausted retries — '
@@ -542,7 +564,17 @@ class FcmService {
       return;
     }
     debugPrint('[FCM] obtained device token');
-    await _register(token);
+    await _register(token, expectedIdentity: identity);
+  }
+
+  Future<bool> _ownsLifecycle(
+    int operationEpoch,
+    AuthSessionIdentity identity,
+  ) async {
+    if (operationEpoch != _lifecycleEpoch) return false;
+    final current =
+        (await _ref.read(appTokenStorageProvider).readTokenSnapshot()).identity;
+    return operationEpoch == _lifecycleEpoch && current == identity;
   }
 
   /// Returns true if APNs token arrived within the retry budget, false
@@ -566,23 +598,35 @@ class FcmService {
     return false;
   }
 
-  Future<void> _register(String token) async {
-    // Pull active role from secure storage. The backend keys
-    // device_tokens on (userId, role, platform) — passing the wrong
-    // role here silently routes another role's pushes to this device.
-    // No role stored = no authenticated session, so skip registration.
-    final role = await _ref.read(appTokenStorageProvider).readRole();
-    if (role == null || role.isEmpty) {
-      debugPrint('[FCM] no active role — skipping device registration');
+  Future<void> _register(
+    String token, {
+    AuthSessionIdentity? expectedIdentity,
+  }) async {
+    final identity = expectedIdentity ??
+        (await _ref.read(appTokenStorageProvider).readTokenSnapshot()).identity;
+    if (identity == null) {
+      debugPrint('[FCM] no active session — skipping device registration');
       return;
     }
+    if ((await _ref.read(appTokenStorageProvider).readTokenSnapshot())
+            .identity !=
+        identity) {
+      return;
+    }
+    final role = identity.role;
     for (int attempt = 1; attempt <= 3; attempt++) {
       try {
         await _ref.read(notificationServiceProvider).registerDevice(
               fcmToken: token,
               platform: _platform,
               role: role,
+              expectedIdentity: identity,
             );
+        if ((await _ref.read(appTokenStorageProvider).readTokenSnapshot())
+                .identity ==
+            identity) {
+          _deviceRegistrationIdentity = identity;
+        }
         debugPrint('[FCM] token registered (role=$role, attempt $attempt)');
         return;
       } catch (e) {
@@ -595,16 +639,23 @@ class FcmService {
     debugPrint('[FCM] register exhausted retries — token NOT registered');
   }
 
-  void _wireVoipBridge() {
+  void _wireVoipBridge(AuthSessionIdentity identity) {
     _voipEventSub ??= VoipCallBridgeService.instance.events.listen((event) {
       switch (event.type) {
         case VoipCallBridgeEventType.tokenUpdated:
           final token = event.token;
           if (token != null && token.isNotEmpty) {
-            unawaited(_registerVoipToken(token));
+            unawaited(
+              _registerVoipToken(token, expectedIdentity: identity),
+            );
           }
         case VoipCallBridgeEventType.tokenInvalidated:
-          unawaited(_unregisterVoipToken(event.token));
+          unawaited(
+            _unregisterVoipToken(
+              event.token,
+              expectedIdentity: identity,
+            ),
+          );
         case VoipCallBridgeEventType.incomingCall:
           debugPrint('[VoIP] incoming call bridge event: ${event.payload}');
           unawaited(_trackIncomingCall(event));
@@ -775,16 +826,22 @@ class FcmService {
     throw lastError!;
   }
 
-  Future<void> _syncVoipTokenOnce() async {
+  Future<void> _syncVoipTokenOnce({
+    required AuthSessionIdentity expectedIdentity,
+  }) async {
     final token = await VoipCallBridgeService.instance.getVoipToken();
     if (token == null || token.isEmpty) return;
-    await _registerVoipToken(token);
+    await _registerVoipToken(token, expectedIdentity: expectedIdentity);
   }
 
-  Future<void> _registerVoipToken(String token) async {
-    final role = await _ref.read(appTokenStorageProvider).readRole();
-    if (role == null || role.isEmpty) {
-      debugPrint('[VoIP] no active role — skipping token registration');
+  Future<void> _registerVoipToken(
+    String token, {
+    required AuthSessionIdentity expectedIdentity,
+  }) async {
+    if ((await _ref.read(appTokenStorageProvider).readTokenSnapshot())
+            .identity !=
+        expectedIdentity) {
+      debugPrint('[VoIP] no active session — skipping token registration');
       return;
     }
 
@@ -792,8 +849,17 @@ class FcmService {
       try {
         await _ref.read(notificationServiceProvider).registerVoipDevice(
               voipToken: token,
+              expectedIdentity: expectedIdentity,
             );
-        debugPrint('[VoIP] token registered (role=$role, attempt $attempt)');
+        if ((await _ref.read(appTokenStorageProvider).readTokenSnapshot())
+                .identity ==
+            expectedIdentity) {
+          _voipRegistrationIdentity = expectedIdentity;
+        }
+        debugPrint(
+          '[VoIP] token registered '
+          '(role=${expectedIdentity.role}, attempt $attempt)',
+        );
         return;
       } catch (e) {
         debugPrint('[VoIP] register attempt $attempt/3 failed: $e');
@@ -805,11 +871,22 @@ class FcmService {
     debugPrint('[VoIP] register exhausted retries — token NOT registered');
   }
 
-  Future<void> _unregisterVoipToken(String? token) async {
+  Future<void> _unregisterVoipToken(
+    String? token, {
+    AuthSessionIdentity? expectedIdentity,
+  }) async {
+    if (expectedIdentity == null) {
+      debugPrint('[VoIP] no owned session — skipping token unregister');
+      return;
+    }
     try {
       await _ref.read(notificationServiceProvider).unregisterVoipDevice(
             voipToken: token,
+            expectedIdentity: expectedIdentity,
           );
+      if (_voipRegistrationIdentity == expectedIdentity) {
+        _voipRegistrationIdentity = null;
+      }
       debugPrint('[VoIP] token unregistered');
     } catch (e) {
       debugPrint('[VoIP] unregister failed: $e');
@@ -825,13 +902,26 @@ class FcmService {
   /// Cancel subs and delete the device token so the next account on this
   /// device registers a fresh binding.
   Future<void> dispose() async {
-    await _tokenRefreshSub?.cancel();
-    _tokenRefreshSub = null;
+    final operationEpoch = ++_lifecycleEpoch;
+    final deviceOwner = _deviceRegistrationIdentity;
+    final voipOwner = _voipRegistrationIdentity;
+    final tokenRefreshSub = _tokenRefreshSub;
+    await tokenRefreshSub?.cancel();
+    if (_tokenRefreshSub == tokenRefreshSub) {
+      _tokenRefreshSub = null;
+    }
+    if (operationEpoch != _lifecycleEpoch) return;
     await _unregisterVoipToken(
       await VoipCallBridgeService.instance.getVoipToken(),
+      expectedIdentity: voipOwner,
     );
-    await _voipEventSub?.cancel();
-    _voipEventSub = null;
+    if (operationEpoch != _lifecycleEpoch) return;
+    final voipEventSub = _voipEventSub;
+    await voipEventSub?.cancel();
+    if (_voipEventSub == voipEventSub) {
+      _voipEventSub = null;
+    }
+    if (operationEpoch != _lifecycleEpoch) return;
     await _incomingCallStateSub?.cancel();
     _incomingCallStateSub = null;
     final socket = _ref.read(appCallSocketServiceProvider);
@@ -839,8 +929,17 @@ class FcmService {
       socket.leaveCall(callId);
     }
     _trackedIncomingCallIds.clear();
+    final currentIdentity =
+        (await _ref.read(appTokenStorageProvider).readTokenSnapshot()).identity;
+    if (operationEpoch != _lifecycleEpoch ||
+        (currentIdentity != null && currentIdentity != deviceOwner)) {
+      return;
+    }
     try {
       await _fcm.deleteToken();
+      if (_deviceRegistrationIdentity == deviceOwner) {
+        _deviceRegistrationIdentity = null;
+      }
     } catch (_) {
       // best-effort
     }

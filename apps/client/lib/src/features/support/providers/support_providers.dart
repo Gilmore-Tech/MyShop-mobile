@@ -46,9 +46,7 @@ final clientRoleSessionIdentityProvider =
   if (auth is! AuthAuthenticated) return null;
 
   final roleAccountId = auth.profile.client?.id;
-  if (roleAccountId == null ||
-      roleAccountId.isEmpty ||
-      auth.profile.id != roleAccountId) {
+  if (roleAccountId == null || roleAccountId.isEmpty) {
     throw const FormatException('Invalid client role account identity.');
   }
   final token = await ref.read(tokenStorageProvider).readAccessToken();
@@ -98,7 +96,6 @@ LegalConsentStatus? usableClientLegalConsentStatus(
   final identity = currentIdentity.valueOrNull;
   final snapshot = scoped.valueOrNull;
   if (roleAccountId == null ||
-      auth.profile.id != roleAccountId ||
       identity == null ||
       identity.role != 'client' ||
       identity.roleAccountId != roleAccountId ||

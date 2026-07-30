@@ -13,6 +13,7 @@ dependencies:
   shared_models:
     path: ../shared_models
   flutter_secure_storage: ^9.2.0
+  shared_preferences: ^2.3.0
   device_info_plus: ^11.5.0
   package_info_plus: ^8.3.1
   uuid: ^4.5.1

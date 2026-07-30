@@ -8,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/di/force_logout_handler.dart';
 import '../../../core/di/providers.dart';
+import '../../../core/providers/auth_session_identity_provider.dart';
+import '../../../core/providers/service_notice_provider.dart';
 import '../data/auth_repository.dart';
 
 // ---------------------------------------------------------------------------
@@ -21,6 +23,18 @@ sealed class ClientAuthState {
 /// Initial state while checking for stored tokens.
 class AuthUnknown extends ClientAuthState {
   const AuthUnknown();
+}
+
+/// Stored credentials still exist, but the role profile is temporarily
+/// unavailable. Keep the user away from OTP and offer a bounded retry.
+class AuthSessionRestorePending extends ClientAuthState {
+  const AuthSessionRestorePending({
+    this.isRetrying = false,
+    this.error,
+  });
+
+  final bool isRetrying;
+  final String? error;
 }
 
 /// No valid session — show login / onboarding.
@@ -123,10 +137,15 @@ final tokenStorageProvider = Provider<TokenStorage>((ref) {
 });
 
 final clientAuthRepositoryProvider = Provider<ClientAuthRepository>((ref) {
+  final refresher = ref.watch(tokenRefresherProvider);
   return ClientAuthRepository(
     service: ref.watch(authServiceProvider),
     tokenStorage: ref.watch(tokenStorageProvider),
     deviceIdProvider: ref.watch(deviceIdProvider),
+    refreshSession: (session) =>
+        refresher.refreshForBootstrap(expectedSession: session),
+    refreshLogoutSession: (fence) =>
+        refresher.refreshForExplicitLogout(fence: fence),
   );
 });
 
@@ -140,6 +159,11 @@ final clientAuthControllerProvider =
   final controller = ClientAuthController(
     ref.watch(clientAuthRepositoryProvider),
     ref.watch(systemTelemetryProvider),
+    const Duration(seconds: 8),
+    (identity) {
+      ref.read(currentClientAuthSessionIdentityProvider.notifier).state =
+          identity;
+    },
   );
   // Register with the Dio interceptor's force-logout dispatcher so that
   // SESSION_TAKEN_OVER / TOKEN_EXPIRED / etc. flip the controller to
@@ -147,6 +171,15 @@ final clientAuthControllerProvider =
   ref
       .read(forceLogoutHandlerProvider)
       .register(controller.onForceLogoutFromInterceptor);
+  ref.listen<int>(
+    serviceNoticeProvider.select((notice) => notice.recoveryEpoch),
+    (previous, next) {
+      if (previous == next) return;
+      if (controller.isSessionRestorePending) {
+        unawaited(controller.retrySessionRestore());
+      }
+    },
+  );
   controller.bootstrap();
   return controller;
 });
@@ -184,38 +217,110 @@ Future<void> loadOnboardingFlag(ProviderContainer container) async {
 // ---------------------------------------------------------------------------
 
 class ClientAuthController extends StateNotifier<ClientAuthState> {
-  ClientAuthController(this._repo, [this._telemetry])
-      : super(const AuthUnknown());
+  ClientAuthController(
+    this._repo, [
+    this._telemetry,
+    this._bootstrapTimeout = const Duration(seconds: 8),
+    this._onSessionIdentityChanged,
+  ]) : super(const AuthUnknown());
 
   final ClientAuthRepository _repo;
   final SystemTelemetryService? _telemetry;
+  final Duration _bootstrapTimeout;
+  final void Function(AuthSessionIdentity?)? _onSessionIdentityChanged;
   bool _requesting = false;
+  bool _restoringSession = false;
+  int _sessionInvalidationEpoch = 0;
+  AuthSessionIdentity? _publishedSessionIdentity;
+
+  AuthSessionIdentity? get publishedSessionIdentity =>
+      _publishedSessionIdentity;
+
+  bool get isSessionRestorePending => state is AuthSessionRestorePending;
+
+  void _publishSessionIdentity(AuthSessionIdentity? identity) {
+    _publishedSessionIdentity = identity;
+    _onSessionIdentityChanged?.call(identity);
+  }
 
   /// Try to restore session from stored tokens.
-  Future<void> bootstrap() async {
+  Future<void> bootstrap() => _restoreStoredSession(isRetry: false);
+
+  /// Retry a deferred profile/bootstrap request without requesting another
+  /// OTP or discarding the stored token pair.
+  Future<void> retrySessionRestore() => _restoreStoredSession(isRetry: true);
+
+  Future<void> _restoreStoredSession({required bool isRetry}) async {
+    if (_restoringSession) return;
+    _restoringSession = true;
+    final attemptEpoch = _sessionInvalidationEpoch;
+    if (isRetry) {
+      state = const AuthSessionRestorePending(isRetrying: true);
+    }
+
     try {
-      UserProfile? profile;
+      ClientBootstrapResult result;
       try {
-        profile = await _repo.bootstrap().timeout(const Duration(seconds: 8));
+        result = await _repo.bootstrap().timeout(_bootstrapTimeout);
       } on TimeoutException {
-        debugPrint('[Auth] client bootstrap timed out after 8 seconds');
+        debugPrint(
+          '[Auth] client bootstrap timed out after '
+          '${_bootstrapTimeout.inSeconds} seconds',
+        );
+        if (mounted && attemptEpoch == _sessionInvalidationEpoch) {
+          state = const AuthSessionRestorePending(
+            error: 'Connect to the internet and try again.',
+          );
+        }
+        return;
       }
-      if (profile != null) {
-        state = AuthAuthenticated(profile);
-        unawaited(_refreshRestoredProfile());
-      } else {
-        state = const AuthUnauthenticated();
+
+      if (!mounted || attemptEpoch != _sessionInvalidationEpoch) return;
+      switch (result) {
+        case ClientBootstrapReady(:final profile, :final identity):
+          if (profile.client?.id != identity.roleAccountId ||
+              identity.role != AuthRole.client.name ||
+              !await _repo.isSessionCurrent(identity)) {
+            return;
+          }
+          _publishSessionIdentity(identity);
+          state = AuthAuthenticated(profile);
+          unawaited(_refreshRestoredProfile());
+        case ClientBootstrapNoSession():
+          _publishSessionIdentity(null);
+          state = const AuthUnauthenticated();
+        case ClientBootstrapDeferred():
+          state = const AuthSessionRestorePending(
+            error: 'Connect to the internet and try again.',
+          );
       }
     } catch (error, stackTrace) {
       debugPrint('[Auth] client bootstrap failed: $error\n$stackTrace');
-      state = const AuthUnauthenticated();
+      if (mounted && attemptEpoch == _sessionInvalidationEpoch) {
+        // Fail closed: an unexpected local/network error is not proof that a
+        // stored session is terminal. The interceptor is the sole authority
+        // that may turn a confirmed token failure into sign-in.
+        state = const AuthSessionRestorePending(
+          error: 'Connect to the internet and try again.',
+        );
+      }
+    } finally {
+      _restoringSession = false;
     }
   }
 
   Future<void> _refreshRestoredProfile() async {
+    final refreshEpoch = _sessionInvalidationEpoch;
+    final expectedIdentity = _publishedSessionIdentity;
+    if (expectedIdentity == null) return;
     try {
       final profile = await _repo.fetchProfile();
-      if (mounted && state is AuthAuthenticated) {
+      if (mounted &&
+          refreshEpoch == _sessionInvalidationEpoch &&
+          _publishedSessionIdentity == expectedIdentity &&
+          profile.client?.id == expectedIdentity.roleAccountId &&
+          await _repo.isSessionCurrent(expectedIdentity) &&
+          state is AuthAuthenticated) {
         state = AuthAuthenticated(profile);
       }
     } catch (error) {
@@ -387,30 +492,68 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
 
     try {
       await _repo.verifyOtp(phone: current.phone, code: code);
-      final profile = await _repo.fetchProfile();
-      // markOnboardingSeen() is fired from OnboardingScreen._finish, not
-      // here — verifying OTP doesn't mean the user has been shown the
-      // tutorial yet. Authenticated users without the seen flag get
-      // routed to /onboarding by the router redirect.
-      state = AuthAuthenticated(profile);
-      _telemetry?.trackAction('client_login_completed');
     } on ApiException catch (e) {
       state = AuthOtpSent(
         phone: current.phone,
         isNewUser: current.isNewUser,
         error: AuthErrorMapper.message(e),
       );
+      return;
     } on AuthException catch (e) {
       state = AuthOtpSent(
         phone: current.phone,
         isNewUser: current.isNewUser,
         error: e.message,
       );
+      return;
     } catch (e) {
       state = AuthOtpSent(
         phone: current.phone,
         isNewUser: current.isNewUser,
         error: 'Verification failed. Please try again.',
+      );
+      return;
+    }
+
+    // A successful OTP establishes a new session. Any terminal callback from
+    // the previous session that completed before this point must not suppress
+    // the newly issued credentials; callbacks after this point still win.
+    final verificationEpoch = ++_sessionInvalidationEpoch;
+    final verificationIdentity = await _repo.readSessionIdentity();
+    if (verificationIdentity == null ||
+        verificationIdentity.role != AuthRole.client.name) {
+      state = const AuthSessionRestorePending(
+        error: 'Connect to the internet and try again.',
+      );
+      return;
+    }
+    // Track the newly-issued owner before loading its profile so a delayed
+    // force-logout event from the previous SID cannot cancel this session.
+    _publishSessionIdentity(verificationIdentity);
+    state = const AuthSessionRestorePending(isRetrying: true);
+    try {
+      final profile = await _repo.fetchProfile().timeout(_bootstrapTimeout);
+      if (!mounted ||
+          verificationEpoch != _sessionInvalidationEpoch ||
+          profile.client?.id != verificationIdentity.roleAccountId ||
+          !await _repo.isSessionCurrent(verificationIdentity)) {
+        return;
+      }
+      // markOnboardingSeen() is fired from OnboardingScreen._finish, not
+      // here — verifying OTP doesn't mean the user has been shown the
+      // tutorial yet. Authenticated users without the seen flag get
+      // routed to /onboarding by the router redirect.
+      _publishSessionIdentity(verificationIdentity);
+      state = AuthAuthenticated(profile);
+      _telemetry?.trackAction('client_login_completed');
+    } catch (error) {
+      if (!mounted || verificationEpoch != _sessionInvalidationEpoch) return;
+      debugPrint(
+        '[Auth] OTP accepted but client profile is temporarily unavailable: '
+        '$error',
+      );
+      state = const AuthSessionRestorePending(
+        error: 'Connect to the internet and try again.',
       );
     }
   }
@@ -462,8 +605,18 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
   /// Re-fetch the user profile.
   Future<String?> refreshProfile() async {
     if (state is! AuthAuthenticated) return 'Not authenticated';
+    final expectedIdentity = _publishedSessionIdentity;
+    final operationEpoch = _sessionInvalidationEpoch;
+    if (expectedIdentity == null) return 'Not authenticated';
     try {
       final profile = await _repo.fetchProfile();
+      if (!mounted ||
+          operationEpoch != _sessionInvalidationEpoch ||
+          _publishedSessionIdentity != expectedIdentity ||
+          profile.client?.id != expectedIdentity.roleAccountId ||
+          !await _repo.isSessionCurrent(expectedIdentity)) {
+        return 'The authenticated session changed.';
+      }
       state = AuthAuthenticated(profile);
       return null;
     } catch (_) {
@@ -474,8 +627,18 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
   /// Update the user's profile.
   Future<String?> updateProfile(UpdateProfileRequest request) async {
     if (state is! AuthAuthenticated) return 'Not authenticated';
+    final expectedIdentity = _publishedSessionIdentity;
+    final operationEpoch = _sessionInvalidationEpoch;
+    if (expectedIdentity == null) return 'Not authenticated';
     try {
       final updated = await _repo.updateProfile(request);
+      if (!mounted ||
+          operationEpoch != _sessionInvalidationEpoch ||
+          _publishedSessionIdentity != expectedIdentity ||
+          updated.client?.id != expectedIdentity.roleAccountId ||
+          !await _repo.isSessionCurrent(expectedIdentity)) {
+        return 'The authenticated session changed.';
+      }
       state = AuthAuthenticated(updated);
       return null;
     } on ApiException catch (e) {
@@ -491,14 +654,23 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
   }
 
   void reset() {
+    _sessionInvalidationEpoch += 1;
+    _publishSessionIdentity(null);
     state = const AuthUnauthenticated();
   }
 
   /// User-initiated logout: revokes the refresh token server-side, then
   /// wipes local state.
   Future<void> logout() async {
-    await _repo.logout();
+    final logoutEpoch = ++_sessionInvalidationEpoch;
+    _publishSessionIdentity(null);
     state = const AuthUnauthenticated();
+    try {
+      await _repo.logout();
+    } catch (error) {
+      debugPrint('[Auth] exact-owner logout cleanup deferred: $error');
+    }
+    if (!mounted || logoutEpoch != _sessionInvalidationEpoch) return;
   }
 
   /// User dismisses the "already signed in elsewhere" block dialog.
@@ -595,7 +767,13 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
   /// fires for [AuthUnknown] — without that, a session that died while
   /// the app was force-quit gets bounced from /users/me on bootstrap, the
   /// interceptor wipes tokens, but the UI stays stuck on splash.
-  void onForceLogoutFromInterceptor() {
+  void onForceLogoutFromInterceptor([AuthForceLogoutEvent? event]) {
+    final published = _publishedSessionIdentity;
+    if (event != null && published != null && !event.owns(published)) {
+      return;
+    }
+    _sessionInvalidationEpoch += 1;
+    _publishSessionIdentity(null);
     if (state is AuthUnauthenticated) return;
     state = const AuthUnauthenticated(
       error: 'Your session ended. Please sign in again.',

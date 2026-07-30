@@ -58,8 +58,10 @@ final dioClientProvider = Provider<DioClient>((ref) {
         ref.read(appUpdateRequirementProvider.notifier).requireUpdate,
     onServiceIssue: ref.read(serviceNoticeProvider.notifier).report,
     onServiceRecovered: ref.read(serviceNoticeProvider.notifier).recovered,
-    onForceLogout: () {
-      ref.read(authControllerProvider.notifier).onForceLogoutFromInterceptor();
+    onForceLogout: (event) {
+      ref
+          .read(authControllerProvider.notifier)
+          .onForceLogoutFromInterceptor(event);
     },
   );
 });
@@ -143,6 +145,7 @@ final appCallServiceProvider = Provider<AppCallService>((ref) {
 
 /// Live `/calls` socket used by the in-app call screen.
 final appCallSocketServiceProvider = Provider<AppCallSocketService>((ref) {
+  ref.watch(currentAuthSessionIdentityProvider);
   final service = AppCallSocketService(
     config: ref.watch(apiConfigProvider),
     tokenStorage: ref.watch(appTokenStorageProvider),

@@ -231,10 +231,7 @@ abstract final class AppRoutes {
   }) =>
       Uri(
         path: safetyEmergency,
-        queryParameters: {
-          'bookingType': bookingType,
-          'bookingId': bookingId,
-        },
+        queryParameters: {'bookingType': bookingType, 'bookingId': bookingId},
       ).toString();
 
   // Dev
@@ -302,7 +299,9 @@ GoRouter _buildRouter({
       // Still checking stored tokens/preferences — stay on the Flutter splash.
       // Both operations have bounded deadlines in main.dart, so this state
       // cannot strand the user indefinitely.
-      if (authState is AuthUnknown || !onboardingFlagLoaded) {
+      if (authState is AuthUnknown ||
+          authState is AuthSessionRestorePending ||
+          !onboardingFlagLoaded) {
         return path == AppRoutes.splash ? null : AppRoutes.splash;
       }
 
@@ -384,16 +383,10 @@ GoRouter _buildRouter({
     },
     routes: [
       // ── Dev menu ─────────────────────────────────────────────────────────────
-      GoRoute(
-        path: AppRoutes.dev,
-        builder: (_, __) => const DevMenuScreen(),
-      ),
+      GoRoute(path: AppRoutes.dev, builder: (_, __) => const DevMenuScreen()),
 
       // ── Onboarding ────────────────────────────────────────────────────────────
-      GoRoute(
-        path: AppRoutes.splash,
-        builder: (_, __) => const SplashScreen(),
-      ),
+      GoRoute(path: AppRoutes.splash, builder: (_, __) => const SplashScreen()),
       GoRoute(
         path: AppRoutes.onboarding,
         builder: (_, __) => const OnboardingScreen(),
@@ -557,9 +550,8 @@ GoRouter _buildRouter({
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.rideDispute,
-        builder: (_, state) => RideDisputeScreen(
-          rideId: state.pathParameters['rideId']!,
-        ),
+        builder: (_, state) =>
+            RideDisputeScreen(rideId: state.pathParameters['rideId']!),
       ),
 
       // ── Services sub-flow (full-screen, above shell) ──────────────────────────
@@ -658,9 +650,8 @@ GoRouter _buildRouter({
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.jobDispute,
-        builder: (_, state) => JobDisputeScreen(
-          jobId: state.pathParameters['jobId']!,
-        ),
+        builder: (_, state) =>
+            JobDisputeScreen(jobId: state.pathParameters['jobId']!),
       ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
@@ -781,9 +772,8 @@ GoRouter _buildRouter({
           GoRoute(
             path: 'help/article/:slug',
             parentNavigatorKey: _rootNavigatorKey,
-            builder: (_, state) => HelpArticleRouteScreen(
-              slug: state.pathParameters['slug']!,
-            ),
+            builder: (_, state) =>
+                HelpArticleRouteScreen(slug: state.pathParameters['slug']!),
           ),
         ],
       ),
@@ -861,9 +851,8 @@ GoRouter _buildRouter({
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.legalDocument,
-        builder: (_, state) => LegalDocumentRouteScreen(
-          slug: state.pathParameters['slug']!,
-        ),
+        builder: (_, state) =>
+            LegalDocumentRouteScreen(slug: state.pathParameters['slug']!),
       ),
     ],
 
@@ -882,13 +871,13 @@ GoRouter _buildRouter({
 /// Bridges Riverpod state to GoRouter redirects without replacing the router.
 class _ClientRouterRefresh extends ChangeNotifier {
   _ClientRouterRefresh(this._ref) {
-    _authSub = _ref.listen<ClientAuthState>(
-      clientAuthControllerProvider,
-      (_, next) {
-        _syncAuthenticatedDependencies(next);
-        notifyListeners();
-      },
-    );
+    _authSub = _ref.listen<ClientAuthState>(clientAuthControllerProvider, (
+      _,
+      next,
+    ) {
+      _syncAuthenticatedDependencies(next);
+      notifyListeners();
+    });
     _onboardingLoadedSub = _ref.listen<bool>(
       onboardingFlagLoadedProvider,
       (_, __) => notifyListeners(),

@@ -3,6 +3,12 @@ import 'package:dio/dio.dart';
 import 'package:test/test.dart';
 
 void main() {
+  const identity = AuthSessionIdentity(
+    subject: 'auth-root-1',
+    role: 'driver',
+    roleAccountId: 'driver-1',
+    sessionId: 'session-1',
+  );
   late Dio dio;
   late RequestOptions capturedRequest;
   late NotificationService service;
@@ -34,6 +40,7 @@ void main() {
       fcmToken: 'fcm-token',
       platform: 'android',
       role: 'driver',
+      expectedIdentity: identity,
     );
 
     expect(capturedRequest.method, 'POST');
@@ -43,6 +50,10 @@ void main() {
       'platform': 'android',
       'offerReceiptVersion': 2,
     });
+    expect(
+      capturedRequest.extra[AuthInterceptor.expectedSessionIdentityExtra],
+      identity,
+    );
   });
 
   test(
@@ -53,6 +64,7 @@ void main() {
       platform: 'android',
       role: 'driver',
       offerReceiptVersion: null,
+      expectedIdentity: identity,
     );
 
     expect(capturedRequest.data, {
@@ -64,6 +76,7 @@ void main() {
   test('registers the ActivityKit push-to-start token', () async {
     await service.registerLiveActivityDevice(
       pushToStartToken: 'push-to-start-token',
+      expectedIdentity: identity,
     );
 
     expect(capturedRequest.method, 'POST');
@@ -85,6 +98,7 @@ void main() {
       requestType: 'ride',
       requestId: '60d4cfb6-c198-453a-af51-c787624951a9',
       expiresAt: DateTime.parse('2026-07-15T12:00:45+00:00'),
+      expectedIdentity: identity,
     );
 
     expect(capturedRequest.method, 'POST');
@@ -103,6 +117,7 @@ void main() {
   test('unregisters ActivityKit tokens with stale-token guards', () async {
     await service.unregisterLiveActivityDevice(
       pushToStartToken: 'push-to-start-token',
+      expectedIdentity: identity,
     );
 
     expect(capturedRequest.method, 'DELETE');
@@ -118,6 +133,7 @@ void main() {
     await service.unregisterLiveActivity(
       activityId: 'activity-1',
       updateToken: 'update-token',
+      expectedIdentity: identity,
     );
 
     expect(capturedRequest.method, 'DELETE');

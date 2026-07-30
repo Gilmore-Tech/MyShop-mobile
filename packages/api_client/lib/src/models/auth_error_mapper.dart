@@ -39,6 +39,17 @@ class AuthErrorCodes {
   /// stored access token is fresh.
   static const refreshInFlight = 'REFRESH_IN_FLIGHT';
 
+  /// The private auth root or exact role account referenced by the refresh
+  /// credential no longer exists/is active. These are explicit terminal
+  /// backend decisions, not inferred from an HTTP status.
+  static const userNotFound = 'USER_NOT_FOUND';
+  static const roleAccountUnavailable = 'ROLE_ACCOUNT_UNAVAILABLE';
+  static const roleAccountMismatch = 'ROLE_ACCOUNT_MISMATCH';
+
+  /// The signed SID-bearing bootstrap proof no longer names the server's
+  /// current recoverable legacy lineage.
+  static const legacyBootstrapProofInvalid = 'LEGACY_BOOTSTRAP_PROOF_INVALID';
+
   /// Returned by /auth/verify-otp (400) during provider signup when the
   /// `regionId` carried by the earlier register call is unknown/inactive —
   /// practically only a stale-cache edge case. The app re-fetches
