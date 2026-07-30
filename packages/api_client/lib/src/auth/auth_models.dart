@@ -77,9 +77,17 @@ class AuthUser {
       AuthRole.client =>
         roleLegalName ?? profile.client?.displayName ?? 'Client',
     };
+    final roleAccountId = switch (role) {
+      AuthRole.driver => profile.driver?.id,
+      AuthRole.artisan => profile.artisan?.id,
+      AuthRole.client => profile.client?.id,
+    };
+    if (roleAccountId == null || roleAccountId.isEmpty) {
+      throw StateError('Active role profile has no role-account identity');
+    }
 
     return AuthUser(
-      id: profile.id,
+      id: roleAccountId,
       phone: profile.phone,
       fullName: roleName,
       // email: per-role ONLY. Null = user hasn't set one for this role.

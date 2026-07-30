@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 
-import 'package:api_client/api_client.dart' show ApiException, AppCallSession;
+import 'package:api_client/api_client.dart'
+    show ApiException, AppCallSession, AuthSessionIdentity;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -705,6 +706,10 @@ class FcmService {
   StreamSubscription<LiveActivityBridgeEvent>? _liveActivityEventSub;
   StreamSubscription<AppCallSession>? _incomingCallStateSub;
   final Set<String> _trackedIncomingCallIds = <String>{};
+  AuthSessionIdentity? _deviceRegistrationIdentity;
+  AuthSessionIdentity? _voipRegistrationIdentity;
+  AuthSessionIdentity? _liveActivityRegistrationIdentity;
+  int _lifecycleEpoch = 0;
   bool _initialised = false;
   Future<void>? _initializing;
 
@@ -1041,23 +1046,48 @@ class FcmService {
 
   Future<void> syncToken() async {
     debugPrint('[FCM] syncToken() entered');
+    final operationEpoch = ++_lifecycleEpoch;
+    final identity =
+        (await _ref.read(appTokenStorageProvider).readTokenSnapshot()).identity;
+    if (identity == null || operationEpoch != _lifecycleEpoch) return;
 
     // Register the token-refresh listener FIRST. On iOS, APNs registration
     // on a fresh install can take longer than our initial retry window.
     // If we exhaust retries here, the FCM token still arrives later via
     // onTokenRefresh — and we need the listener already wired so the
     // _register call fires the moment the token shows up.
-    _tokenRefreshSub?.cancel();
-    _tokenRefreshSub = _fcm.onTokenRefresh.listen(_register);
+    final previousTokenRefreshSub = _tokenRefreshSub;
+    await previousTokenRefreshSub?.cancel();
+    if (_tokenRefreshSub == previousTokenRefreshSub) {
+      _tokenRefreshSub = null;
+    }
+    if (!await _ownsLifecycle(operationEpoch, identity)) return;
+    _tokenRefreshSub = _fcm.onTokenRefresh.listen(
+      (token) => _register(token, expectedIdentity: identity),
+    );
     if (Platform.isIOS) {
-      _wireVoipBridge();
-      unawaited(_syncVoipTokenOnce());
-      _wireLiveActivityBridge();
+      final previousVoipSub = _voipEventSub;
+      await previousVoipSub?.cancel();
+      if (_voipEventSub == previousVoipSub) {
+        _voipEventSub = null;
+      }
+      if (!await _ownsLifecycle(operationEpoch, identity)) return;
+      _wireVoipBridge(identity);
+      unawaited(_syncVoipTokenOnce(expectedIdentity: identity));
+      final previousLiveActivitySub = _liveActivityEventSub;
+      await previousLiveActivitySub?.cancel();
+      if (_liveActivityEventSub == previousLiveActivitySub) {
+        _liveActivityEventSub = null;
+      }
+      if (!await _ownsLifecycle(operationEpoch, identity)) return;
+      _wireLiveActivityBridge(identity);
       // ActivityKit may have produced and persisted its token before Flutter
       // attached. Do not rely on a new native event being emitted: snapshots
       // are idempotent, and the later successful FCM registration repeats the
       // sync after the backend has a current device row to bind against.
-      unawaited(_syncLiveActivityTokensOnce());
+      unawaited(
+        _syncLiveActivityTokensOnce(expectedIdentity: identity),
+      );
     }
 
     // iOS: FCM derives its token from the APNs device token. On cold
@@ -1066,7 +1096,7 @@ class FcmService {
     // within our budget, return and let onTokenRefresh catch it.
     if (Platform.isIOS) {
       final apnsReady = await _awaitApnsToken();
-      if (!apnsReady) {
+      if (!apnsReady || !await _ownsLifecycle(operationEpoch, identity)) {
         debugPrint(
           '[FCM] APNs not ready within budget — '
           'onTokenRefresh will register the token when it arrives',
@@ -1087,6 +1117,7 @@ class FcmService {
       }
       debugPrint('[FCM] getToken null (attempt $attempt/3) — retrying');
       await Future<void>.delayed(Duration(seconds: attempt * 2));
+      if (!await _ownsLifecycle(operationEpoch, identity)) return;
     }
     if (token == null) {
       debugPrint(
@@ -1096,7 +1127,17 @@ class FcmService {
       return;
     }
     debugPrint('[FCM] obtained device token');
-    await _register(token);
+    await _register(token, expectedIdentity: identity);
+  }
+
+  Future<bool> _ownsLifecycle(
+    int operationEpoch,
+    AuthSessionIdentity identity,
+  ) async {
+    if (operationEpoch != _lifecycleEpoch) return false;
+    final current =
+        (await _ref.read(appTokenStorageProvider).readTokenSnapshot()).identity;
+    return operationEpoch == _lifecycleEpoch && current == identity;
   }
 
   /// Returns true if APNs token arrived within the retry budget, false
@@ -1121,27 +1162,32 @@ class FcmService {
     return false;
   }
 
-  Future<bool> _register(String token) async {
-    // Prefer the authenticated in-memory role. Secure storage can lag during a
-    // fresh login on Keychain/EncryptedSharedPreferences; previously a null
-    // read made registration exit permanently, leaving that session without
-    // background ride/job pushes until a future token refresh.
-    final authState = _ref.read(authControllerProvider);
-    final role = authState is AuthAuthenticated
-        ? authState.user.role.name
-        : await _ref.read(appTokenStorageProvider).readRole();
-    if (role == null || role.isEmpty) {
-      debugPrint('[FCM] no active role — skipping device registration');
+  Future<bool> _register(
+    String token, {
+    AuthSessionIdentity? expectedIdentity,
+  }) async {
+    final identity = expectedIdentity ??
+        (await _ref.read(appTokenStorageProvider).readTokenSnapshot()).identity;
+    if (identity == null ||
+        (await _ref.read(appTokenStorageProvider).readTokenSnapshot())
+                .identity !=
+            identity) {
+      debugPrint('[FCM] no active exact session — skipping registration');
       return false;
     }
+    final role = identity.role;
     for (int attempt = 1; attempt <= 3; attempt++) {
       try {
-        await _ref
-            .read(apiNotificationServiceProvider)
-            .registerDevice(fcmToken: token, platform: _platform, role: role);
+        await _ref.read(apiNotificationServiceProvider).registerDevice(
+              fcmToken: token,
+              platform: _platform,
+              role: role,
+              expectedIdentity: identity,
+            );
+        await _publishDeviceRegistrationOwner(identity);
         debugPrint('[FCM] token registered (role=$role, attempt $attempt)');
         if (Platform.isIOS) {
-          await _syncLiveActivityTokensOnce();
+          await _syncLiveActivityTokensOnce(expectedIdentity: identity);
         }
         return true;
       } on ApiException catch (e) {
@@ -1157,7 +1203,9 @@ class FcmService {
                   platform: _platform,
                   role: role,
                   offerReceiptVersion: 1,
+                  expectedIdentity: identity,
                 );
+            await _publishDeviceRegistrationOwner(identity);
             debugPrint(
               '[FCM] token registered with v1 receipt capability against an older backend; v2 will sync after backend upgrade',
             );
@@ -1171,7 +1219,9 @@ class FcmService {
                       platform: _platform,
                       role: role,
                       offerReceiptVersion: null,
+                      expectedIdentity: identity,
                     );
+                await _publishDeviceRegistrationOwner(identity);
                 debugPrint(
                   '[FCM] token registered against a pre-receipt backend; capability will sync after backend upgrade',
                 );
@@ -1207,16 +1257,33 @@ class FcmService {
     return false;
   }
 
-  void _wireVoipBridge() {
+  Future<void> _publishDeviceRegistrationOwner(
+    AuthSessionIdentity identity,
+  ) async {
+    if ((await _ref.read(appTokenStorageProvider).readTokenSnapshot())
+            .identity ==
+        identity) {
+      _deviceRegistrationIdentity = identity;
+    }
+  }
+
+  void _wireVoipBridge(AuthSessionIdentity identity) {
     _voipEventSub ??= VoipCallBridgeService.instance.events.listen((event) {
       switch (event.type) {
         case VoipCallBridgeEventType.tokenUpdated:
           final token = event.token;
           if (token != null && token.isNotEmpty) {
-            unawaited(_registerVoipToken(token));
+            unawaited(
+              _registerVoipToken(token, expectedIdentity: identity),
+            );
           }
         case VoipCallBridgeEventType.tokenInvalidated:
-          unawaited(_unregisterVoipToken(event.token));
+          unawaited(
+            _unregisterVoipToken(
+              event.token,
+              expectedIdentity: identity,
+            ),
+          );
         case VoipCallBridgeEventType.incomingCall:
           debugPrint('[VoIP] incoming call bridge event: ${event.payload}');
           unawaited(_trackIncomingCall(event));
@@ -1375,16 +1442,22 @@ class FcmService {
     throw lastError!;
   }
 
-  Future<void> _syncVoipTokenOnce() async {
+  Future<void> _syncVoipTokenOnce({
+    required AuthSessionIdentity expectedIdentity,
+  }) async {
     final token = await VoipCallBridgeService.instance.getVoipToken();
     if (token == null || token.isEmpty) return;
-    await _registerVoipToken(token);
+    await _registerVoipToken(token, expectedIdentity: expectedIdentity);
   }
 
-  Future<void> _registerVoipToken(String token) async {
-    final role = await _ref.read(appTokenStorageProvider).readRole();
-    if (role == null || role.isEmpty) {
-      debugPrint('[VoIP] no active role — skipping token registration');
+  Future<void> _registerVoipToken(
+    String token, {
+    required AuthSessionIdentity expectedIdentity,
+  }) async {
+    if ((await _ref.read(appTokenStorageProvider).readTokenSnapshot())
+            .identity !=
+        expectedIdentity) {
+      debugPrint('[VoIP] no active session — skipping token registration');
       return;
     }
 
@@ -1392,8 +1465,17 @@ class FcmService {
       try {
         await _ref.read(apiNotificationServiceProvider).registerVoipDevice(
               voipToken: token,
+              expectedIdentity: expectedIdentity,
             );
-        debugPrint('[VoIP] token registered (role=$role, attempt $attempt)');
+        if ((await _ref.read(appTokenStorageProvider).readTokenSnapshot())
+                .identity ==
+            expectedIdentity) {
+          _voipRegistrationIdentity = expectedIdentity;
+        }
+        debugPrint(
+          '[VoIP] token registered '
+          '(role=${expectedIdentity.role}, attempt $attempt)',
+        );
         return;
       } catch (e) {
         debugPrint('[VoIP] register attempt $attempt/3 failed: $e');
@@ -1405,20 +1487,33 @@ class FcmService {
     debugPrint('[VoIP] register exhausted retries — token NOT registered');
   }
 
-  Future<void> _unregisterVoipToken(String? token) async {
+  Future<void> _unregisterVoipToken(
+    String? token, {
+    AuthSessionIdentity? expectedIdentity,
+  }) async {
+    if (expectedIdentity == null) {
+      debugPrint('[VoIP] no owned session — skipping token unregister');
+      return;
+    }
     try {
       await _ref.read(apiNotificationServiceProvider).unregisterVoipDevice(
             voipToken: token,
+            expectedIdentity: expectedIdentity,
           );
+      if (_voipRegistrationIdentity == expectedIdentity) {
+        _voipRegistrationIdentity = null;
+      }
       debugPrint('[VoIP] token unregistered');
     } catch (e) {
       debugPrint('[VoIP] unregister failed: $e');
     }
   }
 
-  void _wireLiveActivityBridge() {
+  void _wireLiveActivityBridge(AuthSessionIdentity identity) {
     _liveActivityEventSub ??= LiveActivityService.instance.events.listen(
-      (event) => unawaited(_handleLiveActivityEvent(event)),
+      (event) => unawaited(
+        _handleLiveActivityEvent(event, expectedIdentity: identity),
+      ),
       onError: (Object error) {
         debugPrint('[LiveActivity] native event stream failed: $error');
       },
@@ -1426,72 +1521,125 @@ class FcmService {
   }
 
   Future<void> _handleLiveActivityEvent(
-    LiveActivityBridgeEvent event,
-  ) async {
+    LiveActivityBridgeEvent event, {
+    required AuthSessionIdentity expectedIdentity,
+  }) async {
     switch (event.type) {
       case LiveActivityBridgeEventType.pushToStartToken:
         final token = event.token;
         if (token != null && token.isNotEmpty) {
-          await _registerLiveActivityDevice(token);
+          await _registerLiveActivityDevice(
+            token,
+            expectedIdentity: expectedIdentity,
+          );
         }
       case LiveActivityBridgeEventType.activityUpdateToken:
         final activity = event.activity;
         if (activity != null) {
-          await _registerLiveActivity(activity);
+          await _registerLiveActivity(
+            activity,
+            expectedIdentity: expectedIdentity,
+          );
         }
       case LiveActivityBridgeEventType.activityEnded:
         final activity = event.activity;
         if (activity != null) {
-          await _unregisterLiveActivity(activity);
+          await _unregisterLiveActivity(
+            activity,
+            expectedIdentity: expectedIdentity,
+          );
         }
       case LiveActivityBridgeEventType.activitiesEnabled:
         if (event.activitiesEnabled == false) {
-          await _unregisterLiveActivityDevice();
+          await _unregisterLiveActivityDevice(
+            expectedIdentity: expectedIdentity,
+          );
         } else {
-          await _syncLiveActivityTokensOnce();
+          await _syncLiveActivityTokensOnce(
+            expectedIdentity: expectedIdentity,
+          );
         }
       case LiveActivityBridgeEventType.unknown:
         debugPrint('[LiveActivity] ignored unknown native event');
     }
   }
 
-  Future<void> _syncLiveActivityTokensOnce() async {
+  Future<void> _syncLiveActivityTokensOnce({
+    required AuthSessionIdentity expectedIdentity,
+  }) async {
     final state = await LiveActivityService.instance.getState();
     if (state.activitiesEnabled == false) {
-      await _unregisterLiveActivityDevice();
+      await _unregisterLiveActivityDevice(
+        expectedIdentity: expectedIdentity,
+      );
       return;
     }
     final pushToStartToken = state.pushToStartToken;
     if (pushToStartToken != null && pushToStartToken.isNotEmpty) {
-      await _registerLiveActivityDevice(pushToStartToken);
+      await _registerLiveActivityDevice(
+        pushToStartToken,
+        expectedIdentity: expectedIdentity,
+      );
     }
     for (final activity in state.activities) {
       if (activity.updateToken == null || activity.updateToken!.isEmpty) {
         continue;
       }
-      await _registerLiveActivity(activity);
+      await _registerLiveActivity(
+        activity,
+        expectedIdentity: expectedIdentity,
+      );
     }
   }
 
-  Future<void> _registerLiveActivityDevice(String token) async {
-    final role = await _ref.read(appTokenStorageProvider).readRole();
-    if (role == null || role.isEmpty) {
-      debugPrint('[LiveActivity] no active role — skipping token registration');
+  Future<void> _registerLiveActivityDevice(
+    String token, {
+    required AuthSessionIdentity expectedIdentity,
+  }) async {
+    if ((await _ref.read(appTokenStorageProvider).readTokenSnapshot())
+            .identity !=
+        expectedIdentity) {
+      debugPrint(
+        '[LiveActivity] no active session — skipping token registration',
+      );
       return;
     }
-    await _retryLiveActivityRegistration(
+    final registered = await _retryLiveActivityRegistration(
       label: 'push-to-start',
-      action: () => _ref
-          .read(apiNotificationServiceProvider)
-          .registerLiveActivityDevice(pushToStartToken: token),
+      action: () =>
+          _ref.read(apiNotificationServiceProvider).registerLiveActivityDevice(
+                pushToStartToken: token,
+                expectedIdentity: expectedIdentity,
+              ),
     );
+    if (registered &&
+        (await _ref.read(appTokenStorageProvider).readTokenSnapshot())
+                .identity ==
+            expectedIdentity) {
+      _liveActivityRegistrationIdentity = expectedIdentity;
+    }
   }
 
-  Future<void> _unregisterLiveActivityDevice({String? token}) async {
+  Future<void> _unregisterLiveActivityDevice({
+    String? token,
+    AuthSessionIdentity? expectedIdentity,
+  }) async {
+    if (expectedIdentity == null) {
+      debugPrint(
+        '[LiveActivity] no owned session — skipping device unregister',
+      );
+      return;
+    }
     try {
       await _ref
           .read(apiNotificationServiceProvider)
-          .unregisterLiveActivityDevice(pushToStartToken: token);
+          .unregisterLiveActivityDevice(
+            pushToStartToken: token,
+            expectedIdentity: expectedIdentity,
+          );
+      if (_liveActivityRegistrationIdentity == expectedIdentity) {
+        _liveActivityRegistrationIdentity = null;
+      }
       debugPrint('[LiveActivity] device unregistered');
     } catch (error) {
       debugPrint('[LiveActivity] device unregister failed: $error');
@@ -1499,16 +1647,20 @@ class FcmService {
   }
 
   Future<void> _registerLiveActivity(
-    LiveActivityRegistration activity,
-  ) async {
+    LiveActivityRegistration activity, {
+    required AuthSessionIdentity expectedIdentity,
+  }) async {
     final updateToken = activity.updateToken;
     if (updateToken == null || updateToken.isEmpty) return;
-    final role = await _ref.read(appTokenStorageProvider).readRole();
-    if (role == null || role.isEmpty) {
-      debugPrint('[LiveActivity] no active role — skipping activity token');
+    if ((await _ref.read(appTokenStorageProvider).readTokenSnapshot())
+            .identity !=
+        expectedIdentity) {
+      debugPrint(
+        '[LiveActivity] no active session — skipping activity token',
+      );
       return;
     }
-    await _retryLiveActivityRegistration(
+    final registered = await _retryLiveActivityRegistration(
       label: 'activity ${activity.activityId}',
       action: () =>
           _ref.read(apiNotificationServiceProvider).registerLiveActivity(
@@ -1518,17 +1670,32 @@ class FcmService {
                 requestType: activity.requestType,
                 requestId: activity.requestId,
                 expiresAt: activity.expiresAt,
+                expectedIdentity: expectedIdentity,
               ),
     );
+    if (registered &&
+        (await _ref.read(appTokenStorageProvider).readTokenSnapshot())
+                .identity ==
+            expectedIdentity) {
+      _liveActivityRegistrationIdentity = expectedIdentity;
+    }
   }
 
   Future<void> _unregisterLiveActivity(
-    LiveActivityRegistration activity,
-  ) async {
+    LiveActivityRegistration activity, {
+    AuthSessionIdentity? expectedIdentity,
+  }) async {
+    if (expectedIdentity == null) {
+      debugPrint(
+        '[LiveActivity] no owned session — skipping activity unregister',
+      );
+      return;
+    }
     try {
       await _ref.read(apiNotificationServiceProvider).unregisterLiveActivity(
             activityId: activity.activityId,
             updateToken: activity.updateToken,
+            expectedIdentity: expectedIdentity,
           );
       debugPrint('[LiveActivity] unregistered ${activity.activityId}');
     } catch (error) {
@@ -1538,7 +1705,7 @@ class FcmService {
     }
   }
 
-  Future<void> _retryLiveActivityRegistration({
+  Future<bool> _retryLiveActivityRegistration({
     required String label,
     required Future<void> Function() action,
   }) async {
@@ -1548,7 +1715,7 @@ class FcmService {
         debugPrint(
           '[LiveActivity] $label registered (attempt $attempt)',
         );
-        return;
+        return true;
       } catch (error) {
         debugPrint(
           '[LiveActivity] $label register attempt $attempt/3 failed: $error',
@@ -1558,6 +1725,7 @@ class FcmService {
         }
       }
     }
+    return false;
   }
 
   String get _platform {
@@ -1592,22 +1760,49 @@ class FcmService {
   /// Remove backend registration + cancel listeners. Call on logout so the
   /// user's next account on this device gets its own fresh token binding.
   Future<void> dispose() async {
-    await _tokenRefreshSub?.cancel();
-    _tokenRefreshSub = null;
+    final operationEpoch = ++_lifecycleEpoch;
+    final deviceOwner = _deviceRegistrationIdentity;
+    final voipOwner = _voipRegistrationIdentity;
+    final liveActivityOwner = _liveActivityRegistrationIdentity;
+    final tokenRefreshSub = _tokenRefreshSub;
+    await tokenRefreshSub?.cancel();
+    if (_tokenRefreshSub == tokenRefreshSub) {
+      _tokenRefreshSub = null;
+    }
+    if (operationEpoch != _lifecycleEpoch) return;
     await _unregisterVoipToken(
       await VoipCallBridgeService.instance.getVoipToken(),
+      expectedIdentity: voipOwner,
     );
-    await _voipEventSub?.cancel();
-    _voipEventSub = null;
+    if (operationEpoch != _lifecycleEpoch) return;
+    final voipEventSub = _voipEventSub;
+    await voipEventSub?.cancel();
+    if (_voipEventSub == voipEventSub) {
+      _voipEventSub = null;
+    }
+    if (operationEpoch != _lifecycleEpoch) return;
     if (Platform.isIOS) {
       final liveActivityState = await LiveActivityService.instance.getState();
+      if (operationEpoch != _lifecycleEpoch) return;
       await _unregisterLiveActivityDevice(
         token: liveActivityState.pushToStartToken,
+        expectedIdentity: liveActivityOwner,
       );
     }
-    await _liveActivityEventSub?.cancel();
-    _liveActivityEventSub = null;
+    if (operationEpoch != _lifecycleEpoch) return;
+    final liveActivityEventSub = _liveActivityEventSub;
+    await liveActivityEventSub?.cancel();
+    if (_liveActivityEventSub == liveActivityEventSub) {
+      _liveActivityEventSub = null;
+    }
+    if (operationEpoch != _lifecycleEpoch) return;
+    final currentBeforeEndAll =
+        (await _ref.read(appTokenStorageProvider).readTokenSnapshot()).identity;
+    if (currentBeforeEndAll != null && currentBeforeEndAll != deviceOwner) {
+      return;
+    }
     await LiveActivityService.instance.endAll();
+    if (operationEpoch != _lifecycleEpoch) return;
     await _incomingCallStateSub?.cancel();
     _incomingCallStateSub = null;
     final socket = _ref.read(appCallSocketServiceProvider);
@@ -1615,8 +1810,17 @@ class FcmService {
       socket.leaveCall(callId);
     }
     _trackedIncomingCallIds.clear();
+    final currentIdentity =
+        (await _ref.read(appTokenStorageProvider).readTokenSnapshot()).identity;
+    if (operationEpoch != _lifecycleEpoch ||
+        (currentIdentity != null && currentIdentity != deviceOwner)) {
+      return;
+    }
     try {
       await _fcm.deleteToken();
+      if (_deviceRegistrationIdentity == deviceOwner) {
+        _deviceRegistrationIdentity = null;
+      }
     } catch (_) {
       // best-effort
     }

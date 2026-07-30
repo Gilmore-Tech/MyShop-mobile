@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
+
+import '../../auth/providers/auth_controller.dart';
 
 /// Animated splash shown while the auth controller bootstraps from secure
 /// storage. The GoRouter redirect callback takes over routing once
@@ -9,14 +12,15 @@ import 'package:shared_ui/shared_ui.dart';
 ///
 /// Mirrors the client app's splash pattern: one [AnimationController] drives
 /// four staged entrance animations via [Interval] sub-curves.
-class ProviderSplashScreen extends StatefulWidget {
+class ProviderSplashScreen extends ConsumerStatefulWidget {
   const ProviderSplashScreen({super.key});
 
   @override
-  State<ProviderSplashScreen> createState() => _ProviderSplashScreenState();
+  ConsumerState<ProviderSplashScreen> createState() =>
+      _ProviderSplashScreenState();
 }
 
-class _ProviderSplashScreenState extends State<ProviderSplashScreen>
+class _ProviderSplashScreenState extends ConsumerState<ProviderSplashScreen>
     with SingleTickerProviderStateMixin {
   // ── Design tokens ──────────────────────────────────────────────────────────
   static const _bg = Color(0xFF0F1923); // rich dark navy
@@ -86,6 +90,8 @@ class _ProviderSplashScreenState extends State<ProviderSplashScreen>
     final size = MediaQuery.sizeOf(context);
     final w = size.width;
     final h = size.height;
+    final authState = ref.watch(authControllerProvider);
+    final pending = authState is AuthSessionRestorePending ? authState : null;
 
     return Scaffold(
       backgroundColor: _bg,
@@ -147,13 +153,21 @@ class _ProviderSplashScreenState extends State<ProviderSplashScreen>
               animation: _footerFade,
               builder: (_, __) => Opacity(
                 opacity: _footerFade.value,
-                child: Column(
-                  children: [
-                    _LoadingDots(w: w),
-                    SizedBox(height: h * 0.022),
-                    _Footer(w: w),
-                  ],
-                ),
+                child: pending == null
+                    ? Column(
+                        children: [
+                          _LoadingDots(w: w),
+                          SizedBox(height: h * 0.022),
+                          _Footer(w: w),
+                        ],
+                      )
+                    : _SessionRestorePanel(
+                        width: w,
+                        state: pending,
+                        onRetry: () => ref
+                            .read(authControllerProvider.notifier)
+                            .retrySessionRestore(),
+                      ),
               ),
             ),
           ),
@@ -164,6 +178,58 @@ class _ProviderSplashScreenState extends State<ProviderSplashScreen>
 }
 
 // ── Sub-widgets ──────────────────────────────────────────────────────────────
+
+class _SessionRestorePanel extends StatelessWidget {
+  const _SessionRestorePanel({
+    required this.width,
+    required this.state,
+    required this.onRetry,
+  });
+
+  final double width;
+  final AuthSessionRestorePending state;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      liveRegion: true,
+      label: 'Session recovery',
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: width * 0.1),
+        child: Column(
+          children: [
+            Text(
+              'Connect to the internet and try again.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.9),
+                fontSize: width * 0.04,
+              ),
+            ),
+            SizedBox(height: width * 0.04),
+            FilledButton.icon(
+              key: const ValueKey('retry_saved_session'),
+              onPressed: state.isRetrying ? null : onRetry,
+              style: FilledButton.styleFrom(
+                backgroundColor: MyShopColors.primaryGold,
+                foregroundColor: const Color(0xFF0F1923),
+                minimumSize: Size(width * 0.52, 48),
+              ),
+              icon: state.isRetrying
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh_rounded),
+              label: Text(state.isRetrying ? 'Reconnecting…' : 'Try again'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _LogoMark extends StatelessWidget {
   final double w;

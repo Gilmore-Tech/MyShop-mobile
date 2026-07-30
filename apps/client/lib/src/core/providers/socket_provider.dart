@@ -8,6 +8,7 @@ import 'package:shared_models/shared_models.dart' show RideStop;
 
 import '../../app/router.dart' show AppRoutes, routerProvider;
 import '../../features/auth/providers/auth_controller.dart';
+import 'auth_session_identity_provider.dart';
 import '../../features/activity/providers/activity_history_provider.dart';
 import '../../features/activity/providers/activity_provider.dart';
 import '../../features/home/providers/home_provider.dart';
@@ -43,6 +44,8 @@ final socketConnectedProvider = StateProvider<bool>((_) => false);
 /// from there. The socket service itself no longer carries an
 /// onForceLogout — kept consistent with the REST path.
 final socketServiceProvider = Provider<SocketService>((ref) {
+  // Recreate and dispose the transport on every full session replacement.
+  ref.watch(currentClientAuthSessionIdentityProvider);
   final config = ref.watch(apiConfigProvider);
   final tokenStorage = ref.watch(appTokenStorageProvider);
   final tokenRefresher = ref.watch(tokenRefresherProvider);
@@ -130,11 +133,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
     // events. Refresh the session-cached home preview once per authoritative
     // status so duplicate packets do not multiply history reads.
     final refreshedHomeActivityEvents = <String>{};
-    void invalidateHomeActivityOnce(
-      String type,
-      String? id,
-      String status,
-    ) {
+    void invalidateHomeActivityOnce(String type, String? id, String status) {
       final normalizedId = id?.trim() ?? '';
       if (normalizedId.isEmpty || status.isEmpty) return;
       if (!refreshedHomeActivityEvents.add('$type:$normalizedId:$status')) {
@@ -149,8 +148,10 @@ void _connectAndListen(Ref ref, SocketService socket) {
       developer.log('[event] $event', name: 'WS');
     });
 
-    ProviderLocationNotice? locationNoticeFrom(dynamic data,
-        {required bool escalated}) {
+    ProviderLocationNotice? locationNoticeFrom(
+      dynamic data, {
+      required bool escalated,
+    }) {
       if (data is! Map) return null;
       final payload = Map<String, dynamic>.from(data);
       final rideId = payload['rideId']?.toString().trim();
@@ -394,7 +395,8 @@ void _connectAndListen(Ref ref, SocketService socket) {
       if (dLat != null && dLng != null) {
         final heading = (driver['heading'] ?? driver['bearing']) as num?;
         debugPrint(
-            '[LIVE-TRACK] ride:state seeded driver position ($dLat, $dLng)');
+          '[LIVE-TRACK] ride:state seeded driver position ($dLat, $dLng)',
+        );
         ref.container.read(liveDriverPositionProvider.notifier).state =
             LiveDriverPosition(
           latitude: dLat.toDouble(),
@@ -403,8 +405,10 @@ void _connectAndListen(Ref ref, SocketService socket) {
           updatedAt: DateTime.now(),
         );
       } else {
-        debugPrint('[LIVE-TRACK] ride:state had no currentLat/currentLng — '
-            'marker waits for next driver:location fix');
+        debugPrint(
+          '[LIVE-TRACK] ride:state had no currentLat/currentLng — '
+          'marker waits for next driver:location fix',
+        );
       }
     }
 
@@ -450,9 +454,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
         status,
       );
       if (status == 'completed' || status == 'cancelled') {
-        unawaited(
-          ref.container.read(rideBookingAttemptStoreProvider).clear(),
-        );
+        unawaited(ref.container.read(rideBookingAttemptStoreProvider).clear());
       }
       switch (status) {
         case 'driver_en_route':
@@ -467,7 +469,8 @@ void _connectAndListen(Ref ref, SocketService socket) {
           ref.container.read(bookingPhaseProvider.notifier).accepted();
           ref.container.read(rideArrivalAnchorProvider.notifier).state =
               parseSocketDate(
-                      map['arrivedAtPickupAt'] ?? map['statusChangedAt']) ??
+                    map['arrivedAtPickupAt'] ?? map['statusChangedAt'],
+                  ) ??
                   DateTime.now();
           ref.container.read(rideTrackingPhaseProvider.notifier).state =
               RideTrackingPhase.arrived;
@@ -524,9 +527,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
         invalidateHomeActivityOnce('ride', rideId, 'cancelled');
         if (cancelledBy == 'client') return;
         if (rideId.isNotEmpty && !shownCancelledFor.add(rideId)) return;
-        unawaited(
-          ref.container.read(rideBookingAttemptStoreProvider).clear(),
-        );
+        unawaited(ref.container.read(rideBookingAttemptStoreProvider).clear());
 
         final reason = (map['reason'] as String?) ?? '';
         final noDrivers = _isNoDriversCancellation(reason: reason);
@@ -621,8 +622,10 @@ void _connectAndListen(Ref ref, SocketService socket) {
         // matcher_progress events on real-device tests; cast through Map
         // and read keys defensively instead.
         if (data is! Map) {
-          developer.log('matcher_progress: rejected non-map payload',
-              name: 'WS');
+          developer.log(
+            'matcher_progress: rejected non-map payload',
+            name: 'WS',
+          );
           return;
         }
         final map = Map<String, dynamic>.from(data);
@@ -683,8 +686,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
             driversTried;
         if (reason == MatcherReason.decline ||
             reason == MatcherReason.timeout) {
-          final countdown =
-              ref.container.read(rideOfferDecisionCountdownProvider);
+          final countdown = ref.container.read(
+            rideOfferDecisionCountdownProvider,
+          );
           // Redispatch publishes attempt N before its offer is receipted. Clear
           // an older driver's countdown, but never let replayed context for the
           // same active attempt erase its authoritative decision window.
@@ -720,8 +724,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
           return;
         }
         final serverNow = DateTime.tryParse(map['serverNow']?.toString() ?? '');
-        final decisionExpiresAt =
-            DateTime.tryParse(map['decisionExpiresAt']?.toString() ?? '');
+        final decisionExpiresAt = DateTime.tryParse(
+          map['decisionExpiresAt']?.toString() ?? '',
+        );
         final totalSeconds =
             (map['acceptanceWindowSeconds'] as num?)?.toInt() ?? 30;
         final attempt = (map['attempt'] as num?)?.toInt() ??
@@ -804,12 +809,18 @@ void _connectAndListen(Ref ref, SocketService socket) {
               existingStops: stops,
             );
           } catch (e) {
-            developer.log('route_updated parse failed: $e',
-                name: 'WS', level: 800);
+            developer.log(
+              'route_updated parse failed: $e',
+              name: 'WS',
+              level: 800,
+            );
           }
         }).catchError((Object e) {
-          developer.log('route_updated refetch failed: $e',
-              name: 'WS', level: 800);
+          developer.log(
+            'route_updated refetch failed: $e',
+            name: 'WS',
+            level: 800,
+          );
         });
       });
 
@@ -828,26 +839,31 @@ void _connectAndListen(Ref ref, SocketService socket) {
       final activeRideId = ref.container.read(activeRideIdProvider);
       if (activeRideId == null) {
         debugPrint(
-            '[LIVE-TRACK] driver:location dropped — no activeRideId set');
+          '[LIVE-TRACK] driver:location dropped — no activeRideId set',
+        );
         return;
       }
       final eventRideId =
           payload['rideId'] as String? ?? payload['id'] as String?;
       if (eventRideId != null && eventRideId != activeRideId) {
-        debugPrint('[LIVE-TRACK] driver:location dropped — rideId mismatch '
-            '(event=$eventRideId active=$activeRideId)');
+        debugPrint(
+          '[LIVE-TRACK] driver:location dropped — rideId mismatch '
+          '(event=$eventRideId active=$activeRideId)',
+        );
         return;
       }
       final lat = (payload['latitude'] ?? payload['lat']) as num?;
       final lng = (payload['longitude'] ?? payload['lng']) as num?;
       if (lat == null || lng == null) {
         debugPrint(
-            '[LIVE-TRACK] driver:location dropped — missing lat/lng in payload');
+          '[LIVE-TRACK] driver:location dropped — missing lat/lng in payload',
+        );
         return;
       }
       final heading = (payload['heading'] ?? payload['bearing']) as num?;
       debugPrint(
-          '[LIVE-TRACK] driver:location accepted ($lat, $lng) heading=$heading');
+        '[LIVE-TRACK] driver:location accepted ($lat, $lng) heading=$heading',
+      );
       ref.container.read(liveDriverPositionProvider.notifier).state =
           LiveDriverPosition(
         latitude: lat.toDouble(),
@@ -927,8 +943,11 @@ void _connectAndListen(Ref ref, SocketService socket) {
         }
         ref.container.read(navBadgeProvider.notifier).increment('/activity');
       } catch (e) {
-        developer.log('Failed to handle job:status: $e',
-            name: 'WS', level: 900);
+        developer.log(
+          'Failed to handle job:status: $e',
+          name: 'WS',
+          level: 900,
+        );
       }
     }
 
@@ -958,8 +977,11 @@ void _connectAndListen(Ref ref, SocketService socket) {
                 .onArtisanConfirmed(etaLabel: etaLabel);
           }
         } catch (e) {
-          developer.log('Failed to handle job:artisan_confirmed: $e',
-              name: 'WS', level: 900);
+          developer.log(
+            'Failed to handle job:artisan_confirmed: $e',
+            name: 'WS',
+            level: 900,
+          );
         }
       });
 
@@ -989,8 +1011,11 @@ void _connectAndListen(Ref ref, SocketService socket) {
           }
           ref.container.read(navBadgeProvider.notifier).increment('/activity');
         } catch (e) {
-          developer.log('Failed to handle job:bid:received: $e',
-              name: 'WS', level: 900);
+          developer.log(
+            'Failed to handle job:bid:received: $e',
+            name: 'WS',
+            level: 900,
+          );
         }
       })
       ..on('job:bid:updated', (data) {
@@ -1004,8 +1029,11 @@ void _connectAndListen(Ref ref, SocketService socket) {
             ref.container.invalidate(bidsForJobProvider(jobId));
           }
         } catch (e) {
-          developer.log('Failed to handle job:bid:updated: $e',
-              name: 'WS', level: 900);
+          developer.log(
+            'Failed to handle job:bid:updated: $e',
+            name: 'WS',
+            level: 900,
+          );
         }
       })
       ..on('job:bid_new', (data) {
@@ -1023,8 +1051,11 @@ void _connectAndListen(Ref ref, SocketService socket) {
           }
           ref.container.read(navBadgeProvider.notifier).increment('/activity');
         } catch (e) {
-          developer.log('Failed to handle job:bid_new: $e',
-              name: 'WS', level: 900);
+          developer.log(
+            'Failed to handle job:bid_new: $e',
+            name: 'WS',
+            level: 900,
+          );
         }
       });
 
@@ -1039,8 +1070,11 @@ void _connectAndListen(Ref ref, SocketService socket) {
           }
           ref.container.read(navBadgeProvider.notifier).increment('/profile');
         } catch (e) {
-          developer.log('Failed to handle notification:new: $e',
-              name: 'WS', level: 900);
+          developer.log(
+            'Failed to handle notification:new: $e',
+            name: 'WS',
+            level: 900,
+          );
         }
       });
 
@@ -1054,8 +1088,11 @@ void _connectAndListen(Ref ref, SocketService socket) {
               .read(clientAuthControllerProvider.notifier)
               .refreshProfile();
         } catch (e) {
-          developer.log('Failed to handle profile:updated: $e',
-              name: 'WS', level: 900);
+          developer.log(
+            'Failed to handle profile:updated: $e',
+            name: 'WS',
+            level: 900,
+          );
         }
       });
 
@@ -1100,8 +1137,11 @@ void _connectAndListen(Ref ref, SocketService socket) {
               }
             }
           } catch (e) {
-            developer.log('hydrate ride for rating failed: $e',
-                name: 'WS', level: 800);
+            developer.log(
+              'hydrate ride for rating failed: $e',
+              name: 'WS',
+              level: 800,
+            );
           }
           if (!ctx.mounted) return;
           await showRateRideSheet(
@@ -1125,8 +1165,11 @@ void _connectAndListen(Ref ref, SocketService socket) {
               }
             }
           } catch (e) {
-            developer.log('hydrate job for rating failed: $e',
-                name: 'WS', level: 800);
+            developer.log(
+              'hydrate job for rating failed: $e',
+              name: 'WS',
+              level: 800,
+            );
           }
           if (!ctx.mounted) return;
           await showRateJobSheet(
@@ -1162,10 +1205,6 @@ void _connectAndListen(Ref ref, SocketService socket) {
   socket.connect();
 }
 
-bool _isNoDriversCancellation({
-  required String reason,
-}) {
-  return isNoDriversSocketCancellation(
-    reason: reason,
-  );
+bool _isNoDriversCancellation({required String reason}) {
+  return isNoDriversSocketCancellation(reason: reason);
 }

@@ -1,6 +1,115 @@
 # Current Mobile Update Checklist
 
-Status captured: **2026-07-29 GMT**
+Status captured: **2026-07-30 GMT**
+
+## Authoritative 2026-07-30 session-recovery control block
+
+This block supersedes the 2026-07-29 candidate status immediately below. The
+older block and the historical ledger remain evidence; they must not be used
+to claim that this new repair has already been committed, deployed or tested
+on physical devices.
+
+- **Release status: NO-GO pending source integration, staging deployment and
+  physical upgrade/reconnect testing.**
+- Released baseline on Client Android, Client iOS, Provider Android and
+  Provider iOS remains **`1.4.1+25`**, source
+  `66c4f9c7f5ab958271bfef0ddb6e9ad086c982e4`.
+- Mobile implementation is isolated at
+  `/private/tmp/myshop-mobile-client-session-recovery`, branch
+  `fix/client-network-session-recovery-20260730`, based on Mobile staging
+  `160e99f`. It is uncommitted and unpushed.
+- Backend implementation is isolated at
+  `/private/tmp/myshop-attempt-bound-refresh-recovery`, branch
+  `fix/attempt-bound-refresh-recovery-20260730`, based on Backend staging
+  `432decf`. It is uncommitted and unpushed.
+- The dirty primary Mobile workspace, its location/dispatch work, release
+  scripts, checklists and Provider Pod lock were not overwritten or staged.
+  Backend/Admin primary workspaces were not changed.
+- Included scope is only the reported false-session-loss repair and the exact
+  ownership required to make it safe: crash-consistent token-pair storage,
+  durable refresh-attempt recovery, saved-session restore, Provider
+  seven-day-local-expiry removal, explicit logout fencing, exact
+  `sub + role + roleAccountId + sid` ownership for REST/realtime/chat/device
+  registrations, and backend immediate-predecessor recovery.
+- Provider location/dispatch changes, OTP redesign, payment work, telemetry
+  expansion, Admin changes and the wider 100k-DAU roadmap remain excluded.
+- This repair adds no migration. It uses the already-reviewed
+  `20260727000000_durable_role_refresh_lineage` schema and its two rollout
+  flags. Staging/production migration state and both JSON boolean flags must
+  still be verified against the exact target database before deployment.
+
+### Completed engineering gates
+
+- [x] Network, timeout, `5xx`, unknown transport failures and code-less `401`
+      responses preserve local credentials and never route an existing user
+      to OTP.
+- [x] Only explicit terminal backend codes may clear an exact current session;
+      a late terminal response or retry from session A cannot clear, replay or
+      publish through session B.
+- [x] Mobile persists one 256-bit `refreshAttemptId` before the refresh request
+      and reuses it after an ambiguous lost response. Backend reconstructs the
+      same immediate successor only from exact predecessor, attempt, SID,
+      role-account and durable-lineage evidence.
+- [x] Released `+25` two-key credentials upgrade non-destructively. Torn
+      pre-SID and missing-role-account states use explicit bootstrap-only
+      recovery rather than ordinary refresh or destructive guessing.
+- [x] A user-initiated logout is fenced before repair/network I/O. A valid
+      access token is revoked directly; missing, unreadable, expired or
+      near-expiry access is refreshed behind the fence. Delayed logout A cannot
+      hide or clear a separately accepted login B.
+- [x] Client and Provider cold-start restore use cached exact-role profiles
+      where available. Temporary profile/service failure stays in saved-session
+      recovery with exactly `Connect to the internet and try again.` and never
+      falls through to legal-consent or phone/OTP screens.
+- [x] Provider authentication no longer expires locally after seven days.
+      Going Online eligibility, verification, vehicle, notification and
+      location controls remain independent and fail closed.
+- [x] Main, chat and call sockets; Client/Provider chat outboxes; FCM, VoIP and
+      ActivityKit registrations; cached profiles; legal status and Provider
+      Online intent are bound to the exact role account and SID.
+- [x] iOS install-boundary handling preserves the first `+25` upgrade and
+      clears Keychain credentials/device identity after a later detectable
+      uninstall/reinstall boundary.
+- [x] Independent Backend and Mobile audits found no remaining release blocker
+      in this isolated scope.
+- [x] Final automated evidence is green:
+  - Backend **222 suites / 4,402 tests**, auth-focused **261/261**, refresh
+    cutover verifier **5/5**, build and typecheck pass; lint has zero errors
+    (repository-existing warnings remain).
+  - shared API-client **294/294**, Client **160/160**, Provider **246/246**;
+    all three analyzers and both diff checks pass.
+  - Client and Provider Android debug APKs and unsigned iOS device apps compile
+    successfully. These are compile checks wired to staging, not signed release
+    artifacts and not store-submission evidence.
+
+### Open release gates
+
+- [x] Reconcile the Backend worktree onto current `origin/staging`; its two
+      newer location commits were non-overlapping and the auth patch reapplied
+      cleanly.
+- [ ] Review the exact final Mobile and Backend diffs once more.
+- [ ] Commit intentionally, push, open separate Mobile/Backend PRs to staging,
+      and merge only the reviewed files. Do not include dirty primary-worktree
+      or generated Pod-lock changes.
+- [ ] Verify `20260727000000_durable_role_refresh_lineage` and both rollout
+      flags on the exact staging database. Preserve Redis; do not flush it.
+- [ ] Deploy Backend first using the documented zero-mixed-version controlled
+      replacement. Old and new API replicas must never rotate refresh tokens
+      concurrently.
+- [ ] Install the staging Mobile candidate as an in-place update over a real
+      `1.4.1+25` Client and Provider, as well as on fresh Android/iPhone/iPad
+      installs.
+- [ ] Physically prove: genuine offline/online recovery on home and active
+      ride/job routes; expired-access refresh; a deliberately lost refresh
+      response; concurrent REST/socket/call refresh; app kill/relaunch;
+      explicit logout; same-account new login; account/role A-to-B switch; and
+      no OTP navigation unless the backend returns an approved terminal code.
+- [ ] Correlate physical evidence with Backend refresh/lineage logs and confirm
+      no `REFRESH_TOKEN_REUSED` cleanup follows a recovered predecessor.
+- [ ] After staging acceptance, perform the same controlled Backend rollout to
+      production, then select one private-console build number greater than
+      `25` and every existing maximum, build four signed artifacts from one
+      exact reviewed `origin/main` SHA, inspect them and submit.
 
 ## Authoritative post-`1.4.1+25` release control block
 

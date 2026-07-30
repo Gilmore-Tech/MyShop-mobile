@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../features/auth/providers/auth_controller.dart';
 import '../chat/shared_prefs_chat_outbox.dart';
 import '../di/providers.dart';
+import 'auth_session_identity_provider.dart';
 import 'chat_realtime_provider.dart';
 
 /// Singleton [ChatController] for the client app, scoped to the active
@@ -18,9 +19,21 @@ import 'chat_realtime_provider.dart';
 final chatControllerProvider = FutureProvider<ChatController?>((ref) async {
   final auth = ref.watch(clientAuthControllerProvider);
   if (auth is! AuthAuthenticated) return null;
+  final identity = ref.watch(currentClientAuthSessionIdentityProvider);
+  final roleAccountId = auth.profile.client?.id;
+  if (identity == null ||
+      identity.role != 'client' ||
+      roleAccountId == null ||
+      identity.roleAccountId != roleAccountId) {
+    return null;
+  }
 
   final prefs = await SharedPreferences.getInstance();
-  final outbox = SharedPreferencesChatOutbox(prefs);
+  final outbox = SharedPreferencesChatOutbox(
+    prefs,
+    ownerKey:
+        '${identity.subject}|${identity.role}|${identity.roleAccountId}|${identity.sessionId}',
+  );
   final realtime = ref.watch(chatRealtimeProvider);
   final rest = ref.watch(chatServiceProvider);
 
@@ -28,10 +41,10 @@ final chatControllerProvider = FutureProvider<ChatController?>((ref) async {
     rest: rest,
     realtime: realtime,
     outbox: outbox,
-    selfUserId: auth.profile.id,
+    selfUserId: roleAccountId,
     // The client app is always in the client role. Without this, a
     // human running both Client + Provider apps on the same phone
-    // shares `auth.profile.id` across both apps and every chat
+    // shares the exact role-account ID across both apps and every chat
     // message rendered on the right (looked like "mine") regardless
     // of who actually sent it.
     selfRole: ChatSenderRole.client,

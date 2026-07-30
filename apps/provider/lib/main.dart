@@ -38,6 +38,15 @@ void main() {
       tokenStorageProvider.overrideWith(
         (ref) => ref.watch(appTokenStorageProvider),
       ),
+      authSessionRepairProvider.overrideWith((ref) {
+        final refresher = ref.watch(tokenRefresherProvider);
+        return (session) =>
+            refresher.refreshForBootstrap(expectedSession: session);
+      }),
+      authLogoutSessionRepairProvider.overrideWith((ref) {
+        final refresher = ref.watch(tokenRefresherProvider);
+        return (fence) => refresher.refreshForExplicitLogout(fence: fence);
+      }),
     ],
   );
 

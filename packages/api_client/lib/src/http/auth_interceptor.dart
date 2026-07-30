@@ -37,7 +37,7 @@ class AuthInterceptor extends Interceptor {
     required TokenStorage tokenStorage,
     required Dio dio,
     required TokenRefresher tokenRefresher,
-    void Function()? onForceLogout,
+    void Function(AuthForceLogoutEvent event)? onForceLogout,
   })  : _tokenStorage = tokenStorage,
         _dio = dio,
         _tokenRefresher = tokenRefresher,
@@ -46,7 +46,17 @@ class AuthInterceptor extends Interceptor {
   final TokenStorage _tokenStorage;
   final Dio _dio;
   final TokenRefresher _tokenRefresher;
-  final void Function()? _onForceLogout;
+  final void Function(AuthForceLogoutEvent event)? _onForceLogout;
+
+  static const _requestSessionExtra = 'myshop.auth.request_session';
+  static const _boundRetryExtra = 'myshop.auth.bound_retry';
+
+  /// Public request-extra key used to bind a user-initiated operation (most
+  /// importantly `/auth/logout`) to the exact SID that owned the tap.
+  static const expectedSessionIdentityExtra =
+      'myshop.auth.expected_session_identity';
+  static const explicitLogoutSessionExtra =
+      'myshop.auth.explicit_logout_session';
 
   /// Paths that do not require an Authorization header. These mirror the
   /// `@Public()` decorator on the backend controllers — keep in sync.
@@ -81,9 +91,6 @@ class AuthInterceptor extends Interceptor {
     '/legal/community-guidelines',
     '/legal/third-party-licenses',
     '/legal/cookie-policy',
-    // Public dependency-readiness probe used by the offline recovery overlay.
-    // It must remain reachable before login; otherwise a recovered user can
-    // be stranded behind the notice by a local NOT_AUTHENTICATED rejection.
     '/health/ready',
     '/config/',
     '/surge/current',
@@ -119,15 +126,112 @@ class AuthInterceptor extends Interceptor {
       return;
     }
 
-    final token = await _tokenStorage.readAccessToken();
+    final explicitLogout =
+        options.extra[explicitLogoutSessionExtra] as AuthTokenSnapshot?;
+    if (explicitLogout != null && options.path.contains('/auth/logout')) {
+      final identity = explicitLogout.identity;
+      final token = explicitLogout.accessToken;
+      final expectedIdentity =
+          options.extra[expectedSessionIdentityExtra] as AuthSessionIdentity?;
+      if (identity != null &&
+          token != null &&
+          (expectedIdentity == null || expectedIdentity == identity)) {
+        // Explicit logout fenced this owner out of ordinary storage reads
+        // before network I/O. This captured bearer is the sole capability
+        // allowed across that fence, and only for the logout endpoint.
+        options.headers['Authorization'] = 'Bearer $token';
+        handler.next(options);
+        return;
+      }
+      handler.reject(
+        DioException(
+          requestOptions: options,
+          type: DioExceptionType.cancel,
+          error: 'STALE_AUTH_SESSION',
+          message: 'Explicit logout lost its exact credential owner.',
+        ),
+      );
+      return;
+    }
+
+    // A retry is permanently bound to the exact raw credential state that
+    // owned the original request. Recheck at the interceptor's actual
+    // dispatch boundary: another account or refresh may have landed after
+    // `_retryWithToken` performed its earlier preflight.
+    if (options.extra[_boundRetryExtra] == true) {
+      final bound = options.extra[_requestSessionExtra];
+      if (bound is AuthTokenSnapshot &&
+          bound.accessToken != null &&
+          bound.identity != null) {
+        try {
+          final current = await _tokenStorage.readTokenSnapshot();
+          if (current.isExactCredentialState(bound)) {
+            options.headers['Authorization'] = 'Bearer ${bound.accessToken}';
+            handler.next(options);
+            return;
+          }
+        } catch (_) {
+          // Fall through to the closed rejection below.
+        }
+      }
+      handler.reject(
+        DioException(
+          requestOptions: options,
+          type: DioExceptionType.cancel,
+          error: 'STALE_AUTH_SESSION',
+          message: 'Bound authentication retry lost its credential owner.',
+        ),
+      );
+      return;
+    }
+
+    final expectedIdentity =
+        options.extra[expectedSessionIdentityExtra] as AuthSessionIdentity?;
+    AuthTokenSnapshot snapshot;
+    try {
+      snapshot = await _tokenStorage.readTokenSnapshot();
+    } catch (error) {
+      handler.reject(
+        DioException(
+          requestOptions: options,
+          type: DioExceptionType.cancel,
+          error: 'AUTH_STORAGE_UNAVAILABLE',
+          message: 'Stored authentication could not be read safely.',
+        ),
+      );
+      return;
+    }
+
+    var token = snapshot.accessToken;
+    if (token == null && snapshot.refreshToken != null) {
+      // Older app versions could leave a refresh-only credential behind.
+      // When it has a full session identity this is recoverable rather than
+      // proof that the user signed out. Rebuild the access credential through
+      // the same shared refresher used by REST and sockets.
+      debugPrint(
+        '[Auth] access token missing but refresh credential is present — '
+        'recovering before ${options.path}',
+      );
+      token = await _tokenRefresher.refresh(expectedSession: snapshot);
+      if (token != null) {
+        snapshot = await _tokenStorage.readTokenSnapshot();
+      }
+    }
+    if (expectedIdentity != null && !snapshot.belongsTo(expectedIdentity)) {
+      handler.reject(
+        DioException(
+          requestOptions: options,
+          type: DioExceptionType.cancel,
+          error: 'STALE_AUTH_SESSION',
+          message: 'The session that owned this request was replaced.',
+        ),
+      );
+      return;
+    }
     if (token == null) {
-      // No token + non-public path = the user is signed out (or never
-      // signed in). Reject the request locally with a `cancel` type so it
-      // never hits the wire and so [onError] doesn't pattern-match it as
-      // a real 401 and try to refresh against nothing. Background loops
-      // that race with logout (e.g. the location heartbeat firing one
-      // more tick after the user is wiped) used to generate a continuous
-      // 401 storm here; this short-circuit ends them at source.
+      // No recoverable token + non-public path = the user is signed out (or
+      // never signed in). Reject locally so background loops that race with
+      // logout cannot create a continuous 401/refresh storm.
       handler.reject(
         DioException(
           requestOptions: options,
@@ -139,6 +243,24 @@ class AuthInterceptor extends Interceptor {
       );
       return;
     }
+    final tokenIdentity = AuthSessionIdentity.tryParseJwt(token);
+    if (tokenIdentity == null ||
+        snapshot.identity != tokenIdentity ||
+        snapshot.accessToken != token) {
+      // Unknown/legacy JWTs cannot participate in session-bound mutation.
+      // Preserve storage so bootstrap can show saved-session recovery, but do
+      // not send an unauditable credential on a protected request.
+      handler.reject(
+        DioException(
+          requestOptions: options,
+          type: DioExceptionType.cancel,
+          error: 'AUTH_SESSION_IDENTITY_UNAVAILABLE',
+          message: 'Stored authentication has no exact session identity.',
+        ),
+      );
+      return;
+    }
+    options.extra[_requestSessionExtra] = snapshot;
     options.headers['Authorization'] = 'Bearer $token';
     handler.next(options);
   }
@@ -164,6 +286,39 @@ class AuthInterceptor extends Interceptor {
       return;
     }
 
+    // A request gets at most one session-bound retry. If that exact token also
+    // fails, surface the server result without refreshing or mutating whatever
+    // session may now be stored.
+    if (err.requestOptions.extra[_boundRetryExtra] == true) {
+      handler.next(err);
+      return;
+    }
+
+    final requestSession =
+        err.requestOptions.extra[_requestSessionExtra] as AuthTokenSnapshot?;
+    final requestIdentity = requestSession?.identity;
+    if (requestSession == null || requestIdentity == null) {
+      debugPrint('[Auth] 401 has no exact request session — failing closed');
+      handler.next(err);
+      return;
+    }
+
+    AuthTokenSnapshot current;
+    try {
+      current = await _tokenStorage.readTokenSnapshot();
+    } catch (error) {
+      debugPrint('[Auth] cannot verify 401 session owner: $error');
+      handler.next(err);
+      return;
+    }
+    if (!current.belongsTo(requestIdentity)) {
+      debugPrint(
+        '[Auth] stale 401 belongs to a replaced session — rejecting $path',
+      );
+      _rejectStaleRetry(err.requestOptions, handler);
+      return;
+    }
+
     final errorCode = _extractErrorCode(response);
 
     // SESSION_TAKEN_OVER: another device claimed the session. Refreshing
@@ -173,8 +328,11 @@ class AuthInterceptor extends Interceptor {
     // back in with one tap.
     if (errorCode == AuthErrorCodes.sessionTakenOver) {
       debugPrint('[Auth] SESSION_TAKEN_OVER on $path — soft logout');
-      await _tokenStorage.clearAuthTokensOnly();
-      _onForceLogout?.call();
+      final cleared = await _tokenStorage
+          .clearAuthTokensOnlyForIdentityIfCurrent(requestIdentity);
+      if (cleared) {
+        _onForceLogout?.call(AuthForceLogoutEvent.fromSnapshot(requestSession));
+      }
       handler.next(err);
       return;
     }
@@ -189,10 +347,17 @@ class AuthInterceptor extends Interceptor {
     if (errorCode == AuthErrorCodes.refreshInFlight) {
       debugPrint('[Auth] REFRESH_IN_FLIGHT on $path — backing off 250ms');
       await Future<void>.delayed(const Duration(milliseconds: 250));
-      final freshToken = await _tokenStorage.readAccessToken();
-      if (freshToken != null) {
+      final fresh = await _tokenStorage.readTokenSnapshot();
+      final freshToken = fresh.accessToken;
+      if (freshToken != null &&
+          fresh.belongsTo(requestIdentity) &&
+          freshToken != requestSession.accessToken) {
         debugPrint('[Auth] retrying $path with refreshed token');
-        await _retryWithToken(err.requestOptions, freshToken, handler);
+        await _retryWithToken(err.requestOptions, fresh, handler);
+        return;
+      }
+      if (fresh.hasCredentials && !fresh.belongsTo(requestIdentity)) {
+        _rejectStaleRetry(err.requestOptions, handler);
         return;
       }
       // No fresh token after the backoff — propagate so the caller can
@@ -207,19 +372,10 @@ class AuthInterceptor extends Interceptor {
     // Dedup: if another concurrent 401 already refreshed the token, the
     // stored access token will differ from the one we sent. Just retry
     // with the fresh stored token — no need to refresh again.
-    final attachedAuth =
-        err.requestOptions.headers['Authorization']?.toString();
-    final attachedToken =
-        attachedAuth != null && attachedAuth.startsWith('Bearer ')
-            ? attachedAuth.substring(7)
-            : null;
-    final currentStored = await _tokenStorage.readAccessToken();
-
-    if (currentStored != null &&
-        attachedToken != null &&
-        currentStored != attachedToken) {
+    if (current.accessToken != null &&
+        current.accessToken != requestSession.accessToken) {
       debugPrint('[Auth] another request already refreshed — retrying $path');
-      await _retryWithToken(err.requestOptions, currentStored, handler);
+      await _retryWithToken(err.requestOptions, current, handler);
       return;
     }
 
@@ -229,14 +385,40 @@ class AuthInterceptor extends Interceptor {
     // one storage write. The refresher owns terminal-failure handling
     // (clearTokens + onForceLogout); we just retry on success or
     // propagate on null.
-    final refreshed = await _tokenRefresher.refresh();
+    final refreshed =
+        await _tokenRefresher.refresh(expectedSession: requestSession);
     if (refreshed == null) {
+      try {
+        final afterRefresh = await _tokenStorage.readTokenSnapshot();
+        if (afterRefresh.hasCredentials &&
+            !afterRefresh.belongsTo(requestIdentity)) {
+          _rejectStaleRetry(err.requestOptions, handler);
+          return;
+        }
+      } catch (_) {
+        _rejectStaleRetry(err.requestOptions, handler);
+        return;
+      }
       debugPrint('[Auth] refresh failed — propagating 401 for $path');
       handler.next(err);
       return;
     }
+    final refreshedSession = await _tokenStorage.readTokenSnapshot();
+    if (!refreshedSession.belongsTo(requestIdentity) ||
+        refreshedSession.accessToken != refreshed) {
+      debugPrint(
+        '[Auth] refreshed token was replaced before retry — propagating $path',
+      );
+      if (refreshedSession.hasCredentials &&
+          !refreshedSession.belongsTo(requestIdentity)) {
+        _rejectStaleRetry(err.requestOptions, handler);
+      } else {
+        handler.next(err);
+      }
+      return;
+    }
     debugPrint('[Auth] refresh succeeded — retrying $path');
-    await _retryWithToken(err.requestOptions, refreshed, handler);
+    await _retryWithToken(err.requestOptions, refreshedSession, handler);
   }
 
   /// Pulls `error.code` out of the standard `{ success, error: { code, ... } }`
@@ -255,15 +437,59 @@ class AuthInterceptor extends Interceptor {
 
   Future<void> _retryWithToken(
     RequestOptions original,
-    String token,
+    AuthTokenSnapshot session,
     ErrorInterceptorHandler handler,
   ) async {
-    original.headers['Authorization'] = 'Bearer $token';
+    try {
+      final beforeDispatch = await _tokenStorage.readTokenSnapshot();
+      if (!beforeDispatch.isExactCredentialState(session)) {
+        _rejectStaleRetry(original, handler);
+        return;
+      }
+    } catch (_) {
+      _rejectStaleRetry(original, handler);
+      return;
+    }
+
+    original.extra[_requestSessionExtra] = session;
+    original.extra[_boundRetryExtra] = true;
+    original.headers['Authorization'] = 'Bearer ${session.accessToken}';
     try {
       final retryResponse = await _dio.fetch(original);
+      final afterResponse = await _tokenStorage.readTokenSnapshot();
+      if (!afterResponse.isExactCredentialState(session)) {
+        _rejectStaleRetry(original, handler);
+        return;
+      }
       handler.resolve(retryResponse);
     } on DioException catch (retryErr) {
+      try {
+        final afterError = await _tokenStorage.readTokenSnapshot();
+        if (!afterError.isExactCredentialState(session)) {
+          _rejectStaleRetry(original, handler);
+          return;
+        }
+      } catch (_) {
+        _rejectStaleRetry(original, handler);
+        return;
+      }
       handler.next(retryErr);
+    } catch (_) {
+      _rejectStaleRetry(original, handler);
     }
+  }
+
+  void _rejectStaleRetry(
+    RequestOptions request,
+    ErrorInterceptorHandler handler,
+  ) {
+    handler.reject(
+      DioException(
+        requestOptions: request,
+        type: DioExceptionType.cancel,
+        error: 'STALE_AUTH_SESSION',
+        message: 'The authenticated session changed during request retry.',
+      ),
+    );
   }
 }

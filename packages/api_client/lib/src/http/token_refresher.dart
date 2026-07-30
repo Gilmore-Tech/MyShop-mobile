@@ -19,25 +19,24 @@ import 'token_storage.dart';
 /// canonical signal for token replay — and the app force-logs the user
 /// out mid-session.
 ///
-/// All refresh callers now go through this class. The single shared
-/// `_inFlight` future guarantees that concurrent calls coalesce onto
-/// one network round-trip and one storage write, regardless of which
-/// layer fired first.
+/// All refresh callers now go through this class. Calls for the same exact raw
+/// credential state coalesce onto one network round-trip and one storage
+/// write. A newer login or a bootstrap proof transition uses a different
+/// flight and can never inherit an older session's result.
 ///
-/// Failure handling preserves existing semantics:
-///   - `REFRESH_TOKEN_REUSED` / `INVALID_TOKEN` / `TOKEN_EXPIRED` →
-///     full `clearTokens()` + `onForceLogout` (sign-in fresh).
-///   - Other 4xx on `/auth/refresh` → soft clear of just the JWT pair
-///     + `onForceLogout` (preserves cached identity for one-tap
-///     re-login).
-///   - Non-4xx (network error, timeout) → return null without
-///     clearing — caller decides whether to retry.
+/// Failure handling is deliberately allow-listed:
+///   - Explicit terminal credential/account codes full-clear only the exact
+///     current owner and dispatch `onForceLogout`.
+///   - `SESSION_TAKEN_OVER` clears auth tokens for that SID across rotations
+///     while retaining cached profile metadata.
+///   - Refresh contention, unclassified/non-terminal 4xx responses, network
+///     errors, and timeouts preserve the local session for recovery/retry.
 class TokenRefresher {
   TokenRefresher({
     required Dio dio,
     required TokenStorage tokenStorage,
     RefreshAttemptStore? refreshAttemptStore,
-    void Function()? onForceLogout,
+    void Function(AuthForceLogoutEvent event)? onForceLogout,
     Future<void> Function(Duration duration)? delay,
   })  : _dio = dio,
         _tokenStorage = tokenStorage,
@@ -51,110 +50,428 @@ class TokenRefresher {
   final Dio _dio;
   final TokenStorage _tokenStorage;
   final RefreshAttemptStore _refreshAttemptStore;
-  final void Function()? _onForceLogout;
+  final void Function(AuthForceLogoutEvent event)? _onForceLogout;
   final Future<void> Function(Duration duration) _delay;
 
-  Future<String?>? _inFlight;
+  final Map<({String? accessToken, String refreshToken}), Future<String?>>
+      _inFlightByCredentialState = {};
 
-  /// Runs `/auth/refresh` if no other caller is already running it,
-  /// otherwise awaits the in-flight one. Returns the new access token,
-  /// or null on terminal failure (which also fires `onForceLogout`).
-  Future<String?> refresh() {
-    return _inFlight ??= () async {
-      try {
-        for (var attempt = 1; attempt <= 3; attempt += 1) {
-          final refreshToken = await _tokenStorage.readRefreshToken();
-          if (refreshToken == null) {
-            debugPrint('[TokenRefresher] no refresh token — forcing logout');
-            _onForceLogout?.call();
-            return null;
-          }
-          final refreshAttemptId = await _refreshAttemptStore.readOrCreate(
-            refreshToken,
-          );
+  /// Refresh the exact credential epoch observed by the caller.
+  ///
+  /// Concurrent callers using the same rotating refresh token share one
+  /// request. A caller from a newer login never joins an older session's
+  /// future, even when both calls overlap in one process.
+  Future<String?> refresh({AuthTokenSnapshot? expectedSession}) =>
+      _refresh(expectedSession: expectedSession, allowLegacyUpgrade: false);
 
-          try {
-            debugPrint('[TokenRefresher] POST /auth/refresh →');
-            final response = await _dio.post(
-              '/auth/refresh',
-              data: RefreshRequest(
-                refreshToken: refreshToken,
-                refreshAttemptId: refreshAttemptId,
-              ).toJson(),
-            );
-            debugPrint(
-              '[TokenRefresher] POST /auth/refresh ← ${response.statusCode}',
-            );
+  /// Bootstrap-only bridge for tokens minted before session IDs were added.
+  ///
+  /// Ordinary requests never use this path. Storage accepts the result only
+  /// when the exact raw legacy credentials are still current. A complete
+  /// pre-SID pair must return one full identity for the same principal. The
+  /// released split-upgrade state additionally sends its signed SID-bearing
+  /// access token as proof and requires the returned pair to keep that SID.
+  Future<String?> refreshForBootstrap({
+    required AuthTokenSnapshot expectedSession,
+  }) =>
+      _refresh(expectedSession: expectedSession, allowLegacyUpgrade: true);
 
-            final body = response.data;
-            if (body is! Map<String, dynamic>) {
-              debugPrint('[TokenRefresher] body not a map: $body');
-              return null;
-            }
-            final payload = (body['data'] is Map<String, dynamic>
-                ? body['data']
-                : body) as Map<String, dynamic>;
+  /// Repair a fenced explicit-logout owner only far enough to revoke its
+  /// exact server SID.
+  ///
+  /// The successor is persisted behind the durable fence and is therefore
+  /// invisible to ordinary REST, WebSocket, bootstrap, and refresh callers.
+  /// This privileged path never republishes an authenticated local session.
+  Future<AuthTokenSnapshot?> refreshForExplicitLogout({
+    required AuthExplicitLogoutFence fence,
+  }) async {
+    final owner = await _tokenStorage.readExplicitLogoutOwner(fence);
+    final refreshToken = owner?.refreshToken;
+    if (owner == null || refreshToken == null) return null;
+    if (owner.identity == null &&
+        !owner.isPreSessionIdCredentialState &&
+        !owner.isInterruptedPreSessionIdUpgrade &&
+        !owner.isSessionRoleAccountIdUpgrade) {
+      return null;
+    }
 
-            final newAccessToken = payload['accessToken'] as String?;
-            if (newAccessToken == null) {
-              debugPrint('[TokenRefresher] response missing accessToken');
-              return null;
-            }
+    late final String refreshAttemptId;
+    try {
+      refreshAttemptId = await _refreshAttemptStore.readOrCreate(refreshToken);
+    } catch (error) {
+      debugPrint(
+        '[TokenRefresher] explicit-logout attempt persistence failed: $error',
+      );
+      return null;
+    }
 
-            // Rotation: when the response includes a new refreshToken we
-            // MUST persist it. Otherwise the next refresh would reuse the
-            // already-consumed token and the backend would reject with
-            // REFRESH_TOKEN_REUSED → forced logout.
-            final newRefreshToken = payload['refreshToken'] as String?;
-            if (newRefreshToken != null && newRefreshToken != refreshToken) {
-              await _tokenStorage.writeTokens(
-                accessToken: newAccessToken,
-                refreshToken: newRefreshToken,
-              );
-            } else {
-              await _tokenStorage.writeAccessToken(newAccessToken);
-            }
-            try {
-              await _refreshAttemptStore.clearIfMatches(
-                refreshToken: refreshToken,
-                attemptId: refreshAttemptId,
-              );
-            } catch (error) {
-              // The successor pair is already durable. A stale attempt record
-              // is harmless and will be replaced when its token digest changes.
-              debugPrint(
-                '[TokenRefresher] refresh-attempt cleanup deferred: $error',
-              );
-            }
-            debugPrint('[TokenRefresher] new tokens persisted');
-            return newAccessToken;
-          } on DioException catch (error) {
-            final code = _extractErrorCode(error.response);
-            if (error.response?.statusCode == 401 &&
-                code == AuthErrorCodes.refreshInFlight &&
-                attempt < 3) {
-              final backoff = Duration(milliseconds: 250 * attempt);
-              debugPrint(
-                '[TokenRefresher] refresh contention — retrying in '
-                '${backoff.inMilliseconds}ms',
-              );
-              await _delay(backoff);
-              continue;
-            }
-            return _handleRefreshError(error);
-          }
-        }
+    for (var attempt = 1; attempt <= 3; attempt += 1) {
+      final current = await _tokenStorage.readExplicitLogoutOwner(fence);
+      if (current == null || !current.hasExactRawCredentials(owner)) {
         return null;
-      } catch (e, st) {
-        debugPrint('[TokenRefresher] unexpected: $e\n$st');
-        return null;
-      } finally {
-        _inFlight = null;
       }
-    }();
+      try {
+        final response = await _dio.post(
+          '/auth/refresh',
+          data: RefreshRequest(
+            refreshToken: refreshToken,
+            accessToken:
+                owner.isPreSessionIdCredentialState ? null : owner.accessToken,
+            refreshAttemptId: refreshAttemptId,
+          ).toJson(),
+        );
+        final body = response.data;
+        if (body is! Map<String, dynamic>) return null;
+        final payload = (body['data'] is Map<String, dynamic>
+            ? body['data']
+            : body) as Map<String, dynamic>;
+        final accessToken = payload['accessToken'] as String?;
+        if (accessToken == null || accessToken.isEmpty) return null;
+        final successorRefresh =
+            (payload['refreshToken'] as String?) ?? refreshToken;
+        final persisted =
+            await _tokenStorage.replaceExplicitLogoutTokensIfCurrent(
+          fence: fence,
+          expected: owner,
+          accessToken: accessToken,
+          refreshToken: successorRefresh,
+        );
+        if (!persisted) return null;
+        final successor = await _tokenStorage.readExplicitLogoutOwner(fence);
+        if (successor?.accessToken != accessToken ||
+            successor?.refreshToken != successorRefresh ||
+            successor?.identity == null) {
+          return null;
+        }
+        try {
+          await _refreshAttemptStore.clearIfMatches(
+            refreshToken: refreshToken,
+            attemptId: refreshAttemptId,
+          );
+        } catch (error) {
+          debugPrint(
+            '[TokenRefresher] explicit-logout attempt cleanup deferred: '
+            '$error',
+          );
+        }
+        return successor;
+      } on DioException catch (error) {
+        final code = _extractErrorCode(error.response);
+        if (code == AuthErrorCodes.refreshInFlight && attempt < 3) {
+          await _delay(Duration(milliseconds: 250 * attempt));
+          continue;
+        }
+        // Explicit logout remains locally final for every network/server
+        // outcome. The repository finishes the fence after this best-effort
+        // repair returns.
+        return null;
+      } catch (error) {
+        debugPrint(
+          '[TokenRefresher] explicit-logout repair failed: $error',
+        );
+        return null;
+      }
+    }
+    return null;
   }
 
-  Future<String?> _handleRefreshError(DioException e) async {
+  Future<String?> _refresh({
+    AuthTokenSnapshot? expectedSession,
+    required bool allowLegacyUpgrade,
+  }) async {
+    AuthTokenSnapshot owner;
+    try {
+      owner = expectedSession ?? await _tokenStorage.readTokenSnapshot();
+    } catch (error) {
+      debugPrint('[TokenRefresher] token snapshot unavailable: $error');
+      return null;
+    }
+
+    final refreshToken = owner.refreshToken;
+    if (refreshToken == null) {
+      debugPrint('[TokenRefresher] no refresh token');
+      if (owner.identity != null && owner.hasCredentials) {
+        final cleared = await _tokenStorage.clearTokensIfCurrent(owner);
+        if (cleared) {
+          _onForceLogout?.call(AuthForceLogoutEvent.fromSnapshot(owner));
+        }
+      }
+      return null;
+    }
+    final legacyUpgrade = owner.isPreSessionIdCredentialState;
+    final interruptedLegacyUpgrade = owner.isInterruptedPreSessionIdUpgrade;
+    final sessionLineageUpgrade = owner.isSessionRoleAccountIdUpgrade;
+    if (owner.identity == null &&
+        (!allowLegacyUpgrade ||
+            (!legacyUpgrade &&
+                !interruptedLegacyUpgrade &&
+                !sessionLineageUpgrade))) {
+      // Tokens without an exact sub/role/sid tuple cannot safely own a
+      // normal refresh mutation. Preserve them for saved-session recovery
+      // instead of guessing which account should be cleared or updated.
+      debugPrint(
+        '[TokenRefresher] refresh token has unknown/mixed session identity',
+      );
+      return null;
+    }
+
+    final flightKey = (
+      accessToken: owner.accessToken,
+      refreshToken: refreshToken,
+    );
+    final existing = _inFlightByCredentialState[flightKey];
+    if (existing != null) return existing;
+
+    late final Future<String?> flight;
+    flight = _refreshOwned(
+      owner,
+      legacyUpgrade: legacyUpgrade,
+      interruptedLegacyUpgrade: interruptedLegacyUpgrade,
+      sessionLineageUpgrade: sessionLineageUpgrade,
+    );
+    _inFlightByCredentialState[flightKey] = flight;
+    try {
+      return await flight;
+    } finally {
+      if (identical(_inFlightByCredentialState[flightKey], flight)) {
+        _inFlightByCredentialState.remove(flightKey);
+      }
+    }
+  }
+
+  Future<String?> _refreshOwned(
+    AuthTokenSnapshot owner, {
+    required bool legacyUpgrade,
+    required bool interruptedLegacyUpgrade,
+    required bool sessionLineageUpgrade,
+  }) async {
+    late final String refreshAttemptId;
+    try {
+      final beforeAttempt = await _tokenStorage.readTokenSnapshot();
+      if (!beforeAttempt.hasExactRawCredentials(owner)) {
+        return _currentAccessAfterOwnerChange(
+          beforeAttempt,
+          owner,
+          legacyUpgrade: legacyUpgrade,
+          interruptedLegacyUpgrade: interruptedLegacyUpgrade,
+          sessionLineageUpgrade: sessionLineageUpgrade,
+        );
+      }
+      final attemptStore = _refreshAttemptStore;
+      final created = attemptStore is SessionBoundRefreshAttemptStore
+          ? await attemptStore.readOrCreateIfCurrent(owner)
+          : await attemptStore.readOrCreate(owner.refreshToken!);
+      if (created == null) return null;
+      refreshAttemptId = created;
+      final afterAttempt = await _tokenStorage.readTokenSnapshot();
+      if (!afterAttempt.hasExactRawCredentials(owner)) {
+        return _currentAccessAfterOwnerChange(
+          afterAttempt,
+          owner,
+          legacyUpgrade: legacyUpgrade,
+          interruptedLegacyUpgrade: interruptedLegacyUpgrade,
+          sessionLineageUpgrade: sessionLineageUpgrade,
+        );
+      }
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[TokenRefresher] refresh-attempt persistence failed: '
+        '$error\n$stackTrace',
+      );
+      return null;
+    }
+
+    try {
+      for (var attempt = 1; attempt <= 3; attempt += 1) {
+        final current = await _tokenStorage.readTokenSnapshot();
+        if (!current.hasExactRawCredentials(owner)) {
+          if (legacyUpgrade) return null;
+          if (interruptedLegacyUpgrade || sessionLineageUpgrade) {
+            return _currentAccessForSameUpgradeGeneration(current, owner);
+          }
+          return _currentAccessForSameSession(current, owner.identity!);
+        }
+
+        try {
+          debugPrint('[TokenRefresher] POST /auth/refresh →');
+          final response = await _dio.post(
+            '/auth/refresh',
+            data: RefreshRequest(
+              refreshToken: owner.refreshToken!,
+              // A coherent pair minted before SIDs existed must omit access
+              // proof: the backend's proof path intentionally accepts only a
+              // signed SID-bearing access token. Interrupted legacy upgrades
+              // and modern rotations do send that proof so response-loss
+              // recovery can bind the predecessor to its exact SID.
+              accessToken: legacyUpgrade ? null : owner.accessToken,
+              refreshAttemptId: refreshAttemptId,
+            ).toJson(),
+          );
+          debugPrint(
+            '[TokenRefresher] POST /auth/refresh ← ${response.statusCode}',
+          );
+
+          final body = response.data;
+          if (body is! Map<String, dynamic>) {
+            debugPrint('[TokenRefresher] body not a map: $body');
+            return null;
+          }
+          final payload = (body['data'] is Map<String, dynamic>
+              ? body['data']
+              : body) as Map<String, dynamic>;
+
+          final newAccessToken = payload['accessToken'] as String?;
+          if (newAccessToken == null || newAccessToken.isEmpty) {
+            debugPrint('[TokenRefresher] response missing accessToken');
+            return null;
+          }
+          final newRefreshToken =
+              (payload['refreshToken'] as String?) ?? owner.refreshToken!;
+
+          final persisted = sessionLineageUpgrade
+              ? await _tokenStorage.replaceSessionLineageTokensIfCurrent(
+                  expected: owner,
+                  accessToken: newAccessToken,
+                  refreshToken: newRefreshToken,
+                )
+              : interruptedLegacyUpgrade
+                  ? await _tokenStorage.replaceInterruptedLegacyTokensIfCurrent(
+                      expected: owner,
+                      accessToken: newAccessToken,
+                      refreshToken: newRefreshToken,
+                    )
+                  : legacyUpgrade
+                      ? await _tokenStorage.replaceLegacyTokensIfCurrent(
+                          expected: owner,
+                          accessToken: newAccessToken,
+                          refreshToken: newRefreshToken,
+                        )
+                      : await _tokenStorage.replaceTokensIfCurrent(
+                          expected: owner,
+                          accessToken: newAccessToken,
+                          refreshToken: newRefreshToken,
+                        );
+          final afterWrite = await _tokenStorage.readTokenSnapshot();
+          if (!persisted) {
+            debugPrint(
+              '[TokenRefresher] stale refresh result discarded; '
+              'credentials changed while the request was in flight',
+            );
+            if (legacyUpgrade) return null;
+            if (interruptedLegacyUpgrade || sessionLineageUpgrade) {
+              return _currentAccessForSameUpgradeGeneration(afterWrite, owner);
+            }
+            return _currentAccessForSameSession(afterWrite, owner.identity!);
+          }
+          final validAfterWrite =
+              interruptedLegacyUpgrade || sessionLineageUpgrade
+                  ? _belongsToUpgradeGeneration(afterWrite, owner) &&
+                      afterWrite.accessToken == newAccessToken &&
+                      afterWrite.refreshToken == newRefreshToken
+                  : legacyUpgrade
+                      ? afterWrite.identity != null &&
+                          afterWrite.identity!.principal == owner.principal &&
+                          afterWrite.accessToken == newAccessToken &&
+                          afterWrite.refreshToken == newRefreshToken
+                      : afterWrite.belongsTo(owner.identity!) &&
+                          afterWrite.accessToken == newAccessToken;
+          if (!validAfterWrite) {
+            debugPrint(
+              '[TokenRefresher] refreshed credentials were replaced before '
+              'the caller resumed',
+            );
+            return null;
+          }
+          try {
+            await _refreshAttemptStore.clearIfMatches(
+              refreshToken: owner.refreshToken!,
+              attemptId: refreshAttemptId,
+            );
+          } catch (error) {
+            // The successor pair is already canonical. A stale record is
+            // harmless and is replaced when its token digest changes.
+            debugPrint(
+              '[TokenRefresher] refresh-attempt cleanup deferred: $error',
+            );
+          }
+          debugPrint('[TokenRefresher] new token pair persisted');
+          return newAccessToken;
+        } on DioException catch (error) {
+          final code = _extractErrorCode(error.response);
+          if (code == AuthErrorCodes.refreshInFlight && attempt < 3) {
+            final backoff = Duration(milliseconds: 250 * attempt);
+            debugPrint(
+              '[TokenRefresher] refresh contention — retrying in '
+              '${backoff.inMilliseconds}ms',
+            );
+            await _delay(backoff);
+            continue;
+          }
+          return _handleRefreshError(error, owner);
+        }
+      }
+      return null;
+    } catch (error, stackTrace) {
+      debugPrint('[TokenRefresher] unexpected: $error\n$stackTrace');
+      return null;
+    }
+  }
+
+  String? _currentAccessAfterOwnerChange(
+    AuthTokenSnapshot current,
+    AuthTokenSnapshot owner, {
+    required bool legacyUpgrade,
+    required bool interruptedLegacyUpgrade,
+    required bool sessionLineageUpgrade,
+  }) {
+    if (legacyUpgrade) return null;
+    if (interruptedLegacyUpgrade || sessionLineageUpgrade) {
+      return _currentAccessForSameUpgradeGeneration(current, owner);
+    }
+    final identity = owner.identity;
+    return identity == null
+        ? null
+        : _currentAccessForSameSession(current, identity);
+  }
+
+  String? _currentAccessForSameSession(
+    AuthTokenSnapshot current,
+    AuthSessionIdentity expected,
+  ) {
+    if (!current.belongsTo(expected)) return null;
+    return current.accessToken;
+  }
+
+  String? _currentAccessForSameUpgradeGeneration(
+    AuthTokenSnapshot current,
+    AuthTokenSnapshot owner,
+  ) {
+    if (!_belongsToUpgradeGeneration(current, owner)) return null;
+    return current.accessToken;
+  }
+
+  bool _belongsToUpgradeGeneration(
+    AuthTokenSnapshot current,
+    AuthTokenSnapshot owner,
+  ) {
+    final expectedGeneration = owner.isInterruptedPreSessionIdUpgrade
+        ? owner.accessLineage?.generation
+        : owner.generation;
+    final currentIdentity = current.identity;
+    if (expectedGeneration == null ||
+        currentIdentity == null ||
+        currentIdentity.generation != expectedGeneration) {
+      return false;
+    }
+    final carriedRoleAccountId = owner.carriedRoleAccountId;
+    return carriedRoleAccountId == null ||
+        currentIdentity.roleAccountId == carriedRoleAccountId;
+  }
+
+  Future<String?> _handleRefreshError(
+    DioException e,
+    AuthTokenSnapshot owner,
+  ) async {
     final status = e.response?.statusCode;
     final code = _extractErrorCode(e.response);
     debugPrint(
@@ -165,28 +482,56 @@ class TokenRefresher {
       AuthErrorCodes.tokenExpired,
       AuthErrorCodes.invalidToken,
       AuthErrorCodes.refreshTokenReused,
+      AuthErrorCodes.userNotFound,
+      AuthErrorCodes.roleAccountUnavailable,
+      AuthErrorCodes.roleAccountMismatch,
     };
-    if (status == 401 && code == AuthErrorCodes.refreshInFlight) {
+    if (code == AuthErrorCodes.refreshInFlight) {
       debugPrint(
         '[TokenRefresher] refresh contention remained after retries — '
         'keeping the local session',
       );
       return null;
     }
-    if (status == 401) {
-      if (code != null && terminalCodes.contains(code)) {
-        debugPrint(
-          '[TokenRefresher] terminal failure ($code) — clearing tokens',
-        );
-        await _tokenStorage.clearTokens();
-        _onForceLogout?.call();
+    final invalidLegacyProof =
+        code == AuthErrorCodes.legacyBootstrapProofInvalid &&
+            (owner.isPreSessionIdCredentialState ||
+                owner.isInterruptedPreSessionIdUpgrade);
+    if ((code != null && terminalCodes.contains(code)) || invalidLegacyProof) {
+      debugPrint(
+        '[TokenRefresher] terminal failure ($code) — conditionally '
+        'clearing tokens',
+      );
+      final cleared = await _tokenStorage.clearTokensIfCurrent(owner);
+      if (cleared) {
+        _onForceLogout?.call(AuthForceLogoutEvent.fromSnapshot(owner));
       } else {
         debugPrint(
-          '[TokenRefresher] 401 (code="$code") — soft logout',
+          '[TokenRefresher] stale terminal response ignored; a newer '
+          'credential epoch is active',
         );
-        await _tokenStorage.clearAuthTokensOnly();
-        _onForceLogout?.call();
       }
+    } else if (code == AuthErrorCodes.sessionTakenOver) {
+      debugPrint(
+        '[TokenRefresher] session takeover — conditionally clearing only '
+        'the fenced JWT pair',
+      );
+      final ownerIdentity = owner.identity;
+      final cleared = ownerIdentity != null
+          ? await _tokenStorage
+              .clearAuthTokensOnlyForIdentityIfCurrent(ownerIdentity)
+          : await _tokenStorage.clearAuthTokensOnlyIfCurrent(owner);
+      if (cleared) {
+        _onForceLogout?.call(AuthForceLogoutEvent.fromSnapshot(owner));
+      }
+    } else if (status == 401) {
+      // A proxy, gateway, or truncated edge response can preserve the HTTP
+      // status while dropping the backend's structured error code. Status
+      // alone is not proof that the rotating credential is dead.
+      debugPrint(
+        '[TokenRefresher] unclassified 401 (code="$code") — preserving '
+        'the local session for retry/recovery',
+      );
     } else if (status != null && status >= 400 && status < 500) {
       debugPrint(
         '[TokenRefresher] non-401 4xx ($status, code="$code") — '

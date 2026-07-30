@@ -90,11 +90,6 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
         // `appForegroundedProvider` (e.g. the open-jobs REST poller)
         // re-enables itself before the network calls below fire.
         ref.read(appForegroundedProvider.notifier).state = true;
-        // If the session TTL elapsed while the app was backgrounded, boot
-        // the user out now rather than waiting for the next 401. The
-        // interceptor's proactive expiry check covers access-token expiry
-        // mid-session; this covers the outer session window.
-        ref.read(authControllerProvider.notifier).recheckSessionOnResume();
         // Restart the artisan-jobs poll + silent reload to catch up on
         // anything FCM didn't deliver while we were paused.
         if (ref.exists(artisanJobsProvider)) {

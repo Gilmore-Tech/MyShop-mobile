@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
+
+import '../../auth/providers/auth_controller.dart';
 
 // ── SplashScreen ──────────────────────────────────────────────────────────────
 // PRD § 4.1: On launch, check for a valid JWT in secure storage.
@@ -10,14 +13,14 @@ import 'package:shared_ui/shared_ui.dart';
 // This screen uses a single AnimationController driving all entrance stages via
 // Interval sub-animations.  StatefulWidget is permitted here (animation only).
 
-class SplashScreen extends StatefulWidget {
+class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
+class _SplashScreenState extends ConsumerState<SplashScreen>
     with SingleTickerProviderStateMixin {
   // ── Design tokens ──────────────────────────────────────────────────────────
   static const _bg = Color(0xFF0F1923); // rich dark navy
@@ -47,23 +50,27 @@ class _SplashScreenState extends State<SplashScreen>
     super.initState();
 
     // Force transparent status bar so splash fills the notch area.
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarBrightness: Brightness.dark,
-      statusBarIconBrightness: Brightness.light,
-    ));
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarBrightness: Brightness.dark,
+        statusBarIconBrightness: Brightness.light,
+      ),
+    );
 
     _ctrl = AnimationController(vsync: this, duration: _totalDuration)
       ..addStatusListener(_onAnimationStatus);
 
     final curve = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
 
-    _logoScale = Tween<double>(begin: 0.55, end: 1.0).animate(
-      CurvedAnimation(parent: curve, curve: const Interval(0.0, 0.45)),
-    );
-    _logoFade = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: curve, curve: const Interval(0.0, 0.40)),
-    );
+    _logoScale = Tween<double>(
+      begin: 0.55,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: curve, curve: const Interval(0.0, 0.45)));
+    _logoFade = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: curve, curve: const Interval(0.0, 0.40)));
     _wordSlide = Tween<double>(begin: 24.0, end: 0.0).animate(
       CurvedAnimation(parent: curve, curve: const Interval(0.30, 0.65)),
     );
@@ -73,9 +80,10 @@ class _SplashScreenState extends State<SplashScreen>
     _taglineFade = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: curve, curve: const Interval(0.55, 0.80)),
     );
-    _footerFade = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: curve, curve: const Interval(0.72, 1.0)),
-    );
+    _footerFade = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: curve, curve: const Interval(0.72, 1.0)));
 
     _ctrl.forward();
   }
@@ -108,6 +116,8 @@ class _SplashScreenState extends State<SplashScreen>
     final size = MediaQuery.sizeOf(context);
     final w = size.width;
     final h = size.height;
+    final authState = ref.watch(clientAuthControllerProvider);
+    final pending = authState is AuthSessionRestorePending ? authState : null;
 
     return Scaffold(
       backgroundColor: _bg,
@@ -178,9 +188,18 @@ class _SplashScreenState extends State<SplashScreen>
                 opacity: _footerFade.value,
                 child: Column(
                   children: [
-                    _LoadingDots(w: w),
-                    SizedBox(height: h * 0.022),
-                    _Footer(w: w),
+                    if (pending == null) ...[
+                      _LoadingDots(w: w),
+                      SizedBox(height: h * 0.022),
+                      _Footer(w: w),
+                    ] else
+                      _SessionRestorePanel(
+                        width: w,
+                        state: pending,
+                        onRetry: () => ref
+                            .read(clientAuthControllerProvider.notifier)
+                            .retrySessionRestore(),
+                      ),
                   ],
                 ),
               ),
@@ -193,6 +212,59 @@ class _SplashScreenState extends State<SplashScreen>
 }
 
 // ── Sub-widgets ────────────────────────────────────────────────────────────────
+
+class _SessionRestorePanel extends StatelessWidget {
+  const _SessionRestorePanel({
+    required this.width,
+    required this.state,
+    required this.onRetry,
+  });
+
+  final double width;
+  final AuthSessionRestorePending state;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      liveRegion: true,
+      label: 'Session recovery',
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: width * 0.1),
+        child: Column(
+          children: [
+            Text(
+              state.error ?? 'Connect to the internet and try again.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.9),
+                fontSize: width * 0.038,
+                height: 1.35,
+              ),
+            ),
+            SizedBox(height: width * 0.04),
+            FilledButton.icon(
+              key: const ValueKey('retry_saved_session'),
+              onPressed: state.isRetrying ? null : onRetry,
+              style: FilledButton.styleFrom(
+                backgroundColor: MyShopColors.primaryGold,
+                foregroundColor: const Color(0xFF0F1923),
+                minimumSize: Size(width * 0.52, 48),
+              ),
+              icon: state.isRetrying
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh_rounded),
+              label: Text(state.isRetrying ? 'Reconnecting…' : 'Try again'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _LogoMark extends StatelessWidget {
   final double w;
