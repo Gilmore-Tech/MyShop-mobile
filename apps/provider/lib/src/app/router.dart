@@ -589,12 +589,14 @@ class RideRequestRouteExtra {
     required this.rideId,
     required this.navigationLatchToken,
     required this.releaseNavigationLatch,
+    required this.allowNotificationRetry,
     this.expiresAt,
   });
 
   final String rideId;
   final Object navigationLatchToken;
   final VoidCallback releaseNavigationLatch;
+  final VoidCallback allowNotificationRetry;
   final DateTime? expiresAt;
 }
 
@@ -760,6 +762,7 @@ class _RideRequestLoaderScreenState
       // remainder of the 30-second offer. The timeout fallback in the tap
       // bridge is only for cases where this loader never mounts.
       widget.extra.releaseNavigationLatch();
+      widget.extra.allowNotificationRetry();
       setState(() => _showUnavailable = true);
     }
   }

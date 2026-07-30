@@ -66,6 +66,261 @@ bool releaseRideRequestNavigationLatchIfOwned({
   return true;
 }
 
+/// Coalesces the multiple platform callbacks that can represent one physical
+/// incoming-request tap.
+///
+/// A request action can reach Dart through FlutterFire, the local notification
+/// plugin, and the durable native action bridge. Those callbacks do not share
+/// a platform event id, so deduplicating only by native queue id still lets one
+/// View/Accept tap hydrate or mutate the same request multiple times.
+///
+/// View callbacks are single-flight and retain a short success tombstone. A
+/// later explicit decision remains valid. Once Accept/Skip/Bid owns a request,
+/// all duplicate decisions and trailing View callbacks are suppressed for the
+/// rest of the offer window.
+@visibleForTesting
+class IncomingRequestTapCoordinator {
+  IncomingRequestTapCoordinator({
+    this.viewReplayWindow = const Duration(seconds: 2),
+    this.decisionFallbackWindow = const Duration(seconds: 30),
+  });
+
+  final Duration viewReplayWindow;
+  final Duration decisionFallbackWindow;
+
+  final Map<String, Future<void>> _activeViews = <String, Future<void>>{};
+  final Map<String, Future<void>> _activeDecisions = <String, Future<void>>{};
+  final Map<String, Timer> _viewTombstones = <String, Timer>{};
+  final Map<String, Timer> _decisionTombstones = <String, Timer>{};
+  var _generation = 0;
+  var _disposed = false;
+
+  Future<bool> dispatch(
+    Map<String, dynamic> payload,
+    Future<void> Function() handle,
+  ) async {
+    if (_disposed) return false;
+    final requestKey = _requestKey(payload);
+    if (requestKey == null) {
+      await handle();
+      return true;
+    }
+    final generation = _generation;
+
+    final isDecision = _isDecision(payload);
+    if (isDecision) {
+      final activeDecision = _activeDecisions[requestKey];
+      if (activeDecision != null) {
+        // Durable native copies must not acknowledge before the canonical
+        // action has succeeded. Awaiting the same Future preserves replay on
+        // failure while still preventing a second API mutation.
+        await activeDecision;
+        debugPrint('[RequestTap] joined duplicate decision for $requestKey');
+        return false;
+      }
+      if (_decisionTombstones.containsKey(requestKey)) {
+        debugPrint(
+          '[RequestTap] suppressed duplicate decision for $requestKey',
+        );
+        return false;
+      }
+      final operation = Future<void>.sync(handle);
+      _activeDecisions[requestKey] = operation;
+      try {
+        await operation;
+        if (generation == _generation &&
+            identical(_activeDecisions[requestKey], operation)) {
+          _activeDecisions.remove(requestKey);
+        }
+        if (generation == _generation && !_disposed) {
+          _remember(_decisionTombstones, requestKey, _decisionWindow(payload));
+        }
+        return true;
+      } catch (_) {
+        // The native bridge deliberately replays unacknowledged actions.
+        // Unexpected failures must therefore remain retryable.
+        if (generation == _generation &&
+            identical(_activeDecisions[requestKey], operation)) {
+          _activeDecisions.remove(requestKey);
+        }
+        rethrow;
+      }
+    }
+
+    final activeDecision = _activeDecisions[requestKey];
+    if (activeDecision != null) {
+      await activeDecision;
+      debugPrint(
+        '[RequestTap] joined decision before duplicate view for $requestKey',
+      );
+      return false;
+    }
+    final activeView = _activeViews[requestKey];
+    if (activeView != null) {
+      await activeView;
+      debugPrint('[RequestTap] joined duplicate view for $requestKey');
+      return false;
+    }
+    if (_decisionTombstones.containsKey(requestKey) ||
+        _viewTombstones.containsKey(requestKey)) {
+      debugPrint('[RequestTap] suppressed duplicate view for $requestKey');
+      return false;
+    }
+    final operation = Future<void>.sync(handle);
+    _activeViews[requestKey] = operation;
+    try {
+      await operation;
+      if (generation == _generation &&
+          identical(_activeViews[requestKey], operation)) {
+        _activeViews.remove(requestKey);
+      }
+      if (generation == _generation && !_disposed) {
+        _remember(_viewTombstones, requestKey, viewReplayWindow);
+      }
+      return true;
+    } catch (_) {
+      if (generation == _generation &&
+          identical(_activeViews[requestKey], operation)) {
+        _activeViews.remove(requestKey);
+      }
+      rethrow;
+    }
+  }
+
+  /// A View callback may begin just before an Accept/Skip callback claims the
+  /// same request. Re-check immediately before navigation so the decision wins
+  /// and the older View cannot reopen the request screen afterwards.
+  bool shouldAbortViewAfterDecision(Map<String, dynamic> payload) {
+    if (_isDecision(payload)) return false;
+    final requestKey = _requestKey(payload);
+    if (requestKey == null) return false;
+    return _activeDecisions.containsKey(requestKey) ||
+        _decisionTombstones.containsKey(requestKey);
+  }
+
+  /// A ride loader that could not hydrate deliberately reopens the navigation
+  /// latch. Remove only the short View replay claim as well so the provider can
+  /// tap the still-live notification and try again immediately.
+  void allowViewRetry(Map<String, dynamic> payload) {
+    if (_isDecision(payload)) return;
+    final requestKey = _requestKey(payload);
+    if (requestKey == null) return;
+    _viewTombstones.remove(requestKey)?.cancel();
+  }
+
+  /// Session-owned claims must never carry into another provider account.
+  void reset() {
+    _generation += 1;
+    for (final timer in _viewTombstones.values) {
+      timer.cancel();
+    }
+    for (final timer in _decisionTombstones.values) {
+      timer.cancel();
+    }
+    _viewTombstones.clear();
+    _decisionTombstones.clear();
+    _activeViews.clear();
+    _activeDecisions.clear();
+  }
+
+  void dispose() {
+    _disposed = true;
+    reset();
+  }
+
+  String? _requestKey(Map<String, dynamic> payload) {
+    final rawType = payload[NotificationPayload.keyType]?.toString() ?? '';
+    final type = NotificationPayload.normaliseType(rawType);
+    final rideId =
+        (payload[NotificationPayload.keyRideId] ?? payload['ride_id'])
+            ?.toString()
+            .trim();
+    final jobId = (payload[NotificationPayload.keyJobId] ?? payload['job_id'])
+        ?.toString()
+        .trim();
+    final offerId = payload[NotificationPayload.keyOfferId]?.toString().trim();
+
+    final preferredId = offerId != null && offerId.isNotEmpty ? offerId : null;
+    if (type == NotificationPayload.typeRideRequest ||
+        _isRideRequestAction(payload)) {
+      final id =
+          preferredId ?? (rideId != null && rideId.isNotEmpty ? rideId : null);
+      return id == null || id.isEmpty ? null : 'ride:$id';
+    }
+    if (type == NotificationPayload.typeJobRequest ||
+        _isJobRequestAction(payload)) {
+      final id =
+          preferredId ?? (jobId != null && jobId.isNotEmpty ? jobId : null);
+      return id == null || id.isEmpty ? null : 'job:$id';
+    }
+    return null;
+  }
+
+  bool _isDecision(Map<String, dynamic> payload) {
+    final action = _normalisedAction(payload);
+    return action == NotificationPayload.actionRideAccept ||
+        action == NotificationPayload.actionRideSkip ||
+        action == NotificationPayload.actionJobSkip;
+  }
+
+  bool _isRideRequestAction(Map<String, dynamic> payload) {
+    final action = _normalisedAction(payload);
+    return action == NotificationPayload.actionRideView ||
+        action == NotificationPayload.actionRideAccept ||
+        action == NotificationPayload.actionRideSkip;
+  }
+
+  bool _isJobRequestAction(Map<String, dynamic> payload) {
+    final action = _normalisedAction(payload);
+    return action == NotificationPayload.actionJobView ||
+        action == NotificationPayload.actionJobSubmitBid ||
+        action == NotificationPayload.actionJobSkip;
+  }
+
+  String? _normalisedAction(Map<String, dynamic> payload) {
+    return payload[NotificationPayload.keyActionId]
+        ?.toString()
+        .trim()
+        .toUpperCase();
+  }
+
+  Duration _decisionWindow(Map<String, dynamic> payload) {
+    final offerId =
+        payload[NotificationPayload.keyOfferId]?.toString().trim() ?? '';
+    if (offerId.isEmpty) {
+      // Legacy payloads cannot distinguish a later re-offer of the same
+      // booking. Keep only the immediate cross-channel replay guard.
+      return viewReplayWindow;
+    }
+    final now = DateTime.now().toUtc();
+    final deadline = _requestDeadlineFromData(payload);
+    if (deadline == null || !deadline.isAfter(now)) {
+      return decisionFallbackWindow;
+    }
+    final remaining = deadline.difference(now);
+    // A malformed remote deadline must not retain an in-memory claim forever.
+    const maximum = Duration(minutes: 2);
+    return remaining > maximum ? decisionFallbackWindow : remaining;
+  }
+
+  void _remember(
+    Map<String, Timer> tombstones,
+    String requestKey,
+    Duration duration,
+  ) {
+    tombstones.remove(requestKey)?.cancel();
+    final bounded =
+        duration > Duration.zero ? duration : const Duration(milliseconds: 1);
+    late final Timer timer;
+    timer = Timer(bounded, () {
+      if (identical(tombstones[requestKey], timer)) {
+        tombstones.remove(requestKey);
+      }
+    });
+    tombstones[requestKey] = timer;
+  }
+}
+
 Future<void> _recordTerminalCallTombstone(
   String callId,
   Map<String, dynamic> data,
@@ -127,10 +382,7 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
     'keys=${message.data.keys.toList()}',
   );
 
-  if (await _handleOfferRevokedFromRemote(
-    message,
-    source: 'background-fcm',
-  )) {
+  if (await _handleOfferRevokedFromRemote(message, source: 'background-fcm')) {
     return;
   }
   if (await _handleCallEndedFromRemote(message, source: 'background-fcm')) {
@@ -237,10 +489,7 @@ Future<bool> _handleOfferRevokedFromRemote(
         type: NotificationPayload.typeRideCancelled,
         title: 'Ride request cancelled',
         body: 'The rider cancelled this ride request.',
-        extras: {
-          NotificationPayload.keyRideId: requestId,
-          'reason': reason,
-        },
+        extras: {NotificationPayload.keyRideId: requestId, 'reason': reason},
       );
     }
     debugPrint('[FCM] $source cleared revoked $inferredType $requestId');
@@ -486,10 +735,7 @@ Future<void> _renderFromRemote(
   );
 }
 
-String _privacySafeRequestBody(
-  String type,
-  Map<String, dynamic> data,
-) {
+String _privacySafeRequestBody(String type, Map<String, dynamic> data) {
   Map<String, dynamic> decoded(String key) {
     final raw = data[key];
     if (raw is Map) return Map<String, dynamic>.from(raw);
@@ -775,9 +1021,9 @@ class FcmService {
             reason: message.data['reason']?.toString() ?? 'revoked',
           );
           _ref.read(incomingRideRequestProvider.notifier).state = null;
-          _ref.read(rideRequestDeadlineByIdProvider.notifier).update(
-                (deadlines) => {...deadlines}..remove(rideId),
-              );
+          _ref
+              .read(rideRequestDeadlineByIdProvider.notifier)
+              .update((deadlines) => {...deadlines}..remove(rideId));
         }
         if (jobId != null && jobId.isNotEmpty) {
           _ref.read(pendingIncomingJobsProvider.notifier).remove(jobId);
@@ -805,10 +1051,7 @@ class FcmService {
         }
         return;
       }
-      if (await _handleCallEndedFromRemote(
-        message,
-        source: 'foreground-fcm',
-      )) {
+      if (await _handleCallEndedFromRemote(message, source: 'foreground-fcm')) {
         return;
       }
       if (await _showIncomingCallFromRemote(
@@ -834,12 +1077,9 @@ class FcmService {
           debugPrint('[FCM] foreground ride offer receipt failed');
           return;
         }
-        _ref.read(rideOfferIdByRideProvider.notifier).update(
-              (offers) => {
-                ...offers,
-                received.rideId: received.offerId,
-              },
-            );
+        _ref
+            .read(rideOfferIdByRideProvider.notifier)
+            .update((offers) => {...offers, received.rideId: received.offerId});
         _ref.read(rideRequestDeadlineByIdProvider.notifier).update(
               (deadlines) => {
                 ...deadlines,
@@ -853,9 +1093,9 @@ class FcmService {
         }
         try {
           final ride = Ride.fromJson(received.payload);
-          _ref.read(surfacedRideIdsProvider.notifier).update(
-                (ids) => {...ids, ride.id},
-              );
+          _ref
+              .read(surfacedRideIdsProvider.notifier)
+              .update((ids) => {...ids, ride.id});
           _ref.read(incomingRideRequestProvider.notifier).state = null;
           _ref.read(incomingRideRequestProvider.notifier).state = ride;
           _ref.read(navBadgeProvider.notifier).increment('/home');
@@ -935,8 +1175,9 @@ class FcmService {
     // remains the fallback when the cold-start payload cannot be read in time.
     RemoteMessage? initialMessage;
     try {
-      initialMessage =
-          await _fcm.getInitialMessage().timeout(const Duration(seconds: 5));
+      initialMessage = await _fcm.getInitialMessage().timeout(
+            const Duration(seconds: 5),
+          );
     } catch (error) {
       debugPrint('[FCM] initial message lookup unavailable: $error');
     }
@@ -1005,9 +1246,9 @@ class FcmService {
         );
       }
 
-      var settings = await _fcm
-          .getNotificationSettings()
-          .timeout(const Duration(seconds: 5));
+      var settings = await _fcm.getNotificationSettings().timeout(
+            const Duration(seconds: 5),
+          );
       if (settings.authorizationStatus == AuthorizationStatus.notDetermined &&
           requestPermissionIfNeeded) {
         settings = await _fcm
@@ -1021,8 +1262,9 @@ class FcmService {
       }
 
       if (Platform.isIOS) {
-        final apnsToken =
-            await _fcm.getAPNSToken().timeout(const Duration(seconds: 5));
+        final apnsToken = await _fcm.getAPNSToken().timeout(
+              const Duration(seconds: 5),
+            );
         if (apnsToken == null || apnsToken.isEmpty) {
           return 'This device is not ready for notifications yet. Check your connection and try again.';
         }
@@ -1032,8 +1274,9 @@ class FcmService {
       if (token == null || token.isEmpty) {
         return 'This device could not register for notifications. Check your connection and try again.';
       }
-      final registered =
-          await _register(token).timeout(const Duration(seconds: 15));
+      final registered = await _register(
+        token,
+      ).timeout(const Duration(seconds: 15));
       if (!registered) {
         return 'MyShop could not register this device for requests. Check your connection and try again.';
       }
@@ -1085,9 +1328,7 @@ class FcmService {
       // attached. Do not rely on a new native event being emitted: snapshots
       // are idempotent, and the later successful FCM registration repeats the
       // sync after the backend has a current device row to bind against.
-      unawaited(
-        _syncLiveActivityTokensOnce(expectedIdentity: identity),
-      );
+      unawaited(_syncLiveActivityTokensOnce(expectedIdentity: identity));
     }
 
     // iOS: FCM derives its token from the APNs device token. On cold
@@ -1273,16 +1514,11 @@ class FcmService {
         case VoipCallBridgeEventType.tokenUpdated:
           final token = event.token;
           if (token != null && token.isNotEmpty) {
-            unawaited(
-              _registerVoipToken(token, expectedIdentity: identity),
-            );
+            unawaited(_registerVoipToken(token, expectedIdentity: identity));
           }
         case VoipCallBridgeEventType.tokenInvalidated:
           unawaited(
-            _unregisterVoipToken(
-              event.token,
-              expectedIdentity: identity,
-            ),
+            _unregisterVoipToken(event.token, expectedIdentity: identity),
           );
         case VoipCallBridgeEventType.incomingCall:
           debugPrint('[VoIP] incoming call bridge event: ${event.payload}');
@@ -1355,8 +1591,9 @@ class FcmService {
         () => _ref.read(appCallServiceProvider).acceptCall(callId),
       );
       router.go('/calls/$callId', extra: session);
-      await VoipCallBridgeService.instance
-          .acknowledgeCallAction(event.actionId);
+      await VoipCallBridgeService.instance.acknowledgeCallAction(
+        event.actionId,
+      );
     } catch (error) {
       debugPrint('[VoIP] accept failed for $callId: $error');
       try {
@@ -1371,8 +1608,9 @@ class FcmService {
       }
       _stopTrackingIncomingCall(callId);
       try {
-        await VoipCallBridgeService.instance
-            .acknowledgeCallAction(event.actionId);
+        await VoipCallBridgeService.instance.acknowledgeCallAction(
+          event.actionId,
+        );
       } catch (cleanupError) {
         debugPrint('[VoIP] accept recovery acknowledge failed: $cleanupError');
       }
@@ -1401,8 +1639,9 @@ class FcmService {
       _stopTrackingIncomingCall(callId);
       await VoipCallBridgeService.instance.endCall(callId);
       _ref.read(goRouterProvider).go(_routeAfterCall(session));
-      await VoipCallBridgeService.instance
-          .acknowledgeCallAction(event.actionId);
+      await VoipCallBridgeService.instance.acknowledgeCallAction(
+        event.actionId,
+      );
     } catch (error) {
       debugPrint('[VoIP] decline failed for $callId: $error');
     }
@@ -1420,8 +1659,9 @@ class FcmService {
       );
       _stopTrackingIncomingCall(callId);
       _ref.read(goRouterProvider).go(_routeAfterCall(session));
-      await VoipCallBridgeService.instance
-          .acknowledgeCallAction(event.actionId);
+      await VoipCallBridgeService.instance.acknowledgeCallAction(
+        event.actionId,
+      );
     } catch (error) {
       debugPrint('[VoIP] end failed for $callId: $error');
     }
@@ -1555,9 +1795,7 @@ class FcmService {
             expectedIdentity: expectedIdentity,
           );
         } else {
-          await _syncLiveActivityTokensOnce(
-            expectedIdentity: expectedIdentity,
-          );
+          await _syncLiveActivityTokensOnce(expectedIdentity: expectedIdentity);
         }
       case LiveActivityBridgeEventType.unknown:
         debugPrint('[LiveActivity] ignored unknown native event');
@@ -1569,9 +1807,7 @@ class FcmService {
   }) async {
     final state = await LiveActivityService.instance.getState();
     if (state.activitiesEnabled == false) {
-      await _unregisterLiveActivityDevice(
-        expectedIdentity: expectedIdentity,
-      );
+      await _unregisterLiveActivityDevice(expectedIdentity: expectedIdentity);
       return;
     }
     final pushToStartToken = state.pushToStartToken;
@@ -1585,10 +1821,7 @@ class FcmService {
       if (activity.updateToken == null || activity.updateToken!.isEmpty) {
         continue;
       }
-      await _registerLiveActivity(
-        activity,
-        expectedIdentity: expectedIdentity,
-      );
+      await _registerLiveActivity(activity, expectedIdentity: expectedIdentity);
     }
   }
 
@@ -1655,9 +1888,7 @@ class FcmService {
     if ((await _ref.read(appTokenStorageProvider).readTokenSnapshot())
             .identity !=
         expectedIdentity) {
-      debugPrint(
-        '[LiveActivity] no active session — skipping activity token',
-      );
+      debugPrint('[LiveActivity] no active session — skipping activity token');
       return;
     }
     final registered = await _retryLiveActivityRegistration(
@@ -1712,9 +1943,7 @@ class FcmService {
     for (var attempt = 1; attempt <= 3; attempt++) {
       try {
         await action();
-        debugPrint(
-          '[LiveActivity] $label registered (attempt $attempt)',
-        );
+        debugPrint('[LiveActivity] $label registered (attempt $attempt)');
         return true;
       } catch (error) {
         debugPrint(
@@ -1902,6 +2131,7 @@ final fcmAuthBridgeProvider = Provider<void>((ref) {
 final fcmTapBridgeProvider = Provider<void>((ref) {
   final fcm = ref.read(fcmServiceProvider);
   final rideNavigationLatchTokens = <String, Object>{};
+  final requestTapCoordinator = IncomingRequestTapCoordinator();
 
   Future<bool> waitForAuthenticatedCall(
     String callId,
@@ -1922,9 +2152,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     return false;
   }
 
-  Future<bool> waitForAuthenticatedRequest(
-    Map<String, dynamic> payload,
-  ) async {
+  Future<bool> waitForAuthenticatedRequest(Map<String, dynamic> payload) async {
     final explicitDeadline = _requestDeadlineFromData(payload);
     final deadline = explicitDeadline ??
         DateTime.now().toUtc().add(const Duration(seconds: 20));
@@ -1937,7 +2165,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     return false;
   }
 
-  fcm.onTapMessage = (payload) async {
+  Future<void> handleTapMessage(Map<String, dynamic> payload) async {
     final rawType = payload[NotificationPayload.keyType] as String?;
     // Backend emits dotted types ("job.request") in the FCM data payload.
     // The local-notification path normalises before re-encoding, but the
@@ -2035,9 +2263,9 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         rideId: rideId,
         token: token,
         onRelease: () {
-          ref.read(rideRequestNavigationInFlightProvider.notifier).update(
-                (s) => {...s}..remove(rideId),
-              );
+          ref
+              .read(rideRequestNavigationInFlightProvider.notifier)
+              .update((s) => {...s}..remove(rideId));
         },
       );
     }
@@ -2062,18 +2290,19 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     }) {
       final offerId = payload[NotificationPayload.keyOfferId]?.toString();
       if (offerId != null && offerId.isNotEmpty) {
-        ref.read(rideOfferIdByRideProvider.notifier).update(
-              (offers) => {...offers, rideId: offerId},
-            );
+        ref
+            .read(rideOfferIdByRideProvider.notifier)
+            .update((offers) => {...offers, rideId: offerId});
       }
       if (deadline != null) {
-        ref.read(rideRequestDeadlineByIdProvider.notifier).update(
-              (m) => {...m, rideId: deadline},
-            );
+        ref
+            .read(rideRequestDeadlineByIdProvider.notifier)
+            .update((m) => {...m, rideId: deadline});
       }
       final visibleId = ref.read(visibleRideRequestIdProvider);
-      final navigationInFlight =
-          ref.read(rideRequestNavigationInFlightProvider);
+      final navigationInFlight = ref.read(
+        rideRequestNavigationInFlightProvider,
+      );
       if (rideRequestNavigationAlreadyActive(
         rideId: rideId,
         visibleRideId: visibleId,
@@ -2087,9 +2316,9 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       }
       ref.read(surfacedRideIdsProvider.notifier).update((s) => {...s, rideId});
       ref.read(incomingRideRequestProvider.notifier).state = null;
-      ref.read(rideRequestNavigationInFlightProvider.notifier).update(
-            (s) => {...s, rideId},
-          );
+      ref
+          .read(rideRequestNavigationInFlightProvider.notifier)
+          .update((s) => {...s, rideId});
       final latchToken = Object();
       rideNavigationLatchTokens[rideId] = latchToken;
       void releaseLatch() =>
@@ -2101,6 +2330,9 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         rideId: rideId,
         navigationLatchToken: latchToken,
         releaseNavigationLatch: releaseLatch,
+        allowNotificationRetry: () {
+          requestTapCoordinator.allowViewRetry(payload);
+        },
         expiresAt: deadline,
       );
       debugPrint(
@@ -2189,12 +2421,9 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         return;
       }
       payload.addAll(received.payload);
-      ref.read(rideOfferIdByRideProvider.notifier).update(
-            (offers) => {
-              ...offers,
-              received.rideId: received.offerId,
-            },
-          );
+      ref
+          .read(rideOfferIdByRideProvider.notifier)
+          .update((offers) => {...offers, received.rideId: received.offerId});
       ref.read(rideRequestDeadlineByIdProvider.notifier).update(
             (deadlines) => {
               ...deadlines,
@@ -2281,10 +2510,9 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           final jobId = jobIdFromPayload();
           if (jobId == null || jobId.isEmpty) return;
           try {
-            await ref.read(jobServiceProvider).declineJobRequest(
-                  jobId,
-                  reason: 'notification_skip',
-                );
+            await ref
+                .read(jobServiceProvider)
+                .declineJobRequest(jobId, reason: 'notification_skip');
             ref.read(pendingIncomingJobsProvider.notifier).remove(jobId);
             await clearIncomingRequestAlert(
               type: NotificationPayload.typeJobRequest,
@@ -2308,6 +2536,14 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           // Continue into the normal type-based view routing below.
           break;
       }
+    }
+
+    if (requestTapCoordinator.shouldAbortViewAfterDecision(payload)) {
+      debugPrint(
+        '[RequestTap] decision already owns this request — '
+        'skipping trailing view navigation',
+      );
+      return;
     }
 
     switch (type) {
@@ -2400,9 +2636,9 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         }
         final deadline = requestDeadlineFromPayload();
         if (deadline != null) {
-          ref.read(rideRequestDeadlineByIdProvider.notifier).update(
-                (m) => {...m, rideId: deadline},
-              );
+          ref
+              .read(rideRequestDeadlineByIdProvider.notifier)
+              .update((m) => {...m, rideId: deadline});
           if (requestDeadlineExpired(deadline)) {
             debugPrint('[FCM-tap] ride_request $rideId expired before tap');
             await clearIncomingRequestAlert(
@@ -2642,6 +2878,13 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       default:
         router.go('/home');
     }
+  }
+
+  fcm.onTapMessage = (payload) {
+    return requestTapCoordinator.dispatch(
+      payload,
+      () => handleTapMessage(payload),
+    );
   };
 
   final nativeActionBridge = IncomingRequestActionBridge(
@@ -2651,7 +2894,17 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     },
   );
   unawaited(nativeActionBridge.start());
+  ref.listen<AuthState>(authControllerProvider, (previous, next) {
+    if (previous is! AuthAuthenticated) return;
+    final sameProvider = next is AuthAuthenticated &&
+        previous.user.id == next.user.id &&
+        previous.user.role == next.user.role;
+    if (!sameProvider) {
+      requestTapCoordinator.reset();
+    }
+  });
   ref.onDispose(() {
+    requestTapCoordinator.dispose();
     unawaited(nativeActionBridge.dispose());
   });
 });
