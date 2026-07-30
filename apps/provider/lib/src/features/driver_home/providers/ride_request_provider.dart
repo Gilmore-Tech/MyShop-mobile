@@ -28,6 +28,24 @@ import '../../trips/providers/driver_trips_provider.dart';
 /// instead of stacking duplicate `/ride-request` routes for the same ride.
 final visibleRideRequestIdProvider = StateProvider<String?>((_) => null);
 
+/// Exact widget instance that currently owns [visibleRideRequestIdProvider].
+///
+/// A request route can be replaced with a freshly hydrated route for the same
+/// ride id. The id alone cannot distinguish the outgoing screen from its
+/// successor, so dispose-time cleanup must be conditional on this token.
+class VisibleRideRequestOwner {
+  const VisibleRideRequestOwner({
+    required this.rideId,
+    required this.token,
+  });
+
+  final String rideId;
+  final Object token;
+}
+
+final visibleRideRequestOwnerProvider =
+    StateProvider<VisibleRideRequestOwner?>((_) => null);
+
 /// Ride request ids currently being hydrated/navigated from a notification tap.
 ///
 /// Used as a short-lived guard so the foreground recovery bridge does not

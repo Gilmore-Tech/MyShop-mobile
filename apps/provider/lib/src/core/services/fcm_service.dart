@@ -66,6 +66,11 @@ bool releaseRideRequestNavigationLatchIfOwned({
   return true;
 }
 
+@visibleForTesting
+bool shouldNavigateToActiveRideFromNotification(String currentPath) {
+  return currentPath != '/active-ride';
+}
+
 /// Coalesces the multiple platform callbacks that can represent one physical
 /// incoming-request tap.
 ///
@@ -81,7 +86,7 @@ bool releaseRideRequestNavigationLatchIfOwned({
 @visibleForTesting
 class IncomingRequestTapCoordinator {
   IncomingRequestTapCoordinator({
-    this.viewReplayWindow = const Duration(seconds: 2),
+    this.viewReplayWindow = const Duration(seconds: 30),
     this.decisionFallbackWindow = const Duration(seconds: 30),
   });
 
@@ -92,6 +97,8 @@ class IncomingRequestTapCoordinator {
   final Map<String, Future<void>> _activeDecisions = <String, Future<void>>{};
   final Map<String, Timer> _viewTombstones = <String, Timer>{};
   final Map<String, Timer> _decisionTombstones = <String, Timer>{};
+  final Map<String, Set<String>> _equivalentRequestKeys =
+      <String, Set<String>>{};
   var _generation = 0;
   var _disposed = false;
 
@@ -100,88 +107,93 @@ class IncomingRequestTapCoordinator {
     Future<void> Function() handle,
   ) async {
     if (_disposed) return false;
-    final requestKey = _requestKey(payload);
-    if (requestKey == null) {
+    final requestKeys = _expandedRequestKeys(payload);
+    if (requestKeys.isEmpty) {
       await handle();
       return true;
     }
+    final requestLabel = requestKeys.join('|');
     final generation = _generation;
 
     final isDecision = _isDecision(payload);
     if (isDecision) {
-      final activeDecision = _activeDecisions[requestKey];
+      final activeDecision = _firstActive(_activeDecisions, requestKeys);
       if (activeDecision != null) {
         // Durable native copies must not acknowledge before the canonical
         // action has succeeded. Awaiting the same Future preserves replay on
         // failure while still preventing a second API mutation.
         await activeDecision;
-        debugPrint('[RequestTap] joined duplicate decision for $requestKey');
+        debugPrint('[RequestTap] joined duplicate decision for $requestLabel');
         return false;
       }
-      if (_decisionTombstones.containsKey(requestKey)) {
+      if (_containsAny(_decisionTombstones, requestKeys)) {
         debugPrint(
-          '[RequestTap] suppressed duplicate decision for $requestKey',
+          '[RequestTap] suppressed duplicate decision for $requestLabel',
         );
         return false;
       }
       final operation = Future<void>.sync(handle);
-      _activeDecisions[requestKey] = operation;
+      _bindActive(_activeDecisions, requestKeys, operation);
       try {
         await operation;
-        if (generation == _generation &&
-            identical(_activeDecisions[requestKey], operation)) {
-          _activeDecisions.remove(requestKey);
+        if (generation == _generation) {
+          _removeActive(_activeDecisions, requestKeys, operation);
         }
         if (generation == _generation && !_disposed) {
-          _remember(_decisionTombstones, requestKey, _decisionWindow(payload));
+          _rememberAll(
+            _decisionTombstones,
+            requestKeys,
+            _decisionWindow(payload),
+          );
         }
         return true;
       } catch (_) {
         // The native bridge deliberately replays unacknowledged actions.
         // Unexpected failures must therefore remain retryable.
-        if (generation == _generation &&
-            identical(_activeDecisions[requestKey], operation)) {
-          _activeDecisions.remove(requestKey);
+        if (generation == _generation) {
+          _removeActive(_activeDecisions, requestKeys, operation);
         }
         rethrow;
       }
     }
 
-    final activeDecision = _activeDecisions[requestKey];
+    final activeDecision = _firstActive(_activeDecisions, requestKeys);
     if (activeDecision != null) {
       await activeDecision;
       debugPrint(
-        '[RequestTap] joined decision before duplicate view for $requestKey',
+        '[RequestTap] joined decision before duplicate view for $requestLabel',
       );
       return false;
     }
-    final activeView = _activeViews[requestKey];
+    final activeView = _firstActive(_activeViews, requestKeys);
     if (activeView != null) {
       await activeView;
-      debugPrint('[RequestTap] joined duplicate view for $requestKey');
+      debugPrint('[RequestTap] joined duplicate view for $requestLabel');
       return false;
     }
-    if (_decisionTombstones.containsKey(requestKey) ||
-        _viewTombstones.containsKey(requestKey)) {
-      debugPrint('[RequestTap] suppressed duplicate view for $requestKey');
+    if (_containsAny(_decisionTombstones, requestKeys) ||
+        _containsAny(_viewTombstones, requestKeys)) {
+      debugPrint('[RequestTap] suppressed duplicate view for $requestLabel');
       return false;
     }
     final operation = Future<void>.sync(handle);
-    _activeViews[requestKey] = operation;
+    _bindActive(_activeViews, requestKeys, operation);
     try {
       await operation;
-      if (generation == _generation &&
-          identical(_activeViews[requestKey], operation)) {
-        _activeViews.remove(requestKey);
+      if (generation == _generation) {
+        _removeActive(_activeViews, requestKeys, operation);
       }
       if (generation == _generation && !_disposed) {
-        _remember(_viewTombstones, requestKey, viewReplayWindow);
+        _rememberAll(
+          _viewTombstones,
+          requestKeys,
+          _viewWindow(payload),
+        );
       }
       return true;
     } catch (_) {
-      if (generation == _generation &&
-          identical(_activeViews[requestKey], operation)) {
-        _activeViews.remove(requestKey);
+      if (generation == _generation) {
+        _removeActive(_activeViews, requestKeys, operation);
       }
       rethrow;
     }
@@ -192,10 +204,9 @@ class IncomingRequestTapCoordinator {
   /// and the older View cannot reopen the request screen afterwards.
   bool shouldAbortViewAfterDecision(Map<String, dynamic> payload) {
     if (_isDecision(payload)) return false;
-    final requestKey = _requestKey(payload);
-    if (requestKey == null) return false;
-    return _activeDecisions.containsKey(requestKey) ||
-        _decisionTombstones.containsKey(requestKey);
+    final requestKeys = _expandedRequestKeys(payload);
+    return _containsAny(_activeDecisions, requestKeys) ||
+        _containsAny(_decisionTombstones, requestKeys);
   }
 
   /// A ride loader that could not hydrate deliberately reopens the navigation
@@ -203,9 +214,9 @@ class IncomingRequestTapCoordinator {
   /// tap the still-live notification and try again immediately.
   void allowViewRetry(Map<String, dynamic> payload) {
     if (_isDecision(payload)) return;
-    final requestKey = _requestKey(payload);
-    if (requestKey == null) return;
-    _viewTombstones.remove(requestKey)?.cancel();
+    for (final requestKey in _expandedRequestKeys(payload)) {
+      _viewTombstones.remove(requestKey)?.cancel();
+    }
   }
 
   /// Session-owned claims must never carry into another provider account.
@@ -221,6 +232,7 @@ class IncomingRequestTapCoordinator {
     _decisionTombstones.clear();
     _activeViews.clear();
     _activeDecisions.clear();
+    _equivalentRequestKeys.clear();
   }
 
   void dispose() {
@@ -228,32 +240,80 @@ class IncomingRequestTapCoordinator {
     reset();
   }
 
-  String? _requestKey(Map<String, dynamic> payload) {
-    final rawType = payload[NotificationPayload.keyType]?.toString() ?? '';
-    final type = NotificationPayload.normaliseType(rawType);
-    final rideId =
-        (payload[NotificationPayload.keyRideId] ?? payload['ride_id'])
-            ?.toString()
-            .trim();
-    final jobId = (payload[NotificationPayload.keyJobId] ?? payload['job_id'])
-        ?.toString()
-        .trim();
-    final offerId = payload[NotificationPayload.keyOfferId]?.toString().trim();
+  Set<String> _requestKeys(Map<String, dynamic> payload) {
+    final nested = payload['data'];
+    final nestedData = nested is Map
+        ? Map<String, dynamic>.from(nested)
+        : const <String, dynamic>{};
+    String? valueFor(List<String> keys) {
+      for (final source in [payload, nestedData]) {
+        for (final key in keys) {
+          final value = source[key]?.toString().trim();
+          if (value != null && value.isNotEmpty) return value;
+        }
+      }
+      return null;
+    }
 
-    final preferredId = offerId != null && offerId.isNotEmpty ? offerId : null;
+    final rawType =
+        valueFor([NotificationPayload.keyType, 'requestType']) ?? '';
+    final type = NotificationPayload.normaliseType(rawType);
+    final rideId = valueFor([
+      NotificationPayload.keyRideId,
+      'ride_id',
+      'requestId',
+    ]);
+    final jobId = valueFor([
+      NotificationPayload.keyJobId,
+      'job_id',
+      'requestId',
+    ]);
+    final offerId = valueFor([NotificationPayload.keyOfferId, 'offer_id']);
+
     if (type == NotificationPayload.typeRideRequest ||
         _isRideRequestAction(payload)) {
-      final id =
-          preferredId ?? (rideId != null && rideId.isNotEmpty ? rideId : null);
-      return id == null || id.isEmpty ? null : 'ride:$id';
+      return <String>{
+        if (rideId != null) 'ride-id:$rideId',
+        if (offerId != null) 'ride-offer:$offerId',
+      };
     }
     if (type == NotificationPayload.typeJobRequest ||
         _isJobRequestAction(payload)) {
-      final id =
-          preferredId ?? (jobId != null && jobId.isNotEmpty ? jobId : null);
-      return id == null || id.isEmpty ? null : 'job:$id';
+      return <String>{
+        if (jobId != null) 'job-id:$jobId',
+        if (offerId != null) 'job-offer:$offerId',
+      };
     }
-    return null;
+    return const <String>{};
+  }
+
+  Set<String> _expandedRequestKeys(Map<String, dynamic> payload) {
+    final directKeys = _requestKeys(payload);
+    if (directKeys.isEmpty) return directKeys;
+
+    final expanded = <String>{...directKeys};
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (final key in List<String>.of(expanded)) {
+        final aliases = _equivalentRequestKeys[key];
+        if (aliases == null) continue;
+        final previousLength = expanded.length;
+        expanded.addAll(aliases);
+        if (expanded.length != previousLength) changed = true;
+      }
+    }
+
+    // A canonical payload normally carries both requestId and offerId. Retain
+    // that equivalence so a later platform callback carrying only one alias
+    // still joins the operation that already owns the physical request.
+    if (expanded.length > 1) {
+      final equivalence = Set<String>.unmodifiable(expanded);
+      for (final key in expanded) {
+        _equivalentRequestKeys[key] = equivalence;
+      }
+    }
+    return expanded;
   }
 
   bool _isDecision(Map<String, dynamic> payload) {
@@ -278,15 +338,24 @@ class IncomingRequestTapCoordinator {
   }
 
   String? _normalisedAction(Map<String, dynamic> payload) {
-    return payload[NotificationPayload.keyActionId]
-        ?.toString()
-        .trim()
-        .toUpperCase();
+    final direct = payload[NotificationPayload.keyActionId];
+    final nested = payload['data'];
+    final nestedAction =
+        nested is Map ? nested[NotificationPayload.keyActionId] : null;
+    return (direct ?? nestedAction)?.toString().trim().toUpperCase();
   }
 
   Duration _decisionWindow(Map<String, dynamic> payload) {
-    final offerId =
-        payload[NotificationPayload.keyOfferId]?.toString().trim() ?? '';
+    final nested = payload['data'];
+    final nestedOffer = nested is Map
+        ? nested[NotificationPayload.keyOfferId] ?? nested['offer_id']
+        : null;
+    final offerId = (payload[NotificationPayload.keyOfferId] ??
+                payload['offer_id'] ??
+                nestedOffer)
+            ?.toString()
+            .trim() ??
+        '';
     if (offerId.isEmpty) {
       // Legacy payloads cannot distinguish a later re-offer of the same
       // booking. Keep only the immediate cross-channel replay guard.
@@ -301,6 +370,64 @@ class IncomingRequestTapCoordinator {
     // A malformed remote deadline must not retain an in-memory claim forever.
     const maximum = Duration(minutes: 2);
     return remaining > maximum ? decisionFallbackWindow : remaining;
+  }
+
+  Duration _viewWindow(Map<String, dynamic> payload) {
+    final now = DateTime.now().toUtc();
+    final deadline = _requestDeadlineFromData(payload);
+    if (deadline == null || !deadline.isAfter(now)) {
+      return viewReplayWindow;
+    }
+    final remaining = deadline.difference(now);
+    const maximum = Duration(minutes: 2);
+    return remaining > maximum ? viewReplayWindow : remaining;
+  }
+
+  Future<void>? _firstActive(
+    Map<String, Future<void>> active,
+    Set<String> requestKeys,
+  ) {
+    for (final requestKey in requestKeys) {
+      final operation = active[requestKey];
+      if (operation != null) return operation;
+    }
+    return null;
+  }
+
+  bool _containsAny<T>(Map<String, T> values, Set<String> requestKeys) {
+    return requestKeys.any(values.containsKey);
+  }
+
+  void _bindActive(
+    Map<String, Future<void>> active,
+    Set<String> requestKeys,
+    Future<void> operation,
+  ) {
+    for (final requestKey in requestKeys) {
+      active[requestKey] = operation;
+    }
+  }
+
+  void _removeActive(
+    Map<String, Future<void>> active,
+    Set<String> requestKeys,
+    Future<void> operation,
+  ) {
+    for (final requestKey in requestKeys) {
+      if (identical(active[requestKey], operation)) {
+        active.remove(requestKey);
+      }
+    }
+  }
+
+  void _rememberAll(
+    Map<String, Timer> tombstones,
+    Set<String> requestKeys,
+    Duration duration,
+  ) {
+    for (final requestKey in requestKeys) {
+      _remember(tombstones, requestKey, duration);
+    }
   }
 
   void _remember(
@@ -606,18 +733,45 @@ Duration _remainingCallTimeout(Map<String, dynamic> data) {
 }
 
 DateTime? _requestDeadlineFromData(Map<String, dynamic> data) {
-  for (final key in const <String>[
-    'expiresAt',
-    'expires_at',
-    'acceptanceExpiresAt',
-    'acceptance_expires_at',
-    'requestExpiresAt',
-    'request_expires_at',
-  ]) {
-    final raw = data[key]?.toString();
-    if (raw == null || raw.isEmpty) continue;
-    final parsed = DateTime.tryParse(raw);
-    if (parsed != null) return parsed.toUtc();
+  final nested = data['data'];
+  final sources = <Map<String, dynamic>>[
+    data,
+    if (nested is Map) Map<String, dynamic>.from(nested),
+  ];
+  for (final source in sources) {
+    for (final key in const <String>[
+      'expiresAt',
+      'expires_at',
+      'acceptanceExpiresAt',
+      'acceptance_expires_at',
+      'requestExpiresAt',
+      'request_expires_at',
+      'decisionExpiresAt',
+      'decision_expires_at',
+      'serverDecisionExpiresAt',
+      'server_decision_expires_at',
+    ]) {
+      final raw = source[key]?.toString().trim();
+      if (raw == null || raw.isEmpty) continue;
+      final parsed = DateTime.tryParse(raw);
+      if (parsed != null) return parsed.toUtc();
+    }
+  }
+  for (final source in sources) {
+    for (final key in const <String>[
+      'expiresInSeconds',
+      'expires_in_seconds',
+      'acceptanceWindowSeconds',
+      'acceptance_window_seconds',
+      'decisionWindowSeconds',
+      'decision_window_seconds',
+    ]) {
+      final raw = source[key];
+      final seconds = raw is num ? raw.toInt() : int.tryParse('$raw');
+      if (seconds != null && seconds > 0) {
+        return DateTime.now().toUtc().add(Duration(seconds: seconds));
+      }
+    }
   }
   return null;
 }
@@ -2165,6 +2319,50 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     return false;
   }
 
+  void releaseRideRequestNavigationLatch(String rideId, Object token) {
+    releaseRideRequestNavigationLatchIfOwned(
+      latchTokens: rideNavigationLatchTokens,
+      rideId: rideId,
+      token: token,
+      onRelease: () {
+        ref
+            .read(rideRequestNavigationInFlightProvider.notifier)
+            .update((s) => {...s}..remove(rideId));
+      },
+    );
+  }
+
+  Object? claimRideRequestNavigation(String rideId) {
+    if (rideRequestNavigationAlreadyActive(
+      rideId: rideId,
+      visibleRideId: ref.read(visibleRideRequestIdProvider),
+      navigationInFlightRideIds: ref.read(
+        rideRequestNavigationInFlightProvider,
+      ),
+    )) {
+      return null;
+    }
+    final token = Object();
+    rideNavigationLatchTokens[rideId] = token;
+    ref
+        .read(rideRequestNavigationInFlightProvider.notifier)
+        .update((s) => {...s, rideId});
+    return token;
+  }
+
+  void clearRideRequestInFlightFallback(VoidCallback releaseLatch) {
+    // The loader releases this latch as soon as it either opens the
+    // request screen, becomes unavailable, or is removed. This fallback is
+    // only for a routing interruption before the loader can release it. It
+    // is deliberately just beyond the loader's bounded 10-second hydrate,
+    // not the full 30-second offer window.
+    unawaited(
+      Future<void>.delayed(rideRequestNavigationFallbackDuration, () {
+        releaseLatch();
+      }),
+    );
+  }
+
   Future<void> handleTapMessage(Map<String, dynamic> payload) async {
     final rawType = payload[NotificationPayload.keyType] as String?;
     // Backend emits dotted types ("job.request") in the FCM data payload.
@@ -2181,9 +2379,45 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     final router = ref.read(goRouterProvider);
     debugPrint('[FCM-tap] type=$type (raw=$rawType)');
 
+    final initialRideId = type == NotificationPayload.typeRideRequest
+        ? (payload[NotificationPayload.keyRideId] ?? payload['ride_id'])
+            ?.toString()
+            .trim()
+        : null;
+    final preclaimedRideToken = initialRideId == null || initialRideId.isEmpty
+        ? null
+        : claimRideRequestNavigation(initialRideId);
+    var rideClaimTransferredToLoader = false;
+
+    void releaseUntransferredRideClaim() {
+      if (rideClaimTransferredToLoader ||
+          initialRideId == null ||
+          initialRideId.isEmpty ||
+          preclaimedRideToken == null) {
+        return;
+      }
+      releaseRideRequestNavigationLatch(
+        initialRideId,
+        preclaimedRideToken,
+      );
+    }
+
+    // A malformed callback must not retain route ownership forever. Normal
+    // exits release immediately below; this is only a last-resort exception
+    // fence just beyond the server's 30-second decision window.
+    if (preclaimedRideToken != null) {
+      unawaited(
+        Future<void>.delayed(
+          const Duration(seconds: 35),
+          releaseUntransferredRideClaim,
+        ),
+      );
+    }
+
     final lifecycleRoute = providerLifecycleNotificationRoute(type ?? '');
     if (lifecycleRoute != null) {
       router.go(lifecycleRoute);
+      releaseUntransferredRideClaim();
       return;
     }
 
@@ -2193,31 +2427,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         (payload[NotificationPayload.keyJobId] as String?) ??
         (payload['job_id'] as String?);
 
-    DateTime? requestDeadlineFromPayload() {
-      for (final key in const [
-        'expiresAt',
-        'expires_at',
-        'acceptanceExpiresAt',
-        'acceptance_expires_at',
-        'requestExpiresAt',
-        'request_expires_at',
-      ]) {
-        final raw = payload[key];
-        if (raw is String && raw.isNotEmpty) {
-          final parsed = DateTime.tryParse(raw);
-          if (parsed != null) return parsed;
-        }
-      }
-
-      final seconds = payload['expiresInSeconds'] ??
-          payload['expires_in_seconds'] ??
-          payload['acceptanceWindowSeconds'] ??
-          payload['acceptance_window_seconds'];
-      if (seconds is num && seconds > 0) {
-        return DateTime.now().toUtc().add(Duration(seconds: seconds.toInt()));
-      }
-      return null;
-    }
+    DateTime? requestDeadlineFromPayload() => _requestDeadlineFromData(payload);
 
     // Shared landing path for every job-context tap that drops the user
     // on /active-job (bid accepted, supplement decisions, reminders,
@@ -2257,33 +2467,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       }
     }
 
-    void releaseRideRequestNavigationLatch(String rideId, Object token) {
-      releaseRideRequestNavigationLatchIfOwned(
-        latchTokens: rideNavigationLatchTokens,
-        rideId: rideId,
-        token: token,
-        onRelease: () {
-          ref
-              .read(rideRequestNavigationInFlightProvider.notifier)
-              .update((s) => {...s}..remove(rideId));
-        },
-      );
-    }
-
-    void clearRideRequestInFlightFallback(VoidCallback releaseLatch) {
-      // The loader releases this latch as soon as it either opens the
-      // request screen, becomes unavailable, or is removed. This fallback is
-      // only for a routing interruption before the loader can release it. It
-      // is deliberately just beyond the loader's bounded 10-second hydrate,
-      // not the full 30-second offer window.
-      unawaited(
-        Future<void>.delayed(rideRequestNavigationFallbackDuration, () {
-          releaseLatch();
-        }),
-      );
-    }
-
-    void openRideRequestLoader(
+    bool openRideRequestLoader(
       String rideId, {
       DateTime? deadline,
       String source = 'notification tap',
@@ -2299,40 +2483,82 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             .read(rideRequestDeadlineByIdProvider.notifier)
             .update((m) => {...m, rideId: deadline});
       }
-      final visibleId = ref.read(visibleRideRequestIdProvider);
-      final navigationInFlight = ref.read(
-        rideRequestNavigationInFlightProvider,
-      );
-      if (rideRequestNavigationAlreadyActive(
-        rideId: rideId,
-        visibleRideId: visibleId,
-        navigationInFlightRideIds: navigationInFlight,
-      )) {
+      final canUsePreclaim =
+          rideId == initialRideId && preclaimedRideToken != null;
+      if (canUsePreclaim && ref.read(visibleRideRequestIdProvider) == rideId) {
+        debugPrint(
+          '[FCM-tap] ride_request $rideId became visible while processing '
+          'the notification — keeping current route',
+        );
+        return false;
+      }
+      final latchToken = canUsePreclaim
+          ? preclaimedRideToken
+          : claimRideRequestNavigation(rideId);
+      if (latchToken == null) {
         debugPrint(
           '[FCM-tap] ride_request $rideId already visible or opening '
           '— keeping current route',
         );
-        return;
+        return false;
       }
       ref.read(surfacedRideIdsProvider.notifier).update((s) => {...s, rideId});
-      ref.read(incomingRideRequestProvider.notifier).state = null;
-      ref
-          .read(rideRequestNavigationInFlightProvider.notifier)
-          .update((s) => {...s, rideId});
-      final latchToken = Object();
-      rideNavigationLatchTokens[rideId] = latchToken;
+      final cachedRide = ref.read(incomingRideRequestProvider);
+      final cachedActionableRide =
+          cachedRide?.id == rideId && cachedRide?.status == RideStatus.requested
+              ? cachedRide
+              : null;
+      if (cachedRide?.id == rideId) {
+        ref.read(incomingRideRequestProvider.notifier).state = null;
+      }
       void releaseLatch() =>
           releaseRideRequestNavigationLatch(rideId, latchToken);
+
+      if (cachedActionableRide != null) {
+        // The socket/recovery path delivered the full request while this tap
+        // was awaiting its receipt. Its listener deliberately yielded to our
+        // early route claim, so use that payload directly: mounting a loader
+        // here would recreate the details → spinner → details flash.
+        ref.read(visibleRideRequestOwnerProvider.notifier).state = null;
+        ref.read(visibleRideRequestIdProvider.notifier).state = rideId;
+        final currentPath = router.routerDelegate.currentConfiguration.uri.path;
+        debugPrint(
+          '[FCM-tap] opening cached ride_request $rideId from $source '
+          '(currentPath=$currentPath)',
+        );
+        if (currentPath == '/ride-request') {
+          unawaited(
+            router.pushReplacement(
+              rideRequestRouteLocation(rideId, expiresAt: deadline),
+              extra: cachedActionableRide,
+            ),
+          );
+        } else {
+          unawaited(
+            router.push(
+              rideRequestRouteLocation(rideId, expiresAt: deadline),
+              extra: cachedActionableRide,
+            ),
+          );
+        }
+        releaseLatch();
+        return true;
+      }
+
       clearRideRequestInFlightFallback(releaseLatch);
+      if (canUsePreclaim) {
+        rideClaimTransferredToLoader = true;
+      }
 
       final currentPath = router.routerDelegate.currentConfiguration.uri.path;
       final routeExtra = RideRequestRouteExtra(
         rideId: rideId,
         navigationLatchToken: latchToken,
         releaseNavigationLatch: releaseLatch,
-        allowNotificationRetry: () {
-          requestTapCoordinator.allowViewRetry(payload);
-        },
+        // Passive copies from FlutterFire/local/native bridges are not user
+        // retries. Keeping the replay claim through the offer window prevents
+        // a late copy from reopening the same loader.
+        allowNotificationRetry: () {},
         expiresAt: deadline,
       );
       debugPrint(
@@ -2340,10 +2566,21 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         '(currentPath=$currentPath)',
       );
       if (currentPath == '/ride-request') {
-        unawaited(router.pushReplacement('/ride-request', extra: routeExtra));
+        unawaited(
+          router.pushReplacement(
+            rideRequestRouteLocation(rideId, expiresAt: deadline),
+            extra: routeExtra,
+          ),
+        );
       } else {
-        unawaited(router.push('/ride-request', extra: routeExtra));
+        unawaited(
+          router.push(
+            rideRequestRouteLocation(rideId, expiresAt: deadline),
+            extra: routeExtra,
+          ),
+        );
       }
+      return true;
     }
 
     bool requestDeadlineExpired(DateTime deadline) {
@@ -2398,6 +2635,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             rideOfferReceiptProtocolVersion) {
       if (!await waitForAuthenticatedRequest(payload)) {
         debugPrint('[FCM-tap] ride receipt auth unavailable');
+        releaseUntransferredRideClaim();
         return;
       }
       final received = await acknowledgeRideOfferWithSocket(
@@ -2418,6 +2656,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         }
         router.go('/home');
         debugPrint('[FCM-tap] ride offer no longer receipt-capable');
+        releaseUntransferredRideClaim();
         return;
       }
       payload.addAll(received.payload);
@@ -2449,17 +2688,22 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           );
         }
         debugPrint('[Request-action] ignored expired action=$actionId');
+        releaseUntransferredRideClaim();
         return;
       }
       if (!await waitForAuthenticatedRequest(payload)) {
         debugPrint('[Request-action] auth unavailable for action=$actionId');
+        releaseUntransferredRideClaim();
         return;
       }
 
       switch (actionId) {
         case NotificationPayload.actionRideAccept:
           final rideId = payload[NotificationPayload.keyRideId]?.toString();
-          if (rideId == null || rideId.isEmpty) return;
+          if (rideId == null || rideId.isEmpty) {
+            releaseUntransferredRideClaim();
+            return;
+          }
           final accepted = await ref
               .read(activeRideProvider.notifier)
               .acceptRideFromNotification(
@@ -2472,7 +2716,14 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
               requestId: rideId,
               offerId: payload[NotificationPayload.keyOfferId]?.toString(),
             );
-            router.go('/active-ride');
+            // restore() publishes activeRide before this Future completes.
+            // The shell listener may therefore already own navigation. A
+            // second go() to the same route rebuilds the time-bound screen.
+            final currentPath =
+                router.routerDelegate.currentConfiguration.uri.path;
+            if (shouldNavigateToActiveRideFromNotification(currentPath)) {
+              router.go('/active-ride');
+            }
           } else {
             openRideRequestLoader(
               rideId,
@@ -2480,10 +2731,14 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
               source: 'failed native accept',
             );
           }
+          releaseUntransferredRideClaim();
           return;
         case NotificationPayload.actionRideSkip:
           final rideId = payload[NotificationPayload.keyRideId]?.toString();
-          if (rideId == null || rideId.isEmpty) return;
+          if (rideId == null || rideId.isEmpty) {
+            releaseUntransferredRideClaim();
+            return;
+          }
           final skipped = await ref
               .read(activeRideProvider.notifier)
               .declineRideFromNotification(
@@ -2505,10 +2760,14 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
               source: 'failed native skip',
             );
           }
+          releaseUntransferredRideClaim();
           return;
         case NotificationPayload.actionJobSkip:
           final jobId = jobIdFromPayload();
-          if (jobId == null || jobId.isEmpty) return;
+          if (jobId == null || jobId.isEmpty) {
+            releaseUntransferredRideClaim();
+            return;
+          }
           try {
             await ref
                 .read(jobServiceProvider)
@@ -2527,9 +2786,11 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             // losing the still-live offer on a transient network failure.
             await openJobRequest(openBidSheet: false);
           }
+          releaseUntransferredRideClaim();
           return;
         case NotificationPayload.actionJobSubmitBid:
           await openJobRequest(openBidSheet: true);
+          releaseUntransferredRideClaim();
           return;
         case NotificationPayload.actionRideView:
         case NotificationPayload.actionJobView:
@@ -2543,6 +2804,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         '[RequestTap] decision already owns this request — '
         'skipping trailing view navigation',
       );
+      releaseUntransferredRideClaim();
       return;
     }
 
@@ -2878,6 +3140,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
       default:
         router.go('/home');
     }
+    releaseUntransferredRideClaim();
   }
 
   fcm.onTapMessage = (payload) {
@@ -2901,6 +3164,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         previous.user.role == next.user.role;
     if (!sameProvider) {
       requestTapCoordinator.reset();
+      rideNavigationLatchTokens.clear();
     }
   });
   ref.onDispose(() {

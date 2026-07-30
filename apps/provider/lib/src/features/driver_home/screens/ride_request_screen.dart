@@ -43,6 +43,9 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
   bool _expired = false;
   bool _expiryHandled = false;
   late final StateController<String?> _visibleRequestController;
+  late final StateController<VisibleRideRequestOwner?>
+      _visibleRequestOwnerController;
+  final Object _visibleRequestOwnerToken = Object();
 
   @override
   void initState() {
@@ -51,6 +54,8 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     // Cache this controller while mounted so dispose can conditionally release
     // only this ride's marker without overwriting a newer request screen.
     _visibleRequestController = ref.read(visibleRideRequestIdProvider.notifier);
+    _visibleRequestOwnerController =
+        ref.read(visibleRideRequestOwnerProvider.notifier);
     _mountRequest(widget.ride);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -95,6 +100,10 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
   void _markVisibleAfterBuild(String rideId) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || widget.ride.id != rideId) return;
+      _visibleRequestOwnerController.state = VisibleRideRequestOwner(
+        rideId: rideId,
+        token: _visibleRequestOwnerToken,
+      );
       _visibleRequestController.state = rideId;
     });
   }
@@ -216,13 +225,37 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     // silence the ring. Without this, accepting a ride would leave
     // the alert chiming on top of the active-ride map.
     LocalNotificationService.instance.stopIncomingRingtone();
-    // Clear only our own marker. A replacement request screen may already
-    // have claimed the shared marker before this screen is disposed.
-    _clearVisibleMarker();
+    // Riverpod rejects provider mutations while Flutter is finalizing the
+    // widget tree. Defer the safety-net cleanup until after that frame, and use
+    // an instance token so an outgoing same-ride screen cannot clear the marker
+    // already claimed by its hydrated replacement.
+    final rideId = widget.ride.id;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        final owner = _visibleRequestOwnerController.state;
+        if (owner?.rideId != rideId ||
+            !identical(owner?.token, _visibleRequestOwnerToken)) {
+          return;
+        }
+        _visibleRequestOwnerController.state = null;
+        if (_visibleRequestController.state == rideId) {
+          _visibleRequestController.state = null;
+        }
+      } on StateError {
+        // The ProviderScope can be torn down before this post-frame safety
+        // cleanup runs (notably during account teardown/test disposal).
+      }
+    });
     super.dispose();
   }
 
   void _clearVisibleMarker() {
+    final owner = _visibleRequestOwnerController.state;
+    if (owner?.rideId != widget.ride.id ||
+        !identical(owner?.token, _visibleRequestOwnerToken)) {
+      return;
+    }
+    _visibleRequestOwnerController.state = null;
     if (_visibleRequestController.state == widget.ride.id) {
       _visibleRequestController.state = null;
     }
@@ -298,10 +331,20 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
   void _closeRequest(String result) {
     if (!mounted) return;
     _clearVisibleMarker();
+    final router = GoRouter.maybeOf(context);
     final navigator = Navigator.of(context);
     unawaited(
       navigator.maybePop(result).then((didPop) {
-        if (!didPop && mounted) context.go('/home');
+        if (!mounted) return;
+        final revealedPath =
+            router?.routerDelegate.currentConfiguration.uri.path;
+        // A duplicate callback may have left an older loader/details page
+        // beneath this request. Never reveal another `/ride-request` after a
+        // terminal decision; active-trip offers still return to
+        // `/active-ride`, while ordinary offers return home.
+        if (router != null && (!didPop || revealedPath == '/ride-request')) {
+          router.go('/home');
+        }
       }),
     );
   }
