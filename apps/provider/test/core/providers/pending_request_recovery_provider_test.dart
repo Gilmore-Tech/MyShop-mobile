@@ -13,6 +13,58 @@ Future<void> _flushAsyncWork() async {
 }
 
 void main() {
+  test(
+    'drops a recovery result claimed by a notification during fetch',
+    () async {
+      var eligible = true;
+      final fetchStarted = Completer<void>();
+      final releaseFetch = Completer<void>();
+
+      var claimed = false;
+      final recovery = resolveAndClaimPendingRequestForSurface<String>(
+        isEligible: () => eligible,
+        resolve: () async {
+          fetchStarted.complete();
+          await releaseFetch.future;
+          return 'ride-1';
+        },
+        claim: (_) => claimed = true,
+      );
+      await fetchStarted.future;
+
+      // The notification tap claims the route while recovery is awaiting REST.
+      eligible = false;
+      releaseFetch.complete();
+
+      expect(await recovery, isFalse);
+      expect(claimed, isFalse);
+    },
+  );
+
+  test(
+    'claims a recovery result in the same turn as the final check',
+    () async {
+      var checks = 0;
+      var claimCount = 0;
+
+      final recovery = await resolveAndClaimPendingRequestForSurface<String>(
+        isEligible: () {
+          checks += 1;
+          return true;
+        },
+        resolve: () async => 'ride-1',
+        claim: (request) {
+          expect(request, 'ride-1');
+          claimCount += 1;
+        },
+      );
+
+      expect(recovery, isTrue);
+      expect(checks, 2);
+      expect(claimCount, 1);
+    },
+  );
+
   for (final reconnectSecond in const [1, 2, 3, 4]) {
     test(
       'queues a reconnect at ${reconnectSecond}s for the remaining cooldown',

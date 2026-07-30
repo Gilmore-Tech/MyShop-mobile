@@ -28,6 +28,12 @@ void main() {
     );
   });
 
+  test('notification accept does not navigate when listener already did', () {
+    expect(shouldNavigateToActiveRideFromNotification('/active-ride'), isFalse);
+    expect(shouldNavigateToActiveRideFromNotification('/home'), isTrue);
+    expect(shouldNavigateToActiveRideFromNotification('/ride-request'), isTrue);
+  });
+
   group('ride request notification navigation', () {
     test('fallback is bounded just beyond the ten-second hydrate timeout', () {
       expect(
@@ -220,7 +226,12 @@ void main() {
       },
     );
 
-    test('a distinct offer for the same ride is not coalesced', () async {
+    test('a later offer for the same ride works after the replay window',
+        () async {
+      coordinator.dispose();
+      coordinator = IncomingRequestTapCoordinator(
+        viewReplayWindow: const Duration(milliseconds: 1),
+      );
       var opens = 0;
       final first = ridePayload();
       final second = <String, dynamic>{
@@ -229,6 +240,7 @@ void main() {
       };
 
       expect(await coordinator.dispatch(first, () async => opens += 1), isTrue);
+      await Future<void>.delayed(const Duration(milliseconds: 5));
       expect(
         await coordinator.dispatch(second, () async => opens += 1),
         isTrue,
@@ -236,6 +248,84 @@ void main() {
 
       expect(opens, 2);
     });
+
+    test('camel, snake and nested aliases coalesce the same request', () async {
+      var opens = 0;
+      final canonical = ridePayload();
+      final rideOnly = <String, dynamic>{
+        NotificationPayload.keyType: NotificationPayload.typeRideRequest,
+        'ride_id': 'ride-1',
+      };
+      final nestedOfferOnly = <String, dynamic>{
+        'requestType': NotificationPayload.typeRideRequest,
+        'data': <String, dynamic>{'offer_id': 'offer-1'},
+      };
+
+      expect(
+        await coordinator.dispatch(canonical, () async => opens += 1),
+        isTrue,
+      );
+      expect(
+        await coordinator.dispatch(rideOnly, () async => opens += 1),
+        isFalse,
+      );
+      expect(
+        await coordinator.dispatch(nestedOfferOnly, () async => opens += 1),
+        isFalse,
+      );
+
+      expect(opens, 1);
+    });
+
+    test(
+      'learned ride and offer aliases coalesce either partial callback first',
+      () async {
+        coordinator.dispose();
+        coordinator = IncomingRequestTapCoordinator(
+          viewReplayWindow: const Duration(milliseconds: 1),
+        );
+        final canonical = ridePayload();
+        final rideOnly = <String, dynamic>{
+          NotificationPayload.keyType: NotificationPayload.typeRideRequest,
+          'ride_id': 'ride-1',
+        };
+        final offerOnly = <String, dynamic>{
+          'requestType': NotificationPayload.typeRideRequest,
+          'data': <String, dynamic>{'offer_id': 'offer-1'},
+        };
+
+        // Learn the authoritative rideId ↔ offerId pair, then let its replay
+        // tombstone expire so the following assertions exercise active
+        // single-flight ownership rather than the short success cache.
+        await coordinator.dispatch(canonical, () async {});
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+
+        for (final callbacks in [
+          [rideOnly, offerOnly],
+          [offerOnly, rideOnly],
+        ]) {
+          final entered = Completer<void>();
+          final release = Completer<void>();
+          var opens = 0;
+          final first = coordinator.dispatch(callbacks.first, () async {
+            opens += 1;
+            entered.complete();
+            await release.future;
+          });
+          await entered.future;
+          final duplicate = coordinator.dispatch(
+            callbacks.last,
+            () async => opens += 1,
+          );
+          release.complete();
+
+          expect(await first, isTrue);
+          expect(await duplicate, isFalse);
+          expect(opens, 1);
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+        }
+      },
+    );
 
     test('unrelated notifications carrying a ride id are never coalesced',
         () async {

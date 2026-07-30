@@ -66,6 +66,11 @@ bool releaseRideRequestNavigationLatchIfOwned({
   return true;
 }
 
+@visibleForTesting
+bool shouldNavigateToActiveRideFromNotification(String currentPath) {
+  return currentPath != '/active-ride';
+}
+
 /// Coalesces the multiple platform callbacks that can represent one physical
 /// incoming-request tap.
 ///
@@ -92,6 +97,8 @@ class IncomingRequestTapCoordinator {
   final Map<String, Future<void>> _activeDecisions = <String, Future<void>>{};
   final Map<String, Timer> _viewTombstones = <String, Timer>{};
   final Map<String, Timer> _decisionTombstones = <String, Timer>{};
+  final Map<String, Set<String>> _equivalentRequestKeys =
+      <String, Set<String>>{};
   var _generation = 0;
   var _disposed = false;
 
@@ -100,88 +107,89 @@ class IncomingRequestTapCoordinator {
     Future<void> Function() handle,
   ) async {
     if (_disposed) return false;
-    final requestKey = _requestKey(payload);
-    if (requestKey == null) {
+    final requestKeys = _expandedRequestKeys(payload);
+    if (requestKeys.isEmpty) {
       await handle();
       return true;
     }
+    final requestLabel = requestKeys.join('|');
     final generation = _generation;
 
     final isDecision = _isDecision(payload);
     if (isDecision) {
-      final activeDecision = _activeDecisions[requestKey];
+      final activeDecision = _firstActive(_activeDecisions, requestKeys);
       if (activeDecision != null) {
         // Durable native copies must not acknowledge before the canonical
         // action has succeeded. Awaiting the same Future preserves replay on
         // failure while still preventing a second API mutation.
         await activeDecision;
-        debugPrint('[RequestTap] joined duplicate decision for $requestKey');
+        debugPrint('[RequestTap] joined duplicate decision for $requestLabel');
         return false;
       }
-      if (_decisionTombstones.containsKey(requestKey)) {
+      if (_containsAny(_decisionTombstones, requestKeys)) {
         debugPrint(
-          '[RequestTap] suppressed duplicate decision for $requestKey',
+          '[RequestTap] suppressed duplicate decision for $requestLabel',
         );
         return false;
       }
       final operation = Future<void>.sync(handle);
-      _activeDecisions[requestKey] = operation;
+      _bindActive(_activeDecisions, requestKeys, operation);
       try {
         await operation;
-        if (generation == _generation &&
-            identical(_activeDecisions[requestKey], operation)) {
-          _activeDecisions.remove(requestKey);
+        if (generation == _generation) {
+          _removeActive(_activeDecisions, requestKeys, operation);
         }
         if (generation == _generation && !_disposed) {
-          _remember(_decisionTombstones, requestKey, _decisionWindow(payload));
+          _rememberAll(
+            _decisionTombstones,
+            requestKeys,
+            _decisionWindow(payload),
+          );
         }
         return true;
       } catch (_) {
         // The native bridge deliberately replays unacknowledged actions.
         // Unexpected failures must therefore remain retryable.
-        if (generation == _generation &&
-            identical(_activeDecisions[requestKey], operation)) {
-          _activeDecisions.remove(requestKey);
+        if (generation == _generation) {
+          _removeActive(_activeDecisions, requestKeys, operation);
         }
         rethrow;
       }
     }
 
-    final activeDecision = _activeDecisions[requestKey];
+    final activeDecision = _firstActive(_activeDecisions, requestKeys);
     if (activeDecision != null) {
       await activeDecision;
       debugPrint(
-        '[RequestTap] joined decision before duplicate view for $requestKey',
+        '[RequestTap] joined decision before duplicate view for $requestLabel',
       );
       return false;
     }
-    final activeView = _activeViews[requestKey];
+    final activeView = _firstActive(_activeViews, requestKeys);
     if (activeView != null) {
       await activeView;
-      debugPrint('[RequestTap] joined duplicate view for $requestKey');
+      debugPrint('[RequestTap] joined duplicate view for $requestLabel');
       return false;
     }
-    if (_decisionTombstones.containsKey(requestKey) ||
-        _viewTombstones.containsKey(requestKey)) {
-      debugPrint('[RequestTap] suppressed duplicate view for $requestKey');
+    if (_containsAny(_decisionTombstones, requestKeys) ||
+        _containsAny(_viewTombstones, requestKeys)) {
+      debugPrint('[RequestTap] suppressed duplicate view for $requestLabel');
       return false;
     }
     final operation = Future<void>.sync(handle);
-    _activeViews[requestKey] = operation;
+    _bindActive(_activeViews, requestKeys, operation);
     try {
       await operation;
-      if (generation == _generation &&
-          identical(_activeViews[requestKey], operation)) {
-        _activeViews.remove(requestKey);
+      if (generation == _generation) {
+        _removeActive(_activeViews, requestKeys, operation);
       }
       if (generation == _generation && !_disposed) {
-        _remember(_viewTombstones, requestKey, viewReplayWindow);
+        _rememberAll(_viewTombstones, requestKeys, viewReplayWindow);
       }
       return true;
     } catch (_) {
-      if (generation == _generation &&
-          identical(_activeViews[requestKey], operation)) {
-        _activeViews.remove(requestKey);
+      if (generation == _generation) {
+        _removeActive(_activeViews, requestKeys, operation);
       }
       rethrow;
     }
@@ -192,10 +200,9 @@ class IncomingRequestTapCoordinator {
   /// and the older View cannot reopen the request screen afterwards.
   bool shouldAbortViewAfterDecision(Map<String, dynamic> payload) {
     if (_isDecision(payload)) return false;
-    final requestKey = _requestKey(payload);
-    if (requestKey == null) return false;
-    return _activeDecisions.containsKey(requestKey) ||
-        _decisionTombstones.containsKey(requestKey);
+    final requestKeys = _expandedRequestKeys(payload);
+    return _containsAny(_activeDecisions, requestKeys) ||
+        _containsAny(_decisionTombstones, requestKeys);
   }
 
   /// A ride loader that could not hydrate deliberately reopens the navigation
@@ -203,9 +210,9 @@ class IncomingRequestTapCoordinator {
   /// tap the still-live notification and try again immediately.
   void allowViewRetry(Map<String, dynamic> payload) {
     if (_isDecision(payload)) return;
-    final requestKey = _requestKey(payload);
-    if (requestKey == null) return;
-    _viewTombstones.remove(requestKey)?.cancel();
+    for (final requestKey in _expandedRequestKeys(payload)) {
+      _viewTombstones.remove(requestKey)?.cancel();
+    }
   }
 
   /// Session-owned claims must never carry into another provider account.
@@ -221,6 +228,7 @@ class IncomingRequestTapCoordinator {
     _decisionTombstones.clear();
     _activeViews.clear();
     _activeDecisions.clear();
+    _equivalentRequestKeys.clear();
   }
 
   void dispose() {
@@ -228,32 +236,80 @@ class IncomingRequestTapCoordinator {
     reset();
   }
 
-  String? _requestKey(Map<String, dynamic> payload) {
-    final rawType = payload[NotificationPayload.keyType]?.toString() ?? '';
-    final type = NotificationPayload.normaliseType(rawType);
-    final rideId =
-        (payload[NotificationPayload.keyRideId] ?? payload['ride_id'])
-            ?.toString()
-            .trim();
-    final jobId = (payload[NotificationPayload.keyJobId] ?? payload['job_id'])
-        ?.toString()
-        .trim();
-    final offerId = payload[NotificationPayload.keyOfferId]?.toString().trim();
+  Set<String> _requestKeys(Map<String, dynamic> payload) {
+    final nested = payload['data'];
+    final nestedData = nested is Map
+        ? Map<String, dynamic>.from(nested)
+        : const <String, dynamic>{};
+    String? valueFor(List<String> keys) {
+      for (final source in [payload, nestedData]) {
+        for (final key in keys) {
+          final value = source[key]?.toString().trim();
+          if (value != null && value.isNotEmpty) return value;
+        }
+      }
+      return null;
+    }
 
-    final preferredId = offerId != null && offerId.isNotEmpty ? offerId : null;
+    final rawType =
+        valueFor([NotificationPayload.keyType, 'requestType']) ?? '';
+    final type = NotificationPayload.normaliseType(rawType);
+    final rideId = valueFor([
+      NotificationPayload.keyRideId,
+      'ride_id',
+      'requestId',
+    ]);
+    final jobId = valueFor([
+      NotificationPayload.keyJobId,
+      'job_id',
+      'requestId',
+    ]);
+    final offerId = valueFor([NotificationPayload.keyOfferId, 'offer_id']);
+
     if (type == NotificationPayload.typeRideRequest ||
         _isRideRequestAction(payload)) {
-      final id =
-          preferredId ?? (rideId != null && rideId.isNotEmpty ? rideId : null);
-      return id == null || id.isEmpty ? null : 'ride:$id';
+      return <String>{
+        if (rideId != null) 'ride-id:$rideId',
+        if (offerId != null) 'ride-offer:$offerId',
+      };
     }
     if (type == NotificationPayload.typeJobRequest ||
         _isJobRequestAction(payload)) {
-      final id =
-          preferredId ?? (jobId != null && jobId.isNotEmpty ? jobId : null);
-      return id == null || id.isEmpty ? null : 'job:$id';
+      return <String>{
+        if (jobId != null) 'job-id:$jobId',
+        if (offerId != null) 'job-offer:$offerId',
+      };
     }
-    return null;
+    return const <String>{};
+  }
+
+  Set<String> _expandedRequestKeys(Map<String, dynamic> payload) {
+    final directKeys = _requestKeys(payload);
+    if (directKeys.isEmpty) return directKeys;
+
+    final expanded = <String>{...directKeys};
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (final key in List<String>.of(expanded)) {
+        final aliases = _equivalentRequestKeys[key];
+        if (aliases == null) continue;
+        final previousLength = expanded.length;
+        expanded.addAll(aliases);
+        if (expanded.length != previousLength) changed = true;
+      }
+    }
+
+    // A canonical payload normally carries both requestId and offerId. Retain
+    // that equivalence so a later platform callback carrying only one alias
+    // still joins the operation that already owns the physical request.
+    if (expanded.length > 1) {
+      final equivalence = Set<String>.unmodifiable(expanded);
+      for (final key in expanded) {
+        _equivalentRequestKeys[key] = equivalence;
+      }
+    }
+    return expanded;
   }
 
   bool _isDecision(Map<String, dynamic> payload) {
@@ -278,15 +334,26 @@ class IncomingRequestTapCoordinator {
   }
 
   String? _normalisedAction(Map<String, dynamic> payload) {
-    return payload[NotificationPayload.keyActionId]
-        ?.toString()
-        .trim()
-        .toUpperCase();
+    final direct = payload[NotificationPayload.keyActionId];
+    final nested = payload['data'];
+    final nestedAction = nested is Map
+        ? nested[NotificationPayload.keyActionId]
+        : null;
+    return (direct ?? nestedAction)?.toString().trim().toUpperCase();
   }
 
   Duration _decisionWindow(Map<String, dynamic> payload) {
+    final nested = payload['data'];
+    final nestedOffer = nested is Map
+        ? nested[NotificationPayload.keyOfferId] ?? nested['offer_id']
+        : null;
     final offerId =
-        payload[NotificationPayload.keyOfferId]?.toString().trim() ?? '';
+        (payload[NotificationPayload.keyOfferId] ??
+                payload['offer_id'] ??
+                nestedOffer)
+            ?.toString()
+            .trim() ??
+        '';
     if (offerId.isEmpty) {
       // Legacy payloads cannot distinguish a later re-offer of the same
       // booking. Keep only the immediate cross-channel replay guard.
@@ -301,6 +368,53 @@ class IncomingRequestTapCoordinator {
     // A malformed remote deadline must not retain an in-memory claim forever.
     const maximum = Duration(minutes: 2);
     return remaining > maximum ? decisionFallbackWindow : remaining;
+  }
+
+  Future<void>? _firstActive(
+    Map<String, Future<void>> active,
+    Set<String> requestKeys,
+  ) {
+    for (final requestKey in requestKeys) {
+      final operation = active[requestKey];
+      if (operation != null) return operation;
+    }
+    return null;
+  }
+
+  bool _containsAny<T>(Map<String, T> values, Set<String> requestKeys) {
+    return requestKeys.any(values.containsKey);
+  }
+
+  void _bindActive(
+    Map<String, Future<void>> active,
+    Set<String> requestKeys,
+    Future<void> operation,
+  ) {
+    for (final requestKey in requestKeys) {
+      active[requestKey] = operation;
+    }
+  }
+
+  void _removeActive(
+    Map<String, Future<void>> active,
+    Set<String> requestKeys,
+    Future<void> operation,
+  ) {
+    for (final requestKey in requestKeys) {
+      if (identical(active[requestKey], operation)) {
+        active.remove(requestKey);
+      }
+    }
+  }
+
+  void _rememberAll(
+    Map<String, Timer> tombstones,
+    Set<String> requestKeys,
+    Duration duration,
+  ) {
+    for (final requestKey in requestKeys) {
+      _remember(tombstones, requestKey, duration);
+    }
   }
 
   void _remember(
@@ -2472,7 +2586,14 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
               requestId: rideId,
               offerId: payload[NotificationPayload.keyOfferId]?.toString(),
             );
-            router.go('/active-ride');
+            // restore() publishes activeRide before this Future completes.
+            // The shell listener may therefore already own navigation. A
+            // second go() to the same route rebuilds the time-bound screen.
+            final currentPath =
+                router.routerDelegate.currentConfiguration.uri.path;
+            if (shouldNavigateToActiveRideFromNotification(currentPath)) {
+              router.go('/active-ride');
+            }
           } else {
             openRideRequestLoader(
               rideId,

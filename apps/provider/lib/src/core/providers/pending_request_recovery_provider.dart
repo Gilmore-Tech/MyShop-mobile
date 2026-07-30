@@ -396,39 +396,75 @@ bool shouldApplyGenericPendingRideDismissal({
     visibleRideId.isNotEmpty &&
     !resolvedRideIds.contains(visibleRideId);
 
+/// Resolves a pending request only while the same request still has no other
+/// UI owner.
+///
+/// Notification taps, sockets, and foreground recovery can all start in the
+/// same resume frame. The eligibility check must therefore run both before and
+/// after the asynchronous fetch. Once the second check succeeds, the caller
+/// publishes synchronously so no competing callback can interleave.
+@visibleForTesting
+Future<bool> resolveAndClaimPendingRequestForSurface<T>({
+  required bool Function() isEligible,
+  required Future<T?> Function() resolve,
+  required void Function(T request) claim,
+}) async {
+  if (!isEligible()) return false;
+  final request = await resolve();
+  if (request == null || !isEligible()) return false;
+
+  // Keep the final eligibility check and ownership publication in the same
+  // synchronous turn. Returning the resolved object to the caller first would
+  // introduce a microtask gap in which a notification callback could claim
+  // and navigate the same request.
+  claim(request);
+  return true;
+}
+
+bool _canSurfaceRideRequest(Ref ref, String rideId) {
+  final router = ref.read(goRouterProvider);
+  if (router.routerDelegate.currentConfiguration.uri.path == '/ride-request') {
+    return false;
+  }
+  if (ref.read(activeRideProvider).ride?.id == rideId) return false;
+  if (ref.read(incomingRideRequestProvider)?.id == rideId) return false;
+  if (ref.read(visibleRideRequestIdProvider) == rideId) return false;
+  if (ref.read(rideRequestNavigationInFlightProvider).contains(rideId)) {
+    return false;
+  }
+  return !ref.read(surfacedRideIdsProvider).contains(rideId);
+}
+
 Future<void> _surfaceRideRequest(
   Ref ref,
   ProviderPendingRequest request,
 ) async {
   try {
-    final active = ref.read(activeRideProvider).ride;
-    if (active != null && active.id == request.id) return;
-    if (ref.read(visibleRideRequestIdProvider) == request.id) return;
-    if (ref.read(rideRequestNavigationInFlightProvider).contains(request.id)) {
-      return;
-    }
-    if (ref.read(surfacedRideIdsProvider).contains(request.id)) return;
-
-    final ride = await _readPendingRide(
-      request,
-      ref.read(rideServiceProvider).getRide,
+    await resolveAndClaimPendingRequestForSurface<Ride>(
+      isEligible: () => _canSurfaceRideRequest(ref, request.id),
+      resolve: () => _readPendingRide(
+        request,
+        ref.read(rideServiceProvider).getRide,
+      ),
+      claim: (ride) {
+        if (request.expiresAt != null) {
+          ref.read(rideRequestDeadlineByIdProvider.notifier).update(
+                (m) => {...m, ride.id: request.expiresAt!},
+              );
+        }
+        if (request.offerId != null && request.offerId!.isNotEmpty) {
+          ref.read(rideOfferIdByRideProvider.notifier).update(
+                (offers) => {...offers, ride.id: request.offerId!},
+              );
+        }
+        ref
+            .read(surfacedRideIdsProvider.notifier)
+            .update((s) => {...s, ride.id});
+        ref.read(incomingRideRequestProvider.notifier).state = null;
+        ref.read(incomingRideRequestProvider.notifier).state = ride;
+        ref.read(navBadgeProvider.notifier).increment('/home');
+      },
     );
-    if (ride == null) return;
-
-    if (request.expiresAt != null) {
-      ref.read(rideRequestDeadlineByIdProvider.notifier).update(
-            (m) => {...m, ride.id: request.expiresAt!},
-          );
-    }
-    if (request.offerId != null && request.offerId!.isNotEmpty) {
-      ref.read(rideOfferIdByRideProvider.notifier).update(
-            (offers) => {...offers, ride.id: request.offerId!},
-          );
-    }
-    ref.read(surfacedRideIdsProvider.notifier).update((s) => {...s, ride.id});
-    ref.read(incomingRideRequestProvider.notifier).state = null;
-    ref.read(incomingRideRequestProvider.notifier).state = ride;
-    ref.read(navBadgeProvider.notifier).increment('/home');
   } catch (e) {
     debugPrint('[PendingRequestRecovery] ride ${request.id} failed: $e');
   }
