@@ -2,6 +2,28 @@
 
 Status captured: **2026-07-31 GMT**
 
+## 2026-07-31 repository credential containment
+
+- [x] A tracked repository-tool configuration in Mobile and Admin was found to
+      contain a GitHub personal access token. The secret value is deliberately
+      omitted from this record and must be treated as compromised.
+- [x] Focused one-file removal branches contain no Mobile/Admin runtime,
+      database, API or signed-artifact change: Mobile PR `#118` targets
+      `staging`; Admin PR `#30` targets `staging`.
+- [ ] Confirm the exposed credential has been revoked and replace any required
+      developer automation credential through the host/keychain only. Removing
+      it from Git does not revoke it or erase repository history.
+- [ ] Merge the two focused removal PRs through `staging`, promote the exact
+      fixes to `main`, then prove current-tree secret scans are clean on both
+      protected branches. Coordinate any history rewrite separately with both
+      developers only after revocation.
+- [ ] GitHub Actions did not execute Mobile PR `#117` or `#118`: GitHub marked
+      both `analyze-and-test` jobs failed before assigning a runner because of
+      an account payment/spending-limit condition. This is infrastructure
+      evidence, not a passing or failing source test. Keep the recorded local
+      exact-commit gates authoritative until Actions is restored or the owner
+      explicitly retains the documented manual release workflow.
+
 ## Authoritative 2026-07-31 main release cut
 
 This block supersedes older status lines for the immediate store update. The
@@ -73,11 +95,18 @@ used to add unreviewed work to this cut.
 ### Production and signed-build gates
 
 - [x] Create and review Backend `staging` to `main` PR `#136`.
-- [ ] Apply
+- [x] Apply
       `20260727000000_durable_role_refresh_lineage` to the production database.
+- [x] Post-migration production verification reported **213 migrations** and
+      `Database schema is up to date`; the approved geofence fingerprint
+      remained `9faa785a0e5146c6e50d4e7b64b98a5e`.
 - [ ] Replace the Backend fleet with **zero mixed-version serving**, following
       `docs/refresh-lineage-controlled-cutover.md`; verify the two refresh
       authority flags, exact deployed commit, health and recovery telemetry.
+      The latest recorded production state has both
+      `refresh_lineage_authority_enabled=false` and
+      `refresh_lineage_cutover_quiesced=false`, so schema deployment alone does
+      not close this gate.
 - [x] Create and review Mobile release PR `#114` to `main`; its runtime tree
       equals frozen staging commit `4fae1fe…` apart from this release-control
       record. Provider lock correction PRs `#115`/`#116` produced the final
