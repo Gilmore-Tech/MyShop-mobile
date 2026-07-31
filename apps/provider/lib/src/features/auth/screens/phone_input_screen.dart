@@ -8,7 +8,10 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/constants/support_contacts.dart';
 import '../../profile/providers/provider_type_provider.dart';
+import '../../registration/providers/categories_provider.dart';
+import '../../registration/providers/regions_provider.dart';
 import '../../registration/providers/registration_controller.dart';
+import '../../registration/providers/ride_categories_provider.dart';
 import '../providers/auth_controller.dart';
 import '../widgets/blocked_device_dialog.dart';
 
@@ -65,9 +68,11 @@ class _ProviderPhoneInputScreenState
     String? remoteError;
     bool isLoading = false;
     bool requiresRoleRecoverySupport = false;
+    String? remoteErrorCode;
 
     if (state is AuthUnauthenticated) {
       remoteError = state.error;
+      remoteErrorCode = state.errorCode;
       isLoading = state.isLoading;
       requiresRoleRecoverySupport = state.requiresRoleRecoverySupport;
       if (state.requiresLegalRefresh && !_legalRefreshHandled) {
@@ -84,11 +89,17 @@ class _ProviderPhoneInputScreenState
                 'Terms or Privacy changed. Review the current versions again.',
           );
           context.go(role == ProviderType.driver
-              ? '/signup/driver'
-              : '/signup/artisan');
+              ? '/signup/driver?step=4'
+              : '/signup/artisan?step=3');
         });
       }
     }
+    final correction = mode == PhoneInputMode.signUp
+        ? registrationCorrectionForErrorCode(
+            remoteErrorCode,
+            signUpRole ?? ProviderType.driver,
+          )
+        : null;
 
     final title =
         mode == PhoneInputMode.signIn ? 'Welcome back' : 'Verify your phone';
@@ -105,6 +116,12 @@ class _ProviderPhoneInputScreenState
       onErrorCleared: () =>
           ref.read(authControllerProvider.notifier).clearError(),
       onSubmit: (phone) => _submit(phone),
+      ghanaOnly: mode == PhoneInputMode.signUp,
+      phoneValidator:
+          mode == PhoneInputMode.signUp ? Validators.ghanaE164Phone : null,
+      invalidPhoneMessage: mode == PhoneInputMode.signUp
+          ? 'Enter a valid Ghana phone number.'
+          : 'Enter a valid phone number.',
       bottomAction: requiresRoleRecoverySupport
           ? Column(
               mainAxisSize: MainAxisSize.min,
@@ -129,7 +146,23 @@ class _ProviderPhoneInputScreenState
                 ),
               ],
             )
-          : mode == PhoneInputMode.signIn
+          : correction != null
+              ? TextButton.icon(
+                  onPressed: isLoading
+                      ? null
+                      : () => _reviewBackendCorrection(
+                            signUpRole ?? ProviderType.driver,
+                            correction,
+                            remoteErrorCode,
+                          ),
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 48),
+                    foregroundColor: MyShopColors.primaryGoldDark,
+                  ),
+                  icon: const Icon(Icons.edit_outlined),
+                  label: Text(correction.message),
+                )
+              : mode == PhoneInputMode.signIn
               ? TextButton(
                   onPressed:
                       isLoading ? null : () => context.go('/signup/role'),
@@ -170,6 +203,22 @@ class _ProviderPhoneInputScreenState
       await notifier.checkPhoneAndLogin(phone: phone);
     } else {
       final role = signUpRole ?? ProviderType.driver;
+      final regions = ref.read(regionsProvider).valueOrNull;
+      final regionSelectionRequired = regions != null && regions.length > 1;
+      final draftIssue = role == ProviderType.driver
+          ? firstDriverRegistrationIssue(
+              ref.read(driverRegistrationProvider),
+              regionSelectionRequired: regionSelectionRequired,
+            )
+          : firstArtisanRegistrationIssue(
+              ref.read(artisanRegistrationProvider),
+              regionSelectionRequired: regionSelectionRequired,
+            );
+      if (draftIssue != null) {
+        _returnToRegistration(role, draftIssue);
+        return;
+      }
+
       RequiredLegalDocuments? legal;
       try {
         legal = await ref.read(registrationLegalDocumentsProvider(role).future);
@@ -181,12 +230,13 @@ class _ProviderPhoneInputScreenState
       if (legal == null ||
           legal.documents.length != 2 ||
           !ref.read(policyAcceptedProvider)) {
-        MyShopToast.show(
-          context,
-          message: 'Review and accept both current legal documents first.',
+        _returnToRegistration(
+          role,
+          RegistrationDraftIssue(
+            step: role == ProviderType.driver ? 4 : 3,
+            message: 'Review and accept both current legal documents.',
+          ),
         );
-        context.go(
-            role == ProviderType.driver ? '/signup/driver' : '/signup/artisan');
         return;
       }
 
@@ -240,6 +290,54 @@ class _ProviderPhoneInputScreenState
         );
       }
     }
+  }
+
+  void _returnToRegistration(
+    ProviderType role,
+    RegistrationDraftIssue issue, {
+    bool showToast = true,
+  }) {
+    ref.read(showRegistrationErrorsProvider.notifier).state = true;
+    if (showToast) {
+      MyShopToast.show(context, message: issue.message);
+    }
+    final route =
+        role == ProviderType.driver ? '/signup/driver' : '/signup/artisan';
+    context.go('$route?step=${issue.step}');
+  }
+
+  void _reviewBackendCorrection(
+    ProviderType role,
+    RegistrationDraftIssue issue,
+    String? errorCode,
+  ) {
+    if (errorCode == 'INVALID_CATEGORY') {
+      final draft = ref.read(artisanRegistrationProvider);
+      ref.read(artisanRegistrationProvider.notifier).update(
+            draft.copyWith(serviceCategories: const []),
+          );
+      ref.invalidate(categoriesProvider);
+    } else if (errorCode == 'INVALID_RIDE_CATEGORY') {
+      final draft = ref.read(driverRegistrationProvider);
+      ref.read(driverRegistrationProvider.notifier).update(
+            draft.copyWith(rideCategories: const []),
+          );
+      ref.invalidate(rideCategoryOptionsProvider);
+    } else if (errorCode == 'INVALID_REGION') {
+      if (role == ProviderType.driver) {
+        final draft = ref.read(driverRegistrationProvider);
+        ref.read(driverRegistrationProvider.notifier).update(
+              draft.copyWith(regionId: ''),
+            );
+      } else {
+        final draft = ref.read(artisanRegistrationProvider);
+        ref.read(artisanRegistrationProvider.notifier).update(
+              draft.copyWith(regionId: ''),
+            );
+      }
+      ref.invalidate(regionsProvider);
+    }
+    _returnToRegistration(role, issue, showToast: false);
   }
 
   Future<void> _contactRecoverySupport() async {

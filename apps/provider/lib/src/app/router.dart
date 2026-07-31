@@ -221,11 +221,17 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/signup/driver',
-        builder: (context, state) => const DriverRegistrationScreen(),
+        builder: (context, state) => DriverRegistrationScreen(
+          initialStep:
+              int.tryParse(state.uri.queryParameters['step'] ?? '') ?? 0,
+        ),
       ),
       GoRoute(
         path: '/signup/artisan',
-        builder: (context, state) => const ArtisanRegistrationScreen(),
+        builder: (context, state) => ArtisanRegistrationScreen(
+          initialStep:
+              int.tryParse(state.uri.queryParameters['step'] ?? '') ?? 0,
+        ),
       ),
       GoRoute(
         path: '/signup/phone',

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
+import 'package:shared_ui/shared_ui.dart';
 
 import '../../profile/providers/provider_type_provider.dart';
 import '../../support/providers/support_providers.dart';
@@ -25,6 +26,143 @@ String? validateOptionalReferralCode(String value) {
   if (code.isEmpty) return null;
   if (!RegExp(r'^MYSHOP-[A-Z0-9]{6}$').hasMatch(code)) {
     return 'Use MYSHOP- followed by 6 letters or numbers';
+  }
+  return null;
+}
+
+class RegistrationDraftIssue {
+  const RegistrationDraftIssue({
+    required this.step,
+    required this.message,
+  });
+
+  final int step;
+  final String message;
+}
+
+RegistrationDraftIssue? registrationCorrectionForErrorCode(
+  String? errorCode,
+  ProviderType role,
+) {
+  if (errorCode == null) return null;
+  if (const {
+    'EMAIL_ALREADY_EXISTS',
+    'INVALID_REFERRAL_CODE',
+    'SELF_REFERRAL_NOT_ALLOWED',
+    'ROLE_ACCOUNT_REFERRALS_SUSPENDED',
+    'REFERRAL_ALREADY_LINKED',
+  }.contains(errorCode)) {
+    return const RegistrationDraftIssue(step: 0, message: 'Review profile');
+  }
+  if (role == ProviderType.driver) {
+    if (const {
+      'VEHICLE_DETAILS_REQUIRED',
+      'INVALID_VEHICLE_PLATE',
+      'VEHICLE_PLATE_IN_USE',
+    }.contains(errorCode)) {
+      return const RegistrationDraftIssue(step: 1, message: 'Review vehicle');
+    }
+    if (const {
+      'RIDE_CATEGORIES_REQUIRED',
+      'INVALID_RIDE_CATEGORY',
+    }.contains(errorCode)) {
+      return const RegistrationDraftIssue(
+        step: 2,
+        message: 'Review ride categories',
+      );
+    }
+    if (errorCode == 'INVALID_REGION') {
+      return const RegistrationDraftIssue(step: 3, message: 'Review region');
+    }
+    if (const {
+      'LEGAL_DOCUMENT_CHANGED',
+      'LEGAL_DOCUMENTS_UNAVAILABLE',
+      'DOCUMENT_NOT_FOUND',
+    }.contains(errorCode)) {
+      return const RegistrationDraftIssue(step: 4, message: 'Review policies');
+    }
+    return null;
+  }
+  if (const {'CATEGORIES_REQUIRED', 'INVALID_CATEGORY'}.contains(errorCode)) {
+    return const RegistrationDraftIssue(step: 1, message: 'Review services');
+  }
+  if (errorCode == 'INVALID_REGION') {
+    return const RegistrationDraftIssue(step: 2, message: 'Review region');
+  }
+  if (const {
+    'LEGAL_DOCUMENT_CHANGED',
+    'LEGAL_DOCUMENTS_UNAVAILABLE',
+    'DOCUMENT_NOT_FOUND',
+  }.contains(errorCode)) {
+    return const RegistrationDraftIssue(step: 3, message: 'Review policies');
+  }
+  return null;
+}
+
+RegistrationDraftIssue? firstDriverRegistrationIssue(
+  DriverRegistrationDraft draft, {
+  bool regionSelectionRequired = false,
+}) {
+  if (Validators.fullName(draft.fullName) != null ||
+      Validators.email(draft.email) != null ||
+      Validators.ghanaCard(draft.ghanaCardNumber) != null ||
+      validateOptionalReferralCode(draft.referralCode) != null) {
+    return const RegistrationDraftIssue(
+      step: 0,
+      message: 'Review the highlighted profile details.',
+    );
+  }
+  if (Validators.required(draft.vehicleMake, 'Make') != null ||
+      Validators.required(draft.vehicleModel, 'Model') != null ||
+      Validators.vehicleYear(draft.vehicleYear) != null ||
+      Validators.licensePlate(draft.vehiclePlate) != null ||
+      Validators.required(draft.vehicleColor, 'Colour') != null) {
+    return const RegistrationDraftIssue(
+      step: 1,
+      message: 'Complete the highlighted vehicle details.',
+    );
+  }
+  if (draft.rideCategories.isEmpty) {
+    return const RegistrationDraftIssue(
+      step: 2,
+      message: 'Select at least one available ride category.',
+    );
+  }
+  if (regionSelectionRequired && draft.regionId.isEmpty) {
+    return const RegistrationDraftIssue(
+      step: 3,
+      message: 'Choose an available region.',
+    );
+  }
+  return null;
+}
+
+RegistrationDraftIssue? firstArtisanRegistrationIssue(
+  ArtisanRegistrationDraft draft, {
+  bool regionSelectionRequired = false,
+}) {
+  if (Validators.fullName(draft.fullName) != null ||
+      Validators.email(draft.email) != null ||
+      Validators.ghanaCard(draft.ghanaCardNumber) != null ||
+      validateOptionalReferralCode(draft.referralCode) != null) {
+    return const RegistrationDraftIssue(
+      step: 0,
+      message: 'Review the highlighted profile details.',
+    );
+  }
+  if (Validators.required(draft.businessName, 'Business name') != null ||
+      Validators.required(draft.tradeCategory, 'Primary trade') != null ||
+      draft.serviceCategories.isEmpty) {
+    return const RegistrationDraftIssue(
+      step: 1,
+      message: 'Complete your business details and select a service.',
+    );
+  }
+  if (regionSelectionRequired && draft.regionId.isEmpty) {
+    return const RegistrationDraftIssue(
+      step: 2,
+      message: 'Choose an available region.',
+    );
   }
   return null;
 }

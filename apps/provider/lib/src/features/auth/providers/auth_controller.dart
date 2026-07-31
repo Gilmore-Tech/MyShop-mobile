@@ -45,6 +45,7 @@ class AuthSessionRestorePending extends AuthState {
 class AuthUnauthenticated extends AuthState {
   const AuthUnauthenticated({
     this.error,
+    this.errorCode,
     this.fieldErrors = const {},
     this.isLoading = false,
     this.requiresRoleRecoverySupport = false,
@@ -52,6 +53,7 @@ class AuthUnauthenticated extends AuthState {
   });
 
   final String? error;
+  final String? errorCode;
 
   /// Per-field errors from backend validation (e.g. {"phone": "invalid"}).
   final Map<String, String> fieldErrors;
@@ -522,11 +524,12 @@ class AuthController extends StateNotifier<AuthState> {
           phone: phone,
           isNewUser: true,
           role: role,
-          error: AuthErrorMapper.message(e),
+          error: AuthErrorMapper.messageWithSupportReference(e),
         );
       } else {
         state = AuthUnauthenticated(
-          error: AuthErrorMapper.message(e),
+          error: AuthErrorMapper.messageWithSupportReference(e),
+          errorCode: e.errorCode,
           fieldErrors: AuthErrorMapper.fieldErrors(e),
           requiresRoleRecoverySupport:
               AuthErrorMapper.requiresRoleRecoverySupport(e),
