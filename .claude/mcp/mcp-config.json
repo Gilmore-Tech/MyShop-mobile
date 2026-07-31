@@ -11,10 +11,7 @@
         "-y",
         "@modelcontextprotocol/server-github"
       ],
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "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"
-      },
-      "description": "Create issues (MSP-{id} format), manage PRs, check CI status on Gilmore-Tech/MyShop-mobile."
+      "description": "Create issues (MSP-{id} format), manage PRs, and check CI for Gilmore-Tech/MyShop-mobile. Supply GITHUB_PERSONAL_ACCESS_TOKEN through the host environment; never store it in this file."
     },
     "filesystem": {
       "command": "npx",
