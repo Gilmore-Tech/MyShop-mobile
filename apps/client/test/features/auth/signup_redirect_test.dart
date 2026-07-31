@@ -36,6 +36,7 @@ class _RedirectAuthController extends ClientAuthController {
   _RedirectAuthController(
     String phone, {
     bool requiresRoleRecoverySupport = false,
+    this.registrationReferralErrorCode,
   }) : super(
           ClientAuthRepository(
             service: MockAuthService(),
@@ -55,6 +56,8 @@ class _RedirectAuthController extends ClientAuthController {
 
   String? registeredPhone;
   String? registeredReferralCode;
+  final String? registrationReferralErrorCode;
+  final List<String?> submittedReferralCodes = [];
 
   @override
   Future<void> bootstrap() async {}
@@ -69,6 +72,20 @@ class _RedirectAuthController extends ClientAuthController {
   }) async {
     registeredPhone = phone;
     registeredReferralCode = referralCode;
+    submittedReferralCodes.add(referralCode);
+    if (registrationReferralErrorCode != null && referralCode != null) {
+      state = AuthNeedsRegistration(
+        phone: phone,
+        error: AuthErrorMapper.message(
+          ApiException(
+            message: 'backend details must stay hidden',
+            statusCode: 400,
+            errorCode: registrationReferralErrorCode,
+          ),
+        ),
+        errorCode: registrationReferralErrorCode,
+      );
+    }
   }
 }
 
@@ -142,6 +159,57 @@ void main() {
 
       expect(controller.registeredPhone, '+233241234567');
       expect(controller.registeredReferralCode, 'MYSHOP-ABC123');
+    },
+  );
+
+  testWidgets(
+    'referral failure preserves the code until explicit removal and retry',
+    (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final controller = _RedirectAuthController(
+        '+233241234567',
+        registrationReferralErrorCode: 'ROLE_ACCOUNT_REFERRALS_SUSPENDED',
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            clientAuthControllerProvider.overrideWith((_) => controller),
+            pendingReferralCodeProvider.overrideWith((_) => 'MYSHOP-ABC123'),
+            clientRegistrationLegalDocumentsProvider.overrideWith(
+              (_) async => _requiredClientLegalDocuments,
+            ),
+          ],
+          child: const MaterialApp(home: SignUpScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).first, 'Ama Mensah');
+      await tester.tap(find.byType(Checkbox).at(0));
+      await tester.tap(find.byType(Checkbox).at(1));
+      await tester.pump();
+      await tester.tap(find.text('Create Account'));
+      await tester.pumpAndSettle();
+
+      expect(controller.submittedReferralCodes, ['MYSHOP-ABC123']);
+      expect(find.text('MYSHOP-ABC123'), findsWidgets);
+      expect(
+        find.textContaining('Referrals are temporarily unavailable'),
+        findsOneWidget,
+      );
+      expect(find.text('Remove code and continue'), findsOneWidget);
+
+      await tester.ensureVisible(find.text('Remove code and continue'));
+      await tester.tap(find.text('Remove code and continue'));
+      await tester.pumpAndSettle();
+
+      expect(controller.submittedReferralCodes, ['MYSHOP-ABC123', null]);
+      expect(controller.registeredReferralCode, isNull);
+      expect(find.text('Remove code and continue'), findsNothing);
     },
   );
 

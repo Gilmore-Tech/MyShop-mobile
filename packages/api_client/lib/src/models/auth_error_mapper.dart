@@ -167,6 +167,17 @@ class AuthErrorMapper {
         error.errorCode == AuthErrorCodes.roleAccountRetained;
   }
 
+  /// True only for stable registration errors that can be resolved by the
+  /// user explicitly removing the optional referral code and retrying.
+  static bool isReferralRegistrationErrorCode(String? code) {
+    return const {
+      'INVALID_REFERRAL_CODE',
+      'SELF_REFERRAL_NOT_ALLOWED',
+      'REFERRAL_ALREADY_LINKED',
+      'ROLE_ACCOUNT_REFERRALS_SUSPENDED',
+    }.contains(code?.toUpperCase());
+  }
+
   static String _networkMessage(NetworkException e) {
     return switch (e.kind) {
       NetworkFailureKind.offline =>
@@ -255,7 +266,7 @@ class AuthErrorMapper {
         return 'Referrals are temporarily unavailable. Remove the optional referral code to continue.';
 
       case 'REFERRAL_ALREADY_LINKED':
-        return 'A referral is already linked to this provider account. Remove the code or contact support.';
+        return 'A referral is already linked to this account. Remove the code or contact support.';
 
       // ── Login ───────────────────────────────────────────────────────
       case 'USER_NOT_FOUND':
