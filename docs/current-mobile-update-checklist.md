@@ -15,7 +15,8 @@ used to add unreviewed work to this cut.
 - [x] Mobile runtime candidate is exact tested staging commit
       `4fae1fe30a054e168134d9ccc83d3c9960d6169a`.
 - [x] Backend dependency candidate is exact tested staging commit
-      `6aa1cc2553b0c3a0b2bde56fa27824e90dec2ec4`.
+      `a8a1e268e1923dcac0c02ad749bd43c5d0847f4d`; its only change above
+      runtime candidate `6aa1cc2…` is the corrected referral DTO test.
 - [x] Admin `main` and `staging` have identical content; no Admin release is
       included.
 - [x] The owner reports the frozen Mobile and Backend candidate behavior was
@@ -24,6 +25,10 @@ used to add unreviewed work to this cut.
       three release-contract suites, **800/800** tests across six packages,
       all seven package analyzers with zero issues, `git diff --check`, and
       finished with a clean detached worktree.
+- [x] Exact Backend staging tree `d1202dce…` passed **222/222 suites and
+      4,429/4,429 tests**, API typecheck, the five-task production API build,
+      refresh-lineage verifier **5/5**, focused lineage **69/69**, and
+      `git diff --check`.
 - [x] The dirty primary workspaces and every uncommitted/deferred branch are
       excluded. Only committed staging ancestry may enter `main`.
 
@@ -44,14 +49,15 @@ used to add unreviewed work to this cut.
 
 ### Production and signed-build gates
 
-- [ ] Create and review Backend `staging` to `main` PR.
+- [x] Create and review Backend `staging` to `main` PR `#136`.
 - [ ] Apply
       `20260727000000_durable_role_refresh_lineage` to the production database.
 - [ ] Replace the Backend fleet with **zero mixed-version serving**, following
       `docs/refresh-lineage-controlled-cutover.md`; verify the two refresh
       authority flags, exact deployed commit, health and recovery telemetry.
-- [ ] Create and review Mobile release PR to `main`; its runtime tree must equal
-      frozen staging commit `4fae1fe…` apart from this release-control record.
+- [x] Create and review Mobile release PR `#114` to `main`; its runtime tree
+      equals frozen staging commit `4fae1fe…` apart from this release-control
+      record.
 - [ ] Read the highest private build number for all four app/store targets.
 - [ ] Use marketing version `1.4.1` and one common build number greater than
       `25` and greater than every private-console maximum.
