@@ -20,6 +20,10 @@ used to add unreviewed work to this cut.
       included.
 - [x] The owner reports the frozen Mobile and Backend candidate behavior was
       tested on staging and authorizes preparation of the store update.
+- [x] Exact Mobile staging commit `4fae1fe…`, tree `4c8d008c…`, passed all
+      three release-contract suites, **800/800** tests across six packages,
+      all seven package analyzers with zero issues, `git diff --check`, and
+      finished with a clean detached worktree.
 - [x] The dirty primary workspaces and every uncommitted/deferred branch are
       excluded. Only committed staging ancestry may enter `main`.
 
