@@ -2,24 +2,91 @@
 
 Status captured: **2026-07-31 GMT**
 
+## Authoritative 2026-07-31 main release cut
+
+This block supersedes older status lines for the immediate store update. The
+older sections remain the implementation and test ledger; they must not be
+used to add unreviewed work to this cut.
+
+### Frozen candidate
+
+- [x] Released baseline is `1.4.1+25` on Client Android, Client iOS, Provider
+      Android and Provider iOS.
+- [x] Mobile runtime candidate is exact tested staging commit
+      `4fae1fe30a054e168134d9ccc83d3c9960d6169a`.
+- [x] Backend dependency candidate is exact tested staging commit
+      `6aa1cc2553b0c3a0b2bde56fa27824e90dec2ec4`.
+- [x] Admin `main` and `staging` have identical content; no Admin release is
+      included.
+- [x] The owner reports the frozen Mobile and Backend candidate behavior was
+      tested on staging and authorizes preparation of the store update.
+- [x] The dirty primary workspaces and every uncommitted/deferred branch are
+      excluded. Only committed staging ancestry may enter `main`.
+
+### Included in this update
+
+- Graceful offline/service handling without false Terms/Privacy failure,
+  avoidable logout, or loss of recoverable ride/request state.
+- Exact-role session ownership, crash-consistent token refresh recovery and
+  removal of the Provider-only local seven-day session expiry.
+- Provider trusted-location recovery ordering without weakening document,
+  verification, vehicle or online-eligibility rules.
+- Single-owner Provider request-notification navigation, terminal request
+  cleanup and safe cancellation/reconnect recovery.
+- Provider signup/OTP reliability, Ghana-only Provider registration numbers,
+  optional referral handling and user-safe actionable errors.
+- Client booking-action/iOS review-flow corrections and the retained,
+  documented in-app VoIP functionality.
+
+### Production and signed-build gates
+
+- [ ] Create and review Backend `staging` to `main` PR.
+- [ ] Apply
+      `20260727000000_durable_role_refresh_lineage` to the production database.
+- [ ] Replace the Backend fleet with **zero mixed-version serving**, following
+      `docs/refresh-lineage-controlled-cutover.md`; verify the two refresh
+      authority flags, exact deployed commit, health and recovery telemetry.
+- [ ] Create and review Mobile release PR to `main`; its runtime tree must equal
+      frozen staging commit `4fae1fe…` apart from this release-control record.
+- [ ] Read the highest private build number for all four app/store targets.
+- [ ] Use marketing version `1.4.1` and one common build number greater than
+      `25` and greater than every private-console maximum.
+- [ ] Build Client AAB, Client IPA, Provider AAB and Provider IPA from one
+      clean exact `origin/main` SHA using `tool/build.sh`.
+- [ ] Verify bundle IDs, version/build, signing identities, production API,
+      embedded source SHA and absence of staging endpoints in all artifacts;
+      retain SHA-256 hashes.
+- [ ] Install the exact release artifacts and smoke test login/session restore,
+      offline recovery, Client booking, Provider online/location, foreground
+      and background request delivery, notification tap, cancellation,
+      Provider signup/OTP and in-app calling.
+- [ ] In App Store Connect, retain the VoIP/background-audio review video and
+      notes for both apps and keep China unavailable while CallKit is active.
+- [ ] Upload only the verified artifacts to internal tracks, complete the
+      matching privacy/Data Safety answers, then promote with rollback and
+      monitoring owners recorded.
+
+### Explicitly deferred
+
+- Offer API/Admin offer publishing, automated batch payouts, promo-point
+  redemption, SmileKYC, aggregate capacity claims and all other wider
+  100k-DAU audit work remain outside this store update.
+
 ## Authoritative 2026-07-31 Provider signup/OTP reliability control block
 
 This block is the authority for the reported Provider phone-stage signup and
 OTP-delivery incident only. It does not replace the separate session-recovery
 block below and does not reopen already-merged notification work.
 
-- **Release status: NO-GO pending staging PR review/merge, deployment and
-  physical signup/OTP testing.**
+- **Release status: merged into the frozen staging candidate and accepted by
+  the owner for release preparation; production signed-artifact smoke proof
+  remains open in the main release-cut block above.**
 - Notification/request-routing fixes are already merged to Mobile staging by
   PR `#112`, merge `d0d39ab`; they require no duplicate PR.
-- Mobile implementation is isolated at
-  `/private/tmp/myshop-provider-signup-reliability-mobile-clean`, branch
-  `fix/provider-signup-reliability-mobile-clean`, based on Mobile staging
-  `d0d39ab`; runtime/test commit `46b1320` is pushed in draft PR `#113`.
-- Backend implementation is isolated at
-  `/private/tmp/myshop-provider-signup-reliability-backend`, branch
-  `fix/provider-signup-reliability-20260730`, based on Backend staging
-  `ab325cf`; commit `d28df1a` is pushed in draft PR `#135`.
+- Mobile runtime/test commit `46b1320` and its checklist commit `96d1049`
+  merged through PR `#113` into staging `4fae1fe…`.
+- Backend runtime/test commit `d28df1a` merged through PR `#135` into staging
+  `6aa1cc2…`.
 - Approved rules: Provider registration accepts Ghana numbers only; referral
   is optional and must never block when absent/blank, but a supplied code must
   be valid. Client registration and Provider sign-in country behavior remain
@@ -64,9 +131,10 @@ block below and does not reopen already-merged notification work.
 
 - [x] Commit only the recorded Mobile and Backend diffs and push separate
       branches: Mobile `46b1320` / PR `#113`; Backend `d28df1a` / PR `#135`.
-- [ ] Review both draft PRs and merge them to `staging`.
-- [ ] Deploy the Backend staging commit, then install the exact Mobile staging
-      build. No migration command is required for this slice.
+- [x] Review both PRs and merge them to `staging`.
+- [x] Deploy the Backend staging candidate and test the matching Mobile staging
+      candidate, as confirmed by the owner. No migration command was required
+      for this signup slice.
 - [ ] Physically test Driver and Artisan signup with local and `+233` forms;
       reject non-Ghana/malformed values before API/OTP work.
 - [ ] Prove referral absent, blank, malformed, nonexistent, self-owned and
