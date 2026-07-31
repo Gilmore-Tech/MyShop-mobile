@@ -17,8 +17,11 @@ void main() {
       'INVALID_REFERRAL_CODE': 'referral code is not valid',
       'SELF_REFERRAL_NOT_ALLOWED': 'cannot use a referral code owned',
       'REFERRAL_ALREADY_LINKED': 'already linked to this account',
-      'ROLE_ACCOUNT_REFERRALS_SUSPENDED':
-          'Remove the optional referral code',
+      'ROLE_ACCOUNT_REFERRALS_SUSPENDED': 'Remove the optional referral code',
+      'INVALID_PLATFORM_REFERRAL_CODE': 'promotional code is not valid',
+      'PLATFORM_REFERRAL_CODE_INACTIVE': 'promotional code is no longer active',
+      'PLATFORM_SIGNUP_ATTRIBUTION_SUSPENDED':
+          'Promotional signup codes are temporarily unavailable',
       'INVALID_REGION': 'region is no longer available',
       'LEGAL_DOCUMENT_CHANGED': 'Terms or Privacy Notice changed',
       'LEGAL_DOCUMENTS_UNAVAILABLE':
@@ -49,6 +52,9 @@ void main() {
       'SELF_REFERRAL_NOT_ALLOWED',
       'REFERRAL_ALREADY_LINKED',
       'ROLE_ACCOUNT_REFERRALS_SUSPENDED',
+      'INVALID_PLATFORM_REFERRAL_CODE',
+      'PLATFORM_REFERRAL_CODE_INACTIVE',
+      'PLATFORM_SIGNUP_ATTRIBUTION_SUSPENDED',
     ]) {
       expect(
         AuthErrorMapper.isReferralRegistrationErrorCode(code),

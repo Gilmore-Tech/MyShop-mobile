@@ -172,7 +172,7 @@ void main() {
 
       final controller = _RedirectAuthController(
         '+233241234567',
-        registrationReferralErrorCode: 'ROLE_ACCOUNT_REFERRALS_SUSPENDED',
+        registrationReferralErrorCode: 'PLATFORM_REFERRAL_CODE_INACTIVE',
       );
       await tester.pumpWidget(
         ProviderScope(
@@ -198,7 +198,7 @@ void main() {
       expect(controller.submittedReferralCodes, ['MYSHOP-ABC123']);
       expect(find.text('MYSHOP-ABC123'), findsWidgets);
       expect(
-        find.textContaining('Referrals are temporarily unavailable'),
+        find.textContaining('promotional code is no longer active'),
         findsOneWidget,
       );
       expect(find.text('Remove code and continue'), findsOneWidget);

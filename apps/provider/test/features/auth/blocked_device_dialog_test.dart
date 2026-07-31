@@ -38,7 +38,7 @@ class _TestAuthController extends AuthController {
   _TestAuthController(
     AuthState initial, {
     this.retainOnRegistration = false,
-    this.referralErrorOnFirstRegistration = false,
+    this.referralErrorOnFirstRegistrationCode,
   }) : super(
           AuthRepository(
             service: MockAuthService(),
@@ -51,7 +51,7 @@ class _TestAuthController extends AuthController {
   }
 
   final bool retainOnRegistration;
-  final bool referralErrorOnFirstRegistration;
+  final String? referralErrorOnFirstRegistrationCode;
   final List<String?> submittedReferralCodes = [];
   bool _returnedReferralError = false;
 
@@ -82,25 +82,26 @@ class _TestAuthController extends AuthController {
     submittedReferralCodes.add(referralCode);
     if (retainOnRegistration) {
       state = const AuthUnauthenticated(
-        error: 'This role was previously deleted and cannot be registered again. '
+        error:
+            'This role was previously deleted and cannot be registered again. '
             'Contact support if you want to request recovery.',
         requiresRoleRecoverySupport: true,
       );
       return;
     }
-    if (referralErrorOnFirstRegistration &&
+    if (referralErrorOnFirstRegistrationCode != null &&
         referralCode != null &&
         !_returnedReferralError) {
       _returnedReferralError = true;
       state = AuthUnauthenticated(
         error: AuthErrorMapper.message(
-          const ApiException(
+          ApiException(
             message: 'backend details must stay hidden',
             statusCode: 503,
-            errorCode: 'ROLE_ACCOUNT_REFERRALS_SUSPENDED',
+            errorCode: referralErrorOnFirstRegistrationCode,
           ),
         ),
-        errorCode: 'ROLE_ACCOUNT_REFERRALS_SUSPENDED',
+        errorCode: referralErrorOnFirstRegistrationCode,
       );
       return;
     }
@@ -260,7 +261,8 @@ void main() {
     (tester) async {
       final controller = _TestAuthController(
         const AuthUnauthenticated(),
-        referralErrorOnFirstRegistration: true,
+        referralErrorOnFirstRegistrationCode:
+            'PLATFORM_SIGNUP_ATTRIBUTION_SUSPENDED',
       );
 
       await tester.pumpWidget(
@@ -308,7 +310,9 @@ void main() {
 
       expect(controller.submittedReferralCodes, ['MYSHOP-ABC123']);
       expect(
-        find.textContaining('Referrals are temporarily unavailable'),
+        find.textContaining(
+          'Promotional signup codes are temporarily unavailable',
+        ),
         findsOneWidget,
       );
       expect(find.text('Remove code and continue'), findsOneWidget);
