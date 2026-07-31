@@ -32,6 +32,29 @@ used to add unreviewed work to this cut.
 - [x] The dirty primary workspaces and every uncommitted/deferred branch are
       excluded. Only committed staging ancestry may enter `main`.
 
+### Post-freeze signed candidate checkpoint
+
+- [x] Provider iOS native dependency lock correction passed through staging
+      PR `#115` and main PR `#116`. Final release source is exact clean
+      `origin/main` commit
+      `cd24d241c43764f3d3b7f764ba6f68cc09d79985`, tree
+      `6f5992019c4072f40ce2e530f3189b057a4e9f59`.
+- [x] The owner confirmed the highest private build number was `25` for Client
+      Android, Client iOS, Provider Android and Provider iOS. The common
+      signed candidate is marketing version `1.4.1`, build `26`.
+- [x] Client AAB, Client IPA, Provider AAB and Provider IPA were built with
+      `tool/build.sh` from the one exact clean source commit above. All four
+      independently passed `tool/verify-release-artifact.sh`, including
+      production API/no-staging checks, embedded source provenance, bundle
+      identity, version/build and the reviewed Android/Apple signing identity.
+- [x] The four final artifacts and user-facing notes are retained only under
+      `build/releases/1.4.1+26/`; `SHA256SUMS` verifies all four:
+      Client AAB `2c035171…`, Provider AAB `c36af4ce…`, Client IPA
+      `d320b839…`, Provider IPA `d2489dba…`.
+- [ ] Do not upload or promote solely from this build checkpoint. Install and
+      physically smoke the exact four retained artifacts, complete the store
+      evidence below, and record submission/canary outcomes first.
+
 ### Included in this update
 
 - Graceful offline/service handling without false Terms/Privacy failure,
@@ -57,15 +80,17 @@ used to add unreviewed work to this cut.
       authority flags, exact deployed commit, health and recovery telemetry.
 - [x] Create and review Mobile release PR `#114` to `main`; its runtime tree
       equals frozen staging commit `4fae1fe…` apart from this release-control
-      record.
-- [ ] Read the highest private build number for all four app/store targets.
-- [ ] Use marketing version `1.4.1` and one common build number greater than
-      `25` and greater than every private-console maximum.
-- [ ] Build Client AAB, Client IPA, Provider AAB and Provider IPA from one
+      record. Provider lock correction PRs `#115`/`#116` produced the final
+      signed source `cd24d241…` recorded above.
+- [x] Read the highest private build number for all four app/store targets:
+      the owner confirmed `25` for each target before building.
+- [x] Use marketing version `1.4.1` and common build `26`, greater than the
+      released/local floor and every owner-confirmed private-console maximum.
+- [x] Build Client AAB, Client IPA, Provider AAB and Provider IPA from one
       clean exact `origin/main` SHA using `tool/build.sh`.
-- [ ] Verify bundle IDs, version/build, signing identities, production API,
+- [x] Verify bundle IDs, version/build, signing identities, production API,
       embedded source SHA and absence of staging endpoints in all artifacts;
-      retain SHA-256 hashes.
+      retain SHA-256 hashes in the project release folder.
 - [ ] Install the exact release artifacts and smoke test login/session restore,
       offline recovery, Client booking, Provider online/location, foreground
       and background request delivery, notification tap, cancellation,
