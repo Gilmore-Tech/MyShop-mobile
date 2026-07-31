@@ -2,6 +2,35 @@
 
 Status captured: **2026-07-31 GMT**
 
+## 2026-07-31 repository credential containment
+
+- [x] A tracked repository-tool configuration in Mobile and Admin was found to
+      contain a GitHub personal access token. The secret value is deliberately
+      omitted from this record and must be treated as compromised.
+- [x] Focused one-file removal branches contain no Mobile/Admin runtime,
+      database, API or signed-artifact change: Mobile PR `#118` targets
+      `staging`; Admin PR `#30` targets `staging`.
+- [x] The owner confirmed the exposed credential was revoked and replaced the
+      developer automation credential through the host/keychain only. Removing
+      it from Git does not revoke it or erase repository history.
+- [x] Focused removal PRs `#118`/`#30` merged through Mobile/Admin `staging`;
+      focused PRs `#119`/`#31` then promoted only the same one-file fixes to
+      `main`. Path-only current-tree scans on all four protected refs returned
+      no token-pattern match at Mobile main `1f30c9f…`, Mobile staging
+      `9931c5f…`, Admin main `ad28ab9…` and Admin staging `798c94e…`.
+      These repository-tool-only merges do not alter or require rebuilding the
+      four signed `1.4.1+26` artifacts.
+- [ ] Coordinate a decision with both developers on whether revoked historical
+      secret material warrants repository-history rewriting; do not rewrite
+      shared history during the active release.
+- [ ] GitHub Actions did not execute Mobile PR `#117`, `#118` or `#119`:
+      GitHub marked their `analyze-and-test` jobs failed before assigning a
+      runner because of
+      an account payment/spending-limit condition. This is infrastructure
+      evidence, not a passing or failing source test. Keep the recorded local
+      exact-commit gates authoritative until Actions is restored or the owner
+      explicitly retains the documented manual release workflow.
+
 ## Authoritative 2026-07-31 main release cut
 
 This block supersedes older status lines for the immediate store update. The
@@ -32,6 +61,29 @@ used to add unreviewed work to this cut.
 - [x] The dirty primary workspaces and every uncommitted/deferred branch are
       excluded. Only committed staging ancestry may enter `main`.
 
+### Post-freeze signed candidate checkpoint
+
+- [x] Provider iOS native dependency lock correction passed through staging
+      PR `#115` and main PR `#116`. Final release source is exact clean
+      `origin/main` commit
+      `cd24d241c43764f3d3b7f764ba6f68cc09d79985`, tree
+      `6f5992019c4072f40ce2e530f3189b057a4e9f59`.
+- [x] The owner confirmed the highest private build number was `25` for Client
+      Android, Client iOS, Provider Android and Provider iOS. The common
+      signed candidate is marketing version `1.4.1`, build `26`.
+- [x] Client AAB, Client IPA, Provider AAB and Provider IPA were built with
+      `tool/build.sh` from the one exact clean source commit above. All four
+      independently passed `tool/verify-release-artifact.sh`, including
+      production API/no-staging checks, embedded source provenance, bundle
+      identity, version/build and the reviewed Android/Apple signing identity.
+- [x] The four final artifacts and user-facing notes are retained only under
+      `build/releases/1.4.1+26/`; `SHA256SUMS` verifies all four:
+      Client AAB `2c035171…`, Provider AAB `c36af4ce…`, Client IPA
+      `d320b839…`, Provider IPA `d2489dba…`.
+- [ ] Do not upload or promote solely from this build checkpoint. Install and
+      physically smoke the exact four retained artifacts, complete the store
+      evidence below, and record submission/canary outcomes first.
+
 ### Included in this update
 
 - Graceful offline/service handling without false Terms/Privacy failure,
@@ -50,22 +102,31 @@ used to add unreviewed work to this cut.
 ### Production and signed-build gates
 
 - [x] Create and review Backend `staging` to `main` PR `#136`.
-- [ ] Apply
+- [x] Apply
       `20260727000000_durable_role_refresh_lineage` to the production database.
+- [x] Post-migration production verification reported **213 migrations** and
+      `Database schema is up to date`; the approved geofence fingerprint
+      remained `9faa785a0e5146c6e50d4e7b64b98a5e`.
 - [ ] Replace the Backend fleet with **zero mixed-version serving**, following
       `docs/refresh-lineage-controlled-cutover.md`; verify the two refresh
       authority flags, exact deployed commit, health and recovery telemetry.
+      The latest recorded production state has both
+      `refresh_lineage_authority_enabled=false` and
+      `refresh_lineage_cutover_quiesced=false`, so schema deployment alone does
+      not close this gate.
 - [x] Create and review Mobile release PR `#114` to `main`; its runtime tree
       equals frozen staging commit `4fae1fe…` apart from this release-control
-      record.
-- [ ] Read the highest private build number for all four app/store targets.
-- [ ] Use marketing version `1.4.1` and one common build number greater than
-      `25` and greater than every private-console maximum.
-- [ ] Build Client AAB, Client IPA, Provider AAB and Provider IPA from one
+      record. Provider lock correction PRs `#115`/`#116` produced the final
+      signed source `cd24d241…` recorded above.
+- [x] Read the highest private build number for all four app/store targets:
+      the owner confirmed `25` for each target before building.
+- [x] Use marketing version `1.4.1` and common build `26`, greater than the
+      released/local floor and every owner-confirmed private-console maximum.
+- [x] Build Client AAB, Client IPA, Provider AAB and Provider IPA from one
       clean exact `origin/main` SHA using `tool/build.sh`.
-- [ ] Verify bundle IDs, version/build, signing identities, production API,
+- [x] Verify bundle IDs, version/build, signing identities, production API,
       embedded source SHA and absence of staging endpoints in all artifacts;
-      retain SHA-256 hashes.
+      retain SHA-256 hashes in the project release folder.
 - [ ] Install the exact release artifacts and smoke test login/session restore,
       offline recovery, Client booking, Provider online/location, foreground
       and background request delivery, notification tap, cancellation,

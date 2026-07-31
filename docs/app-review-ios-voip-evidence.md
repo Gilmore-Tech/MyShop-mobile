@@ -24,6 +24,8 @@ not exposed to an unrelated account.
 - Active test ride ID: `[ACTIVE_RIDE_ID]`
 - Client reviewer account: `[CLIENT_REVIEWER_ACCOUNT]`
 - Provider reviewer account: `[PROVIDER_REVIEWER_ACCOUNT]`
+- Client-video remote counterpart device/OS: `[PROVIDER_COUNTERPART_DEVICE_AND_OS]`
+- Provider-video remote counterpart device/OS: `[CLIENT_COUNTERPART_DEVICE_AND_OS]`
 - Client two-direction video: `[CLIENT_TWO_DIRECTION_VIDEO_HTTPS_URL]`
 - Provider two-direction video: `[PROVIDER_TWO_DIRECTION_VIDEO_HTTPS_URL]`
 - Territory evidence captured at: `[UTC_TIMESTAMP]`
@@ -107,17 +109,33 @@ features remain enabled.
 
 ## Physical-device preparation
 
-Use release/TestFlight builds and two physical iOS devices. A simulator, mocked
-incoming-call screen, staged screenshot, or silent UI-only recording is not
-evidence.
+Use release/TestFlight builds and at least one physical iOS device. The app
+whose submission is being evidenced must run on the physical iPhone or iPad;
+a simulator, mocked incoming-call screen, staged screenshot, or silent UI-only
+recording is not evidence.
+
+When only one physical iPhone is available, use a second physical Android
+device as the remote booking participant and record two independent passes:
+
+1. Client iOS on the iPhone with Provider Android as the remote participant.
+2. Provider iOS on the same iPhone with Client Android as the remote
+   participant.
+
+The Android device proves only that a real remote participant answers, speaks,
+declines and ends the booking-scoped call. Each submission's video must keep
+the corresponding iOS app as the subject and independently show its native
+CallKit incoming UI, microphone permission, two-way audio, remote end/decline,
+and accepted-call audio while that iOS app is backgrounded. Do not attempt a
+same-phone Client-to-Provider loopback and do not describe the Android
+counterpart as proof of an iOS background mode.
 
 1. Install the exact Client and Provider candidates identified above and show
    each version/build in the recording.
 2. Sign in with the reviewer accounts and verify that the active ride recovers
    after force-quit and relaunch.
-3. Keep both devices on a stable network with audible volume. Use an external
-   camera or another recording setup that clearly captures both screens and
-   the two-way audio without exposing credentials.
+3. Keep both physical devices on a stable network with audible volume. Use an
+   external camera or another recording setup that clearly captures both
+   screens and the two-way audio without exposing credentials.
 4. For the first-use microphone segment, use a genuinely fresh install/device
    state so the iOS microphone prompt appears. Tap **Allow**, then prove that
    both sides can hear speech. If permission was already consumed, erase the
@@ -222,6 +240,14 @@ the correct contact icon/label, outgoing call, locked/background incoming
 CallKit answer, decline, remote end, and audible background conversation.
 Capture the microphone prompt on the first applicable fresh run and confirm
 microphone access remains functional after upgrade.
+
+The one-iPhone/two-platform recording path above can close the functional VoIP
+video requirement for each iOS submission, but it does not silently close an
+unavailable iPad or named-hardware matrix row. Record the exact available
+hardware honestly. Simulator layout evidence may supplement an unavailable
+iPad row, but it cannot replace physical PushKit, CallKit, microphone or
+background-audio evidence; any remaining named-device limitation must stay
+open or be disclosed to App Review.
 
 | App | Physical device | Orientation | Fresh | Upgrade from `1.4.1 (25)` |
 | --- | --- | --- | --- | --- |
