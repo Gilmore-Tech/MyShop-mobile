@@ -185,6 +185,23 @@ void main() {
           ),
           termsAcceptedProvider.overrideWith((_) => true),
           privacyAcceptedProvider.overrideWith((_) => true),
+          driverRegistrationProvider.overrideWith((_) {
+            final draft = DriverRegistrationController();
+            draft.update(
+              DriverRegistrationDraft(
+                fullName: 'Kofi Mensah',
+                email: 'kofi@example.com',
+                ghanaCardNumber: 'GHA-123456789-0',
+                vehicleMake: 'Toyota',
+                vehicleModel: 'Corolla',
+                vehicleYear: '2020',
+                vehiclePlate: 'GR 1234-20',
+                vehicleColor: 'White',
+                rideCategories: const ['regular'],
+              ),
+            );
+            return draft;
+          }),
         ],
         child: const MaterialApp(
           home: ProviderPhoneInputScreen(

@@ -1,0 +1,70 @@
+import 'package:api_client/api_client.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('maps provider registration failures to corrective safe copy', () {
+    const expectations = <String, String>{
+      'CATEGORIES_REQUIRED': 'Select at least one service',
+      'INVALID_CATEGORY': 'selected services is no longer available',
+      'VEHICLE_DETAILS_REQUIRED': 'Complete all vehicle details',
+      'INVALID_VEHICLE_PLATE': 'valid Ghana vehicle plate',
+      'VEHICLE_PLATE_IN_USE': 'vehicle plate is already registered',
+      'RIDE_CATEGORIES_REQUIRED': 'Select at least one ride category',
+      'INVALID_RIDE_CATEGORY': 'ride categories is no longer available',
+      'EMAIL_ALREADY_EXISTS': 'email is already used',
+      'DRIVER_ACCOUNT_EXISTS': 'driver account already exists',
+      'ARTISAN_ACCOUNT_EXISTS': 'artisan account already exists',
+      'INVALID_REFERRAL_CODE': 'referral code is not valid',
+      'SELF_REFERRAL_NOT_ALLOWED': 'cannot use a referral code owned',
+      'ROLE_ACCOUNT_REFERRALS_SUSPENDED':
+          'Remove the optional referral code',
+      'INVALID_REGION': 'region is no longer available',
+      'LEGAL_DOCUMENT_CHANGED': 'Terms or Privacy Notice changed',
+      'LEGAL_DOCUMENTS_UNAVAILABLE':
+          'Terms and Privacy Notice are temporarily unavailable',
+    };
+
+    for (final entry in expectations.entries) {
+      final message = AuthErrorMapper.message(
+        ApiException(
+          message: 'backend prose must stay hidden',
+          statusCode: 400,
+          errorCode: entry.key,
+        ),
+      );
+      expect(message, contains(entry.value), reason: entry.key);
+      expect(message, isNot(contains('backend prose')), reason: entry.key);
+      expect(
+        message,
+        isNot('Something went wrong. Please try again.'),
+        reason: entry.key,
+      );
+    }
+  });
+
+  test('appends only a valid backend support UUID', () {
+    const valid = ApiException(
+      message: 'database internals',
+      statusCode: 400,
+      errorCode: 'INVALID_REFERRAL_CODE',
+      details: {
+        'supportReference': '15286d11-fceb-43e6-ac0e-41f96d9a1b77',
+      },
+    );
+    const attackerControlled = ApiException(
+      message: 'database internals',
+      statusCode: 400,
+      errorCode: 'INVALID_REFERRAL_CODE',
+      details: {'supportReference': 'paste-the-database-password'},
+    );
+
+    expect(
+      AuthErrorMapper.messageWithSupportReference(valid),
+      contains('Reference: 15286d11-fceb-43e6-ac0e-41f96d9a1b77'),
+    );
+    expect(
+      AuthErrorMapper.messageWithSupportReference(attackerControlled),
+      isNot(contains('paste-the-database-password')),
+    );
+  });
+}
