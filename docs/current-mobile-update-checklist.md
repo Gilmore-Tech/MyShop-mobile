@@ -1,6 +1,96 @@
 # Current Mobile Update Checklist
 
-Status captured: **2026-07-30 GMT**
+Status captured: **2026-07-31 GMT**
+
+## Authoritative 2026-07-31 Provider signup/OTP reliability control block
+
+This block is the authority for the reported Provider phone-stage signup and
+OTP-delivery incident only. It does not replace the separate session-recovery
+block below and does not reopen already-merged notification work.
+
+- **Release status: NO-GO pending staging PR review/merge, deployment and
+  physical signup/OTP testing.**
+- Notification/request-routing fixes are already merged to Mobile staging by
+  PR `#112`, merge `d0d39ab`; they require no duplicate PR.
+- Mobile implementation is isolated at
+  `/private/tmp/myshop-provider-signup-reliability-mobile-clean`, branch
+  `fix/provider-signup-reliability-mobile-clean`, based on Mobile staging
+  `d0d39ab`; runtime/test commit `46b1320` is pushed in draft PR `#113`.
+- Backend implementation is isolated at
+  `/private/tmp/myshop-provider-signup-reliability-backend`, branch
+  `fix/provider-signup-reliability-20260730`, based on Backend staging
+  `ab325cf`; commit `d28df1a` is pushed in draft PR `#135`.
+- Approved rules: Provider registration accepts Ghana numbers only; referral
+  is optional and must never block when absent/blank, but a supplied code must
+  be valid. Client registration and Provider sign-in country behavior remain
+  unchanged.
+- This slice adds no database migration and makes no production configuration
+  or deployment change.
+
+### Completed engineering gates
+
+- [x] Provider signup restricts the country picker and final submission to
+      canonical Ghana E.164 (`+233` plus nine digits), with the same backend
+      contract and a stable `INVALID_PHONE_FORMAT` response.
+- [x] Blank/absent referral bypasses referral validation. Malformed supplied
+      codes return stable corrective copy; existing backend authority still
+      decides whether a well-formed code exists, is allowed and is not self
+      referral.
+- [x] Restored/stale registration drafts are revalidated before paid OTP work.
+      Driver/Artisan errors return to the exact profile, vehicle, service,
+      ride-category, region or legal step; stale category/region selections
+      are cleared and refetched.
+- [x] Known backend registration failures have app-owned actionable copy.
+      Unknown failures may include only a validated UUID support reference;
+      raw server errors are not shown.
+- [x] Provider registration admission uses an opaque per-phone bucket plus an
+      independent high-ceiling IP abuse fence, so legitimate Ghanaian users
+      behind one carrier NAT do not exhaust one another's ordinary auth bucket.
+      Client registration remains on its existing IP bucket.
+- [x] OTP delivery, verification, successful session establishment and the
+      public OTP-flow response cannot be converted into a false failure by an
+      audit-database outage. Arkesel/WhatsApp/voice policy, circuit and provider
+      outcomes remain authoritative.
+- [x] Provider signup failures write privacy-minimal diagnostics with provider
+      type, stable error code, app/platform/build and support reference only;
+      no phone, email, referral, vehicle, device, IP, token or user-agent value
+      is retained by this diagnostic.
+- [x] Mobile focused evidence passes **52/52 tests**, targeted analysis and
+      `git diff --check`. Backend focused evidence passes **240/240 tests**,
+      API typecheck, production build and `git diff --check`. Independent
+      Mobile and Backend reviews found no release blocker.
+
+### Open staging/release gates
+
+- [x] Commit only the recorded Mobile and Backend diffs and push separate
+      branches: Mobile `46b1320` / PR `#113`; Backend `d28df1a` / PR `#135`.
+- [ ] Review both draft PRs and merge them to `staging`.
+- [ ] Deploy the Backend staging commit, then install the exact Mobile staging
+      build. No migration command is required for this slice.
+- [ ] Physically test Driver and Artisan signup with local and `+233` forms;
+      reject non-Ghana/malformed values before API/OTP work.
+- [ ] Prove referral absent, blank, malformed, nonexistent, self-owned and
+      valid cases; only absent/blank may bypass referral authority.
+- [ ] Prove duplicate email/role/vehicle, stale service/ride category, region,
+      legal-version and provider-delivery failures show actionable safe copy
+      and return to the correct step without losing the draft.
+- [ ] Prove Arkesel SMS signup, delayed SMS plus resend, wrong/expired OTP,
+      background/foreground and a controlled audit-store failure without
+      duplicate delivery, consumed-code lockout or false session failure.
+- [ ] Correlate a failed test with the support reference in the immutable audit
+      view and verify the diagnostic contains no disallowed personal data.
+- [ ] Recheck Render's actual
+      `OTP_DELIVERY_GLOBAL_LIMIT_PER_MINUTE`. Code/default remains **20/minute**;
+      no paid-send ceiling increase is authorized until the owner chooses the
+      cost/capacity limit.
+
+### Explicit nonblocking follow-ups
+
+- Guard-level `429` responses occur before the audit interceptor; existing
+  Redis throttle metrics count them, but they do not yet receive the full
+  signup support-reference diagnostic.
+- The ephemeral per-phone throttle key uses one-way SHA-256 like the existing
+  OTP limiter; keyed-HMAC hardening is deferred.
 
 ## Authoritative 2026-07-30 session-recovery control block
 
