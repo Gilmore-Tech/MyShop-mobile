@@ -28,9 +28,7 @@ class LegalService {
       );
       final data = _unwrap(response);
       if (data is! Map<String, dynamic>) {
-        throw const ApiException(
-          message: 'Document not found.',
-        );
+        throw const ApiException(message: 'Document not found.');
       }
       return LegalDocument.fromJson(data);
     } on DioException catch (e) {
@@ -61,9 +59,9 @@ class LegalService {
       final response = await _dio.get('/legal/consent/status');
       final data = _unwrap(response);
       if (data is! Map<String, dynamic>) {
-        throw const ApiException(message: 'Consent status is unavailable.');
+        throw _malformedConsentStatus();
       }
-      return LegalConsentStatus.fromJson(data);
+      return _parseConsentStatus(data);
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
     }
@@ -83,9 +81,9 @@ class LegalService {
       );
       final data = _unwrap(response);
       if (data is! Map<String, dynamic>) {
-        throw const ApiException(message: 'Consent could not be recorded.');
+        throw _malformedConsentStatus();
       }
-      return LegalConsentStatus.fromJson(data);
+      return _parseConsentStatus(data);
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
     }
@@ -102,6 +100,40 @@ class LegalService {
         response: response,
         type: DioExceptionType.badResponse,
       ),
+    );
+  }
+
+  /// Legal gating is fail-closed on the backend, but the mobile router must
+  /// never infer non-compliance from a malformed response. Require the fields
+  /// that decide navigation to be explicit and correctly typed.
+  LegalConsentStatus _parseConsentStatus(Map<String, dynamic> data) {
+    final role = data['role'];
+    if (role is! String ||
+        (role != 'client' && role != 'driver' && role != 'artisan') ||
+        data['current'] is! bool ||
+        data['requiresConsent'] is! bool ||
+        data['hasActiveWork'] is! bool ||
+        data['missingSlugs'] is! List ||
+        !(data['missingSlugs'] as List).every(
+          (value) => value is String && value.trim().isNotEmpty,
+        ) ||
+        data['documents'] is! List ||
+        !(data['documents'] as List).every(
+          (value) => value is Map<String, dynamic>,
+        )) {
+      throw _malformedConsentStatus();
+    }
+    try {
+      return LegalConsentStatus.fromJson(data);
+    } catch (_) {
+      throw _malformedConsentStatus();
+    }
+  }
+
+  NetworkException _malformedConsentStatus() {
+    return const NetworkException(
+      message: 'Service temporarily unavailable. Please try again in a moment.',
+      kind: NetworkFailureKind.unavailable,
     );
   }
 }

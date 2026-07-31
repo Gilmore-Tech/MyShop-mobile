@@ -8,6 +8,8 @@ export 'src/http/auth_interceptor.dart';
 export 'src/http/dio_client.dart';
 export 'src/http/logging_interceptor.dart';
 export 'src/http/mobile_client_interceptor.dart';
+export 'src/http/refresh_attempt_store.dart';
+export 'src/http/mobile_service_recovery.dart';
 export 'src/http/token_refresher.dart';
 export 'src/http/token_storage.dart';
 
@@ -61,3 +63,4 @@ export 'src/auth/auth_service.dart';
 export 'src/auth/device_id.dart';
 export 'src/auth/mock_auth_service.dart';
 export 'src/auth/real_auth_service.dart';
+export 'src/auth/role_session_identity.dart';

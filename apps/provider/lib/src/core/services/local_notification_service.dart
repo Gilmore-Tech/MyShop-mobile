@@ -396,7 +396,8 @@ class LocalNotificationService {
 
     final launchDetails = await _plugin.getNotificationAppLaunchDetails();
     if (launchDetails?.didNotificationLaunchApp ?? false) {
-      _handleTapPayload(launchDetails?.notificationResponse?.payload);
+      final response = launchDetails?.notificationResponse;
+      _handleTapPayload(response?.payload, actionId: response?.actionId);
     }
 
     final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
@@ -765,23 +766,34 @@ class LocalNotificationService {
   }
 
   void _handleTapPayload(String? raw, {String? actionId}) {
-    if (raw == null || raw.isEmpty) return;
-    try {
-      final decoded = json.decode(raw);
-      if (decoded is! Map) return;
-      final payload = Map<String, dynamic>.from(decoded);
-      if (actionId != null && actionId.isNotEmpty) {
-        payload[NotificationPayload.keyActionId] = actionId;
-      }
-      final handler = _onTap;
-      if (handler == null) {
-        _pendingTapPayload = payload;
-      } else {
-        handler(payload);
-      }
-    } catch (e) {
-      debugPrint('[LocalNotificationService] bad payload: $e');
+    final payload = decodeNotificationTapPayload(raw, actionId: actionId);
+    if (payload == null) return;
+    final handler = _onTap;
+    if (handler == null) {
+      _pendingTapPayload = payload;
+    } else {
+      handler(payload);
     }
+  }
+}
+
+@visibleForTesting
+Map<String, dynamic>? decodeNotificationTapPayload(
+  String? raw, {
+  String? actionId,
+}) {
+  if (raw == null || raw.isEmpty) return null;
+  try {
+    final decoded = json.decode(raw);
+    if (decoded is! Map) return null;
+    final payload = Map<String, dynamic>.from(decoded);
+    if (actionId != null && actionId.isNotEmpty) {
+      payload[NotificationPayload.keyActionId] = actionId;
+    }
+    return payload;
+  } catch (e) {
+    debugPrint('[LocalNotificationService] bad payload: $e');
+    return null;
   }
 }
 

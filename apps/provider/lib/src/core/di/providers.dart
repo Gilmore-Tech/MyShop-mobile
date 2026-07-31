@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/auth/providers/auth_controller.dart';
 import '../providers/app_update_provider.dart';
+import '../providers/service_notice_provider.dart';
 
 /// API configuration (base URL).
 final apiConfigProvider = Provider<ApiConfig>((ref) {
@@ -55,8 +56,12 @@ final dioClientProvider = Provider<DioClient>((ref) {
     appKind: MobileAppKind.provider,
     onAppUpdateRequired:
         ref.read(appUpdateRequirementProvider.notifier).requireUpdate,
-    onForceLogout: () {
-      ref.read(authControllerProvider.notifier).onForceLogoutFromInterceptor();
+    onServiceIssue: ref.read(serviceNoticeProvider.notifier).report,
+    onServiceRecovered: ref.read(serviceNoticeProvider.notifier).recovered,
+    onForceLogout: (event) {
+      ref
+          .read(authControllerProvider.notifier)
+          .onForceLogoutFromInterceptor(event);
     },
   );
 });
@@ -140,6 +145,7 @@ final appCallServiceProvider = Provider<AppCallService>((ref) {
 
 /// Live `/calls` socket used by the in-app call screen.
 final appCallSocketServiceProvider = Provider<AppCallSocketService>((ref) {
+  ref.watch(currentAuthSessionIdentityProvider);
   final service = AppCallSocketService(
     config: ref.watch(apiConfigProvider),
     tokenStorage: ref.watch(appTokenStorageProvider),

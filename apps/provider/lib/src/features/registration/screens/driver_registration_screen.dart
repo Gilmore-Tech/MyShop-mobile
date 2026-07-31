@@ -15,7 +15,12 @@ import '../widgets/registration_step_scaffold.dart';
 /// Driver onboarding — 5-step wizard
 /// (Profile → Vehicle → Categories → Region → Review).
 class DriverRegistrationScreen extends ConsumerStatefulWidget {
-  const DriverRegistrationScreen({super.key});
+  const DriverRegistrationScreen({
+    super.key,
+    this.initialStep = 0,
+  });
+
+  final int initialStep;
 
   @override
   ConsumerState<DriverRegistrationScreen> createState() =>
@@ -40,8 +45,15 @@ class _DriverRegistrationScreenState
     ('Almost done!', 'Review and confirm'),
   ];
 
-  final PageController _pageController = PageController();
-  int _currentStep = 0;
+  late final PageController _pageController;
+  late int _currentStep;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentStep = widget.initialStep.clamp(0, _steps.length - 1);
+    _pageController = PageController(initialPage: _currentStep);
+  }
 
   @override
   void dispose() {

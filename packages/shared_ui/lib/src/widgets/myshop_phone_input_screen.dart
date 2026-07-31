@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl_phone_field/countries.dart' as phone_countries;
 import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:intl_phone_field/phone_number.dart';
 
@@ -10,9 +11,9 @@ import 'myshop_primary_button.dart';
 /// Shared phone-number input screen used by both client and provider apps.
 ///
 /// Accepts callbacks so each app can wire its own state management and
-/// navigation. The country picker defaults to Ghana but accepts any country;
-/// the value passed to [onSubmit] is always a full E.164 string
-/// (e.g. `+233241234567`, `+447911123456`).
+/// navigation. The country picker defaults to Ghana and accepts any country
+/// unless [ghanaOnly] is enabled; the value passed to [onSubmit] is always a
+/// full E.164 string (e.g. `+233241234567`, `+447911123456`).
 class MyShopPhoneInputScreen extends StatefulWidget {
   const MyShopPhoneInputScreen({
     super.key,
@@ -24,6 +25,9 @@ class MyShopPhoneInputScreen extends StatefulWidget {
     this.errorText,
     this.onErrorCleared,
     this.bottomAction,
+    this.ghanaOnly = false,
+    this.phoneValidator,
+    this.invalidPhoneMessage = 'Enter a valid phone number.',
   });
 
   final String title;
@@ -34,6 +38,9 @@ class MyShopPhoneInputScreen extends StatefulWidget {
   final String? errorText;
   final VoidCallback? onErrorCleared;
   final Widget? bottomAction;
+  final bool ghanaOnly;
+  final String? Function(String completeNumber)? phoneValidator;
+  final String invalidPhoneMessage;
 
   @override
   State<MyShopPhoneInputScreen> createState() => _MyShopPhoneInputScreenState();
@@ -76,7 +83,13 @@ class _MyShopPhoneInputScreenState extends State<MyShopPhoneInputScreen> {
 
   void _submit() {
     if (!_isValid || _phone == null) {
-      setState(() => _localError = 'Enter a valid phone number.');
+      setState(() => _localError = widget.invalidPhoneMessage);
+      return;
+    }
+    final validationError =
+        widget.phoneValidator?.call(_phone!.completeNumber);
+    if (validationError != null) {
+      setState(() => _localError = validationError);
       return;
     }
     setState(() => _localError = null);
@@ -108,7 +121,16 @@ class _MyShopPhoneInputScreenState extends State<MyShopPhoneInputScreen> {
               IntlPhoneField(
                 enabled: !widget.isLoading,
                 initialCountryCode: 'GH',
+                countries: !widget.ghanaOnly
+                    ? null
+                    : phone_countries.countries
+                        .where(
+                          (country) => country.code == 'GH',
+                        )
+                        .toList(growable: false),
+                showDropdownIcon: !widget.ghanaOnly,
                 disableLengthCheck: false,
+                invalidNumberMessage: widget.invalidPhoneMessage,
                 inputFormatters: [_StripLeadingZeroFormatter()],
                 decoration: InputDecoration(
                   labelText: 'Phone number',
@@ -141,7 +163,8 @@ class _MyShopPhoneInputScreenState extends State<MyShopPhoneInputScreen> {
                 onChanged: (phone) {
                   setState(() {
                     _phone = phone;
-                    _isValid = _safeIsValidPhone(phone);
+                    _isValid = _safeIsValidPhone(phone) &&
+                        (!widget.ghanaOnly || phone.countryISOCode == 'GH');
                     if (_localError != null) _localError = null;
                   });
                   widget.onErrorCleared?.call();

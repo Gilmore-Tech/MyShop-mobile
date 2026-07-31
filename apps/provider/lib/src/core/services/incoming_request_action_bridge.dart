@@ -17,7 +17,9 @@ import 'local_notification_service.dart';
 class IncomingRequestActionBridge {
   IncomingRequestActionBridge({
     required Future<void> Function(Map<String, dynamic>) handleAction,
-  }) : _handleAction = handleAction;
+    @visibleForTesting IncomingRequestOverlay? androidOverlay,
+  })  : _handleAction = handleAction,
+        _androidOverlay = androidOverlay ?? IncomingRequestOverlay.instance;
 
   static const MethodChannel _iosMethods = MethodChannel(
     'com.gilmoretech.myshop/request_action',
@@ -28,10 +30,9 @@ class IncomingRequestActionBridge {
 
   final Future<void> Function(Map<String, dynamic>) _handleAction;
   final Set<String> _processingIds = <String>{};
-  final Set<String> _completedIosActionIds = <String>{};
-  final ListQueue<String> _completedIosActionOrder = ListQueue<String>();
-  final IncomingRequestOverlay _androidOverlay =
-      IncomingRequestOverlay.instance;
+  final Set<String> _completedActionIds = <String>{};
+  final ListQueue<String> _completedActionOrder = ListQueue<String>();
+  final IncomingRequestOverlay _androidOverlay;
   StreamSubscription<IncomingRequestOverlayAction>? _androidSubscription;
   StreamSubscription<Object?>? _iosSubscription;
 
@@ -107,10 +108,15 @@ class IncomingRequestActionBridge {
     }
   }
 
-  Future<void> _processAndroidAction(
-    IncomingRequestOverlayAction event,
-  ) async {
-    if (!_processingIds.add(event.actionId)) return;
+  Future<void> _processAndroidAction(IncomingRequestOverlayAction event) async {
+    // Native pending storage is a non-destructive peek until Dart
+    // acknowledges. A live EventChannel action can therefore finish before a
+    // stale startup snapshot iterates the same queue id. Keep successful ids
+    // just like iOS so that sequential copy cannot run the API action again.
+    if (_completedActionIds.contains(event.actionId) ||
+        !_processingIds.add(event.actionId)) {
+      return;
+    }
     final selectedAction = switch (event.action) {
       IncomingRequestActionType.rideAccept =>
         NotificationPayload.actionRideAccept,
@@ -128,6 +134,7 @@ class IncomingRequestActionBridge {
         // A future app version may add native actions this build does not know.
         // Acknowledge it rather than replaying an unhandleable action forever.
         await _androidOverlay.acknowledgeAction(event.actionId);
+        _rememberCompletedAction(event.actionId);
         return;
       }
       final type = event.offerType == IncomingRequestOfferType.ride
@@ -146,6 +153,7 @@ class IncomingRequestActionBridge {
 
       await _handleAction(payload);
       await _androidOverlay.acknowledgeAction(event.actionId);
+      _rememberCompletedAction(event.actionId);
     } catch (error, stackTrace) {
       debugPrint(
         '[RequestAction] Android action $selectedAction failed: $error\n'
@@ -172,8 +180,7 @@ class IncomingRequestActionBridge {
     // arrive once through each path. [_processingIds] closes the concurrent
     // race; this bounded completed cache also closes the sequential race where
     // the EventChannel copy finishes before the pending snapshot is replayed.
-    if (_completedIosActionIds.contains(queueId) ||
-        !_processingIds.add(queueId)) {
+    if (_completedActionIds.contains(queueId) || !_processingIds.add(queueId)) {
       return;
     }
 
@@ -196,7 +203,7 @@ class IncomingRequestActionBridge {
         'acknowledgeRequestAction',
         <String, String>{'actionId': queueId},
       );
-      _rememberCompletedIosAction(queueId);
+      _rememberCompletedAction(queueId);
     } catch (error, stackTrace) {
       debugPrint(
         '[RequestAction] iOS action $selectedAction failed: $error\n'
@@ -208,19 +215,26 @@ class IncomingRequestActionBridge {
     }
   }
 
-  static const int _completedIosActionLimit = 128;
+  static const int _completedActionLimit = 128;
 
-  void _rememberCompletedIosAction(String actionId) {
-    if (!_completedIosActionIds.add(actionId)) return;
-    _completedIosActionOrder.addLast(actionId);
-    while (_completedIosActionOrder.length > _completedIosActionLimit) {
-      _completedIosActionIds.remove(_completedIosActionOrder.removeFirst());
+  void _rememberCompletedAction(String actionId) {
+    if (!_completedActionIds.add(actionId)) return;
+    _completedActionOrder.addLast(actionId);
+    while (_completedActionOrder.length > _completedActionLimit) {
+      _completedActionIds.remove(_completedActionOrder.removeFirst());
     }
   }
 
   @visibleForTesting
   Future<void> processIosActionForTesting(Map<String, dynamic> event) {
     return _processIosAction(event);
+  }
+
+  @visibleForTesting
+  Future<void> processAndroidActionForTesting(
+    IncomingRequestOverlayAction event,
+  ) {
+    return _processAndroidAction(event);
   }
 
   Future<void> dispose() async {

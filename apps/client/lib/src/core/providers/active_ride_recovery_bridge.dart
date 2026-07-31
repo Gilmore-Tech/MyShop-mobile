@@ -6,6 +6,7 @@ import 'package:shared_models/shared_models.dart';
 import '../../features/auth/providers/auth_controller.dart';
 import '../../features/ride/providers/ride_provider.dart';
 import '../di/providers.dart';
+import 'service_notice_provider.dart';
 import 'socket_provider.dart';
 
 /// Mirror of the driver-side `active_ride_recovery_bridge.dart`. Restores
@@ -14,75 +15,91 @@ import 'socket_provider.dart';
 /// the activity list with no way to resume.
 ///
 /// Mechanics:
-///   1. On every transition into [AuthAuthenticated], fetch the rider's
-///      recent rides and pick out anything whose status is still active
-///      (`accepted | driver_en_route | arrived_at_pickup | in_progress`).
-///   2. If found, set [activeRideIdProvider] and re-emit `client:track:ride`
-///      so the rider rejoins the ride room. The same hydrate path the
-///      matching loop uses populates [matchedDriverProvider] and the
-///      tracking phase, which the [MainShell]'s router-listener uses to
-///      navigate to the tracking screen.
-///   3. Retries on transient network failures — Render free-tier cold
-///      starts can eat 30–60 s on the first request after a long idle.
+///   1. Reconcile the in-memory ride ID, then the exact durable booking key,
+///      then the authenticated recent-rides fallback for legacy installs.
+///   2. Rejoin `client:track:ride` and hydrate the authoritative REST snapshot
+///      through the same providers used by live socket delivery.
+///   3. Retry transient failures and rerun after socket/readiness recovery.
 ///
 /// Watched once at app start (see main.dart). `Provider<void>` keeps the
 /// listener subscription alive for the container's lifetime.
 final clientActiveRideRecoveryBridgeProvider = Provider<void>((ref) {
+  Future<void>? recoveryInFlight;
+
   Future<void> tryRecover() async {
     debugPrint('[ClientActiveRideRecovery] checking for in-flight ride');
     const attempts = 3;
     for (var attempt = 1; attempt <= attempts; attempt++) {
       try {
         final rideService = ref.read(rideServiceProvider);
-        // Backend doesn't have a `GET /clients/me/active-ride` yet (driver
-        // got one as P1-1; client equivalent is on the punch list). Until
-        // it does, list recent rides and filter — the rider only ever has
-        // one ride active at a time so the most recent active row is it.
-        final list = await rideService.listRides(limit: 5);
-        Ride? active;
-        for (final raw in list) {
-          if (raw is! Map<String, dynamic>) continue;
-          try {
-            final ride = Ride.fromJson(raw);
-            if (ride.status.isActive) {
-              active = ride;
-              break;
+        var rideId = ref.read(activeRideIdProvider);
+
+        // The unresolved booking key is the exact durable identity for a ride
+        // that may still be matching. Resolve it before falling back to a
+        // recent-list scan so an offline cancellation cannot be mistaken for
+        // "no active ride" and silently route the rider home.
+        if (rideId == null || rideId.isEmpty) {
+          final store = ref.read(rideBookingAttemptStoreProvider);
+          final attempt = await store.read();
+          if (attempt != null) {
+            final booking = await rideService.lookupBookingAttempt(
+              attempt.bookingKey,
+            );
+            if (booking == null) {
+              await store.clear(bookingKey: attempt.bookingKey);
+            } else {
+              rideId = booking['rideId']?.toString();
+              if (rideId == null || rideId.isEmpty) {
+                throw const FormatException(
+                  'Booking attempt response omitted rideId',
+                );
+              }
             }
-          } catch (_) {
-            // Skip malformed rows — not fatal.
           }
         }
-        if (active == null) {
+
+        // Legacy installs may have no booking-key envelope. Accepted and
+        // in-progress rides remain recoverable from the authenticated list.
+        if (rideId == null || rideId.isEmpty) {
+          final list = await rideService.listRides(limit: 5);
+          for (final raw in list) {
+            if (raw is! Map<String, dynamic>) continue;
+            try {
+              final ride = Ride.fromJson(raw);
+              if (ride.status.isActive) {
+                rideId = ride.id;
+                break;
+              }
+            } catch (_) {
+              // Skip malformed rows — not fatal.
+            }
+          }
+        }
+        if (rideId == null || rideId.isEmpty) {
           debugPrint(
               '[ClientActiveRideRecovery] no in-flight ride (attempt $attempt)');
           return;
         }
-        debugPrint('[ClientActiveRideRecovery] resuming ${active.id} '
-            '(status=${active.status})');
+        debugPrint('[ClientActiveRideRecovery] reconciling $rideId');
 
-        // Drive the same providers a fresh `ride:state` event would. We
-        // already have the parsed ride entity, but we need the raw map
-        // shape to share the snapshot pipeline (it reads top-level fare
-        // breakdown fields the model doesn't expose). Re-fetch the full
-        // entity by id and apply.
-        ref.read(activeRideIdProvider.notifier).state = active.id;
+        ref.read(activeRideIdProvider.notifier).state = rideId;
 
         // Join the ride room first so any in-flight `ride:state` /
         // `driver:location` emits start landing while we hydrate.
         try {
           final socket = ref.read(socketServiceProvider);
           if (socket.isConnected) {
-            socket.emit('client:track:ride', {'rideId': active.id});
+            socket.emit('client:track:ride', {'rideId': rideId});
           }
         } catch (_) {}
 
         // Then push the snapshot through the same hydrate path the
         // matching-loop fallback uses — keeps every derived provider
         // identical to the live-flow case.
-        await _applyResumedRide(ref, active.id);
+        await _applyResumedRide(ref, rideId);
         return;
       } on ApiException catch (e) {
-        debugPrint('[ClientActiveRideRecovery] listRides failed '
+        debugPrint('[ClientActiveRideRecovery] reconciliation failed '
             '(attempt $attempt/$attempts, status ${e.statusCode}): '
             '${e.errorCode ?? e.message}');
         if (e.statusCode == 401 || e.statusCode == 403) return;
@@ -108,12 +125,19 @@ final clientActiveRideRecoveryBridgeProvider = Provider<void>((ref) {
         '[ClientActiveRideRecovery] exhausted retries — leaving state alone');
   }
 
+  void scheduleRecovery() {
+    if (recoveryInFlight != null) return;
+    recoveryInFlight = tryRecover().whenComplete(() {
+      recoveryInFlight = null;
+    });
+  }
+
   ref.listen<ClientAuthState>(
     clientAuthControllerProvider,
     (prev, next) {
       if (next is! AuthAuthenticated) return;
       if (prev is AuthAuthenticated) return;
-      tryRecover();
+      scheduleRecovery();
     },
     fireImmediately: true,
   );
@@ -121,17 +145,30 @@ final clientActiveRideRecoveryBridgeProvider = Provider<void>((ref) {
   // If the initial sweep lost to a Render cold-start (3 retries × backoff
   // can still fall short of a 30–60 s wake), the socket's eventual connect
   // is a strong signal the network is now usable. Re-run recovery once
-  // when the socket flips to connected and we have no active ride yet.
+  // when the socket flips to connected. Reconcile even when an in-memory ride
+  // ID exists: it may have become terminal while the device was offline.
   ref.listen<bool>(socketConnectedProvider, (prev, next) {
     if (next != true) return;
     if (prev == true) return;
-    final hasActiveRide = ref.read(activeRideIdProvider) != null;
     final isAuthed =
         ref.read(clientAuthControllerProvider) is AuthAuthenticated;
-    if (hasActiveRide || !isAuthed) return;
+    if (!isAuthed) return;
     debugPrint('[ClientActiveRideRecovery] socket connected — re-checking');
-    tryRecover();
+    scheduleRecovery();
   });
+
+  // A successful readiness probe increments this epoch. It covers the case
+  // where the app stayed foregrounded for the whole outage and therefore had
+  // no lifecycle or socket edge to trigger reconciliation.
+  ref.listen<int>(
+    serviceNoticeProvider.select((state) => state.recoveryEpoch),
+    (previous, next) {
+      if (next == previous) return;
+      if (ref.read(clientAuthControllerProvider) is! AuthAuthenticated) return;
+      debugPrint('[ClientActiveRideRecovery] service recovered — re-checking');
+      scheduleRecovery();
+    },
+  );
 });
 
 /// Re-uses the matching-loop's hydrate to populate `matchedDriverProvider`

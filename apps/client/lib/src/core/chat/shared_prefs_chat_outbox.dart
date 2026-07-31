@@ -12,11 +12,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// don't lose each other's writes. SharedPreferences itself is single-
 /// instance per process so the read-modify-write window is small.
 class SharedPreferencesChatOutbox implements ChatOutbox {
-  SharedPreferencesChatOutbox(this._prefs);
+  SharedPreferencesChatOutbox(this._prefs, {required String ownerKey})
+      : _storageKey =
+            'chat_outbox_v2_${base64Url.encode(utf8.encode(ownerKey)).replaceAll('=', '')}';
 
   final SharedPreferences _prefs;
-
-  static const _storageKey = 'chat_outbox_v1';
+  final String _storageKey;
 
   Future<List<ChatOutboxItem>> _readAll() async {
     final raw = _prefs.getString(_storageKey);

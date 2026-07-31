@@ -266,14 +266,13 @@ class ChatController {
     _emitAll();
   }
 
-  /// Fully tear down. Use on logout — clears state AND the persistent
-  /// outbox so the next signed-in user starts clean.
+  /// Fully tear down. The persistent outbox is account-scoped by the app
+  /// provider and intentionally survives this controller. Clearing a whole
+  /// channel here would let a late session-A disposal erase rows written by a
+  /// replacement controller for the same account.
   Future<void> dispose() async {
+    if (_disposed) return;
     _disposed = true;
-    final ch = _channel;
-    if (ch != null) {
-      await _outbox.clearChannel(_keyFor(ch));
-    }
     await closeChannel();
     await _messagesController.close();
     await _channelController.close();

@@ -366,11 +366,24 @@ class ProviderRoleChoice extends ProviderVerifyResult {
 
 /// POST /auth/refresh request body.
 class RefreshRequest {
-  const RefreshRequest({required this.refreshToken});
+  const RefreshRequest({
+    required this.refreshToken,
+    this.accessToken,
+    this.refreshAttemptId,
+  });
 
   final String refreshToken;
+  final String? accessToken;
+  final String? refreshAttemptId;
 
-  Map<String, dynamic> toJson() => {'refreshToken': refreshToken};
+  Map<String, dynamic> toJson() {
+    final json = <String, dynamic>{'refreshToken': refreshToken};
+    if (accessToken != null) json['accessToken'] = accessToken;
+    if (refreshAttemptId != null) {
+      json['refreshAttemptId'] = refreshAttemptId;
+    }
+    return json;
+  }
 }
 
 /// Response from POST /auth/refresh.

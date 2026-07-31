@@ -66,6 +66,16 @@ class Validators {
     return null;
   }
 
+  /// Validates the canonical E.164 value produced by the shared phone field
+  /// when Ghana is selected.
+  static String? ghanaE164Phone(String value) {
+    final compact = value.replaceAll(RegExp(r'[\s\-()]'), '');
+    if (!RegExp(r'^\+233\d{9}$').hasMatch(compact)) {
+      return 'Enter a valid Ghana phone number.';
+    }
+    return null;
+  }
+
   /// Strip a leading `0` from a 10-digit local Ghana mobile number, returning
   /// the 9-digit form expected by the `+233` prefix. Returns digits-only for
   /// any other input so [ghanaPhone] can report the right error message.

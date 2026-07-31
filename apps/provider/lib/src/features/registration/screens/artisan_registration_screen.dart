@@ -14,7 +14,12 @@ import '../widgets/registration_step_scaffold.dart';
 /// Artisan onboarding — 4-step wizard
 /// (Profile → Business → Region → Review).
 class ArtisanRegistrationScreen extends ConsumerStatefulWidget {
-  const ArtisanRegistrationScreen({super.key});
+  const ArtisanRegistrationScreen({
+    super.key,
+    this.initialStep = 0,
+  });
+
+  final int initialStep;
 
   @override
   ConsumerState<ArtisanRegistrationScreen> createState() =>
@@ -37,8 +42,15 @@ class _ArtisanRegistrationScreenState
     ('Almost done!', 'Review and confirm'),
   ];
 
-  final PageController _pageController = PageController();
-  int _currentStep = 0;
+  late final PageController _pageController;
+  late int _currentStep;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentStep = widget.initialStep.clamp(0, _steps.length - 1);
+    _pageController = PageController(initialPage: _currentStep);
+  }
 
   @override
   void dispose() {

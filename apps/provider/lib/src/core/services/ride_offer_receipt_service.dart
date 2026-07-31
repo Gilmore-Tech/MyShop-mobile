@@ -24,6 +24,19 @@ class ReceivedRideOffer {
   final Map<String, dynamic> payload;
 }
 
+@immutable
+class StoredRideOfferIdentity {
+  const StoredRideOfferIdentity({
+    required this.rideId,
+    required this.offerId,
+    required this.localHandoffAt,
+  });
+
+  final String rideId;
+  final String offerId;
+  final DateTime localHandoffAt;
+}
+
 bool isReceiptRideOffer(Map<String, dynamic> payload) {
   final version = int.tryParse(payload['offerVersion']?.toString() ?? '');
   return version == rideOfferReceiptProtocolVersion &&
@@ -174,6 +187,59 @@ Future<void> clearStoredRideOffer(String offerId) async {
     debugPrint('[RideOfferReceipt] local cleanup failed: $error');
   }
 }
+
+/// Returns only privacy-minimal, exact offer identities previously persisted
+/// by this device. Corrupt/legacy values are ignored and the newest ten are
+/// used so recovery remains bounded without inventing a server-side time
+/// window.
+Future<List<StoredRideOfferIdentity>> readStoredRideOfferIdentities({
+  int limit = maxKnownProviderOfferIds,
+}) async {
+  if (limit < 1 || limit > maxKnownProviderOfferIds) {
+    throw RangeError.range(limit, 1, maxKnownProviderOfferIds, 'limit');
+  }
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    final identities = <StoredRideOfferIdentity>[];
+    for (final key in prefs.getKeys()) {
+      if (!key.startsWith(_rideOfferStorePrefix)) continue;
+      final decoded = _decodeJsonObject(prefs.getString(key));
+      final rideId = decoded['rideId']?.toString();
+      final offerId = decoded['offerId']?.toString();
+      final handoff = DateTime.tryParse(
+        decoded['localHandoffAt']?.toString() ?? '',
+      );
+      if (!_isUuidV4(rideId) ||
+          !_isUuidV4(offerId) ||
+          handoff == null ||
+          key != '$_rideOfferStorePrefix$offerId') {
+        continue;
+      }
+      identities.add(
+        StoredRideOfferIdentity(
+          rideId: rideId!,
+          offerId: offerId!,
+          localHandoffAt: handoff.toUtc(),
+        ),
+      );
+    }
+    identities.sort(
+      (left, right) => right.localHandoffAt.compareTo(left.localHandoffAt),
+    );
+    return identities.take(limit).toList(growable: false);
+  } catch (error) {
+    debugPrint('[RideOfferReceipt] durable identity read failed: $error');
+    return const <StoredRideOfferIdentity>[];
+  }
+}
+
+bool _isUuidV4(String? value) =>
+    value != null &&
+    RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+      caseSensitive: false,
+    ).hasMatch(value);
 
 ReceivedRideOffer? _applyReceipt(
   Map<String, dynamic> delivery,

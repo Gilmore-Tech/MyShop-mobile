@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:api_client/api_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myshop_provider/src/core/services/ride_offer_receipt_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -138,5 +139,64 @@ void main() {
     expect(stored, isNot(contains('pickupLongitude')));
     expect(stored, isNot(contains('clientName')));
     expect(stored, isNot(contains('shareToken')));
+  });
+
+  test(
+    'reads newest exact durable identities, ignores corrupt values, and is bounded',
+    () async {
+      final values = <String, Object>{
+        for (var index = 0; index < 11; index++)
+          'myshop.ride_offer.v2.'
+              '22222222-2222-4222-8${index.toString().padLeft(3, '0')}-'
+              '${index.toString().padLeft(12, '0')}': jsonEncode({
+            'rideId': '11111111-1111-4111-8${index.toString().padLeft(3, '0')}-'
+                '${index.toString().padLeft(12, '0')}',
+            'offerId':
+                '22222222-2222-4222-8${index.toString().padLeft(3, '0')}-'
+                    '${index.toString().padLeft(12, '0')}',
+            'localHandoffAt': DateTime.utc(
+              2026,
+              7,
+              28,
+              12,
+              index,
+            ).toIso8601String(),
+          }),
+        'myshop.ride_offer.v2.corrupt': '{"rideId":"not-a-uuid"}',
+        'unrelated.preference': 'keep-me',
+      };
+      SharedPreferences.setMockInitialValues(values);
+
+      final identities = await readStoredRideOfferIdentities();
+
+      expect(identities, hasLength(maxKnownProviderOfferIds));
+      expect(
+        identities.map((identity) => identity.localHandoffAt).toList(),
+        orderedEquals(
+          List<DateTime>.generate(
+            10,
+            (index) => DateTime.utc(2026, 7, 28, 12, 10 - index),
+          ),
+        ),
+      );
+      expect(
+        identities.every(
+          (identity) =>
+              identity.offerId.startsWith('22222222-2222-4222-') &&
+              identity.rideId.startsWith('11111111-1111-4111-'),
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  test('clearing a resolved exact offer makes its recovery one-shot', () async {
+    SharedPreferences.setMockInitialValues({});
+    expect(await persistIncomingRideOffer(delivery()), isTrue);
+    expect(await readStoredRideOfferIdentities(), hasLength(1));
+
+    await clearStoredRideOffer(offerId);
+
+    expect(await readStoredRideOfferIdentities(), isEmpty);
   });
 }

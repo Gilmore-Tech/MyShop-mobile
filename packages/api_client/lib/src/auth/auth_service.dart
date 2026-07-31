@@ -1,5 +1,6 @@
 import '../models/auth_dtos.dart';
 import '../models/user_dtos.dart';
+import '../http/token_storage.dart';
 
 /// Auth API contract.
 ///
@@ -72,7 +73,10 @@ abstract class AuthService {
   /// must clear local tokens regardless of whether this succeeds, since
   /// the backend is also fine with eventual revocation on next /refresh.
   /// POST /v1/auth/logout
-  Future<void> logout();
+  Future<void> logout({
+    AuthSessionIdentity? expectedIdentity,
+    AuthTokenSnapshot? explicitLogoutSession,
+  });
 
   /// Submit the one-time exact-session recovery capability returned by the
   /// blocked-device conflict. The backend records a request only while that

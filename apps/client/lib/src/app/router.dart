@@ -1,7 +1,7 @@
 import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_models/shared_models.dart'
-    show ChatBookingType, LegalConsentStatus, TicketCategory;
+    show ChatBookingType, TicketCategory;
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -90,7 +90,10 @@ import '../features/support/screens/help_search_route_screen.dart';
 import '../features/support/screens/legal_document_route_screen.dart';
 import '../features/support/screens/legal_consent_route_screen.dart';
 import '../features/support/providers/support_providers.dart'
-    show legalConsentStatusProvider;
+    show
+        clientRoleSessionIdentityProvider,
+        legalConsentStatusProvider,
+        usableClientLegalConsentStatus;
 import '../features/profile/screens/referral_screen.dart';
 import '../features/profile/screens/payment_methods_screen.dart';
 import '../features/profile/screens/emergency_contacts_screen.dart';
@@ -228,10 +231,7 @@ abstract final class AppRoutes {
   }) =>
       Uri(
         path: safetyEmergency,
-        queryParameters: {
-          'bookingType': bookingType,
-          'bookingId': bookingId,
-        },
+        queryParameters: {'bookingType': bookingType, 'bookingId': bookingId},
       ).toString();
 
   // Dev
@@ -249,41 +249,41 @@ final _profileNavKey = GlobalKey<NavigatorState>(debugLabel: 'profile');
 // ── Router Provider ────────────────────────────────────────────────────────────
 // NOT autoDispose — the router must live for the full app lifetime.
 //
-// We watch [clientAuthControllerProvider] so the router rebuilds when auth
-// state changes. GoRouter is cheap to recreate — it's just config. The
-// navigator keys are module-level so navigation state is preserved.
+// The router itself is stable for the full app lifetime. Riverpod state
+// changes only refresh redirects through [_ClientRouterRefresh]; recreating
+// GoRouter would reset an active ride route to [initialLocation].
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(clientAuthControllerProvider);
-  final hasSeen = ref.watch(hasSeenOnboardingProvider);
-  final onboardingFlagLoaded = ref.watch(onboardingFlagLoadedProvider);
-  final pendingReplay = ref.watch(pendingReplayOnboardingProvider);
-  final legalConsent = authState is AuthAuthenticated
-      ? ref.watch(legalConsentStatusProvider)
-      : null;
+  final refresh = _ClientRouterRefresh(ref);
+  ref.onDispose(refresh.dispose);
   return _buildRouter(
-    authState: authState,
-    hasSeen: hasSeen,
-    onboardingFlagLoaded: onboardingFlagLoaded,
-    pendingReplay: pendingReplay,
-    legalConsent: legalConsent,
+    ref: ref,
+    refresh: refresh,
     telemetry: ref.read(systemTelemetryProvider),
   );
 });
 
 GoRouter _buildRouter({
-  required ClientAuthState authState,
-  required bool hasSeen,
-  required bool onboardingFlagLoaded,
-  required bool pendingReplay,
-  required AsyncValue<LegalConsentStatus>? legalConsent,
+  required Ref ref,
+  required Listenable refresh,
   required SystemTelemetryService telemetry,
 }) {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: AppRoutes.splash,
+    refreshListenable: refresh,
     debugLogDiagnostics: false,
     redirect: (context, state) {
+      final authState = ref.read(clientAuthControllerProvider);
+      final hasSeen = ref.read(hasSeenOnboardingProvider);
+      final onboardingFlagLoaded = ref.read(onboardingFlagLoadedProvider);
+      final pendingReplay = ref.read(pendingReplayOnboardingProvider);
+      final legalConsent = authState is AuthAuthenticated
+          ? ref.read(legalConsentStatusProvider)
+          : null;
+      final roleSessionIdentity = authState is AuthAuthenticated
+          ? ref.read(clientRoleSessionIdentityProvider)
+          : null;
       final path = state.uri.path;
       telemetry.trackScreen(state.fullPath ?? state.matchedLocation);
       final isAuthRoute = path == AppRoutes.splash ||
@@ -299,7 +299,9 @@ GoRouter _buildRouter({
       // Still checking stored tokens/preferences — stay on the Flutter splash.
       // Both operations have bounded deadlines in main.dart, so this state
       // cannot strand the user indefinitely.
-      if (authState is AuthUnknown || !onboardingFlagLoaded) {
+      if (authState is AuthUnknown ||
+          authState is AuthSessionRestorePending ||
+          !onboardingFlagLoaded) {
         return path == AppRoutes.splash ? null : AppRoutes.splash;
       }
 
@@ -347,21 +349,27 @@ GoRouter _buildRouter({
         if (needsOnboarding) {
           return path == AppRoutes.onboarding ? null : AppRoutes.onboarding;
         }
-        final consentRequiresReview =
-            legalConsent?.valueOrNull?.requiresConsent == true ||
-                legalConsent?.hasError == true;
+        final consentStatus = usableClientLegalConsentStatus(
+          authState,
+          roleSessionIdentity,
+          legalConsent,
+        );
+        final consentRequiresReview = consentStatus?.requiresConsent == true;
         final consentExemptRoute = path == AppRoutes.legalConsent ||
             path.startsWith('/legal/') ||
+            path == AppRoutes.rideMatching ||
+            path == AppRoutes.rideDriverFound ||
             path == AppRoutes.rideTracking ||
             (path.startsWith('/services/job/') && path.endsWith('/active')) ||
             path.startsWith('/safety/') ||
             path.startsWith(AppRoutes.profileSupport);
         if (consentRequiresReview &&
-            legalConsent?.valueOrNull?.hasActiveWork != true &&
+            consentStatus?.hasActiveWork != true &&
             !consentExemptRoute) {
           return AppRoutes.legalConsent;
         }
-        if (!consentRequiresReview && path == AppRoutes.legalConsent) {
+        if (consentStatus?.requiresConsent == false &&
+            path == AppRoutes.legalConsent) {
           return AppRoutes.home;
         }
         // Past onboarding — redirect away from any auth/onboarding routes.
@@ -375,16 +383,10 @@ GoRouter _buildRouter({
     },
     routes: [
       // ── Dev menu ─────────────────────────────────────────────────────────────
-      GoRoute(
-        path: AppRoutes.dev,
-        builder: (_, __) => const DevMenuScreen(),
-      ),
+      GoRoute(path: AppRoutes.dev, builder: (_, __) => const DevMenuScreen()),
 
       // ── Onboarding ────────────────────────────────────────────────────────────
-      GoRoute(
-        path: AppRoutes.splash,
-        builder: (_, __) => const SplashScreen(),
-      ),
+      GoRoute(path: AppRoutes.splash, builder: (_, __) => const SplashScreen()),
       GoRoute(
         path: AppRoutes.onboarding,
         builder: (_, __) => const OnboardingScreen(),
@@ -548,9 +550,8 @@ GoRouter _buildRouter({
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.rideDispute,
-        builder: (_, state) => RideDisputeScreen(
-          rideId: state.pathParameters['rideId']!,
-        ),
+        builder: (_, state) =>
+            RideDisputeScreen(rideId: state.pathParameters['rideId']!),
       ),
 
       // ── Services sub-flow (full-screen, above shell) ──────────────────────────
@@ -649,9 +650,8 @@ GoRouter _buildRouter({
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.jobDispute,
-        builder: (_, state) => JobDisputeScreen(
-          jobId: state.pathParameters['jobId']!,
-        ),
+        builder: (_, state) =>
+            JobDisputeScreen(jobId: state.pathParameters['jobId']!),
       ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
@@ -772,9 +772,8 @@ GoRouter _buildRouter({
           GoRoute(
             path: 'help/article/:slug',
             parentNavigatorKey: _rootNavigatorKey,
-            builder: (_, state) => HelpArticleRouteScreen(
-              slug: state.pathParameters['slug']!,
-            ),
+            builder: (_, state) =>
+                HelpArticleRouteScreen(slug: state.pathParameters['slug']!),
           ),
         ],
       ),
@@ -852,9 +851,8 @@ GoRouter _buildRouter({
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
         path: AppRoutes.legalDocument,
-        builder: (_, state) => LegalDocumentRouteScreen(
-          slug: state.pathParameters['slug']!,
-        ),
+        builder: (_, state) =>
+            LegalDocumentRouteScreen(slug: state.pathParameters['slug']!),
       ),
     ],
 
@@ -868,4 +866,68 @@ GoRouter _buildRouter({
       ),
     ),
   );
+}
+
+/// Bridges Riverpod state to GoRouter redirects without replacing the router.
+class _ClientRouterRefresh extends ChangeNotifier {
+  _ClientRouterRefresh(this._ref) {
+    _authSub = _ref.listen<ClientAuthState>(clientAuthControllerProvider, (
+      _,
+      next,
+    ) {
+      _syncAuthenticatedDependencies(next);
+      notifyListeners();
+    });
+    _onboardingLoadedSub = _ref.listen<bool>(
+      onboardingFlagLoadedProvider,
+      (_, __) => notifyListeners(),
+    );
+    _hasSeenSub = _ref.listen<bool>(
+      hasSeenOnboardingProvider,
+      (_, __) => notifyListeners(),
+    );
+    _pendingReplaySub = _ref.listen<bool>(
+      pendingReplayOnboardingProvider,
+      (_, __) => notifyListeners(),
+    );
+    _syncAuthenticatedDependencies(_ref.read(clientAuthControllerProvider));
+  }
+
+  final Ref _ref;
+  late final ProviderSubscription<ClientAuthState> _authSub;
+  late final ProviderSubscription<bool> _onboardingLoadedSub;
+  late final ProviderSubscription<bool> _hasSeenSub;
+  late final ProviderSubscription<bool> _pendingReplaySub;
+  ProviderSubscription<AsyncValue<ScopedLegalConsentStatus?>>? _legalSub;
+  ProviderSubscription<AsyncValue<RoleSessionIdentity?>>? _roleSessionSub;
+
+  void _syncAuthenticatedDependencies(ClientAuthState auth) {
+    if (auth is AuthAuthenticated) {
+      _legalSub ??= _ref.listen<AsyncValue<ScopedLegalConsentStatus?>>(
+        legalConsentStatusProvider,
+        (_, __) => notifyListeners(),
+      );
+      _roleSessionSub ??= _ref.listen<AsyncValue<RoleSessionIdentity?>>(
+        clientRoleSessionIdentityProvider,
+        (_, __) => notifyListeners(),
+      );
+      return;
+    }
+
+    _legalSub?.close();
+    _legalSub = null;
+    _roleSessionSub?.close();
+    _roleSessionSub = null;
+  }
+
+  @override
+  void dispose() {
+    _authSub.close();
+    _onboardingLoadedSub.close();
+    _hasSeenSub.close();
+    _pendingReplaySub.close();
+    _legalSub?.close();
+    _roleSessionSub?.close();
+    super.dispose();
+  }
 }

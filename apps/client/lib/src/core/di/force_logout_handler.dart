@@ -1,3 +1,4 @@
+import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Mutable container that lets [dioProvider] notify the auth controller of a
@@ -8,16 +9,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// The auth controller registers its handler at construction; the Dio
 /// interceptor invokes [call] when the backend says the session is dead.
 class ForceLogoutHandler {
-  void Function()? _handler;
+  void Function(AuthForceLogoutEvent event)? _handler;
 
-  void register(void Function() handler) {
+  void register(void Function(AuthForceLogoutEvent event) handler) {
     _handler = handler;
   }
 
-  void call() {
-    _handler?.call();
+  void call(AuthForceLogoutEvent event) {
+    _handler?.call(event);
   }
 }
 
-final forceLogoutHandlerProvider =
-    Provider<ForceLogoutHandler>((_) => ForceLogoutHandler());
+final forceLogoutHandlerProvider = Provider<ForceLogoutHandler>(
+  (_) => ForceLogoutHandler(),
+);

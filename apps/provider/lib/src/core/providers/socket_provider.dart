@@ -14,6 +14,7 @@ import '../../features/artisan_home/widgets/rate_client_sheet.dart';
 import '../../features/artisan_jobs/providers/artisan_jobs_provider.dart';
 import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dart';
 import '../../features/auth/providers/current_user_provider.dart';
+import '../../features/auth/providers/auth_controller.dart';
 import '../../features/earnings/providers/earnings_providers.dart';
 import '../../features/driver_home/providers/driver_location_provider.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
@@ -42,6 +43,7 @@ import '../services/ride_offer_receipt_service.dart';
 /// The socket service itself no longer carries an onForceLogout —
 /// kept consistent with the REST path.
 final socketServiceProvider = Provider<SocketService>((ref) {
+  ref.watch(currentAuthSessionIdentityProvider);
   final config = ref.watch(apiConfigProvider);
   final tokenStorage = ref.watch(appTokenStorageProvider);
   final tokenRefresher = ref.watch(tokenRefresherProvider);

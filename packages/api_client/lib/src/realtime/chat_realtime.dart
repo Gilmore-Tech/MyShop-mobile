@@ -38,6 +38,8 @@ class ChatRealtime {
   final TokenRefresher _tokenRefresher;
 
   io.Socket? _socket;
+  AuthSessionIdentity? _socketOwner;
+  int _connectionGeneration = 0;
   bool _disposed = false;
 
   // Single-flight guard for reconnect — refresh dedup is handled by
@@ -46,6 +48,7 @@ class ChatRealtime {
   // shared refresher through the backend's refresh-token rotation and
   // the loser ate REFRESH_TOKEN_REUSED → forced logout.
   Future<void>? _inFlightReconnect;
+  AuthSessionIdentity? _inFlightReconnectOwner;
 
   ChatChannel? _channel;
 
@@ -61,6 +64,9 @@ class ChatRealtime {
   /// True when the underlying socket reports `connected`. Useful for
   /// gating UI affordances (e.g. a tiny green dot in the chat header).
   bool get isConnected => _socket?.connected ?? false;
+
+  @visibleForTesting
+  AuthSessionIdentity? get socketOwnerForTesting => _socketOwner;
 
   /// Emits `true` on connect, `false` on disconnect. Phase 3 listens here
   /// to trigger the reconcile-on-reconnect history re-fetch.
@@ -99,13 +105,21 @@ class ChatRealtime {
   /// back to sign-in via [onForceLogout]).
   Future<void> connect() async {
     if (_disposed) return;
-    if (_socket?.connected == true) return;
-
-    var token = await _tokenStorage.readAccessToken();
-    if (token == null) {
+    final observed = await _tokenStorage.readTokenSnapshot();
+    final owner = observed.identity;
+    var token = observed.accessToken;
+    if (owner == null || token == null) {
       debugPrint('[CHAT-WS] No access token — skipping connect');
       return;
     }
+    if (_socket?.connected == true && _socketOwner == owner) return;
+    if (_socketOwner != null && _socketOwner != owner) {
+      _socket?.dispose();
+      _socket = null;
+      _socketOwner = null;
+      _channel = null;
+    }
+    final generation = ++_connectionGeneration;
 
     if (_isTokenExpiringSoon(token)) {
       debugPrint('[CHAT-WS] Token expired/expiring — refreshing pre-connect');
@@ -113,7 +127,8 @@ class ChatRealtime {
       // chat WS), so a concurrent refresh from any other path just
       // awaits the same future instead of racing the rotating token
       // through the backend.
-      final refreshed = await _tokenRefresher.refresh();
+      final refreshed =
+          await _tokenRefresher.refresh(expectedSession: observed);
       if (refreshed == null) {
         debugPrint('[CHAT-WS] Pre-connect refresh failed — aborting');
         return;
@@ -121,19 +136,35 @@ class ChatRealtime {
       token = refreshed;
     }
 
+    final current = await _tokenStorage.readTokenSnapshot();
+    if (_disposed ||
+        generation != _connectionGeneration ||
+        current.identity != owner ||
+        current.accessToken != token) {
+      debugPrint('[CHAT-WS] Session changed before socket dispatch');
+      return;
+    }
+
     _socket?.dispose();
 
     final nsUrl = '${_config.wsBaseUrl}/chat';
     debugPrint('[CHAT-WS] Connecting to $nsUrl');
 
-    _socket = io.io(
+    final socket = io.io(
       nsUrl,
       buildRealtimeSocketOptions(token: token),
     );
+    if (_disposed || generation != _connectionGeneration) {
+      socket.dispose();
+      return;
+    }
+    _socket = socket;
+    _socketOwner = owner;
 
-    _socket!
+    socket
       ..onConnect((_) {
-        debugPrint('[CHAT-WS] Connected (id: ${_socket?.id})');
+        if (!_ownsSocket(socket, owner, generation)) return;
+        debugPrint('[CHAT-WS] Connected (id: ${socket.id})');
         if (!_connectionController.isClosed) _connectionController.add(true);
         // If we had a channel before the disconnect, automatically re-join
         // so server-side delivery resumes without the orchestrator having
@@ -150,89 +181,136 @@ class ChatRealtime {
         final pending = _channel;
         if (pending != null) {
           unawaited(
-            _emitJoin(
-              pending.bookingType,
-              pending.bookingId,
-              timeout: const Duration(seconds: 15),
-            ).catchError((Object e) {
+            () async {
+              if (!await _ownsSocketAndStorage(
+                socket,
+                owner,
+                generation,
+              )) {
+                return;
+              }
+              await _emitJoin(
+                pending.bookingType,
+                pending.bookingId,
+                timeout: const Duration(seconds: 15),
+              );
+            }()
+                .catchError((Object e) {
               debugPrint('[CHAT-WS] Auto-rejoin failed: $e');
             }),
           );
         }
       })
       ..onDisconnect((reason) {
+        if (!_ownsSocket(socket, owner, generation)) return;
         debugPrint('[CHAT-WS] Disconnected: $reason');
         if (!_connectionController.isClosed) _connectionController.add(false);
       })
       ..onConnectError((err) {
+        if (!_ownsSocket(socket, owner, generation)) return;
         debugPrint('[CHAT-WS] Connect error: $err');
-        if (_looksUnauthorized(err)) _handleUnauthorized();
+        if (_looksUnauthorized(err)) {
+          unawaited(
+            _handleUnauthorized(socket, owner, current, generation),
+          );
+        }
       })
       ..onReconnect((_) {
+        if (!_ownsSocket(socket, owner, generation)) return;
         debugPrint('[CHAT-WS] Reconnected');
       })
       ..onReconnectError((err) {
+        if (!_ownsSocket(socket, owner, generation)) return;
         debugPrint('[CHAT-WS] Reconnect error: $err');
-        if (_looksUnauthorized(err)) _handleUnauthorized();
+        if (_looksUnauthorized(err)) {
+          unawaited(
+            _handleUnauthorized(socket, owner, current, generation),
+          );
+        }
       })
       ..on('exception', (data) {
+        if (!_ownsSocket(socket, owner, generation)) return;
         debugPrint('[CHAT-WS] Server exception: $data');
         if (_errorCode(data) == 'SOCKET_REPLACED') {
           debugPrint('[CHAT-WS] Superseded socket stopped');
-          _socket?.dispose();
-          _socket = null;
+          socket.dispose();
+          if (_ownsSocket(socket, owner, generation)) {
+            _connectionGeneration += 1;
+            _socket = null;
+            _socketOwner = null;
+            _channel = null;
+          }
           return;
         }
         if (_looksUnauthorized(data)) {
-          _handleUnauthorized();
+          unawaited(
+            _handleUnauthorized(socket, owner, current, generation),
+          );
         }
       })
       ..on('chat:message:received', (data) {
-        if (data is Map<String, dynamic>) {
-          try {
-            _incomingMessagesController.add(ChatMessage.fromJson(data));
-          } catch (e, st) {
-            debugPrint('[CHAT-WS] Bad chat:message:received payload: $e\n$st');
+        unawaited(() async {
+          if (!await _ownsSocketAndStorage(socket, owner, generation)) return;
+          if (data is Map<String, dynamic>) {
+            try {
+              _incomingMessagesController.add(ChatMessage.fromJson(data));
+            } catch (e, st) {
+              debugPrint(
+                '[CHAT-WS] Bad chat:message:received payload: $e\n$st',
+              );
+            }
           }
-        }
+        }());
       })
       ..on('chat:read:receipt', (data) {
-        if (data is Map<String, dynamic>) {
-          try {
-            _readReceiptsController.add(ChatReadReceipt.fromJson(data));
-          } catch (e, st) {
-            debugPrint('[CHAT-WS] Bad chat:read:receipt payload: $e\n$st');
+        unawaited(() async {
+          if (!await _ownsSocketAndStorage(socket, owner, generation)) return;
+          if (data is Map<String, dynamic>) {
+            try {
+              _readReceiptsController.add(ChatReadReceipt.fromJson(data));
+            } catch (e, st) {
+              debugPrint('[CHAT-WS] Bad chat:read:receipt payload: $e\n$st');
+            }
           }
-        }
+        }());
       })
       ..on('chat:typing:update', (data) {
-        if (data is Map<String, dynamic>) {
-          try {
-            _typingUpdatesController.add(ChatTypingUpdate.fromJson(data));
-          } catch (e, st) {
-            debugPrint('[CHAT-WS] Bad chat:typing:update payload: $e\n$st');
+        unawaited(() async {
+          if (!await _ownsSocketAndStorage(socket, owner, generation)) return;
+          if (data is Map<String, dynamic>) {
+            try {
+              _typingUpdatesController.add(ChatTypingUpdate.fromJson(data));
+            } catch (e, st) {
+              debugPrint('[CHAT-WS] Bad chat:typing:update payload: $e\n$st');
+            }
           }
-        }
+        }());
       })
       ..on('chat:channel:closed', (data) {
-        if (data is Map<String, dynamic>) {
-          try {
-            final evt = ChatChannelClosedEvent.fromJson(data);
-            _channelClosedController.add(evt);
-            // Mirror the closed state on the cached channel so callers
-            // reading `currentChannel` see the lock state too.
-            final c = _channel;
-            if (c != null &&
-                c.bookingType == evt.bookingType &&
-                c.bookingId == evt.bookingId) {
-              _channel = c.copyWith(status: ChatChannelStatus.closed);
+        unawaited(() async {
+          if (!await _ownsSocketAndStorage(socket, owner, generation)) return;
+          if (data is Map<String, dynamic>) {
+            try {
+              final evt = ChatChannelClosedEvent.fromJson(data);
+              _channelClosedController.add(evt);
+              // Mirror the closed state on the cached channel so callers
+              // reading `currentChannel` see the lock state too.
+              final c = _channel;
+              if (c != null &&
+                  c.bookingType == evt.bookingType &&
+                  c.bookingId == evt.bookingId) {
+                _channel = c.copyWith(status: ChatChannelStatus.closed);
+              }
+            } catch (e, st) {
+              debugPrint(
+                '[CHAT-WS] Bad chat:channel:closed payload: $e\n$st',
+              );
             }
-          } catch (e, st) {
-            debugPrint('[CHAT-WS] Bad chat:channel:closed payload: $e\n$st');
           }
-        }
+        }());
       })
       ..onAny((event, data) {
+        if (!_ownsSocket(socket, owner, generation)) return;
         // Verbose by design — easier than chasing Socket.IO trace logs
         // when a new event shows up server-side.
         debugPrint('[CHAT-WS] $event → $data');
@@ -250,9 +328,11 @@ class ChatRealtime {
   /// new one if needed.
   void dispose() {
     _disposed = true;
+    _connectionGeneration += 1;
     _channel = null;
     _socket?.dispose();
     _socket = null;
+    _socketOwner = null;
     _connectionController.close();
     _incomingMessagesController.close();
     _readReceiptsController.close();
@@ -273,6 +353,17 @@ class ChatRealtime {
     Duration timeout = const Duration(seconds: 5),
   }) async {
     if (!isConnected) await connect();
+    final socket = _socket;
+    final owner = _socketOwner;
+    final generation = _connectionGeneration;
+    if (socket == null ||
+        owner == null ||
+        !await _ownsSocketAndStorage(socket, owner, generation)) {
+      throw const ChatRealtimeException(
+        code: ChatErrorCodes.notConnected,
+        message: 'Chat socket is not connected.',
+      );
+    }
     _channel = ChatChannel(bookingType: bookingType, bookingId: bookingId);
     await _emitJoin(bookingType, bookingId, timeout: timeout);
   }
@@ -333,12 +424,18 @@ class ChatRealtime {
   void sendTyping({required bool isTyping}) {
     final channel = _channel;
     if (channel == null) return;
-    if (_socket?.connected != true) return;
-    _socket!.emit('chat:typing', {
-      'bookingType': channel.bookingType.wire,
-      'bookingId': channel.bookingId,
-      'isTyping': isTyping,
-    });
+    final socket = _socket;
+    final owner = _socketOwner;
+    final generation = _connectionGeneration;
+    if (socket?.connected != true || owner == null) return;
+    unawaited(() async {
+      if (!await _ownsSocketAndStorage(socket!, owner, generation)) return;
+      socket.emit('chat:typing', {
+        'bookingType': channel.bookingType.wire,
+        'bookingId': channel.bookingId,
+        'isTyping': isTyping,
+      });
+    }());
   }
 
   // ── Send / read ────────────────────────────────────────────────────────────
@@ -412,18 +509,35 @@ class ChatRealtime {
     dynamic data, {
     required Duration timeout,
   }) async {
-    if (_socket?.connected != true) {
+    final socket = _socket;
+    final owner = _socketOwner;
+    final generation = _connectionGeneration;
+    if (socket?.connected != true ||
+        owner == null ||
+        !await _ownsSocketAndStorage(socket!, owner, generation)) {
       throw const ChatRealtimeException(
         code: ChatErrorCodes.notConnected,
         message: 'Chat socket is not connected.',
       );
     }
     final completer = Completer<dynamic>();
-    _socket!.emitWithAck(
+    socket.emitWithAck(
       event,
       data,
       ack: (response, [_]) {
-        if (!completer.isCompleted) completer.complete(response);
+        unawaited(() async {
+          if (completer.isCompleted) return;
+          if (await _ownsSocketAndStorage(socket, owner, generation)) {
+            completer.complete(response);
+          } else {
+            completer.completeError(
+              const ChatRealtimeException(
+                code: ChatErrorCodes.notConnected,
+                message: 'The authenticated chat session changed.',
+              ),
+            );
+          }
+        }());
       },
     );
     try {
@@ -461,25 +575,69 @@ class ChatRealtime {
 
   // ── Auth recovery (mirrors SocketService) ──────────────────────────────────
 
-  Future<void> _handleUnauthorized() {
-    return _inFlightReconnect ??= () async {
+  Future<void> _handleUnauthorized(
+    io.Socket socket,
+    AuthSessionIdentity owner,
+    AuthTokenSnapshot credentialSnapshot,
+    int generation,
+  ) {
+    final existing = _inFlightReconnect;
+    if (existing != null && _inFlightReconnectOwner == owner) {
+      return existing;
+    }
+    late final Future<void> reconnect;
+    reconnect = () async {
       try {
-        _socket?.dispose();
+        if (!await _ownsSocketAndStorage(socket, owner, generation)) return;
+        socket.dispose();
+        if (!_ownsSocket(socket, owner, generation)) return;
+        _connectionGeneration += 1;
         _socket = null;
+        _socketOwner = null;
         if (!_connectionController.isClosed) _connectionController.add(false);
 
-        final refreshed = await _tokenRefresher.refresh();
+        final refreshed = await _tokenRefresher.refresh(
+          expectedSession: credentialSnapshot,
+        );
         if (refreshed == null) {
           debugPrint(
             '[CHAT-WS] Refresh after UNAUTHORIZED failed — staying offline',
           );
           return;
         }
+        final current = await _tokenStorage.readTokenSnapshot();
+        if (_disposed || current.identity != owner) return;
         await connect();
       } finally {
-        _inFlightReconnect = null;
+        if (identical(_inFlightReconnect, reconnect)) {
+          _inFlightReconnect = null;
+          _inFlightReconnectOwner = null;
+        }
       }
     }();
+    _inFlightReconnect = reconnect;
+    _inFlightReconnectOwner = owner;
+    return reconnect;
+  }
+
+  bool _ownsSocket(
+    io.Socket socket,
+    AuthSessionIdentity owner,
+    int generation,
+  ) =>
+      !_disposed &&
+      generation == _connectionGeneration &&
+      identical(_socket, socket) &&
+      _socketOwner == owner;
+
+  Future<bool> _ownsSocketAndStorage(
+    io.Socket socket,
+    AuthSessionIdentity owner,
+    int generation,
+  ) async {
+    if (!_ownsSocket(socket, owner, generation)) return false;
+    final current = await _tokenStorage.readTokenSnapshot();
+    return _ownsSocket(socket, owner, generation) && current.belongsTo(owner);
   }
 
   bool _isTokenExpiringSoon(String token) {

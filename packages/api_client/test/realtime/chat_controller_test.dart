@@ -394,6 +394,27 @@ void main() {
       expect(controller.currentMessages.single.id, 'tmp_persisted');
       expect(controller.currentMessages.single.message, 'I will be back');
     });
+
+    test('dispose preserves account-scoped rows for a replacement controller',
+        () async {
+      await outbox.upsert(
+        ChatOutboxItem(
+          tempId: 'tmp_replacement_owned',
+          channelKey: 'ride:$_bookingId',
+          message: 'keep me',
+          queuedAt: DateTime.utc(2026, 1, 1, 10),
+        ),
+      );
+      await openRideChannel();
+
+      await controller.dispose();
+
+      expect(
+        (await outbox.readForChannel('ride:$_bookingId'))
+            .map((item) => item.tempId),
+        ['tmp_replacement_owned'],
+      );
+    });
   });
 
   group('typing — outbound notifyTyping', () {

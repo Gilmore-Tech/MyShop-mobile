@@ -39,6 +39,8 @@ class SocketService {
   final TokenRefresher _tokenRefresher;
 
   io.Socket? _socket;
+  AuthSessionIdentity? _socketOwner;
+  int _connectionGeneration = 0;
   bool _disposed = false;
 
   // Single-flight guard so back-to-back UNAUTHORIZED events don't fan
@@ -46,6 +48,7 @@ class SocketService {
   // handled by [TokenRefresher] (process-wide, shared with the REST
   // auth interceptor).
   Future<void>? _inFlightReconnect;
+  AuthSessionIdentity? _inFlightReconnectOwner;
 
   /// App-level callback invoked synchronously every time a new
   /// underlying [io.Socket] is created in [connect]. The app uses this
@@ -72,16 +75,21 @@ class SocketService {
   /// Whether the socket is currently connected.
   bool get isConnected => _socket?.connected ?? false;
 
+  @visibleForTesting
+  AuthSessionIdentity? get socketOwnerForTesting => _socketOwner;
+
   /// Connect to the Socket.IO server with the stored access token.
   Future<void> connect() async {
     if (_disposed) return;
-    if (_socket?.connected == true) return;
-
-    var token = await _tokenStorage.readAccessToken();
-    if (token == null) {
+    final observed = await _tokenStorage.readTokenSnapshot();
+    final owner = observed.identity;
+    var token = observed.accessToken;
+    if (owner == null || token == null) {
       debugPrint('[WS] No access token — skipping socket connect');
       return;
     }
+    if (_socket?.connected == true && _socketOwner == owner) return;
+    final generation = ++_connectionGeneration;
 
     // Proactively refresh if the access token is already expired or will
     // expire within the next 30s. Avoids the round-trip of opening the
@@ -94,7 +102,7 @@ class SocketService {
     // REFRESH_TOKEN_REUSED.
     if (_isTokenExpiringSoon(token)) {
       debugPrint('[WS] Access token expired/expiring — refreshing pre-connect');
-      final refreshed = await _refreshWithRetry();
+      final refreshed = await _refreshWithRetry(observed);
       if (refreshed == null) {
         debugPrint('[WS] Pre-connect refresh failed — aborting connect');
         return;
@@ -102,7 +110,17 @@ class SocketService {
       token = refreshed;
     }
 
-    _socket?.dispose();
+    final current = await _tokenStorage.readTokenSnapshot();
+    if (_disposed ||
+        generation != _connectionGeneration ||
+        current.identity != owner ||
+        current.accessToken != token) {
+      debugPrint('[WS] Session changed before socket dispatch');
+      return;
+    }
+
+    final previousSocket = _socket;
+    previousSocket?.dispose();
 
     // Connect to the /location/track namespace — backend's location gateway
     // auto-joins role-specific rooms (artisan:{userId} or driver:{userId})
@@ -110,7 +128,7 @@ class SocketService {
     final nsUrl = '${_config.wsBaseUrl}/location/track';
     debugPrint('[WS] Connecting to $nsUrl');
 
-    _socket = io.io(
+    final socket = io.io(
       nsUrl,
       buildRealtimeSocketOptions(
         token: token,
@@ -122,54 +140,77 @@ class SocketService {
         },
       ),
     );
+    if (_disposed || generation != _connectionGeneration) {
+      socket.dispose();
+      return;
+    }
+    _socket = socket;
+    _socketOwner = owner;
 
-    _socket!
+    socket
       ..onConnect((_) {
-        debugPrint('[WS] Connected (id: ${_socket?.id})');
+        if (!_ownsSocket(socket, owner, generation)) return;
+        debugPrint('[WS] Connected (id: ${socket.id})');
         if (!_connectionController.isClosed) {
           _connectionController.add(true);
         }
       })
       ..onDisconnect((reason) {
+        if (!_ownsSocket(socket, owner, generation)) return;
         debugPrint('[WS] Disconnected: $reason');
         if (!_connectionController.isClosed) {
           _connectionController.add(false);
         }
       })
       ..onConnectError((err) {
+        if (!_ownsSocket(socket, owner, generation)) return;
         debugPrint('[WS] Connection error: $err');
         // Some backends signal auth failure via the connect_error payload
         // rather than a post-connect `exception` event.
         if (_looksUnauthorized(err)) {
-          _handleUnauthorized();
+          unawaited(
+            _handleUnauthorized(socket, owner, current, generation),
+          );
         }
       })
       ..onReconnect((_) {
+        if (!_ownsSocket(socket, owner, generation)) return;
         debugPrint('[WS] Reconnected');
       })
       ..onReconnectError((err) {
+        if (!_ownsSocket(socket, owner, generation)) return;
         debugPrint('[WS] Reconnect error: $err');
         if (_looksUnauthorized(err)) {
-          _handleUnauthorized();
+          unawaited(
+            _handleUnauthorized(socket, owner, current, generation),
+          );
         }
       })
       // Backend emits `exception { error: UNAUTHORIZED, message: ... }` when
       // the token is invalid or expired. Refresh + reconnect with the new
       // token rather than leaving the socket in a half-dead state.
       ..on('exception', (data) {
+        if (!_ownsSocket(socket, owner, generation)) return;
         if (_errorCode(data) == 'SOCKET_REPLACED') {
           debugPrint('[WS] Superseded socket stopped');
-          _socket?.dispose();
-          _socket = null;
+          socket.dispose();
+          if (_ownsSocket(socket, owner, generation)) {
+            _connectionGeneration += 1;
+            _socket = null;
+            _socketOwner = null;
+          }
           return;
         }
         if (_looksUnauthorized(data)) {
           debugPrint('[WS] Server reported UNAUTHORIZED — refreshing');
-          _handleUnauthorized();
+          unawaited(
+            _handleUnauthorized(socket, owner, current, generation),
+          );
         }
       })
       // Log ALL events from the server for debugging
       ..onAny((event, data) {
+        if (!_ownsSocket(socket, owner, generation)) return;
         debugPrint('[WS] Event: $event → $data');
       });
 
@@ -188,14 +229,34 @@ class SocketService {
 
   /// Listen for a specific event from the server.
   void on(String event, SocketEventCallback callback) {
-    _socket?.on(event, callback);
+    final socket = _socket;
+    final owner = _socketOwner;
+    final generation = _connectionGeneration;
+    if (socket == null || owner == null) return;
+    socket.on(event, (data) {
+      unawaited(() async {
+        if (await _ownsSocketAndStorage(socket, owner, generation)) {
+          callback(data);
+        }
+      }());
+    });
   }
 
   /// Listen for ALL events from the server. Useful for debugging.
   /// Returns immediately if the socket isn't connected yet — attach the
   /// listener after calling [connect] completes.
   void onAnyEvent(void Function(String event, dynamic data) callback) {
-    _socket?.onAny(callback);
+    final socket = _socket;
+    final owner = _socketOwner;
+    final generation = _connectionGeneration;
+    if (socket == null || owner == null) return;
+    socket.onAny((event, data) {
+      unawaited(() async {
+        if (await _ownsSocketAndStorage(socket, owner, generation)) {
+          callback(event, data);
+        }
+      }());
+    });
   }
 
   /// Remove a listener for a specific event.
@@ -209,11 +270,18 @@ class SocketService {
 
   /// Emit an event to the server with optional data.
   void emit(String event, [dynamic data]) {
-    if (_socket?.connected != true) {
+    final socket = _socket;
+    final owner = _socketOwner;
+    final generation = _connectionGeneration;
+    if (socket?.connected != true || owner == null) {
       debugPrint('[WS] Cannot emit "$event" — not connected');
       return;
     }
-    _socket!.emit(event, data);
+    unawaited(() async {
+      if (await _ownsSocketAndStorage(socket!, owner, generation)) {
+        socket.emit(event, data);
+      }
+    }());
   }
 
   /// Emit an event and await the server's ack response. Used for handlers
@@ -228,15 +296,29 @@ class SocketService {
     dynamic data, {
     Duration timeout = const Duration(seconds: 8),
   }) async {
-    if (_socket?.connected != true) {
+    final socket = _socket;
+    final owner = _socketOwner;
+    final generation = _connectionGeneration;
+    if (socket?.connected != true ||
+        owner == null ||
+        !await _ownsSocketAndStorage(socket!, owner, generation)) {
       throw StateError('Cannot emit "$event" — socket not connected');
     }
     final completer = Completer<dynamic>();
-    _socket!.emitWithAck(
+    socket.emitWithAck(
       event,
       data,
       ack: (response, [_]) {
-        if (!completer.isCompleted) completer.complete(response);
+        unawaited(() async {
+          if (completer.isCompleted) return;
+          if (await _ownsSocketAndStorage(socket, owner, generation)) {
+            completer.complete(response);
+          } else {
+            completer.completeError(
+              StateError('Session changed before "$event" was acknowledged'),
+            );
+          }
+        }());
       },
     );
     return completer.future.timeout(
@@ -249,8 +331,11 @@ class SocketService {
   /// Permanently dispose the socket and close streams.
   void dispose() {
     _disposed = true;
-    _socket?.dispose();
+    _connectionGeneration += 1;
+    final socket = _socket;
+    socket?.dispose();
     _socket = null;
+    _socketOwner = null;
     _connectionController.close();
   }
 
@@ -258,27 +343,49 @@ class SocketService {
 
   /// Tear down the current socket, refresh the access token, and reconnect.
   /// Single-flighted so back-to-back UNAUTHORIZED events don't pile up.
-  Future<void> _handleUnauthorized() {
-    return _inFlightReconnect ??= () async {
+  Future<void> _handleUnauthorized(
+    io.Socket socket,
+    AuthSessionIdentity owner,
+    AuthTokenSnapshot credentialSnapshot,
+    int generation,
+  ) {
+    final existing = _inFlightReconnect;
+    if (existing != null && _inFlightReconnectOwner == owner) {
+      return existing;
+    }
+    late final Future<void> reconnect;
+    reconnect = () async {
       try {
-        _socket?.dispose();
+        if (!await _ownsSocketAndStorage(socket, owner, generation)) return;
+        socket.dispose();
+        if (!_ownsSocket(socket, owner, generation)) return;
+        _connectionGeneration += 1;
         _socket = null;
+        _socketOwner = null;
         if (!_connectionController.isClosed) {
           _connectionController.add(false);
         }
 
-        final refreshed = await _refreshWithRetry();
+        final refreshed = await _refreshWithRetry(credentialSnapshot);
         if (refreshed == null) {
           debugPrint(
             '[WS] Refresh after UNAUTHORIZED failed — staying offline',
           );
           return;
         }
+        final current = await _tokenStorage.readTokenSnapshot();
+        if (_disposed || current.identity != owner) return;
         await connect();
       } finally {
-        _inFlightReconnect = null;
+        if (identical(_inFlightReconnect, reconnect)) {
+          _inFlightReconnect = null;
+          _inFlightReconnectOwner = null;
+        }
       }
     }();
+    _inFlightReconnect = reconnect;
+    _inFlightReconnectOwner = owner;
+    return reconnect;
   }
 
   /// Wraps [TokenRefresher.refresh] in a small retry loop to ride out
@@ -288,13 +395,17 @@ class SocketService {
   /// here is safe — overlapping callers await the same in-flight future.
   /// Bails immediately when the refresh token itself is gone (refresher
   /// has already fired onForceLogout in that case).
-  Future<String?> _refreshWithRetry({int attempts = 3}) async {
+  Future<String?> _refreshWithRetry(
+    AuthTokenSnapshot expected, {
+    int attempts = 3,
+  }) async {
     for (var i = 0; i < attempts; i++) {
-      final token = await _tokenRefresher.refresh();
+      final token = await _tokenRefresher.refresh(expectedSession: expected);
       if (token != null) return token;
-      final stillHaveRefreshToken =
-          (await _tokenStorage.readRefreshToken()) != null;
-      if (!stillHaveRefreshToken) return null;
+      final current = await _tokenStorage.readTokenSnapshot();
+      if (expected.identity == null || !current.belongsTo(expected.identity!)) {
+        return null;
+      }
       if (i < attempts - 1) {
         final backoff = Duration(seconds: 3 * (i + 1));
         debugPrint('[WS] Refresh attempt ${i + 1} failed — retrying in '
@@ -303,6 +414,26 @@ class SocketService {
       }
     }
     return null;
+  }
+
+  bool _ownsSocket(
+    io.Socket socket,
+    AuthSessionIdentity owner,
+    int generation,
+  ) =>
+      !_disposed &&
+      generation == _connectionGeneration &&
+      identical(_socket, socket) &&
+      _socketOwner == owner;
+
+  Future<bool> _ownsSocketAndStorage(
+    io.Socket socket,
+    AuthSessionIdentity owner,
+    int generation,
+  ) async {
+    if (!_ownsSocket(socket, owner, generation)) return false;
+    final current = await _tokenStorage.readTokenSnapshot();
+    return _ownsSocket(socket, owner, generation) && current.belongsTo(owner);
   }
 
   /// True if the JWT is expired or will expire within the next 30 seconds.

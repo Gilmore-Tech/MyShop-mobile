@@ -82,39 +82,46 @@ class PayoutMethodOtpService {
 
   PayoutOtpResult _failureFromDio(DioException e, {required bool isVerify}) {
     final data = e.response?.data;
-    if (data is Map<String, dynamic>) {
+    if (data is Map) {
+      final body = Map<String, dynamic>.from(data);
       // The API's canonical error envelope is
-      // {success:false,error:{code,message,details}}. Retain the old flat
-      // fallback only for already-deployed servers during the update window.
-      final nested = data['error'];
-      final error =
-          nested is Map<String, dynamic> ? nested : const <String, dynamic>{};
-      final details = error['details'] is Map<String, dynamic>
-          ? error['details'] as Map<String, dynamic>
-          : data['details'] is Map<String, dynamic>
-              ? data['details'] as Map<String, dynamic>
+      // {success:false,error:{code,message,details}}. Machine codes are safe
+      // to classify; backend prose is deliberately never rendered.
+      final nested = body['error'];
+      final error = nested is Map
+          ? Map<String, dynamic>.from(nested)
+          : const <String, dynamic>{};
+      final details = error['details'] is Map
+          ? Map<String, dynamic>.from(error['details'] as Map)
+          : body['details'] is Map
+              ? Map<String, dynamic>.from(body['details'] as Map)
               : const <String, dynamic>{};
       final codeValue = error['code'] ??
-          data['code'] ??
-          data['errorCode'] ??
+          body['code'] ??
+          body['errorCode'] ??
           (nested is String ? nested : null);
       final code =
-          codeValue is String && codeValue.isNotEmpty ? codeValue : null;
-      final messageValue = error['message'] ?? data['message'];
-      final message =
-          messageValue is String && messageValue != code ? messageValue : null;
+          codeValue is String && RegExp(r'^[A-Z0-9_]+$').hasMatch(codeValue)
+              ? codeValue
+              : null;
       final retryAfter = (details['retryAfterSecs'] as num?)?.toInt() ??
           (details['retryAfterSeconds'] as num?)?.toInt() ??
-          (data['retryAfterSeconds'] as num?)?.toInt();
+          (body['retryAfterSeconds'] as num?)?.toInt();
       final otpActive = details['otpActive'] == true;
       if (code != null) {
         return PayoutOtpResult.failure(
           code: code,
-          message: message ?? _messageFor(code, isVerify: isVerify),
+          message: _messageFor(code, isVerify: isVerify),
           retryAfterSeconds: retryAfter,
           otpActive: otpActive,
         );
       }
+    }
+    if (e.response != null) {
+      return PayoutOtpResult.failure(
+        code: 'SERVICE_UNAVAILABLE',
+        message: _messageFor('SERVICE_UNAVAILABLE', isVerify: isVerify),
+      );
     }
     return const PayoutOtpResult.failure(
       code: 'NETWORK',
@@ -183,6 +190,8 @@ String _messageFor(String code, {required bool isVerify}) {
       return 'We could not confirm SMS delivery. If the code arrives, you can still enter it.';
     case 'OTP_CONTROL_UNAVAILABLE':
       return 'Code requests are temporarily unavailable. Please try again shortly.';
+    case 'OTP_DELIVERY_DISABLED':
+      return 'Code delivery is temporarily unavailable. Please try again shortly.';
     case 'NO_PENDING_OTP':
       return 'No code to verify. Request a new one.';
     case 'OTP_EXPIRED':
@@ -193,6 +202,8 @@ String _messageFor(String code, {required bool isVerify}) {
       return 'Too many wrong attempts. Request a new code.';
     case 'NETWORK':
       return 'Connection lost — please try again.';
+    case 'SERVICE_UNAVAILABLE':
+      return 'The code service is temporarily unavailable. Please try again shortly.';
     default:
       return isVerify
           ? 'Verification failed. Please try again.'

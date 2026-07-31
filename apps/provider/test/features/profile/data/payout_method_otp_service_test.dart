@@ -45,7 +45,11 @@ void main() {
 
     expect(result.success, isFalse);
     expect(result.code, 'OTP_RATE_LIMIT');
-    expect(result.message, 'Please wait before requesting another OTP.');
+    expect(
+      result.message,
+      'Too many code requests. Please wait a moment and try again.',
+    );
+    expect(result.message, isNot(contains('requesting another OTP')));
     expect(result.retryAfterSeconds, 37);
     expect(result.otpActive, isFalse);
   });
@@ -75,6 +79,10 @@ void main() {
     expect(result.code, 'OTP_DELIVERY_FAILED');
     expect(result.retryAfterSeconds, 60);
     expect(result.otpActive, isTrue);
+    expect(
+      result.message,
+      'We could not confirm SMS delivery. If the code arrives, you can still enter it.',
+    );
   });
 
   test('retains the flat error fallback during the backend update window',
@@ -92,7 +100,10 @@ void main() {
     );
 
     expect(result.code, 'PAYOUT_METHOD_LOCKED');
-    expect(result.message, 'Contact support to change it.');
+    expect(
+      result.message,
+      'Your payout method is already verified. Contact support to change it.',
+    );
   });
 
   test('uses NETWORK only when no structured API error exists', () async {
@@ -115,5 +126,24 @@ void main() {
     );
 
     expect(result.code, 'NETWORK');
+  });
+
+  test('unknown server prose is replaced with service-safe copy', () async {
+    final service = PayoutMethodOtpService(
+      rejectingDio({
+        'error': {
+          'code': 'INTERNAL_PROVIDER_ERROR',
+          'message': 'SQLSTATE 23505 on payout_candidate_idx',
+        },
+      }),
+    );
+
+    final result = await service.requestOtp(
+      method: 'momo_mtn',
+      accountNumber: '0241234567',
+    );
+
+    expect(result.message, 'Could not send code. Please try again.');
+    expect(result.message, isNot(contains('SQLSTATE')));
   });
 }

@@ -20,11 +20,6 @@ final chatControllerProvider = FutureProvider<ChatController?>((ref) async {
   final auth = ref.watch(authControllerProvider);
   if (auth is! AuthAuthenticated) return null;
 
-  final prefs = await SharedPreferences.getInstance();
-  final outbox = SharedPreferencesChatOutbox(prefs);
-  final realtime = ref.watch(chatRealtimeProvider);
-  final rest = ref.watch(chatServiceProvider);
-
   // Derive the active provider role at the moment the controller is built.
   // Re-watching `providerTypeProvider` makes Riverpod tear down + rebuild
   // the controller when the human switches between driver and artisan,
@@ -32,12 +27,35 @@ final chatControllerProvider = FutureProvider<ChatController?>((ref) async {
   final providerType = ref.watch(providerTypeProvider);
   final selfRole =
       providerType.isDriver ? ChatSenderRole.driver : ChatSenderRole.artisan;
+  final expectedRole =
+      providerType.isDriver ? AuthRole.driver : AuthRole.artisan;
+  final roleAccountId = providerType.isDriver
+      ? auth.user.driverProfile?.id
+      : auth.user.artisanProfile?.id;
+  final identity = ref.watch(currentAuthSessionIdentityProvider);
+  if (identity == null ||
+      identity.role != expectedRole.name ||
+      auth.user.role != expectedRole ||
+      roleAccountId == null ||
+      auth.user.id != roleAccountId ||
+      identity.roleAccountId != roleAccountId) {
+    return null;
+  }
+
+  final prefs = await SharedPreferences.getInstance();
+  final outbox = SharedPreferencesChatOutbox(
+    prefs,
+    ownerKey:
+        '${identity.subject}|${identity.role}|${identity.roleAccountId}|${identity.sessionId}',
+  );
+  final realtime = ref.watch(chatRealtimeProvider);
+  final rest = ref.watch(chatServiceProvider);
 
   final controller = ChatController(
     rest: rest,
     realtime: realtime,
     outbox: outbox,
-    selfUserId: auth.user.id,
+    selfUserId: roleAccountId,
     // Required so a phone running both Provider + Client apps with the
     // same `auth.user.id` can still tell which side a message came from.
     // Without this, every bubble rendered on the right side.

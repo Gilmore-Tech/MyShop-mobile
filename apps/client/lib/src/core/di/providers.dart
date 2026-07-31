@@ -7,6 +7,8 @@ import '../../features/ride/data/ride_booking_attempt_store.dart';
 import '../../features/ride/data/ride_booking_coordinator.dart';
 import '../providers/current_location_provider.dart';
 import '../providers/app_update_provider.dart';
+import '../providers/auth_session_identity_provider.dart';
+import '../providers/service_notice_provider.dart';
 import '../services/google_places_service.dart';
 import 'force_logout_handler.dart';
 
@@ -62,6 +64,8 @@ final dioClientProvider = Provider<DioClient>((ref) {
     appKind: MobileAppKind.client,
     onAppUpdateRequired:
         ref.read(appUpdateRequirementProvider.notifier).requireUpdate,
+    onServiceIssue: ref.read(serviceNoticeProvider.notifier).report,
+    onServiceRecovered: ref.read(serviceNoticeProvider.notifier).recovered,
     onForceLogout: handler.call,
   );
 });
@@ -155,6 +159,7 @@ final appCallServiceProvider = Provider<AppCallService>((ref) {
 
 /// Live `/calls` socket used by the in-app call screen.
 final appCallSocketServiceProvider = Provider<AppCallSocketService>((ref) {
+  ref.watch(currentClientAuthSessionIdentityProvider);
   final service = AppCallSocketService(
     config: ref.watch(apiConfigProvider),
     tokenStorage: ref.watch(appTokenStorageProvider),

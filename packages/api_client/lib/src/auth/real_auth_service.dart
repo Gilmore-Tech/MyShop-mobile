@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 
+import '../http/auth_interceptor.dart';
+import '../http/token_storage.dart';
 import '../models/api_exception.dart';
 import '../models/auth_dtos.dart';
 import '../models/user_dtos.dart';
@@ -97,9 +99,26 @@ class RealAuthService implements AuthService {
   }
 
   @override
-  Future<void> logout() async {
+  Future<void> logout({
+    AuthSessionIdentity? expectedIdentity,
+    AuthTokenSnapshot? explicitLogoutSession,
+  }) async {
     try {
-      await _dio.post('/auth/logout');
+      await _dio.post(
+        '/auth/logout',
+        options: expectedIdentity == null && explicitLogoutSession == null
+            ? null
+            : Options(
+                extra: {
+                  if (expectedIdentity != null)
+                    AuthInterceptor.expectedSessionIdentityExtra:
+                        expectedIdentity,
+                  if (explicitLogoutSession != null)
+                    AuthInterceptor.explicitLogoutSessionExtra:
+                        explicitLogoutSession,
+                },
+              ),
+      );
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
     }

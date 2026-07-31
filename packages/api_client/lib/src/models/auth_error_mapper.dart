@@ -39,6 +39,17 @@ class AuthErrorCodes {
   /// stored access token is fresh.
   static const refreshInFlight = 'REFRESH_IN_FLIGHT';
 
+  /// The private auth root or exact role account referenced by the refresh
+  /// credential no longer exists/is active. These are explicit terminal
+  /// backend decisions, not inferred from an HTTP status.
+  static const userNotFound = 'USER_NOT_FOUND';
+  static const roleAccountUnavailable = 'ROLE_ACCOUNT_UNAVAILABLE';
+  static const roleAccountMismatch = 'ROLE_ACCOUNT_MISMATCH';
+
+  /// The signed SID-bearing bootstrap proof no longer names the server's
+  /// current recoverable legacy lineage.
+  static const legacyBootstrapProofInvalid = 'LEGACY_BOOTSTRAP_PROOF_INVALID';
+
   /// Returned by /auth/verify-otp (400) during provider signup when the
   /// `regionId` carried by the earlier register call is unknown/inactive —
   /// practically only a stale-cache edge case. The app re-fetches
@@ -67,6 +78,27 @@ class AuthErrorMapper {
       return _apiMessage(error);
     }
     return 'Something went wrong. Please try again.';
+  }
+
+  /// Adds only the server-generated UUID used to correlate support logs.
+  static String messageWithSupportReference(Object error) {
+    final safeMessage = message(error);
+    final reference = supportReference(error);
+    return reference == null
+        ? safeMessage
+        : '$safeMessage\nReference: $reference';
+  }
+
+  static String? supportReference(Object error) {
+    if (error is! ApiException) return null;
+    final raw = error.details?['supportReference'];
+    if (raw is! String) return null;
+    final reference = raw.trim().toLowerCase();
+    return RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+    ).hasMatch(reference)
+        ? reference
+        : null;
   }
 
   /// Extracts per-field validation messages from a [ValidationException].
@@ -136,10 +168,14 @@ class AuthErrorMapper {
   }
 
   static String _networkMessage(NetworkException e) {
-    if (e.message.contains('timed out')) {
-      return 'Connection timed out. Check your internet and try again.';
-    }
-    return 'No internet connection. Check your network and try again.';
+    return switch (e.kind) {
+      NetworkFailureKind.offline =>
+        'No internet connection. Check your network and try again.',
+      NetworkFailureKind.timeout =>
+        'Connection timed out. Check your internet and try again.',
+      NetworkFailureKind.unavailable =>
+        'Service temporarily unavailable. Please try again in a moment.',
+    };
   }
 
   static String _apiMessage(ApiException e) {
@@ -149,6 +185,18 @@ class AuthErrorMapper {
       case 'PHONE_ALREADY_REGISTERED':
       case 'USER_ALREADY_EXISTS':
         return 'This phone number is already registered. Try signing in instead.';
+
+      case 'DRIVER_ACCOUNT_EXISTS':
+        return 'A driver account already exists for this phone number. Sign in instead.';
+
+      case 'ARTISAN_ACCOUNT_EXISTS':
+        return 'An artisan account already exists for this phone number. Sign in instead.';
+
+      case 'ACCOUNT_EXISTS':
+        return 'This provider account already exists. Sign in instead.';
+
+      case 'EMAIL_ALREADY_EXISTS':
+        return 'That email is already used by another account. Go back and enter a different email.';
 
       case AuthErrorCodes.roleAccountRetained:
         return 'This role was previously deleted and cannot be registered again. Contact support if you want to request recovery.';
@@ -172,6 +220,42 @@ class AuthErrorMapper {
 
       case 'REGISTRATION_DISABLED':
         return 'New sign-ups are temporarily paused. Please try again later.';
+
+      case 'CATEGORIES_REQUIRED':
+        return 'Select at least one service before continuing.';
+
+      case 'INVALID_CATEGORY':
+        return 'One of your selected services is no longer available. Go back and choose your services again.';
+
+      case 'VEHICLE_DETAILS_REQUIRED':
+        return 'Complete all vehicle details before continuing.';
+
+      case 'INVALID_VEHICLE_PLATE':
+        return 'Enter a valid Ghana vehicle plate and try again.';
+
+      case 'VEHICLE_PLATE_IN_USE':
+        return 'That vehicle plate is already registered. Check it or contact support.';
+
+      case 'VEHICLE_CREATION_FAILED':
+        return 'We could not finish creating the vehicle. Please contact support with the reference below.';
+
+      case 'RIDE_CATEGORIES_REQUIRED':
+        return 'Select at least one ride category before continuing.';
+
+      case 'INVALID_RIDE_CATEGORY':
+        return 'One of your selected ride categories is no longer available. Go back and choose again.';
+
+      case 'INVALID_REFERRAL_CODE':
+        return 'That referral code is not valid. Correct it or remove it to continue.';
+
+      case 'SELF_REFERRAL_NOT_ALLOWED':
+        return 'You cannot use a referral code owned by one of your own accounts. Remove it to continue.';
+
+      case 'ROLE_ACCOUNT_REFERRALS_SUSPENDED':
+        return 'Referrals are temporarily unavailable. Remove the optional referral code to continue.';
+
+      case 'REFERRAL_ALREADY_LINKED':
+        return 'A referral is already linked to this provider account. Remove the code or contact support.';
 
       // ── Login ───────────────────────────────────────────────────────
       case 'USER_NOT_FOUND':
@@ -277,6 +361,16 @@ class AuthErrorMapper {
       case AuthErrorCodes.invalidRegion:
         return 'That region is no longer available. Go back and choose your region again, then re-enter the code.';
 
+      case 'LEGAL_DOCUMENT_CHANGED':
+        return 'The Terms or Privacy Notice changed. Go back, review and accept the current versions.';
+
+      case 'LEGAL_DOCUMENTS_UNAVAILABLE':
+      case 'DOCUMENT_NOT_FOUND':
+        return 'The current Terms and Privacy Notice are temporarily unavailable. Please try again shortly.';
+
+      case 'INVALID_REGISTRATION_ROLE':
+        return 'Return to account type selection and choose Driver or Artisan again.';
+
       // ── Validation (422) ────────────────────────────────────────────
       case 'VALIDATION_ERROR':
       case 'VALIDATION_FAILED':
@@ -285,7 +379,7 @@ class AuthErrorMapper {
       // ── Server ──────────────────────────────────────────────────────
       case 'INTERNAL_ERROR':
       case 'SERVER_ERROR':
-        return 'Internal error, please try again in a moment.';
+        return 'Service temporarily unavailable. Please try again in a moment.';
 
       default:
         return userSafeApiErrorMessage(
