@@ -10,15 +10,22 @@ Status captured: **2026-07-31 GMT**
 - [x] Focused one-file removal branches contain no Mobile/Admin runtime,
       database, API or signed-artifact change: Mobile PR `#118` targets
       `staging`; Admin PR `#30` targets `staging`.
-- [ ] Confirm the exposed credential has been revoked and replace any required
+- [x] The owner confirmed the exposed credential was revoked and replaced the
       developer automation credential through the host/keychain only. Removing
       it from Git does not revoke it or erase repository history.
-- [ ] Merge the two focused removal PRs through `staging`, promote the exact
-      fixes to `main`, then prove current-tree secret scans are clean on both
-      protected branches. Coordinate any history rewrite separately with both
-      developers only after revocation.
-- [ ] GitHub Actions did not execute Mobile PR `#117` or `#118`: GitHub marked
-      both `analyze-and-test` jobs failed before assigning a runner because of
+- [x] Focused removal PRs `#118`/`#30` merged through Mobile/Admin `staging`;
+      focused PRs `#119`/`#31` then promoted only the same one-file fixes to
+      `main`. Path-only current-tree scans on all four protected refs returned
+      no token-pattern match at Mobile main `1f30c9f…`, Mobile staging
+      `9931c5f…`, Admin main `ad28ab9…` and Admin staging `798c94e…`.
+      These repository-tool-only merges do not alter or require rebuilding the
+      four signed `1.4.1+26` artifacts.
+- [ ] Coordinate a decision with both developers on whether revoked historical
+      secret material warrants repository-history rewriting; do not rewrite
+      shared history during the active release.
+- [ ] GitHub Actions did not execute Mobile PR `#117`, `#118` or `#119`:
+      GitHub marked their `analyze-and-test` jobs failed before assigning a
+      runner because of
       an account payment/spending-limit condition. This is infrastructure
       evidence, not a passing or failing source test. Keep the recorded local
       exact-commit gates authoritative until Actions is restored or the owner
