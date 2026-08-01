@@ -18,9 +18,10 @@ older sections remain implementation evidence and historical context.
 - [x] Mobile Client/Provider signup preserves optional-code failures, maps the
       platform-code errors to safe copy, and permits an explicit code removal
       and one retry without attribution.
-- [x] The Mobile production branch is cut from exact `origin/main` and includes
-      only the two tested referral-signup runtime commits; the unrelated
-      deferred staging checklist snapshot is excluded.
+- [x] The Mobile production branch is cut from exact `origin/main`; its only
+      runtime delta is the two tested referral-signup commits. Release metadata,
+      mechanical formatting and this checklist are included, while the
+      unrelated deferred staging checklist snapshot is excluded.
 - [ ] Backend release-gate repair must pass exact-SHA CI before promotion. The
       already-applied attribution SQL remains immutable and checksum-frozen;
       the fresh-database legacy config precondition is a separate guarded
@@ -28,10 +29,10 @@ older sections remain implementation evidence and historical context.
 - [ ] Admin and Backend must merge through reviewed production PRs. Production
       launches dark: migration first, environment and DB attribution gates
       false, then Admin deploy and a controlled canary before activation.
-- [ ] The next store candidate is marketing version `1.4.2`. Repository build
-      floor is `26`, so `27` is the minimum; before building, confirm the current
-      private App Store Connect and Play Console maxima for all four targets and
-      use one common number greater than every maximum.
+- [ ] The next store candidate is marketing version `1.4.2`. The release-tool
+      build floor is `26`, so `27` is the minimum; before building, confirm the
+      current private App Store Connect and Play Console maxima for all four
+      targets and use one common number greater than every maximum.
 - [ ] Build Client/Provider AAB and IPA only from the final clean Mobile `main`
       merge SHA. Retain artifacts only under the repository `build/releases/`
       folder, verify signing/version/source/production API and SHA-256 hashes,
