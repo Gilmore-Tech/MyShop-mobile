@@ -19,8 +19,7 @@ void main() {
       ),
     );
 
-    final field =
-        tester.widget<IntlPhoneField>(find.byType(IntlPhoneField));
+    final field = tester.widget<IntlPhoneField>(find.byType(IntlPhoneField));
     expect(field.countries, hasLength(1));
     expect(field.countries!.single.code, 'GH');
     expect(field.showDropdownIcon, isFalse);

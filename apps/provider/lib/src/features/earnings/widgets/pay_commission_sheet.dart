@@ -109,9 +109,7 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
     });
 
     try {
-      final res = await ref
-          .read(paymentServiceProvider)
-          .remitCashCommission(
+      final res = await ref.read(paymentServiceProvider).remitCashCommission(
             amountPesewas: amount,
             paymentMethod: _selectedMethod,
             momoPhone: phone,
@@ -124,8 +122,7 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
 
       setState(() {
         _step = _Step.awaiting;
-        _displayText =
-            (res['displayText'] as String?) ??
+        _displayText = (res['displayText'] as String?) ??
             'Authorise the prompt on '
                 'your phone to complete the payment.';
         _surplusPesewas = (res['surplusPesewas'] as num?)?.toInt() ?? 0;
@@ -559,8 +556,8 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
           cancelled
               ? 'Payment cancelled'
               : reversed
-              ? 'Payment reversed'
-              : 'Payment not completed',
+                  ? 'Payment reversed'
+                  : 'Payment not completed',
           textAlign: TextAlign.center,
           style: const TextStyle(
             fontFamily: 'Raleway',
@@ -572,9 +569,9 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
         Text(
           reversed
               ? 'The payment was reversed by the payment network. Your Owings '
-                    'balance was not changed.'
+                  'balance was not changed.'
               : 'No commission payment was applied. Your Owings balance was '
-                    'not changed.',
+                  'not changed.',
           textAlign: TextAlign.center,
           style: MyShopTypography.body2.copyWith(
             color: MyShopColors.textSecondary,

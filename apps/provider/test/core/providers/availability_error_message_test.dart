@@ -80,7 +80,8 @@ void main() {
     );
   });
 
-  test('missing vehicle-document expiry names the admin correction required', () {
+  test('missing vehicle-document expiry names the admin correction required',
+      () {
     const error = ApiException(
       message: 'provider eligibility failed',
       statusCode: 403,

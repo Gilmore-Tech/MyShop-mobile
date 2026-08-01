@@ -86,8 +86,7 @@ class _MyShopPhoneInputScreenState extends State<MyShopPhoneInputScreen> {
       setState(() => _localError = widget.invalidPhoneMessage);
       return;
     }
-    final validationError =
-        widget.phoneValidator?.call(_phone!.completeNumber);
+    final validationError = widget.phoneValidator?.call(_phone!.completeNumber);
     if (validationError != null) {
       setState(() => _localError = validationError);
       return;

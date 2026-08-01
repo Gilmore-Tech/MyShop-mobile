@@ -52,8 +52,7 @@ final logoutCleanupBridgeProvider = Provider<void>((ref) {
     ref.read(incomingRideRequestProvider.notifier).state = null;
     ref.read(visibleRideRequestIdProvider.notifier).state = null;
     ref.read(visibleRideRequestOwnerProvider.notifier).state = null;
-    ref.read(rideRequestNavigationInFlightProvider.notifier).state =
-        <String>{};
+    ref.read(rideRequestNavigationInFlightProvider.notifier).state = <String>{};
 
     // Drop any in-flight active ride / job. Without this a driver who
     // logs out mid-trip and an artisan who logs in next can briefly see

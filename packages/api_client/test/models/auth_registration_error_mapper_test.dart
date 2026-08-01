@@ -16,8 +16,12 @@ void main() {
       'ARTISAN_ACCOUNT_EXISTS': 'artisan account already exists',
       'INVALID_REFERRAL_CODE': 'referral code is not valid',
       'SELF_REFERRAL_NOT_ALLOWED': 'cannot use a referral code owned',
-      'ROLE_ACCOUNT_REFERRALS_SUSPENDED':
-          'Remove the optional referral code',
+      'REFERRAL_ALREADY_LINKED': 'already linked to this account',
+      'ROLE_ACCOUNT_REFERRALS_SUSPENDED': 'Remove the optional referral code',
+      'INVALID_PLATFORM_REFERRAL_CODE': 'promotional code is not valid',
+      'PLATFORM_REFERRAL_CODE_INACTIVE': 'promotional code is no longer active',
+      'PLATFORM_SIGNUP_ATTRIBUTION_SUSPENDED':
+          'Promotional signup codes are temporarily unavailable',
       'INVALID_REGION': 'region is no longer available',
       'LEGAL_DOCUMENT_CHANGED': 'Terms or Privacy Notice changed',
       'LEGAL_DOCUMENTS_UNAVAILABLE':
@@ -40,6 +44,33 @@ void main() {
         reason: entry.key,
       );
     }
+  });
+
+  test('identifies only referral registration failures as removable', () {
+    for (final code in const [
+      'INVALID_REFERRAL_CODE',
+      'SELF_REFERRAL_NOT_ALLOWED',
+      'REFERRAL_ALREADY_LINKED',
+      'ROLE_ACCOUNT_REFERRALS_SUSPENDED',
+      'INVALID_PLATFORM_REFERRAL_CODE',
+      'PLATFORM_REFERRAL_CODE_INACTIVE',
+      'PLATFORM_SIGNUP_ATTRIBUTION_SUSPENDED',
+    ]) {
+      expect(
+        AuthErrorMapper.isReferralRegistrationErrorCode(code),
+        isTrue,
+        reason: code,
+      );
+    }
+
+    expect(
+      AuthErrorMapper.isReferralRegistrationErrorCode('INVALID_RIDE_CATEGORY'),
+      isFalse,
+    );
+    expect(
+      AuthErrorMapper.isReferralRegistrationErrorCode(null),
+      isFalse,
+    );
   });
 
   test('appends only a valid backend support UUID', () {

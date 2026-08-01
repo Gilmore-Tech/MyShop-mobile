@@ -1,9 +1,10 @@
 name: myshop_provider
 description: MyShop Provider App — Drive or offer artisan services in Ghana
 publish_to: 'none'
-# Marketing version approved in BR-65. Store builds must override the local
-# build-number floor through tool/build.sh after checking both private consoles.
-version: 1.4.1+20
+# Store-update marketing version. Legal-document consent versions remain
+# independent. Release builds must override the local build-number floor through
+# tool/build.sh after checking both private consoles.
+version: 1.4.2+20
 
 environment:
   sdk: ^3.6.0

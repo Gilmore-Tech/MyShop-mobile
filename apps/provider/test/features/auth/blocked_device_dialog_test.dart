@@ -38,6 +38,7 @@ class _TestAuthController extends AuthController {
   _TestAuthController(
     AuthState initial, {
     this.retainOnRegistration = false,
+    this.referralErrorOnFirstRegistrationCode,
   }) : super(
           AuthRepository(
             service: MockAuthService(),
@@ -50,6 +51,9 @@ class _TestAuthController extends AuthController {
   }
 
   final bool retainOnRegistration;
+  final String? referralErrorOnFirstRegistrationCode;
+  final List<String?> submittedReferralCodes = [];
+  bool _returnedReferralError = false;
 
   @override
   Future<void> bootstrap() async {}
@@ -75,12 +79,33 @@ class _TestAuthController extends AuthController {
     String? vehiclePlate,
     String? vehicleColor,
   }) async {
-    if (!retainOnRegistration) return;
-    state = const AuthUnauthenticated(
-      error: 'This role was previously deleted and cannot be registered again. '
-          'Contact support if you want to request recovery.',
-      requiresRoleRecoverySupport: true,
-    );
+    submittedReferralCodes.add(referralCode);
+    if (retainOnRegistration) {
+      state = const AuthUnauthenticated(
+        error:
+            'This role was previously deleted and cannot be registered again. '
+            'Contact support if you want to request recovery.',
+        requiresRoleRecoverySupport: true,
+      );
+      return;
+    }
+    if (referralErrorOnFirstRegistrationCode != null &&
+        referralCode != null &&
+        !_returnedReferralError) {
+      _returnedReferralError = true;
+      state = AuthUnauthenticated(
+        error: AuthErrorMapper.message(
+          ApiException(
+            message: 'backend details must stay hidden',
+            statusCode: 503,
+            errorCode: referralErrorOnFirstRegistrationCode,
+          ),
+        ),
+        errorCode: referralErrorOnFirstRegistrationCode,
+      );
+      return;
+    }
+    state = AuthOtpSent(phone: phone, isNewUser: true, role: role);
   }
 
   @override
@@ -230,4 +255,73 @@ void main() {
     expect(find.text('Recover deleted driver role'), findsOneWidget);
     expect(find.byKey(const Key('role-recovery-send-code')), findsOneWidget);
   });
+
+  testWidgets(
+    'provider referral failure preserves the draft until explicit removal',
+    (tester) async {
+      final controller = _TestAuthController(
+        const AuthUnauthenticated(),
+        referralErrorOnFirstRegistrationCode:
+            'PLATFORM_SIGNUP_ATTRIBUTION_SUSPENDED',
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authControllerProvider.overrideWith((_) => controller),
+            registrationLegalDocumentsProvider.overrideWith(
+              (_, __) async => _requiredDriverLegalDocuments,
+            ),
+            termsAcceptedProvider.overrideWith((_) => true),
+            privacyAcceptedProvider.overrideWith((_) => true),
+            driverRegistrationProvider.overrideWith((_) {
+              final draft = DriverRegistrationController();
+              draft.update(
+                DriverRegistrationDraft(
+                  fullName: 'Kofi Mensah',
+                  email: 'kofi@example.com',
+                  ghanaCardNumber: 'GHA-123456789-0',
+                  vehicleMake: 'Toyota',
+                  vehicleModel: 'Corolla',
+                  vehicleYear: '2020',
+                  vehiclePlate: 'GR 1234-20',
+                  vehicleColor: 'White',
+                  rideCategories: const ['regular'],
+                  referralCode: 'MYSHOP-ABC123',
+                ),
+              );
+              return draft;
+            }),
+          ],
+          child: const MaterialApp(
+            home: ProviderPhoneInputScreen(
+              mode: PhoneInputMode.signUp,
+              signUpRole: ProviderType.driver,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).first, '501234567');
+      await tester.pump();
+      await tester.tap(find.text('Send code'));
+      await tester.pumpAndSettle();
+
+      expect(controller.submittedReferralCodes, ['MYSHOP-ABC123']);
+      expect(
+        find.textContaining(
+          'Promotional signup codes are temporarily unavailable',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Remove code and continue'), findsOneWidget);
+
+      await tester.tap(find.text('Remove code and continue'));
+      await tester.pumpAndSettle();
+
+      expect(controller.submittedReferralCodes, ['MYSHOP-ABC123', null]);
+      expect(find.text('Remove code and continue'), findsNothing);
+    },
+  );
 }

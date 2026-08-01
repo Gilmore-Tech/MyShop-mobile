@@ -100,6 +100,10 @@ class _ProviderPhoneInputScreenState
             signUpRole ?? ProviderType.driver,
           )
         : null;
+    final role = signUpRole ?? ProviderType.driver;
+    final canRemoveReferral = mode == PhoneInputMode.signUp &&
+        AuthErrorMapper.isReferralRegistrationErrorCode(remoteErrorCode) &&
+        _currentReferralCode(role).isNotEmpty;
 
     final title =
         mode == PhoneInputMode.signIn ? 'Welcome back' : 'Verify your phone';
@@ -146,52 +150,68 @@ class _ProviderPhoneInputScreenState
                 ),
               ],
             )
-          : correction != null
+          : canRemoveReferral
               ? TextButton.icon(
+                  key: const Key(
+                    'provider-remove-referral-and-continue',
+                  ),
                   onPressed: isLoading
                       ? null
-                      : () => _reviewBackendCorrection(
-                            signUpRole ?? ProviderType.driver,
-                            correction,
-                            remoteErrorCode,
-                          ),
+                      : () => _removeReferralCodeAndContinue(role),
                   style: TextButton.styleFrom(
                     minimumSize: const Size(double.infinity, 48),
                     foregroundColor: MyShopColors.primaryGoldDark,
                   ),
-                  icon: const Icon(Icons.edit_outlined),
-                  label: Text(correction.message),
+                  icon: const Icon(Icons.link_off_rounded),
+                  label: const Text('Remove code and continue'),
                 )
-              : mode == PhoneInputMode.signIn
-              ? TextButton(
-                  onPressed:
-                      isLoading ? null : () => context.go('/signup/role'),
-                  style: TextButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 48),
-                    foregroundColor: MyShopColors.primaryGoldDark,
-                  ),
-                  child: Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(
-                          text: "Don't have an account? ",
-                          style: MyShopTypography.body1.copyWith(
-                            color: MyShopColors.textSecondary,
-                            fontWeight: FontWeight.w500,
+              : correction != null
+                  ? TextButton.icon(
+                      onPressed: isLoading
+                          ? null
+                          : () => _reviewBackendCorrection(
+                                signUpRole ?? ProviderType.driver,
+                                correction,
+                                remoteErrorCode,
+                              ),
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 48),
+                        foregroundColor: MyShopColors.primaryGoldDark,
+                      ),
+                      icon: const Icon(Icons.edit_outlined),
+                      label: Text(correction.message),
+                    )
+                  : mode == PhoneInputMode.signIn
+                      ? TextButton(
+                          onPressed: isLoading
+                              ? null
+                              : () => context.go('/signup/role'),
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 48),
+                            foregroundColor: MyShopColors.primaryGoldDark,
                           ),
-                        ),
-                        TextSpan(
-                          text: 'Sign up',
-                          style: MyShopTypography.body1.copyWith(
-                            color: MyShopColors.primaryGoldDark,
-                            fontWeight: FontWeight.w700,
+                          child: Text.rich(
+                            TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: "Don't have an account? ",
+                                  style: MyShopTypography.body1.copyWith(
+                                    color: MyShopColors.textSecondary,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                TextSpan(
+                                  text: 'Sign up',
+                                  style: MyShopTypography.body1.copyWith(
+                                    color: MyShopColors.primaryGoldDark,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : null,
+                        )
+                      : null,
     );
   }
 
@@ -338,6 +358,32 @@ class _ProviderPhoneInputScreenState
       ref.invalidate(regionsProvider);
     }
     _returnToRegistration(role, issue, showToast: false);
+  }
+
+  String _currentReferralCode(ProviderType role) {
+    return role == ProviderType.driver
+        ? ref.read(driverRegistrationProvider).referralCode.trim()
+        : ref.read(artisanRegistrationProvider).referralCode.trim();
+  }
+
+  Future<void> _removeReferralCodeAndContinue(ProviderType role) async {
+    final phone = _lastSubmittedPhone;
+    if (phone == null || _currentReferralCode(role).isEmpty) return;
+
+    if (role == ProviderType.driver) {
+      final draft = ref.read(driverRegistrationProvider);
+      ref.read(driverRegistrationProvider.notifier).update(
+            draft.copyWith(referralCode: ''),
+          );
+    } else {
+      final draft = ref.read(artisanRegistrationProvider);
+      ref.read(artisanRegistrationProvider.notifier).update(
+            draft.copyWith(referralCode: ''),
+          );
+    }
+
+    ref.read(authControllerProvider.notifier).clearError();
+    await _submit(phone);
   }
 
   Future<void> _contactRecoverySupport() async {
