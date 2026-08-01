@@ -1,6 +1,660 @@
 # Current Mobile Update Checklist
 
-Status captured: **2026-07-31 GMT**
+Status captured: **2026-08-01 GMT**
+
+## 2026-07-31 18:56 UTC credit-preservation and exact resume checkpoint
+
+- [x] Overall verified goal progress at this pause is **78% complete / 22%
+      remaining**. This percentage counts released evidence and independently
+      verified local slices; it does not count unfinished source, an unrun
+      harness, a store upload, or an intended change as complete.
+- [x] All implementation/review agents were stopped at the owner's request to
+      conserve credits. No change from this resumed hardening pass was pushed,
+      merged, deployed, migrated or applied to an environment.
+- [x] Mobile Driver online/offline/location authority foundation is safely
+      committed locally as `7105dd4b0e913e6ad902ee25373f336cc72aa467`.
+      The follow-on request-ingress worktree is
+      `/Users/ayiks/Desktop/ayiks/gilmore/worktrees/mobile/myshop-mobile-driver-ride-offer-authority-gate-20260731`
+      on `fix/driver-ride-offer-authority-gate-20260731`. It contains the
+      integrated authoritative-deadline commit `6668e07` and exactly two
+      unfinished, uncommitted paths:
+      `apps/provider/lib/src/core/services/ride_offer_receipt_service.dart`
+      and the new
+      `apps/provider/lib/src/core/providers/driver_ride_offer_authority_provider.dart`.
+      The partial source passes `git diff --check`, but it is not wired through
+      all ingress/action surfaces and has not been tested; do not build, push or
+      merge it as-is.
+- [x] Backend dispatch/availability/logout/token authority is safely committed
+      locally at combined head `0eb18fdbb4f208168d76c9754623ad2810218f8c`
+      in
+      `/Users/ayiks/Desktop/ayiks/gilmore/worktrees/backend/myshop-backend-dispatch-contract-20260731`.
+      Exact displaced-session cleanup is separately committed as
+      `59615bf502652df91de6ad01403c856f6a4115fb`; independent review accepted it
+      with no introduced critical/high blocker.
+- [x] The critical login winner/CAS draft remains deliberately uncommitted in
+      exactly
+      `apps/api/src/modules/auth/auth.service.ts` and
+      `apps/api/src/modules/auth/role-refresh-lineage.service.ts` inside
+      `/Users/ayiks/Desktop/ayiks/gilmore/worktrees/backend/myshop-backend-session-establishment-race-20260731`.
+      Do not commit or continue it without explicit owner approval after
+      restating that a defective change could disrupt all logins. Do not clean
+      or overwrite the draft either.
+- [x] The successor-safe markerless Redis-presence follow-up has a clean,
+      no-edit worktree at
+      `/Users/ayiks/Desktop/ayiks/gilmore/worktrees/backend/myshop-backend-markerless-presence-cleanup-20260731`,
+      branch `fix/markerless-provider-presence-cleanup-20260731`, based on
+      `59615bf`. The finding is medium operational/durability severity: it
+      cannot pass canonical PostGIS matching after the provider is durably
+      Offline, but stale Redis GEO members can accumulate and must be fixed
+      before claiming 100k-DAU readiness.
+- [ ] Exact resume order: (1) finish the central typed Mobile offer-authority
+      store/gate and tests; (2) wire socket, FCM, durable receipt, Flutter/native
+      tap/action, Android overlay, iOS Live Activity, canonical recovery,
+      accept/decline/expiry and exact cleanup; (3) run full Provider/API-client
+      gates and independent review; (4) obtain explicit approval before the
+      critical login CAS rewrite; (5) finish markerless cleanup and remaining
+      legacy-session races; (6) run the real PostgreSQL/Redis concurrency,
+      Redis failover, staging canary, fault and load gates.
+- [ ] Any newly reported production bug must first be recorded under the store
+      monitoring section with app/platform/build, time, user-visible symptom,
+      reproduction, logs/request reference and severity. Isolate an emergency
+      fix from these unfinished branches unless evidence proves the bug belongs
+      to the same authority contract.
+
+## 2026-07-31 store release and monitoring checkpoint
+
+### Referral signup incident audit
+
+- [x] Source trace confirms that an omitted/blank referral code does not block
+      signup: both Mobile apps omit it from `RegisterRequest`, and Backend
+      skips referral validation/linkage. If a code is supplied, Backend calls
+      `validateRegistrationCode()` before creating OTP state or attempting
+      delivery.
+- [x] A supplied code currently fails registration with
+      `ROLE_ACCOUNT_REFERRALS_SUSPENDED` whenever either
+      `FF_ROLE_ACCOUNT_REFERRALS` or the database
+      `role_account_referrals_enabled` switch is not exactly true. This occurs
+      before OTP and explains why only some signup attempts can fail while
+      otherwise identical attempts without a code succeed.
+- [x] Mobile referral signup recovery is committed locally in isolated branch
+      `fix/referral-signup-reliability-20260731` at `901fa2f` and `0fe9850`.
+      Client and Provider now map role-referral and platform-code failures to
+      safe copy, preserve the entered optional code, and offer an explicit
+      remove-code-and-single-retry path; blank codes remain omitted. Fresh
+      focused evidence: Client **3/3**, Provider **9/9**, API client **3/3**,
+      targeted analyzers and diff check pass. Independent review found no
+      high/medium blocker. Nothing is pushed or deployed.
+- [x] Automatic exact-role code creation is database-owned: each new
+      client/driver/artisan profile trigger creates one `role_reward_accounts`
+      row; `generate_role_referral_code()` serializes allocation with a
+      transaction advisory lock, checks both new and legacy namespaces, and a
+      unique index is the final collision fence. Focused Backend migration,
+      referral and registration DTO suites pass **25/25**; Provider referral
+      validation passes **2/2**; Client deep-link/signup routing passes **4/4**.
+      No real-database collision/load run was performed in this checkpoint.
+- [x] Current Admin supports list, metrics, exact-role funnel, manual reward
+      award/void and reward configuration. It has no API, permission or UI for
+      creating, assigning, replacing or aliasing referral codes. Existing
+      `manage_referrals` is not Super-Admin-only.
+- [x] The owner approved a distinct **platform referral code** model on
+      2026-07-31. It is not an alias for any client/driver/artisan role and
+      creates **no digital or individual referral reward**; any campaign reward
+      is physical and outside MyShop's payment/loyalty ledgers. It only tallies
+      signup attribution on Admin. Approved V1 uses exact format
+      `MYSHOP-XXXXXX`, a required campaign name, one attribution per exact role
+      registration, aggregate total/client/driver/artisan/daily reporting
+      without personal drilldown, immutable deactivate-only codes, no expiry
+      or usage cap, and an independent default-off rollout switch. The same
+      private phone identity may be attributed separately when it genuinely
+      creates Client, Driver and Artisan roles. Deactivation blocks new
+      registration requests while preserving a code already accepted into
+      that five-minute OTP. Only literal global `super_admin` may create or
+      deactivate; `view_referrals` may view aggregate results. Existing
+      generated exact-role codes and reward behavior remain unchanged.
+- [x] Admin platform-code V1 is committed locally at `8d9a2e9` on
+      `feat/platform-attribution-codes-admin-20260731`. It adds a separately
+      loaded platform-promo tab, exact-Super-Admin create/deactivate actions,
+      permanent immutable lifecycle and aggregate total/by-role/daily counts
+      without PII, drilldown or digital-reward actions. Contract tests pass
+      **5/5**, safe-error tests **12/12**, typecheck/lint/production build/diff
+      checks pass, and independent review found no high/medium blocker. It is
+      not pushed or deployed.
+- [x] Backend platform-code V1 is committed locally as stack `6612ce1`,
+      `a852798`, `b0a8606`, with final branch
+      `fix/platform-code-legacy-collision-20260801`. It adds separate immutable
+      attribution tables; independent default-off environment/database gates;
+      OTP-bound snapshots; exact-role, reviewer and mutual-exclusion fences;
+      globally serialized platform, role and legacy code namespaces; audited
+      exact-Super-Admin create/deactivate endpoints; and aggregate-only Admin
+      reads. Reciprocal database triggers close both platform/role attribution
+      races and platform/legacy-code races without allowing a later trigger to
+      mutate reviewer reward state. Final focused Backend suites pass
+      **262/262**, the changed migration/service suites pass **18/18**, the
+      disposable harness parses cleanly and diff checks pass. It is not pushed,
+      deployed or applied to a database. Final independent review found no
+      high/medium blocker and marked the stack ready for staged testing.
+- [ ] Before enabling platform attribution, run migration
+      `20260731180000_platform_signup_attribution` on a disposable PostgreSQL
+      database and execute
+      `pnpm --filter @myshop/database test:platform-attribution:integration`.
+      The harness covers both winners of role/platform and legacy/platform
+      races plus NULL, normalization, collision and reviewer-fence sequences,
+      but is unrun because local Docker/PostgreSQL is off. Then apply only to
+      staging, set `FF_PLATFORM_SIGNUP_ATTRIBUTION=true` and audited DB key
+      `platform_signup_attribution_enabled=true`, and verify: no-code signup;
+      existing individual role-code signup/reward; platform-code signup for
+      Client, Driver and Artisan exact roles; aggregate-only Admin counts; zero
+      loyalty/payment ledger writes; inactive-code recovery; an OTP accepted
+      immediately before deactivation; exact-Super-Admin mutation denial; and
+      permanent deactivation. Keep both production switches false until this
+      evidence is recorded.
+- [ ] Production referral-switch state was not proved in this audit: the public
+      `/v1/config` request is correctly authentication-protected. Verify both
+      the Render environment flag and audited database boolean without exposing
+      credentials before reproducing the incident.
+
+- [x] The owner reports that Client Android, Client iOS, Provider Android and
+      Provider iOS `1.4.1+26` were released to their stores. Store feedback and
+      newly reported production defects must be added to this checklist as
+      they arrive; they must not be mixed into an unrelated deferred branch.
+- [x] A public Ghana storefront check observed marketing version `1.4.1` on
+      both Google Play package IDs on 2026-07-31. Public Play pages do not
+      expose `versionCode`, staged-rollout percentage or private-console build
+      evidence, so this observation alone does not prove build `26` or a 100%
+      rollout.
+- [ ] Apple's public Ghana lookup still exposed Client `1.3.9` and Provider
+      `1.4.0` on a fresh bundle-ID lookup at `2026-07-31 18:22 UTC`, despite
+      the owner-confirmed store release. Confirm App Store Connect availability
+      and wait until both public
+      listings expose `1.4.1`; do not treat upload, processing, approval and
+      public propagation as the same state.
+- [ ] The currently public iOS descriptions still contain unproved/deferred
+      claims, including instant/same-day payout, a 24-hour verification SLA,
+      verified clients, trip recording, full Twi and loyalty promises. Confirm
+      the pending `1.4.1` metadata against
+      `docs/store-listing-v1.4.1-corrections.md` before it becomes public, and
+      verify the Android listings use semantically equivalent safe copy.
+- [ ] Install the store-served Client and Provider builds on physical Android
+      and iPhone devices and record their displayed build/version before
+      running the smoke matrix below.
+- [ ] Record a 24-hour, 48-hour and 72-hour post-release observation for
+      crashes, unexpected logout/session recovery, OTP delivery, Client
+      booking, Provider online/location, request delivery, calls, payments and
+      refunds, including rollback thresholds and the operator responsible.
+- [x] Completed a source-backed post-release observability inventory. The
+      System Audit summary, durable ride/offer/payment/refund records, Admin
+      reports and protected Prometheus metrics can cover aggregate operational
+      checks without exposing customer records.
+- [ ] Client and Provider currently initialize no Crashlytics/Sentry-equivalent
+      crash service. Mobile lifecycle telemetry is not crash-free-user, ANR,
+      native-crash, startup-crash or symbolication evidence; select and prove a
+      privacy-reviewed crash-monitoring path before claiming crash coverage.
+- [ ] For the already-released build, record the 24/48/72-hour crash and ANR
+      baseline from Google Play Android Vitals and App Store Connect crash
+      diagnostics for each app while the in-app crash-monitoring decision is
+      still open.
+- [ ] `/v1/metrics` is bearer-protected and defaults disabled; verify its actual
+      production configuration and external scraper/dashboards without printing
+      credentials. Health plus the Admin audit vault remain the minimum manual
+      observation path until this is proved.
+- [ ] Approve numeric release abort/page thresholds and a named on-call owner
+      for readiness/API 5xx/latency, refresh and OTP failure ratios, booking and
+      offer-receipt outcomes, stale provider location, request delivery, call
+      connection/drop/TURN errors, and payment/refund failure or backlog age.
+- [x] Production `/v1/health/live` and `/v1/health/ready` returned HTTP `200`
+      at `2026-07-31 14:51 UTC`; database and Redis reported `ok`, and both
+      responses identified deployed commit `6d6bcb466926c828191660601d24aa426edf7df9`.
+- [x] A second production `/v1/health` observation at
+      `2026-07-31 17:31 UTC` remained HTTP `200` with database and Redis `ok`
+      and the same deployed commit.
+- [x] A third production Render health observation at
+      `2026-07-31 18:18 UTC` remained HTTP `200` with database and Redis `ok`,
+      uptime above 7.8 hours and the same deployed commit; release version
+      metadata still reported `unknown`.
+- [x] A fourth production health observation at `2026-07-31 18:30 UTC`
+      remained HTTP `200`; database and Redis were `ok`, uptime exceeded eight
+      hours and commit `6d6bcb466926c828191660601d24aa426edf7df9` was
+      unchanged. Release version metadata still reported `unknown`.
+- [x] A fifth production health observation at `2026-07-31 18:52 UTC`
+      remained HTTP `200`; database and Redis were `ok`, uptime exceeded 8.4
+      hours and commit `6d6bcb466926c828191660601d24aa426edf7df9` was
+      unchanged. Release version metadata still reported `unknown`.
+- [ ] Production health still reports release version `unknown`. Set and
+      verify non-secret Backend `APP_VERSION` release metadata separately;
+      this does not invalidate the exact deployed-commit evidence above.
+- [ ] Keep the controlled refresh-lineage authority cutover and all preserved
+      deferred branches outside emergency store-fix work until their own
+      production gates pass.
+
+## 2026-07-31 resumed goal: bounded hardening queue
+
+- [x] Reconciled the preserved Mobile, Backend and Admin work. Large OTP,
+      release-integration and Mobile worktrees remain preservation sources,
+      not merge candidates; each change must be extracted onto current
+      `staging` as a small independently tested PR.
+- [x] Preserved the primary Mobile workspace without deleting or rebasing it:
+      local-only branch `wip/goal-mobile-preservation-20260731`, commit
+      `37d8ef905266dd16e56448c73956152a8f788da4`, contains all 87 changed paths.
+      Of those, 77 contain work absent from both current remote branches and 48
+      overlap paths changed upstream. Do not push or merge this raw snapshot;
+      its old base predates the credential-removal merge. Extract reviewed
+      slices onto current `staging` instead.
+- [ ] Backend support-attachment URL redaction is isolated from current
+      Backend `staging` in exactly two tracked files. It preserves the stable
+      `UNCONFIRMED_ATTACHMENT` code/message and replaces returned URLs with a
+      non-sensitive invalid-entry count. Evidence currently passes the focused
+      **4/4** suite, API typecheck, five-package API build, Prettier,
+      `git diff --check`, and the full **222/222 suites / 4,429/4,429 tests**.
+      The focused test, typecheck, full suite and forced uncached **5/5** build
+      were rerun successfully with the repository-pinned Node **22.23.0**.
+      Local commit: `1d695b6963aef47eb3703e6983a55c9b8a86a130`;
+      it has not been pushed or merged.
+- [ ] Backend Prisma error-metadata redaction is isolated from current
+      Backend `staging` in exactly two tracked files. `P2002` retains HTTP
+      `409`, `UNIQUE_CONSTRAINT` and its stable message; `P2003` retains HTTP
+      `400`, `FOREIGN_KEY_VIOLATION` and its stable message, while Prisma
+      constraint/model/field metadata is omitted. Evidence passes the focused
+      **5/5** suite, API typecheck, five-package API build, Prettier,
+      `git diff --check`, and the full **222/222 suites / 4,431/4,431 tests**.
+      The focused test, typecheck, full suite and forced uncached **5/5** build
+      were rerun successfully with Node **22.23.0**. It remains a separate
+      unpushed slice at local commit
+      `7f07061e2d1728f28b8044fd5b62d3178d520bac`.
+- [ ] Admin support-contact/log-privacy hardening is isolated from current
+      Admin `staging` in exactly seven scoped files; `.claude` is unchanged.
+      It preserves direct-recipient/audience SMS behavior and current safe API
+      mappings, installs the approved support email/phone defaults, and fixes
+      generic diagnostics to a constant error class. Evidence passes log
+      privacy **3/3**, support contacts **1/1**, API error containment
+      **11/11**, clawback groups **2/2**, lint with zero errors, the production
+      build and `git diff --check`. Stored `platform_config` values may
+      override the defaults and still require separate environment checks.
+      Local commit: `c1ed7deb39b91aa7f1e25dd04a61a2ede23b1dd9`;
+      it has not been pushed or merged.
+- [ ] Follow with the Admin audit-vault/webhook failure-containment slice,
+      corrected against the current exact-role SMS contract.
+- [x] Current Backend already contains Redis-global HTTP admission,
+      Redis-backed WebSocket leases, OTP Redis-TIME budgets/cooldowns/circuit
+      containment, and a production `noeviction` startup/readiness gate. Do
+      not duplicate these capabilities; their configured capacity and real
+      infrastructure evidence remain separate open gates.
+- [x] Audited the preserved scale branch against current `staging`: it is 22
+      commits ahead but 35 behind, spans 264 files and 63 migrations, and has
+      stale 45-second ride-offer assumptions. It is forbidden as a wholesale
+      merge or cherry-pick source.
+- [ ] Scale slice 1 is isolated from current Backend `staging`: the unused
+      module-level Prisma singleton is removed, leaving one Nest-owned pool per
+      API replica, with fixed-label active/idle/total/waiting/capacity gauges
+      and bounded pool configuration. Repository-wide consumer proof found no
+      caller of the removed singleton. Exact Node **22.23.0** evidence passes
+      focused **17/17**, full **223/223 suites / 4,435/4,435 tests**, API
+      typecheck, forced uncached **5/5** build, formatting and diff checks. No
+      migration is added. Before staging, verify actual pool min/max/timeouts,
+      replica count and Neon connection capacity; metrics also remain invisible
+      until the protected metrics pipeline is enabled and scraped. Local
+      commit: `9f80465fb3317438bf6e99890a5b22add8662054`;
+      it has not been pushed or merged.
+- [ ] Scale slice 2 audit is complete on Backend staging `a8a1e268…`.
+      Production `noeviction`, global admission and WebSocket leases already
+      exist, but the shared command client still permits offline queue/replay
+      with no command/socket deadline, Socket.IO pub/sub uses unlimited retries
+      and is invisible to readiness, and several Provider HTTP/socket auth paths
+      can misclassify Redis infrastructure failure as 401/takeover. Implement
+      bounded no-replay command/pub-sub clients, runtime readiness and truthful
+      retryable authority-unavailable errors without clearing login tokens.
+      No migration, Redis flush or prefix change is required. Owner approval is
+      pending for the recommended 10-second startup, 2-second command,
+      3-second socket-stall and 2-second shutdown limits, and for disconnecting
+      existing sockets to force safe reconnect rather than allowing local-only
+      split-brain operation during pub/sub loss.
+- [ ] Scale slice 3: extract the first multi-replica scheduler-fencing cohort
+      for ride-stage, disconnect-grace and location-degradation work, with
+      durable row claims and reviewed concurrent indexes. Depends on slice 2.
+- [ ] Scale slice 4: add owner-gated alert rules for replica/build health,
+      5xx/p99, database/Redis pressure, stalled workers, audit loss, TURN and
+      event-loop lag. Numeric thresholds require explicit owner approval.
+- [ ] Scale slice 5: port only isolated topology/backlog/load evidence tooling
+      to the current 30-second request contract. Existing presets top out at
+      500 client VUs and a 2x pilot and must not be represented as 100k-DAU
+      proof; live-provider bulk OTP remains excluded.
+
+## 2026-07-31 dispatch-authority hardening checkpoint
+
+- [x] Provider Mobile no longer manufactures a ride-offer deadline from
+      `createdAt`, `acceptanceWindowSeconds`, `expiresInSeconds` or a local
+      30-second fallback. It requires the Backend's absolute offer deadline,
+      performs bounded pending-offer reconciliation when that deadline is
+      missing, and otherwise clears the request without sending a punitive
+      decline. The isolated local commit
+      `a5d806689059c377fc1988db5263973754ce2be0` passes the complete Provider
+      **292/292** test suite, targeted analysis and `git diff --check`; it has
+      not been pushed or merged.
+- [ ] Backend immutable Driver offer authority is isolated on current
+      `staging` and adds the public role-account/online-session/selected-vehicle
+      tuple without exposing the private auth SID. Independent review found and
+      the amended candidate corrected two blockers: pre-deploy offers use only
+      a total-absence legacy path with no tuple synthesis/rebinding, and receipt
+      activation serializes `user -> driver -> offer` before revalidation and
+      publishes only after commit. Local commit
+      `cce4bda17a63b51494137b43fb874f9e450dbe04` passes focused **119/119**,
+      full API **222/222 suites / 4,444/4,444 tests**, typecheck, build, lint
+      with zero new errors and `git diff --check`. A second independent review
+      found no remaining high/medium source blocker and confirmed the legacy,
+      A-to-B vehicle, lock-order, post-commit publication and privacy fences.
+      The race has deterministic SQL/lock assertions but no real PostgreSQL
+      concurrency test, so staging must exercise two-replica receipt versus
+      Offline/re-online/vehicle invalidation and duplicate-receipt races before
+      production.
+- [ ] Backend ordinary availability teardown is now fenced by the authenticated
+      SID and, for updated clients, the exact `expectedOnlineSessionId` captured
+      when the provider went Online. Driver and Artisan Offline plus
+      `/location/unavailable` lock the user and exact role row, preserve active
+      work, fail stale epochs with `AVAILABILITY_SESSION_CHANGED`, clear the
+      complete epoch only after a successful CAS, and re-lock before Redis
+      presence cleanup so a reopened epoch is not erased. Forced
+      admin/auth/security/liveness teardown remains intentionally separate.
+      Independent review found and the amended candidate corrected one
+      reliability gap in the legacy GPS Offline endpoints: a post-commit Redis
+      cleanup exception is now best effort and cannot make authoritative
+      Offline appear failed, while a reopened epoch still returns `409`.
+      Amended local commit
+      `4e353a93add21d9661940582a7f57cc27201ffbd` passes full API
+      **224/224 suites / 4,478/4,478 tests**, focused **192/192**, typecheck,
+      build, lint with zero errors and `git diff --check`; it is not pushed or
+      deployed. A real multi-connection PostgreSQL interleaving test remains
+      required. Correctness-preserving cleanup currently awaits Redis while
+      holding provider locks, so bounded Redis command deadlines are also a
+      production prerequisite.
+- [x] The immutable offer-authority, availability/location CAS and ordinary
+      exact-SID logout slices are now preserved together on current Backend
+      `staging` as local commits `cce4bda`, `4e353a9` and `19fa0e3`. The exact
+      combined stack additionally contains the PostgreSQL concurrency harness
+      and notification-token unregister fence at local head `0eb18fd`. Its
+      complete API gate passes **226/226 suites / 4,495/4,495 tests**, API and
+      E2E typechecks, build, lint with zero errors and `git diff --check`.
+      Nothing is pushed, merged or deployed.
+- [ ] A real multi-connection PostgreSQL dispatch race harness is implemented,
+      independently reviewed and preserved at source commit `d61051c` (combined
+      as `ac49d16`). It covers receipt versus Offline/re-online, stale offer
+      versus a replacement session, vehicle A-to-B, two independent duplicate
+      receipts, stale cleanup versus a reopened epoch, and stale
+      location-unavailable refusal using lock barriers rather than sleeps.
+      Static evidence passes **173/173** focused tests, API/E2E typechecks,
+      build, lint, formatting and runner safety guards. Runtime remains open
+      because Docker Engine is not running; execute only against the runner's
+      disposable loopback `myshop_test` database under pinned Node 22.
+- [x] Mobile's exact Driver authority foundation is implemented and preserved
+      locally at commit
+      `7105dd4b0e913e6ad902ee25373f336cc72aa467` in the
+      isolated `fix/driver-dispatch-authority-foundation-20260731` worktree.
+      The correction pass now uses an exact auth subject/role/account/SID
+      identity, SHA-256 durable authority and SID-scoped Online intent; verifies
+      direct Online with an authoritative read-back before installation;
+      compensates a failed installation with the captured session; gates idle
+      reconciliation on exact durable intent; preserves the existing location
+      epoch for a valid active ride; rejects stale role/account/SID work; and
+      sends `expectedOnlineSessionId` for ordinary Offline. The final correction
+      also serializes explicit Driver Online/Offline intent, makes reconciliation
+      reruns lossless, fences overlapping location-loss reports and oversized
+      sequences, force-clears busy logout state, and validates exact Offline
+      acknowledgements for Driver and Artisan compensation. Final evidence
+      passes Provider **367/367**, API-client **297/297**, critical authority
+      **102/102**, both analyzers, formatting and `git diff --check`. A fresh
+      independent final review found no remaining blocker. This commit is not
+      pushed or deployed and cannot ship without the matching Backend CAS plus
+      complete request-ingress/action gates below.
+- [ ] The corrected foundation and authoritative-deadline slice are combined
+      at local commit `6668e07`. Central typed parsing and SID-scoped receipt
+      persistence were started but paused uncommitted in the two exact files
+      recorded in the credit-preservation checkpoint. Still gate every Driver
+      request ingress and action: socket, foreground/background FCM, pending
+      recovery, notification tap/action, Android overlay/native queue, iOS
+      queued action/Live Activity, accept/decline/expiry and terminal cleanup.
+      Partial, malformed and unsupported tuples fail closed; a wholly absent
+      legacy tuple is default-off, must have a hard reviewed sunset, and must
+      never be synthesized or rebound by Mobile. This slice is incomplete and
+      untested at the pause.
+- [x] Completed an exact read-only inventory of Driver request surfaces. The
+      authority foundation itself is identity-scoped, but current socket,
+      foreground/background FCM, durable receipt, Flutter/native notification,
+      Android overlay/queued action, iOS action/Live Activity, pending recovery,
+      canonical GET/router restoration, accept/decline and cleanup paths do not
+      consume the full tuple. Several persist only ride/offer/deadline under
+      global keys, use ride-ID aliases, or survive SID/vehicle/logout changes.
+      Treat every listed ingress/action gap as critical. Integrate one typed
+      `{authorityVersion, providerId, onlineSessionId, selectedVehicleId,
+      rideId, offerId, absoluteDeadline}` contract, validate before persistence
+      or receipt and after every await, use exact compare-and-remove cleanup,
+      and clear every Dart/native surface on Offline/logout/SID/account/vehicle
+      change. Plain `GET /rides/:id` is not offer-action authority.
+- [x] Completed a read-only audit of current Artisan dispatch. Current source
+      invites up to three artisans in parallel and uses a five-minute bid
+      window anchored to job creation; it does not implement ride-style
+      sequential 30/45-second delivery. Redis is still actionable invitation
+      authority, bid submission is not bound to the receiving SID/session, and
+      no durable `ArtisanOffer` ledger exists.
+- [ ] Keep Artisan V2 dormant until the owner explicitly decides its parallel
+      versus sequential behavior, receipt/no-receipt window and replacement,
+      exact bid-capacity semantics, pending-offer capacity reservation,
+      post-window selection deadline, directed-quote behavior, pre-bid data
+      exposure and no-capability rollout fallback. Do not infer these rules from
+      the approved Driver protocol.
+- [x] Completed a provider-epoch mutation audit across availability, location,
+      degradation/zombie workers, socket disconnect grace, notification/VoIP/
+      Live Activity tokens, logout and session establishment. The new offer
+      ledger and teardown CAS are sound within their exact tuples, but the audit
+      found release blockers outside those slices: Online activation can publish
+      presence and compensate Offline without an exact final epoch; accepted
+      location writes can perform provider-only degradation/heartbeat/GEO side
+      effects; worker cleanup can erase a reopened epoch; socket disconnect
+      grace is not session-bound; and session-establishment cleanup
+      can race a newer login. Close these paths with the same immutable tuple
+      and add deterministic replacement-session tests before declaring the
+      dispatch/session hardening complete.
+- [x] Delayed FCM, VoIP, Live Activity device and per-activity unregisters are
+      now fenced by the exact authenticated SID at their final transaction
+      boundary. Current-session cleanup and token-hash mismatch behavior are
+      preserved; session A cannot delete a binding registered by replacement
+      session B, and sibling roles remain untouched. Source commit `2d1bedd`
+      is combined as `0eb18fd`; the exact combined **226-suite / 4,495-test**
+      gate above includes its current-session, A-to-B replacement and controller
+      wiring tests. A separate final source review found no high/medium blocker,
+      confirmed all four controller SID paths and transaction/row-lock fences,
+      and confirmed forced all-session cleanup remains unchanged. The only low
+      evidence gap is that the A-to-B token tests mock PostgreSQL lock ordering;
+      the real multi-connection harness remains the integration gate. Its final
+      independent rerun passes the two relevant suites, **65/65** tests, and
+      `git diff --check`. No migration is required and nothing is deployed.
+- [ ] Ordinary user logout is now fenced to the exact authenticated SID on an
+      isolated backend stack. A delayed logout from session A is an idempotent
+      no-op after B replaces it; an applied A logout removes only A's durable
+      role authority, role tokens, exact-SID sockets and Redis refresh state.
+      Post-commit Redis failure remains private best effort and cannot turn the
+      durable logout into a misleading 5xx. Forced Admin/security revocation
+      remains intentionally all-session. Original local commit
+      `4d6d11dff8798400d620ab3f401d713d088d5ede` passed full API
+      **225/225 suites / 4,481/4,481 tests**, typecheck, build, lint with zero
+      errors and `git diff --check`; it has been amended for strict-PNPM runtime
+      portability and combined locally as `19fa0e3` after the availability CAS.
+      Nothing is pushed or
+      deployed. A cross-device login can still be temporarily blocked if Redis
+      failed after logout and retained A until its stale-session window; track
+      this under Redis recovery rather than weakening the exact-SID CAS.
+- [ ] A fresh session-establishment concurrency audit found two independent
+      critical races after the exact logout/token fixes. Ordinary login cleanup
+      was role-wide, so delayed login B could force replacement C Offline,
+      disconnect C and delete C's newly registered role tokens. Local Commit A
+      `59615bf502652df91de6ad01403c856f6a4115fb` now retires only the captured
+      predecessor SID, provider epoch and role tokens transactionally, and its
+      exact Redis presence marker cannot erase a replacement epoch. Focused
+      evidence passes **419/419** plus API typecheck. Independent exact-tree
+      review accepted Commit A with no introduced critical/high defect after
+      rerunning five focused suites (**378/378**), API typecheck and diff
+      checks. It also found a medium scale gap: a markerless pre-deploy Online
+      provider becomes durably Offline and cannot pass canonical PostGIS
+      matching, but its Redis GEO member does not expire because the zombie
+      sweep scans DB-Online rows only. Add successor-safe absent-marker cleanup
+      before claiming 100k-DAU readiness. Separately,
+      session creation writes Redis before an unconditional durable activation;
+      the interleaving `B Redis -> C Redis -> C DB -> B DB` can split database
+      and Redis authority. Isolate exact predecessor cleanup and durable
+      activation CAS as separate commits, retain broad Admin/security revocation,
+      and prove B/C interleavings plus same-platform token replacement before
+      accepting the session-establishment path. The full Commit B CAS/winner
+      reconciliation rewrite is paused with an uncommitted two-file draft
+      because the safety reviewer requires direct owner approval for this
+      critical sign-in-path change. No migration is expected; a mixed-version
+      rollout remains forbidden.
+- [ ] Follow the two critical login fixes with the audited legacy-session
+      cohort: remove pre-authorization role-wide cleanup in enforced and shadow
+      refresh, exact-SID fence post-refresh socket sweeps, stop lazy session
+      ownership mutation inside `JwtAuthGuard`, validate durable SID/generation
+      for WebSockets, and bind any OTP takeover approval to the exact displaced
+      SID/generation. These are high-severity session-integrity gates and are not
+      satisfied by the ordinary logout or token-unregister commits.
+
+## 2026-07-31 repository credential containment
+
+- [x] A tracked repository-tool configuration in Mobile and Admin was found to
+      contain a GitHub personal access token. The secret value is deliberately
+      omitted from this record and must be treated as compromised.
+- [x] Focused one-file removal branches contain no Mobile/Admin runtime,
+      database, API or signed-artifact change: Mobile PR `#118` targets
+      `staging`; Admin PR `#30` targets `staging`.
+- [x] The owner confirmed the exposed credential was revoked and replaced the
+      developer automation credential through the host/keychain only. Removing
+      it from Git does not revoke it or erase repository history.
+- [x] Focused removal PRs `#118`/`#30` merged through Mobile/Admin `staging`;
+      focused PRs `#119`/`#31` then promoted only the same one-file fixes to
+      `main`. Path-only current-tree scans on all four protected refs returned
+      no token-pattern match at Mobile main `1f30c9f…`, Mobile staging
+      `9931c5f…`, Admin main `ad28ab9…` and Admin staging `798c94e…`.
+      These repository-tool-only merges do not alter or require rebuilding the
+      four signed `1.4.1+26` artifacts.
+- [ ] Coordinate a decision with both developers on whether revoked historical
+      secret material warrants repository-history rewriting; do not rewrite
+      shared history during the active release.
+- [ ] GitHub Actions did not execute Mobile PR `#117`, `#118` or `#119`:
+      GitHub marked their `analyze-and-test` jobs failed before assigning a
+      runner because of
+      an account payment/spending-limit condition. This is infrastructure
+      evidence, not a passing or failing source test. Keep the recorded local
+      exact-commit gates authoritative until Actions is restored or the owner
+      explicitly retains the documented manual release workflow.
+
+## Authoritative 2026-07-31 main release cut
+
+This block supersedes older status lines for the immediate store update. The
+older sections remain the implementation and test ledger; they must not be
+used to add unreviewed work to this cut.
+
+### Frozen candidate
+
+- [x] The baseline immediately before this cut was `1.4.1+25` on Client
+      Android, Client iOS, Provider Android and Provider iOS; the released
+      candidate tracked at the top of this file is `1.4.1+26`.
+- [x] Mobile runtime candidate is exact tested staging commit
+      `4fae1fe30a054e168134d9ccc83d3c9960d6169a`.
+- [x] Backend dependency candidate is exact tested staging commit
+      `a8a1e268e1923dcac0c02ad749bd43c5d0847f4d`; its only change above
+      runtime candidate `6aa1cc2…` is the corrected referral DTO test.
+- [x] Admin `main` and `staging` have identical content; no Admin release is
+      included.
+- [x] The owner reports the frozen Mobile and Backend candidate behavior was
+      tested on staging and authorizes preparation of the store update.
+- [x] Exact Mobile staging commit `4fae1fe…`, tree `4c8d008c…`, passed all
+      three release-contract suites, **800/800** tests across six packages,
+      all seven package analyzers with zero issues, `git diff --check`, and
+      finished with a clean detached worktree.
+- [x] Exact Backend staging tree `d1202dce…` passed **222/222 suites and
+      4,429/4,429 tests**, API typecheck, the five-task production API build,
+      refresh-lineage verifier **5/5**, focused lineage **69/69**, and
+      `git diff --check`.
+- [x] The dirty primary workspaces and every uncommitted/deferred branch are
+      excluded. Only committed staging ancestry may enter `main`.
+
+### Post-freeze signed candidate checkpoint
+
+- [x] Provider iOS native dependency lock correction passed through staging
+      PR `#115` and main PR `#116`. Final release source is exact clean
+      `origin/main` commit
+      `cd24d241c43764f3d3b7f764ba6f68cc09d79985`, tree
+      `6f5992019c4072f40ce2e530f3189b057a4e9f59`.
+- [x] The owner confirmed the highest private build number was `25` for Client
+      Android, Client iOS, Provider Android and Provider iOS. The common
+      signed candidate is marketing version `1.4.1`, build `26`.
+- [x] Client AAB, Client IPA, Provider AAB and Provider IPA were built with
+      `tool/build.sh` from the one exact clean source commit above. All four
+      independently passed `tool/verify-release-artifact.sh`, including
+      production API/no-staging checks, embedded source provenance, bundle
+      identity, version/build and the reviewed Android/Apple signing identity.
+- [x] The four final artifacts and user-facing notes are retained only under
+      `build/releases/1.4.1+26/`; `SHA256SUMS` verifies all four:
+      Client AAB `2c035171…`, Provider AAB `c36af4ce…`, Client IPA
+      `d320b839…`, Provider IPA `d2489dba…`.
+- [ ] The owner subsequently released the four store candidates. Retain this
+      as an open evidence gap until the store-served artifacts are installed
+      and physically smoked and the submission/canary outcomes are recorded;
+      artifact verification alone was not physical-device proof.
+
+### Included in this update
+
+- Graceful offline/service handling without false Terms/Privacy failure,
+  avoidable logout, or loss of recoverable ride/request state.
+- Exact-role session ownership, crash-consistent token refresh recovery and
+  removal of the Provider-only local seven-day session expiry.
+- Provider trusted-location recovery ordering without weakening document,
+  verification, vehicle or online-eligibility rules.
+- Single-owner Provider request-notification navigation, terminal request
+  cleanup and safe cancellation/reconnect recovery.
+- Provider signup/OTP reliability, Ghana-only Provider registration numbers,
+  optional referral handling and user-safe actionable errors.
+- Client booking-action/iOS review-flow corrections and the retained,
+  documented in-app VoIP functionality.
+
+### Production and signed-build gates
+
+- [x] Create and review Backend `staging` to `main` PR `#136`.
+- [x] Apply
+      `20260727000000_durable_role_refresh_lineage` to the production database.
+- [x] Post-migration production verification reported **213 migrations** and
+      `Database schema is up to date`; the approved geofence fingerprint
+      remained `9faa785a0e5146c6e50d4e7b64b98a5e`.
+- [ ] Replace the Backend fleet with **zero mixed-version serving**, following
+      `docs/refresh-lineage-controlled-cutover.md`; verify the two refresh
+      authority flags, exact deployed commit, health and recovery telemetry.
+      The latest recorded production state has both
+      `refresh_lineage_authority_enabled=false` and
+      `refresh_lineage_cutover_quiesced=false`, so schema deployment alone does
+      not close this gate.
+- [x] Create and review Mobile release PR `#114` to `main`; its runtime tree
+      equals frozen staging commit `4fae1fe…` apart from this release-control
+      record. Provider lock correction PRs `#115`/`#116` produced the final
+      signed source `cd24d241…` recorded above.
+- [x] Read the highest private build number for all four app/store targets:
+      the owner confirmed `25` for each target before building.
+- [x] Use marketing version `1.4.1` and common build `26`, greater than the
+      released/local floor and every owner-confirmed private-console maximum.
+- [x] Build Client AAB, Client IPA, Provider AAB and Provider IPA from one
+      clean exact `origin/main` SHA using `tool/build.sh`.
+- [x] Verify bundle IDs, version/build, signing identities, production API,
+      embedded source SHA and absence of staging endpoints in all artifacts;
+      retain SHA-256 hashes in the project release folder.
+- [ ] Install the exact release artifacts and smoke test login/session restore,
+      offline recovery, Client booking, Provider online/location, foreground
+      and background request delivery, notification tap, cancellation,
+      Provider signup/OTP and in-app calling.
+- [ ] In App Store Connect, retain the VoIP/background-audio review video and
+      notes for both apps and keep China unavailable while CallKit is active.
+- [ ] Upload only the verified artifacts to internal tracks, complete the
+      matching privacy/Data Safety answers, then promote with rollback and
+      monitoring owners recorded.
+
+### Explicitly deferred
+
+- Offer API/Admin offer publishing, automated batch payouts, promo-point
+  redemption, SmileKYC, aggregate capacity claims and all other wider
+  100k-DAU audit work remain outside this store update.
 
 ## Authoritative 2026-07-31 Provider signup/OTP reliability control block
 
@@ -8,18 +662,15 @@ This block is the authority for the reported Provider phone-stage signup and
 OTP-delivery incident only. It does not replace the separate session-recovery
 block below and does not reopen already-merged notification work.
 
-- **Release status: NO-GO pending staging PR review/merge, deployment and
-  physical signup/OTP testing.**
+- **Release status: merged into the frozen staging candidate and accepted by
+  the owner for release preparation; production signed-artifact smoke proof
+  remains open in the main release-cut block above.**
 - Notification/request-routing fixes are already merged to Mobile staging by
   PR `#112`, merge `d0d39ab`; they require no duplicate PR.
-- Mobile implementation is isolated at
-  `/private/tmp/myshop-provider-signup-reliability-mobile-clean`, branch
-  `fix/provider-signup-reliability-mobile-clean`, based on Mobile staging
-  `d0d39ab`; runtime/test commit `46b1320` is pushed in draft PR `#113`.
-- Backend implementation is isolated at
-  `/private/tmp/myshop-provider-signup-reliability-backend`, branch
-  `fix/provider-signup-reliability-20260730`, based on Backend staging
-  `ab325cf`; commit `d28df1a` is pushed in draft PR `#135`.
+- Mobile runtime/test commit `46b1320` and its checklist commit `96d1049`
+  merged through PR `#113` into staging `4fae1fe…`.
+- Backend runtime/test commit `d28df1a` merged through PR `#135` into staging
+  `6aa1cc2…`.
 - Approved rules: Provider registration accepts Ghana numbers only; referral
   is optional and must never block when absent/blank, but a supplied code must
   be valid. Client registration and Provider sign-in country behavior remain
@@ -64,9 +715,10 @@ block below and does not reopen already-merged notification work.
 
 - [x] Commit only the recorded Mobile and Backend diffs and push separate
       branches: Mobile `46b1320` / PR `#113`; Backend `d28df1a` / PR `#135`.
-- [ ] Review both draft PRs and merge them to `staging`.
-- [ ] Deploy the Backend staging commit, then install the exact Mobile staging
-      build. No migration command is required for this slice.
+- [x] Review both PRs and merge them to `staging`.
+- [x] Deploy the Backend staging candidate and test the matching Mobile staging
+      candidate, as confirmed by the owner. No migration command was required
+      for this signup slice.
 - [ ] Physically test Driver and Artisan signup with local and `+233` forms;
       reject non-Ghana/malformed values before API/OTP work.
 - [ ] Prove referral absent, blank, malformed, nonexistent, self-owned and
