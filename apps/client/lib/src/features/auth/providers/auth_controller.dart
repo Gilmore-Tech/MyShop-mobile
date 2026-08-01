@@ -55,6 +55,7 @@ class AuthNeedsRegistration extends ClientAuthState {
   const AuthNeedsRegistration({
     required this.phone,
     this.error,
+    this.errorCode,
     this.message,
     this.isLoading = false,
     this.requiresRoleRecoverySupport = false,
@@ -63,6 +64,7 @@ class AuthNeedsRegistration extends ClientAuthState {
 
   final String phone;
   final String? error;
+  final String? errorCode;
 
   /// Non-error info message shown at the top (e.g. "No account found").
   final String? message;
@@ -461,6 +463,7 @@ class ClientAuthController extends StateNotifier<ClientAuthState> {
         state = AuthNeedsRegistration(
           phone: phone,
           error: AuthErrorMapper.message(e),
+          errorCode: e.errorCode,
           requiresRoleRecoverySupport:
               AuthErrorMapper.requiresRoleRecoverySupport(e),
           requiresLegalRefresh: e.errorCode == 'LEGAL_DOCUMENT_CHANGED',

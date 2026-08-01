@@ -101,12 +101,14 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     // re-prefill on rebuilds because IntlPhoneField owns its own text state.
     bool isLoading = false;
     String? error;
+    String? errorCode;
     String? infoMessage;
     bool requiresRoleRecoverySupport = false;
 
     if (authState is AuthNeedsRegistration) {
       isLoading = authState.isLoading;
       error = authState.error;
+      errorCode = authState.errorCode;
       infoMessage = authState.message;
       requiresRoleRecoverySupport = authState.requiresRoleRecoverySupport;
       if (authState.requiresLegalRefresh && !_legalRefreshScheduled) {
@@ -364,6 +366,31 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                                     ],
                                   ),
                                 ],
+                                if (AuthErrorMapper
+                                        .isReferralRegistrationErrorCode(
+                                      errorCode,
+                                    ) &&
+                                    _referralController.text
+                                        .trim()
+                                        .isNotEmpty) ...[
+                                  SizedBox(height: h * 0.008),
+                                  TextButton.icon(
+                                    key: const Key(
+                                      'client-remove-referral-and-continue',
+                                    ),
+                                    onPressed: isLoading
+                                        ? null
+                                        : _removeReferralCodeAndContinue,
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: MyShopColors.error,
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                    icon: const Icon(Icons.link_off_rounded),
+                                    label: const Text(
+                                      'Remove code and continue',
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -483,6 +510,14 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     if (ref.read(clientAuthControllerProvider) is AuthOtpSent) {
       ref.read(pendingReferralCodeProvider.notifier).state = null;
     }
+  }
+
+  Future<void> _removeReferralCodeAndContinue() async {
+    if (_referralController.text.trim().isEmpty) return;
+    setState(_referralController.clear);
+    ref.read(pendingReferralCodeProvider.notifier).state = null;
+    ref.read(clientAuthControllerProvider.notifier).clearError();
+    await _submit();
   }
 
   Future<void> _loadLegal({bool refresh = false}) async {
