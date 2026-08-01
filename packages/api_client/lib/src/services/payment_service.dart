@@ -32,9 +32,8 @@ class CashCommissionRemittanceStatus {
       amountPesewas: amount.toInt(),
       owedPesewas: owed.toInt(),
       gatewayStatus: json['gatewayStatus'] as String?,
-      completedAt: completedAtRaw is String
-          ? DateTime.tryParse(completedAtRaw)
-          : null,
+      completedAt:
+          completedAtRaw is String ? DateTime.tryParse(completedAtRaw) : null,
     );
   }
 

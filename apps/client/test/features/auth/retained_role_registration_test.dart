@@ -48,7 +48,8 @@ void main() {
 
     final state = controller.state;
     expect(state, isA<AuthNeedsRegistration>());
-    expect((state as AuthNeedsRegistration).requiresRoleRecoverySupport, isTrue);
+    expect(
+        (state as AuthNeedsRegistration).requiresRoleRecoverySupport, isTrue);
     expect(state.error, contains('cannot be registered again'));
     expect(state.error, isNot(contains('backend detail')));
   });

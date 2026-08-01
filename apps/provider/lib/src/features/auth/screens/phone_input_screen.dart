@@ -165,52 +165,53 @@ class _ProviderPhoneInputScreenState
                   icon: const Icon(Icons.link_off_rounded),
                   label: const Text('Remove code and continue'),
                 )
-          : correction != null
-              ? TextButton.icon(
-                  onPressed: isLoading
-                      ? null
-                      : () => _reviewBackendCorrection(
-                            signUpRole ?? ProviderType.driver,
-                            correction,
-                            remoteErrorCode,
+              : correction != null
+                  ? TextButton.icon(
+                      onPressed: isLoading
+                          ? null
+                          : () => _reviewBackendCorrection(
+                                signUpRole ?? ProviderType.driver,
+                                correction,
+                                remoteErrorCode,
+                              ),
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 48),
+                        foregroundColor: MyShopColors.primaryGoldDark,
+                      ),
+                      icon: const Icon(Icons.edit_outlined),
+                      label: Text(correction.message),
+                    )
+                  : mode == PhoneInputMode.signIn
+                      ? TextButton(
+                          onPressed: isLoading
+                              ? null
+                              : () => context.go('/signup/role'),
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 48),
+                            foregroundColor: MyShopColors.primaryGoldDark,
                           ),
-                  style: TextButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 48),
-                    foregroundColor: MyShopColors.primaryGoldDark,
-                  ),
-                  icon: const Icon(Icons.edit_outlined),
-                  label: Text(correction.message),
-                )
-              : mode == PhoneInputMode.signIn
-              ? TextButton(
-                  onPressed:
-                      isLoading ? null : () => context.go('/signup/role'),
-                  style: TextButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 48),
-                    foregroundColor: MyShopColors.primaryGoldDark,
-                  ),
-                  child: Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(
-                          text: "Don't have an account? ",
-                          style: MyShopTypography.body1.copyWith(
-                            color: MyShopColors.textSecondary,
-                            fontWeight: FontWeight.w500,
+                          child: Text.rich(
+                            TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: "Don't have an account? ",
+                                  style: MyShopTypography.body1.copyWith(
+                                    color: MyShopColors.textSecondary,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                TextSpan(
+                                  text: 'Sign up',
+                                  style: MyShopTypography.body1.copyWith(
+                                    color: MyShopColors.primaryGoldDark,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        TextSpan(
-                          text: 'Sign up',
-                          style: MyShopTypography.body1.copyWith(
-                            color: MyShopColors.primaryGoldDark,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : null,
+                        )
+                      : null,
     );
   }
 
