@@ -458,6 +458,36 @@ class PaymentService {
     }
   }
 
+  /// POST /payments/cash-commission/remittances/:id/submit-otp — forward the
+  /// MoMo OTP/voucher for a remit charge that returned
+  /// `chargeStatus === 'send_otp'` from /payments/cash-commission/remit.
+  ///
+  /// The backend proxies the code to Paystack `/charge/submit_otp` for the
+  /// remittance's own reference (the client-payment /payments/submit-otp
+  /// endpoint cannot serve remittances). Returns the advanced `chargeStatus`
+  /// (typically `pay_offline` — the approval prompt then arrives) plus
+  /// `displayText` for the next-step message.
+  ///
+  /// Error codes:
+  ///   - 400 `REMIT_NOT_AWAITING_OTP` — remittance already settled/failed
+  ///   - 404 `CASH_COMMISSION_REMIT_NOT_FOUND` — not the caller's remittance
+  ///   - 502 `OTP_SUBMISSION_FAILED` — Paystack rejected the code
+  Future<Map<String, dynamic>> submitCashCommissionRemitOtp({
+    required String remittanceId,
+    required String otp,
+  }) async {
+    try {
+      final encodedId = Uri.encodeComponent(remittanceId);
+      final response = await _dio.post(
+        '/payments/cash-commission/remittances/$encodedId/submit-otp',
+        data: {'otp': otp},
+      );
+      return _unwrap(response) as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   /// GET /payments/cash-commission/remittances/:id — reads the provider-owned
   /// remittance state. The backend verifies in-flight references with Paystack,
   /// so this also repairs a missed or environment-misdirected webhook.
