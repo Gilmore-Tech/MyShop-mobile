@@ -1,7 +1,7 @@
 import 'package:api_client/api_client.dart';
 
-typedef RemittanceStatusLoader =
-    Future<CashCommissionRemittanceStatus> Function();
+typedef RemittanceStatusLoader = Future<CashCommissionRemittanceStatus>
+    Function();
 typedef RemittancePollDelay = Future<void> Function(Duration duration);
 
 /// Bounded foreground monitor for a provider cash-commission payment.

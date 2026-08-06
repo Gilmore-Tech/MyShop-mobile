@@ -512,6 +512,45 @@ Status captured: **2026-08-01 GMT**
       for WebSockets, and bind any OTP takeover approval to the exact displaced
       SID/generation. These are high-severity session-integrity gates and are not
       satisfied by the ordinary logout or token-unregister commits.
+## Authoritative 2026-08-01 platform-attribution update
+
+This block supersedes older release-status wording for the current update. The
+older sections remain implementation evidence and historical context.
+
+- [x] The owner reports that Client Android, Client iOS, Provider Android and
+      Provider iOS `1.4.1+26` were released. Build `26` is permanently occupied.
+- [x] Platform promotional codes are attribution-only, use the approved
+      `MYSHOP-XXXXXX` format, create no individual digital reward, and tally
+      aggregate Client, Driver and Artisan signups in Admin.
+- [x] Backend staging migration `20260731180000_platform_signup_attribution`
+      was applied, both staging gates were enabled, and an end-to-end signup
+      with a platform code succeeded.
+- [x] Mobile Client/Provider signup preserves optional-code failures, maps the
+      platform-code errors to safe copy, and permits an explicit code removal
+      and one retry without attribution.
+- [x] The Mobile production branch is cut from exact `origin/main`; its only
+      runtime delta is the two tested referral-signup commits. Release metadata,
+      mechanical formatting and this checklist are included, while the
+      unrelated deferred staging checklist snapshot is excluded.
+- [ ] Backend release-gate repair must pass exact-SHA CI before promotion. The
+      already-applied attribution SQL remains immutable and checksum-frozen;
+      the fresh-database legacy config precondition is a separate guarded
+      migration.
+- [ ] Admin and Backend must merge through reviewed production PRs. Production
+      launches dark: migration first, environment and DB attribution gates
+      false, then Admin deploy and a controlled canary before activation.
+- [ ] The next store candidate is marketing version `1.4.2`. The release-tool
+      build floor is `26`, so `27` is the minimum; before building, confirm the
+      current private App Store Connect and Play Console maxima for all four
+      targets and use one common number greater than every maximum.
+- [ ] Build Client/Provider AAB and IPA only from the final clean Mobile `main`
+      merge SHA. Retain artifacts only under the repository `build/releases/`
+      folder, verify signing/version/source/production API and SHA-256 hashes,
+      then install and smoke-test before store submission.
+- [ ] Production codes are created separately in production while attribution
+      remains paused. Staging code rows, IDs and tallies are never copied.
+- [ ] Offer API/Admin publishing, digital promo rewards, automated batch
+      payouts, SmileKYC and wider deferred/100k-DAU work remain excluded.
 
 ## 2026-07-31 repository credential containment
 
