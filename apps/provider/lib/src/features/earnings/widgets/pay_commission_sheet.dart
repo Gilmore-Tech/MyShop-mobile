@@ -15,16 +15,19 @@ import '../services/cash_commission_remittance_poller.dart';
 /// MoMo to settle outstanding cash-commission debt.
 ///
 /// Differences from the payout sheet:
-///   - No OTP-bind step. The provider is charging an arbitrary MoMo
-///     number (usually their own) — no need to verify "they own this
-///     wallet" the way a payout target would.
+///   - No OTP-*bind* step for wallet ownership. The provider is charging
+///     an arbitrary MoMo number (usually their own) — no need to verify
+///     "they own this wallet" the way a payout target would.
 ///   - Amount is editable. They can pay any amount > 0; underpayment
 ///     chips away at oldest clawbacks, overpayment lands as a
 ///     ProviderCredit that auto-nets the next cash commission.
-///   - Single hop: POST /payments/cash-commission/remit → MoMo USSD
-///     prompt → done. The success state tells them to authorise the
-///     push on their phone; the backend's webhook applies the funds
-///     once Paystack confirms.
+///   - Charge flow branches on the backend's `chargeStatus`:
+///     `pay_offline`/`pending` → the MoMo approval prompt goes straight
+///     to the phone (awaiting screen). `send_otp` → Paystack first sends
+///     an OTP/voucher SMS that must be forwarded via
+///     POST /payments/cash-commission/remittances/:id/submit-otp before
+///     the approval prompt arrives (OTP entry step). The backend's
+///     reconciliation applies the funds once Paystack confirms.
 Future<void> showPayCommissionSheet(
   BuildContext context, {
   required int owedPesewas,
@@ -52,15 +55,19 @@ class _PayCommissionSheet extends ConsumerStatefulWidget {
       _PayCommissionSheetState();
 }
 
-enum _Step { enter, working, awaiting, completed, failed, error }
+enum _Step { enter, working, otp, awaiting, completed, failed, error }
 
 class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
   _Step _step = _Step.enter;
   String _selectedMethod = 'momo_mtn';
   late final TextEditingController _amountCtl;
   late final TextEditingController _phoneCtl;
+  late final TextEditingController _otpCtl;
   String? _errorMessage;
   String? _displayText;
+  String? _otpError;
+  bool _otpSubmitting = false;
+  String? _remitId;
   int? _surplusPesewas;
   int? _remittedPesewas;
   int? _remainingOwedPesewas;
@@ -74,12 +81,14 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
     _amountCtl = TextEditingController(text: ghs.toStringAsFixed(2));
     final phone = ref.read(currentUserProvider)?.phone ?? '';
     _phoneCtl = TextEditingController(text: phone);
+    _otpCtl = TextEditingController();
   }
 
   @override
   void dispose() {
     _amountCtl.dispose();
     _phoneCtl.dispose();
+    _otpCtl.dispose();
     super.dispose();
   }
 
@@ -122,17 +131,29 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
         throw const FormatException('Missing commission payment identifier');
       }
 
+      // Paystack sometimes requires an OTP/voucher before the approval
+      // prompt (always for Telecel vouchers; for MTN/AirtelTigo when its
+      // risk rules require phone verification). The code must be forwarded
+      // server-side, so show the entry step instead of the waiting screen.
+      final needsOtp = res['chargeStatus'] == 'send_otp';
+
       setState(() {
-        _step = _Step.awaiting;
+        _remitId = remitId;
+        _step = needsOtp ? _Step.otp : _Step.awaiting;
         _displayText =
             (res['displayText'] as String?) ??
-            'Authorise the prompt on '
-                'your phone to complete the payment.';
+            (needsOtp
+                ? 'Enter the one-time code sent by your mobile money '
+                      'provider.'
+                : 'Authorise the prompt on '
+                      'your phone to complete the payment.');
         _surplusPesewas = (res['surplusPesewas'] as num?)?.toInt() ?? 0;
         _remittedPesewas = amount;
         _pollTimedOut = false;
+        _otpError = null;
+        _otpCtl.clear();
       });
-      unawaited(_monitorRemittance(remitId));
+      if (!needsOtp) unawaited(_monitorRemittance(remitId));
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -144,6 +165,64 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
       setState(() {
         _step = _Step.error;
         _errorMessage = "Couldn't start the payment. Please try again.";
+      });
+    }
+  }
+
+  Future<void> _submitOtp() async {
+    final remitId = _remitId;
+    if (remitId == null || _otpSubmitting) return;
+    final otp = _otpCtl.text.trim();
+    if (otp.length < 3) {
+      setState(() => _otpError = 'Enter the code from the SMS.');
+      return;
+    }
+
+    setState(() {
+      _otpSubmitting = true;
+      _otpError = null;
+    });
+
+    try {
+      final res = await ref
+          .read(paymentServiceProvider)
+          .submitCashCommissionRemitOtp(remittanceId: remitId, otp: otp);
+      if (!mounted) return;
+      setState(() {
+        _step = _Step.awaiting;
+        _otpSubmitting = false;
+        _displayText =
+            (res['displayText'] as String?) ??
+            'Authorise the prompt on '
+                'your phone to complete the payment.';
+      });
+      unawaited(_monitorRemittance(remitId));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (e.errorCode == 'REMIT_NOT_AWAITING_OTP') {
+        // The charge already advanced (or closed) server-side — the poll
+        // will surface the authoritative state.
+        setState(() {
+          _step = _Step.awaiting;
+          _otpSubmitting = false;
+        });
+        unawaited(_monitorRemittance(remitId));
+        return;
+      }
+      setState(() {
+        _otpSubmitting = false;
+        _otpError = e.errorCode == 'OTP_SUBMISSION_FAILED'
+            ? 'The code could not be confirmed. Check it and try again.'
+            : userSafeApiErrorMessage(
+                e,
+                fallback: "Couldn't confirm the code. Please try again.",
+              );
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _otpSubmitting = false;
+        _otpError = "Couldn't confirm the code. Please try again.";
       });
     }
   }
@@ -215,6 +294,7 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
           child: switch (_step) {
             _Step.enter => _buildEnter(),
             _Step.working => _buildWorking(),
+            _Step.otp => _buildOtp(),
             _Step.awaiting => _buildAwaiting(),
             _Step.completed => _buildCompleted(),
             _Step.failed => _buildFailed(),
@@ -383,6 +463,108 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
           textAlign: TextAlign.center,
         ),
         SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _buildOtp() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _GrabHandle(),
+        const SizedBox(height: 16),
+        const Text(
+          'Enter the code',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: 'Raleway',
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _displayText ??
+              'Enter the one-time code sent by your mobile money provider. '
+                  'The approval prompt arrives after the code is confirmed.',
+          textAlign: TextAlign.center,
+          style: MyShopTypography.body2.copyWith(
+            color: MyShopColors.textSecondary,
+            height: 1.45,
+          ),
+        ),
+        const SizedBox(height: 18),
+        TextField(
+          controller: _otpCtl,
+          enabled: !_otpSubmitting,
+          keyboardType: TextInputType.number,
+          textAlign: TextAlign.center,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(12),
+          ],
+          decoration: InputDecoration(
+            hintText: '123456',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(
+                color: MyShopColors.divider,
+                width: 1,
+              ),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 14,
+            ),
+          ),
+          style: const TextStyle(
+            fontFamily: 'Raleway',
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 6,
+          ),
+        ),
+        if (_otpError != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            _otpError!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: MyShopColors.error,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+        const SizedBox(height: 18),
+        ElevatedButton(
+          onPressed: _otpSubmitting ? null : _submitOtp,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: MyShopColors.primaryGold,
+            foregroundColor: MyShopColors.textOnPrimary,
+            minimumSize: const Size(double.infinity, 50),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(28),
+            ),
+          ),
+          child: _otpSubmitting
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: MyShopColors.textOnPrimary,
+                  ),
+                )
+              : const Text(
+                  'CONFIRM CODE',
+                  style: TextStyle(
+                    fontFamily: 'Raleway',
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+        ),
       ],
     );
   }

@@ -78,6 +78,49 @@ void main() {
   });
 
   test(
+    'forwards the commission-remittance OTP to the remit-scoped endpoint',
+    () async {
+      dio.interceptors.clear();
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            capturedRequest = options;
+            handler.resolve(
+              Response<Map<String, dynamic>>(
+                requestOptions: options,
+                statusCode: 200,
+                data: {
+                  'success': true,
+                  'data': {
+                    'remitId': 'remit-001',
+                    'status': 'processing',
+                    'chargeStatus': 'pay_offline',
+                    'displayText': 'Approve the payment on your phone.',
+                  },
+                },
+              ),
+            );
+          },
+        ),
+      );
+
+      final result = await PaymentService(dio).submitCashCommissionRemitOtp(
+        remittanceId: 'remit-001',
+        otp: '123456',
+      );
+
+      expect(capturedRequest.method, 'POST');
+      expect(
+        capturedRequest.path,
+        '/payments/cash-commission/remittances/remit-001/submit-otp',
+      );
+      expect(capturedRequest.data, {'otp': '123456'});
+      expect(result['chargeStatus'], 'pay_offline');
+      expect(result['displayText'], 'Approve the payment on your phone.');
+    },
+  );
+
+  test(
     'reads the authoritative provider commission-remittance status',
     () async {
       dio.interceptors.clear();
