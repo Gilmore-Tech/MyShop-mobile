@@ -1,7 +1,11 @@
 import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../../support/png_http_overrides.dart';
 import 'package:myshop_client/src/core/providers/current_location_label_provider.dart';
 import 'package:myshop_client/src/features/home/providers/home_provider.dart';
 import 'package:myshop_client/src/features/home/providers/promo_campaigns_provider.dart';
@@ -40,6 +44,7 @@ void main() {
   Future<void> pumpHome(
     WidgetTester tester, {
     List<HomeRecentActivityItem> activity = const [],
+    List<ActivePromoCampaign> campaigns = const [],
   }) async {
     tester.view.physicalSize = const Size(430, 932);
     tester.view.devicePixelRatio = 1;
@@ -54,9 +59,7 @@ void main() {
             (_) async => 'Prempeh II Street, Adum, Kumasi, Ghana',
           ),
           specialOffersProvider.overrideWith(_EmptyOffersNotifier.new),
-          activePromoCampaignsProvider.overrideWith(
-            (_) async => const <ActivePromoCampaign>[],
-          ),
+          activePromoCampaignsProvider.overrideWith((_) async => campaigns),
           homeRecentActivityProvider.overrideWith(
             () => _RecentActivityNotifier(activity),
           ),
@@ -111,5 +114,42 @@ void main() {
     expect(find.text('In progress'), findsOneWidget);
     expect(find.text('Your activity will appear here'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('hides the Promos section when no campaign carries a banner',
+      (tester) async {
+    await pumpHome(tester);
+    expect(find.text('PROMOS'), findsNothing);
+  });
+
+  testWidgets(
+      'shows the Promos header between the booking cards and recent activity',
+      (tester) async {
+    HttpOverrides.global = PngHttpOverrides();
+    addTearDown(() => HttpOverrides.global = null);
+    await pumpHome(
+      tester,
+      campaigns: [
+        ActivePromoCampaign(
+          id: 'camp-1',
+          name: 'Weekend 15% Off',
+          campaignType: 'percentage_discount',
+          discountValue: 15,
+          maxDiscountPesewas: 1000,
+          minBookingPesewas: 0,
+          promoScope: 'ride',
+          newClientsOnly: false,
+          startsAt: DateTime.now().subtract(const Duration(hours: 1)),
+          endsAt: DateTime.now().add(const Duration(days: 7)),
+          bannerUrl: 'https://cdn.example/banner.png',
+          bannerPriority: 1,
+        ),
+      ],
+    );
+
+    expect(find.text('PROMOS'), findsOneWidget);
+    final promosY = tester.getTopLeft(find.text('PROMOS')).dy;
+    final activityY = tester.getTopLeft(find.text('RECENT ACTIVITY')).dy;
+    expect(promosY, lessThan(activityY));
   });
 }

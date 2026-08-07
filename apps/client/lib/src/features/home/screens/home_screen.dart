@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_ui/shared_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:api_client/api_client.dart';
 import 'package:go_router/go_router.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
@@ -16,6 +17,7 @@ import '../../../core/utils/ride_service_area.dart';
 import '../../profile/providers/profile_provider.dart';
 import '../../ride/providers/ride_search_provider.dart';
 import '../providers/home_provider.dart';
+import '../providers/promo_campaigns_provider.dart';
 import '../widgets/location_search_card.dart';
 import '../widgets/promo_banner_carousel.dart';
 import '../widgets/safety_banner.dart';
@@ -53,9 +55,6 @@ class HomeScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SizedBox(height: h * 0.03),
-                    // Renders nothing when no campaigns carry a banner —
-                    // promo failures must never break home.
-                    const PromoBannerCarousel(),
                     if (showRideAreaBanner) ...[
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 16),
@@ -74,6 +73,11 @@ class HomeScreen extends ConsumerWidget {
                     SizedBox(height: h * 0.05),
                     _ServiceCardsRow(),
                     SizedBox(height: h * 0.028),
+                    // Promos live right under the booking cards, above recent
+                    // activity. The whole section (header included) renders
+                    // nothing when no active campaign carries a banner —
+                    // promo failures must never break home.
+                    const _PromosSection(),
                     _SpecialOffersSection(),
                     const _RecentActivitySection(),
                     SizedBox(height: h * 0.03),
@@ -365,6 +369,33 @@ class _ServiceCardsRow extends ConsumerWidget {
 }
 
 // ── Special offers ────────────────────────────────────────────────────────────
+
+class _PromosSection extends ConsumerWidget {
+  const _PromosSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final h = MediaQuery.sizeOf(context).height;
+    final campaigns = ref.watch(activePromoCampaignsProvider).valueOrNull ??
+        const <ActivePromoCampaign>[];
+    final hasBanners = campaigns.any((c) => c.hasBanner);
+    if (!hasBanners) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const _SectionHeader(
+          title: 'PROMOS',
+          leadingIcon: Icons.local_offer_rounded,
+        ),
+        SizedBox(height: h * 0.014),
+        const PromoBannerCarousel(),
+        SizedBox(height: h * 0.028),
+      ],
+    );
+  }
+}
 
 class _SpecialOffersSection extends ConsumerWidget {
   @override
