@@ -13,6 +13,7 @@ import '../data/ride_booking_attempt_store.dart';
 import '../data/ride_booking_coordinator.dart';
 import '../data/ride_cancellation_coordinator.dart';
 import '../utils/ride_error_messages.dart';
+import 'fare_estimate_provider.dart';
 import 'ride_payment_method_provider.dart';
 import 'ride_search_provider.dart';
 
@@ -56,6 +57,13 @@ class VehicleOption {
   /// tier may remain bookable while another is disabled.
   final bool driversAvailable;
 
+  /// Name of the promo campaign applied to this category's fare, when the
+  /// estimate entry carried a `promo` object. [farePesewas] is ALREADY the
+  /// discounted price in that case; [promoOriginalFarePesewas] holds the
+  /// pre-promo fare for the struck-through display. Both null = no promo.
+  final String? promoName;
+  final int? promoOriginalFarePesewas;
+
   const VehicleOption({
     required this.id,
     required this.name,
@@ -69,10 +77,27 @@ class VehicleOption {
     this.surgeActive = false,
     this.surgeMultiplier = 1.0,
     this.driversAvailable = true,
+    this.promoName,
+    this.promoOriginalFarePesewas,
   });
+
+  /// True when a promo discount is baked into [farePesewas] and the
+  /// original fare is known (and actually higher — never strike through
+  /// an identical price).
+  bool get hasPromo =>
+      promoOriginalFarePesewas != null &&
+      promoOriginalFarePesewas! > farePesewas;
 
   String get fareDisplay {
     final ghs = farePesewas / 100;
+    return 'GH₵ ${ghs.toStringAsFixed(2)}';
+  }
+
+  /// Pre-promo fare display, e.g. "GH₵ 20.00". Empty when no promo.
+  String get promoOriginalFareDisplay {
+    final original = promoOriginalFarePesewas;
+    if (original == null) return '';
+    final ghs = original / 100;
     return 'GH₵ ${ghs.toStringAsFixed(2)}';
   }
 }
@@ -1318,6 +1343,12 @@ Future<void> requestRideAndMatchDriver(
       'code=${e.errorCode ?? 'unknown'})',
       name: 'RideProvider',
     );
+    if (isPromoCampaignUnavailableError(e)) {
+      // The promo priced into the current estimate ended server-side.
+      // Refresh the estimate so the fare cards show the updated
+      // (undiscounted) price when the rider returns to book again.
+      ref.invalidate(fareEstimateProvider);
+    }
     failWith(rideRequestErrorMessage(e));
     return;
   } catch (e) {

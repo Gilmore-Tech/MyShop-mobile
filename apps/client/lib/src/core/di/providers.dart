@@ -129,6 +129,11 @@ final paymentServiceProvider = Provider<PaymentService>((ref) {
   return PaymentService(ref.watch(dioProvider));
 });
 
+/// Promo service for active promotional campaigns.
+final promoServiceProvider = Provider<PromoService>((ref) {
+  return PromoService(ref.watch(dioProvider));
+});
+
 /// SharedPreferences-backed store of in-flight Paystack charges, keyed
 /// on bookingId. Persisted so the OTP/USSD flow can resume across app
 /// restarts and Retry can clear stale rows even when the in-memory

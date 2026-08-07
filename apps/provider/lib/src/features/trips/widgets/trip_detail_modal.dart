@@ -1014,6 +1014,47 @@ class _FareBreakdownCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
 
+                // Promo badge — rider paid a discounted price, but the
+                // driver's earnings are whole: MyShop covers the discount.
+                if (s?.promoApplied ?? false) ...[
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: MyShopColors.primaryGoldLight,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.local_offer_rounded,
+                            size: 12,
+                            color: MyShopColors.primaryGoldDark,
+                          ),
+                          SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              "Promo ride — you're paid the full fare",
+                              style: TextStyle(
+                                fontFamily: 'Raleway',
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: MyShopColors.primaryGoldDark,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
                 // Commission box
                 Container(
                   padding: const EdgeInsets.all(10),
@@ -1246,6 +1287,7 @@ class _RideSnapshot {
     required this.bookingFeePesewas,
     required this.totalFarePesewas,
     required this.surgeMultiplier,
+    this.promoApplied = false,
   });
 
   factory _RideSnapshot.fromJson(Map<String, dynamic> json) {
@@ -1262,6 +1304,8 @@ class _RideSnapshot {
       bookingFeePesewas: asInt(json['bookingFee']),
       totalFarePesewas: asInt(json['totalPaidPesewas'] ?? json['totalFare']),
       surgeMultiplier: asDouble(json['surgeMultiplier'], 1.0),
+      // Additive field — absent on older backends, so default false.
+      promoApplied: json['promoApplied'] == true,
     );
   }
 
@@ -1274,6 +1318,11 @@ class _RideSnapshot {
   final int bookingFeePesewas;
   final int totalFarePesewas;
   final double surgeMultiplier;
+
+  /// True when a promo discount was applied to the rider's price. The
+  /// driver's earnings are unaffected — MyShop absorbs the discount and
+  /// pays the full fare, which the badge in the fare card spells out.
+  final bool promoApplied;
 }
 
 // ─── Data Model ─────────────────────────────────────────────────────────────

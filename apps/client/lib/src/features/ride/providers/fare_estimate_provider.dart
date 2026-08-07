@@ -88,6 +88,11 @@ final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
     final cat = raw as Map<String, dynamic>;
     final slug = cat['slug'] as String;
     final eta = (cat['pickupEtaMins'] as num?)?.toInt() ?? 5;
+    // Optional promo object — when present, `estimatedFarePesewas` is
+    // ALREADY discounted; `originalFarePesewas` is the pre-promo fare
+    // shown struck through. Absent key (old backend) = no promo.
+    final promo = cat['promo'];
+    final promoMap = promo is Map<String, dynamic> ? promo : null;
     return VehicleOption(
       // id carries the slug so the booking flow can send it back on POST /rides.
       id: slug,
@@ -108,6 +113,9 @@ final fareEstimateProvider = FutureProvider<List<VehicleOption>>((ref) async {
       // Per-category availability — a Comfort card greys out when only Regular
       // drivers are online.
       driversAvailable: (cat['driversAvailable'] as bool?) ?? true,
+      promoName: promoMap?['name'] as String?,
+      promoOriginalFarePesewas:
+          (promoMap?['originalFarePesewas'] as num?)?.toInt(),
     );
   }).toList();
 });

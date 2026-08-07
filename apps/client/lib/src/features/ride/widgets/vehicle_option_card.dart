@@ -203,14 +203,64 @@ class _FareInfo extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          option.fareDisplay,
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            color: MyShopColors.textPrimary,
+        if (option.hasPromo)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Pre-promo fare, struck through. The promo fare next to it
+              // is the price actually charged (backend already discounted).
+              Text(
+                option.promoOriginalFareDisplay,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: MyShopColors.textSecondary,
+                  decoration: TextDecoration.lineThrough,
+                ),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                option.fareDisplay,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: MyShopColors.textPrimary,
+                ),
+              ),
+            ],
+          )
+        else
+          Text(
+            option.fareDisplay,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: MyShopColors.textPrimary,
+            ),
           ),
-        ),
+        if (option.hasPromo &&
+            (option.promoName?.trim().isNotEmpty ?? false)) ...[
+          const SizedBox(height: 3),
+          Container(
+            constraints: const BoxConstraints(maxWidth: 120),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: MyShopColors.primaryGoldLight,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              option.promoName!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                color: MyShopColors.primaryGoldDark,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 4),
         if (!option.driversAvailable)
           // Replaces the ETA — there's no honest "x min" to show when no

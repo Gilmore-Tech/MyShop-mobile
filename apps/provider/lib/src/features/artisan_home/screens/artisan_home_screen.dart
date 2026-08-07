@@ -13,6 +13,7 @@ import '../../earnings/providers/earnings_providers.dart';
 import '../../earnings/providers/ratings_provider.dart';
 import '../../profile/providers/verification_provider.dart';
 import '../../profile/widgets/incomplete_profile_sheet.dart';
+import '../../promos/widgets/promos_section.dart';
 import 'package:shared_models/shared_models.dart' show EarningsRole;
 import '../providers/live_job_feed_provider.dart';
 import '../widgets/artisan_home_header.dart';
@@ -221,6 +222,11 @@ class _ArtisanHomeScreenState extends ConsumerState<ArtisanHomeScreen> {
             ),
 
             const SizedBox(height: MyShopSpacing.lg),
+
+            // Provider-audience promos (commission relief). Collapses to
+            // zero height when none are active — promo failures must
+            // never break home.
+            const PromosSection(),
 
             // Live job feed header + body — counts and indicator dot turn live
             // when at least one snapshot has arrived via REST seed or the

@@ -10,6 +10,7 @@ import 'package:shared_ui/shared_ui.dart';
 import '../../../core/providers/availability_controller.dart';
 import '../../../core/providers/socket_provider.dart';
 import '../../profile/providers/verification_provider.dart';
+import '../../promos/widgets/promos_section.dart';
 import '../data/gps_position_smoother.dart';
 import '../providers/driver_location_provider.dart';
 import '../../../core/providers/provider_status_provider.dart';
@@ -496,6 +497,11 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen>
                     // as the feature is built out (widget retained in
                     // auto_accept_card.dart).
                     const SizedBox(height: MyShopSpacing.lg),
+
+                    // Provider-audience promos (commission relief).
+                    // Collapses to zero height when none are active —
+                    // promo failures must never break home.
+                    const PromosSection(),
 
                     // Recent Activity
                     const Padding(
