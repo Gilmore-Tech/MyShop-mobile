@@ -93,6 +93,45 @@ void main() {
     expect(c.bannerUrl, isNull);
     expect(c.hasBanner, isFalse);
     expect(c.bannerPriority, 0);
+    // Older backends never send `audience` — those campaigns were always
+    // client-targeted, so absence must default to 'client'.
+    expect(c.audience, 'client');
+  });
+
+  test('parses the provider audience + commission-relief shape', () async {
+    dio = buildDio({
+      'campaigns': [
+        {
+          'id': 'camp-relief-1',
+          'name': 'Driver Boost Week',
+          'campaignType': 'commission_relief',
+          'discountValue': 50,
+          'maxDiscountPesewas': 1500,
+          'audience': 'provider_driver',
+        },
+        {
+          'id': 'camp-relief-2',
+          'name': 'Artisan Relief',
+          'campaignType': 'commission_relief',
+          'discountValue': 100,
+          'audience': 'provider_artisan',
+        },
+      ],
+    });
+
+    final campaigns = await PromoService(dio).getActiveCampaigns();
+
+    expect(campaigns, hasLength(2));
+    final driver = campaigns.first;
+    expect(driver.audience, 'provider_driver');
+    expect(driver.campaignType, 'commission_relief');
+    expect(driver.isCommissionRelief, isTrue);
+    expect(driver.isPercentage, isFalse);
+    expect(driver.discountValue, 50);
+    expect(driver.maxDiscountPesewas, 1500);
+    final artisan = campaigns.last;
+    expect(artisan.audience, 'provider_artisan');
+    expect(artisan.maxDiscountPesewas, isNull);
   });
 
   test('returns empty list when the feature is off', () async {

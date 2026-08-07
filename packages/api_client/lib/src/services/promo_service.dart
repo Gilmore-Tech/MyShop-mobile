@@ -2,11 +2,14 @@ import 'package:dio/dio.dart';
 
 import '../models/api_exception.dart';
 
-/// A promotional campaign currently active for the signed-in client.
+/// A promotional campaign currently active for the signed-in user.
 ///
-/// Served by `GET /v1/promos/active`. All parsing is null-safe and
-/// tolerant of missing keys (additive contract — an older backend that
-/// omits a field must not break the client). Unknown fields are ignored.
+/// Served by `GET /v1/promos/active`. The backend filters campaigns by
+/// the caller's token role: clients receive discount campaigns, while
+/// drivers/artisans receive their role's commission-relief campaigns.
+/// All parsing is null-safe and tolerant of missing keys (additive
+/// contract — an older backend that omits a field must not break the
+/// client). Unknown fields are ignored.
 class ActivePromoCampaign {
   const ActivePromoCampaign({
     required this.id,
@@ -23,6 +26,7 @@ class ActivePromoCampaign {
     this.endsAt,
     this.bannerUrl,
     this.bannerPriority = 0,
+    this.audience = 'client',
   });
 
   factory ActivePromoCampaign.fromJson(Map<String, dynamic> json) {
@@ -41,6 +45,7 @@ class ActivePromoCampaign {
       endsAt: _parseDate(json['endsAt']),
       bannerUrl: json['bannerUrl'] as String?,
       bannerPriority: (json['bannerPriority'] as num?)?.toInt() ?? 0,
+      audience: json['audience'] as String? ?? 'client',
     );
   }
 
@@ -52,11 +57,12 @@ class ActivePromoCampaign {
   final String description;
   final String termsText;
 
-  /// `percentage_discount` | `fixed_discount`.
+  /// `percentage_discount` | `fixed_discount` | `commission_relief`.
   final String campaignType;
 
   /// Percentage points for `percentage_discount` (e.g. 15 = 15% off);
-  /// pesewas for `fixed_discount` (e.g. 500 = GHS 5 off).
+  /// pesewas for `fixed_discount` (e.g. 500 = GHS 5 off); percent of the
+  /// platform commission forgiven (1-100) for `commission_relief`.
   final num discountValue;
 
   final int? maxDiscountPesewas;
@@ -74,7 +80,13 @@ class ActivePromoCampaign {
 
   final int bannerPriority;
 
+  /// Who the campaign targets: `client` (default), `provider_driver`,
+  /// or `provider_artisan`. Older backends omit the field entirely —
+  /// those campaigns were always client-audience, hence the default.
+  final String audience;
+
   bool get isPercentage => campaignType == 'percentage_discount';
+  bool get isCommissionRelief => campaignType == 'commission_relief';
   bool get hasBanner => bannerUrl != null && bannerUrl!.trim().isNotEmpty;
 }
 

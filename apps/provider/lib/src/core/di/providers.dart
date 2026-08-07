@@ -168,6 +168,14 @@ final paymentServiceProvider = Provider<PaymentService>((ref) {
   return PaymentService(ref.watch(dioProvider));
 });
 
+/// Promo campaigns — `GET /promos/active`. The backend filters by the
+/// caller's token role, so a signed-in driver/artisan only ever receives
+/// provider-audience commission-relief campaigns (empty list when the
+/// promo feature flag is off).
+final promoServiceProvider = Provider<PromoService>((ref) {
+  return PromoService(ref.watch(dioProvider));
+});
+
 /// Safety service — POST /emergency for the SOS screen. Used by both
 /// driver and artisan emergency surfaces with `bookingType: 'ride' | 'job'`
 /// derived from the active role + active booking id.
