@@ -6,6 +6,7 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../auth/providers/current_user_provider.dart';
 import '../../profile/providers/verification_provider.dart';
+import '../../promos/widgets/earnings_promo_callout.dart';
 import '../providers/earnings_providers.dart';
 import '../providers/ratings_provider.dart';
 import '../widgets/commission_card.dart';
@@ -260,6 +261,11 @@ class EarningsDashboardScreen extends ConsumerWidget {
                 ),
               ],
               const SizedBox(height: MyShopSpacing.sm),
+
+              // ── Active commission-relief promo callout ──
+              // Zero height when no relief campaign is active for this
+              // provider; taps open the campaign details sheet.
+              const EarningsPromoCallout(),
 
               // ── Action CTA: Pay Commission OR Request Payout ──
               // In arrears (owes platform > earned in-app): Pay Commission.
