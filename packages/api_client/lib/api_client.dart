@@ -44,6 +44,7 @@ export 'src/services/media_service.dart';
 export 'src/services/notification_service.dart';
 export 'src/services/payment_service.dart';
 export 'src/services/platform_config_service.dart';
+export 'src/services/promo_service.dart';
 export 'src/services/provider_availability_service.dart';
 export 'src/services/provider_request_service.dart';
 export 'src/services/provider_vehicle_service.dart';

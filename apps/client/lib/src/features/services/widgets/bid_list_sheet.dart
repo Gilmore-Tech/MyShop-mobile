@@ -450,16 +450,69 @@ class _BidCard extends ConsumerWidget {
                 ),
               ),
               SizedBox(width: w * 0.021),
-              // Bid amount
-              Text(
-                bid.amountDisplay,
-                style: TextStyle(
-                  fontSize: w * 0.043,
-                  fontWeight: FontWeight.w800,
-                  color: MyShopColors.textPrimary,
-                  height: 1.1,
-                ),
-              ),
+              // Bid amount — dual price when a promo is applied: original
+              // struck through above the discounted price + campaign tag.
+              bid.hasPromo
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          bid.promoOriginalAmountDisplay,
+                          style: TextStyle(
+                            fontSize: w * 0.031,
+                            fontWeight: FontWeight.w500,
+                            color: MyShopColors.textSecondary,
+                            decoration: TextDecoration.lineThrough,
+                            height: 1.1,
+                          ),
+                        ),
+                        SizedBox(height: h * 0.002),
+                        Text(
+                          bid.effectiveAmountDisplay,
+                          style: TextStyle(
+                            fontSize: w * 0.043,
+                            fontWeight: FontWeight.w800,
+                            color: MyShopColors.textPrimary,
+                            height: 1.1,
+                          ),
+                        ),
+                        if (bid.promoName?.trim().isNotEmpty ?? false) ...[
+                          SizedBox(height: h * 0.004),
+                          Container(
+                            constraints: BoxConstraints(maxWidth: w * 0.31),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: w * 0.015,
+                              vertical: h * 0.002,
+                            ),
+                            decoration: BoxDecoration(
+                              color: MyShopColors.primaryGoldLight,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              bid.promoName!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: w * 0.023,
+                                fontWeight: FontWeight.w700,
+                                color: MyShopColors.primaryGoldDark,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    )
+                  : Text(
+                      bid.amountDisplay,
+                      style: TextStyle(
+                        fontSize: w * 0.043,
+                        fontWeight: FontWeight.w800,
+                        color: MyShopColors.textPrimary,
+                        height: 1.1,
+                      ),
+                    ),
             ],
           ),
 
