@@ -1,8 +1,10 @@
+import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myshop_client/src/core/providers/current_location_label_provider.dart';
 import 'package:myshop_client/src/features/home/providers/home_provider.dart';
+import 'package:myshop_client/src/features/home/providers/promo_campaigns_provider.dart';
 import 'package:myshop_client/src/features/home/screens/home_screen.dart';
 import 'package:myshop_client/src/features/profile/providers/profile_provider.dart';
 
@@ -52,6 +54,9 @@ void main() {
             (_) async => 'Prempeh II Street, Adum, Kumasi, Ghana',
           ),
           specialOffersProvider.overrideWith(_EmptyOffersNotifier.new),
+          activePromoCampaignsProvider.overrideWith(
+            (_) async => const <ActivePromoCampaign>[],
+          ),
           homeRecentActivityProvider.overrideWith(
             () => _RecentActivityNotifier(activity),
           ),

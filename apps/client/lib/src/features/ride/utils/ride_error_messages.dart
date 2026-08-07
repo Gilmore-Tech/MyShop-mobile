@@ -66,9 +66,23 @@ String rideSocketCancellationMessage({
 const rideSocketDriverDelayMessage =
     'Your driver is delayed, but the ride is still active.';
 
+/// Client-owned copy for a 409 `PROMO_CAMPAIGN_UNAVAILABLE` on booking:
+/// the promo priced into the estimate ended between estimate and booking.
+/// The caller refreshes the estimate so the user reviews the updated
+/// (undiscounted) price before booking again.
+const promoCampaignUnavailableMessage =
+    'That promotion just ended. Please review the updated price and book again.';
+
+bool isPromoCampaignUnavailableError(ApiException error) {
+  return error.errorCode?.toUpperCase() == 'PROMO_CAMPAIGN_UNAVAILABLE';
+}
+
 String rideRequestErrorMessage(ApiException error) {
   if (error.errorCode?.toUpperCase() == 'NO_DRIVERS_AVAILABLE') {
     return noDriversAvailableMessage;
+  }
+  if (isPromoCampaignUnavailableError(error)) {
+    return promoCampaignUnavailableMessage;
   }
 
   return userSafeApiErrorMessage(

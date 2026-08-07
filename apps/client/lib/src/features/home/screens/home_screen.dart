@@ -17,6 +17,7 @@ import '../../profile/providers/profile_provider.dart';
 import '../../ride/providers/ride_search_provider.dart';
 import '../providers/home_provider.dart';
 import '../widgets/location_search_card.dart';
+import '../widgets/promo_banner_carousel.dart';
 import '../widgets/safety_banner.dart';
 import '../widgets/service_card.dart';
 import '../widgets/special_offer_card.dart';
@@ -52,6 +53,9 @@ class HomeScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SizedBox(height: h * 0.03),
+                    // Renders nothing when no campaigns carry a banner —
+                    // promo failures must never break home.
+                    const PromoBannerCarousel(),
                     if (showRideAreaBanner) ...[
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 16),

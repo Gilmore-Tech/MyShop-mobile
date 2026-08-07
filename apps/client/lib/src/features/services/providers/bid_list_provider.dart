@@ -48,6 +48,14 @@ class ArtisanBid {
   final double? latitude;
   final double? longitude;
 
+  /// Promo campaign applied to this bid, when the backend attached a
+  /// `promo` object: `{ campaignId, name, originalPricePesewas,
+  /// discountPesewas, promoPricePesewas }`. All null = no promo
+  /// (including on older backends that omit the key entirely).
+  final String? promoName;
+  final int? promoOriginalPricePesewas;
+  final int? promoPricePesewas;
+
   const ArtisanBid({
     required this.bidId,
     required this.artisanId,
@@ -64,6 +72,9 @@ class ArtisanBid {
     this.rawStatus = 'pending',
     this.latitude,
     this.longitude,
+    this.promoName,
+    this.promoOriginalPricePesewas,
+    this.promoPricePesewas,
   });
 
   /// True when we have a usable coordinate pair to plot / measure against.
@@ -71,8 +82,30 @@ class ArtisanBid {
 
   bool get hasRating => reviewCount > 0 && rating > 0;
 
+  /// True when the bid carries a promo price worth showing as a dual
+  /// price (original struck through next to the discounted price).
+  bool get hasPromo =>
+      promoPricePesewas != null &&
+      promoOriginalPricePesewas != null &&
+      promoOriginalPricePesewas! > promoPricePesewas!;
+
+  /// The price the client actually pays — promo price when present.
+  int get effectiveAmountPesewas => promoPricePesewas ?? amountPesewas;
+
+  static String _ghs(int pesewas) =>
+      'GHS ${(pesewas / 100).toStringAsFixed(0)}';
+
   /// Display amount e.g. "GHS 240"
-  String get amountDisplay => 'GHS ${(amountPesewas / 100).toStringAsFixed(0)}';
+  String get amountDisplay => _ghs(amountPesewas);
+
+  /// Discounted price display, e.g. "GHS 210". Falls back to
+  /// [amountDisplay] when no promo.
+  String get effectiveAmountDisplay => _ghs(effectiveAmountPesewas);
+
+  /// Pre-promo price display for the struck-through label. Empty when
+  /// no promo.
+  String get promoOriginalAmountDisplay =>
+      promoOriginalPricePesewas == null ? '' : _ghs(promoOriginalPricePesewas!);
 
   /// Deterministic fallback avatar color derived from the artisan id, so
   /// the same artisan always renders with the same shade across sessions.
@@ -263,6 +296,9 @@ class _BidsNotifier
         (data['provider'] as Map<String, dynamic>?) ??
         const <String, dynamic>{};
 
+    final rawPromo = data['promo'];
+    final promo = rawPromo is Map<String, dynamic> ? rawPromo : null;
+
     String composeName() {
       final full = (artisan['fullName'] ?? artisan['name']) as String?;
       if (full != null && full.trim().isNotEmpty) return full.trim();
@@ -320,6 +356,12 @@ class _BidsNotifier
       rawStatus: (data['status'] as String?) ?? 'pending',
       latitude: (artisan['latitude'] as num?)?.toDouble(),
       longitude: (artisan['longitude'] as num?)?.toDouble(),
+      // Optional promo object — additive contract; absent on older
+      // backends and on bids without an applicable campaign.
+      promoName: promo?['name'] as String?,
+      promoOriginalPricePesewas:
+          (promo?['originalPricePesewas'] as num?)?.toInt(),
+      promoPricePesewas: (promo?['promoPricePesewas'] as num?)?.toInt(),
     );
   }
 }
