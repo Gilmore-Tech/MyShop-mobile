@@ -70,6 +70,34 @@ void main() {
     expect(receipt.driverName, 'Ama Boateng');
   });
 
+  test(
+      'fully-subsidised promo ride keeps the pre-promo subtotal and a '
+      'truthful zero total (regression: 0.00 everywhere)', () {
+    final receipt = buildRideReceiptFromSnapshot({
+      'id': 'ride-promo',
+      'finalFarePesewas': 0,
+      'grossFarePesewas': 0,
+      'totalPaidPesewas': 0,
+      'prePromoFarePesewas': 1430,
+      'promoDiscountPesewas': 1430,
+      'promoApplied': true,
+      'baseFarePesewas': 500,
+      'distanceFarePesewas': 930,
+      'estimatedFarePesewas': 2600,
+      'paymentMethod': 'cash',
+      'driver': {'name': 'Kofi Driver'},
+    });
+
+    // Subtotal is the metered fare BEFORE the discount — grossFarePesewas
+    // (the post-promo charge, 0 here) must not win.
+    expect(receipt.subtotalPesewas, 1430);
+    expect(receipt.promoDiscountPesewas, 1430);
+    expect(receipt.baseFarePesewas, 500);
+    expect(receipt.distanceFarePesewas, 930);
+    // The rider genuinely paid nothing.
+    expect(receipt.totalPaidPesewas, 0);
+  });
+
   test('builds receipts with total paid winning over gross final fare', () {
     final receipt = buildRideReceiptFromSnapshot({
       'id': 'ride-2',

@@ -304,13 +304,17 @@ class RideFareFields {
         fallback: 1.0,
       ),
       surgeFarePesewas: surgeFare,
+      // Subtotal is the fare BEFORE discounts. Prefer the explicit pre-promo
+      // figure: `grossFarePesewas` is the post-promo charge, so on a promo
+      // ride it would render the subtotal as the discounted amount (0 when
+      // the campaign covers the whole fare).
       subtotalPesewas: _readInt(
         snapshot,
         const [
-          'grossFarePesewas',
+          'prePromoFarePesewas',
           'subtotalPesewas',
           'subtotal',
-          'prePromoFarePesewas',
+          'grossFarePesewas',
         ],
         fallback: total + promoDiscount + loyaltyDiscount,
       ),

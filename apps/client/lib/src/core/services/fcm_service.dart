@@ -13,6 +13,8 @@ import 'package:shared_ui/shared_ui.dart';
 
 import '../../app/router.dart';
 import '../../features/auth/providers/auth_controller.dart';
+import '../../features/ride/providers/ride_provider.dart'
+    show rideReceiptProvider;
 import '../../features/ride/widgets/rate_ride_sheet.dart';
 import '../../features/services/widgets/rate_job_sheet.dart';
 import '../di/providers.dart';
@@ -1220,6 +1222,17 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
             router.go(AppRoutes.activity);
             break;
           }
+          // If the completion summary for this ride is still in memory,
+          // land there instead — its OK flow runs summary → rating →
+          // receipt, and auto-opening the sheet here would cover the fare
+          // summary before the rider has read it.
+          final summary = ref.read(rideReceiptProvider);
+          if (summary != null && summary.rideId == id) {
+            router.go(AppRoutes.rideComplete);
+            break;
+          }
+          // Cold start / historical ride: the summary state is gone, so the
+          // receipt is the rating context — open the sheet over it.
           pushDeepLink(router, AppRoutes.rideReceiptPath(id));
           await Future<void>.delayed(const Duration(milliseconds: 200));
           final ctx = router.routerDelegate.navigatorKey.currentContext;
