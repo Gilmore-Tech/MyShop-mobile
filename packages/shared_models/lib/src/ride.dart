@@ -15,9 +15,14 @@ class Ride {
     required this.estimatedFarePesewas,
     this.finalFarePesewas,
     this.totalPaidPesewas,
+    this.prePromoFarePesewas,
+    this.promoDiscountPesewas,
+    this.promoApplied = false,
+    this.collectFromClientPesewas,
     this.commissionPesewas,
     this.commissionRatePercent,
     this.netPayoutPesewas,
+    this.providerEarningsPesewas,
     required this.estimatedDistanceKm,
     required this.estimatedDurationMins,
     this.actualDistanceKm,
@@ -176,9 +181,18 @@ class Ride {
       totalPaidPesewas: _optionalInt(
         json['totalPaidPesewas'] ?? json['amountPaidPesewas'],
       ),
+      prePromoFarePesewas: _optionalInt(json['prePromoFarePesewas']),
+      promoDiscountPesewas: _optionalInt(json['promoDiscountPesewas']),
+      // Older payloads lack the explicit flag — infer from a non-zero discount.
+      promoApplied: json['promoApplied'] == true ||
+          (_optionalInt(json['promoDiscountPesewas']) ?? 0) > 0,
+      collectFromClientPesewas: _optionalInt(
+        json['collectFromClientPesewas'] ?? json['totalPaidPesewas'],
+      ),
       commissionPesewas: _optionalInt(json['commissionPesewas']),
       commissionRatePercent: _optionalNum(json['commissionRatePercent']),
       netPayoutPesewas: _optionalInt(json['netPayoutPesewas']),
+      providerEarningsPesewas: _optionalInt(json['providerEarningsPesewas']),
       estimatedDistanceKm: _distanceKm(),
       estimatedDurationMins: _durationMins(),
       actualDistanceKm: _optionalNum(json['actualDistanceKm']) ??
@@ -231,9 +245,31 @@ class Ride {
   final int estimatedFarePesewas;
   final int? finalFarePesewas;
   final int? totalPaidPesewas;
+
+  /// Metered fare before any promo/loyalty discount. Provider payouts and
+  /// commission always derive from this figure (BR-49) — a promo never
+  /// reduces what the provider earns.
+  final int? prePromoFarePesewas;
+
+  /// Platform-funded promo discount applied to what the client pays.
+  final int? promoDiscountPesewas;
+
+  /// True when a promo code/campaign discounted this ride.
+  final bool promoApplied;
+
+  /// What the client actually pays after discounts — for cash rides, the
+  /// amount the driver should collect at drop-off.
+  final int? collectFromClientPesewas;
   final int? commissionPesewas;
   final double? commissionRatePercent;
+
+  /// Platform rail payout for the linked payment. For cash rides this is NOT
+  /// the driver's earnings (it's the subsidy net of commission) — display
+  /// earnings from [providerEarningsPesewas].
   final int? netPayoutPesewas;
+
+  /// Driver earnings for the trip: pre-promo fare − commission.
+  final int? providerEarningsPesewas;
   final double estimatedDistanceKm;
   final int estimatedDurationMins;
   final double? actualDistanceKm;
@@ -272,6 +308,16 @@ class Ride {
       ? _formatGhs(totalPaidPesewas!)
       : finalFareDisplay;
 
+  /// The metered trip fare — what the provider is paid on. Falls back through
+  /// the discounted amounts only for legacy payloads that never carried the
+  /// pre-promo figure.
+  int get tripFarePesewas =>
+      prePromoFarePesewas ??
+      totalPaidPesewas ??
+      finalFarePesewas ??
+      estimatedFarePesewas;
+  String get tripFareDisplay => _formatGhs(tripFarePesewas);
+
   String get distanceDisplay => '${estimatedDistanceKm.toStringAsFixed(1)} km';
   String get durationDisplay => '$estimatedDurationMins mins';
 
@@ -293,9 +339,14 @@ class Ride {
       estimatedFarePesewas: estimatedFarePesewas,
       finalFarePesewas: finalFarePesewas,
       totalPaidPesewas: totalPaidPesewas,
+      prePromoFarePesewas: prePromoFarePesewas,
+      promoDiscountPesewas: promoDiscountPesewas,
+      promoApplied: promoApplied,
+      collectFromClientPesewas: collectFromClientPesewas,
       commissionPesewas: commissionPesewas,
       commissionRatePercent: commissionRatePercent,
       netPayoutPesewas: netPayoutPesewas,
+      providerEarningsPesewas: providerEarningsPesewas,
       estimatedDistanceKm: estimatedDistanceKm,
       estimatedDurationMins: estimatedDurationMins,
       actualDistanceKm: actualDistanceKm,
@@ -423,7 +474,9 @@ class TripSummary {
     this.surgeFarePesewas = 0,
     this.taxesPesewas = 0,
     this.promoPesewas = 0,
+    this.promoApplied = false,
     required this.totalFarePesewas,
+    this.collectFromClientPesewas,
     this.commissionPesewas,
     this.commissionRatePercent,
     this.netEarningsPesewas,
@@ -446,7 +499,17 @@ class TripSummary {
   final int surgeFarePesewas;
   final int taxesPesewas;
   final int promoPesewas;
+
+  /// True when a platform promo discounted what the client pays. The provider
+  /// is still paid on the full [totalFarePesewas] (BR-49).
+  final bool promoApplied;
+
+  /// The actual metered trip fare (pre-promo) — the provider's pay base.
   final int totalFarePesewas;
+
+  /// What the client hands over after the promo — for cash trips, the amount
+  /// to collect at drop-off. Null when unknown (legacy payloads).
+  final int? collectFromClientPesewas;
   final int? commissionPesewas;
   final double? commissionRatePercent;
   final int? netEarningsPesewas;
@@ -454,6 +517,8 @@ class TripSummary {
   final String payoutStatus;
 
   String get totalFareDisplay => _formatGhs(totalFarePesewas);
+  String get collectFromClientDisplay =>
+      _formatGhs(collectFromClientPesewas ?? totalFarePesewas);
   String get commissionDisplay =>
       commissionPesewas == null ? 'Pending' : _formatGhs(commissionPesewas!);
   String get netEarningsDisplay =>

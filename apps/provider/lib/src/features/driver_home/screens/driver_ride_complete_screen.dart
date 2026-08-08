@@ -59,9 +59,11 @@ class _DriverRideCompleteScreenState
   }
 
   TripSummary _summaryFromRide(Ride ride) {
-    final total = ride.totalPaidPesewas ??
-        ride.finalFarePesewas ??
-        ride.estimatedFarePesewas;
+    // The driver is always paid on the pre-promo metered fare (BR-49) — a
+    // client promo changes what the client pays, never driver earnings. A
+    // fully-subsidised promo ride has totalPaid == 0, so the discounted
+    // amounts must never be shown as "the fare".
+    final tripFare = ride.tripFarePesewas;
     // Backend overwrites the estimated distance/duration columns with the
     // ACTUAL values (computed from the GPS trail + start→complete time)
     // when the ride flips to `completed`, so reading them directly here
@@ -87,11 +89,20 @@ class _DriverRideCompleteScreenState
       timeFarePesewas: 0,
       surgeFarePesewas: 0,
       taxesPesewas: 0,
-      promoPesewas: 0,
-      totalFarePesewas: total,
+      promoPesewas: ride.promoDiscountPesewas ?? 0,
+      promoApplied: ride.promoApplied,
+      totalFarePesewas: tripFare,
+      collectFromClientPesewas:
+          ride.collectFromClientPesewas ?? ride.totalPaidPesewas,
       commissionPesewas: ride.commissionPesewas,
       commissionRatePercent: ride.commissionRatePercent,
-      netEarningsPesewas: ride.netPayoutPesewas,
+      // providerEarningsPesewas is the ledger's earnings figure.
+      // netPayoutPesewas is NOT earnings — for cash rides it's the platform
+      // rail payout (subsidy net of commission), often 0 on promo trips.
+      netEarningsPesewas: ride.providerEarningsPesewas ??
+          (ride.commissionPesewas != null
+              ? tripFare - ride.commissionPesewas!
+              : null),
       payoutMethod: 'MoMo Payout',
       payoutStatus: 'PROCESSING',
     );
@@ -225,7 +236,7 @@ class _DriverRideCompleteScreenState
                       ]),
                     ])),
                 Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  Text('TOTAL FARE',
+                  Text('TRIP FARE',
                       style: MyShopTypography.overline.copyWith(
                           fontSize: 9, color: MyShopColors.primaryGold)),
                   Text(s.totalFareDisplay,
@@ -338,19 +349,18 @@ class _DriverRideCompleteScreenState
                     icon: Icons.bolt),
               if (s.taxesPesewas > 0)
                 _FareRow(label: 'Taxes & Levies', amount: s.taxesPesewas),
-              if (s.promoPesewas > 0)
-                _FareRow(
-                    label: 'Promotional Discount', amount: -s.promoPesewas),
               if (s.baseFarePesewas +
                       s.distanceFarePesewas +
                       s.timeFarePesewas +
                       s.surgeFarePesewas +
-                      s.taxesPesewas +
-                      s.promoPesewas >
+                      s.taxesPesewas >
                   0)
                 const Divider(height: 24),
+              // The headline figure is the metered trip fare — the driver's
+              // pay base. The promo line below shows what the platform is
+              // covering; it never reduces this fare.
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                const Text('Total Paid',
+                const Text('Trip Fare',
                     style: TextStyle(
                         fontFamily: 'Raleway',
                         fontSize: 16,
@@ -363,6 +373,37 @@ class _DriverRideCompleteScreenState
                         fontWeight: FontWeight.w900,
                         color: MyShopColors.primaryGold)),
               ]),
+              if (s.promoApplied) ...[
+                const SizedBox(height: 8),
+                _FareRow(
+                    label: 'Promo (covered by MyShop)',
+                    amount: -s.promoPesewas),
+                Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                          ride.paymentMethod == 'cash'
+                              ? 'Collect from Client'
+                              : 'Client Pays',
+                          style: const TextStyle(
+                              fontFamily: 'Raleway',
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: MyShopColors.textPrimary)),
+                      Text(s.collectFromClientDisplay,
+                          style: const TextStyle(
+                              fontFamily: 'Raleway',
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: MyShopColors.textPrimary)),
+                    ]),
+                const SizedBox(height: 4),
+                Text(
+                    'Promo ride — the platform covers the discount. '
+                    'Your earnings are based on the full trip fare.',
+                    style: MyShopTypography.caption
+                        .copyWith(fontSize: 10, color: MyShopColors.success)),
+              ],
             ]),
           ),
           const SizedBox(height: MyShopSpacing.md),
@@ -391,11 +432,27 @@ class _DriverRideCompleteScreenState
                         fontWeight: FontWeight.w700,
                         color: MyShopColors.textPrimary)),
               ]),
+              const SizedBox(height: 8),
+              Row(children: [
+                const Icon(Icons.account_balance_wallet_outlined,
+                    size: 16, color: MyShopColors.primaryGold),
+                const SizedBox(width: 8),
+                Text('Your Earnings',
+                    style: MyShopTypography.body1
+                        .copyWith(fontSize: 13, fontWeight: FontWeight.w700)),
+                const Spacer(),
+                Text(s.netEarningsDisplay,
+                    style: const TextStyle(
+                        fontFamily: 'Raleway',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: MyShopColors.textPrimary)),
+              ]),
               const SizedBox(height: 4),
               Text(
                   s.commissionPesewas == null
                       ? 'The authoritative commission is still being recorded. Check your earnings shortly.'
-                      : 'This is the rate and amount recorded for this trip.',
+                      : 'Commission is charged on the full trip fare. Earnings = trip fare − commission.',
                   style: MyShopTypography.caption.copyWith(fontSize: 10)),
             ]),
           ),

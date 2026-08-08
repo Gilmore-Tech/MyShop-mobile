@@ -1111,6 +1111,25 @@ void _connectAndListen(Ref ref, SocketService socket) {
       if (bookingType == null || bookingId == null || bookingId.isEmpty) {
         return;
       }
+      // The in-app ride completion flow owns its rating step: summary first,
+      // then the rating sheet on OK, then the receipt. If the rider is inside
+      // that flow (tracking → payment → complete), auto-opening the sheet
+      // here would cover the summary before they ever read their fare — the
+      // exact bug this ordering fixes. The socket prompt only serves riders
+      // who are elsewhere in the app when the ride finalises.
+      if (bookingType == 'ride') {
+        final location = ref.container
+            .read(routerProvider)
+            .routerDelegate
+            .currentConfiguration
+            .uri
+            .path;
+        final inCompletionFlow = location == AppRoutes.rideComplete ||
+            location == AppRoutes.rideTracking ||
+            location == AppRoutes.ridePaymentPath(bookingId);
+        if (inCompletionFlow) return;
+      }
+
       // Per-process dedup — a reconnect-redelivered emit or an FCM tap
       // arriving milliseconds later must not stack a second sheet.
       if (!shownRatingFor.add(bookingId)) return;
