@@ -62,8 +62,7 @@ class PromosSection extends ConsumerWidget {
           height: h * 0.155,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding:
-                const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
+            padding: const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
             itemCount: banners.length,
             separatorBuilder: (_, __) =>
                 const SizedBox(width: MyShopSpacing.sm + 4),
