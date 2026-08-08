@@ -138,13 +138,12 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
       setState(() {
         _remitId = remitId;
         _step = needsOtp ? _Step.otp : _Step.awaiting;
-        _displayText =
-            (res['displayText'] as String?) ??
+        _displayText = (res['displayText'] as String?) ??
             (needsOtp
                 ? 'Enter the one-time code sent by your mobile money '
-                      'provider.'
+                    'provider.'
                 : 'Authorise the prompt on '
-                      'your phone to complete the payment.');
+                    'your phone to complete the payment.');
         _surplusPesewas = (res['surplusPesewas'] as num?)?.toInt() ?? 0;
         _remittedPesewas = amount;
         _pollTimedOut = false;
@@ -189,8 +188,7 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
       setState(() {
         _step = _Step.awaiting;
         _otpSubmitting = false;
-        _displayText =
-            (res['displayText'] as String?) ??
+        _displayText = (res['displayText'] as String?) ??
             'Authorise the prompt on '
                 'your phone to complete the payment.';
       });
