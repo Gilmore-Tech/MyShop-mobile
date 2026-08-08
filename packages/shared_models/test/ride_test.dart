@@ -66,6 +66,54 @@ void main() {
     expect(ride.netPayoutPesewas, 7044);
   });
 
+  test(
+      'fully-subsidised promo ride keeps the metered fare as the driver pay '
+      'base (regression: 0.00 everywhere)', () {
+    // Mirrors the staging trip: fare 1430p, campaign covered all of it.
+    final ride = Ride.fromJson({
+      'id': 'ride-promo',
+      'status': 'completed',
+      'estimatedFarePesewas': 2600,
+      'finalFarePesewas': 0,
+      'totalPaidPesewas': 0,
+      'prePromoFarePesewas': 1430,
+      'promoDiscountPesewas': 1430,
+      'promoApplied': true,
+      'collectFromClientPesewas': 0,
+      'commissionPesewas': 286,
+      'commissionRatePercent': '20.00',
+      'netPayoutPesewas': 1144,
+      'providerEarningsPesewas': 1144,
+      'pickupAddress': 'KNUST Gate',
+      'dropoffAddress': 'Kejetia Market',
+    });
+
+    // The trip fare is the pre-promo metered fare — totalPaid of 0 must not
+    // swallow it.
+    expect(ride.tripFarePesewas, 1430);
+    expect(ride.tripFareDisplay, 'GHS 14.30');
+    expect(ride.promoApplied, isTrue);
+    expect(ride.promoDiscountPesewas, 1430);
+    expect(ride.collectFromClientPesewas, 0);
+    expect(ride.providerEarningsPesewas, 1144);
+    // Client-paid figure remains truthfully 0.
+    expect(ride.totalPaidPesewas, 0);
+  });
+
+  test('infers promoApplied from a non-zero discount on legacy payloads', () {
+    final ride = Ride.fromJson({
+      'id': 'ride-legacy-promo',
+      'status': 'completed',
+      'estimatedFarePesewas': 2000,
+      'prePromoFarePesewas': 2000,
+      'promoDiscountPesewas': 500,
+      'pickupAddress': 'KNUST Gate',
+      'dropoffAddress': 'Kejetia Market',
+    });
+
+    expect(ride.promoApplied, isTrue);
+  });
+
   test('keeps legacy payment rate unknown instead of fabricating 20 percent',
       () {
     const summary = TripSummary(

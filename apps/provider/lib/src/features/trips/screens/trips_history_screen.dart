@@ -104,13 +104,13 @@ class _TripsHistoryScreenState extends ConsumerState<TripsHistoryScreen>
     return out;
   }
 
-  /// Sum of the amount actually paid (or final/estimated when paid is missing) for
-  /// the given trips. Used by the monthly-earnings strip at the bottom.
+  /// Sum of the metered trip fares — the driver's pay base. A promo ride's
+  /// discounted client charge (which can be 0) must not shrink the driver's
+  /// earnings strip; the platform covers the discount.
   int _sumPesewas(Iterable<Ride> rides) {
     var total = 0;
     for (final r in rides) {
-      total +=
-          r.totalPaidPesewas ?? r.finalFarePesewas ?? r.estimatedFarePesewas;
+      total += r.tripFarePesewas;
     }
     return total;
   }
@@ -127,8 +127,7 @@ class _TripsHistoryScreenState extends ConsumerState<TripsHistoryScreen>
       final dayKey = DateTime(at.year, at.month, at.day);
       final delta = today.difference(dayKey).inDays;
       if (delta < 0 || delta >= 7) continue;
-      perDay[6 - delta] +=
-          r.totalPaidPesewas ?? r.finalFarePesewas ?? r.estimatedFarePesewas;
+      perDay[6 - delta] += r.tripFarePesewas;
     }
     final maxVal =
         perDay.fold<int>(0, (m, v) => v > m ? v : m).clamp(1, 1 << 30);
@@ -479,7 +478,9 @@ class _TripCard extends StatelessWidget {
                   // surface a dash for non-completed terminal states instead.
                   if (trip.status == RideStatus.completed)
                     Text(
-                      trip.finalFareDisplay,
+                      // Metered fare, not the promo-discounted client charge —
+                      // this list is the driver's earnings view.
+                      trip.tripFareDisplay,
                       style: const TextStyle(
                         fontFamily: 'Raleway',
                         fontSize: 16,
@@ -723,10 +724,12 @@ TripDetailData _rideToTripDetailData(Ride r) {
     distanceFare: '—',
     timeFare: '—',
     surgeFare: r.hasSurge ? '—' : 'GHS 0.00',
-    subtotal: isCompleted ? r.finalFareDisplay : '—',
+    subtotal: isCompleted ? r.tripFareDisplay : '—',
     taxes: '—',
-    promoDiscount: '—',
-    totalPaid: isCompleted ? r.finalFareDisplay : 'GHS 0.00',
+    promoDiscount: r.promoApplied && r.promoDiscountPesewas != null
+        ? '- GHS ${((r.promoDiscountPesewas ?? 0) / 100).toStringAsFixed(2)}'
+        : '—',
+    totalPaid: isCompleted ? r.tripFareDisplay : 'GHS 0.00',
     commission: '—',
     paymentMethod: _formatPaymentMethod(r.paymentMethod),
   );

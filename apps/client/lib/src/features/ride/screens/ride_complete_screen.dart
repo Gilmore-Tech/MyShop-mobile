@@ -37,35 +37,48 @@ class RideCompleteScreen extends ConsumerStatefulWidget {
 class _RideCompleteScreenState extends ConsumerState<RideCompleteScreen> {
   final _customTipController = TextEditingController();
 
+  /// One-shot guard so the OK CTA can't queue a second rating sheet while
+  /// the first is animating open.
+  bool _advancing = false;
+
   @override
   void initState() {
     super.initState();
-    // Show rating sheet automatically once the first frame is rendered.
-    // PRD 4.3 — driver marks ride complete → client rates driver.
-    // Once the sheet closes (submit or skip) we advance the rider to the
-    // receipt screen as the "ride summary" — fromCompletion=true makes the
-    // back button on that screen return to home.
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
+    // PRD 4.3 — driver marks ride complete → client sees the trip SUMMARY
+    // first. The rating sheet must NOT auto-open over it (it used to cover
+    // the summary on frame 1, so riders never saw their fare); it opens when
+    // the rider taps OK, and the receipt follows the rating.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final receipt = ref.read(rideReceiptProvider);
-      if (receipt == null) {
+      if (ref.read(rideReceiptProvider) == null) {
         // Edge case: deep-linked here without the snapshot having landed —
         // fall back to home so the rider isn't stuck on a half-rendered
         // screen.
         context.go(AppRoutes.home);
-        return;
       }
-      await showRateRideSheet(
-        context,
-        rideId: receipt.rideId,
-        driverFirstName: receipt.driverFirstName,
-      );
-      if (!mounted) return;
-      context.pushReplacement(
-        AppRoutes.rideReceiptPath(receipt.rideId),
-        extra: true,
-      );
     });
+  }
+
+  /// Summary acknowledged → rate the driver → land on the receipt.
+  /// fromCompletion=true makes the receipt's back button return home.
+  Future<void> _acknowledgeSummary() async {
+    if (_advancing || !mounted) return;
+    _advancing = true;
+    final receipt = ref.read(rideReceiptProvider);
+    if (receipt == null) {
+      context.go(AppRoutes.home);
+      return;
+    }
+    await showRateRideSheet(
+      context,
+      rideId: receipt.rideId,
+      driverFirstName: receipt.driverFirstName,
+    );
+    if (!mounted) return;
+    context.pushReplacement(
+      AppRoutes.rideReceiptPath(receipt.rideId),
+      extra: true,
+    );
   }
 
   @override
@@ -123,6 +136,41 @@ class _RideCompleteScreenState extends ConsumerState<RideCompleteScreen> {
                       onConfirm: tipState.hasAmount
                           ? () => _submitTip(context, receipt, tipState)
                           : null,
+                    ),
+                    SizedBox(height: h * 0.019), // ~16dp
+                    // Summary acknowledgement — advances to rating, then the
+                    // receipt. The rider always gets to read the fare first.
+                    Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: MediaQuery.sizeOf(context).width * 0.041,
+                      ),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: h * 0.062, // ~52dp
+                        child: ElevatedButton(
+                          onPressed: _acknowledgeSummary,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: MyShopColors.primaryGold,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                MediaQuery.sizeOf(context).width * 0.021,
+                              ),
+                            ),
+                          ),
+                          child: Text(
+                            'OK',
+                            style: TextStyle(
+                              fontSize:
+                                  MediaQuery.sizeOf(context).width * 0.036,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                     SizedBox(height: h * 0.028), // ~24dp
                   ],
@@ -506,13 +554,15 @@ class _FareBreakdownCard extends StatelessWidget {
             amount: _fmtGhs(receipt.taxesPesewas),
             w: w,
           ),
-          SizedBox(height: h * 0.012),
-          _FareLineItem(
-            label: 'Promotional Discount',
-            amount: '- ${_fmtGhs(receipt.promoDiscountPesewas)}',
-            amountColor: MyShopColors.error,
-            w: w,
-          ),
+          if (receipt.promoDiscountPesewas > 0) ...[
+            SizedBox(height: h * 0.012),
+            _FareLineItem(
+              label: 'Promotional Discount',
+              amount: '- ${_fmtGhs(receipt.promoDiscountPesewas)}',
+              amountColor: MyShopColors.error,
+              w: w,
+            ),
+          ],
           if (receipt.loyaltyDiscountPesewas > 0) ...[
             SizedBox(height: h * 0.012),
             _FareLineItem(
