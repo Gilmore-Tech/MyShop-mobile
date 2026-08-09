@@ -208,7 +208,24 @@ verify_android() {
     exit 1
   }
 
-  unzip -qq "$ARTIFACT" -d "$TMP_ROOT/package"
+  # Android resource names are case-sensitive, while the default macOS
+  # filesystem is not. Extracting the complete APK/AAB can therefore prompt
+  # for replacements even when the ZIP has no duplicate entries. The release
+  # configuration is compiled into libapp.so, so extract only that payload for
+  # the endpoint/fail-fast checks below.
+  case "$extension" in
+    apk)
+      unzip -qq "$ARTIFACT" 'lib/*/libapp.so' -d "$TMP_ROOT/package"
+      ;;
+    aab)
+      unzip -qq "$ARTIFACT" 'base/lib/*/libapp.so' -d "$TMP_ROOT/package"
+      ;;
+  esac
+  find "$TMP_ROOT/package" -type f -name libapp.so -print -quit |
+    grep -q . || {
+      echo "error: Android artifact has no compiled Dart release payload" >&2
+      exit 1
+    }
 }
 
 verify_ios() {
@@ -304,6 +321,12 @@ case "$PLATFORM" in
 esac
 
 require_extracted_text "$PRODUCTION_API_ENDPOINT" "production API endpoint"
+if grep -R -aFq -- \
+  "API_BASE_URL is required in release builds. Use tool/build.sh." \
+  "$TMP_ROOT"; then
+  echo "error: packaged app still contains the missing production API startup failure" >&2
+  exit 1
+fi
 if grep -R -aFq -- "myshop-api-test.onrender.com" "$TMP_ROOT"; then
   echo "error: staging API endpoint is embedded in the release artifact" >&2
   exit 1

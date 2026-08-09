@@ -78,6 +78,14 @@ class EarningsDashboardScreen extends ConsumerWidget {
         : (summary?.weeklyAvailableBalancePesewas ?? 0);
     final tripsCompleted = report?.bookingsCompleted ?? 0;
     final isVerified = user?.verificationStatus == 'approved';
+    final summaryRefreshing = summaryAsync.isLoading ||
+        summaryAsync.isRefreshing ||
+        summaryAsync.isReloading;
+    final canRequestPayout = canRequestPayoutFromSummary(
+      summary: summary,
+      summaryRefreshing: summaryRefreshing,
+      summaryHasError: summaryAsync.hasError,
+    );
 
     // Surface a clear failure banner instead of letting "API down" look
     // identical to "driver hasn't earned yet" — the dashboard's all-zeros
@@ -303,12 +311,14 @@ class EarningsDashboardScreen extends ConsumerWidget {
                         ),
                       )
                     : ElevatedButton.icon(
-                        onPressed: effectiveBalance > 0 && pendingPayouts == 0
+                        onPressed: canRequestPayout
                             ? () => showRequestPayoutSheet(context)
                             : null,
                         icon: const Icon(Icons.send_rounded, size: 18),
                         label: Text(
-                          pendingPayouts > 0
+                          summaryRefreshing
+                              ? 'REFRESHING BALANCE'
+                              : pendingPayouts > 0
                               ? 'PAYOUT IN PROGRESS'
                               : 'REQUEST PAYOUT',
                         ),

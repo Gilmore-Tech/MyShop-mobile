@@ -84,6 +84,15 @@ require_source_text "$VERIFIER" \
 require_source_text "$VERIFIER" \
   'cmp -s "$reviewed_privacy_manifest" "$app_bundle/PrivacyInfo.xcprivacy"' \
   "iOS artifact verification must compare packaged privacy declarations with reviewed source"
+require_source_text "$VERIFIER" \
+  'API_BASE_URL is required in release builds. Use tool/build.sh.' \
+  "release verification must reject the missing production API startup failure"
+require_source_text "$VERIFIER" \
+  "'lib/*/libapp.so'" \
+  "APK verification must inspect the compiled Dart release payload"
+require_source_text "$VERIFIER" \
+  "'base/lib/*/libapp.so'" \
+  "App Bundle verification must inspect the compiled Dart release payload"
 
 expect_failure "missing verifier arguments" bash "$VERIFIER"
 expect_failure "invalid app" \
