@@ -25,6 +25,9 @@
 - [x] Strengthened signed-artifact verification so a candidate is rejected if
       it contains the exact missing-production-API startup failure, even when
       other package metadata appears valid.
+- [x] Android verification inspects only the compiled Dart `libapp.so` payload
+      instead of extracting case-colliding resource names onto macOS. This
+      keeps the endpoint/startup-failure gate deterministic and non-interactive.
 - [ ] Merge the reviewed release-control hotfix to `main`, fetch it, and record
       the resulting exact clean `origin/main` SHA. Do not build from the
       hotfix, staging or dirty primary workspace.
