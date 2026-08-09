@@ -101,3 +101,34 @@ final earningsReportProvider =
 final payoutsProvider = FutureProvider<List<DriverPayout>>((ref) async {
   return ref.watch(earningsServiceProvider).getPayouts();
 });
+
+/// One authoritative cache-bust entry point for settlement notifications.
+///
+/// A Paystack transfer can change the provider's withdrawable balance without
+/// changing the historical TODAY/WEEKLY earnings totals. Invalidate every
+/// server-backed earnings surface together so the balance, pending-settlement
+/// amount and payout history cannot disagree after a foreground push or a
+/// notification tap.
+final invalidateEarningsCachesProvider = Provider<void Function()>((ref) {
+  return () {
+    ref.invalidate(todayCardProvider);
+    ref.invalidate(earningsSummaryProvider);
+    ref.invalidate(earningsReportProvider);
+    ref.invalidate(payoutsProvider);
+  };
+});
+
+/// The payout CTA must never act on a previous summary while Riverpod is
+/// fetching the post-settlement balance. TODAY/WEEKLY values remain visible;
+/// only the money-moving action is fenced until the authoritative summary is
+/// current again.
+bool canRequestPayoutFromSummary({
+  required EarningsSummary? summary,
+  required bool summaryRefreshing,
+  required bool summaryHasError,
+}) {
+  if (summary == null || summaryRefreshing || summaryHasError) return false;
+  return !summary.isInArrears &&
+      summary.effectiveBalancePesewas > 0 &&
+      summary.pendingPayoutsPesewas == 0;
+}

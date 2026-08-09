@@ -78,6 +78,10 @@ class _ArtisanEarningsScreenState extends ConsumerState<ArtisanEarningsScreen> {
                 ),
                 data: (summary) => _EarningsContent(
                   summary: summary,
+                  summaryRefreshing: summaryAsync.isLoading ||
+                      summaryAsync.isRefreshing ||
+                      summaryAsync.isReloading,
+                  summaryHasError: summaryAsync.hasError,
                   period: _period,
                   onPeriodChanged: (p) => setState(() => _period = p),
                 ),
@@ -93,11 +97,15 @@ class _ArtisanEarningsScreenState extends ConsumerState<ArtisanEarningsScreen> {
 class _EarningsContent extends ConsumerWidget {
   const _EarningsContent({
     required this.summary,
+    required this.summaryRefreshing,
+    required this.summaryHasError,
     required this.period,
     required this.onPeriodChanged,
   });
 
   final EarningsSummary summary;
+  final bool summaryRefreshing;
+  final bool summaryHasError;
   final EarningsPeriod period;
   final ValueChanged<EarningsPeriod> onPeriodChanged;
 
@@ -118,6 +126,11 @@ class _EarningsContent extends ConsumerWidget {
     final availablePesewas = summary.effectiveBalancePesewas;
     final pendingPesewas = summary.pendingPayoutsPesewas;
     final isInArrears = summary.isInArrears;
+    final canRequestPayout = canRequestPayoutFromSummary(
+      summary: summary,
+      summaryRefreshing: summaryRefreshing,
+      summaryHasError: summaryHasError,
+    );
     final available = availablePesewas / 100;
     final periodNet = summary.netEarningsPesewas / 100;
 
@@ -218,12 +231,16 @@ class _EarningsContent extends ConsumerWidget {
           )
         else
           ElevatedButton.icon(
-            onPressed: availablePesewas > 0 && pendingPesewas == 0
+            onPressed: canRequestPayout
                 ? () => showRequestPayoutSheet(context)
                 : null,
             icon: const Icon(Icons.send_rounded, size: 18),
             label: Text(
-              pendingPesewas > 0 ? 'PAYOUT IN PROGRESS' : 'REQUEST PAYOUT',
+              summaryRefreshing
+                  ? 'REFRESHING BALANCE'
+                  : pendingPesewas > 0
+                      ? 'PAYOUT IN PROGRESS'
+                      : 'REQUEST PAYOUT',
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: MyShopColors.primaryGold,

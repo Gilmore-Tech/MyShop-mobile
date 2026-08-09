@@ -20,6 +20,7 @@ import '../../features/artisan_jobs/providers/pending_incoming_jobs_provider.dar
 import '../../features/auth/providers/auth_controller.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
 import '../../features/driver_home/widgets/rate_passenger_sheet.dart';
+import '../../features/earnings/providers/earnings_providers.dart';
 import '../di/providers.dart';
 import '../providers/pending_request_recovery_provider.dart';
 import '../providers/socket_provider.dart';
@@ -69,6 +70,17 @@ bool releaseRideRequestNavigationLatchIfOwned({
 @visibleForTesting
 bool shouldNavigateToActiveRideFromNotification(String currentPath) {
   return currentPath != '/active-ride';
+}
+
+/// Settlement pushes mutate the provider's available balance and payout
+/// state. They must refresh earnings even when received in the foreground and
+/// the provider never taps the notification.
+@visibleForTesting
+bool isEarningsSettlementNotification(String type) {
+  return type == NotificationPayload.typePaymentReceived ||
+      type == NotificationPayload.typeRideSettled ||
+      type == NotificationPayload.typeJobPaymentReleasing ||
+      type == NotificationPayload.typeJobConfirmedComplete;
 }
 
 /// Coalesces the multiple platform callbacks that can represent one physical
@@ -1221,6 +1233,12 @@ class FcmService {
 
       final rawType = message.data[NotificationPayload.keyType] as String?;
       final type = NotificationPayload.normaliseType(rawType ?? '');
+      if (isEarningsSettlementNotification(type)) {
+        // Start the authoritative refresh before rendering the notification.
+        // A visible earnings screen keeps its historical totals but fences
+        // the payout CTA until the new balance has arrived.
+        _ref.read(invalidateEarningsCachesProvider)();
+      }
       if (type == NotificationPayload.typeRideRequest) {
         final received = await acknowledgeRideOfferWithSocket(
           payload: Map<String, dynamic>.from(message.data),
@@ -2378,6 +2396,12 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
         .toUpperCase();
     final router = ref.read(goRouterProvider);
     debugPrint('[FCM-tap] type=$type (raw=$rawType)');
+
+    if (type != null && isEarningsSettlementNotification(type)) {
+      // Background delivery cannot touch the main isolate's Riverpod cache.
+      // Refresh it on tap before /earnings is routed.
+      ref.read(invalidateEarningsCachesProvider)();
+    }
 
     final initialRideId = type == NotificationPayload.typeRideRequest
         ? (payload[NotificationPayload.keyRideId] ?? payload['ride_id'])
