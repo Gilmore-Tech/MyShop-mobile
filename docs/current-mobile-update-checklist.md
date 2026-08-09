@@ -1,5 +1,50 @@
 # Current Mobile Update Checklist
 
+## 2026-08-09 emergency launch-recovery release (`1.4.4+33`)
+
+- [x] The owner halted the affected store rollout and confirmed that build
+      `33` is unused for Client and Provider on Android and iOS.
+- [x] Physical Android evidence identified the common launch failure in the
+      store-served Client and Provider `1.4.3+31` packages: both throw
+      `API_BASE_URL is required in release builds` during the first Flutter
+      build because the production compile-time configuration is absent.
+- [x] The local Client and Provider `1.4.4+32` IPAs have the same missing
+      production endpoint/source-provenance defect and must not be uploaded.
+- [x] Production Backend health, database, Redis, legal bootstrap, OTP channel
+      discovery and rollout switches were independently healthy; no Backend
+      rollback or database migration is part of this mobile-only recovery.
+- [x] Isolated the emergency work from all dirty/deferred worktrees. The hotfix
+      branch starts at exact Mobile `origin/main` commit
+      `bb5a509211b6403ecef818726237efccc849d8ad` and contains no feature change
+      or API fallback.
+- [x] Set both app manifests and UI fallback labels to marketing version
+      `1.4.4`, reserved common build `33`, and raised the local build-number
+      floor to permanently reject `32` and below.
+- [x] Release-version, release-source and release-artifact contract suites,
+      both focused app-version tests and `git diff --check` pass locally.
+- [x] Strengthened signed-artifact verification so a candidate is rejected if
+      it contains the exact missing-production-API startup failure, even when
+      other package metadata appears valid.
+- [ ] Merge the reviewed release-control hotfix to `main`, fetch it, and record
+      the resulting exact clean `origin/main` SHA. Do not build from the
+      hotfix, staging or dirty primary workspace.
+- [ ] From that exact clean `origin/main`, run `tool/build.sh` for Client and
+      Provider Android AAB, Android test APK and iOS IPA with build `33`; every
+      invocation must pass `tool/verify-release-artifact.sh` and prove the
+      production API endpoint plus the exact source/release identity.
+- [ ] Retain only the verified outputs and SHA-256 manifest under the primary
+      repository's `build/releases/1.4.4+33/` directory.
+- [ ] Update-install each Android APK over the broken store build and cold
+      launch each app three times; prove a usable first screen, production API
+      traffic, retained login/session and no Flutter exception. Also perform a
+      clean-install smoke without deleting the owner's existing app data.
+- [ ] Install the exact iOS candidates through the supported distribution path
+      and repeat cold-start/update/session smoke on a physical iPhone before
+      upload. Artifact verification alone is not physical-device evidence.
+- [ ] Upload only the verified `1.4.4+33` artifacts, retain the halted build,
+      use a controlled rollout, and monitor startup/crash-free sessions and
+      login/bootstrap errors before increasing availability.
+
 Status captured: **2026-08-01 GMT**
 
 ## 2026-07-31 18:56 UTC credit-preservation and exact resume checkpoint
