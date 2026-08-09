@@ -22,9 +22,7 @@ class CommissionCard extends StatelessWidget {
   /// Commission already deducted by the backend.
   final int commissionPesewas;
 
-  /// Net take-home (gross minus commission). Trusts the backend — no
-  /// fallback subtraction here, which used to double-deduct the commission
-  /// whenever the backend reported a real value.
+  /// Authoritative provider take-home after the effective commission.
   final int netPesewas;
 
   final String title;
@@ -83,7 +81,7 @@ class CommissionCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _Row(
-            label: 'App Commission',
+            label: 'Commission Charged',
             value: '- GHS ${_fmtGhs(commissionPesewas)}',
           ),
           const SizedBox(height: 12),

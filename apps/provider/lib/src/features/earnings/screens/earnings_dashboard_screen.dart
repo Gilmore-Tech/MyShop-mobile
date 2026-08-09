@@ -10,6 +10,7 @@ import '../../promos/widgets/earnings_promo_callout.dart';
 import '../providers/earnings_providers.dart';
 import '../providers/ratings_provider.dart';
 import '../widgets/commission_card.dart';
+import '../widgets/earnings_payout_action.dart';
 import '../widgets/pay_commission_sheet.dart';
 import '../widgets/payouts_list.dart';
 import '../widgets/request_payout_sheet.dart';
@@ -51,25 +52,19 @@ class EarningsDashboardScreen extends ConsumerWidget {
     final report = reportAsync.valueOrNull;
     final todayCard = todayCardAsync.valueOrNull;
 
-    // The headline balance is the driver's actual payable cash — in-app
-    // net MINUS pending cash-commission clawbacks. Goes negative when the
-    // driver owes more commission than they've earned in-app; the card
-    // below flips its label from "Available balance" to "Owings" and
-    // shows the absolute value so the rider doesn't see "-GHS 1.80".
-    final effectiveBalance = summary?.effectiveBalancePesewas ?? 0;
+    // Durable cash-commission debt takes headline priority and is shown in
+    // full until the backend transactionally reduces it. Never infer that an
+    // available payout balance has already offset the debt.
+    final headlineBalance = summary?.headlineBalancePesewas ?? 0;
     final isInArrears = summary?.isInArrears ?? false;
     // Money owed to the driver that's already in a Paystack transfer
     // (pending / processing / retrying). Surfaced separately so the
     // dashboard doesn't appear to "lose" the funds during the brief
     // window between escrow release and transfer.success.
     final pendingPayouts = summary?.pendingPayoutsPesewas ?? 0;
-    // Use gross-minus-commission for the TODAY/WEEKLY tiles instead of
-    // `netPayoutPesewas` aggregates. The latter ride on payment status
-    // (escrowed/completed) and on stale rows where cash-rides were
-    // stored with `netPayout=0` under earlier code paths — both make
-    // the tiles read 0 or negative even when the provider actually
-    // earned money. The headline (Owings / Available) still uses the
-    // payable balance because that one IS about cash-in-hand vs debt.
+    // TODAY/WEEKLY tiles show authoritative provider take-home history,
+    // independent of whether payment was cash or in-app. The headline is a
+    // separate liability view: durable Owings or the server-visible balance.
     final todayAvailable = todayCard != null
         ? todayCard.effectiveEarningsPesewas
         : (summary?.todayAvailableBalancePesewas ?? 0);
@@ -81,12 +76,6 @@ class EarningsDashboardScreen extends ConsumerWidget {
     final summaryRefreshing = summaryAsync.isLoading ||
         summaryAsync.isRefreshing ||
         summaryAsync.isReloading;
-    final canRequestPayout = canRequestPayoutFromSummary(
-      summary: summary,
-      summaryRefreshing: summaryRefreshing,
-      summaryHasError: summaryAsync.hasError,
-    );
-
     // Surface a clear failure banner instead of letting "API down" look
     // identical to "driver hasn't earned yet" — the dashboard's all-zeros
     // state was masking real production failures. Today-card now drives
@@ -229,7 +218,7 @@ class EarningsDashboardScreen extends ConsumerWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
                 child: _BalanceCard(
-                  availablePesewas: effectiveBalance,
+                  availablePesewas: headlineBalance,
                   todayPesewas: todayAvailable,
                   weekPesewas: weeklyAvailable,
                   isInArrears: isInArrears,
@@ -275,70 +264,23 @@ class EarningsDashboardScreen extends ConsumerWidget {
               // provider; taps open the campaign details sheet.
               const EarningsPromoCallout(),
 
-              // ── Action CTA: Pay Commission OR Request Payout ──
-              // In arrears (owes platform > earned in-app): Pay Commission.
-              //   Charges the provider's MoMo to settle outstanding
-              //   cash-commission debt. Any amount allowed; surplus rolls
-              //   into a credit. Always enabled while owed > 0.
-              // Otherwise: Request Payout.
-              //   Disabled when balance is 0 or a payout is already in
-              //   flight. Label flips to "PAYOUT IN PROGRESS" so the
-              //   driver sees why it's locked out.
+              // Only explicit server-authored manual authority produces an
+              // actionable Request Payout. Automatic and unavailable rails
+              // render a non-interactive status instead.
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-                child: isInArrears
-                    ? ElevatedButton.icon(
-                        onPressed: () => showPayCommissionSheet(
-                          context,
-                          owedPesewas: summary?.cashCommissionOwedPesewas ?? 0,
-                        ),
-                        icon: const Icon(Icons.payments_rounded, size: 18),
-                        label: const Text('PAY COMMISSION'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: MyShopColors.error,
-                          foregroundColor: Colors.white,
-                          minimumSize: const Size(double.infinity, 48),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(28),
-                          ),
-                          textStyle: const TextStyle(
-                            fontFamily: 'Raleway',
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      )
-                    : ElevatedButton.icon(
-                        onPressed: canRequestPayout
-                            ? () => showRequestPayoutSheet(context)
-                            : null,
-                        icon: const Icon(Icons.send_rounded, size: 18),
-                        label: Text(
-                          summaryRefreshing
-                              ? 'REFRESHING BALANCE'
-                              : pendingPayouts > 0
-                              ? 'PAYOUT IN PROGRESS'
-                              : 'REQUEST PAYOUT',
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: MyShopColors.primaryGold,
-                          foregroundColor: MyShopColors.textOnPrimary,
-                          disabledBackgroundColor:
-                              MyShopColors.primaryGold.withValues(alpha: 0.4),
-                          minimumSize: const Size(double.infinity, 48),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(28),
-                          ),
-                          textStyle: const TextStyle(
-                            fontFamily: 'Raleway',
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
+                child: EarningsPayoutAction(
+                  summary: summary,
+                  summaryRefreshing: summaryRefreshing,
+                  summaryHasError: summaryAsync.hasError,
+                  onPayCommission: (commissionOwedPesewas) =>
+                      showPayCommissionSheet(
+                    context,
+                    owedPesewas: commissionOwedPesewas,
+                  ),
+                  onRequestPayout: () => showRequestPayoutSheet(context),
+                ),
               ),
               const SizedBox(height: MyShopSpacing.md),
 
@@ -579,9 +521,8 @@ class _BalanceCard extends StatelessWidget {
     required this.isInArrears,
   });
 
-  /// Effective balance — positive when payable, negative when the driver
-  /// owes pending cash-commission clawbacks. UI renders the absolute value
-  /// when [isInArrears] is true.
+  /// Headline balance — available payout funds when clear, or the negative
+  /// full durable cash-commission debt while [isInArrears] is true.
   final int availablePesewas;
   final int todayPesewas;
   final int weekPesewas;
@@ -652,7 +593,7 @@ class _BalanceCard extends StatelessWidget {
                 letterSpacing: -0.8)),
         if (isInArrears) ...[
           const SizedBox(height: 4),
-          Text('Will be netted from your next in-app earnings',
+          Text('Outstanding cash commission owed to MyShop',
               style: MyShopTypography.caption.copyWith(
                   color: Colors.white70, fontStyle: FontStyle.italic)),
         ],

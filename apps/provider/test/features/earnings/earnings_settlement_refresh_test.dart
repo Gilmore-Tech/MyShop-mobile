@@ -49,6 +49,12 @@ EarningsSummary _summary({
   int availablePesewas = 5000,
   int pendingPesewas = 0,
   int cashCommissionOwedPesewas = 0,
+  PayoutCapability payoutCapability = const PayoutCapability(
+    mode: PayoutCapabilityMode.manualAggregate,
+    canRequest: true,
+    reason: PayoutCapabilityReason.manualPayoutAvailable,
+    rawReasonCode: 'MANUAL_PAYOUT_AVAILABLE',
+  ),
 }) {
   return EarningsSummary(
     role: role,
@@ -65,6 +71,7 @@ EarningsSummary _summary({
     pendingPayoutsPesewas: pendingPesewas,
     series: const <EarningsSummaryPoint>[],
     granularity: EarningsGranularity.day,
+    payoutCapability: payoutCapability,
   );
 }
 
@@ -191,6 +198,15 @@ void main() {
     );
     expect(
       canRequestPayoutFromSummary(
+        summary: _summary(cashCommissionOwedPesewas: 1000),
+        summaryRefreshing: false,
+        summaryHasError: false,
+      ),
+      isFalse,
+      reason: 'available funds must not be assumed to offset durable debt',
+    );
+    expect(
+      canRequestPayoutFromSummary(
         summary: _summary(availablePesewas: 0),
         summaryRefreshing: false,
         summaryHasError: false,
@@ -204,6 +220,17 @@ void main() {
         summaryHasError: true,
       ),
       isFalse,
+    );
+    expect(
+      canRequestPayoutFromSummary(
+        summary: _summary(
+          payoutCapability: const PayoutCapability.unavailable(),
+        ),
+        summaryRefreshing: false,
+        summaryHasError: false,
+      ),
+      isFalse,
+      reason: 'an older response without capability must fail closed',
     );
   });
 }
