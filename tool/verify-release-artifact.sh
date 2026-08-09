@@ -208,7 +208,24 @@ verify_android() {
     exit 1
   }
 
-  unzip -qq "$ARTIFACT" -d "$TMP_ROOT/package"
+  # Android resource names are case-sensitive, while the default macOS
+  # filesystem is not. Extracting the complete APK/AAB can therefore prompt
+  # for replacements even when the ZIP has no duplicate entries. The release
+  # configuration is compiled into libapp.so, so extract only that payload for
+  # the endpoint/fail-fast checks below.
+  case "$extension" in
+    apk)
+      unzip -qq "$ARTIFACT" 'lib/*/libapp.so' -d "$TMP_ROOT/package"
+      ;;
+    aab)
+      unzip -qq "$ARTIFACT" 'base/lib/*/libapp.so' -d "$TMP_ROOT/package"
+      ;;
+  esac
+  find "$TMP_ROOT/package" -type f -name libapp.so -print -quit |
+    grep -q . || {
+      echo "error: Android artifact has no compiled Dart release payload" >&2
+      exit 1
+    }
 }
 
 verify_ios() {
