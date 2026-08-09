@@ -29,13 +29,13 @@ expect_output() {
 expect_failure "missing build number" env RELEASE_BUILD_NUMBER= bash "$RESOLVER" client
 expect_failure "non-decimal build number" env RELEASE_BUILD_NUMBER=twenty-one bash "$RESOLVER" client
 expect_failure "leading-zero build number" env RELEASE_BUILD_NUMBER=021 bash "$RESOLVER" client
-expect_failure "previous client build number" env RELEASE_BUILD_NUMBER=26 bash "$RESOLVER" client
-expect_failure "previous provider build number" env RELEASE_BUILD_NUMBER=26 bash "$RESOLVER" provider
+expect_failure "previous client build number" env RELEASE_BUILD_NUMBER=32 bash "$RESOLVER" client
+expect_failure "previous provider build number" env RELEASE_BUILD_NUMBER=32 bash "$RESOLVER" provider
 expect_failure "non-portable build number" env RELEASE_BUILD_NUMBER=2100000001 bash "$RESOLVER" client
-expect_failure "unknown app" env RELEASE_BUILD_NUMBER=27 bash "$RESOLVER" artisan
+expect_failure "unknown app" env RELEASE_BUILD_NUMBER=33 bash "$RESOLVER" artisan
 
-EXPECTED=$'--build-name=1.4.2\n--build-number=27\n--dart-define=MYSHOP_MARKETING_VERSION=1.4.2'
-expect_output "client release" "$EXPECTED" env RELEASE_BUILD_NUMBER=27 bash "$RESOLVER" client
-expect_output "provider release" "$EXPECTED" env RELEASE_BUILD_NUMBER=27 bash "$RESOLVER" provider
+EXPECTED=$'--build-name=1.4.4\n--build-number=33\n--dart-define=MYSHOP_MARKETING_VERSION=1.4.4'
+expect_output "client release" "$EXPECTED" env RELEASE_BUILD_NUMBER=33 bash "$RESOLVER" client
+expect_output "provider release" "$EXPECTED" env RELEASE_BUILD_NUMBER=33 bash "$RESOLVER" provider
 
 echo "Release-version contract tests passed"
