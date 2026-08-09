@@ -128,7 +128,10 @@ bool canRequestPayoutFromSummary({
   required bool summaryHasError,
 }) {
   if (summary == null || summaryRefreshing || summaryHasError) return false;
-  return !summary.isInArrears &&
-      summary.effectiveBalancePesewas > 0 &&
+  return summary.payoutCapability.mode ==
+          PayoutCapabilityMode.manualAggregate &&
+      summary.payoutCapability.canRequest &&
+      summary.cashCommissionOwedPesewas == 0 &&
+      summary.availableBalancePesewas > 0 &&
       summary.pendingPayoutsPesewas == 0;
 }
