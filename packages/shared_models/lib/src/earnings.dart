@@ -71,6 +71,103 @@ class EarningsErrorCodes {
   static const rangeTooLarge = 'EARNINGS_RANGE_TOO_LARGE';
 }
 
+/// Server-authored authority for the provider payout call-to-action.
+///
+/// This contract is deliberately fail-closed. Older backend responses, an
+/// unknown future mode, or malformed JSON all resolve to [unavailable]; the
+/// mobile must never infer permission to move money from a positive balance.
+enum PayoutCapabilityMode {
+  automaticExact,
+  manualAggregate,
+  unavailable;
+
+  static PayoutCapabilityMode parse(String? raw) {
+    switch (raw) {
+      case 'automatic_exact':
+        return PayoutCapabilityMode.automaticExact;
+      case 'manual_aggregate':
+        return PayoutCapabilityMode.manualAggregate;
+      default:
+        return PayoutCapabilityMode.unavailable;
+    }
+  }
+}
+
+enum PayoutCapabilityReason {
+  payoutInProgress,
+  automaticPayoutActive,
+  manualPayoutAvailable,
+  noAvailableBalance,
+  cashCommissionCoversBalance,
+  payoutRailUnavailable,
+  unknown;
+
+  static PayoutCapabilityReason parse(String? raw) {
+    switch (raw) {
+      case 'PAYOUT_IN_PROGRESS':
+        return PayoutCapabilityReason.payoutInProgress;
+      case 'AUTOMATIC_PAYOUT_ACTIVE':
+        return PayoutCapabilityReason.automaticPayoutActive;
+      case 'MANUAL_PAYOUT_AVAILABLE':
+        return PayoutCapabilityReason.manualPayoutAvailable;
+      case 'NO_AVAILABLE_BALANCE':
+        return PayoutCapabilityReason.noAvailableBalance;
+      case 'CASH_COMMISSION_COVERS_BALANCE':
+        return PayoutCapabilityReason.cashCommissionCoversBalance;
+      case 'PAYOUT_RAIL_UNAVAILABLE':
+        return PayoutCapabilityReason.payoutRailUnavailable;
+      default:
+        return PayoutCapabilityReason.unknown;
+    }
+  }
+}
+
+class PayoutCapability {
+  const PayoutCapability({
+    required this.mode,
+    required this.canRequest,
+    required this.reason,
+    this.rawReasonCode,
+  });
+
+  const PayoutCapability.unavailable()
+      : mode = PayoutCapabilityMode.unavailable,
+        canRequest = false,
+        reason = PayoutCapabilityReason.unknown,
+        rawReasonCode = null;
+
+  factory PayoutCapability.fromJson(Object? raw) {
+    if (raw is! Map<String, dynamic>) {
+      return const PayoutCapability.unavailable();
+    }
+
+    final modeValue = raw['mode'];
+    final reasonValue = raw['reasonCode'];
+    final mode =
+        PayoutCapabilityMode.parse(modeValue is String ? modeValue : null);
+    final rawReason = reasonValue is String ? reasonValue : null;
+    final reason = PayoutCapabilityReason.parse(rawReason);
+    final canRequest = mode == PayoutCapabilityMode.manualAggregate &&
+        raw['canRequest'] == true &&
+        reason == PayoutCapabilityReason.manualPayoutAvailable;
+
+    return PayoutCapability(
+      mode: mode,
+      canRequest: canRequest,
+      reason: reason,
+      rawReasonCode: rawReason,
+    );
+  }
+
+  final PayoutCapabilityMode mode;
+  final bool canRequest;
+  final PayoutCapabilityReason reason;
+
+  /// Retained for diagnostics only. UI authority is always derived from the
+  /// parsed enum fields above.
+  final String? rawReasonCode;
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Today-card — homepage "Today's earnings"
 // ────────────────────────────────────────────────────────────────────────────
@@ -144,26 +241,17 @@ class EarningsTodayCard {
   /// next to gross.
   final int commissionPesewas;
 
-  /// Net of commission. Shown inside the earnings module breakdown.
-  ///
-  /// CAREFUL: for **cash** bookings the backend writes `0` here because
-  /// the artisan already collected the gross from the client directly —
-  /// the platform tracks the commission they owe via a Clawback row, not
-  /// a positive net payout. So `netEarningsPesewas` is "net payout from
-  /// MyShop", not "what the artisan effectively earned". For the
-  /// home-screen headline you almost always want [effectiveEarningsPesewas]
-  /// instead, which gives the same number for in-app jobs but reflects
-  /// gross-minus-commission for cash jobs.
+  /// Provider take-home after effective commission, across cash and in-app
+  /// bookings. Client-funded promos do not reduce this value and provider
+  /// commission-relief campaigns increase it. This is earnings history, not
+  /// necessarily the amount of a platform-to-provider transfer.
   final int netEarningsPesewas;
 
-  /// What the artisan/driver effectively earned today — gross fare minus
-  /// the platform's commission — regardless of whether the booking was
-  /// paid in cash or in-app. Drives the "Earnings" tile on the home
-  /// dashboard so the figure doesn't read GHS 0 on a cash-only day.
-  int get effectiveEarningsPesewas {
-    final v = grossEarningsPesewas - commissionPesewas;
-    return v < 0 ? 0 : v;
-  }
+  /// Backward-compatible name used by existing home/profile widgets. The
+  /// backend's authoritative provider-earnings field must win over a mobile
+  /// reconstruction so commission relief is never understated.
+  int get effectiveEarningsPesewas =>
+      netEarningsPesewas < 0 ? 0 : netEarningsPesewas;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -208,6 +296,7 @@ class EarningsSummary {
     required this.pendingPayoutsPesewas,
     required this.series,
     required this.granularity,
+    this.payoutCapability = const PayoutCapability.unavailable(),
   });
 
   factory EarningsSummary.fromJson(Map<String, dynamic> json) {
@@ -229,6 +318,7 @@ class EarningsSummary {
           (json['cashCommissionOwedPesewas'] as num?)?.toInt() ?? 0,
       pendingPayoutsPesewas:
           (json['pendingPayoutsPesewas'] as num?)?.toInt() ?? 0,
+      payoutCapability: PayoutCapability.fromJson(json['payoutCapability']),
       series: (json['series'] as List<dynamic>?)
               ?.whereType<Map<String, dynamic>>()
               .map(EarningsSummaryPoint.fromJson)
@@ -261,7 +351,9 @@ class EarningsSummary {
   final DateTime? startDate;
   final DateTime? endDate;
 
-  /// Period-agnostic withdrawable balance. Drives the payout-button gate.
+  /// Period-agnostic visible balance. This can include retained pre-cutover
+  /// funds that are not eligible for automatic payout; [payoutCapability]
+  /// remains the sole authority for any money-moving action.
   final int availableBalancePesewas;
 
   /// Net earnings from today only — always shown alongside the period.
@@ -283,31 +375,42 @@ class EarningsSummary {
   /// Money already disbursed in the selected period. Excludes cash trips.
   final int paidOutPesewas;
 
-  /// Sum of pending CASH_COMMISSION clawbacks the driver owes the platform.
-  /// Netted against [availableBalancePesewas] when computing what's actually
-  /// payable — once it exceeds the available balance, the driver is in net
-  /// debt and the dashboard flips the label to "Owings".
+  /// Durable outstanding CASH_COMMISSION debt the provider owes the platform.
+  /// This remains authoritative until the backend transactionally applies a
+  /// remittance or clawback deduction and returns a reduced value. Mobile must
+  /// not infer that an available payout balance has already offset this debt.
   final int cashCommissionOwedPesewas;
 
   /// In-flight payouts (Paystack transfer queued / processing). Shown
   /// inline so the driver knows the money is on its way.
   final int pendingPayoutsPesewas;
 
+  /// Server-authored payout CTA authority. Missing on older backend builds;
+  /// the default is intentionally unavailable rather than inferred from the
+  /// balance.
+  final PayoutCapability payoutCapability;
+
   /// Gap-filled time series — every bucket present even with `netPesewas: 0`.
   final List<EarningsSummaryPoint> series;
 
   final EarningsGranularity granularity;
 
-  /// Available balance NET of pending cash-commission debt. Can be
-  /// negative — when it is, the driver owes the platform that absolute
-  /// value, and the dashboard should render the headline as "Owings"
-  /// instead of "Available balance".
+  /// Arithmetic difference retained for reporting compatibility only.
+  ///
+  /// Do not use this value to authorise a payout, calculate a commission
+  /// remittance, or claim that commission debt was offset. Those transitions
+  /// require a backend transaction and an updated summary.
   int get effectiveBalancePesewas =>
       availableBalancePesewas - cashCommissionOwedPesewas;
 
-  /// True when the driver is in net debt — clawbacks exceed available
-  /// balance. UI uses this to swap the headline label and colour.
-  bool get isInArrears => effectiveBalancePesewas < 0;
+  /// Balance figure shown in the dashboard headline. Any durable commission
+  /// debt takes precedence over available payout funds and is shown in full.
+  int get headlineBalancePesewas => cashCommissionOwedPesewas > 0
+      ? -cashCommissionOwedPesewas
+      : availableBalancePesewas;
+
+  /// True whenever durable cash-commission debt remains outstanding.
+  bool get isInArrears => cashCommissionOwedPesewas > 0;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -433,15 +536,12 @@ class EarningsReport {
 
   final List<EarningsReportPoint> series;
 
-  /// What the provider effectively earned across this window — gross minus
-  /// commission. Use this for the headline figure on dashboard mini-stats
-  /// instead of [netEarningsPesewas], which depends on whether the Payment
-  /// rows landed as escrowed/completed and goes to zero (or worse, stale
-  /// negatives from old code paths) when cash and in-app rides mix.
-  int get effectiveEarningsPesewas {
-    final v = grossEarningsPesewas - commissionChargedPesewas;
-    return v < 0 ? 0 : v;
-  }
+  /// Backward-compatible alias for the authoritative provider take-home.
+  /// Do not reconstruct this from gross and commission on-device: doing so
+  /// can understate provider-targeted commission relief during mixed-version
+  /// rollouts.
+  int get effectiveEarningsPesewas =>
+      netEarningsPesewas < 0 ? 0 : netEarningsPesewas;
 }
 
 // ────────────────────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ import '../data/ratings_service.dart';
 import '../providers/earnings_providers.dart';
 import '../providers/ratings_provider.dart';
 import '../widgets/commission_card.dart';
+import '../widgets/earnings_payout_action.dart';
 import '../widgets/pay_commission_sheet.dart';
 import '../widgets/payouts_list.dart';
 import '../widgets/request_payout_sheet.dart';
@@ -111,26 +112,19 @@ class _EarningsContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Top headline mirrors the homepage "Earnings" tile so both surfaces
-    // report the same Paystack-settled net for the active role. Falls back
-    // to the summary endpoint while the today-card is still loading so the
-    // balance card never flashes 0 unnecessarily.
+    // The top headline is a liability view: full durable Owings when debt is
+    // present, otherwise the server-visible payout balance.
     final user = ref.watch(currentUserProvider);
     final jobsDone = user?.artisanProfile?.completedJobsCount ?? 0;
-    // "Available" must be the *withdrawable* balance — the sum of net
-    // payments where the escrow is released and no transfer is in flight.
+    // Show the server's visible balance when there is no durable commission
+    // debt. Payout capability—not this amount—governs whether it can move.
     // Previously this read `todayCard.netEarningsPesewas` which is just
     // today's earnings (includes money already paid out OR currently in
     // a retrying transfer), so the figure was misleading and the
     // Request Payout button gated on the wrong number.
-    final availablePesewas = summary.effectiveBalancePesewas;
+    final availablePesewas = summary.headlineBalancePesewas;
     final pendingPesewas = summary.pendingPayoutsPesewas;
     final isInArrears = summary.isInArrears;
-    final canRequestPayout = canRequestPayoutFromSummary(
-      summary: summary,
-      summaryRefreshing: summaryRefreshing,
-      summaryHasError: summaryHasError,
-    );
     final available = availablePesewas / 100;
     final periodNet = summary.netEarningsPesewas / 100;
 
@@ -203,62 +197,16 @@ class _EarningsContent extends ConsumerWidget {
           ),
         ],
         const SizedBox(height: MyShopSpacing.sm),
-        // Action CTA — Pay Commission when in arrears, Request Payout when
-        // there's a withdrawable balance, disabled otherwise. Mirrors the
-        // driver dashboard so both roles share the same earnings UX.
-        if (isInArrears)
-          ElevatedButton.icon(
-            onPressed: () => showPayCommissionSheet(
-              context,
-              owedPesewas: summary.cashCommissionOwedPesewas,
-            ),
-            icon: const Icon(Icons.payments_rounded, size: 18),
-            label: const Text('PAY COMMISSION'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: MyShopColors.error,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 48),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(28),
-              ),
-              textStyle: const TextStyle(
-                fontFamily: 'Raleway',
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.5,
-              ),
-            ),
-          )
-        else
-          ElevatedButton.icon(
-            onPressed: canRequestPayout
-                ? () => showRequestPayoutSheet(context)
-                : null,
-            icon: const Icon(Icons.send_rounded, size: 18),
-            label: Text(
-              summaryRefreshing
-                  ? 'REFRESHING BALANCE'
-                  : pendingPesewas > 0
-                      ? 'PAYOUT IN PROGRESS'
-                      : 'REQUEST PAYOUT',
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: MyShopColors.primaryGold,
-              foregroundColor: MyShopColors.textOnPrimary,
-              disabledBackgroundColor:
-                  MyShopColors.primaryGold.withValues(alpha: 0.4),
-              minimumSize: const Size(double.infinity, 48),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(28),
-              ),
-              textStyle: const TextStyle(
-                fontFamily: 'Raleway',
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.5,
-              ),
-            ),
+        EarningsPayoutAction(
+          summary: summary,
+          summaryRefreshing: summaryRefreshing,
+          summaryHasError: summaryHasError,
+          onPayCommission: (commissionOwedPesewas) => showPayCommissionSheet(
+            context,
+            owedPesewas: commissionOwedPesewas,
           ),
+          onRequestPayout: () => showRequestPayoutSheet(context),
+        ),
         const SizedBox(height: MyShopSpacing.md),
         Row(
           children: [
@@ -466,9 +414,8 @@ class _BalanceCard extends StatelessWidget {
     required this.isInArrears,
   });
 
-  /// Effective balance — positive when payable, negative when the artisan
-  /// owes pending cash-commission clawbacks. UI renders the absolute value
-  /// when [isInArrears] is true and reframes the labelling accordingly.
+  /// Headline balance — available payout funds when clear, or the negative
+  /// full durable cash-commission debt while [isInArrears] is true.
   final double available;
   final double periodNet;
   final int jobsDone;
@@ -533,7 +480,7 @@ class _BalanceCard extends StatelessWidget {
           if (isInArrears) ...[
             const SizedBox(height: 4),
             Text(
-              'Will be netted from your next in-app earnings',
+              'Outstanding cash commission owed to MyShop',
               style: MyShopTypography.caption.copyWith(
                 color: Colors.white70,
                 fontStyle: FontStyle.italic,

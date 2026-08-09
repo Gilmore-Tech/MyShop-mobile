@@ -1,5 +1,31 @@
 # Current Mobile Update Checklist
 
+## 2026-08-09 provider earnings authority correction
+
+- [x] Pending Settlement and Paid Out use the exact `Payout` amount after
+      commission-debt deductions, rather than the Payment's pre-deduction rail
+      liability.
+- [x] Provider commission-relief Gross/Commission breakdowns use effective
+      commission while preserving authoritative provider net earnings.
+- [x] The Backend supplies an additive payout capability contract. Provider
+      Mobile offers REQUEST PAYOUT only with explicit manual-aggregate
+      authority; missing, unknown, automatic, unavailable and in-flight states
+      are non-actionable.
+- [x] Both Driver and Artisan show the full durable cash-commission debt as
+      Owings and pass that same amount to Pay Commission. Available earnings
+      are not treated as a debt offset before a committed Backend transaction.
+- [x] Driver homepage Today's Earnings shows provider take-home consistently
+      with Artisan and the Earnings screens.
+- [x] Mixed or pre-cutover balances fail closed instead of promising an
+      automatic payout. `FF_PROVIDER_AGGREGATE_PAYOUTS=false` and
+      `FF_BATCH_PAYOUTS=false` remain required for this release.
+- [x] Local evidence passes: Backend 372 tests and monorepo typecheck;
+      Provider 23 tests; shared-model 9 tests; focused analyzers, independent
+      financial review and diff checks.
+- [ ] Merge Backend first through staging, then test this Provider candidate
+      against it. Complete the cash/in-app x promo/non-promo API and physical
+      smoke matrix before production merge or mobile release packaging.
+
 ## 2026-08-09 emergency launch-recovery release (`1.4.4+33`)
 
 - [x] The owner halted the affected store rollout and confirmed that build

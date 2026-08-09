@@ -56,12 +56,12 @@ class EarningsSummarySection extends ConsumerWidget {
             ),
             const SizedBox(height: MyShopSpacing.sm),
 
-            // Amount — show GROSS for the day so the driver sees the full
-            // fare they collected (cash + in-app). The per-component
-            // breakdown (gross / commission / net) lives in the earnings
-            // module, not on this top-level dashboard card.
+            // Authoritative provider take-home after effective commission.
+            // This matches the Artisan homepage and Earnings tab for cash,
+            // in-app, promo and non-promo bookings, including commission
+            // relief that cannot be safely reconstructed on-device.
             Text(
-              'GH₵ ${_formatAmount(card.grossEarningsPesewas)}',
+              'GH₵ ${_formatAmount(card.netEarningsPesewas)}',
               style: const TextStyle(
                 fontFamily: 'Raleway',
                 fontSize: 36,
