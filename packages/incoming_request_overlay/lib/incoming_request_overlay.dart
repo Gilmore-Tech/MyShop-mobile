@@ -59,6 +59,8 @@ class IncomingRequestOffer {
     required this.title,
     this.customerName,
     this.amount,
+    this.amountLabel,
+    this.pricingSummary,
     this.distance,
     this.duration,
     this.pickup,
@@ -86,6 +88,8 @@ class IncomingRequestOffer {
   final String title;
   final String? customerName;
   final String? amount;
+  final String? amountLabel;
+  final String? pricingSummary;
   final String? distance;
   final String? duration;
   final String? pickup;
@@ -112,6 +116,8 @@ class IncomingRequestOffer {
       'title': title,
       if (_present(customerName)) 'customerName': customerName!.trim(),
       if (_present(amount)) 'amount': amount!.trim(),
+      if (_present(amountLabel)) 'amountLabel': amountLabel!.trim(),
+      if (_present(pricingSummary)) 'pricingSummary': pricingSummary!.trim(),
       if (_present(distance)) 'distance': distance!.trim(),
       if (_present(duration)) 'duration': duration!.trim(),
       if (_present(pickup)) 'pickup': pickup!.trim(),

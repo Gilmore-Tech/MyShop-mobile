@@ -11,6 +11,8 @@ internal object OfferPayloadCodec {
     const val EXTRA_TITLE = "${EXTRA_PREFIX}title"
     const val EXTRA_CUSTOMER_NAME = "${EXTRA_PREFIX}customer_name"
     const val EXTRA_AMOUNT = "${EXTRA_PREFIX}amount"
+    const val EXTRA_AMOUNT_LABEL = "${EXTRA_PREFIX}amount_label"
+    const val EXTRA_PRICING_SUMMARY = "${EXTRA_PREFIX}pricing_summary"
     const val EXTRA_DISTANCE = "${EXTRA_PREFIX}distance"
     const val EXTRA_DURATION = "${EXTRA_PREFIX}duration"
     const val EXTRA_PICKUP = "${EXTRA_PREFIX}pickup"
@@ -29,6 +31,8 @@ internal object OfferPayloadCodec {
         putExtra(EXTRA_TITLE, offer.title)
         offer.customerName?.let { putExtra(EXTRA_CUSTOMER_NAME, it) }
         offer.amount?.let { putExtra(EXTRA_AMOUNT, it) }
+        offer.amountLabel?.let { putExtra(EXTRA_AMOUNT_LABEL, it) }
+        offer.pricingSummary?.let { putExtra(EXTRA_PRICING_SUMMARY, it) }
         offer.distance?.let { putExtra(EXTRA_DISTANCE, it) }
         offer.duration?.let { putExtra(EXTRA_DURATION, it) }
         offer.pickup?.let { putExtra(EXTRA_PICKUP, it) }
@@ -58,6 +62,8 @@ internal object OfferPayloadCodec {
             title = title,
             customerName = intent.cleanString(EXTRA_CUSTOMER_NAME),
             amount = intent.cleanString(EXTRA_AMOUNT),
+            amountLabel = intent.cleanString(EXTRA_AMOUNT_LABEL),
+            pricingSummary = intent.cleanString(EXTRA_PRICING_SUMMARY),
             distance = intent.cleanString(EXTRA_DISTANCE),
             duration = intent.cleanString(EXTRA_DURATION),
             pickup = intent.cleanString(EXTRA_PICKUP),

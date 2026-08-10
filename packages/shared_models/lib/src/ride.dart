@@ -13,11 +13,16 @@ class Ride {
     required this.dropoffLat,
     required this.dropoffLng,
     required this.estimatedFarePesewas,
+    this.hasEstimatedFareQuote = true,
     this.finalFarePesewas,
     this.totalPaidPesewas,
     this.prePromoFarePesewas,
     this.promoDiscountPesewas,
+    this.loyaltyDiscountPesewas,
+    this.platformDiscountPesewas,
     this.promoApplied = false,
+    this.clientPayableEstimatePesewas,
+    this.estimatedProviderEarningsPesewas,
     this.collectFromClientPesewas,
     this.commissionPesewas,
     this.commissionRatePercent,
@@ -174,6 +179,9 @@ class Ride {
       estimatedFarePesewas: _int(
         json['estimatedFarePesewas'] ?? json['totalFare'],
       ),
+      hasEstimatedFareQuote:
+          json.containsKey('estimatedFarePesewas') ||
+          json.containsKey('totalFare'),
       finalFarePesewas: _optionalInt(
         json['finalFarePesewas'] ??
             (status == RideStatus.completed ? json['totalFare'] : null),
@@ -183,9 +191,15 @@ class Ride {
       ),
       prePromoFarePesewas: _optionalInt(json['prePromoFarePesewas']),
       promoDiscountPesewas: _optionalInt(json['promoDiscountPesewas']),
+      loyaltyDiscountPesewas: _optionalInt(json['loyaltyDiscountPesewas']),
+      platformDiscountPesewas: _optionalInt(json['platformDiscountPesewas']),
       // Older payloads lack the explicit flag — infer from a non-zero discount.
       promoApplied: json['promoApplied'] == true ||
           (_optionalInt(json['promoDiscountPesewas']) ?? 0) > 0,
+      clientPayableEstimatePesewas:
+          _optionalInt(json['clientPayableEstimatePesewas']),
+      estimatedProviderEarningsPesewas:
+          _optionalInt(json['estimatedProviderEarningsPesewas']),
       collectFromClientPesewas: _optionalInt(
         json['collectFromClientPesewas'] ?? json['totalPaidPesewas'],
       ),
@@ -243,6 +257,10 @@ class Ride {
   final double dropoffLat;
   final double dropoffLng;
   final int estimatedFarePesewas;
+
+  /// Distinguishes a legitimate zero quote from a slim legacy payload that
+  /// omitted the quote and was parsed with the model's numeric zero default.
+  final bool hasEstimatedFareQuote;
   final int? finalFarePesewas;
   final int? totalPaidPesewas;
 
@@ -254,8 +272,26 @@ class Ride {
   /// Platform-funded promo discount applied to what the client pays.
   final int? promoDiscountPesewas;
 
+  /// Loyalty value funded by MyShop for this quote. This is separate from a
+  /// promo campaign so provider-facing copy must describe the combined value
+  /// as "MyShop covers", not strictly as a promo discount.
+  final int? loyaltyDiscountPesewas;
+
+  /// Authoritative combined platform-funded discount for the current quote.
+  final int? platformDiscountPesewas;
+
   /// True when a promo code/campaign discounted this ride.
   final bool promoApplied;
+
+  /// Current amount quoted to the rider after promo and loyalty discounts.
+  /// Unlike [estimatedFarePesewas], this additive field is unambiguous on the
+  /// incoming-offer wire contract and may legitimately be zero.
+  final int? clientPayableEstimatePesewas;
+
+  /// Booking-time estimate of what the provider earns after commission.
+  /// Do not substitute [providerEarningsPesewas], which is a settlement-time
+  /// value and can change after the ride is completed.
+  final int? estimatedProviderEarningsPesewas;
 
   /// What the client actually pays after discounts — for cash rides, the
   /// amount the driver should collect at drop-off.
@@ -337,11 +373,17 @@ class Ride {
       dropoffLat: dropoffLat,
       dropoffLng: dropoffLng,
       estimatedFarePesewas: estimatedFarePesewas,
+      hasEstimatedFareQuote: hasEstimatedFareQuote,
       finalFarePesewas: finalFarePesewas,
       totalPaidPesewas: totalPaidPesewas,
       prePromoFarePesewas: prePromoFarePesewas,
       promoDiscountPesewas: promoDiscountPesewas,
+      loyaltyDiscountPesewas: loyaltyDiscountPesewas,
+      platformDiscountPesewas: platformDiscountPesewas,
       promoApplied: promoApplied,
+      clientPayableEstimatePesewas: clientPayableEstimatePesewas,
+      estimatedProviderEarningsPesewas:
+          estimatedProviderEarningsPesewas,
       collectFromClientPesewas: collectFromClientPesewas,
       commissionPesewas: commissionPesewas,
       commissionRatePercent: commissionRatePercent,

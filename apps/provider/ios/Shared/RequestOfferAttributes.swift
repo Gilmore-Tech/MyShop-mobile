@@ -11,7 +11,16 @@ import Foundation
 struct RequestOfferAttributes: ActivityAttributes {
   struct ContentState: Codable, Hashable {
     let status: String
+    /// Legacy rider quote. Never display this as provider earnings.
     let farePesewas: Int?
+    let estimatedProviderEarningsPesewas: Int?
+    let prePromoFarePesewas: Int?
+    let clientPayableEstimatePesewas: Int?
+    let promoDiscountPesewas: Int?
+    let loyaltyDiscountPesewas: Int?
+    let platformDiscountPesewas: Int?
+    let promoApplied: Bool?
+    let paymentMethod: String?
     let minimumBidPesewas: Int?
     let distanceKm: Double?
     let durationMinutes: Int?
