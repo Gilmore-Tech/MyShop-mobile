@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:incoming_request_overlay/incoming_request_overlay.dart';
 
+import '../utils/incoming_ride_fare_copy.dart';
 import 'local_notification_service.dart';
 import 'incoming_request_action_bridge.dart';
 import 'live_activity_service.dart';
@@ -211,8 +212,9 @@ class IncomingRequestOverlayPresenter {
     }
 
     if (type == IncomingRequestOfferType.ride) {
-      final farePesewas = _integer(
-        details['estimatedFarePesewas'] ?? data['estimatedFarePesewas'],
+      final wire = <String, dynamic>{...data, ...details};
+      final fare = IncomingRideFareCopy.fromSnapshot(
+        IncomingRideFareSnapshot.fromJson(wire),
       );
       final distanceKm = _number(details['distanceKm'] ?? data['distanceKm']);
       final durationMins = _number(
@@ -224,7 +226,9 @@ class IncomingRequestOverlayPresenter {
         expiresAt: expiresAt,
         title: _nonEmpty(notificationTitle) ?? 'New ride request',
         customerName: _string(details['clientName']),
-        amount: farePesewas == null ? null : _formatPesewas(farePesewas),
+        amount: fare.primaryAmount,
+        amountLabel: fare.primaryLabel,
+        pricingSummary: fare.nativePricingSummary,
         distance:
             distanceKm == null ? null : '${distanceKm.toStringAsFixed(1)} km',
         duration: durationMins == null

@@ -50,7 +50,10 @@ void main() {
         type: IncomingRequestOfferType.ride,
         expiresAt: deadline,
         title: 'New ride request',
-        amount: 'GHS 42.00',
+        amount: 'GHS 50.00',
+        amountLabel: 'EST. FULL FARE',
+        pricingSummary:
+            'PROMO / DISCOUNT - GHS 8.00\nCLIENT PRICE GHS 42.00',
         duration: '18 min',
         pickup: 'Osu',
         destination: 'Airport',
@@ -68,6 +71,11 @@ void main() {
     expect(arguments['expiresAtMillis'], deadline.millisecondsSinceEpoch);
     expect(arguments['pickup'], 'Osu');
     expect(arguments['duration'], '18 min');
+    expect(arguments['amountLabel'], 'EST. FULL FARE');
+    expect(
+      arguments['pricingSummary'],
+      'PROMO / DISCOUNT - GHS 8.00\nCLIENT PRICE GHS 42.00',
+    );
     expect(
       arguments['mapPreviewUrl'],
       'https://api.example.com/v1/offers/map/token',

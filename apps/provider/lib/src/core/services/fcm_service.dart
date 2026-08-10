@@ -25,6 +25,7 @@ import '../di/providers.dart';
 import '../providers/pending_request_recovery_provider.dart';
 import '../providers/socket_provider.dart';
 import '../providers/nav_badge_provider.dart';
+import '../utils/incoming_ride_fare_copy.dart';
 import 'local_notification_service.dart';
 import 'ride_cancellation_notice.dart';
 import 'incoming_request_action_bridge.dart';
@@ -878,19 +879,12 @@ Future<void> _renderFromRemote(
     title = type == NotificationPayload.typeRideRequest
         ? 'New ride request'
         : 'New job request';
-    body = _privacySafeRequestBody(type, data);
+    body = privacySafeRequestBody(type, data);
   }
 
-  // Forward every data-key besides title/body/type so the tap handler can
-  // read jobId / rideId / bidId / chatId / notificationId without losing
-  // context.
-  final extras = <String, String>{};
-  for (final entry in data.entries) {
-    if (entry.key == NotificationPayload.keyType) continue;
-    if (entry.key == 'title' || entry.key == 'body') continue;
-    final v = entry.value;
-    if (v is String && v.isNotEmpty) extras[entry.key] = v;
-  }
+  // Preserve tap-routing context without copying provider economics into the
+  // OS-owned local-notification payload.
+  final extras = privacySafeRequestExtras(type, data);
 
   await LocalNotificationService.instance.showTimelineUpdate(
     type: type,
@@ -901,7 +895,65 @@ Future<void> _renderFromRemote(
   );
 }
 
-String _privacySafeRequestBody(String type, Map<String, dynamic> data) {
+@visibleForTesting
+Map<String, String> privacySafeRequestExtras(
+  String type,
+  Map<String, dynamic> data,
+) {
+  const providerEconomicsKeys = <String>{
+    'commissionPesewas',
+    'commission_pesewas',
+    'commissionRatePercent',
+    'commission_rate_percent',
+    'estimatedProviderEarningsPesewas',
+    'estimated_provider_earnings_pesewas',
+    'providerEarningsPesewas',
+    'provider_earnings_pesewas',
+    'netPayoutPesewas',
+    'net_payout_pesewas',
+  };
+  final stripProviderEconomics = NotificationPayload.normaliseType(type) ==
+      NotificationPayload.typeRideRequest;
+
+  Object? withoutProviderEconomics(Object? value) {
+    if (value is Map) {
+      return <String, dynamic>{
+        for (final entry in value.entries)
+          if (!providerEconomicsKeys.contains(entry.key.toString()))
+            entry.key.toString(): withoutProviderEconomics(entry.value),
+      };
+    }
+    if (value is List) return value.map(withoutProviderEconomics).toList();
+    return value;
+  }
+
+  final extras = <String, String>{};
+  for (final entry in data.entries) {
+    if (entry.key == NotificationPayload.keyType) continue;
+    if (entry.key == 'title' || entry.key == 'body') continue;
+    if (stripProviderEconomics &&
+        providerEconomicsKeys.contains(entry.key)) {
+      continue;
+    }
+    var value = entry.value;
+    if (stripProviderEconomics && value is String) {
+      final raw = value;
+      final trimmed = raw.trimLeft();
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try {
+          value = json.encode(withoutProviderEconomics(json.decode(raw)));
+        } catch (_) {
+          if (providerEconomicsKeys.any(raw.contains)) continue;
+        }
+      }
+    }
+    if (value is String && value.isNotEmpty) extras[entry.key] = value;
+  }
+  return extras;
+}
+
+@visibleForTesting
+String privacySafeRequestBody(String type, Map<String, dynamic> data) {
   Map<String, dynamic> decoded(String key) {
     final raw = data[key];
     if (raw is Map) return Map<String, dynamic>.from(raw);
@@ -933,12 +985,14 @@ String _privacySafeRequestBody(String type, Map<String, dynamic> data) {
       };
 
   if (type == NotificationPayload.typeRideRequest) {
-    final fare = number(
-      details['estimatedFarePesewas'] ?? data['estimatedFarePesewas'],
+    final wire = <String, dynamic>{...data, ...details};
+    final fare = IncomingRideFareCopy.fromSnapshot(
+      IncomingRideFareSnapshot.fromJson(wire),
     );
     final distance = number(details['distanceKm'] ?? data['distanceKm']);
     final parts = <String>[
-      if (fare != null) 'GHS ${(fare / 100).toStringAsFixed(2)}',
+      for (final line in fare.pricingLines)
+        '${_sentenceCaseRequestCopy(line.label)} ${line.amount}',
       if (distance != null) '${distance.toStringAsFixed(1)} km',
     ];
     return parts.isEmpty
@@ -964,6 +1018,11 @@ String _privacySafeRequestBody(String type, Map<String, dynamic> data) {
   return parts.isEmpty
       ? 'Unlock to view description, location, and photos.'
       : '${parts.join(' · ')} · Unlock to view details.';
+}
+
+String _sentenceCaseRequestCopy(String value) {
+  final lower = value.toLowerCase();
+  return lower.isEmpty ? lower : '${lower[0].toUpperCase()}${lower.substring(1)}';
 }
 
 String _fallbackTitle(String type) {

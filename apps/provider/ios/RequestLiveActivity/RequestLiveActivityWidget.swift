@@ -28,9 +28,17 @@ struct RequestLiveActivityWidget: Widget {
             .foregroundStyle(accent)
         }
         DynamicIslandExpandedRegion(.center) {
-          Text(amount(context))
-            .font(.headline.bold())
-            .lineLimit(1)
+          VStack(spacing: 2) {
+            Text(amount(context))
+              .font(.headline.bold())
+              .lineLimit(1)
+            if let summary = pricingSummary(context) {
+              Text(summary)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            }
+          }
         }
         DynamicIslandExpandedRegion(.bottom) {
           HStack(spacing: 10) {
@@ -99,6 +107,14 @@ struct RequestLiveActivityWidget: Widget {
         .lineLimit(1)
         .minimumScaleFactor(0.7)
 
+      if let summary = pricingSummary(context) {
+        Text(summary)
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.secondary)
+          .lineLimit(2)
+          .minimumScaleFactor(0.8)
+      }
+
       HStack(spacing: 8) {
         ForEach(facts(context), id: \.self) { fact in
           Text(fact)
@@ -150,13 +166,51 @@ struct RequestLiveActivityWidget: Widget {
   }
 
   private func amount(_ context: ActivityViewContext<RequestOfferAttributes>) -> String {
-    if let fare = context.state.farePesewas {
-      return String(format: "GHS %.2f fare", Double(fare) / 100)
+    if let tripFare = context.state.prePromoFarePesewas, tripFare >= 0 {
+      return "EST. FULL FARE  \(cedis(tripFare))"
+    }
+    if let clientPrice = resolvedClientPrice(context.state) {
+      return "CLIENT PRICE  \(cedis(clientPrice))"
+    }
+    if let fare = context.state.farePesewas, fare >= 0 {
+      return "ESTIMATED FARE  \(cedis(fare))"
     }
     if let minimumBid = context.state.minimumBidPesewas {
       return String(format: "Bid from GHS %.2f", Double(minimumBid) / 100)
     }
     return isRide(context) ? "Fare available in MyShop" : "Submit your quote"
+  }
+
+  private func pricingSummary(
+    _ context: ActivityViewContext<RequestOfferAttributes>
+  ) -> String? {
+    guard isRide(context) else { return nil }
+    let state = context.state
+    guard let tripFare = state.prePromoFarePesewas,
+          let clientPrice = resolvedClientPrice(state),
+          tripFare >= 0,
+          clientPrice <= tripFare
+    else { return nil }
+    let discount = tripFare - clientPrice
+    return "PROMO / DISCOUNT  - \(cedis(discount))\nCLIENT PRICE  \(cedis(clientPrice))"
+  }
+
+  private func resolvedClientPrice(_ state: RequestOfferAttributes.ContentState) -> Int? {
+    if let clientPrice = state.clientPayableEstimatePesewas, clientPrice >= 0 {
+      return clientPrice
+    }
+    let hasCurrentContext = state.prePromoFarePesewas != nil
+      || state.platformDiscountPesewas != nil
+      || state.promoDiscountPesewas != nil
+      || state.loyaltyDiscountPesewas != nil
+    guard hasCurrentContext, let legacyFare = state.farePesewas, legacyFare >= 0 else {
+      return nil
+    }
+    return legacyFare
+  }
+
+  private func cedis(_ pesewas: Int) -> String {
+    String(format: "GHS %.2f", Double(pesewas) / 100)
   }
 
   private func facts(_ context: ActivityViewContext<RequestOfferAttributes>) -> [String] {

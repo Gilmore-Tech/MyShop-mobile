@@ -17,6 +17,8 @@ class OfferPayloadTest {
                 "title" to "New ride request",
                 "pickup" to "Osu",
                 "duration" to " 18 min ",
+                "amountLabel" to " EST. FULL FARE ",
+                "pricingSummary" to "PROMO / DISCOUNT - GHS 8.00\nCLIENT PRICE GHS 42.00",
                 "mapPreviewUrl" to " https://media.myshop.example/route/ride-1 ",
                 "payload" to mapOf("rideId" to "ride-1", "attempt" to 2),
             ),
@@ -26,6 +28,11 @@ class OfferPayloadTest {
         assertEquals("ride:ride-1", offer.identity)
         assertEquals("Osu", offer.pickup)
         assertEquals("18 min", offer.duration)
+        assertEquals("EST. FULL FARE", offer.amountLabel)
+        assertEquals(
+            "PROMO / DISCOUNT - GHS 8.00\nCLIENT PRICE GHS 42.00",
+            offer.pricingSummary,
+        )
         assertEquals(
             "https://media.myshop.example/route/ride-1",
             offer.mapPreviewUrl,

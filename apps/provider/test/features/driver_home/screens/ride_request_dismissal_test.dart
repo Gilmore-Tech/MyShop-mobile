@@ -30,6 +30,50 @@ Ride _pendingRide({
     );
 
 void main() {
+  testWidgets('promo request renders the authoritative three-price breakdown',
+      (tester) async {
+    final ride = Ride(
+      id: 'promo-request',
+      clientId: 'client-1',
+      status: RideStatus.requested,
+      pickupAddress: 'Pickup',
+      dropoffAddress: 'Destination',
+      pickupLat: 6.6885,
+      pickupLng: -1.6244,
+      dropoffLat: 6.7094,
+      dropoffLng: -1.5917,
+      estimatedFarePesewas: 0,
+      estimatedProviderEarningsPesewas: 1144,
+      prePromoFarePesewas: 1430,
+      clientPayableEstimatePesewas: 0,
+      platformDiscountPesewas: 1430,
+      promoApplied: true,
+      estimatedDistanceKm: 4.2,
+      estimatedDurationMins: 12,
+      paymentMethod: 'momo_mtn',
+      createdAt: DateTime.now(),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(home: RideRequestScreen(ride: ride)),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('EST. FULL FARE'), findsOneWidget);
+    expect(find.text('GHS 14.30'), findsOneWidget);
+    expect(find.text('PROMO / DISCOUNT'), findsOneWidget);
+    expect(find.text('- GHS 14.30'), findsOneWidget);
+    expect(find.text('CLIENT PRICE'), findsOneWidget);
+    expect(find.text('GHS 0.00'), findsOneWidget);
+    expect(find.text('ESTIMATED EARNINGS'), findsNothing);
+    expect(find.text('GHS 11.44'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 11));
+  });
+
   testWidgets(
       'notification route preclaim preserves socket ride without a second route',
       (tester) async {

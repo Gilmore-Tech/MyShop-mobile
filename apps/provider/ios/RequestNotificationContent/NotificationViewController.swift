@@ -11,6 +11,8 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
   private let gold = UIColor(red: 0.92, green: 0.65, blue: 0.12, alpha: 1)
   private let headerLabel = UILabel()
   private let amountLabel = UILabel()
+  private let amountCaptionLabel = UILabel()
+  private let pricingLabel = UILabel()
   private let factsStack = UIStackView()
   private let countdownLabel = UILabel()
   private let privacyLabel = UILabel()
@@ -33,6 +35,10 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
 
     headerLabel.text = isRide ? "New ride request" : "New artisan job"
     amountLabel.text = payload.amountText
+    amountCaptionLabel.text = payload.amountCaption
+    amountCaptionLabel.isHidden = payload.amountCaption == nil
+    pricingLabel.text = payload.pricingText
+    pricingLabel.isHidden = payload.pricingText == nil
     factsStack.arrangedSubviews.forEach {
       factsStack.removeArrangedSubview($0)
       $0.removeFromSuperview()
@@ -98,6 +104,16 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
     amountLabel.adjustsFontSizeToFitWidth = true
     amountLabel.minimumScaleFactor = 0.7
 
+    amountCaptionLabel.font = .systemFont(ofSize: 11, weight: .bold)
+    amountCaptionLabel.textColor = .secondaryLabel
+    amountCaptionLabel.numberOfLines = 1
+
+    pricingLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+    pricingLabel.textColor = .secondaryLabel
+    pricingLabel.numberOfLines = 2
+    pricingLabel.adjustsFontSizeToFitWidth = true
+    pricingLabel.minimumScaleFactor = 0.8
+
     factsStack.axis = .horizontal
     factsStack.alignment = .fill
     factsStack.distribution = .fillEqually
@@ -130,6 +146,8 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
     let stack = UIStackView(arrangedSubviews: [
       heading,
       amountLabel,
+      amountCaptionLabel,
+      pricingLabel,
       factsStack,
       mapImageView,
       privacyRow,
@@ -145,7 +163,7 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
       stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 18),
       stack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -16),
     ])
-    preferredContentSize = CGSize(width: 0, height: 265)
+    preferredContentSize = CGSize(width: 0, height: 305)
   }
 
   private func makeFactChip(_ text: String) -> UIView {
@@ -182,7 +200,7 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
   private func showSafeAttachment(_ attachment: UNNotificationAttachment?) {
     guard let attachment else {
       mapImageView.isHidden = true
-      preferredContentSize = CGSize(width: 0, height: 265)
+      preferredContentSize = CGSize(width: 0, height: 305)
       return
     }
     let didAccess = attachment.url.startAccessingSecurityScopedResource()
@@ -191,18 +209,20 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
     }
     guard let image = UIImage(contentsOfFile: attachment.url.path) else {
       mapImageView.isHidden = true
-      preferredContentSize = CGSize(width: 0, height: 265)
+      preferredContentSize = CGSize(width: 0, height: 305)
       return
     }
     mapImageView.image = image
     mapImageView.isHidden = false
-    preferredContentSize = CGSize(width: 0, height: 397)
+    preferredContentSize = CGSize(width: 0, height: 437)
   }
 }
 
 private struct RequestPayload {
   let requestType: String
   let amountText: String
+  let amountCaption: String?
+  let pricingText: String?
   let safeFacts: [String]
   let expiresAt: Date?
 
@@ -228,8 +248,39 @@ private struct RequestPayload {
     requestType = rawType.lowercased().replacingOccurrences(of: ".", with: "_")
 
     if requestType == "ride_request" {
-      let fare = Self.int(values["estimatedFarePesewas"])
-      amountText = fare.map(Self.cedis) ?? "Fare shown in MyShop"
+      let tripFare = Self.money(values["prePromoFarePesewas"])
+      let explicitClientPrice = Self.money(values["clientPayableEstimatePesewas"])
+        ?? Self.money(values["collectFromClientPesewas"])
+      let legacyFare = Self.money(values["estimatedFarePesewas"])
+        ?? Self.money(values["totalFare"])
+      let platformDiscount = Self.money(values["platformDiscountPesewas"])
+      let promoDiscount = Self.money(values["promoDiscountPesewas"])
+      let loyaltyDiscount = Self.money(values["loyaltyDiscountPesewas"])
+      let hasCurrentContext = tripFare != nil
+        || explicitClientPrice != nil
+        || platformDiscount != nil
+        || promoDiscount != nil
+        || loyaltyDiscount != nil
+      let clientPrice = explicitClientPrice ?? (hasCurrentContext ? legacyFare : nil)
+
+      if let tripFare, let clientPrice, clientPrice <= tripFare {
+        amountText = Self.cedis(tripFare)
+        amountCaption = "EST. FULL FARE"
+        let discount = tripFare - clientPrice
+        pricingText = "PROMO / DISCOUNT  - \(Self.cedis(discount))\nCLIENT PRICE  \(Self.cedis(clientPrice))"
+      } else if let tripFare {
+        amountText = Self.cedis(tripFare)
+        amountCaption = "EST. FULL FARE"
+        pricingText = nil
+      } else if let clientPrice {
+        amountText = Self.cedis(clientPrice)
+        amountCaption = "CLIENT PRICE"
+        pricingText = nil
+      } else {
+        amountText = legacyFare.map(Self.cedis) ?? "Fare shown in MyShop"
+        amountCaption = "ESTIMATED FARE"
+        pricingText = nil
+      }
       var facts: [String] = []
       if let km = Self.double(values["distanceKm"]) {
         facts.append(String(format: "%.1f km trip", km))
@@ -241,6 +292,8 @@ private struct RequestPayload {
     } else {
       let minimumBid = Self.int(values["minBidPesewas"])
       amountText = minimumBid.map { "Bid from \(Self.cedis($0))" } ?? "Submit your quote"
+      amountCaption = minimumBid == nil ? "YOUR QUOTE" : "MINIMUM BID"
+      pricingText = nil
       var facts: [String] = []
       if let category = Self.string(values["categoryName"]), !category.isEmpty {
         facts.append(String(category.prefix(38)))
@@ -278,9 +331,15 @@ private struct RequestPayload {
     return nil
   }
 
+  private static func money(_ value: Any?) -> Int? {
+    guard let value = int(value), value >= 0 else { return nil }
+    return value
+  }
+
   private static func double(_ value: Any?) -> Double? {
     if let value = value as? NSNumber { return value.doubleValue }
     if let value = value as? String { return Double(value) }
     return nil
   }
+
 }
