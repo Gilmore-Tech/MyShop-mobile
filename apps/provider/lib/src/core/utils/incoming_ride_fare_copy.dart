@@ -19,8 +19,8 @@ class IncomingRideFareSnapshot {
   });
 
   factory IncomingRideFareSnapshot.fromRide(Ride ride) {
-    final explicitClientPayable = ride.clientPayableEstimatePesewas ??
-        ride.collectFromClientPesewas;
+    final explicitClientPayable =
+        ride.clientPayableEstimatePesewas ?? ride.collectFromClientPesewas;
     final hasCanonicalOfferContext = ride.prePromoFarePesewas != null ||
         explicitClientPayable != null ||
         ride.promoDiscountPesewas != null ||
@@ -63,8 +63,9 @@ class IncomingRideFareSnapshot {
     final promoDiscount = integer(json['promoDiscountPesewas']);
     final loyaltyDiscount = integer(json['loyaltyDiscountPesewas']);
     final platformDiscount = integer(json['platformDiscountPesewas']);
-    final legacyEstimatedFare =
-        integer(json['estimatedFarePesewas'] ?? json['totalFare']);
+    final legacyEstimatedFare = integer(
+      json['estimatedFarePesewas'] ?? json['totalFare'],
+    );
     final explicitClientPayable =
         integer(json['clientPayableEstimatePesewas']) ??
             integer(json['collectFromClientPesewas']);
@@ -113,9 +114,7 @@ class IncomingRideFareSnapshot {
   bool get hasCurrentPricingContract {
     final fullFare = prePromoFarePesewas;
     final clientPrice = clientPayableEstimatePesewas;
-    return fullFare != null &&
-        clientPrice != null &&
-        clientPrice <= fullFare;
+    return fullFare != null && clientPrice != null && clientPrice <= fullFare;
   }
 }
 
@@ -207,9 +206,7 @@ class IncomingRideFareCopy {
 
   String? get nativePricingSummary => detailLines.isEmpty
       ? null
-      : detailLines
-          .map((line) => '${line.label} ${line.amount}')
-          .join('\n');
+      : detailLines.map((line) => '${line.label} ${line.amount}').join('\n');
 
   String get notificationPrimary => switch (primaryKind) {
         IncomingRidePrimaryAmountKind.fullTripFare =>

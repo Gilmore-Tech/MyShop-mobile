@@ -156,8 +156,9 @@ class Ride {
             driverLastName != null)
         ? [driverFirstName, driverLastName].whereType<String>().join(' ').trim()
         : null;
-    final status =
-        RideStatus.fromString(json['status'] as String? ?? 'requested');
+    final status = RideStatus.fromString(
+      json['status'] as String? ?? 'requested',
+    );
     final actualDistanceMeters = _optionalNum(json['actualDistanceMeters']);
     final actualDurationSeconds = _optionalNum(json['actualDurationSeconds']);
 
@@ -179,8 +180,7 @@ class Ride {
       estimatedFarePesewas: _int(
         json['estimatedFarePesewas'] ?? json['totalFare'],
       ),
-      hasEstimatedFareQuote:
-          json.containsKey('estimatedFarePesewas') ||
+      hasEstimatedFareQuote: json.containsKey('estimatedFarePesewas') ||
           json.containsKey('totalFare'),
       finalFarePesewas: _optionalInt(
         json['finalFarePesewas'] ??
@@ -196,10 +196,12 @@ class Ride {
       // Older payloads lack the explicit flag — infer from a non-zero discount.
       promoApplied: json['promoApplied'] == true ||
           (_optionalInt(json['promoDiscountPesewas']) ?? 0) > 0,
-      clientPayableEstimatePesewas:
-          _optionalInt(json['clientPayableEstimatePesewas']),
-      estimatedProviderEarningsPesewas:
-          _optionalInt(json['estimatedProviderEarningsPesewas']),
+      clientPayableEstimatePesewas: _optionalInt(
+        json['clientPayableEstimatePesewas'],
+      ),
+      estimatedProviderEarningsPesewas: _optionalInt(
+        json['estimatedProviderEarningsPesewas'],
+      ),
       collectFromClientPesewas: _optionalInt(
         json['collectFromClientPesewas'] ?? json['totalPaidPesewas'],
       ),
@@ -227,10 +229,11 @@ class Ride {
       clientName:
           _clientStr('clientName', ['name', 'fullName']) ?? assembledName,
       clientPhone: _clientStr('clientPhone', ['phone', 'maskedPhone']),
-      clientPhotoUrl: _clientStr(
-        'clientPhotoUrl',
-        ['photoUrl', 'profilePhotoUrl', 'avatarUrl'],
-      ),
+      clientPhotoUrl: _clientStr('clientPhotoUrl', [
+        'photoUrl',
+        'profilePhotoUrl',
+        'avatarUrl',
+      ]),
       clientRating: (json['clientRating'] as num?)?.toDouble() ??
           (clientObj['rating'] as num?)?.toDouble(),
       clientTripCount: json['clientTripCount'] as int? ??
@@ -382,8 +385,7 @@ class Ride {
       platformDiscountPesewas: platformDiscountPesewas,
       promoApplied: promoApplied,
       clientPayableEstimatePesewas: clientPayableEstimatePesewas,
-      estimatedProviderEarningsPesewas:
-          estimatedProviderEarningsPesewas,
+      estimatedProviderEarningsPesewas: estimatedProviderEarningsPesewas,
       collectFromClientPesewas: collectFromClientPesewas,
       commissionPesewas: commissionPesewas,
       commissionRatePercent: commissionRatePercent,

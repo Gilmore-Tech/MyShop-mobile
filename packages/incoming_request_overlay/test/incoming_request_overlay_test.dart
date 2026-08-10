@@ -52,8 +52,7 @@ void main() {
         title: 'New ride request',
         amount: 'GHS 50.00',
         amountLabel: 'EST. FULL FARE',
-        pricingSummary:
-            'PROMO / DISCOUNT - GHS 8.00\nCLIENT PRICE GHS 42.00',
+        pricingSummary: 'PROMO / DISCOUNT - GHS 8.00\nCLIENT PRICE GHS 42.00',
         duration: '18 min',
         pickup: 'Osu',
         destination: 'Airport',

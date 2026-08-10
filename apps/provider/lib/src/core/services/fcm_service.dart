@@ -197,11 +197,7 @@ class IncomingRequestTapCoordinator {
         _removeActive(_activeViews, requestKeys, operation);
       }
       if (generation == _generation && !_disposed) {
-        _rememberAll(
-          _viewTombstones,
-          requestKeys,
-          _viewWindow(payload),
-        );
+        _rememberAll(_viewTombstones, requestKeys, _viewWindow(payload));
       }
       return true;
     } catch (_) {
@@ -931,8 +927,7 @@ Map<String, String> privacySafeRequestExtras(
   for (final entry in data.entries) {
     if (entry.key == NotificationPayload.keyType) continue;
     if (entry.key == 'title' || entry.key == 'body') continue;
-    if (stripProviderEconomics &&
-        providerEconomicsKeys.contains(entry.key)) {
+    if (stripProviderEconomics && providerEconomicsKeys.contains(entry.key)) {
       continue;
     }
     var value = entry.value;
@@ -1022,7 +1017,9 @@ String privacySafeRequestBody(String type, Map<String, dynamic> data) {
 
 String _sentenceCaseRequestCopy(String value) {
   final lower = value.toLowerCase();
-  return lower.isEmpty ? lower : '${lower[0].toUpperCase()}${lower.substring(1)}';
+  return lower.isEmpty
+      ? lower
+      : '${lower[0].toUpperCase()}${lower.substring(1)}';
 }
 
 String _fallbackTitle(String type) {
@@ -2479,10 +2476,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
           preclaimedRideToken == null) {
         return;
       }
-      releaseRideRequestNavigationLatch(
-        initialRideId,
-        preclaimedRideToken,
-      );
+      releaseRideRequestNavigationLatch(initialRideId, preclaimedRideToken);
     }
 
     // A malformed callback must not retain route ownership forever. Normal
