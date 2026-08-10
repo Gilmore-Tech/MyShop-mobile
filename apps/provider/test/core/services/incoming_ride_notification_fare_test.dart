@@ -37,19 +37,22 @@ void main() {
     expect(body, isNot(contains('earnings')));
   });
 
-  test('fully subsidised fallback preserves a legitimate zero client price', () {
-    final body = privacySafeRequestBody('ride_request', {
-      'estimatedProviderEarningsPesewas': '1144',
-      'prePromoFarePesewas': '1430',
-      'clientPayableEstimatePesewas': '0',
-      'platformDiscountPesewas': '1430',
-      'paymentMethod': 'momo_mtn',
-    });
+  test(
+    'fully subsidised fallback preserves a legitimate zero client price',
+    () {
+      final body = privacySafeRequestBody('ride_request', {
+        'estimatedProviderEarningsPesewas': '1144',
+        'prePromoFarePesewas': '1430',
+        'clientPayableEstimatePesewas': '0',
+        'platformDiscountPesewas': '1430',
+        'paymentMethod': 'momo_mtn',
+      });
 
-    expect(body, contains('Promo / discount - GHS 14.30'));
-    expect(body, contains('Client price GHS 0.00'));
-    expect(body.toLowerCase(), isNot(contains('earnings')));
-  });
+      expect(body, contains('Promo / discount - GHS 14.30'));
+      expect(body, contains('Client price GHS 0.00'));
+      expect(body.toLowerCase(), isNot(contains('earnings')));
+    },
+  );
 
   test('non-promo fallback still shows an explicit zero discount', () {
     final body = privacySafeRequestBody('ride_request', {
@@ -83,10 +86,7 @@ void main() {
       'offerPayload': jsonEncode({
         'prePromoFarePesewas': 1000,
         for (final key in economics) key: 800,
-        'nested': {
-          for (final key in economics) key: 700,
-          'safe': 'kept',
-        },
+        'nested': {for (final key in economics) key: 700, 'safe': 'kept'},
       }),
     });
     final offer = jsonDecode(extras['offerPayload']!) as Map<String, dynamic>;
