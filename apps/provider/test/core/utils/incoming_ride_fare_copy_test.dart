@@ -24,8 +24,10 @@ void main() {
       'PROMO / DISCOUNT: - GHS 4.00',
       'CLIENT PRICE: GHS 6.00',
     ]);
-    expect(copy.nativePricingSummary,
-        'PROMO / DISCOUNT - GHS 4.00\nCLIENT PRICE GHS 6.00');
+    expect(
+      copy.nativePricingSummary,
+      'PROMO / DISCOUNT - GHS 4.00\nCLIENT PRICE GHS 6.00',
+    );
   });
 
   test('fully subsidised offer preserves the zero client price', () {
@@ -92,21 +94,24 @@ void main() {
     expect(copy.detailLines, isEmpty);
   });
 
-  test('transitional quote reconciles prices despite a stale discount total', () {
-    final fare = IncomingRideFareSnapshot.fromJson({
-      'estimatedFarePesewas': 600,
-      'estimatedProviderEarningsPesewas': 800,
-      'prePromoFarePesewas': 1000,
-      'platformDiscountPesewas': 999,
-    });
-    final copy = IncomingRideFareCopy.fromSnapshot(fare);
+  test(
+    'transitional quote reconciles prices despite a stale discount total',
+    () {
+      final fare = IncomingRideFareSnapshot.fromJson({
+        'estimatedFarePesewas': 600,
+        'estimatedProviderEarningsPesewas': 800,
+        'prePromoFarePesewas': 1000,
+        'platformDiscountPesewas': 999,
+      });
+      final copy = IncomingRideFareCopy.fromSnapshot(fare);
 
-    expect(copy.primaryLabel, 'EST. FULL FARE');
-    expect(fare.clientPayableEstimatePesewas, 600);
-    expect(fare.totalDiscountPesewas, 400);
-    expect(copy.detailLines[0].amount, '- GHS 4.00');
-    expect(copy.detailLines[1].amount, 'GHS 6.00');
-  });
+      expect(copy.primaryLabel, 'EST. FULL FARE');
+      expect(fare.clientPayableEstimatePesewas, 600);
+      expect(fare.totalDiscountPesewas, 400);
+      expect(copy.detailLines[0].amount, '- GHS 4.00');
+      expect(copy.detailLines[1].amount, 'GHS 6.00');
+    },
+  );
 
   test(
     'wire parser preserves zero and sums transitional discount components',

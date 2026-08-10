@@ -3,54 +3,57 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('iOS pricing contract keeps legacy fare and drops provider economics', () {
-    final attributes = File(
-      'ios/Shared/RequestOfferAttributes.swift',
-    ).readAsStringSync();
-    final notification = File(
-      'ios/RequestNotificationContent/NotificationViewController.swift',
-    ).readAsStringSync();
-    final liveActivity = File(
-      'ios/RequestLiveActivity/RequestLiveActivityWidget.swift',
-    ).readAsStringSync();
-    final bridge = File(
-      'ios/Runner/RequestLiveActivityBridge.swift',
-    ).readAsStringSync();
+  test(
+    'iOS pricing contract keeps legacy fare and drops provider economics',
+    () {
+      final attributes = File(
+        'ios/Shared/RequestOfferAttributes.swift',
+      ).readAsStringSync();
+      final notification = File(
+        'ios/RequestNotificationContent/NotificationViewController.swift',
+      ).readAsStringSync();
+      final liveActivity = File(
+        'ios/RequestLiveActivity/RequestLiveActivityWidget.swift',
+      ).readAsStringSync();
+      final bridge = File(
+        'ios/Runner/RequestLiveActivityBridge.swift',
+      ).readAsStringSync();
 
-    for (final field in const [
-      'prePromoFarePesewas',
-      'clientPayableEstimatePesewas',
-      'promoDiscountPesewas',
-      'loyaltyDiscountPesewas',
-      'platformDiscountPesewas',
-      'promoApplied',
-      'paymentMethod',
-    ]) {
-      expect(attributes, contains(field), reason: 'missing $field contract');
-    }
-    for (final source in [attributes, bridge, notification, liveActivity]) {
       for (final field in const [
-        'commissionPesewas',
-        'commissionRatePercent',
-        'estimatedProviderEarningsPesewas',
-        'providerEarningsPesewas',
-        'netPayoutPesewas',
+        'prePromoFarePesewas',
+        'clientPayableEstimatePesewas',
+        'promoDiscountPesewas',
+        'loyaltyDiscountPesewas',
+        'platformDiscountPesewas',
+        'promoApplied',
+        'paymentMethod',
       ]) {
-        expect(source, isNot(contains(field)));
+        expect(attributes, contains(field), reason: 'missing $field contract');
       }
-    }
-    expect(attributes, contains('let farePesewas: Int?'));
-    expect(notification, contains('hasCurrentContext ? legacyFare : nil'));
-    expect(notification, contains('PROMO / DISCOUNT'));
-    expect(notification, contains('CLIENT PRICE'));
-    expect(notification, contains('ESTIMATED FARE'));
-    expect(notification, contains('tripFare - clientPrice'));
-    expect(liveActivity, contains('PROMO / DISCOUNT'));
-    expect(liveActivity, contains('CLIENT PRICE'));
-    expect(liveActivity, contains('ESTIMATED FARE'));
-    expect(liveActivity, contains('hasCurrentContext'));
-    expect(liveActivity, contains('tripFare - clientPrice'));
-  });
+      for (final source in [attributes, bridge, notification, liveActivity]) {
+        for (final field in const [
+          'commissionPesewas',
+          'commissionRatePercent',
+          'estimatedProviderEarningsPesewas',
+          'providerEarningsPesewas',
+          'netPayoutPesewas',
+        ]) {
+          expect(source, isNot(contains(field)));
+        }
+      }
+      expect(attributes, contains('let farePesewas: Int?'));
+      expect(notification, contains('hasCurrentContext ? legacyFare : nil'));
+      expect(notification, contains('PROMO / DISCOUNT'));
+      expect(notification, contains('CLIENT PRICE'));
+      expect(notification, contains('ESTIMATED FARE'));
+      expect(notification, contains('tripFare - clientPrice'));
+      expect(liveActivity, contains('PROMO / DISCOUNT'));
+      expect(liveActivity, contains('CLIENT PRICE'));
+      expect(liveActivity, contains('ESTIMATED FARE'));
+      expect(liveActivity, contains('hasCurrentContext'));
+      expect(liveActivity, contains('tripFare - clientPrice'));
+    },
+  );
 
   test('Android intent codec preserves explicit price caption and summary', () {
     final payload = File(
