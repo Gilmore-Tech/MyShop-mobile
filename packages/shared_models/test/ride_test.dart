@@ -48,6 +48,22 @@ void main() {
     expect(ride.durationDisplay, '12 mins');
   });
 
+  test('distinguishes an omitted legacy estimate from a real zero quote', () {
+    final omitted = Ride.fromJson({
+      'id': 'ride-no-fare',
+      'status': 'requested',
+    });
+    final zero = Ride.fromJson({
+      'id': 'ride-zero-fare',
+      'status': 'requested',
+      'estimatedFarePesewas': 0,
+    });
+
+    expect(omitted.estimatedFarePesewas, 0);
+    expect(omitted.hasEstimatedFareQuote, isFalse);
+    expect(zero.hasEstimatedFareQuote, isTrue);
+  });
+
   test('parses the immutable payment commission snapshot', () {
     final ride = Ride.fromJson({
       'id': 'ride-4',
@@ -112,6 +128,34 @@ void main() {
     });
 
     expect(ride.promoApplied, isTrue);
+  });
+
+  test('parses the additive incoming-offer fare contract including zero quote',
+      () {
+    final ride = Ride.fromJson({
+      'id': 'ride-offer-fare',
+      'status': 'requested',
+      // Legacy post-discount rider quote remains separate.
+      'estimatedFarePesewas': 0,
+      'estimatedProviderEarningsPesewas': '1144',
+      'prePromoFarePesewas': 1430,
+      'clientPayableEstimatePesewas': 0,
+      'promoDiscountPesewas': 1000,
+      'loyaltyDiscountPesewas': 430,
+      'platformDiscountPesewas': 1430,
+      'providerEarningsPesewas': 999,
+      'pickupAddress': 'KNUST Gate',
+      'dropoffAddress': 'Kejetia Market',
+    });
+
+    expect(ride.estimatedProviderEarningsPesewas, 1144);
+    expect(ride.prePromoFarePesewas, 1430);
+    expect(ride.clientPayableEstimatePesewas, 0);
+    expect(ride.promoDiscountPesewas, 1000);
+    expect(ride.loyaltyDiscountPesewas, 430);
+    expect(ride.platformDiscountPesewas, 1430);
+    // Settlement earnings remain a separate field.
+    expect(ride.providerEarningsPesewas, 999);
   });
 
   test('keeps legacy payment rate unknown instead of fabricating 20 percent',

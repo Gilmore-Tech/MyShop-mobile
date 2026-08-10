@@ -25,6 +25,7 @@ import '../di/providers.dart';
 import '../providers/pending_request_recovery_provider.dart';
 import '../providers/socket_provider.dart';
 import '../providers/nav_badge_provider.dart';
+import '../utils/incoming_ride_fare_copy.dart';
 import 'local_notification_service.dart';
 import 'ride_cancellation_notice.dart';
 import 'incoming_request_action_bridge.dart';
@@ -878,7 +879,7 @@ Future<void> _renderFromRemote(
     title = type == NotificationPayload.typeRideRequest
         ? 'New ride request'
         : 'New job request';
-    body = _privacySafeRequestBody(type, data);
+    body = privacySafeRequestBody(type, data);
   }
 
   // Forward every data-key besides title/body/type so the tap handler can
@@ -901,7 +902,8 @@ Future<void> _renderFromRemote(
   );
 }
 
-String _privacySafeRequestBody(String type, Map<String, dynamic> data) {
+@visibleForTesting
+String privacySafeRequestBody(String type, Map<String, dynamic> data) {
   Map<String, dynamic> decoded(String key) {
     final raw = data[key];
     if (raw is Map) return Map<String, dynamic>.from(raw);
@@ -933,12 +935,19 @@ String _privacySafeRequestBody(String type, Map<String, dynamic> data) {
       };
 
   if (type == NotificationPayload.typeRideRequest) {
-    final fare = number(
-      details['estimatedFarePesewas'] ?? data['estimatedFarePesewas'],
+    final wire = <String, dynamic>{...data, ...details};
+    final fare = IncomingRideFareCopy.fromSnapshot(
+      IncomingRideFareSnapshot.fromJson(wire),
+      paymentMethod: value(wire['paymentMethod']),
     );
     final distance = number(details['distanceKm'] ?? data['distanceKm']);
     final parts = <String>[
-      if (fare != null) 'GHS ${(fare / 100).toStringAsFixed(2)}',
+      if (fare.hasPrimaryAmount) fare.notificationPrimary,
+      for (final line in fare.detailLines)
+        if (line.label == 'EST. FULL FARE' ||
+            line.label.contains('RIDER QUOTE') ||
+            line.label == 'MYSHOP COVERS')
+          '${line.label == 'MYSHOP COVERS' ? 'MyShop covers' : _sentenceCaseRequestCopy(line.label)} ${line.amount}',
       if (distance != null) '${distance.toStringAsFixed(1)} km',
     ];
     return parts.isEmpty
@@ -964,6 +973,11 @@ String _privacySafeRequestBody(String type, Map<String, dynamic> data) {
   return parts.isEmpty
       ? 'Unlock to view description, location, and photos.'
       : '${parts.join(' · ')} · Unlock to view details.';
+}
+
+String _sentenceCaseRequestCopy(String value) {
+  final lower = value.toLowerCase();
+  return lower.isEmpty ? lower : '${lower[0].toUpperCase()}${lower.substring(1)}';
 }
 
 String _fallbackTitle(String type) {

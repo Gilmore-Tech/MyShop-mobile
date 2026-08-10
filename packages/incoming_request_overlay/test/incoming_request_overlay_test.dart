@@ -51,6 +51,9 @@ void main() {
         expiresAt: deadline,
         title: 'New ride request',
         amount: 'GHS 42.00',
+        amountLabel: 'ESTIMATED EARNINGS',
+        pricingSummary:
+            'Est. full fare GHS 50.00 · Rider quote · cash GHS 42.00',
         duration: '18 min',
         pickup: 'Osu',
         destination: 'Airport',
@@ -68,6 +71,11 @@ void main() {
     expect(arguments['expiresAtMillis'], deadline.millisecondsSinceEpoch);
     expect(arguments['pickup'], 'Osu');
     expect(arguments['duration'], '18 min');
+    expect(arguments['amountLabel'], 'ESTIMATED EARNINGS');
+    expect(
+      arguments['pricingSummary'],
+      'Est. full fare GHS 50.00 · Rider quote · cash GHS 42.00',
+    );
     expect(
       arguments['mapPreviewUrl'],
       'https://api.example.com/v1/offers/map/token',

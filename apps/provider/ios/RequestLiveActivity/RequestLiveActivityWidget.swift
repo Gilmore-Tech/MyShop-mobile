@@ -28,9 +28,17 @@ struct RequestLiveActivityWidget: Widget {
             .foregroundStyle(accent)
         }
         DynamicIslandExpandedRegion(.center) {
-          Text(amount(context))
-            .font(.headline.bold())
-            .lineLimit(1)
+          VStack(spacing: 2) {
+            Text(amount(context))
+              .font(.headline.bold())
+              .lineLimit(1)
+            if let summary = pricingSummary(context) {
+              Text(summary)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            }
+          }
         }
         DynamicIslandExpandedRegion(.bottom) {
           HStack(spacing: 10) {
@@ -99,6 +107,14 @@ struct RequestLiveActivityWidget: Widget {
         .lineLimit(1)
         .minimumScaleFactor(0.7)
 
+      if let summary = pricingSummary(context) {
+        Text(summary)
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.secondary)
+          .lineLimit(2)
+          .minimumScaleFactor(0.8)
+      }
+
       HStack(spacing: 8) {
         ForEach(facts(context), id: \.self) { fact in
           Text(fact)
@@ -150,13 +166,71 @@ struct RequestLiveActivityWidget: Widget {
   }
 
   private func amount(_ context: ActivityViewContext<RequestOfferAttributes>) -> String {
+    if let earnings = context.state.estimatedProviderEarningsPesewas {
+      return String(format: "GHS %.2f est. earnings", Double(earnings) / 100)
+    }
+    if let tripFare = context.state.prePromoFarePesewas {
+      return String(format: "GHS %.2f est. full fare", Double(tripFare) / 100)
+    }
+    if let riderPays = context.state.clientPayableEstimatePesewas {
+      return "\(cedis(riderPays)) \(riderQuotePhrase(context.state.paymentMethod))"
+    }
     if let fare = context.state.farePesewas {
-      return String(format: "GHS %.2f fare", Double(fare) / 100)
+      return String(format: "GHS %.2f estimated fare", Double(fare) / 100)
     }
     if let minimumBid = context.state.minimumBidPesewas {
       return String(format: "Bid from GHS %.2f", Double(minimumBid) / 100)
     }
     return isRide(context) ? "Fare available in MyShop" : "Submit your quote"
+  }
+
+  private func pricingSummary(
+    _ context: ActivityViewContext<RequestOfferAttributes>
+  ) -> String? {
+    guard isRide(context) else { return nil }
+    let state = context.state
+    let covered: Int?
+    if let platformDiscount = state.platformDiscountPesewas {
+      covered = platformDiscount
+    } else if state.promoDiscountPesewas != nil || state.loyaltyDiscountPesewas != nil {
+      covered = (state.promoDiscountPesewas ?? 0) + (state.loyaltyDiscountPesewas ?? 0)
+    } else {
+      covered = nil
+    }
+    let discounted = state.promoApplied == true || (covered ?? 0) > 0
+    var values: [String] = []
+    if !discounted,
+       let tripFare = state.prePromoFarePesewas,
+       let riderPays = state.clientPayableEstimatePesewas,
+       tripFare == riderPays,
+       state.estimatedProviderEarningsPesewas != nil {
+      values.append(
+        "Est. full fare · \(riderQuotePhrase(state.paymentMethod)) \(cedis(tripFare))"
+      )
+    } else {
+      if state.estimatedProviderEarningsPesewas != nil,
+         let tripFare = state.prePromoFarePesewas {
+        values.append("Est. full fare \(cedis(tripFare))")
+      }
+      if state.estimatedProviderEarningsPesewas != nil,
+         let riderPays = state.clientPayableEstimatePesewas {
+        values.append("\(riderQuotePhrase(state.paymentMethod)) \(cedis(riderPays))")
+      }
+    }
+    if let covered, covered > 0 {
+      values.append("MyShop covers \(cedis(covered))")
+    }
+    return values.isEmpty ? nil : values.joined(separator: " · ")
+  }
+
+  private func cedis(_ pesewas: Int) -> String {
+    String(format: "GHS %.2f", Double(pesewas) / 100)
+  }
+
+  private func riderQuotePhrase(_ paymentMethod: String?) -> String {
+    guard let method = paymentMethod?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !method.isEmpty else { return "rider quote" }
+    return method.lowercased() == "cash" ? "rider quote · cash" : "rider quote · in app"
   }
 
   private func facts(_ context: ActivityViewContext<RequestOfferAttributes>) -> [String] {

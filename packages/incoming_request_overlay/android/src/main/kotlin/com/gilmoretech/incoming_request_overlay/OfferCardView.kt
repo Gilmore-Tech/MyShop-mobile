@@ -219,10 +219,18 @@ internal class OfferCardView(
                 }
             })
             addView(textView(sizeSp = 11f, bold = true, color = MUTED).apply {
-                text = pricingCaption(amount)
+                text = offer.amountLabel ?: pricingCaption(amount)
                 letterSpacing = 0.06f
                 setPadding(0, dp(2), 0, 0)
             })
+            offer.pricingSummary?.takeIf { it.isNotBlank() }?.let { summary ->
+                addView(textView(sizeSp = 12f, bold = true, color = MUTED).apply {
+                    text = summary
+                    maxLines = 3
+                    ellipsize = TextUtils.TruncateAt.END
+                    setPadding(0, dp(8), 0, 0)
+                })
+            }
         }
 
         val metrics = listOfNotNull(
