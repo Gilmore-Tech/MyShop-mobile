@@ -36,7 +36,7 @@ struct RequestLiveActivityWidget: Widget {
               Text(summary)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .lineLimit(2)
             }
           }
         }
@@ -166,17 +166,14 @@ struct RequestLiveActivityWidget: Widget {
   }
 
   private func amount(_ context: ActivityViewContext<RequestOfferAttributes>) -> String {
-    if let earnings = context.state.estimatedProviderEarningsPesewas {
-      return String(format: "GHS %.2f est. earnings", Double(earnings) / 100)
+    if let tripFare = context.state.prePromoFarePesewas, tripFare >= 0 {
+      return "EST. FULL FARE  \(cedis(tripFare))"
     }
-    if let tripFare = context.state.prePromoFarePesewas {
-      return String(format: "GHS %.2f est. full fare", Double(tripFare) / 100)
+    if let clientPrice = resolvedClientPrice(context.state) {
+      return "CLIENT PRICE  \(cedis(clientPrice))"
     }
-    if let riderPays = context.state.clientPayableEstimatePesewas {
-      return "\(cedis(riderPays)) \(riderQuotePhrase(context.state.paymentMethod))"
-    }
-    if let fare = context.state.farePesewas {
-      return String(format: "GHS %.2f estimated fare", Double(fare) / 100)
+    if let fare = context.state.farePesewas, fare >= 0 {
+      return "ESTIMATED FARE  \(cedis(fare))"
     }
     if let minimumBid = context.state.minimumBidPesewas {
       return String(format: "Bid from GHS %.2f", Double(minimumBid) / 100)
@@ -189,48 +186,31 @@ struct RequestLiveActivityWidget: Widget {
   ) -> String? {
     guard isRide(context) else { return nil }
     let state = context.state
-    let covered: Int?
-    if let platformDiscount = state.platformDiscountPesewas {
-      covered = platformDiscount
-    } else if state.promoDiscountPesewas != nil || state.loyaltyDiscountPesewas != nil {
-      covered = (state.promoDiscountPesewas ?? 0) + (state.loyaltyDiscountPesewas ?? 0)
-    } else {
-      covered = nil
+    guard let tripFare = state.prePromoFarePesewas,
+          let clientPrice = resolvedClientPrice(state),
+          tripFare >= 0,
+          clientPrice <= tripFare
+    else { return nil }
+    let discount = tripFare - clientPrice
+    return "PROMO / DISCOUNT  - \(cedis(discount))\nCLIENT PRICE  \(cedis(clientPrice))"
+  }
+
+  private func resolvedClientPrice(_ state: RequestOfferAttributes.ContentState) -> Int? {
+    if let clientPrice = state.clientPayableEstimatePesewas, clientPrice >= 0 {
+      return clientPrice
     }
-    let discounted = state.promoApplied == true || (covered ?? 0) > 0
-    var values: [String] = []
-    if !discounted,
-       let tripFare = state.prePromoFarePesewas,
-       let riderPays = state.clientPayableEstimatePesewas,
-       tripFare == riderPays,
-       state.estimatedProviderEarningsPesewas != nil {
-      values.append(
-        "Est. full fare · \(riderQuotePhrase(state.paymentMethod)) \(cedis(tripFare))"
-      )
-    } else {
-      if state.estimatedProviderEarningsPesewas != nil,
-         let tripFare = state.prePromoFarePesewas {
-        values.append("Est. full fare \(cedis(tripFare))")
-      }
-      if state.estimatedProviderEarningsPesewas != nil,
-         let riderPays = state.clientPayableEstimatePesewas {
-        values.append("\(riderQuotePhrase(state.paymentMethod)) \(cedis(riderPays))")
-      }
+    let hasCurrentContext = state.prePromoFarePesewas != nil
+      || state.platformDiscountPesewas != nil
+      || state.promoDiscountPesewas != nil
+      || state.loyaltyDiscountPesewas != nil
+    guard hasCurrentContext, let legacyFare = state.farePesewas, legacyFare >= 0 else {
+      return nil
     }
-    if let covered, covered > 0 {
-      values.append("MyShop covers \(cedis(covered))")
-    }
-    return values.isEmpty ? nil : values.joined(separator: " · ")
+    return legacyFare
   }
 
   private func cedis(_ pesewas: Int) -> String {
     String(format: "GHS %.2f", Double(pesewas) / 100)
-  }
-
-  private func riderQuotePhrase(_ paymentMethod: String?) -> String {
-    guard let method = paymentMethod?.trimmingCharacters(in: .whitespacesAndNewlines),
-          !method.isEmpty else { return "rider quote" }
-    return method.lowercased() == "cash" ? "rider quote · cash" : "rider quote · in app"
   }
 
   private func facts(_ context: ActivityViewContext<RequestOfferAttributes>) -> [String] {

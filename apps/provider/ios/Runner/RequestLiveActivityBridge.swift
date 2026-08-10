@@ -505,7 +505,6 @@ final class RequestLiveActivityBridge: NSObject, FlutterStreamHandler, @unchecke
     let updated = RequestOfferAttributes.ContentState(
       status: current.status,
       farePesewas: current.farePesewas,
-      estimatedProviderEarningsPesewas: current.estimatedProviderEarningsPesewas,
       prePromoFarePesewas: current.prePromoFarePesewas,
       clientPayableEstimatePesewas: current.clientPayableEstimatePesewas,
       promoDiscountPesewas: current.promoDiscountPesewas,
@@ -734,7 +733,6 @@ final class RequestLiveActivityBridge: NSObject, FlutterStreamHandler, @unchecke
       let ended = RequestOfferAttributes.ContentState(
         status: "ended",
         farePesewas: current.farePesewas,
-        estimatedProviderEarningsPesewas: current.estimatedProviderEarningsPesewas,
         prePromoFarePesewas: current.prePromoFarePesewas,
         clientPayableEstimatePesewas: current.clientPayableEstimatePesewas,
         promoDiscountPesewas: current.promoDiscountPesewas,

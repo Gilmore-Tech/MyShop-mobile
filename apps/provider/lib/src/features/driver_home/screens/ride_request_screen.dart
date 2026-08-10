@@ -470,7 +470,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
 
                           // Put the decision-driving amount before identity and
                           // the longer address details.
-                          _EarningsCard(ride: ride),
+                          _PricingCard(ride: ride),
                           const SizedBox(height: MyShopSpacing.lg),
 
                           _PickupInfo(ride: ride),
@@ -938,14 +938,13 @@ class _PickupInfo extends ConsumerWidget {
   }
 }
 
-class _EarningsCard extends StatelessWidget {
-  const _EarningsCard({required this.ride});
+class _PricingCard extends StatelessWidget {
+  const _PricingCard({required this.ride});
   final Ride ride;
   @override
   Widget build(BuildContext context) {
     final fare = IncomingRideFareCopy.fromSnapshot(
       IncomingRideFareSnapshot.fromRide(ride),
-      paymentMethod: ride.paymentMethod,
     );
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),
@@ -963,7 +962,7 @@ class _EarningsCard extends StatelessWidget {
               decoration: BoxDecoration(
                   color: MyShopColors.primaryGold.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(MyShopRadius.button)),
-              child: const Icon(Icons.account_balance_wallet,
+              child: const Icon(Icons.receipt_long,
                   size: 20, color: MyShopColors.primaryGold)),
           const SizedBox(width: 12),
           Expanded(
@@ -1021,7 +1020,7 @@ class _EarningsCard extends StatelessWidget {
                   line.amount,
                   style: MyShopTypography.body2.copyWith(
                     fontWeight: FontWeight.w800,
-                    color: line.label == 'MYSHOP COVERS'
+                    color: line.label == IncomingRideFareCopy.discountLabel
                         ? MyShopColors.success
                         : MyShopColors.textPrimary,
                   ),

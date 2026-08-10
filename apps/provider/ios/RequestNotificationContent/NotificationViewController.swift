@@ -248,57 +248,39 @@ private struct RequestPayload {
     requestType = rawType.lowercased().replacingOccurrences(of: ".", with: "_")
 
     if requestType == "ride_request" {
-      let earnings = Self.int(values["estimatedProviderEarningsPesewas"])
-      let tripFare = Self.int(values["prePromoFarePesewas"])
-      let riderPays = Self.int(values["clientPayableEstimatePesewas"])
-        ?? Self.int(values["collectFromClientPesewas"])
-      let legacyFare = Self.int(values["estimatedFarePesewas"])
-      let paymentMethod = Self.string(values["paymentMethod"])
-      if let earnings {
-        amountText = Self.cedis(earnings)
-        amountCaption = "ESTIMATED EARNINGS"
+      let tripFare = Self.money(values["prePromoFarePesewas"])
+      let explicitClientPrice = Self.money(values["clientPayableEstimatePesewas"])
+        ?? Self.money(values["collectFromClientPesewas"])
+      let legacyFare = Self.money(values["estimatedFarePesewas"])
+        ?? Self.money(values["totalFare"])
+      let platformDiscount = Self.money(values["platformDiscountPesewas"])
+      let promoDiscount = Self.money(values["promoDiscountPesewas"])
+      let loyaltyDiscount = Self.money(values["loyaltyDiscountPesewas"])
+      let hasCurrentContext = tripFare != nil
+        || explicitClientPrice != nil
+        || platformDiscount != nil
+        || promoDiscount != nil
+        || loyaltyDiscount != nil
+      let clientPrice = explicitClientPrice ?? (hasCurrentContext ? legacyFare : nil)
+
+      if let tripFare, let clientPrice, clientPrice <= tripFare {
+        amountText = Self.cedis(tripFare)
+        amountCaption = "EST. FULL FARE"
+        let discount = tripFare - clientPrice
+        pricingText = "PROMO / DISCOUNT  - \(Self.cedis(discount))\nCLIENT PRICE  \(Self.cedis(clientPrice))"
       } else if let tripFare {
         amountText = Self.cedis(tripFare)
         amountCaption = "EST. FULL FARE"
-      } else if let riderPays {
-        amountText = Self.cedis(riderPays)
-        amountCaption = Self.riderQuoteLabel(paymentMethod).uppercased()
+        pricingText = nil
+      } else if let clientPrice {
+        amountText = Self.cedis(clientPrice)
+        amountCaption = "CLIENT PRICE"
+        pricingText = nil
       } else {
         amountText = legacyFare.map(Self.cedis) ?? "Fare shown in MyShop"
         amountCaption = "ESTIMATED FARE"
+        pricingText = nil
       }
-
-      let platformDiscount = Self.int(values["platformDiscountPesewas"])
-      let promoDiscount = Self.int(values["promoDiscountPesewas"])
-      let loyaltyDiscount = Self.int(values["loyaltyDiscountPesewas"])
-      let covered: Int?
-      if let platformDiscount {
-        covered = platformDiscount
-      } else if promoDiscount != nil || loyaltyDiscount != nil {
-        covered = (promoDiscount ?? 0) + (loyaltyDiscount ?? 0)
-      } else {
-        covered = nil
-      }
-      let discounted = Self.bool(values["promoApplied"]) == true || (covered ?? 0) > 0
-      var pricing: [String] = []
-      if !discounted,
-         let tripFare,
-         let riderPays,
-         tripFare == riderPays,
-         earnings != nil {
-        pricing.append("Est. full fare · \(Self.riderQuoteLabel(paymentMethod)) \(Self.cedis(tripFare))")
-      } else {
-        if earnings != nil, let tripFare {
-          pricing.append("Est. full fare \(Self.cedis(tripFare))")
-        }
-        if earnings != nil, let riderPays {
-          pricing.append("\(Self.riderQuoteLabel(paymentMethod)) \(Self.cedis(riderPays))")
-        }
-      }
-      if let covered, covered > 0 {
-        pricing.append("MyShop covers \(Self.cedis(covered))")
-      }
-      pricingText = pricing.isEmpty ? nil : pricing.joined(separator: " · ")
       var facts: [String] = []
       if let km = Self.double(values["distanceKm"]) {
         facts.append(String(format: "%.1f km trip", km))
@@ -349,25 +331,15 @@ private struct RequestPayload {
     return nil
   }
 
+  private static func money(_ value: Any?) -> Int? {
+    guard let value = int(value), value >= 0 else { return nil }
+    return value
+  }
+
   private static func double(_ value: Any?) -> Double? {
     if let value = value as? NSNumber { return value.doubleValue }
     if let value = value as? String { return Double(value) }
     return nil
   }
 
-  private static func bool(_ value: Any?) -> Bool? {
-    if let value = value as? Bool { return value }
-    if let value = value as? NSNumber { return value.boolValue }
-    if let value = value as? String {
-      if value.lowercased() == "true" { return true }
-      if value.lowercased() == "false" { return false }
-    }
-    return nil
-  }
-
-  private static func riderQuoteLabel(_ paymentMethod: String?) -> String {
-    guard let method = paymentMethod?.trimmingCharacters(in: .whitespacesAndNewlines),
-          !method.isEmpty else { return "Rider quote" }
-    return method.lowercased() == "cash" ? "Rider quote · cash" : "Rider quote · in app"
-  }
 }
