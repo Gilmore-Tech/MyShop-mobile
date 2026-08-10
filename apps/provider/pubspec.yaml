@@ -4,7 +4,7 @@ publish_to: 'none'
 # Store-update marketing version. Legal-document consent versions remain
 # independent. Release builds must override the local build-number floor through
 # tool/build.sh after checking both private consoles.
-version: 1.4.4+33
+version: 1.4.5+37
 
 environment:
   sdk: ^3.6.0

@@ -5,7 +5,7 @@
 /// the obsolete 1.0.0 label.
 const appMarketingVersion = String.fromEnvironment(
   'MYSHOP_MARKETING_VERSION',
-  defaultValue: '1.4.4',
+  defaultValue: '1.4.5',
 );
 
 const appVersionLabel = 'Version $appMarketingVersion';
