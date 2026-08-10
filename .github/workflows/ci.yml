@@ -50,6 +50,9 @@ jobs:
       
       - name: Bootstrap
         run: melos bootstrap
+
+      - name: Configure Gradle for CI
+        run: cp .github/gradle-ci.properties apps/client/android/gradle.properties
       
       - name: Build Client APK
         run: cd apps/client && flutter build apk --debug
@@ -71,6 +74,9 @@ jobs:
       
       - name: Bootstrap
         run: melos bootstrap
+
+      - name: Configure Gradle for CI
+        run: cp .github/gradle-ci.properties apps/provider/android/gradle.properties
       
       - name: Build Provider APK
         run: cd apps/provider && flutter build apk --debug
