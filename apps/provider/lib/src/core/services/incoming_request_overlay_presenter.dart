@@ -215,7 +215,6 @@ class IncomingRequestOverlayPresenter {
       final wire = <String, dynamic>{...data, ...details};
       final fare = IncomingRideFareCopy.fromSnapshot(
         IncomingRideFareSnapshot.fromJson(wire),
-        paymentMethod: _string(wire['paymentMethod']),
       );
       final distanceKm = _number(details['distanceKm'] ?? data['distanceKm']);
       final durationMins = _number(

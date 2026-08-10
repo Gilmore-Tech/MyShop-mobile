@@ -13,7 +13,6 @@ struct RequestOfferAttributes: ActivityAttributes {
     let status: String
     /// Legacy rider quote. Never display this as provider earnings.
     let farePesewas: Int?
-    let estimatedProviderEarningsPesewas: Int?
     let prePromoFarePesewas: Int?
     let clientPayableEstimatePesewas: Int?
     let promoDiscountPesewas: Int?

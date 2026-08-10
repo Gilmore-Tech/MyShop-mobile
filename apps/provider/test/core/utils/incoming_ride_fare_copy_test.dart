@@ -3,66 +3,64 @@ import 'package:myshop_provider/src/core/utils/incoming_ride_fare_copy.dart';
 import 'package:shared_models/shared_models.dart';
 
 void main() {
-  test('promo cash offer shows earnings, both quotes, and MyShop cover', () {
+  test('promo offer shows the exact three price rows and ignores earnings', () {
     final copy = IncomingRideFareCopy.fromSnapshot(
-      const IncomingRideFareSnapshot(
-        estimatedProviderEarningsPesewas: 800,
-        prePromoFarePesewas: 1000,
-        clientPayableEstimatePesewas: 600,
-        promoDiscountPesewas: 300,
-        loyaltyDiscountPesewas: 100,
-        platformDiscountPesewas: 400,
-        promoApplied: true,
-        legacyEstimatedFarePesewas: 600,
-      ),
-      paymentMethod: 'cash',
+      IncomingRideFareSnapshot.fromJson({
+        'estimatedProviderEarningsPesewas': 800,
+        'prePromoFarePesewas': 1000,
+        'clientPayableEstimatePesewas': 600,
+        'promoDiscountPesewas': 300,
+        'loyaltyDiscountPesewas': 100,
+        'platformDiscountPesewas': 400,
+        'promoApplied': true,
+        'estimatedFarePesewas': 600,
+      }),
     );
 
-    expect(copy.primaryLabel, 'ESTIMATED EARNINGS');
-    expect(copy.primaryAmount, 'GHS 8.00');
-    expect(copy.detailLines.map((line) => '${line.label}: ${line.amount}'), [
+    expect(copy.primaryLabel, 'EST. FULL FARE');
+    expect(copy.primaryAmount, 'GHS 10.00');
+    expect(copy.pricingLines.map((line) => '${line.label}: ${line.amount}'), [
       'EST. FULL FARE: GHS 10.00',
-      'RIDER QUOTE · CASH: GHS 6.00',
-      'MYSHOP COVERS: GHS 4.00',
+      'PROMO / DISCOUNT: - GHS 4.00',
+      'CLIENT PRICE: GHS 6.00',
     ]);
+    expect(copy.nativePricingSummary,
+        'PROMO / DISCOUNT - GHS 4.00\nCLIENT PRICE GHS 6.00');
   });
 
-  test('fully subsidised in-app offer preserves the zero rider quote', () {
+  test('fully subsidised offer preserves the zero client price', () {
     final copy = IncomingRideFareCopy.fromSnapshot(
       const IncomingRideFareSnapshot(
-        estimatedProviderEarningsPesewas: 1144,
         prePromoFarePesewas: 1430,
         clientPayableEstimatePesewas: 0,
         platformDiscountPesewas: 1430,
         promoApplied: true,
         legacyEstimatedFarePesewas: 0,
       ),
-      paymentMethod: 'momo_mtn',
     );
 
-    expect(copy.detailLines[1].label, 'RIDER QUOTE · IN APP');
+    expect(copy.primaryAmount, 'GHS 14.30');
+    expect(copy.detailLines[0].label, 'PROMO / DISCOUNT');
+    expect(copy.detailLines[0].amount, '- GHS 14.30');
+    expect(copy.detailLines[1].label, 'CLIENT PRICE');
     expect(copy.detailLines[1].amount, 'GHS 0.00');
-    expect(copy.detailLines[2].amount, 'GHS 14.30');
   });
 
-  test('non-promo quote combines identical trip and rider values', () {
+  test('non-promo quote still renders all three explicit price rows', () {
     final copy = IncomingRideFareCopy.fromSnapshot(
       const IncomingRideFareSnapshot(
-        estimatedProviderEarningsPesewas: 800,
         prePromoFarePesewas: 1000,
         clientPayableEstimatePesewas: 1000,
         platformDiscountPesewas: 0,
         legacyEstimatedFarePesewas: 1000,
       ),
-      paymentMethod: 'cash',
     );
 
-    expect(copy.detailLines, hasLength(1));
-    expect(
-      copy.detailLines.single.label,
-      'EST. FULL FARE · RIDER QUOTE · CASH',
-    );
-    expect(copy.detailLines.single.amount, 'GHS 10.00');
+    expect(copy.pricingLines.map((line) => '${line.label}: ${line.amount}'), [
+      'EST. FULL FARE: GHS 10.00',
+      'PROMO / DISCOUNT: - GHS 0.00',
+      'CLIENT PRICE: GHS 10.00',
+    ]);
   });
 
   test('legacy singleton is estimated fare and never settlement earnings', () {
@@ -77,6 +75,7 @@ void main() {
       dropoffLat: 0,
       dropoffLng: 0,
       estimatedFarePesewas: 600,
+      estimatedProviderEarningsPesewas: 800,
       providerEarningsPesewas: 999,
       estimatedDistanceKm: 1,
       estimatedDurationMins: 4,
@@ -85,7 +84,6 @@ void main() {
     );
     final copy = IncomingRideFareCopy.fromSnapshot(
       IncomingRideFareSnapshot.fromRide(ride),
-      paymentMethod: ride.paymentMethod,
     );
 
     expect(copy.primaryKind, IncomingRidePrimaryAmountKind.legacyEstimatedFare);
@@ -94,21 +92,20 @@ void main() {
     expect(copy.detailLines, isEmpty);
   });
 
-  test('transitional additive payload may use legacy quote as rider quote', () {
+  test('transitional quote reconciles prices despite a stale discount total', () {
     final fare = IncomingRideFareSnapshot.fromJson({
       'estimatedFarePesewas': 600,
       'estimatedProviderEarningsPesewas': 800,
       'prePromoFarePesewas': 1000,
-      'platformDiscountPesewas': 400,
+      'platformDiscountPesewas': 999,
     });
-    final copy = IncomingRideFareCopy.fromSnapshot(
-      fare,
-      paymentMethod: 'cash',
-    );
+    final copy = IncomingRideFareCopy.fromSnapshot(fare);
 
-    expect(copy.primaryLabel, 'ESTIMATED EARNINGS');
+    expect(copy.primaryLabel, 'EST. FULL FARE');
     expect(fare.clientPayableEstimatePesewas, 600);
-    expect(copy.detailLines[1].label, 'RIDER QUOTE · CASH');
+    expect(fare.totalDiscountPesewas, 400);
+    expect(copy.detailLines[0].amount, '- GHS 4.00');
+    expect(copy.detailLines[1].amount, 'GHS 6.00');
   });
 
   test(
@@ -123,9 +120,22 @@ void main() {
       });
 
       expect(fare.clientPayableEstimatePesewas, 0);
-      expect(fare.myShopCoveredPesewas, 1000);
+      expect(fare.totalDiscountPesewas, 1000);
     },
   );
+
+  test('client price above full fare does not render contradictory rows', () {
+    final copy = IncomingRideFareCopy.fromSnapshot(
+      const IncomingRideFareSnapshot(
+        prePromoFarePesewas: 1000,
+        clientPayableEstimatePesewas: 1200,
+        platformDiscountPesewas: 0,
+      ),
+    );
+
+    expect(copy.primaryLabel, 'EST. FULL FARE');
+    expect(copy.detailLines, isEmpty);
+  });
 
   test('malformed or negative push money fails soft to the legacy fare', () {
     final fare = IncomingRideFareSnapshot.fromJson({
@@ -137,10 +147,9 @@ void main() {
     });
     final copy = IncomingRideFareCopy.fromSnapshot(fare);
 
-    expect(fare.estimatedProviderEarningsPesewas, isNull);
     expect(fare.prePromoFarePesewas, isNull);
     expect(fare.clientPayableEstimatePesewas, isNull);
-    expect(fare.myShopCoveredPesewas, isNull);
+    expect(fare.totalDiscountPesewas, isNull);
     expect(copy.primaryLabel, 'ESTIMATED FARE');
     expect(copy.primaryAmount, 'GHS 5.00');
   });

@@ -882,16 +882,9 @@ Future<void> _renderFromRemote(
     body = privacySafeRequestBody(type, data);
   }
 
-  // Forward every data-key besides title/body/type so the tap handler can
-  // read jobId / rideId / bidId / chatId / notificationId without losing
-  // context.
-  final extras = <String, String>{};
-  for (final entry in data.entries) {
-    if (entry.key == NotificationPayload.keyType) continue;
-    if (entry.key == 'title' || entry.key == 'body') continue;
-    final v = entry.value;
-    if (v is String && v.isNotEmpty) extras[entry.key] = v;
-  }
+  // Preserve tap-routing context without copying provider economics into the
+  // OS-owned local-notification payload.
+  final extras = privacySafeRequestExtras(type, data);
 
   await LocalNotificationService.instance.showTimelineUpdate(
     type: type,
@@ -900,6 +893,63 @@ Future<void> _renderFromRemote(
     extras: extras,
     timeoutAfter: timeoutAfter,
   );
+}
+
+@visibleForTesting
+Map<String, String> privacySafeRequestExtras(
+  String type,
+  Map<String, dynamic> data,
+) {
+  const providerEconomicsKeys = <String>{
+    'commissionPesewas',
+    'commission_pesewas',
+    'commissionRatePercent',
+    'commission_rate_percent',
+    'estimatedProviderEarningsPesewas',
+    'estimated_provider_earnings_pesewas',
+    'providerEarningsPesewas',
+    'provider_earnings_pesewas',
+    'netPayoutPesewas',
+    'net_payout_pesewas',
+  };
+  final stripProviderEconomics = NotificationPayload.normaliseType(type) ==
+      NotificationPayload.typeRideRequest;
+
+  Object? withoutProviderEconomics(Object? value) {
+    if (value is Map) {
+      return <String, dynamic>{
+        for (final entry in value.entries)
+          if (!providerEconomicsKeys.contains(entry.key.toString()))
+            entry.key.toString(): withoutProviderEconomics(entry.value),
+      };
+    }
+    if (value is List) return value.map(withoutProviderEconomics).toList();
+    return value;
+  }
+
+  final extras = <String, String>{};
+  for (final entry in data.entries) {
+    if (entry.key == NotificationPayload.keyType) continue;
+    if (entry.key == 'title' || entry.key == 'body') continue;
+    if (stripProviderEconomics &&
+        providerEconomicsKeys.contains(entry.key)) {
+      continue;
+    }
+    var value = entry.value;
+    if (stripProviderEconomics && value is String) {
+      final raw = value;
+      final trimmed = raw.trimLeft();
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try {
+          value = json.encode(withoutProviderEconomics(json.decode(raw)));
+        } catch (_) {
+          if (providerEconomicsKeys.any(raw.contains)) continue;
+        }
+      }
+    }
+    if (value is String && value.isNotEmpty) extras[entry.key] = value;
+  }
+  return extras;
 }
 
 @visibleForTesting
@@ -938,16 +988,11 @@ String privacySafeRequestBody(String type, Map<String, dynamic> data) {
     final wire = <String, dynamic>{...data, ...details};
     final fare = IncomingRideFareCopy.fromSnapshot(
       IncomingRideFareSnapshot.fromJson(wire),
-      paymentMethod: value(wire['paymentMethod']),
     );
     final distance = number(details['distanceKm'] ?? data['distanceKm']);
     final parts = <String>[
-      if (fare.hasPrimaryAmount) fare.notificationPrimary,
-      for (final line in fare.detailLines)
-        if (line.label == 'EST. FULL FARE' ||
-            line.label.contains('RIDER QUOTE') ||
-            line.label == 'MYSHOP COVERS')
-          '${line.label == 'MYSHOP COVERS' ? 'MyShop covers' : _sentenceCaseRequestCopy(line.label)} ${line.amount}',
+      for (final line in fare.pricingLines)
+        '${_sentenceCaseRequestCopy(line.label)} ${line.amount}',
       if (distance != null) '${distance.toStringAsFixed(1)} km',
     ];
     return parts.isEmpty

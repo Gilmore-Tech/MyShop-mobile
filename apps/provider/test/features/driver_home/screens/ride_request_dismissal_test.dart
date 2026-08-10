@@ -30,7 +30,7 @@ Ride _pendingRide({
     );
 
 void main() {
-  testWidgets('promo request renders authoritative four-part fare breakdown',
+  testWidgets('promo request renders the authoritative three-price breakdown',
       (tester) async {
     final ride = Ride(
       id: 'promo-request',
@@ -61,13 +61,14 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('ESTIMATED EARNINGS'), findsOneWidget);
-    expect(find.text('GHS 11.44'), findsOneWidget);
     expect(find.text('EST. FULL FARE'), findsOneWidget);
-    expect(find.text('GHS 14.30'), findsNWidgets(2));
-    expect(find.text('RIDER QUOTE · IN APP'), findsOneWidget);
+    expect(find.text('GHS 14.30'), findsOneWidget);
+    expect(find.text('PROMO / DISCOUNT'), findsOneWidget);
+    expect(find.text('- GHS 14.30'), findsOneWidget);
+    expect(find.text('CLIENT PRICE'), findsOneWidget);
     expect(find.text('GHS 0.00'), findsOneWidget);
-    expect(find.text('MYSHOP COVERS'), findsOneWidget);
+    expect(find.text('ESTIMATED EARNINGS'), findsNothing);
+    expect(find.text('GHS 11.44'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 11));
