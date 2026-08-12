@@ -3,10 +3,10 @@
 Status captured: **2026-08-12 GMT**  
 Authority: **this file is the current cross-repository goal board**
 
-Unless a row explicitly says **merged**, **applied** or **deployed**, checked
-implementation work below is frozen in an isolated local worktree and has
-**not** been committed, published or deployed. Record the PR and deployment SHA
-here when that changes.
+Unless a row explicitly says **published**, **merged**, **applied** or
+**deployed**, checked implementation work below is frozen in an isolated local
+worktree and has **not** been committed or published. Published draft PRs are
+not merged or deployed unless a row separately records that state.
 
 The older mobile-update and production-audit checklists are retained as
 historical evidence. Their unchecked boxes do not automatically become current
@@ -170,22 +170,26 @@ present incoming trip price as provider earnings.
   **future backlog goals outside the current execution window**. They are not
   erased, and the owner can promote one onto this board explicitly.
 
-## Frozen local evidence awaiting publication
+## Published draft evidence awaiting staging merge
 
-- System telemetry: Backend diff `7815e38c…`, Mobile diff `66f10257…`, clean
-  Admin diff `07c90105…`; independent conditional GO.
-- Admin ride fare: Backend diff `a74bbf91…`; Admin tracked diff `22dc041a…`, new
-  contract `646e533b…`, and new contract test `1426b42f…`; independent GO.
-- Platform attribution hardening: all-file manifest `3f82a3e4…`; independent
-  GO after two consecutive full-database race proofs.
-- Operational HTTP telemetry: full 11-file patch `15ea2f0a…` and ordered-file
-  manifest `a48d3baa…`; independent GO after the full 4,494-test API suite and
-  real Nest guard-lifecycle proof.
-- Redis throttler topology: changed-file manifest `5bb8deca…` and tracked diff
-  `6b80d34d…`; independent GO after 227 focused tests.
-- 100k capacity: gap document `0b2c163f…` and load README `e1d81ee3…` are local
-  documentation only; replace these fingerprints with the PR/deployment SHA
-  when published.
+- System telemetry is published as Backend draft PR #174, Mobile draft PR #149
+  and Admin draft PR #45. Mobile #149 still requires its formatter-only CI
+  correction; none is merged or deployed.
+- Admin ride fare is published as Backend draft PR #173 and Admin draft PR #46;
+  neither is merged or deployed.
+- Operational HTTP telemetry is published as Backend draft PR #175 after full
+  4,494-test API and real Nest guard-lifecycle proof.
+- Redis throttler topology is published as Backend draft PR #176 after 227
+  independently rerun focused tests.
+- Platform attribution hardening is published as Backend draft PR #177 after
+  two consecutive full-database race proofs. Production activation remains a
+  separate unchecked canary operation.
+- The 100k capacity-gap contract is published as Backend draft PR #178; its CI
+  still requires the repository-Prettier correction. This remains a gap
+  contract, not readiness evidence.
+- This authoritative board is published as Mobile draft PR #150. Admin draft
+  PRs #45 and #46 have green Vercel previews; Backend #173 and #174 have green
+  CI. Other draft checks may still be running.
 
 ## Required evidence for every goal change
 
