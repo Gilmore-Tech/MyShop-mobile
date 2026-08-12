@@ -1,4 +1,8 @@
-# Current Mobile Update Checklist
+# Archived Mobile Update Checklist
+
+> **Historical release evidence.** The current cross-repository priorities are
+> tracked in [Current MyShop Platform Goals](./current-platform-goals.md).
+> Unchecked items below do not automatically become current goals.
 
 ## 2026-08-09 provider earnings authority correction
 

@@ -1,8 +1,13 @@
-# MyShop Production Release Audit and TODO
+# Archived MyShop Production Release Audit and TODO
 
-> Living cross-system release tracker. This document records decisions, findings,
-> evidence, and every gate that must close before production. It does not inherit
-> a PASS from an older audit, specification, or unchecked implementation claim.
+> **Historical audit evidence.** The current cross-repository priorities are
+> tracked in [Current MyShop Platform Goals](./current-platform-goals.md).
+> Unchecked items below require fresh owner approval and evidence before they
+> can become current goals.
+
+> Archived cross-system release tracker. This document preserves earlier
+> decisions, findings and evidence. It does not define the current release or
+> inherit a PASS into current work.
 
 ## Release identity
 
