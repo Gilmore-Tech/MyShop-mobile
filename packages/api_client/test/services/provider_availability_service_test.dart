@@ -67,10 +67,7 @@ void main() {
       'lastLocationSequence': 42,
     });
 
-    expect(
-      snapshot.onlineSessionId,
-      '60000000-0000-4000-8000-000000000006',
-    );
+    expect(snapshot.onlineSessionId, '60000000-0000-4000-8000-000000000006');
     expect(snapshot.lastLocationSequence, 42);
   });
 
@@ -113,16 +110,54 @@ void main() {
   });
 
   test(
-      'posts no-GPS offline intent so the server clears session vehicle authority',
-      () async {
-    final snapshot = await ProviderAvailabilityService(dio).setMyAvailability(
-      status: ProviderAvailabilityStatus.offline,
-    );
+    'posts no-GPS offline intent so the server clears session vehicle authority',
+    () async {
+      final snapshot = await ProviderAvailabilityService(
+        dio,
+      ).setMyAvailability(status: ProviderAvailabilityStatus.offline);
 
-    expect(capturedRequest.method, 'POST');
-    expect(capturedRequest.path, '/providers/availability');
-    expect(capturedRequest.data, {'status': 'offline'});
-    expect(snapshot.status, ProviderAvailabilityStatus.offline);
+      expect(capturedRequest.method, 'POST');
+      expect(capturedRequest.path, '/providers/availability');
+      expect(capturedRequest.data, {'status': 'offline'});
+      expect(snapshot.status, ProviderAvailabilityStatus.offline);
+    },
+  );
+
+  test(
+    'posts exact provider and session authority for recovery Offline',
+    () async {
+      await ProviderAvailabilityService(dio).setMyAvailability(
+        status: ProviderAvailabilityStatus.offline,
+        expectedProviderId: '60000000-0000-4000-8000-000000000006',
+        expectedOnlineSessionId: '70000000-0000-4000-8000-000000000007',
+      );
+
+      expect(capturedRequest.data, {
+        'status': 'offline',
+        'expectedProviderId': '60000000-0000-4000-8000-000000000006',
+        'expectedOnlineSessionId': '70000000-0000-4000-8000-000000000007',
+      });
+    },
+  );
+
+  test('rejects partial or Online recovery authority locally', () async {
+    final service = ProviderAvailabilityService(dio);
+
+    expect(
+      service.setMyAvailability(
+        status: ProviderAvailabilityStatus.offline,
+        expectedProviderId: '60000000-0000-4000-8000-000000000006',
+      ),
+      throwsArgumentError,
+    );
+    expect(
+      service.setMyAvailability(
+        status: ProviderAvailabilityStatus.online,
+        expectedProviderId: '60000000-0000-4000-8000-000000000006',
+        expectedOnlineSessionId: '70000000-0000-4000-8000-000000000007',
+      ),
+      throwsArgumentError,
+    );
   });
 
   test('rejects an unknown status instead of guessing', () async {

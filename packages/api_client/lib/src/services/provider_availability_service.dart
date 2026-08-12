@@ -283,13 +283,31 @@ class ProviderAvailabilityService {
   Future<ProviderAvailabilitySnapshot> setMyAvailability({
     required ProviderAvailabilityStatus status,
     String? vehicleId,
+    String? expectedProviderId,
+    String? expectedOnlineSessionId,
   }) async {
+    final hasExpectedProvider = expectedProviderId != null;
+    final hasExpectedSession = expectedOnlineSessionId != null;
+    if (hasExpectedProvider != hasExpectedSession) {
+      throw ArgumentError(
+        'expectedProviderId and expectedOnlineSessionId must be provided together.',
+      );
+    }
+    if (hasExpectedProvider && status != ProviderAvailabilityStatus.offline) {
+      throw ArgumentError(
+        'Expected availability authority is valid only for an Offline request.',
+      );
+    }
     try {
       final response = await _dio.post(
         '/providers/availability',
         data: {
           'status': status.name,
           if (vehicleId != null) 'vehicleId': vehicleId,
+          if (expectedProviderId != null)
+            'expectedProviderId': expectedProviderId,
+          if (expectedOnlineSessionId != null)
+            'expectedOnlineSessionId': expectedOnlineSessionId,
         },
       );
       return ProviderAvailabilitySnapshot.fromJson(_unwrap(response));
