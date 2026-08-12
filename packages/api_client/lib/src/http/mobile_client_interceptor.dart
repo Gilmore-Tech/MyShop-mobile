@@ -92,11 +92,13 @@ class MobileClientMetadata {
     required this.app,
     required this.platform,
     required this.buildNumber,
+    this.version,
   });
 
   final MobileAppKind app;
   final MobilePlatform platform;
   final int buildNumber;
+  final String? version;
 }
 
 class AppUpdateRequirement {
@@ -119,8 +121,9 @@ class AppUpdateRequirement {
 
 typedef MobileClientMetadataLoader = Future<MobileClientMetadata> Function();
 
-/// Adds immutable app/platform/build metadata to first-party API requests and
-/// surfaces the server's stable 426 contract to one app-owned update state.
+/// Adds immutable app/platform/version/build metadata to first-party API
+/// requests and surfaces the server's stable 426 contract to one app-owned
+/// update state.
 class MobileClientInterceptor extends Interceptor {
   MobileClientInterceptor({
     required MobileAppKind app,
@@ -136,6 +139,7 @@ class MobileClientInterceptor extends Interceptor {
 
   static const appHeader = 'X-MyShop-App';
   static const platformHeader = 'X-MyShop-Platform';
+  static const versionHeader = 'X-MyShop-Version';
   static const buildHeader = 'X-MyShop-Build';
   static const updateRequiredCode = 'APP_UPDATE_REQUIRED';
   static const readinessPath = '/health/ready';
@@ -159,6 +163,8 @@ class MobileClientInterceptor extends Interceptor {
       options.headers[appHeader] = metadata.app.headerValue;
       options.headers[platformHeader] = metadata.platform.headerValue;
       options.headers[buildHeader] = metadata.buildNumber.toString();
+      final version = _safeVersion(metadata.version);
+      if (version != null) options.headers[versionHeader] = version;
     } catch (_) {
       // A plugin failure must not take the whole app offline while the server
       // gate is dormant. Once activated, the backend rejects missing metadata
@@ -231,6 +237,10 @@ class MobileClientInterceptor extends Interceptor {
                 'MyShop mobile metadata requires Android or iOS.',
               );
     final packageInfo = await PackageInfo.fromPlatform();
+    final version = _safeVersion(packageInfo.version);
+    if (version == null) {
+      throw const FormatException('Invalid mobile marketing version.');
+    }
     final rawBuild = packageInfo.buildNumber.trim();
     if (!RegExp(r'^\d{1,10}$').hasMatch(rawBuild)) {
       throw const FormatException('Invalid mobile build number.');
@@ -239,8 +249,18 @@ class MobileClientInterceptor extends Interceptor {
     return MobileClientMetadata(
       app: _app,
       platform: platform,
+      version: version,
       buildNumber: buildNumber,
     );
+  }
+
+  String? _safeVersion(String? value) {
+    final version = value?.trim();
+    if (version == null ||
+        !RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9._+-]{0,39}$').hasMatch(version)) {
+      return null;
+    }
+    return version;
   }
 
   AppUpdateRequirement? _parseRequirement(Response<dynamic>? response) {

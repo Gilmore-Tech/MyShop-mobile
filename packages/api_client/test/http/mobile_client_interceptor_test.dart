@@ -139,7 +139,7 @@ void main() {
   );
 
   test(
-    'adds app, platform and numeric build metadata to API requests',
+    'adds app, platform, marketing version and numeric build metadata to API requests',
     () async {
       final adapter = _ResponseAdapter();
       final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test/v1'));
@@ -152,6 +152,7 @@ void main() {
           metadataLoader: () async => const MobileClientMetadata(
             app: MobileAppKind.provider,
             platform: MobilePlatform.android,
+            version: '1.4.5',
             buildNumber: 21,
           ),
         ),
@@ -167,9 +168,37 @@ void main() {
         adapter.captured?.headers,
         containsPair('X-MyShop-Platform', 'android'),
       );
+      expect(
+        adapter.captured?.headers,
+        containsPair('X-MyShop-Version', '1.4.5'),
+      );
       expect(adapter.captured?.headers, containsPair('X-MyShop-Build', '21'));
     },
   );
+
+  test('does not send a free-form custom marketing version', () async {
+    final adapter = _ResponseAdapter();
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test/v1'));
+    addTearDown(dio.close);
+    dio.httpClientAdapter = adapter;
+    dio.interceptors.add(
+      MobileClientInterceptor(
+        app: MobileAppKind.provider,
+        onUpdateRequired: (_) {},
+        metadataLoader: () async => const MobileClientMetadata(
+          app: MobileAppKind.provider,
+          platform: MobilePlatform.android,
+          version: 'private typed content',
+          buildNumber: 21,
+        ),
+      ),
+    );
+
+    await dio.get('/providers/me/availability');
+
+    expect(adapter.captured?.headers, isNot(contains('X-MyShop-Version')));
+    expect(adapter.captured?.headers, containsPair('X-MyShop-Build', '21'));
+  });
 
   test('loads immutable package metadata once across requests', () async {
     var loads = 0;
