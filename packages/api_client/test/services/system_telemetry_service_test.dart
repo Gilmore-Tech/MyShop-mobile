@@ -13,9 +13,11 @@ class _MockDeviceIdProvider extends Mock implements DeviceIdProvider {}
 class _RecordingAdapter implements HttpClientAdapter {
   int statusCode = 200;
   final List<int> statusCodes = [];
-  final List<int> acceptedCounts = [];
+  final List<num> acceptedCounts = [];
   Object? failure;
   final List<RequestOptions> requests = [];
+  bool topLevelCompatibilityOnly = false;
+  num? topLevelAcceptedOverride;
 
   @override
   Future<ResponseBody> fetch(
@@ -25,15 +27,21 @@ class _RecordingAdapter implements HttpClientAdapter {
   ) async {
     requests.add(options);
     if (failure != null) throw failure!;
-    final responseStatus =
-        statusCodes.isEmpty ? statusCode : statusCodes.removeAt(0);
+    final responseStatus = statusCodes.isEmpty
+        ? statusCode
+        : statusCodes.removeAt(0);
     final payload = options.data is Map ? options.data as Map : const {};
     final events = payload['events'];
     final defaultAccepted = events is List ? events.length : 0;
-    final accepted =
-        acceptedCounts.isEmpty ? defaultAccepted : acceptedCounts.removeAt(0);
+    final accepted = acceptedCounts.isEmpty
+        ? defaultAccepted
+        : acceptedCounts.removeAt(0);
+    final topLevelAccepted = topLevelAcceptedOverride ?? accepted;
+    final responseJson = topLevelCompatibilityOnly
+        ? '{"accepted":$topLevelAccepted}'
+        : '{"success":true,"data":{"accepted":$accepted},"accepted":$topLevelAccepted}';
     return ResponseBody.fromString(
-      '{"accepted":$accepted}',
+      responseJson,
       responseStatus,
       headers: {
         Headers.contentTypeHeader: [Headers.jsonContentType],
@@ -152,13 +160,12 @@ void main() {
         );
 
         await service.flush();
+        await service.flush();
 
         expect(adapter.requests, hasLength(1));
         expect(
           adapter.requests.single.uri,
-          Uri.parse(
-            'https://api.example.test/v1/system-audit/mobile/events',
-          ),
+          Uri.parse('https://api.example.test/v1/system-audit/mobile/events'),
         );
         final payload = Map<String, dynamic>.from(
           adapter.requests.single.data as Map,
@@ -183,6 +190,41 @@ void main() {
         expect(events.last.toString(), isNot(contains('233204962227')));
       },
     );
+
+    test('temporarily accepts the legacy top-level accepted field', () async {
+      adapter.topLevelCompatibilityOnly = true;
+      service.trackAction('provider_go_online_requested');
+
+      await service.flush();
+      await service.flush();
+
+      expect(adapter.requests, hasLength(1));
+    });
+
+    test(
+      'canonical accepted count wins over a conflicting compatibility field',
+      () async {
+        adapter.topLevelAcceptedOverride = 0;
+        service.trackAction('provider_go_online_requested');
+
+        await service.flush();
+        await service.flush();
+
+        expect(adapter.requests, hasLength(1));
+      },
+    );
+
+    test('does not clear a batch for a fractional accepted count', () async {
+      adapter.acceptedCounts.addAll([0.5, 1]);
+      adapter.topLevelAcceptedOverride = 1;
+      service.trackAction('provider_go_online_requested');
+
+      await service.flush();
+      adapter.topLevelAcceptedOverride = null;
+      await service.flush();
+
+      expect(adapter.requests, hasLength(2));
+    });
 
     test(
       'drops permanently rejected events instead of poisoning the queue',
@@ -228,23 +270,20 @@ void main() {
       },
     );
 
-    test(
-      'retains the complete batch unless every event is accepted',
-      () async {
-        adapter.acceptedCounts.addAll([1, 2]);
-        service.trackAction('provider_go_online_requested');
-        service.trackAction('provider_go_offline_requested');
+    test('retains the complete batch unless every event is accepted', () async {
+      adapter.acceptedCounts.addAll([1, 2]);
+      service.trackAction('provider_go_online_requested');
+      service.trackAction('provider_go_offline_requested');
 
-        await service.flush();
-        await service.flush();
+      await service.flush();
+      await service.flush();
 
-        expect(adapter.requests, hasLength(2));
-        final retried = Map<String, dynamic>.from(
-          adapter.requests.last.data as Map,
-        );
-        expect((retried['events'] as List), hasLength(2));
-      },
-    );
+      expect(adapter.requests, hasLength(2));
+      final retried = Map<String, dynamic>.from(
+        adapter.requests.last.data as Map,
+      );
+      expect((retried['events'] as List), hasLength(2));
+    });
 
     test(
       'keeps offline delivery non-blocking and retries the same event',
@@ -342,10 +381,10 @@ void main() {
           adapter.requests.single.data as Map,
         );
         final events = (payload['events'] as List).cast<Map<String, Object?>>();
-        expect(
-          events.map((event) => event['action']),
-          ['/auth/phone', 'provider_login_completed'],
-        );
+        expect(events.map((event) => event['action']), [
+          '/auth/phone',
+          'provider_login_completed',
+        ]);
       },
     );
   });

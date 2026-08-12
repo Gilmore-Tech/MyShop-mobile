@@ -61,9 +61,14 @@ String _normaliseSystemTelemetryName(String value) {
       : safe.substring(0, safe.length > 100 ? 100 : safe.length);
 }
 
-/// Privacy-minimal mobile telemetry. Only named screens, app lifecycle states,
-/// and explicitly named meaningful actions belong here. Raw taps, scrolling,
-/// typed text, chat content, coordinates and credentials are prohibited.
+/// Privacy-minimal, best-effort mobile telemetry. Only named screens, app
+/// lifecycle states, and explicitly named meaningful actions belong here. Raw
+/// taps, scrolling, typed text, chat content, coordinates and credentials are
+/// prohibited.
+///
+/// Delivery is at-least-once rather than exactly-once: confirmed batches are
+/// removed, but a transport loss after server acceptance can produce a
+/// duplicate event row. Telemetry must never be used as a financial ledger.
 class SystemTelemetryService {
   SystemTelemetryService({
     required Dio dio,
@@ -183,8 +188,8 @@ class SystemTelemetryService {
           receiveTimeout: const Duration(seconds: 5),
         ),
       );
-      final accepted = response.data?['accepted'];
-      if (accepted is! num || accepted.toInt() != count) {
+      final accepted = _acceptedTelemetryCount(response.data);
+      if (accepted != count) {
         // The ingestion endpoint deliberately returns 200/accepted:0 when its
         // non-blocking telemetry write fails. A transport success therefore
         // is not delivery authority. Retain and retry the complete batch
@@ -227,6 +232,30 @@ class SystemTelemetryService {
         }
       }
     }
+  }
+
+  int? _acceptedTelemetryCount(Map<String, dynamic>? response) {
+    if (response == null) return null;
+    // The API's canonical response is `{success: true, data: {accepted}}`.
+    // Keep the historical top-level field as a temporary fallback while old
+    // backend/mobile releases age out, but never let it override canonical
+    // data when both are present.
+    final data = response['data'];
+    if (data is Map && data.containsKey('accepted')) {
+      return _wholeAcceptedCount(data['accepted']);
+    }
+    return _wholeAcceptedCount(response['accepted']);
+  }
+
+  int? _wholeAcceptedCount(Object? value) {
+    if (value is int && value >= 0) return value;
+    if (value is num &&
+        value.isFinite &&
+        value >= 0 &&
+        value == value.truncateToDouble()) {
+      return value.toInt();
+    }
+    return null;
   }
 
   void dispose() {
