@@ -1,4 +1,25 @@
-# Current Mobile Update Checklist
+# Mobile Update Checklist — Historical Ledger
+
+> **Historical ledger.** Entries below, including the `1.4.4+33` emergency
+> path and pending-Backend wording, do not authorize the current release.
+> Executable release authority is [Release Setup](release-setup.md).
+
+## 2026-08-13 authoritative `1.4.5` store wave
+
+- [x] The required Backend wave is deployed and healthy in production.
+- [x] The Mobile runtime wave is merged to `main`, and exact-main Mobile CI is
+      green.
+- [ ] Promote the reviewed release-workflow hardening through `staging` to
+      `main`, then require successful exact-SHA Mobile CI on the final `main`
+      commit.
+- [ ] Use one unused build number greater than all four private-console maxima
+      and the occupied local floor `37`. Build `38` is only the minimum
+      possible value; it is not authorized until all four consoles are checked.
+- [ ] Upload only through a main-only, reviewer-protected
+      `mobile-store-release` environment with environment-scoped secrets and
+      all four Provider Match profiles available.
+- [ ] Upload to Play Internal Testing and TestFlight Internal, install and
+      smoke-test the exact artifacts, then promote each store build manually.
 
 ## 2026-08-09 provider earnings authority correction
 
