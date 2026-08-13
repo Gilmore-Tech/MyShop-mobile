@@ -27,15 +27,13 @@ class _RecordingAdapter implements HttpClientAdapter {
   ) async {
     requests.add(options);
     if (failure != null) throw failure!;
-    final responseStatus = statusCodes.isEmpty
-        ? statusCode
-        : statusCodes.removeAt(0);
+    final responseStatus =
+        statusCodes.isEmpty ? statusCode : statusCodes.removeAt(0);
     final payload = options.data is Map ? options.data as Map : const {};
     final events = payload['events'];
     final defaultAccepted = events is List ? events.length : 0;
-    final accepted = acceptedCounts.isEmpty
-        ? defaultAccepted
-        : acceptedCounts.removeAt(0);
+    final accepted =
+        acceptedCounts.isEmpty ? defaultAccepted : acceptedCounts.removeAt(0);
     final topLevelAccepted = topLevelAcceptedOverride ?? accepted;
     final responseJson = topLevelCompatibilityOnly
         ? '{"accepted":$topLevelAccepted}'
