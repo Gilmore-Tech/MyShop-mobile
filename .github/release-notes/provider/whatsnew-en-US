@@ -1,0 +1,1 @@
+Improved location-session recovery to stop repeated failed updates when an Online session is no longer valid. Active rides and jobs remain protected while the app recovers. Diagnostic delivery and app-version attribution are also more reliable.

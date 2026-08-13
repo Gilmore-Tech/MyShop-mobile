@@ -38,22 +38,35 @@ Plain `flutter run` works but produces an app with empty Google Maps + Mapbox ke
 
 ## Releasing
 
-Tag a version and push — GitHub Actions builds signed AABs + IPAs and uploads them to Play Console Internal Testing + TestFlight Internal. You smoke-test there, then click "Promote" once per release.
+Releases are explicit GitHub Actions dispatches from the reviewed `main` commit.
+First check the highest private build number for the selected app in both store
+consoles and choose a larger unused number. Dispatch both platform workflows
+with that same app selection and build number; they upload only to Play Console
+Internal Testing and TestFlight Internal. Smoke-test there before manually
+promoting either store build.
 
 ```bash
-$EDITOR apps/client/pubspec.yaml apps/provider/pubspec.yaml  # bump version
-git commit -am "chore(release): v1.0.1"
-git tag v1.0.1 && git push --tags
+RELEASE_BUILD_NUMBER=<unused-number-above-both-private-store-values>
+RELEASE_SOURCE_COMMIT=$(git rev-parse origin/main)
+gh workflow run release-android.yml --ref main \
+  -f app=both -f build_number="$RELEASE_BUILD_NUMBER" \
+  -f expected_source_sha="$RELEASE_SOURCE_COMMIT"
+gh workflow run release-ios.yml --ref main \
+  -f app=both -f build_number="$RELEASE_BUILD_NUMBER" \
+  -f expected_source_sha="$RELEASE_SOURCE_COMMIT"
 ```
 
-**One-time setup** (keystore, Apple Developer, Fastlane Match, GitHub Secrets): see [docs/release-setup.md](docs/release-setup.md). Budget 3–6 hours mostly waiting on Apple's UI.
+Do not create a release tag: tags do not trigger these workflows. For exact
+source/build gates and **one-time setup** (keystore, Apple Developer, every
+Provider extension profile, Fastlane Match, and GitHub Secrets), see
+[docs/release-setup.md](docs/release-setup.md).
 
 ## Apps
 
 | App | Bundle ID | Store Listing | Description |
 |-----|-----------|---------------|-------------|
-| MyShop | com.gilmoretechnologies.myshop.client | Separate listing | Consumers: book rides, hire artisans |
-| MyShop Provider | com.gilmoretechnologies.myshop.provider | Separate listing | Drivers & artisans: accept jobs, earn |
+| MyShop | com.gilmoretech.myshopclient | Separate listing | Consumers: book rides, hire artisans |
+| MyShop Provider | com.gilmoretech.myshopprovider | Separate listing | Drivers & artisans: accept jobs, earn |
 
 ## Tech Stack
 

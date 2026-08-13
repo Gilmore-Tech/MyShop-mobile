@@ -1,6 +1,10 @@
 # Release Setup — MyShop Mobile
 
-> **One-time setup runbook.** Follow each section in order. After this is done, shipping a release is `git tag v1.0.X && git push --tags` and the GitHub Actions workflow handles the rest, dropping the build into Play Console Internal Testing + TestFlight Internal. You smoke-test there, then click "Promote" once per release.
+> **One-time setup runbook.** Follow each section in order. After this is done,
+> dispatch the Android and iOS release workflows from exact `main` with a
+> console-verified unused build number. The workflows drop the build into Play
+> Console Internal Testing and TestFlight Internal. Smoke-test there, then use
+> each store's deliberate manual promotion step.
 
 This document covers:
 - Android upload keystore + Play Console
@@ -30,7 +34,8 @@ Estimated one-time work on your side: **3–6 hours**, mostly waiting on Apple's
   MAPBOX_STYLE_URL                   →   MAPBOX_STYLE_URL
                                     KEYSTORE_BASE64
                                     KEYSTORE_PASSWORD
-                                    KEY_ALIAS
+                                    KEY_ALIAS_CLIENT
+                                    KEY_ALIAS_PROVIDER
                                     KEY_PASSWORD
                                     MATCH_PASSWORD
                                     MATCH_REPO_DEPLOY_KEY
@@ -187,6 +192,18 @@ In <https://appstoreconnect.apple.com>:
    - User access: Full Access.
 2. Repeat for **MyShop Provider** with bundle ID `com.gilmoretech.myshopprovider`.
 
+The Provider archive also embeds three app extensions. In Apple Developer →
+Certificates, Identifiers & Profiles → Identifiers, register these explicit App
+IDs under the same team before generating Match profiles:
+
+- `com.gilmoretech.myshopprovider.NotificationService`
+- `com.gilmoretech.myshopprovider.RequestNotificationContent`
+- `com.gilmoretech.myshopprovider.RequestLiveActivity`
+
+These extensions do not get separate App Store Connect app listings, but each
+embedded bundle does require its own App Store distribution profile on a fresh
+CI runner.
+
 Bundle IDs must match what's in each `apps/<app>/ios/Runner.xcodeproj/project.pbxproj`. Check with:
 
 ```bash
@@ -226,11 +243,12 @@ fastlane match init
 # you'll create just for this — e.g. github.com/Gilmore-Tech/myshop-match (private).
 # Match needs full read/write on this repo.
 
-# Generate App Store certs + profiles (one command per app)
+# Generate App Store certs + profiles. Provider includes every embedded target.
 fastlane match appstore --app_identifier com.gilmoretech.myshopclient
 
 cd ../../provider/ios
-fastlane match appstore --app_identifier com.gilmoretech.myshopprovider
+fastlane match appstore --app_identifier \
+  com.gilmoretech.myshopprovider,com.gilmoretech.myshopprovider.NotificationService,com.gilmoretech.myshopprovider.RequestNotificationContent,com.gilmoretech.myshopprovider.RequestLiveActivity
 ```
 
 You'll be prompted for:
@@ -275,9 +293,20 @@ For **Mapbox**: create a public token at <https://account.mapbox.com/access-toke
 
 ---
 
-## Part 4 — GitHub Secrets to paste
+## Part 4 — Protected GitHub Environment and secrets
 
-Go to **GitHub → your repo → Settings → Secrets and variables → Actions → New repository secret**. Paste each value:
+Before entering any secret or dispatching either workflow, go to **GitHub →
+your repo → Settings → Environments → New environment** and create the exact
+environment name `mobile-store-release`. Configure:
+
+- Deployment branches and tags: **Selected branches and tags**, rule `main`.
+- Required reviewers: at least one release owner other than the dispatcher.
+- Prevent self-review when the repository plan exposes that setting.
+
+Then open that environment's **Environment secrets → Add environment secret**
+and paste every value below. Do not create repository-level duplicates: a
+referenced missing environment can otherwise be auto-created without reviewer
+protection, and repository secrets would remain available to it.
 
 | Secret name | What goes in it |
 |---|---|
@@ -312,11 +341,20 @@ base64 -i ~/secure/myshop-upload.jks | tr -d '\n' | pbcopy
 
 Double-check **no trailing newline** in `KEYSTORE_BASE64` — `tr -d '\n'` handles it.
 
+Before Part 5, verify all of these are true:
+
+- `mobile-store-release` exists with the exact spelling above.
+- Only `main` is allowed to deploy through it.
+- A required reviewer who is not the dispatcher is configured.
+- All secrets in the table exist as environment secrets.
+- The same names do not remain under repository Actions secrets.
+- Branch protection requires the complete `Mobile CI` workflow on `main`.
+
 ---
 
 ## Part 5 — First green build (smoke test)
 
-Before tagging an actual release, verify each piece works:
+Before dispatching an actual release, verify each piece works:
 
 ### 5.1 Local — `.env.prod` produces a release build
 
@@ -328,7 +366,7 @@ git fetch origin
 git checkout main
 git pull --ff-only origin main
 export RELEASE_SOURCE_COMMIT="$(git rev-parse HEAD)"
-export RELEASE_BUILD_NUMBER=<greater-than-both-console-values-and-25>
+export RELEASE_BUILD_NUMBER=<greater-than-both-console-values-and-37>
 tool/build.sh client android
 ```
 
@@ -345,36 +383,66 @@ Sideload it on a phone or upload to Play Console Internal manually to confirm th
 
 ```bash
 cd apps/client/ios
-fastlane match appstore --readonly
+fastlane match appstore \
+  --app_identifier com.gilmoretech.myshopclient \
+  --readonly
+
+cd ../../provider/ios
+fastlane match appstore \
+  --app_identifier \
+  com.gilmoretech.myshopprovider,com.gilmoretech.myshopprovider.NotificationService,com.gilmoretech.myshopprovider.RequestNotificationContent,com.gilmoretech.myshopprovider.RequestLiveActivity \
+  --readonly
 ```
 
-`--readonly` means "just decrypt the existing repo contents, don't generate new certs". If this command works on your laptop, it'll work in CI too.
+`--readonly` means "just decrypt the existing repo contents, don't generate new
+certs". Both commands must install every requested distribution profile. This
+is a local signing prerequisite check; the hosted workflow remains the proof
+that a fresh runner can archive each app.
 
-### 5.3 CI — first dry-run
+### 5.3 CI — first internal-track run
 
-Push a throwaway pre-release tag and confirm the workflow doesn't error:
+There is no tag or dry-run release path. First confirm the selected app's
+highest private build number in both stores, choose a larger unused number, and
+dispatch each workflow from `main`. For example, for a Provider-only run:
 
 ```bash
-git tag v0.99.0-rc.1
-git push origin v0.99.0-rc.1
+RELEASE_BUILD_NUMBER=<greater-than-provider-console-values-and-37>
+RELEASE_SOURCE_COMMIT=$(git rev-parse origin/main)
+gh workflow run release-android.yml --ref main \
+  -f app=provider -f build_number="$RELEASE_BUILD_NUMBER" \
+  -f expected_source_sha="$RELEASE_SOURCE_COMMIT"
+gh workflow run release-ios.yml --ref main \
+  -f app=provider -f build_number="$RELEASE_BUILD_NUMBER" \
+  -f expected_source_sha="$RELEASE_SOURCE_COMMIT"
 ```
 
-Watch the GitHub Actions run. Expected:
-- `release-android.yml` produces 2 AABs and uploads them to Play Console Internal Testing.
-- `release-ios.yml` produces 2 IPAs and uploads them to TestFlight Internal.
-- TestFlight build appears within ~10 minutes; Play Console Internal Testing within ~30 minutes (first-ever upload can take longer for Play to process).
+Use the same `RELEASE_SOURCE_COMMIT`, app selection, and build number for both
+platform dispatches. This prevents an intervening `main` update from producing
+Android and iOS artifacts from different commits. The workflow refuses a
+non-`main` ref, an expected source different from the dispatched SHA, a build
+at or below the occupied local floor, a source without a completed successful
+Mobile CI push run on `main`, or a dirty checkout. Watch the GitHub Actions run.
+Expected:
+- `release-android.yml` produces and uploads one AAB per selected app to Play
+  Console Internal Testing (`app=both` produces two).
+- `release-ios.yml` produces and uploads one IPA per selected app to TestFlight
+  Internal (`app=both` produces two).
+- The TestFlight upload step waits for App Store Connect processing and attaches
+  the checked-in release notes. Play Console Internal Testing can take ~30
+  minutes to surface the build (a first upload may take longer).
+- Any store upload failure fails its matrix job; a green workflow therefore
+  includes a processed TestFlight upload or successful Play upload step for
+  that app. Still confirm the expected build is visible to the intended
+  internal tester group in each console before calling the release ready.
 
 If anything fails, the most likely culprit is:
 - **Android signing:** `KEYSTORE_BASE64` has a trailing newline. Re-paste.
 - **Match decrypt fails:** `MATCH_PASSWORD` typo OR deploy key doesn't have read access to the match repo.
+- **Provider archive cannot find a profile:** one or more of the Runner plus
+  three Provider extension identifiers is missing from the Apple Developer
+  team or the encrypted Match repository. Run the non-readonly Provider command
+  in §2.4 from an authorized workstation, then repeat the readonly smoke test.
 - **Play upload fails:** service account doesn't have Admin permissions OR Play Console app hasn't passed its initial review for Internal Testing track (Play sometimes requires a single manual upload before API uploads work).
-
-Delete the throwaway tag once done:
-
-```bash
-git push --delete origin v0.99.0-rc.1
-git tag -d v0.99.0-rc.1
-```
 
 ---
 
@@ -382,33 +450,28 @@ git tag -d v0.99.0-rc.1
 
 Once Part 5 passes, every release is:
 
-```bash
-# 1. Confirm the highest private build number for this app in BOTH App Store
-#    Connect and Play Console. Choose a number greater than both values. Client
-#    and provider are checked independently; never infer a console value.
+1. Confirm the highest private build number for the selected app in both App
+   Store Connect and Play Console. Choose a number greater than both values and
+   the repository's occupied-build floor. Client and Provider are checked
+   independently; never infer a console value. If selecting `both`, the one
+   supplied number must be unused and greater than all four private maxima.
+2. Confirm exact `main` is the reviewed staging promotion and its Mobile CI is
+   green.
+3. Dispatch `release-android.yml` and `release-ios.yml` from `main` with the
+   selected app, build number, and same expected source SHA, as shown in §5.3.
+   Do not dispatch from a tag, staging, a feature branch, or a stale SHA.
+4. Confirm every selected matrix job and its store-upload step succeeds.
 
-# 2. Build only the clean, reviewed origin/main commit that already passed
-#    staging. Build 25 is released on all four targets and is permanently
-#    occupied; still check both private store consoles because either may
-#    contain a higher number.
-git fetch origin
-git checkout main
-git pull --ff-only origin main
-export RELEASE_SOURCE_COMMIT="$(git rev-parse HEAD)"
-export RELEASE_BUILD_NUMBER=<greater-than-both-console-values-and-25>
-tool/build.sh client android
-tool/build.sh client ios
+The protected environment configured in Part 4 supplies every signing/store
+secret only after approval. Both platform workflows use a non-cancelling
+concurrency group, so duplicate dispatches wait instead of overlapping store
+edits. Keep `main` frozen for the short release window if the operational policy
+requires it to remain the current tip throughout; artifact identity itself
+remains pinned to the reviewed dispatch SHA.
 
-# 3. Tag only after the exact artifacts pass internal/device QA. Do not commit
-#    after building: the tag and artifacts must identify RELEASE_SOURCE_COMMIT.
-test "$(git rev-parse HEAD)" = "$RELEASE_SOURCE_COMMIT"
-test -z "$(git status --porcelain --untracked-files=all)"
-git tag v1.4.1
-git push origin v1.4.1
-```
-
-The workflows fire on tag push, produce signed builds, upload to Internal tracks. You receive:
-- **TestFlight Internal** email within ~5 min (for example, "Build 1.4.1 (21) is now available").
+The workflows produce signed builds and upload only to Internal tracks. You receive:
+- **TestFlight Internal** email within ~5 min (for example, "Build 1.4.5
+  (<selected build>) is now available").
 - **Play Console Internal Testing** link within ~30 min (or longer first time).
 
 Smoke-test on internal devices.
@@ -440,8 +503,8 @@ When (not if) you need to rotate something:
 
 | Key | When to rotate | How |
 |---|---|---|
-| Google Maps key | Suspected leak, or every 90 days as hygiene | Create new key in Cloud Console with same restrictions → swap value in `.env.prod` AND `GOOGLE_MAPS_API_KEY_*` secret → tag a new release → delete old key after the new build is in production for 48h. |
-| Mapbox token | Same | Same pattern — create new token with same restrictions, swap value, tag, delete old. |
+| Google Maps key | Suspected leak, or every 90 days as hygiene | Create new key in Cloud Console with same restrictions → swap value in `.env.prod` AND `GOOGLE_MAPS_API_KEY_*` secret → dispatch a new exact-main release → delete old key after the new build is in production for 48h. |
+| Mapbox token | Same | Same pattern — create new token with same restrictions, swap value, dispatch, delete old. |
 | Android upload keystore | **NEVER** if you can help it. Loss is unrecoverable. | If genuinely lost: contact Google Play support; they'll issue a one-time reset within 14 days. After that you publish a new app. |
 | iOS distribution cert | Auto every year (Match expiry) | `fastlane match nuke distribution && fastlane match appstore` per app. Update `MATCH_PASSWORD` only if you change the passphrase. |
 | App Store Connect API key | Same — Apple expires them annually | Generate fresh in App Store Connect, update the three `APP_STORE_CONNECT_*` secrets. |
