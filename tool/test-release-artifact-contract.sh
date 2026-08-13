@@ -6,6 +6,7 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 BUILD_SCRIPT="$ROOT_DIR/tool/build.sh"
 VERIFIER="$ROOT_DIR/tool/verify-release-artifact.sh"
 SOURCE_VERIFIER="$ROOT_DIR/tool/verify-release-source.sh"
+ENDPOINT_VERIFIER="$ROOT_DIR/tool/verify-production-api-endpoint.sh"
 SOURCE_SHA="55d7823b6d81aac5ebd2c6b00d26c3e83261c435"
 
 require_source_text() {
@@ -27,7 +28,7 @@ expect_failure() {
   fi
 }
 
-bash -n "$BUILD_SCRIPT" "$VERIFIER" "$SOURCE_VERIFIER"
+bash -n "$BUILD_SCRIPT" "$VERIFIER" "$SOURCE_VERIFIER" "$ENDPOINT_VERIFIER"
 
 for app in client provider; do
   require_source_text \
@@ -72,6 +73,12 @@ require_source_text "$BUILD_SCRIPT" \
 require_source_text "$BUILD_SCRIPT" \
   'verify-release-artifact.sh' \
   "all release builds must invoke the package verifier"
+require_source_text "$BUILD_SCRIPT" \
+  'verify-production-api-endpoint.sh' \
+  "release builds must reject every noncanonical API host"
+require_source_text "$VERIFIER" \
+  'PRODUCTION_API_ENDPOINT=https://api.myshop.gilmoretechnologiesgh.com/v1' \
+  "artifact verification must independently pin the production API"
 require_source_text "$VERIFIER" \
   'EXPECTED_ANDROID_UPLOAD_CERT_SHA1=' \
   "Android upload identities must be pinned"
@@ -101,5 +108,15 @@ expect_failure "invalid platform" \
   bash "$VERIFIER" client windows /nonexistent 1.4.1 25 "$SOURCE_SHA"
 expect_failure "invalid source SHA" \
   bash "$VERIFIER" client android /nonexistent 1.4.1 25 short
+expect_failure "noncanonical production API" \
+  bash "$ENDPOINT_VERIFIER" https://attacker.example/v1
+expect_failure "staging API" \
+  bash "$ENDPOINT_VERIFIER" https://myshop-api-test.onrender.com/v1
+expect_failure "lookalike production API" \
+  bash "$ENDPOINT_VERIFIER" https://api.myshop.gilmoretechnologiesgh.com.evil.example/v1
+expect_failure "production API trailing slash" \
+  bash "$ENDPOINT_VERIFIER" https://api.myshop.gilmoretechnologiesgh.com/v1/
+bash "$ENDPOINT_VERIFIER" \
+  https://api.myshop.gilmoretechnologiesgh.com/v1 >/dev/null
 
 echo "Release-artifact contract tests passed"

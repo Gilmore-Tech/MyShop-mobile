@@ -1,9 +1,7 @@
 name: Android Release
 
-# Fires on:
-#   - tag push matching v* (the canonical release path: `git tag v1.0.1 && git push --tags`).
-#   - manual workflow_dispatch from the Actions tab, useful for retrying a
-#     failed run without bumping the version.
+# Runs only by explicit manual dispatch from exact `main`. The operator must
+# first check both private store consoles and supply an unused build number.
 #
 # Produces signed AABs for client + provider and uploads each to its
 # Google Play Console Internal Testing track. Promotion to Production
@@ -11,9 +9,6 @@ name: Android Release
 # docs/release-setup.md §6.1 for the rationale.
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       app:
@@ -25,30 +20,99 @@ on:
           - both
           - client
           - provider
+      build_number:
+        description: 'Unused integer above every private store build and the repository floor'
+        required: true
+        type: string
+      expected_source_sha:
+        description: 'Exact 40-character main commit reviewed for both platform releases'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: mobile-store-release-android
+  queue: max
+  cancel-in-progress: false
+
+env:
+  RELEASE_SOURCE_COMMIT: ${{ github.sha }}
+  RELEASE_EXPECTED_SOURCE_COMMIT: ${{ inputs.expected_source_sha }}
+  RELEASE_BUILD_NUMBER: ${{ inputs.build_number }}
+  RELEASE_APP_SELECTION: ${{ inputs.app }}
 
 jobs:
+  verify-release-request:
+    name: Verify exact main release request
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout dispatched source
+        # actions/checkout v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Fetch current main authority
+        run: git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+
+      - name: Verify source and build authority
+        run: >-
+          bash tool/verify-release-workflow-request.sh
+          "$RELEASE_SOURCE_COMMIT"
+          "$RELEASE_EXPECTED_SOURCE_COMMIT"
+          "$RELEASE_BUILD_NUMBER"
+          "$RELEASE_APP_SELECTION"
+
+      - name: Require successful Mobile CI for source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tool/verify-release-ci.sh "$RELEASE_SOURCE_COMMIT"
+
   build-and-upload:
     name: Build + upload ${{ matrix.app }} AAB
     runs-on: ubuntu-latest
+    needs: verify-release-request
+    environment: mobile-store-release
     strategy:
       # Don't cancel the provider build just because the client one failed
       # — they're independent, and a partial release is better than no release.
       fail-fast: false
       matrix:
-        app: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.app == 'both' && fromJson('["client", "provider"]') || github.event_name == 'workflow_dispatch' && fromJson(format('["{0}"]', github.event.inputs.app)) || fromJson('["client", "provider"]') }}
+        app: ${{ inputs.app == 'both' && fromJson('["client", "provider"]') || inputs.app == 'client' && fromJson('["client"]') || inputs.app == 'provider' && fromJson('["provider"]') || fromJson('[]') }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout dispatched source
+        # actions/checkout v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Fetch current main authority
+        run: git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+
+      - name: Reverify source and build authority
+        run: >-
+          bash tool/verify-release-workflow-request.sh
+          "$RELEASE_SOURCE_COMMIT"
+          "$RELEASE_EXPECTED_SOURCE_COMMIT"
+          "$RELEASE_BUILD_NUMBER"
+          "$RELEASE_APP_SELECTION"
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        # actions/setup-java v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        # subosito/flutter-action v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           flutter-version: '3.41.7'
           channel: stable
@@ -68,18 +132,36 @@ jobs:
       # `key.properties` directly from apps/<app>/android/.
 
       - name: Decode keystore
+        env:
+          KEYSTORE_BASE64_VALUE: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD_VALUE: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
+          test -n "$KEYSTORE_BASE64_VALUE"
+          test -n "$KEYSTORE_PASSWORD_VALUE"
           mkdir -p ~/.secure
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > ~/.secure/myshop-upload.jks
+          printf '%s' "$KEYSTORE_BASE64_VALUE" | base64 --decode > ~/.secure/myshop-upload.jks
           # Sanity check: keytool can read it
-          keytool -list -keystore ~/.secure/myshop-upload.jks -storepass "${{ secrets.KEYSTORE_PASSWORD }}" > /dev/null
+          keytool -list -keystore ~/.secure/myshop-upload.jks -storepass "$KEYSTORE_PASSWORD_VALUE" > /dev/null
 
       - name: Write key.properties
+        env:
+          RELEASE_APP: ${{ matrix.app }}
+          KEYSTORE_PASSWORD_VALUE: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD_VALUE: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS_CLIENT_VALUE: ${{ secrets.KEY_ALIAS_CLIENT }}
+          KEY_ALIAS_PROVIDER_VALUE: ${{ secrets.KEY_ALIAS_PROVIDER }}
         run: |
-          KEY_ALIAS=$([ "${{ matrix.app }}" = "client" ] && echo "${{ secrets.KEY_ALIAS_CLIENT }}" || echo "${{ secrets.KEY_ALIAS_PROVIDER }}")
-          cat > apps/${{ matrix.app }}/android/key.properties <<EOF
-          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
-          keyPassword=${{ secrets.KEY_PASSWORD }}
+          case "$RELEASE_APP" in
+            client) KEY_ALIAS="$KEY_ALIAS_CLIENT_VALUE" ;;
+            provider) KEY_ALIAS="$KEY_ALIAS_PROVIDER_VALUE" ;;
+            *) echo "Invalid release app: $RELEASE_APP" >&2; exit 2 ;;
+          esac
+          test -n "$KEYSTORE_PASSWORD_VALUE"
+          test -n "$KEY_PASSWORD_VALUE"
+          test -n "$KEY_ALIAS"
+          cat > "apps/$RELEASE_APP/android/key.properties" <<EOF
+          storePassword=$KEYSTORE_PASSWORD_VALUE
+          keyPassword=$KEY_PASSWORD_VALUE
           keyAlias=${KEY_ALIAS}
           storeFile=$HOME/.secure/myshop-upload.jks
           EOF
@@ -91,16 +173,30 @@ jobs:
 
       - name: Write .env.prod
         env:
-          MAPS_KEY: ${{ matrix.app == 'client' && secrets.GOOGLE_MAPS_API_KEY_CLIENT_ANDROID || secrets.GOOGLE_MAPS_API_KEY_PROVIDER_ANDROID }}
-          MAPS_CERT_SHA1: ${{ matrix.app == 'client' && secrets.MAPS_ANDROID_CERT_SHA1_CLIENT || secrets.MAPS_ANDROID_CERT_SHA1_PROVIDER }}
+          RELEASE_APP: ${{ matrix.app }}
+          MAPS_KEY_CLIENT: ${{ secrets.GOOGLE_MAPS_API_KEY_CLIENT_ANDROID }}
+          MAPS_KEY_PROVIDER: ${{ secrets.GOOGLE_MAPS_API_KEY_PROVIDER_ANDROID }}
+          MAPS_CERT_SHA1_CLIENT: ${{ secrets.MAPS_ANDROID_CERT_SHA1_CLIENT }}
+          MAPS_CERT_SHA1_PROVIDER: ${{ secrets.MAPS_ANDROID_CERT_SHA1_PROVIDER }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           MAPBOX_STYLE_URL: ${{ secrets.MAPBOX_STYLE_URL }}
         run: |
+          case "$RELEASE_APP" in
+            client)
+              MAPS_KEY="$MAPS_KEY_CLIENT"
+              MAPS_CERT_SHA1="$MAPS_CERT_SHA1_CLIENT"
+              ;;
+            provider)
+              MAPS_KEY="$MAPS_KEY_PROVIDER"
+              MAPS_CERT_SHA1="$MAPS_CERT_SHA1_PROVIDER"
+              ;;
+            *) echo "Invalid release app: $RELEASE_APP" >&2; exit 2 ;;
+          esac
           test -n "$MAPS_KEY"
           test -n "$MAPS_CERT_SHA1"
           test -n "$API_BASE_URL"
-          if [ "${{ matrix.app }}" = "client" ]; then
+          if [ "$RELEASE_APP" = "client" ]; then
             printf 'GOOGLE_MAPS_API_KEY_CLIENT_ANDROID=%s\n' "$MAPS_KEY" > .env.prod
             printf 'MAPS_ANDROID_CERT_SHA1_CLIENT=%s\n' "$MAPS_CERT_SHA1" >> .env.prod
           else
@@ -114,12 +210,18 @@ jobs:
       # ── Build ─────────────────────────────────────────────────────────
 
       - name: Build AAB via tool/build.sh
-        run: tool/build.sh ${{ matrix.app }} android
+        env:
+          RELEASE_APP: ${{ matrix.app }}
+        run: |
+          git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          tool/build.sh "$RELEASE_APP" android
 
       - name: Locate AAB
         id: locate
+        env:
+          RELEASE_APP: ${{ matrix.app }}
         run: |
-          AAB=apps/${{ matrix.app }}/build/app/outputs/bundle/release/app-release.aab
+          AAB="apps/$RELEASE_APP/build/app/outputs/bundle/release/app-release.aab"
           test -f "$AAB" || { echo "Missing AAB at $AAB"; exit 1; }
           echo "path=$AAB" >> "$GITHUB_OUTPUT"
           echo "Built $AAB ($(du -h "$AAB" | cut -f1))"
@@ -130,9 +232,10 @@ jobs:
       # as a fallback without having to rebuild.
 
       - name: Upload AAB as workflow artefact
-        uses: actions/upload-artifact@v4
+        # actions/upload-artifact v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: ${{ matrix.app }}-aab-${{ github.ref_name }}
+          name: ${{ matrix.app }}-aab-${{ env.RELEASE_BUILD_NUMBER }}-${{ env.RELEASE_SOURCE_COMMIT }}
           path: ${{ steps.locate.outputs.path }}
           retention-days: 30
 
@@ -144,31 +247,38 @@ jobs:
 
       - name: Resolve package name
         id: pkg
+        env:
+          RELEASE_APP: ${{ matrix.app }}
         run: |
-          # Concatenated `com.gilmoretech.myshop<app>` — different from
-          # the dot-separated form most Android tutorials use. Matches
-          # what's in each app's android/app/build.gradle.kts.
-          echo "name=com.gilmoretech.myshop${{ matrix.app }}" >> "$GITHUB_OUTPUT"
+          case "$RELEASE_APP" in
+            client) PACKAGE_NAME=com.gilmoretech.myshopclient ;;
+            provider) PACKAGE_NAME=com.gilmoretech.myshopprovider ;;
+            *) echo "Invalid release app: $RELEASE_APP" >&2; exit 2 ;;
+          esac
+          echo "name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Upload to Play Console Internal Testing
-        uses: r0adkll/upload-google-play@v1
+        # v1.1.5: immutable pin because this step receives a store credential.
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: ${{ steps.pkg.outputs.name }}
           releaseFiles: ${{ steps.locate.outputs.path }}
-          track: internal
+          tracks: internal
           status: completed
-          # Surface the tag name as the Play release notes — manual editing
-          # in Play Console is fine for richer notes, but having SOMETHING
-          # there avoids the "(empty release notes)" warning blocking
-          # promotion to Production later.
+          # Checked-in, reviewed per-app notes avoid an empty-release warning
+          # and keep the Internal Testing artifact tied to this source wave.
           whatsNewDirectory: ${{ github.workspace }}/.github/release-notes/${{ matrix.app }}
-        # `whatsNewDirectory` is optional — if the directory doesn't exist,
-        # the action skips notes upload and Play uses the tag name.
-        continue-on-error: true
 
-      - name: Summary
-        if: always()
+      - name: Release success summary
+        env:
+          RELEASE_APP: ${{ matrix.app }}
         run: |
-          echo "::notice title=Release Built::Tag ${{ github.ref_name }} · App ${{ matrix.app }} · AAB ${{ steps.locate.outputs.path }}"
+          echo "::notice title=Internal release uploaded::Source $RELEASE_SOURCE_COMMIT · Build $RELEASE_BUILD_NUMBER · App $RELEASE_APP · AAB ${{ steps.locate.outputs.path }}"
           echo "::notice title=Next Steps::Smoke-test in Play Console Internal Testing. Once green, click Promote → Production. See docs/release-setup.md §6.1."
+
+      - name: Release failure summary
+        if: failure()
+        env:
+          RELEASE_APP: ${{ matrix.app }}
+        run: echo "::error title=Android internal release failed::No production promotion is authorized. Inspect the failed step for source $RELEASE_SOURCE_COMMIT, build $RELEASE_BUILD_NUMBER, app $RELEASE_APP."

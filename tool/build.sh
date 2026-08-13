@@ -157,13 +157,7 @@ for REQUIRED_VAR in API_BASE_URL MAPBOX_ACCESS_TOKEN MAPBOX_STYLE_URL; do
     exit 1
   fi
 done
-case "$API_BASE_URL" in
-  https://*/v1) ;;
-  *)
-    echo "error: API_BASE_URL must be HTTPS and end in /v1, got '$API_BASE_URL'" >&2
-    exit 1
-    ;;
-esac
+bash "$REPO_ROOT/tool/verify-production-api-endpoint.sh" "$API_BASE_URL" >/dev/null
 case "$MAPBOX_STYLE_URL" in
   mapbox://styles/*/*) ;;
   *)
@@ -293,8 +287,7 @@ case "$PLATFORM" in
   android)
     echo "→ flutter build appbundle (release) for apps/$APP with ${#DEFINES[@]} dart-defines"
     flutter build appbundle --release "${RELEASE_VERSION_ARGS[@]}" "${DEFINES[@]}" "$@"
-    MYSHOP_PRODUCTION_API_ENDPOINT="$API_BASE_URL" \
-      bash "$REPO_ROOT/tool/verify-release-artifact.sh" \
+    bash "$REPO_ROOT/tool/verify-release-artifact.sh" \
       "$APP" android "$APP_DIR/build/app/outputs/bundle/release/app-release.aab" \
       "$RELEASE_MARKETING_VERSION" "$RELEASE_BUILD_NUMBER" "$SOURCE_COMMIT"
     ;;
@@ -303,8 +296,7 @@ case "$PLATFORM" in
     echo "  Output: $APP_DIR/build/app/outputs/flutter-apk/app-release.apk"
     echo "  Install on a phone with: adb install -r <path>/app-release.apk"
     flutter build apk --release "${RELEASE_VERSION_ARGS[@]}" "${DEFINES[@]}" "$@"
-    MYSHOP_PRODUCTION_API_ENDPOINT="$API_BASE_URL" \
-      bash "$REPO_ROOT/tool/verify-release-artifact.sh" \
+    bash "$REPO_ROOT/tool/verify-release-artifact.sh" \
       "$APP" android "$APP_DIR/build/app/outputs/flutter-apk/app-release.apk" \
       "$RELEASE_MARKETING_VERSION" "$RELEASE_BUILD_NUMBER" "$SOURCE_COMMIT"
     ;;
@@ -324,8 +316,7 @@ case "$PLATFORM" in
     APPLE_TEAM_ID=$(
       /usr/libexec/PlistBuddy -c 'Print :teamID' "$REPO_ROOT/ExportOptions.plist"
     )
-    MYSHOP_PRODUCTION_API_ENDPOINT="$API_BASE_URL" \
-      MYSHOP_EXPECTED_APPLE_TEAM_ID="$APPLE_TEAM_ID" \
+    MYSHOP_EXPECTED_APPLE_TEAM_ID="$APPLE_TEAM_ID" \
       bash "$REPO_ROOT/tool/verify-release-artifact.sh" \
       "$APP" ios "${IPA_FILES[0]}" \
       "$RELEASE_MARKETING_VERSION" "$RELEASE_BUILD_NUMBER" "$SOURCE_COMMIT"

@@ -1,17 +1,13 @@
 name: iOS Release
 
-# Fires on:
-#   - tag push matching v* (canonical release path)
-#   - manual workflow_dispatch from the Actions tab
+# Runs only by explicit manual dispatch from exact `main`. The operator must
+# first check both private store consoles and supply an unused build number.
 #
 # Produces signed IPAs for client + provider and uploads each to its
 # TestFlight Internal track. Promotion to App Review / App Store is a
 # deliberate manual step in App Store Connect — see release-setup.md §6.1.
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       app:
@@ -23,29 +19,98 @@ on:
           - both
           - client
           - provider
+      build_number:
+        description: 'Unused integer above every private store build and the repository floor'
+        required: true
+        type: string
+      expected_source_sha:
+        description: 'Exact 40-character main commit reviewed for both platform releases'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: mobile-store-release-ios
+  queue: max
+  cancel-in-progress: false
+
+env:
+  RELEASE_SOURCE_COMMIT: ${{ github.sha }}
+  RELEASE_EXPECTED_SOURCE_COMMIT: ${{ inputs.expected_source_sha }}
+  RELEASE_BUILD_NUMBER: ${{ inputs.build_number }}
+  RELEASE_APP_SELECTION: ${{ inputs.app }}
 
 jobs:
+  verify-release-request:
+    name: Verify exact main release request
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout dispatched source
+        # actions/checkout v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Fetch current main authority
+        run: git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+
+      - name: Verify source and build authority
+        run: >-
+          bash tool/verify-release-workflow-request.sh
+          "$RELEASE_SOURCE_COMMIT"
+          "$RELEASE_EXPECTED_SOURCE_COMMIT"
+          "$RELEASE_BUILD_NUMBER"
+          "$RELEASE_APP_SELECTION"
+
+      - name: Require successful Mobile CI for source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tool/verify-release-ci.sh "$RELEASE_SOURCE_COMMIT"
+
   build-and-upload:
     name: Build + upload ${{ matrix.app }} IPA
     # macOS runner is required for iOS code-signing. Keep this on the
     # current GA image so the selected Xcode can build modern plugin SDKs.
     runs-on: macos-26
+    needs: verify-release-request
+    environment: mobile-store-release
     strategy:
       fail-fast: false
       matrix:
-        app: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.app == 'both' && fromJson('["client", "provider"]') || github.event_name == 'workflow_dispatch' && fromJson(format('["{0}"]', github.event.inputs.app)) || fromJson('["client", "provider"]') }}
+        app: ${{ inputs.app == 'both' && fromJson('["client", "provider"]') || inputs.app == 'client' && fromJson('["client"]') || inputs.app == 'provider' && fromJson('["provider"]') || fromJson('[]') }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout dispatched source
+        # actions/checkout v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Fetch current main authority
+        run: git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+
+      - name: Reverify source and build authority
+        run: >-
+          bash tool/verify-release-workflow-request.sh
+          "$RELEASE_SOURCE_COMMIT"
+          "$RELEASE_EXPECTED_SOURCE_COMMIT"
+          "$RELEASE_BUILD_NUMBER"
+          "$RELEASE_APP_SELECTION"
 
       - name: Setup Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+        # maxim-lobanov/setup-xcode v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90
         with:
           xcode-version: latest-stable
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        # subosito/flutter-action v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           flutter-version: '3.41.7'
           channel: stable
@@ -63,7 +128,8 @@ jobs:
       # to git-clone that repo to decrypt the certs + profiles.
 
       - name: Set up SSH for match repo
-        uses: webfactory/ssh-agent@v0.9.0
+        # webfactory/ssh-agent v0.9.0
+        uses: webfactory/ssh-agent@dc588b651fe13675774614f8e6a936a468676387
         with:
           ssh-private-key: ${{ secrets.MATCH_REPO_DEPLOY_KEY }}
 
@@ -75,7 +141,7 @@ jobs:
       # ── Install Fastlane Match ────────────────────────────────────────
 
       - name: Install Fastlane
-        run: sudo gem install fastlane -NV
+        run: sudo gem install fastlane -v 2.237.0 -NV
 
       # ── Decrypt + install signing assets ──────────────────────────────
       # `match appstore --readonly` decrypts the existing repo contents
@@ -85,21 +151,35 @@ jobs:
 
       - name: Fetch signing assets via Match
         env:
+          RELEASE_APP: ${{ matrix.app }}
+          MATCH_REPO_URL_VALUE: ${{ secrets.MATCH_REPO_URL }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-          # `app_store_connect_api_key_*` lets Match authenticate without
-          # interactive Apple ID + 2FA prompts in CI.
           APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
         run: |
-          # Concatenated form: com.gilmoretech.myshop<app> — matches each
-          # app's Xcode PRODUCT_BUNDLE_IDENTIFIER and the App Store Connect
-          # entry. NOT the dot-separated form most tutorials use.
-          BUNDLE_ID=com.gilmoretech.myshop${{ matrix.app }}
-          cd apps/${{ matrix.app }}/ios
+          test -n "$MATCH_REPO_URL_VALUE"
+          # Pass Match an explicit Fastlane API-key JSON file so a fresh CI
+          # runner never falls back to an interactive Apple ID / 2FA session.
+          API_KEY_PATH="$RUNNER_TEMP/myshop-app-store-connect-api-key.json"
+          ruby -rjson -e 'File.write(ARGV.fetch(0), JSON.generate({"key_id" => ENV.fetch("APP_STORE_CONNECT_API_KEY_KEY_ID"), "issuer_id" => ENV.fetch("APP_STORE_CONNECT_API_KEY_ISSUER_ID"), "key" => ENV.fetch("APP_STORE_CONNECT_API_KEY_KEY"), "in_house" => false}))' "$API_KEY_PATH"
+          chmod 600 "$API_KEY_PATH"
+
+          # The Provider archive embeds three extensions. A fresh runner needs
+          # an App Store profile for every embedded bundle, not only Runner.
+          if [ "$RELEASE_APP" = "provider" ]; then
+            BUNDLE_IDS="com.gilmoretech.myshopprovider,com.gilmoretech.myshopprovider.NotificationService,com.gilmoretech.myshopprovider.RequestNotificationContent,com.gilmoretech.myshopprovider.RequestLiveActivity"
+          elif [ "$RELEASE_APP" = "client" ]; then
+            BUNDLE_IDS="com.gilmoretech.myshopclient"
+          else
+            echo "Invalid release app: $RELEASE_APP" >&2
+            exit 2
+          fi
+          cd "apps/$RELEASE_APP/ios"
           fastlane match appstore \
-            --git_url "${{ secrets.MATCH_REPO_URL }}" \
-            --app_identifier "$BUNDLE_ID" \
+            --git_url "$MATCH_REPO_URL_VALUE" \
+            --app_identifier "$BUNDLE_IDS" \
+            --api_key_path "$API_KEY_PATH" \
             --readonly true \
             --verbose
 
@@ -107,14 +187,21 @@ jobs:
 
       - name: Write .env.prod
         env:
-          MAPS_KEY: ${{ matrix.app == 'client' && secrets.GOOGLE_MAPS_API_KEY_CLIENT_IOS || secrets.GOOGLE_MAPS_API_KEY_PROVIDER_IOS }}
+          RELEASE_APP: ${{ matrix.app }}
+          MAPS_KEY_CLIENT: ${{ secrets.GOOGLE_MAPS_API_KEY_CLIENT_IOS }}
+          MAPS_KEY_PROVIDER: ${{ secrets.GOOGLE_MAPS_API_KEY_PROVIDER_IOS }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           MAPBOX_STYLE_URL: ${{ secrets.MAPBOX_STYLE_URL }}
         run: |
+          case "$RELEASE_APP" in
+            client) MAPS_KEY="$MAPS_KEY_CLIENT" ;;
+            provider) MAPS_KEY="$MAPS_KEY_PROVIDER" ;;
+            *) echo "Invalid release app: $RELEASE_APP" >&2; exit 2 ;;
+          esac
           test -n "$MAPS_KEY"
           test -n "$API_BASE_URL"
-          if [ "${{ matrix.app }}" = "client" ]; then
+          if [ "$RELEASE_APP" = "client" ]; then
             printf 'GOOGLE_MAPS_API_KEY_CLIENT_IOS=%s\n' "$MAPS_KEY" > .env.prod
           else
             printf 'GOOGLE_MAPS_API_KEY_PROVIDER_IOS=%s\n' "$MAPS_KEY" > .env.prod
@@ -128,24 +215,31 @@ jobs:
       # `flutter build ipa --release`.
 
       - name: Build IPA via tool/build.sh
-        run: tool/build.sh ${{ matrix.app }} ios
+        env:
+          RELEASE_APP: ${{ matrix.app }}
+        run: |
+          git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          tool/build.sh "$RELEASE_APP" ios
 
       - name: Locate IPA
         id: locate
+        env:
+          RELEASE_APP: ${{ matrix.app }}
         run: |
           # Flutter's `build ipa` produces both an .xcarchive and an .ipa
           # under build/ios/ipa/. The .ipa is what App Store Connect wants.
-          IPA=$(find apps/${{ matrix.app }}/build/ios/ipa -name '*.ipa' | head -1)
-          test -n "$IPA" || { echo "No IPA produced under apps/${{ matrix.app }}/build/ios/ipa"; exit 1; }
+          IPA=$(find "apps/$RELEASE_APP/build/ios/ipa" -name '*.ipa' | head -1)
+          test -n "$IPA" || { echo "No IPA produced under apps/$RELEASE_APP/build/ios/ipa"; exit 1; }
           echo "path=$IPA" >> "$GITHUB_OUTPUT"
           echo "Built $IPA ($(du -h "$IPA" | cut -f1))"
 
       # ── Artefact backup ───────────────────────────────────────────────
 
       - name: Upload IPA as workflow artefact
-        uses: actions/upload-artifact@v4
+        # actions/upload-artifact v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: ${{ matrix.app }}-ipa-${{ github.ref_name }}
+          name: ${{ matrix.app }}-ipa-${{ env.RELEASE_BUILD_NUMBER }}-${{ env.RELEASE_SOURCE_COMMIT }}
           path: ${{ steps.locate.outputs.path }}
           retention-days: 30
 
@@ -154,17 +248,39 @@ jobs:
       # to the older `apple-actions/upload-testflight-action`. Auth via
       # the App Store Connect API key — same trio of secrets that Match used.
 
+      - name: Read TestFlight release notes
+        id: testflight_notes
+        env:
+          RELEASE_APP: ${{ matrix.app }}
+        run: |
+          {
+            echo 'text<<MYSHOP_RELEASE_NOTES'
+            cat ".github/release-notes/$RELEASE_APP/whatsnew-en-US"
+            echo 'MYSHOP_RELEASE_NOTES'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Upload to TestFlight Internal
-        uses: apple-actions/upload-testflight-build@v1
+        # v5.2.1: immutable pin; Node 24 and the App Store Connect API backend.
+        uses: apple-actions/upload-testflight-build@1ad58030672057aa084b4e96beb6f7a8c627f9e6
         with:
+          app-type: ios
           app-path: ${{ steps.locate.outputs.path }}
           issuer-id: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
           api-key-id: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           api-private-key: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
-        continue-on-error: true
+          release-notes: ${{ steps.testflight_notes.outputs.text }}
+          backend: appstore-api
+          wait-for-processing: 'true'
 
-      - name: Summary
-        if: always()
+      - name: Release success summary
+        env:
+          RELEASE_APP: ${{ matrix.app }}
         run: |
-          echo "::notice title=Release Built::Tag ${{ github.ref_name }} · App ${{ matrix.app }} · IPA ${{ steps.locate.outputs.path }}"
+          echo "::notice title=Internal release processed::Source $RELEASE_SOURCE_COMMIT · Build $RELEASE_BUILD_NUMBER · App $RELEASE_APP · IPA ${{ steps.locate.outputs.path }}"
           echo "::notice title=Next Steps::Smoke-test in TestFlight Internal. Once green, App Store Connect → Submit for Review. See docs/release-setup.md §6.1."
+
+      - name: Release failure summary
+        if: failure()
+        env:
+          RELEASE_APP: ${{ matrix.app }}
+        run: echo "::error title=iOS internal release failed::No App Store submission is authorized. Inspect the failed step for source $RELEASE_SOURCE_COMMIT, build $RELEASE_BUILD_NUMBER, app $RELEASE_APP."
