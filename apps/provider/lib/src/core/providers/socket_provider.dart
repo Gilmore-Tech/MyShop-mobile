@@ -24,6 +24,7 @@ import 'availability_controller.dart';
 import 'availability_reconciliation_controller.dart';
 import 'provider_status_provider.dart';
 import 'provider_location_session_provider.dart';
+import 'provider_location_sync_recovery.dart';
 import '../../features/profile/providers/provider_type_provider.dart';
 import 'nav_badge_provider.dart';
 import '../di/providers.dart';
@@ -145,6 +146,11 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
     debugPrint('[LOC] bridge: unauthenticated — idle');
     return;
   }
+  final authSession = ref.watch(currentAuthSessionIdentityProvider);
+  if (authSession == null) {
+    debugPrint('[LOC] bridge: session authority unavailable — idle');
+    return;
+  }
 
   final status = ref.watch(providerStatusProvider);
   // Run while online OR busy. During an active ride (busy) the rider's map
@@ -177,6 +183,9 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
   // matcher reads their position from the PostGIS table the REST writer updates.
   void emitDriverLocation(Position pos) {
     if (disposed || isArtisan) return;
+    if (container.read(currentAuthSessionIdentityProvider) != authSession) {
+      return;
+    }
     if (!isOnlineLocationFixAcceptable(pos)) return;
     final capturedAt = pos.timestamp.toUtc();
     final previousCapturedAt = lastEmittedCapturedAt;
@@ -185,6 +194,11 @@ final locationSocketBridgeProvider = Provider<void>((ref) {
     }
     final locationSession = container.read(providerLocationSessionProvider);
     if (locationSession == null) return;
+    final pause = container.read(providerLocationSyncPauseProvider);
+    if (pause?.matches(authSession, locationSession.onlineSessionId) == true) {
+      debugPrint('[LOC] bridge: rejected epoch — socket emit paused');
+      return;
+    }
     final sampleSequence =
         container.read(providerLocationSessionProvider.notifier).nextSequence();
     socket.emit('driver:location:update', {

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:incoming_request_overlay/incoming_request_overlay.dart';
 
+import '../../features/auth/providers/auth_controller.dart';
 import '../../features/profile/providers/provider_type_provider.dart';
 import '../../features/driver_home/providers/driver_location_provider.dart';
 import '../di/providers.dart';
@@ -17,6 +18,41 @@ import 'availability_reconciliation_controller.dart';
 import 'location_degradation_provider.dart';
 import 'provider_location_session_provider.dart';
 import 'provider_online_intent.dart';
+
+enum ProviderRecoveryOfflineDisposition { confirmed, authorityChanged, failed }
+
+class ProviderRecoveryOfflineAuthority {
+  const ProviderRecoveryOfflineAuthority({
+    required this.authSession,
+    required this.onlineSessionId,
+    required this.transitionRevision,
+  });
+
+  final AuthSessionIdentity authSession;
+  final String onlineSessionId;
+  final int transitionRevision;
+
+  bool sameRequest(ProviderRecoveryOfflineAuthority other) =>
+      authSession == other.authSession &&
+      onlineSessionId == other.onlineSessionId &&
+      transitionRevision == other.transitionRevision;
+}
+
+class ProviderRecoveryOfflineResult {
+  const ProviderRecoveryOfflineResult._(this.disposition, this.error);
+
+  const ProviderRecoveryOfflineResult.confirmed()
+      : this._(ProviderRecoveryOfflineDisposition.confirmed, null);
+
+  const ProviderRecoveryOfflineResult.authorityChanged()
+      : this._(ProviderRecoveryOfflineDisposition.authorityChanged, null);
+
+  const ProviderRecoveryOfflineResult.failed(String error)
+      : this._(ProviderRecoveryOfflineDisposition.failed, error);
+
+  final ProviderRecoveryOfflineDisposition disposition;
+  final String? error;
+}
 
 /// Last known GPS fix — populated by the location bridge whenever a fix
 /// arrives. Used so the offline-toggle POST can include coordinates even
@@ -293,6 +329,8 @@ class AvailabilityController {
   final Ref _ref;
   Future<String?>? _goOnlineInFlight;
   Future<String?>? _goOfflineInFlight;
+  Future<ProviderRecoveryOfflineResult>? _recoveryOfflineInFlight;
+  ProviderRecoveryOfflineAuthority? _recoveryOfflineAuthority;
   Future<void>? _heartbeatRefreshInFlight;
 
   /// Flip to online. Verifies location services + permission first because
@@ -728,6 +766,175 @@ class AvailabilityController {
 
   Future<void> forceOfflineDueToLocationLost() =>
       reportLocationUnavailable(LocationUnavailableReason.gpsUnavailable);
+
+  /// Closes one exact rejected Online epoch without allowing a delayed
+  /// response to demote a replacement session. The server verifies provider,
+  /// JWT SID, role, and epoch atomically; local mutation is guarded by the same
+  /// authority plus the local transition revision after every await.
+  Future<ProviderRecoveryOfflineResult> goOfflineIfCurrent(
+    ProviderRecoveryOfflineAuthority authority,
+  ) {
+    final inFlight = _recoveryOfflineInFlight;
+    if (inFlight != null) {
+      if (_recoveryOfflineAuthority?.sameRequest(authority) == true) {
+        return inFlight;
+      }
+      return inFlight.then((_) => goOfflineIfCurrent(authority));
+    }
+
+    final future = _goOfflineIfCurrent(authority).whenComplete(() {
+      _recoveryOfflineInFlight = null;
+      _recoveryOfflineAuthority = null;
+    });
+    _recoveryOfflineAuthority = authority;
+    _recoveryOfflineInFlight = future;
+    return future;
+  }
+
+  Future<ProviderRecoveryOfflineResult> _goOfflineIfCurrent(
+    ProviderRecoveryOfflineAuthority authority,
+  ) async {
+    if (!_recoveryAuthorityCurrent(authority)) {
+      return const ProviderRecoveryOfflineResult.authorityChanged();
+    }
+
+    _ref.read(systemTelemetryProvider).trackAction(
+          'provider_recovery_go_offline_requested',
+        );
+
+    ProviderAvailabilitySnapshot snapshot;
+    try {
+      snapshot = await _ref
+          .read(providerAvailabilityServiceProvider)
+          .setMyAvailability(
+            status: ProviderAvailabilityStatus.offline,
+            expectedProviderId: authority.authSession.roleAccountId,
+            expectedOnlineSessionId: authority.onlineSessionId,
+          );
+    } on ApiException catch (error) {
+      if (error.errorCode == 'AVAILABILITY_SESSION_MISMATCH' ||
+          error.errorCode == 'PROVIDER_AVAILABILITY_AUTHORITY_CHANGED' ||
+          error.errorCode == 'PROVIDER_LOCATION_SESSION_REQUIRED') {
+        return const ProviderRecoveryOfflineResult.authorityChanged();
+      }
+      return ProviderRecoveryOfflineResult.failed(
+        friendlyAvailabilityApiError(error),
+      );
+    } catch (error) {
+      debugPrint('[Availability] recovery Offline error: $error');
+      return const ProviderRecoveryOfflineResult.failed(
+        "Couldn't reach the server. Check your connection and try again.",
+      );
+    }
+
+    if (snapshot.providerId != authority.authSession.roleAccountId ||
+        snapshot.role.name != authority.authSession.role ||
+        snapshot.status != ProviderAvailabilityStatus.offline ||
+        !_recoveryAuthorityCurrent(authority)) {
+      return const ProviderRecoveryOfflineResult.authorityChanged();
+    }
+
+    final intentIdentity = _ref.read(
+      currentProviderOnlineIntentIdentityProvider,
+    );
+    if (intentIdentity == null) {
+      return const ProviderRecoveryOfflineResult.authorityChanged();
+    }
+
+    // The CAS has closed epoch A and the exact local authority still matches.
+    // Demote synchronously before the persistence await so a later epoch B can
+    // never be cleared by A's delayed continuation.
+    _ref.read(providerStatusProvider.notifier).goOffline();
+    _ref.read(providerLocationSessionProvider.notifier).clear();
+    clearOnlineLocationPostAt();
+    try {
+      await _ref.read(providerOnlineIntentStoreProvider).write(
+            intentIdentity,
+            shouldBeOnline: false,
+          );
+    } catch (error) {
+      // Server authority is already Offline. Keep the local switch truthful;
+      // at worst a later cold start revalidates the stale durable intent.
+      debugPrint('[Availability] recovery Online intent clear failed: $error');
+    }
+
+    if (_replacementAuthorityInstalled(authority)) {
+      await _restoreReplacementOnlineIntent(authority);
+      return const ProviderRecoveryOfflineResult.authorityChanged();
+    }
+    debugPrint('[Availability] rejected Online epoch confirmed Offline');
+    return const ProviderRecoveryOfflineResult.confirmed();
+  }
+
+  bool _recoveryAuthorityCurrent(
+    ProviderRecoveryOfflineAuthority authority,
+  ) {
+    final authSession = _ref.read(currentAuthSessionIdentityProvider);
+    final intentIdentity = _ref.read(
+      currentProviderOnlineIntentIdentityProvider,
+    );
+    final locationSession = _ref.read(providerLocationSessionProvider);
+    final status = _ref.read(providerStatusProvider);
+    final transitionRevision =
+        _ref.read(providerStatusProvider.notifier).transitionRevision;
+    return authSession == authority.authSession &&
+        intentIdentity?.role.name == authority.authSession.role &&
+        intentIdentity?.roleAccountId == authority.authSession.roleAccountId &&
+        locationSession?.onlineSessionId == authority.onlineSessionId &&
+        status.isOnline &&
+        transitionRevision == authority.transitionRevision;
+  }
+
+  bool _replacementAuthorityInstalled(
+    ProviderRecoveryOfflineAuthority oldAuthority,
+  ) {
+    final authSession = _ref.read(currentAuthSessionIdentityProvider);
+    final locationSession = _ref.read(providerLocationSessionProvider);
+    final status = _ref.read(providerStatusProvider);
+    final transitionRevision =
+        _ref.read(providerStatusProvider.notifier).transitionRevision;
+    return authSession != null &&
+        !status.isOffline &&
+        locationSession != null &&
+        (authSession != oldAuthority.authSession ||
+            locationSession.onlineSessionId != oldAuthority.onlineSessionId ||
+            transitionRevision != oldAuthority.transitionRevision);
+  }
+
+  Future<void> _restoreReplacementOnlineIntent(
+    ProviderRecoveryOfflineAuthority oldAuthority,
+  ) async {
+    final authSession = _ref.read(currentAuthSessionIdentityProvider);
+    final intentIdentity = _ref.read(
+      currentProviderOnlineIntentIdentityProvider,
+    );
+    final locationSession = _ref.read(providerLocationSessionProvider);
+    final status = _ref.read(providerStatusProvider);
+    final transitionRevision =
+        _ref.read(providerStatusProvider.notifier).transitionRevision;
+    final replacementForSameRole = authSession != null &&
+        intentIdentity != null &&
+        !status.isOffline &&
+        authSession.role == oldAuthority.authSession.role &&
+        authSession.roleAccountId == oldAuthority.authSession.roleAccountId &&
+        intentIdentity.role.name == authSession.role &&
+        intentIdentity.roleAccountId == authSession.roleAccountId &&
+        locationSession != null &&
+        (authSession != oldAuthority.authSession ||
+            locationSession.onlineSessionId != oldAuthority.onlineSessionId ||
+            transitionRevision != oldAuthority.transitionRevision);
+    if (!replacementForSameRole) return;
+    try {
+      await _ref.read(providerOnlineIntentStoreProvider).write(
+            intentIdentity,
+            shouldBeOnline: true,
+          );
+    } catch (error) {
+      debugPrint(
+        '[Availability] replacement Online intent repair failed: $error',
+      );
+    }
+  }
 
   /// Ask the backend to close the online session without depending on a GPS
   /// fix. For drivers, the same transaction clears activeVehicleId so every
