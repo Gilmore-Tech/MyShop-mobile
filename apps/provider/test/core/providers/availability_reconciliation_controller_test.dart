@@ -468,7 +468,10 @@ void main() {
     expect(store.shouldBeOnline, isFalse);
     expect(container.read(providerStatusProvider), DriverStatus.offline);
     expect(
-        container.read(availabilityRestoreNoticeProvider), contains('vehicle'));
+      container.read(availabilityRestoreNoticeProvider),
+      'Your previous Online session ended. Tap Go Online and choose the '
+      'vehicle you are using for this session.',
+    );
   });
 
   test('failed revalidation consumes intent and confirms backend offline',

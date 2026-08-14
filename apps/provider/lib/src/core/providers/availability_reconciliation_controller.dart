@@ -199,8 +199,8 @@ class AvailabilityReconciliationController {
       await _consumeOnlineIntent(intentIdentity);
       await _forceOfflineAfterRecovery(
         trigger: trigger,
-        notice: 'We kept you offline because no approved vehicle was selected. '
-            'Tap Go Online and choose the vehicle you are using.',
+        notice: 'Your previous Online session ended. Tap Go Online and choose '
+            'the vehicle you are using for this session.',
       );
       return;
     }
