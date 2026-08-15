@@ -168,6 +168,107 @@ class PayoutCapability {
   final String? rawReasonCode;
 }
 
+/// Server-authored primary action for the provider earnings balance.
+///
+/// This supersedes [PayoutCapability] when the `primaryAction` key is present
+/// in an earnings-summary response. The parser is deliberately strict:
+/// malformed or future action values become [unsupported] and must never fall
+/// back to legacy payout authority. Legacy fallback is allowed only when an
+/// older backend omits the `primaryAction` key entirely.
+enum EarningsPrimaryActionKind {
+  requestWithdrawal,
+  payRemainingCommission,
+  payoutInProgress,
+  setupPayoutMethod,
+  reconciliationRequired,
+  none,
+  unsupported;
+
+  static EarningsPrimaryActionKind parse(String raw) {
+    return switch (raw) {
+      'request_withdrawal' => EarningsPrimaryActionKind.requestWithdrawal,
+      'pay_remaining_commission' =>
+        EarningsPrimaryActionKind.payRemainingCommission,
+      'payout_in_progress' => EarningsPrimaryActionKind.payoutInProgress,
+      'setup_payout_method' => EarningsPrimaryActionKind.setupPayoutMethod,
+      'reconciliation_required' =>
+        EarningsPrimaryActionKind.reconciliationRequired,
+      'none' => EarningsPrimaryActionKind.none,
+      _ => EarningsPrimaryActionKind.unsupported,
+    };
+  }
+}
+
+class EarningsPrimaryAction {
+  const EarningsPrimaryAction({
+    required this.kind,
+    required this.amountPesewas,
+    required this.reasonCode,
+    required this.rawKind,
+  });
+
+  const EarningsPrimaryAction.unsupported({this.rawKind})
+      : kind = EarningsPrimaryActionKind.unsupported,
+        amountPesewas = 0,
+        reasonCode = 'UNSUPPORTED_PRIMARY_ACTION';
+
+  factory EarningsPrimaryAction.fromJson(Object? raw) {
+    if (raw is! Map<String, dynamic>) {
+      return const EarningsPrimaryAction.unsupported();
+    }
+
+    final rawKind = raw['kind'];
+    final rawAmount = raw['amountPesewas'];
+    final rawReason = raw['reasonCode'];
+    if (rawKind is! String ||
+        rawKind.trim().isEmpty ||
+        rawAmount is! int ||
+        rawAmount < 0 ||
+        rawAmount > _maxSafeJsonInteger ||
+        rawReason is! String ||
+        rawReason.trim().isEmpty) {
+      return EarningsPrimaryAction.unsupported(
+        rawKind: rawKind is String ? rawKind : null,
+      );
+    }
+
+    final kind = EarningsPrimaryActionKind.parse(rawKind);
+    if (kind == EarningsPrimaryActionKind.unsupported) {
+      return EarningsPrimaryAction.unsupported(rawKind: rawKind);
+    }
+
+    return EarningsPrimaryAction(
+      kind: kind,
+      amountPesewas: rawAmount,
+      reasonCode: rawReason,
+      rawKind: rawKind,
+    );
+  }
+
+  final EarningsPrimaryActionKind kind;
+  final int amountPesewas;
+  final String reasonCode;
+
+  /// Retained for diagnostics. UI and money-moving authority use [kind].
+  final String? rawKind;
+
+  bool get isSupported => kind != EarningsPrimaryActionKind.unsupported;
+}
+
+class EarningsPrimaryActionReasonCodes {
+  EarningsPrimaryActionReasonCodes._();
+
+  static const manualWithdrawalAvailable = 'MANUAL_WITHDRAWAL_AVAILABLE';
+  static const outstandingDeductions = 'OUTSTANDING_DEDUCTIONS';
+  static const payoutDestinationRequired = 'PAYOUT_DESTINATION_REQUIRED';
+  static const reconciliationRequired = 'RECONCILIATION_REQUIRED';
+  static const payoutInProgress = 'PAYOUT_IN_PROGRESS';
+  static const holdActive = 'HOLD_ACTIVE';
+  static const belowMinimum = 'BELOW_MINIMUM';
+  static const noWithdrawableBalance = 'NO_WITHDRAWABLE_BALANCE';
+  static const automaticPayoutActive = 'AUTOMATIC_PAYOUT_ACTIVE';
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Today-card — homepage "Today's earnings"
 // ────────────────────────────────────────────────────────────────────────────
@@ -279,6 +380,33 @@ class EarningsSummaryPoint {
   final int netPesewas;
 }
 
+enum EarningsReconciliationReason {
+  none,
+  withdrawalDestinationReview,
+  withdrawalTransferFailed,
+  withdrawalTransferReversed,
+  withdrawalFinalizationReview,
+  financialReconciliationRequired,
+  unknown;
+
+  static EarningsReconciliationReason parse(Object? raw) {
+    return switch (raw) {
+      null => EarningsReconciliationReason.none,
+      'WITHDRAWAL_DESTINATION_REVIEW' =>
+        EarningsReconciliationReason.withdrawalDestinationReview,
+      'WITHDRAWAL_TRANSFER_FAILED' =>
+        EarningsReconciliationReason.withdrawalTransferFailed,
+      'WITHDRAWAL_TRANSFER_REVERSED' =>
+        EarningsReconciliationReason.withdrawalTransferReversed,
+      'WITHDRAWAL_FINALIZATION_REVIEW' =>
+        EarningsReconciliationReason.withdrawalFinalizationReview,
+      'FINANCIAL_RECONCILIATION_REQUIRED' =>
+        EarningsReconciliationReason.financialReconciliationRequired,
+      _ => EarningsReconciliationReason.unknown,
+    };
+  }
+}
+
 /// Mirrors `GET /v1/payments/earnings/summary`.
 class EarningsSummary {
   const EarningsSummary({
@@ -297,7 +425,35 @@ class EarningsSummary {
     required this.series,
     required this.granularity,
     this.payoutCapability = const PayoutCapability.unavailable(),
-  });
+    bool? hasValidCashCommissionOwedPesewas,
+    bool? hasValidPendingPayoutsPesewas,
+    this.availableBeforeDeductionsPesewas,
+    this.deductionsAppliedPesewas,
+    this.withdrawableBalancePesewas,
+    this.remainingDebtPesewas,
+    this.heldBalancePesewas,
+    this.reconciliationReason = EarningsReconciliationReason.none,
+    this.nextPayoutEligibleAt,
+    this.minimumWithdrawalPesewas,
+    bool? hasBalanceBreakdownContract,
+    this.hasPrimaryActionContract = false,
+    this.primaryAction,
+  })  : hasValidCashCommissionOwedPesewas =
+            (hasValidCashCommissionOwedPesewas ?? true) &&
+                cashCommissionOwedPesewas >= 0 &&
+                cashCommissionOwedPesewas <= _maxSafeJsonInteger,
+        hasValidPendingPayoutsPesewas =
+            (hasValidPendingPayoutsPesewas ?? true) &&
+                pendingPayoutsPesewas >= 0 &&
+                pendingPayoutsPesewas <= _maxSafeJsonInteger,
+        hasBalanceBreakdownContract = hasBalanceBreakdownContract ??
+            (availableBeforeDeductionsPesewas != null ||
+                deductionsAppliedPesewas != null ||
+                withdrawableBalancePesewas != null ||
+                remainingDebtPesewas != null ||
+                heldBalancePesewas != null ||
+                nextPayoutEligibleAt != null ||
+                minimumWithdrawalPesewas != null);
 
   factory EarningsSummary.fromJson(Map<String, dynamic> json) {
     return EarningsSummary(
@@ -315,10 +471,40 @@ class EarningsSummary {
       tipsEarnedPesewas: (json['tipsEarnedPesewas'] as num?)?.toInt() ?? 0,
       paidOutPesewas: (json['paidOutPesewas'] as num?)?.toInt() ?? 0,
       cashCommissionOwedPesewas:
-          (json['cashCommissionOwedPesewas'] as num?)?.toInt() ?? 0,
+          _nonNegativeIntOrNull(json['cashCommissionOwedPesewas']) ?? 0,
+      hasValidCashCommissionOwedPesewas:
+          _nonNegativeIntOrNull(json['cashCommissionOwedPesewas']) != null,
       pendingPayoutsPesewas:
-          (json['pendingPayoutsPesewas'] as num?)?.toInt() ?? 0,
+          _nonNegativeIntOrNull(json['pendingPayoutsPesewas']) ?? 0,
+      hasValidPendingPayoutsPesewas:
+          _nonNegativeIntOrNull(json['pendingPayoutsPesewas']) != null,
       payoutCapability: PayoutCapability.fromJson(json['payoutCapability']),
+      availableBeforeDeductionsPesewas: _nonNegativeIntOrNull(
+        json['availableBeforeDeductionsPesewas'],
+      ),
+      deductionsAppliedPesewas: _nonNegativeIntOrNull(
+        json['deductionsAppliedPesewas'],
+      ),
+      withdrawableBalancePesewas: _nonNegativeIntOrNull(
+        json['withdrawableBalancePesewas'],
+      ),
+      remainingDebtPesewas: _nonNegativeIntOrNull(json['remainingDebtPesewas']),
+      heldBalancePesewas: _nonNegativeIntOrNull(json['heldBalancePesewas']),
+      reconciliationReason: EarningsReconciliationReason.parse(
+        json['reconciliationReasonCode'],
+      ),
+      nextPayoutEligibleAt: _utcDateTimeOrNull(json['nextPayoutEligibleAt']),
+      minimumWithdrawalPesewas: _positiveIntOrNull(
+        json['minimumWithdrawalPesewas'],
+      ),
+      hasBalanceBreakdownContract: _containsAnyKey(
+        json,
+        _balanceBreakdownContractKeys,
+      ),
+      hasPrimaryActionContract: json.containsKey('primaryAction'),
+      primaryAction: json.containsKey('primaryAction')
+          ? EarningsPrimaryAction.fromJson(json['primaryAction'])
+          : null,
       series: (json['series'] as List<dynamic>?)
               ?.whereType<Map<String, dynamic>>()
               .map(EarningsSummaryPoint.fromJson)
@@ -381,9 +567,58 @@ class EarningsSummary {
   /// not infer that an available payout balance has already offset this debt.
   final int cashCommissionOwedPesewas;
 
+  /// Whether [cashCommissionOwedPesewas] came from an exact non-negative,
+  /// JSON-safe integer. Malformed wire values render as zero for compatibility
+  /// but can never authorise a money-moving action.
+  final bool hasValidCashCommissionOwedPesewas;
+
   /// In-flight payouts (Paystack transfer queued / processing). Shown
   /// inline so the driver knows the money is on its way.
   final int pendingPayoutsPesewas;
+
+  /// Whether [pendingPayoutsPesewas] came from an exact non-negative,
+  /// JSON-safe integer. See [hasValidCashCommissionOwedPesewas].
+  final bool hasValidPendingPayoutsPesewas;
+
+  /// Released provider earnings before server-side deductions are applied.
+  /// Null means the response came from an older or incomplete backend.
+  final int? availableBeforeDeductionsPesewas;
+
+  /// Deductions selected for the currently available earnings balance.
+  final int? deductionsAppliedPesewas;
+
+  /// Amount the provider can currently request from the payout rail.
+  final int? withdrawableBalancePesewas;
+
+  /// Debt still owed after the backend's authoritative deductions view.
+  final int? remainingDebtPesewas;
+
+  /// Earnings retained by the server hold policy and not yet withdrawable.
+  final int? heldBalancePesewas;
+
+  /// Sanitized reason why funds are held for financial review. Raw gateway or
+  /// internal failure text is never rendered to the provider.
+  final EarningsReconciliationReason reconciliationReason;
+
+  /// Earliest known release time for held earnings. Null is valid when no
+  /// held funds exist or the backend cannot provide one release timestamp.
+  final DateTime? nextPayoutEligibleAt;
+
+  /// Server-configured minimum required for a manual withdrawal. This is
+  /// additive and must be present and valid before the app explains a
+  /// `BELOW_MINIMUM` primary action.
+  final int? minimumWithdrawalPesewas;
+
+  /// Distinguishes a genuinely old response (all additive balance keys
+  /// absent) from a partial or malformed new contract. Only the former may
+  /// enter the legacy payout-capability fallback.
+  final bool hasBalanceBreakdownContract;
+
+  /// Distinguishes an old backend (key absent) from an explicit malformed or
+  /// unsupported action (key present). Only the former may use legacy payout
+  /// capability as a compatibility fallback.
+  final bool hasPrimaryActionContract;
+  final EarningsPrimaryAction? primaryAction;
 
   /// Server-authored payout CTA authority. Missing on older backend builds;
   /// the default is intentionally unavailable rather than inferred from the
@@ -411,6 +646,59 @@ class EarningsSummary {
 
   /// True whenever durable cash-commission debt remains outstanding.
   bool get isInArrears => cashCommissionOwedPesewas > 0;
+
+  /// True only when all additive money fields passed strict non-negative-int
+  /// parsing. A partial rollout can still render the legacy summary, but it
+  /// cannot authorise a withdrawal.
+  bool get hasAuthoritativeBalanceBreakdown =>
+      hasValidCashCommissionOwedPesewas &&
+      hasValidPendingPayoutsPesewas &&
+      availableBeforeDeductionsPesewas != null &&
+      deductionsAppliedPesewas != null &&
+      withdrawableBalancePesewas != null &&
+      remainingDebtPesewas != null &&
+      heldBalancePesewas != null &&
+      deductionsAppliedPesewas! <= availableBeforeDeductionsPesewas! &&
+      withdrawableBalancePesewas ==
+          availableBeforeDeductionsPesewas! - deductionsAppliedPesewas! &&
+      cashCommissionOwedPesewas >= 0 &&
+      cashCommissionOwedPesewas <= _maxSafeJsonInteger &&
+      cashCommissionOwedPesewas <= remainingDebtPesewas! &&
+      // A balance cannot be both withdrawable and still owe residual debt.
+      // Contradictory server data must never authorise a money-moving action.
+      (withdrawableBalancePesewas == 0 || remainingDebtPesewas == 0);
+
+  /// Frozen production minimum for the current manual-withdrawal contract.
+  static const requiredMinimumWithdrawalPesewas = 1500;
+
+  int get selectedPeriodEarnedPesewas => netEarningsPesewas + tipsEarnedPesewas;
+}
+
+const int _maxSafeJsonInteger = 9007199254740991;
+
+const _balanceBreakdownContractKeys = <String>[
+  'availableBeforeDeductionsPesewas',
+  'deductionsAppliedPesewas',
+  'withdrawableBalancePesewas',
+  'remainingDebtPesewas',
+  'heldBalancePesewas',
+  'reconciliationReasonCode',
+  'nextPayoutEligibleAt',
+  'minimumWithdrawalPesewas',
+];
+
+bool _containsAnyKey(Map<String, dynamic> json, List<String> keys) =>
+    keys.any(json.containsKey);
+
+int? _nonNegativeIntOrNull(Object? raw) =>
+    raw is int && raw >= 0 && raw <= _maxSafeJsonInteger ? raw : null;
+
+int? _positiveIntOrNull(Object? raw) =>
+    raw is int && raw > 0 && raw <= _maxSafeJsonInteger ? raw : null;
+
+DateTime? _utcDateTimeOrNull(Object? raw) {
+  if (raw is! String || raw.trim().isEmpty) return null;
+  return DateTime.tryParse(raw)?.toUtc();
 }
 
 // ────────────────────────────────────────────────────────────────────────────

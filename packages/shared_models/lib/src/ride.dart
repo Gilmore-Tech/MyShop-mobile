@@ -25,9 +25,13 @@ class Ride {
     this.estimatedProviderEarningsPesewas,
     this.collectFromClientPesewas,
     this.commissionPesewas,
+    this.effectiveCommissionPesewas,
+    this.providerSettlementBasisPesewas,
     this.commissionRatePercent,
     this.netPayoutPesewas,
     this.providerEarningsPesewas,
+    this.financialsFinal,
+    bool? hasFinancialsFinalContract,
     required this.estimatedDistanceKm,
     required this.estimatedDurationMins,
     this.actualDistanceKm,
@@ -49,7 +53,8 @@ class Ride {
     this.driverName,
     this.driverPhone,
     this.stops = const [],
-  });
+  }) : hasFinancialsFinalContract =
+            hasFinancialsFinalContract ?? financialsFinal != null;
 
   /// Parses a Ride from any of the three shapes the backend serves:
   ///   - the full persisted Ride (`GET /rides/:id`, status PATCH responses)
@@ -72,6 +77,8 @@ class Ride {
     int _int(dynamic v, [int fallback = 0]) =>
         _optionalNum(v)?.toInt() ?? fallback;
     int? _optionalInt(dynamic v) => _optionalNum(v)?.toInt();
+    int? _strictMoneyInt(dynamic v) =>
+        v is int && v >= 0 && v <= 9007199254740991 ? v : null;
     DateTime? _date(dynamic v) => v is String ? DateTime.tryParse(v) : null;
     double _distanceKm() {
       final km = _optionalNum(
@@ -206,9 +213,21 @@ class Ride {
         json['collectFromClientPesewas'] ?? json['totalPaidPesewas'],
       ),
       commissionPesewas: _optionalInt(json['commissionPesewas']),
+      effectiveCommissionPesewas: json['financialsFinal'] == true
+          ? _strictMoneyInt(json['effectiveCommissionPesewas'])
+          : _optionalInt(json['effectiveCommissionPesewas']),
+      providerSettlementBasisPesewas: json['financialsFinal'] == true
+          ? _strictMoneyInt(json['providerSettlementBasisPesewas'])
+          : _optionalInt(json['providerSettlementBasisPesewas']),
       commissionRatePercent: _optionalNum(json['commissionRatePercent']),
       netPayoutPesewas: _optionalInt(json['netPayoutPesewas']),
-      providerEarningsPesewas: _optionalInt(json['providerEarningsPesewas']),
+      providerEarningsPesewas: json['financialsFinal'] == true
+          ? _strictMoneyInt(json['providerEarningsPesewas'])
+          : _optionalInt(json['providerEarningsPesewas']),
+      financialsFinal: json['financialsFinal'] is bool
+          ? json['financialsFinal'] as bool
+          : null,
+      hasFinancialsFinalContract: json.containsKey('financialsFinal'),
       estimatedDistanceKm: _distanceKm(),
       estimatedDurationMins: _durationMins(),
       actualDistanceKm: _optionalNum(json['actualDistanceKm']) ??
@@ -299,7 +318,20 @@ class Ride {
   /// What the client actually pays after discounts — for cash rides, the
   /// amount the driver should collect at drop-off.
   final int? collectFromClientPesewas;
+
+  /// Historical policy commission before provider-specific relief. Older
+  /// backends expose only this field, so provider surfaces may use it as a
+  /// legacy fallback only when the additive settlement contract is absent.
   final int? commissionPesewas;
+
+  /// Authoritative commission after provider relief/clawback rules. This is
+  /// the amount that reconciles with [providerEarningsPesewas].
+  final int? effectiveCommissionPesewas;
+
+  /// Retained provider settlement basis after any refund adjustment. On an
+  /// ordinary ride this equals [prePromoFarePesewas]; a partial/full refund may
+  /// legitimately reduce it without rewriting the original trip fare.
+  final int? providerSettlementBasisPesewas;
   final double? commissionRatePercent;
 
   /// Platform rail payout for the linked payment. For cash rides this is NOT
@@ -307,8 +339,20 @@ class Ride {
   /// earnings from [providerEarningsPesewas].
   final int? netPayoutPesewas;
 
-  /// Driver earnings for the trip: pre-promo fare − commission.
+  /// Server-authored provider earnings against the applicable settlement
+  /// basis. The basis is normally the full pre-promo fare, but can be lower
+  /// after a refund.
   final int? providerEarningsPesewas;
+
+  /// Whether the backend has finished creating the immutable payment ledger
+  /// snapshot. Consult [hasFinancialsFinalContract] to distinguish an absent
+  /// legacy key from an explicitly malformed value.
+  final bool? financialsFinal;
+
+  /// True when the wire payload explicitly included `financialsFinal`, even
+  /// if its value was malformed. Only key absence may use legacy financial
+  /// conservation rules.
+  final bool hasFinancialsFinalContract;
   final double estimatedDistanceKm;
   final int estimatedDurationMins;
   final double? actualDistanceKm;
@@ -347,15 +391,69 @@ class Ride {
       ? _formatGhs(totalPaidPesewas!)
       : finalFareDisplay;
 
-  /// The metered trip fare — what the provider is paid on. Falls back through
-  /// the discounted amounts only for legacy payloads that never carried the
-  /// pre-promo figure.
+  /// The metered trip fare — what the provider is paid on. A completed legacy
+  /// payload may expose both a full `finalFarePesewas` and a discounted
+  /// `totalPaidPesewas`; the full fare must win.
   int get tripFarePesewas =>
       prePromoFarePesewas ??
-      totalPaidPesewas ??
       finalFarePesewas ??
+      totalPaidPesewas ??
       estimatedFarePesewas;
   String get tripFareDisplay => _formatGhs(tripFarePesewas);
+
+  int? get _candidateProviderCommissionPesewas {
+    if (hasFinancialsFinalContract) {
+      if (financialsFinal != true) return null;
+      return effectiveCommissionPesewas;
+    }
+    return effectiveCommissionPesewas ?? commissionPesewas;
+  }
+
+  /// True only when commission and earnings form one non-negative,
+  /// server-authored pair that conserves the applicable settlement basis.
+  /// New final snapshots must publish that basis explicitly so legitimate
+  /// refund adjustments do not look malformed. Legacy snapshots still
+  /// conserve against the original full trip fare.
+  bool get hasConservedProviderFinancials {
+    final commission = _candidateProviderCommissionPesewas;
+    final earnings = providerEarningsPesewas;
+    final fare = tripFarePesewas;
+    final basis = hasFinancialsFinalContract
+        ? financialsFinal == true
+            ? providerSettlementBasisPesewas
+            : null
+        : fare;
+    return commission != null &&
+        earnings != null &&
+        basis != null &&
+        commission >= 0 &&
+        earnings >= 0 &&
+        fare >= 0 &&
+        basis >= 0 &&
+        basis <= fare &&
+        commission <= basis &&
+        earnings == basis - commission;
+  }
+
+  /// Provider-facing commission with additive-contract fail-closed behavior.
+  /// Commission and earnings are deliberately exposed together or not at all.
+  int? get providerCommissionPesewas => hasConservedProviderFinancials
+      ? _candidateProviderCommissionPesewas
+      : null;
+
+  /// Provider earnings are server authority and must never be recomputed from
+  /// fare and commission in the app. See [hasConservedProviderFinancials].
+  int? get settledProviderEarningsPesewas =>
+      hasConservedProviderFinancials ? providerEarningsPesewas : null;
+
+  /// Conserved provider basis paired with commission and earnings. Null when
+  /// the financial pair is pending or malformed.
+  int? get settledProviderSettlementBasisPesewas =>
+      hasConservedProviderFinancials
+          ? (hasFinancialsFinalContract
+              ? providerSettlementBasisPesewas
+              : tripFarePesewas)
+          : null;
 
   String get distanceDisplay => '${estimatedDistanceKm.toStringAsFixed(1)} km';
   String get durationDisplay => '$estimatedDurationMins mins';
@@ -388,9 +486,13 @@ class Ride {
       estimatedProviderEarningsPesewas: estimatedProviderEarningsPesewas,
       collectFromClientPesewas: collectFromClientPesewas,
       commissionPesewas: commissionPesewas,
+      effectiveCommissionPesewas: effectiveCommissionPesewas,
+      providerSettlementBasisPesewas: providerSettlementBasisPesewas,
       commissionRatePercent: commissionRatePercent,
       netPayoutPesewas: netPayoutPesewas,
       providerEarningsPesewas: providerEarningsPesewas,
+      financialsFinal: financialsFinal,
+      hasFinancialsFinalContract: hasFinancialsFinalContract,
       estimatedDistanceKm: estimatedDistanceKm,
       estimatedDurationMins: estimatedDurationMins,
       actualDistanceKm: actualDistanceKm,
@@ -518,11 +620,14 @@ class TripSummary {
     this.surgeFarePesewas = 0,
     this.taxesPesewas = 0,
     this.promoPesewas = 0,
+    this.loyaltyPesewas = 0,
     this.promoApplied = false,
     required this.totalFarePesewas,
     this.collectFromClientPesewas,
     this.commissionPesewas,
     this.commissionRatePercent,
+    this.commissionIsEffective = false,
+    this.providerSettlementBasisPesewas,
     this.netEarningsPesewas,
     required this.payoutMethod,
     required this.payoutStatus,
@@ -543,6 +648,7 @@ class TripSummary {
   final int surgeFarePesewas;
   final int taxesPesewas;
   final int promoPesewas;
+  final int loyaltyPesewas;
 
   /// True when a platform promo discounted what the client pays. The provider
   /// is still paid on the full [totalFarePesewas] (BR-49).
@@ -556,19 +662,30 @@ class TripSummary {
   final int? collectFromClientPesewas;
   final int? commissionPesewas;
   final double? commissionRatePercent;
+  final bool commissionIsEffective;
+  final int? providerSettlementBasisPesewas;
   final int? netEarningsPesewas;
   final String payoutMethod;
   final String payoutStatus;
 
   String get totalFareDisplay => _formatGhs(totalFarePesewas);
-  String get collectFromClientDisplay =>
-      _formatGhs(collectFromClientPesewas ?? totalFarePesewas);
+  String get collectFromClientDisplay => collectFromClientPesewas == null
+      ? 'Pending'
+      : _formatGhs(collectFromClientPesewas!);
   String get commissionDisplay =>
       commissionPesewas == null ? 'Pending' : _formatGhs(commissionPesewas!);
   String get netEarningsDisplay =>
       netEarningsPesewas == null ? 'Pending' : _formatGhs(netEarningsPesewas!);
+  String get providerSettlementBasisDisplay =>
+      providerSettlementBasisPesewas == null
+          ? 'Pending'
+          : _formatGhs(providerSettlementBasisPesewas!);
+  bool get hasRefundAdjustedSettlement =>
+      providerSettlementBasisPesewas != null &&
+      providerSettlementBasisPesewas != totalFarePesewas;
 
   String get commissionLabel {
+    if (commissionIsEffective) return 'Effective Platform Commission';
     final rate = commissionRatePercent;
     if (rate == null) return 'Platform Commission';
     final formatted = rate == rate.roundToDouble()

@@ -146,7 +146,10 @@ class IncomingRideFareCopy {
     required this.hasPrimaryAmount,
   });
 
-  factory IncomingRideFareCopy.fromSnapshot(IncomingRideFareSnapshot fare) {
+  factory IncomingRideFareCopy.fromSnapshot(
+    IncomingRideFareSnapshot fare, {
+    String clientPriceLabel = 'CLIENT PRICE',
+  }) {
     late final IncomingRidePrimaryAmountKind primaryKind;
     late final String primaryLabel;
     final int? primaryPesewas;
@@ -174,7 +177,7 @@ class IncomingRideFareCopy {
       );
       lines.add(
         IncomingRideFareLine(
-          'CLIENT PRICE',
+          clientPriceLabel,
           formatIncomingRidePesewas(fare.clientPayableEstimatePesewas!),
         ),
       );
