@@ -44,7 +44,7 @@ class EditProfileState {
   String? get nameError {
     final trimmed = fullName.trim();
     if (trimmed.isEmpty) return null;
-    return Validators.fullName(trimmed);
+    return Validators.fullName(fullName);
   }
 
   String? get emailError {

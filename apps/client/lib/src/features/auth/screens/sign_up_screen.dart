@@ -229,6 +229,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                           controller: _nameController,
                           focusNode: _nameFocus,
                           hint: 'e.g. Ama Mensah',
+                          errorText: _nameError,
                           textCapitalization: TextCapitalization.words,
                           w: w,
                           h: h,
@@ -479,8 +480,13 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     );
   }
 
+  String? get _nameError {
+    if (_nameController.text.isEmpty) return null;
+    return Validators.fullName(_nameController.text);
+  }
+
   bool get _canSubmit =>
-      _nameController.text.trim().length >= 2 &&
+      Validators.fullName(_nameController.text) == null &&
       _isValidPhone &&
       _phone != null &&
       _validReferralCode &&
@@ -497,7 +503,12 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   Future<void> _submit() async {
     final legal = _requiredLegal;
     if (legal == null || !_termsAccepted || !_privacyAccepted) return;
-    final name = _nameController.text.trim();
+    final rawName = _nameController.text;
+    if (Validators.fullName(rawName) != null) {
+      setState(() {});
+      return;
+    }
+    final name = rawName.trim();
     final email = _emailController.text.trim();
     final referralCode = _referralController.text.trim().toUpperCase();
     await ref.read(clientAuthControllerProvider.notifier).register(
@@ -772,6 +783,7 @@ class _StyledTextField extends StatelessWidget {
     required this.h,
     this.focusNode,
     this.keyboardType,
+    this.errorText,
     this.textCapitalization = TextCapitalization.none,
     this.onChanged,
   });
@@ -782,6 +794,7 @@ class _StyledTextField extends StatelessWidget {
   final double h;
   final FocusNode? focusNode;
   final TextInputType? keyboardType;
+  final String? errorText;
   final TextCapitalization textCapitalization;
   final ValueChanged<String>? onChanged;
 
@@ -796,6 +809,7 @@ class _StyledTextField extends StatelessWidget {
       onChanged: onChanged,
       decoration: InputDecoration(
         hintText: hint,
+        errorText: errorText,
         hintStyle: TextStyle(color: MyShopColors.textHint, fontSize: w * 0.036),
         filled: true,
         fillColor: MyShopColors.surfaceGrey,

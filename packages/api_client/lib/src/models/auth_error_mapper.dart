@@ -60,6 +60,10 @@ class AuthErrorCodes {
   /// and is still retained. Registration must not create a replacement role;
   /// the app offers the separate support/recovery path instead.
   static const roleAccountRetained = 'ROLE_ACCOUNT_RETAINED';
+
+  /// Returned when a personal/legal/display name contains digits, emoji, or
+  /// unsupported punctuation. Business names are governed separately.
+  static const invalidPersonName = 'INVALID_PERSON_NAME';
 }
 
 /// Maps [ApiException] instances to user-friendly, actionable error messages
@@ -394,6 +398,12 @@ class AuthErrorMapper {
       case 'INVALID_REGISTRATION_ROLE':
         return 'Return to account type selection and choose Driver or Artisan again.';
 
+      case AuthErrorCodes.invalidPersonName:
+        return 'Names cannot contain numbers or emojis. Use letters, spaces, hyphens, and apostrophes only.';
+
+      case 'REGISTRATION_RESTART_REQUIRED':
+        return 'Your registration details need to be entered again. Return to account creation and try again.';
+
       // ── Validation (422) ────────────────────────────────────────────
       case 'VALIDATION_ERROR':
       case 'VALIDATION_FAILED':
@@ -431,8 +441,11 @@ class AuthErrorMapper {
       'otp' || 'code' => 'Enter the verification code sent to you.',
       'firstname' ||
       'lastname' ||
-      'name' =>
-        'Enter a valid name using letters and common punctuation.',
+      'name' ||
+      'fullname' ||
+      'displayname' ||
+      'legalname' =>
+        'Names cannot contain numbers or emojis. Use letters, spaces, hyphens, and apostrophes only.',
       'email' => 'Enter a valid email address.',
       'regionid' || 'region' => 'Choose an available region.',
       'role' => 'Choose the account type you want to use.',
