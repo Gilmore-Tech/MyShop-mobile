@@ -109,6 +109,10 @@ class NotificationPayload {
   /// Payout / payment received from MyShop.
   static const typePaymentReceived = 'payment_received';
 
+  /// Post-commit balance revision. Payload amounts are never trusted; receipt
+  /// only triggers an authoritative earnings-summary refresh.
+  static const typeEarningsUpdated = 'earnings_updated';
+
   /// Backend asks the provider to rate the counter-party for a completed
   /// booking. Payload carries `bookingType` (`ride` | `artisan_job`) and
   /// `bookingId`. Tapping deep-links to the matching rating sheet.

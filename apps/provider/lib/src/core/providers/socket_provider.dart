@@ -597,10 +597,7 @@ void _connectAndListen(Ref ref, SocketService socket) {
         // pull-to-refreshed or cold-started.
         if (ride.status == RideStatus.completed) {
           try {
-            ref.container.invalidate(todayCardProvider);
-            ref.container.invalidate(earningsSummaryProvider);
-            ref.container.invalidate(earningsReportProvider);
-            ref.container.invalidate(payoutsProvider);
+            ref.container.read(refreshEarningsAfterSettlementProvider)();
             ref.container.invalidate(driverTripsProvider);
           } catch (_) {/* providers may not be mounted in tests */}
         }
@@ -619,6 +616,16 @@ void _connectAndListen(Ref ref, SocketService socket) {
     socket
       ..off('ride:state')
       ..on('ride:state', handleRideState);
+
+    // Post-commit earnings signal. Its payload is deliberately ignored: the
+    // event only triggers authoritative API reads and is never money authority.
+    void handleEarningsUpdated(dynamic _) {
+      ref.container.read(refreshEarningsAfterSettlementProvider)();
+    }
+
+    socket
+      ..off('earnings:updated')
+      ..on('earnings:updated', handleEarningsUpdated);
 
     // The canonical full snapshot is preferred, but cancellation also has a
     // slim dedicated event and a legacy status event. Listening to both keeps

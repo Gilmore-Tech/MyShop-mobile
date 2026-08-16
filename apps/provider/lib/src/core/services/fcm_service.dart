@@ -79,6 +79,7 @@ bool shouldNavigateToActiveRideFromNotification(String currentPath) {
 @visibleForTesting
 bool isEarningsSettlementNotification(String type) {
   return type == NotificationPayload.typePaymentReceived ||
+      type == NotificationPayload.typeEarningsUpdated ||
       type == NotificationPayload.typeRideSettled ||
       type == NotificationPayload.typeJobPaymentReleasing ||
       type == NotificationPayload.typeJobConfirmedComplete;
@@ -1067,6 +1068,8 @@ String _fallbackTitle(String type) {
       return 'New message';
     case NotificationPayload.typePaymentReceived:
       return 'Payout received';
+    case NotificationPayload.typeEarningsUpdated:
+      return 'Earnings updated';
     case NotificationPayload.typeRatingPrompt:
       return 'Rate your client';
     case NotificationPayload.typeSupportTicketMessage:
@@ -1111,6 +1114,8 @@ String _fallbackBody(String type) {
       return 'The client cancelled this ride.';
     case NotificationPayload.typeJobPaymentReleasing:
       return 'Your earnings settlement is being processed. Check Earnings for status.';
+    case NotificationPayload.typeEarningsUpdated:
+      return 'Open Earnings to see the latest server-confirmed balance.';
     case NotificationPayload.typeJobManuallyAssigned:
       return 'Tap to review and place your bid.';
     case NotificationPayload.typeJobNoBidsEscalated:
@@ -1293,7 +1298,7 @@ class FcmService {
         // Start the authoritative refresh before rendering the notification.
         // A visible earnings screen keeps its historical totals but fences
         // the payout CTA until the new balance has arrived.
-        _ref.read(invalidateEarningsCachesProvider)();
+        _ref.read(refreshEarningsAfterSettlementProvider)();
       }
       if (type == NotificationPayload.typeRideRequest) {
         final received = await acknowledgeRideOfferWithSocket(
@@ -2456,7 +2461,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
     if (type != null && isEarningsSettlementNotification(type)) {
       // Background delivery cannot touch the main isolate's Riverpod cache.
       // Refresh it on tap before /earnings is routed.
-      ref.read(invalidateEarningsCachesProvider)();
+      ref.read(refreshEarningsAfterSettlementProvider)();
     }
 
     final initialRideId = type == NotificationPayload.typeRideRequest
@@ -3008,6 +3013,7 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
 
       case NotificationPayload.typeRideSettled:
       case NotificationPayload.typePaymentReceived:
+      case NotificationPayload.typeEarningsUpdated:
       case NotificationPayload.typeJobPaymentReleasing:
       // Client confirmed the work and the payout has been released —
       // earnings is where the artisan wants to land.

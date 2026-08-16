@@ -9,6 +9,47 @@ import '../../../core/utils/payment_method_label.dart';
 import '../providers/ride_request_provider.dart';
 import '../widgets/rate_passenger_sheet.dart';
 
+/// Builds a provider-facing summary from backend monetary authority.
+///
+/// Promo and loyalty values affect only the client collection. Commission and
+/// earnings are never derived in mobile: an explicitly non-final settlement
+/// remains Pending until the backend publishes the immutable ledger snapshot.
+TripSummary providerTripSummaryFromRide(Ride ride) {
+  final tripFare = ride.tripFarePesewas;
+  final distanceKm = ride.actualDistanceKm ?? ride.estimatedDistanceKm;
+  final durationMins = ride.actualDurationMins ?? ride.estimatedDurationMins;
+  return TripSummary(
+    rideId: ride.id,
+    clientName: ride.clientName ?? 'Passenger',
+    clientPhotoUrl: ride.clientPhotoUrl,
+    clientRating: ride.clientRating ?? 0,
+    paymentMethod: paymentMethodLabel(ride.paymentMethod),
+    pickupAddress: ride.pickupAddress,
+    dropoffAddress: ride.dropoffAddress,
+    distanceKm: distanceKm,
+    durationMins: durationMins,
+    // The API does not currently expose immutable component snapshots.
+    baseFarePesewas: 0,
+    distanceFarePesewas: 0,
+    timeFarePesewas: 0,
+    surgeFarePesewas: 0,
+    taxesPesewas: 0,
+    promoPesewas: ride.promoDiscountPesewas ?? 0,
+    loyaltyPesewas: ride.loyaltyDiscountPesewas ?? 0,
+    promoApplied: ride.promoApplied,
+    totalFarePesewas: tripFare,
+    collectFromClientPesewas:
+        ride.collectFromClientPesewas ?? ride.totalPaidPesewas,
+    commissionPesewas: ride.providerCommissionPesewas,
+    commissionRatePercent: ride.commissionRatePercent,
+    commissionIsEffective: ride.effectiveCommissionPesewas != null,
+    providerSettlementBasisPesewas: ride.settledProviderSettlementBasisPesewas,
+    netEarningsPesewas: ride.settledProviderEarningsPesewas,
+    payoutMethod: 'MoMo Payout',
+    payoutStatus: 'PROCESSING',
+  );
+}
+
 /// Trip summary screen shown after ride completion.
 ///
 /// Figma: node 208:11964
@@ -58,60 +99,6 @@ class _DriverRideCompleteScreenState
     );
   }
 
-  TripSummary _summaryFromRide(Ride ride) {
-    // The driver is always paid on the pre-promo metered fare (BR-49) — a
-    // client promo changes what the client pays, never driver earnings. A
-    // fully-subsidised promo ride has totalPaid == 0, so the discounted
-    // amounts must never be shown as "the fare".
-    final tripFare = ride.tripFarePesewas;
-    // Backend overwrites the estimated distance/duration columns with the
-    // ACTUAL values (computed from the GPS trail + start→complete time)
-    // when the ride flips to `completed`, so reading them directly here
-    // surfaces the real numbers. The dual `actualDistanceKm` /
-    // `actualDurationMins` model fields are unused — kept as null on the
-    // wire until the schema gets dedicated columns.
-    final distanceKm = ride.actualDistanceKm ?? ride.estimatedDistanceKm;
-    final durationMins = ride.actualDurationMins ?? ride.estimatedDurationMins;
-    return TripSummary(
-      rideId: ride.id,
-      clientName: ride.clientName ?? 'Passenger',
-      clientPhotoUrl: ride.clientPhotoUrl,
-      clientRating: ride.clientRating ?? 0,
-      paymentMethod: _formatPaymentMethod(ride.paymentMethod),
-      pickupAddress: ride.pickupAddress,
-      dropoffAddress: ride.dropoffAddress,
-      distanceKm: distanceKm,
-      durationMins: durationMins,
-      // Backend does not yet break the fare into components — show 0 for
-      // the per-line items so the breakdown collapses to just the total.
-      baseFarePesewas: 0,
-      distanceFarePesewas: 0,
-      timeFarePesewas: 0,
-      surgeFarePesewas: 0,
-      taxesPesewas: 0,
-      promoPesewas: ride.promoDiscountPesewas ?? 0,
-      promoApplied: ride.promoApplied,
-      totalFarePesewas: tripFare,
-      collectFromClientPesewas:
-          ride.collectFromClientPesewas ?? ride.totalPaidPesewas,
-      commissionPesewas: ride.commissionPesewas,
-      commissionRatePercent: ride.commissionRatePercent,
-      // providerEarningsPesewas is the ledger's earnings figure.
-      // netPayoutPesewas is NOT earnings — for cash rides it's the platform
-      // rail payout (subsidy net of commission), often 0 on promo trips.
-      netEarningsPesewas: ride.providerEarningsPesewas ??
-          (ride.commissionPesewas != null
-              ? tripFare - ride.commissionPesewas!
-              : null),
-      payoutMethod: 'MoMo Payout',
-      payoutStatus: 'PROCESSING',
-    );
-  }
-
-  // Shared label map (handles momo_mtn / momo_telecel / momo_airteltigo / cash
-  // / card) so the completion summary matches the rider's choice exactly.
-  String _formatPaymentMethod(String raw) => paymentMethodLabel(raw);
-
   @override
   Widget build(BuildContext context) {
     final ride = ref.watch(activeRideProvider).ride;
@@ -141,7 +128,7 @@ class _DriverRideCompleteScreenState
         ),
       );
     }
-    final s = _summaryFromRide(ride);
+    final s = providerTripSummaryFromRide(ride);
 
     return Scaffold(
       backgroundColor: MyShopColors.surfaceGrey,
@@ -188,7 +175,10 @@ class _DriverRideCompleteScreenState
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: MyShopColors.textPrimary)),
-                    Text('Earnings have been calculated and processed.',
+                    Text(
+                        s.netEarningsPesewas == null
+                            ? 'Trip recorded. Final earnings may take a moment.'
+                            : 'Final trip earnings are shown below.',
                         style: MyShopTypography.body2),
                   ])),
             ]),
@@ -373,11 +363,16 @@ class _DriverRideCompleteScreenState
                         fontWeight: FontWeight.w900,
                         color: MyShopColors.primaryGold)),
               ]),
-              if (s.promoApplied) ...[
+              if (s.promoPesewas > 0 || s.loyaltyPesewas > 0) ...[
                 const SizedBox(height: 8),
-                _FareRow(
-                    label: 'Promo (covered by MyShop)',
-                    amount: -s.promoPesewas),
+                if (s.promoPesewas > 0)
+                  _FareRow(
+                      label: 'Promo (covered by MyShop)',
+                      amount: -s.promoPesewas),
+                if (s.loyaltyPesewas > 0)
+                  _FareRow(
+                      label: 'Loyalty (covered by MyShop)',
+                      amount: -s.loyaltyPesewas),
                 Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -399,10 +394,28 @@ class _DriverRideCompleteScreenState
                     ]),
                 const SizedBox(height: 4),
                 Text(
-                    'Promo ride — the platform covers the discount. '
-                    'Your earnings are based on the full trip fare.',
+                    s.hasRefundAdjustedSettlement
+                        ? 'MyShop covers promo and loyalty discounts. '
+                            'Refund-adjusted earnings use the retained '
+                            'settlement basis shown below.'
+                        : 'MyShop covers promo and loyalty discounts. Your '
+                            'earnings are based on the full trip fare.',
                     style: MyShopTypography.caption
                         .copyWith(fontSize: 10, color: MyShopColors.success)),
+              ],
+              if (s.hasRefundAdjustedSettlement) ...[
+                const Divider(height: 24),
+                _FareRow(
+                  label: 'Settlement Basis',
+                  amount: s.providerSettlementBasisPesewas!,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Refund-adjusted settlement: commission and earnings use '
+                  'the retained basis shown above, while Trip Fare remains '
+                  'the original completed fare.',
+                  style: MyShopTypography.caption.copyWith(fontSize: 10),
+                ),
               ],
             ]),
           ),
@@ -452,7 +465,11 @@ class _DriverRideCompleteScreenState
               Text(
                   s.commissionPesewas == null
                       ? 'The authoritative commission is still being recorded. Check your earnings shortly.'
-                      : 'Commission is charged on the full trip fare. Earnings = trip fare − commission.',
+                      : s.hasRefundAdjustedSettlement
+                          ? 'Commission and earnings reflect the refund-adjusted settlement basis shown above.'
+                          : s.commissionIsEffective
+                              ? 'This recorded amount includes any provider commission relief applied to the trip.'
+                              : 'This is the backend-recorded commission for this trip.',
                   style: MyShopTypography.caption.copyWith(fontSize: 10)),
             ]),
           ),

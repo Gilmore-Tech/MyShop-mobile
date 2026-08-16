@@ -112,11 +112,7 @@ class _ProviderAppState extends ConsumerState<ProviderApp>
         // we just need the dashboard providers to refetch instead of
         // serving the pre-completion cache.
         try {
-          ref.invalidate(todayCardProvider);
-          ref.invalidate(earningsSummaryProvider);
-          ref.invalidate(earningsReportProvider);
-          ref.invalidate(activeTodayCardProvider);
-          ref.invalidate(payoutsProvider);
+          ref.read(invalidateEarningsCachesProvider)();
           ref.invalidate(providerRatingsProvider);
           ref.invalidate(driverTripsProvider);
           // Catch admin document approvals/rejections that landed while the

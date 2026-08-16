@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 
@@ -109,13 +111,82 @@ final payoutsProvider = FutureProvider<List<DriverPayout>>((ref) async {
 /// server-backed earnings surface together so the balance, pending-settlement
 /// amount and payout history cannot disagree after a foreground push or a
 /// notification tap.
+const earningsSettlementRetryDelays = <Duration>[
+  Duration(seconds: 1),
+  Duration(seconds: 3),
+  Duration(seconds: 8),
+];
+
+final earningsSettlementRetryDelaysProvider = Provider<List<Duration>>(
+  (_) => earningsSettlementRetryDelays,
+);
+
+/// Bounded, event-driven protection against completion-before-ledger races.
+///
+/// This is intentionally not a global poller. It runs only after a local or
+/// server settlement signal, cancels duplicate waves, and performs three
+/// finite retries. A post-commit `earnings:updated`/`earnings_updated` event
+/// uses the same path so every visible earnings surface converges together.
+class EarningsRefreshCoordinator {
+  EarningsRefreshCoordinator(
+    this._ref, {
+    this.retryDelays = earningsSettlementRetryDelays,
+  });
+
+  final Ref _ref;
+  final List<Duration> retryDelays;
+  final List<Timer> _timers = <Timer>[];
+  bool _disposed = false;
+
+  int get pendingRetryCount => _timers.where((timer) => timer.isActive).length;
+
+  void invalidateNow() {
+    if (_disposed) return;
+    _ref.invalidate(todayCardProvider);
+    _ref.invalidate(earningsSummaryProvider);
+    _ref.invalidate(earningsReportProvider);
+    _ref.invalidate(payoutsProvider);
+  }
+
+  void scheduleAfterSettlement() {
+    if (_disposed) return;
+    _cancelTimers();
+    invalidateNow();
+    for (final delay in retryDelays) {
+      _timers.add(Timer(delay, invalidateNow));
+    }
+  }
+
+  void dispose() {
+    _disposed = true;
+    _cancelTimers();
+  }
+
+  void _cancelTimers() {
+    for (final timer in _timers) {
+      timer.cancel();
+    }
+    _timers.clear();
+  }
+}
+
+final earningsRefreshCoordinatorProvider = Provider<EarningsRefreshCoordinator>(
+  (ref) {
+    final coordinator = EarningsRefreshCoordinator(
+      ref,
+      retryDelays: ref.watch(earningsSettlementRetryDelaysProvider),
+    );
+    ref.onDispose(coordinator.dispose);
+    return coordinator;
+  },
+);
+
 final invalidateEarningsCachesProvider = Provider<void Function()>((ref) {
-  return () {
-    ref.invalidate(todayCardProvider);
-    ref.invalidate(earningsSummaryProvider);
-    ref.invalidate(earningsReportProvider);
-    ref.invalidate(payoutsProvider);
-  };
+  return ref.watch(earningsRefreshCoordinatorProvider).invalidateNow;
+});
+
+final refreshEarningsAfterSettlementProvider = Provider<void Function()>((ref) {
+  return ref.watch(earningsRefreshCoordinatorProvider).scheduleAfterSettlement;
 });
 
 /// The payout CTA must never act on a previous summary while Riverpod is
@@ -128,10 +199,32 @@ bool canRequestPayoutFromSummary({
   required bool summaryHasError,
 }) {
   if (summary == null || summaryRefreshing || summaryHasError) return false;
+  if (!summary.hasValidCashCommissionOwedPesewas ||
+      !summary.hasValidPendingPayoutsPesewas) {
+    return false;
+  }
+  if (summary.hasPrimaryActionContract) {
+    final action = summary.primaryAction;
+    return summary.hasAuthoritativeBalanceBreakdown &&
+        action?.kind == EarningsPrimaryActionKind.requestWithdrawal &&
+        action?.reasonCode ==
+            EarningsPrimaryActionReasonCodes.manualWithdrawalAvailable &&
+        action!.amountPesewas > 0 &&
+        action.amountPesewas == summary.withdrawableBalancePesewas &&
+        summary.minimumWithdrawalPesewas ==
+            EarningsSummary.requiredMinimumWithdrawalPesewas &&
+        action.amountPesewas >=
+            EarningsSummary.requiredMinimumWithdrawalPesewas &&
+        summary.cashCommissionOwedPesewas == 0 &&
+        summary.remainingDebtPesewas == 0 &&
+        summary.pendingPayoutsPesewas == 0;
+  }
+  if (summary.hasBalanceBreakdownContract) return false;
   return summary.payoutCapability.mode ==
           PayoutCapabilityMode.manualAggregate &&
       summary.payoutCapability.canRequest &&
       summary.cashCommissionOwedPesewas == 0 &&
-      summary.availableBalancePesewas > 0 &&
+      summary.availableBalancePesewas >=
+          EarningsSummary.requiredMinimumWithdrawalPesewas &&
       summary.pendingPayoutsPesewas == 0;
 }
