@@ -26,6 +26,9 @@ void main() {
       'LEGAL_DOCUMENT_CHANGED': 'Terms or Privacy Notice changed',
       'LEGAL_DOCUMENTS_UNAVAILABLE':
           'Terms and Privacy Notice are temporarily unavailable',
+      'INVALID_PERSON_NAME': 'Names cannot contain numbers or emojis',
+      'REGISTRATION_RESTART_REQUIRED':
+          'Return to account creation and try again',
     };
 
     for (final entry in expectations.entries) {

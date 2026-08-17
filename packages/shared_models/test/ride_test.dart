@@ -130,6 +130,204 @@ void main() {
     expect(ride.promoApplied, isTrue);
   });
 
+  test('legacy full fare wins over the client-paid amount', () {
+    final ride = Ride.fromJson({
+      'id': 'ride-legacy-two-fares',
+      'status': 'completed',
+      'estimatedFarePesewas': 9000,
+      'finalFarePesewas': 10000,
+      'totalPaidPesewas': 4000,
+    });
+
+    expect(ride.tripFarePesewas, 10000);
+    expect(ride.tripFareDisplay, 'GHS 100');
+    expect(ride.totalPaidPesewas, 4000);
+  });
+
+  test('uses effective settlement commission and fails closed while pending',
+      () {
+    final finalRide = Ride.fromJson({
+      'id': 'ride-relief-final',
+      'status': 'completed',
+      'prePromoFarePesewas': 10000,
+      'commissionPesewas': 2000,
+      'effectiveCommissionPesewas': 600,
+      'providerSettlementBasisPesewas': 10000,
+      'providerEarningsPesewas': 9400,
+      'financialsFinal': true,
+    });
+    final pendingRide = Ride.fromJson({
+      'id': 'ride-relief-pending',
+      'status': 'completed',
+      'commissionPesewas': 2000,
+      'providerEarningsPesewas': 8000,
+      'financialsFinal': false,
+    });
+
+    expect(finalRide.providerCommissionPesewas, 600);
+    expect(finalRide.settledProviderEarningsPesewas, 9400);
+    expect(pendingRide.providerCommissionPesewas, isNull);
+    expect(pendingRide.settledProviderEarningsPesewas, isNull);
+  });
+
+  test('malformed explicit final financial pairs fail closed together', () {
+    for (final financials in <Map<String, dynamic>>[
+      {
+        'commissionPesewas': 2000,
+        'providerEarningsPesewas': 8000,
+      },
+      {
+        'effectiveCommissionPesewas': 2000,
+      },
+      {
+        'effectiveCommissionPesewas': 2000,
+        'providerEarningsPesewas': 8100,
+      },
+      {
+        'effectiveCommissionPesewas': 2000,
+        'providerSettlementBasisPesewas': null,
+        'providerEarningsPesewas': 8000,
+      },
+    ]) {
+      final ride = Ride.fromJson({
+        'id': 'ride-malformed-final',
+        'status': 'completed',
+        'prePromoFarePesewas': 10000,
+        'providerSettlementBasisPesewas': 10000,
+        'financialsFinal': true,
+        ...financials,
+      });
+
+      expect(ride.providerCommissionPesewas, isNull);
+      expect(ride.settledProviderEarningsPesewas, isNull);
+    }
+  });
+
+  test('explicit final settlement money rejects strings and fractions', () {
+    for (final field in <String>[
+      'effectiveCommissionPesewas',
+      'providerSettlementBasisPesewas',
+      'providerEarningsPesewas',
+    ]) {
+      for (final malformed in <Object>['2000', 2000.5]) {
+        final ride = Ride.fromJson({
+          'id': 'ride-strict-final-money',
+          'status': 'completed',
+          'prePromoFarePesewas': 10000,
+          'effectiveCommissionPesewas': 2000,
+          'providerSettlementBasisPesewas': 10000,
+          'providerEarningsPesewas': 8000,
+          'financialsFinal': true,
+          field: malformed,
+        });
+
+        expect(ride.hasConservedProviderFinancials, isFalse);
+        expect(ride.providerCommissionPesewas, isNull);
+        expect(ride.settledProviderEarningsPesewas, isNull);
+        expect(ride.settledProviderSettlementBasisPesewas, isNull);
+      }
+    }
+  });
+
+  test('partial refund conserves against the retained settlement basis', () {
+    final ride = Ride.fromJson({
+      'id': 'ride-partial-refund',
+      'status': 'completed',
+      'prePromoFarePesewas': 10000,
+      'effectiveCommissionPesewas': 1200,
+      'providerSettlementBasisPesewas': 6000,
+      'providerEarningsPesewas': 4800,
+      'financialsFinal': true,
+    });
+
+    expect(ride.hasConservedProviderFinancials, isTrue);
+    expect(ride.providerCommissionPesewas, 1200);
+    expect(ride.settledProviderEarningsPesewas, 4800);
+    expect(ride.settledProviderSettlementBasisPesewas, 6000);
+  });
+
+  test('full refund accepts a conserved zero settlement pair', () {
+    final ride = Ride.fromJson({
+      'id': 'ride-full-refund',
+      'status': 'completed',
+      'prePromoFarePesewas': 10000,
+      'effectiveCommissionPesewas': 0,
+      'providerSettlementBasisPesewas': 0,
+      'providerEarningsPesewas': 0,
+      'financialsFinal': true,
+    });
+
+    expect(ride.hasConservedProviderFinancials, isTrue);
+    expect(ride.providerCommissionPesewas, 0);
+    expect(ride.settledProviderEarningsPesewas, 0);
+    expect(ride.settledProviderSettlementBasisPesewas, 0);
+  });
+
+  test('settlement basis above original fare fails closed', () {
+    final ride = Ride.fromJson({
+      'id': 'ride-invalid-refund-basis',
+      'status': 'completed',
+      'prePromoFarePesewas': 10000,
+      'effectiveCommissionPesewas': 2000,
+      'providerSettlementBasisPesewas': 11000,
+      'providerEarningsPesewas': 9000,
+      'financialsFinal': true,
+    });
+
+    expect(ride.hasConservedProviderFinancials, isFalse);
+    expect(ride.providerCommissionPesewas, isNull);
+    expect(ride.settledProviderEarningsPesewas, isNull);
+    expect(ride.settledProviderSettlementBasisPesewas, isNull);
+  });
+
+  test('legacy policy commission and relieved earnings fail as one pair', () {
+    final ride = Ride.fromJson({
+      'id': 'ride-legacy-relief-mismatch',
+      'status': 'completed',
+      'prePromoFarePesewas': 10000,
+      'commissionPesewas': 2000,
+      'providerEarningsPesewas': 9400,
+    });
+
+    expect(ride.hasConservedProviderFinancials, isFalse);
+    expect(ride.providerCommissionPesewas, isNull);
+    expect(ride.settledProviderEarningsPesewas, isNull);
+  });
+
+  test('present malformed financial finality never enables legacy fallback',
+      () {
+    for (final malformed in <Object?>['true', 1, null]) {
+      final ride = Ride.fromJson({
+        'id': 'ride-malformed-finality',
+        'status': 'completed',
+        'prePromoFarePesewas': 10000,
+        'commissionPesewas': 2000,
+        'providerEarningsPesewas': 8000,
+        'financialsFinal': malformed,
+      });
+
+      expect(ride.hasFinancialsFinalContract, isTrue);
+      expect(ride.providerCommissionPesewas, isNull);
+      expect(ride.settledProviderEarningsPesewas, isNull);
+      expect(ride.settledProviderSettlementBasisPesewas, isNull);
+    }
+  });
+
+  test('absent finality key retains conserved legacy compatibility', () {
+    final ride = Ride.fromJson({
+      'id': 'ride-legacy-conserved',
+      'status': 'completed',
+      'prePromoFarePesewas': 10000,
+      'commissionPesewas': 2000,
+      'providerEarningsPesewas': 8000,
+    });
+
+    expect(ride.hasFinancialsFinalContract, isFalse);
+    expect(ride.providerCommissionPesewas, 2000);
+    expect(ride.settledProviderEarningsPesewas, 8000);
+    expect(ride.settledProviderSettlementBasisPesewas, 10000);
+  });
+
   test('parses the additive incoming-offer fare contract including zero quote',
       () {
     final ride = Ride.fromJson({

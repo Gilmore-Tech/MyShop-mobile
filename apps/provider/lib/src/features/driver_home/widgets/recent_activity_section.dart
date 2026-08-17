@@ -155,7 +155,10 @@ class _ActivityRow extends StatelessWidget {
             ),
           ),
           Text(
-            trip.finalFareDisplay,
+            // Provider activity is valued at the full/pre-promo trip fare.
+            // `finalFareDisplay` can be the rider-paid discounted amount on
+            // historical payloads and made fully subsidised trips look free.
+            trip.tripFareDisplay,
             style: const TextStyle(
               fontFamily: 'Raleway',
               fontSize: 14,

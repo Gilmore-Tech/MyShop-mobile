@@ -10,6 +10,7 @@ import '../../promos/widgets/earnings_promo_callout.dart';
 import '../providers/earnings_providers.dart';
 import '../providers/ratings_provider.dart';
 import '../widgets/commission_card.dart';
+import '../widgets/earnings_balance_breakdown_card.dart';
 import '../widgets/earnings_payout_action.dart';
 import '../widgets/pay_commission_sheet.dart';
 import '../widgets/payouts_list.dart';
@@ -24,8 +25,28 @@ import '../widgets/weekly_performance_card.dart';
 /// Backed by two endpoints in parallel:
 ///   - summary (week)  → top balance card + sparkline + today/week mini stats
 ///   - report  (week)  → commission breakdown card
-class EarningsDashboardScreen extends ConsumerWidget {
+class EarningsDashboardScreen extends ConsumerStatefulWidget {
   const EarningsDashboardScreen({super.key});
+
+  @override
+  ConsumerState<EarningsDashboardScreen> createState() =>
+      _EarningsDashboardScreenState();
+}
+
+class _EarningsDashboardScreenState
+    extends ConsumerState<EarningsDashboardScreen> {
+  @override
+  void initState() {
+    super.initState();
+    ref.read(invalidateEarningsCachesProvider)();
+  }
+
+  @override
+  Widget build(BuildContext context) => const _EarningsDashboardBody();
+}
+
+class _EarningsDashboardBody extends ConsumerWidget {
+  const _EarningsDashboardBody();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -81,7 +102,7 @@ class EarningsDashboardScreen extends ConsumerWidget {
     // state was masking real production failures. Today-card now drives
     // the headline number, so its load state gates the banner alongside
     // the summary's.
-    final loadError = todayCardAsync.hasError && summaryAsync.hasError;
+    final loadError = todayCardAsync.hasError || summaryAsync.hasError;
     final isLoading = (todayCardAsync.isLoading && todayCard == null) &&
         (summaryAsync.isLoading && summary == null);
 
@@ -217,12 +238,20 @@ class EarningsDashboardScreen extends ConsumerWidget {
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-                child: _BalanceCard(
-                  availablePesewas: headlineBalance,
-                  todayPesewas: todayAvailable,
-                  weekPesewas: weeklyAvailable,
-                  isInArrears: isInArrears,
-                ),
+                child: summary?.hasAuthoritativeBalanceBreakdown == true
+                    ? EarningsBalanceBreakdownCard(
+                        summary: summary!,
+                        earnedPesewas: todayAvailable,
+                        earnedLabel: 'Earned today',
+                      )
+                    : summary?.hasBalanceBreakdownContract == true
+                        ? const EarningsBalanceUnavailableCard()
+                        : _BalanceCard(
+                            availablePesewas: headlineBalance,
+                            todayPesewas: todayAvailable,
+                            weekPesewas: weeklyAvailable,
+                            isInArrears: isInArrears,
+                          ),
               ),
               if (pendingPayouts > 0) ...[
                 const SizedBox(height: MyShopSpacing.sm),
@@ -279,6 +308,13 @@ class EarningsDashboardScreen extends ConsumerWidget {
                     context,
                     owedPesewas: commissionOwedPesewas,
                   ),
+                  onWithdraw: (withdrawablePesewas) =>
+                      showWithdrawEarningsSheet(
+                    context,
+                    expectedWithdrawablePesewas: withdrawablePesewas,
+                  ),
+                  onSetupPayoutMethod: () =>
+                      showPayoutMethodSetupSheet(context),
                   onRequestPayout: () => showRequestPayoutSheet(context),
                 ),
               ),

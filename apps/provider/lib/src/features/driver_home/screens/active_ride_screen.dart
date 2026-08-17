@@ -14,6 +14,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/providers/chat_controller_provider.dart';
 import '../../../core/services/directions_service.dart';
 import '../../../core/services/nav_guidance.dart';
+import '../../../core/utils/incoming_ride_fare_copy.dart';
 import '../../../core/widgets/maneuver_banner.dart';
 import '../../../core/widgets/nav_arrow_icon.dart';
 import '../../../core/widgets/route_warning_banner.dart';
@@ -21,6 +22,90 @@ import '../../calls/helpers/start_in_app_call.dart';
 import '../data/external_nav_service.dart';
 import '../providers/driver_location_provider.dart';
 import '../providers/ride_request_provider.dart';
+
+/// Fail-truthful active-ride fare copy shared with incoming-offer semantics.
+/// A legacy promo payload may carry only the client's discounted estimate, so
+/// it must remain labelled as an estimate rather than a provider full fare.
+IncomingRideFareCopy providerActiveRideFareCopy(Ride ride) =>
+    IncomingRideFareCopy.fromSnapshot(
+      IncomingRideFareSnapshot.fromRide(ride),
+      clientPriceLabel: ride.paymentMethod.trim().toLowerCase() == 'cash'
+          ? 'COLLECT FROM CLIENT'
+          : 'CLIENT PRICE',
+    );
+
+/// Active-work fare panel. Current promo cash snapshots show both the full
+/// provider fare and the lower amount the driver must collect from the client.
+/// Legacy/partial snapshots retain the fail-truthful label from
+/// [IncomingRideFareCopy].
+class ProviderActiveRideFarePanel extends StatelessWidget {
+  const ProviderActiveRideFarePanel({
+    super.key,
+    required this.fareCopy,
+  });
+
+  final IncomingRideFareCopy fareCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            fareCopy.primaryLabel,
+            style: const TextStyle(
+              fontFamily: 'Raleway',
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              color: MyShopColors.textSecondary,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            fareCopy.primaryAmount,
+            style: const TextStyle(
+              fontFamily: 'Raleway',
+              fontSize: 26,
+              fontWeight: FontWeight.w900,
+              color: MyShopColors.textPrimary,
+              letterSpacing: -0.5,
+            ),
+          ),
+          for (final line in fareCopy.detailLines) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    line.label,
+                    style: const TextStyle(
+                      fontFamily: 'Raleway',
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: MyShopColors.textSecondary,
+                    ),
+                  ),
+                ),
+                Text(
+                  line.amount,
+                  style: const TextStyle(
+                    fontFamily: 'Raleway',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    color: MyShopColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
 /// Active ride screen — drives the four states from accepting a request all
 /// the way through to ride completion.
@@ -1266,6 +1351,7 @@ class _PassengerPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final fareCopy = providerActiveRideFareCopy(ride);
     return Container(
       decoration: const BoxDecoration(
         color: MyShopColors.surfaceWhite,
@@ -1447,35 +1533,7 @@ class _PassengerPanel extends ConsumerWidget {
                   const Divider(
                       height: 0.5, thickness: 0.5, color: MyShopColors.divider),
                   const SizedBox(height: 10),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 28),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'FARE',
-                          style: TextStyle(
-                            fontFamily: 'Raleway',
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                            color: MyShopColors.textSecondary,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          ride.estimatedFareDisplay,
-                          style: const TextStyle(
-                            fontFamily: 'Raleway',
-                            fontSize: 26,
-                            fontWeight: FontWeight.w900,
-                            color: MyShopColors.textPrimary,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  ProviderActiveRideFarePanel(fareCopy: fareCopy),
                 ],
               ),
             ),

@@ -351,11 +351,7 @@ class ActiveJobNotifier extends StateNotifier<ActiveJobState> {
   /// otherwise miss.
   void _bustEarningsCaches() {
     try {
-      _ref.invalidate(earningsSummaryProvider);
-      _ref.invalidate(earningsReportProvider);
-      _ref.invalidate(todayCardProvider);
-      _ref.invalidate(activeTodayCardProvider);
-      _ref.invalidate(payoutsProvider);
+      _ref.read(refreshEarningsAfterSettlementProvider)();
       // Rating average rolls forward only when both sides have submitted
       // (blind 24h window) — but the count still bumps the moment a new
       // rating lands, and the home-screen Performance Summary surfaces

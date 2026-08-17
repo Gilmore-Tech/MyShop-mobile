@@ -8,6 +8,7 @@ import '../data/ratings_service.dart';
 import '../providers/earnings_providers.dart';
 import '../providers/ratings_provider.dart';
 import '../widgets/commission_card.dart';
+import '../widgets/earnings_balance_breakdown_card.dart';
 import '../widgets/earnings_payout_action.dart';
 import '../widgets/pay_commission_sheet.dart';
 import '../widgets/payouts_list.dart';
@@ -33,6 +34,12 @@ class ArtisanEarningsScreen extends ConsumerStatefulWidget {
 
 class _ArtisanEarningsScreenState extends ConsumerState<ArtisanEarningsScreen> {
   EarningsPeriod _period = EarningsPeriod.week;
+
+  @override
+  void initState() {
+    super.initState();
+    ref.read(invalidateEarningsCachesProvider)();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -155,13 +162,18 @@ class _EarningsContent extends ConsumerWidget {
       children: [
         _PeriodSegmented(value: period, onChanged: onPeriodChanged),
         const SizedBox(height: MyShopSpacing.md),
-        _BalanceCard(
-          available: available,
-          periodNet: periodNet,
-          jobsDone: jobsDone,
-          ratingsAsync: ratingsAsync,
-          isInArrears: isInArrears,
-        ),
+        if (summary.hasAuthoritativeBalanceBreakdown)
+          EarningsBalanceBreakdownCard(summary: summary)
+        else if (summary.hasBalanceBreakdownContract)
+          const EarningsBalanceUnavailableCard()
+        else
+          _BalanceCard(
+            available: available,
+            periodNet: periodNet,
+            jobsDone: jobsDone,
+            ratingsAsync: ratingsAsync,
+            isInArrears: isInArrears,
+          ),
         if (pendingPesewas > 0) ...[
           const SizedBox(height: MyShopSpacing.sm),
           // "Pending settlement" line — money the platform owes and is
@@ -205,6 +217,11 @@ class _EarningsContent extends ConsumerWidget {
             context,
             owedPesewas: commissionOwedPesewas,
           ),
+          onWithdraw: (withdrawablePesewas) => showWithdrawEarningsSheet(
+            context,
+            expectedWithdrawablePesewas: withdrawablePesewas,
+          ),
+          onSetupPayoutMethod: () => showPayoutMethodSetupSheet(context),
           onRequestPayout: () => showRequestPayoutSheet(context),
         ),
         const SizedBox(height: MyShopSpacing.md),

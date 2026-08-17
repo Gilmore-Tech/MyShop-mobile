@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
 import '../../../core/di/providers.dart';
@@ -25,6 +27,29 @@ import '../providers/earnings_providers.dart';
 /// payouts list) are invalidated so the dashboard reflects the new
 /// pending payout within one frame.
 Future<void> showRequestPayoutSheet(BuildContext context) {
+  return _showPayoutSheet(context, mode: _PayoutSheetMode.legacyRequest);
+}
+
+Future<void> showWithdrawEarningsSheet(
+  BuildContext context, {
+  required int expectedWithdrawablePesewas,
+}) {
+  return _showPayoutSheet(
+    context,
+    mode: _PayoutSheetMode.withdraw,
+    expectedWithdrawablePesewas: expectedWithdrawablePesewas,
+  );
+}
+
+Future<void> showPayoutMethodSetupSheet(BuildContext context) {
+  return _showPayoutSheet(context, mode: _PayoutSheetMode.setupOnly);
+}
+
+Future<void> _showPayoutSheet(
+  BuildContext context, {
+  required _PayoutSheetMode mode,
+  int? expectedWithdrawablePesewas,
+}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -32,12 +57,23 @@ Future<void> showRequestPayoutSheet(BuildContext context) {
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
-    builder: (_) => const _RequestPayoutSheet(),
+    builder: (_) => _RequestPayoutSheet(
+      mode: mode,
+      expectedWithdrawablePesewas: expectedWithdrawablePesewas,
+    ),
   );
 }
 
+enum _PayoutSheetMode { legacyRequest, withdraw, setupOnly }
+
 class _RequestPayoutSheet extends ConsumerStatefulWidget {
-  const _RequestPayoutSheet();
+  const _RequestPayoutSheet({
+    required this.mode,
+    this.expectedWithdrawablePesewas,
+  });
+
+  final _PayoutSheetMode mode;
+  final int? expectedWithdrawablePesewas;
 
   @override
   ConsumerState<_RequestPayoutSheet> createState() =>
@@ -53,12 +89,19 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
   final _otpCtl = TextEditingController();
   String? _errorMessage;
   String? _successMessage;
+  String? _successTitle;
   String? _idempotencyKey;
+  ProviderWithdrawalStatus? _withdrawalStatus;
+  bool _withdrawalCanRetry = false;
 
   @override
   void initState() {
     super.initState();
-    _step = _hasBoundPayoutMethod() ? _Step.confirm : _Step.bindEnter;
+    if (widget.mode == _PayoutSheetMode.setupOnly) {
+      _step = _Step.bindEnter;
+    } else {
+      _step = _hasBoundPayoutMethod() ? _Step.confirm : _Step.bindEnter;
+    }
   }
 
   @override
@@ -124,6 +167,7 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
     }
     setState(() {
       _errorMessage = null;
+      _withdrawalCanRetry = false;
       _step = _Step.working;
     });
     try {
@@ -164,6 +208,18 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
       // Refresh the user so the dashboard reads the newly-bound payoutMethod.
       await ref.read(authControllerProvider.notifier).refreshProfile();
       if (!mounted) return;
+      if (widget.mode == _PayoutSheetMode.setupOnly ||
+          widget.mode == _PayoutSheetMode.withdraw) {
+        ref.read(invalidateEarningsCachesProvider)();
+        setState(() {
+          _successTitle = 'Payout method verified';
+          _successMessage = widget.mode == _PayoutSheetMode.withdraw
+              ? 'Your balance is being refreshed. Close this sheet, then use WITHDRAW when it is available.'
+              : 'Your verified payout destination is ready.';
+          _step = _Step.done;
+        });
+        return;
+      }
       await _firePayoutRequest();
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -185,17 +241,51 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
       _errorMessage = null;
       _step = _Step.working;
     });
-    final user = ref.read(currentUserProvider);
-    final role = ref.read(providerTypeProvider);
-    final method = (role.isDriver
-            ? user?.driverProfile?.payoutMethod
-            : user?.artisanProfile?.payoutMethod) ??
-        _selectedMethod;
     // Per-attempt idempotency key — replayed if the user backs out and
     // taps Confirm again on the same session, so we never double-disburse.
     _idempotencyKey ??=
-        'payout-${DateTime.now().millisecondsSinceEpoch}-${Random().nextInt(1 << 30)}';
+        '${widget.mode == _PayoutSheetMode.withdraw ? 'withdraw' : 'payout'}-'
+        '${DateTime.now().millisecondsSinceEpoch}-'
+        '${Random().nextInt(1 << 30)}';
     try {
+      if (widget.mode == _PayoutSheetMode.withdraw) {
+        final expected = widget.expectedWithdrawablePesewas;
+        if (expected == null ||
+            expected < EarningsSummary.requiredMinimumWithdrawalPesewas) {
+          throw const ApiException(
+            message: 'Withdrawal amount authority is unavailable.',
+            errorCode: 'WITHDRAWAL_AUTHORITY_UNAVAILABLE',
+          );
+        }
+        final result =
+            await ref.read(paymentServiceProvider).withdrawProviderEarnings(
+                  expectedWithdrawablePesewas: expected,
+                  idempotencyKey: _idempotencyKey!,
+                );
+        _withdrawalStatus = result;
+        ref.read(refreshEarningsAfterSettlementProvider)();
+        if (!mounted) return;
+        setState(() {
+          _successTitle = result.isTerminal
+              ? _withdrawalStatusTitle(result.status)
+              : 'Withdrawal request accepted';
+          _successMessage = result.isTerminal
+              ? _withdrawalStatusMessage(result)
+              : _withdrawalAcceptedMessage(result);
+          _step = _Step.done;
+        });
+        if (!result.isTerminal) {
+          unawaited(_pollWithdrawalStatus(result.withdrawalId));
+        }
+        return;
+      }
+
+      final user = ref.read(currentUserProvider);
+      final role = ref.read(providerTypeProvider);
+      final method = (role.isDriver
+              ? user?.driverProfile?.payoutMethod
+              : user?.artisanProfile?.payoutMethod) ??
+          _selectedMethod;
       final result = await ref.read(paymentServiceProvider).requestPayout(
             method: method,
             idempotencyKey: _idempotencyKey,
@@ -206,28 +296,137 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
           errorCode: 'PAYOUT_NOT_CONFIRMED',
         );
       }
-      ref.invalidate(todayCardProvider);
-      ref.invalidate(earningsSummaryProvider);
-      ref.invalidate(payoutsProvider);
+      ref.read(refreshEarningsAfterSettlementProvider)();
       if (!mounted) return;
       setState(() {
+        _successTitle = 'Payout queued';
         _successMessage = 'Payout queued. Funds usually arrive in 2–5 minutes.';
         _step = _Step.done;
       });
     } on ApiException catch (e) {
       if (!mounted) return;
+      final canRetryWithdrawal = widget.mode == _PayoutSheetMode.withdraw &&
+          (e.isNetworkError ||
+              e.isServerError ||
+              (e.statusCode != null && e.statusCode! >= 500));
+      if (widget.mode == _PayoutSheetMode.withdraw && !canRetryWithdrawal) {
+        ref.read(invalidateEarningsCachesProvider)();
+      }
       setState(() {
         _errorMessage = _payoutRequestError(e);
+        _withdrawalCanRetry = canRetryWithdrawal;
+        _step = _Step.error;
+      });
+    } on FormatException {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = widget.mode == _PayoutSheetMode.withdraw
+            ? 'The request may have been accepted, but its status could not be confirmed. Retry safely with the same protected request.'
+            : 'The payout response could not be confirmed. Refresh payout history before retrying.';
+        _withdrawalCanRetry = widget.mode == _PayoutSheetMode.withdraw;
         _step = _Step.error;
       });
     } catch (_) {
       if (!mounted) return;
+      if (widget.mode == _PayoutSheetMode.withdraw) {
+        ref.read(invalidateEarningsCachesProvider)();
+      }
       setState(() {
-        _errorMessage = 'Could not request payout. Try again in a moment.';
+        _errorMessage = widget.mode == _PayoutSheetMode.withdraw
+            ? 'Could not safely classify the withdrawal result. Close this sheet and refresh earnings before taking another action.'
+            : 'Could not request payout. Try again in a moment.';
+        _withdrawalCanRetry = false;
         _step = _Step.error;
       });
     }
   }
+
+  Future<void> _pollWithdrawalStatus(String withdrawalId) async {
+    const delays = <Duration>[
+      Duration(seconds: 2),
+      Duration(seconds: 4),
+      Duration(seconds: 8),
+    ];
+    for (final delay in delays) {
+      await Future<void>.delayed(delay);
+      if (!mounted || _withdrawalStatus?.isTerminal == true) return;
+      try {
+        final status = await ref
+            .read(paymentServiceProvider)
+            .getProviderWithdrawalStatus(withdrawalId);
+        if (!mounted || status.withdrawalId != withdrawalId) return;
+        ref.read(invalidateEarningsCachesProvider)();
+        setState(() {
+          _withdrawalStatus = status;
+          _successTitle = _withdrawalStatusTitle(status.status);
+          _successMessage = _withdrawalStatusMessage(status);
+        });
+        if (status.isTerminal) return;
+      } catch (_) {
+        // Keep the accepted 202 state visible. The provider can close the
+        // sheet and the earnings-updated event/resume refresh remains the
+        // authoritative recovery path.
+      }
+    }
+  }
+
+  String _withdrawalAcceptedMessage(ProviderWithdrawalStatus status) {
+    final queued = _formatMoney(status.transferQueuedPesewas);
+    final deductions = _formatMoney(status.deductionsAppliedPesewas);
+    return 'MyShop accepted this request. GH₵ $queued is queued for transfer. '
+        'Your balance reflects GH₵ $deductions in applied deductions. '
+        'This does not mean the transfer has been paid yet.';
+  }
+
+  String _withdrawalStatusTitle(ProviderWithdrawalGroupStatus status) {
+    return switch (status) {
+      ProviderWithdrawalGroupStatus.completed => 'Withdrawal completed',
+      ProviderWithdrawalGroupStatus.partialSuccess =>
+        'Withdrawal partly completed',
+      ProviderWithdrawalGroupStatus.needsReview => 'Withdrawal needs review',
+      ProviderWithdrawalGroupStatus.queued ||
+      ProviderWithdrawalGroupStatus.processing =>
+        'Withdrawal in progress',
+      ProviderWithdrawalGroupStatus.unknown => 'Withdrawal status unavailable',
+    };
+  }
+
+  String _withdrawalStatusMessage(ProviderWithdrawalStatus status) {
+    final queued = _formatMoney(status.transferQueuedPesewas);
+    final debt = _formatMoney(status.remainingDebtPesewas);
+    return switch (status.status) {
+      ProviderWithdrawalGroupStatus.completed =>
+        'The withdrawal group completed. Transfer total: GH₵ $queued. Remaining debt: GH₵ $debt.',
+      ProviderWithdrawalGroupStatus.partialSuccess =>
+        'Some exact payouts completed and others did not. Do not submit another withdrawal; review your payout history.',
+      ProviderWithdrawalGroupStatus.needsReview =>
+        _withdrawalReviewMessage(status.reviewReason),
+      ProviderWithdrawalGroupStatus.queued ||
+      ProviderWithdrawalGroupStatus.processing =>
+        'The request is still being processed. GH₵ $queued is assigned to the transfer group.',
+      ProviderWithdrawalGroupStatus.unknown =>
+        'The server returned a status this app does not recognise. Refresh earnings before taking another action.',
+    };
+  }
+
+  String _withdrawalReviewMessage(ProviderWithdrawalReviewReason reason) {
+    return switch (reason) {
+      ProviderWithdrawalReviewReason.payoutDestinationReview =>
+        'This withdrawal is held because the verified MoMo destination changed or needs review. Check your payout method or contact support.',
+      ProviderWithdrawalReviewReason.transferFailed =>
+        'The transfer did not complete. Your withdrawal remains held while MyShop verifies a safe retry.',
+      ProviderWithdrawalReviewReason.transferReversed =>
+        'The transfer was reversed. The amount remains under review and must not be requested again.',
+      ProviderWithdrawalReviewReason.withdrawalRecordsReview =>
+        'The withdrawal records need reconciliation. The amount remains held while MyShop reviews them.',
+      ProviderWithdrawalReviewReason.withdrawalRequiresReview ||
+      ProviderWithdrawalReviewReason.none ||
+      ProviderWithdrawalReviewReason.unknown =>
+        'MyShop is reviewing this withdrawal. The amount remains held; do not submit another request.',
+    };
+  }
+
+  String _formatMoney(int pesewas) => (pesewas / 100).toStringAsFixed(2);
 
   String _payoutMethodOtpError(
     ApiException error, {
@@ -259,9 +458,19 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
 
   String _payoutRequestError(ApiException error) {
     return switch (error.errorCode) {
+      'WITHDRAWABLE_BALANCE_CHANGED' ||
+      'STALE_WITHDRAWABLE_BALANCE' =>
+        'Your withdrawable balance changed. Close this sheet and refresh earnings before trying again.',
+      'WITHDRAWAL_IN_PROGRESS' =>
+        'A withdrawal is already in progress. Check payout history before trying again.',
+      'WITHDRAWAL_AUTHORITY_UNAVAILABLE' =>
+        'This balance is not authorised for withdrawal. Refresh earnings.',
+      'RECONCILIATION_REQUIRED' =>
+        'This balance needs review before another withdrawal.',
       'AGGREGATE_PAYOUTS_DISABLED' =>
         'Payout requests are temporarily unavailable. Your earnings remain safe.',
       'PAYOUT_DESTINATION_UNVERIFIED' ||
+      'PAYOUT_DESTINATION_REQUIRED' ||
       'NO_PAYOUT_METHOD' =>
         'Verify and lock a MoMo payout destination before requesting payout.',
       'PAYOUT_METHOD_MISMATCH' =>
@@ -331,15 +540,19 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
   List<Widget> _confirmStep() {
     final masked = _boundAccountMasked() ?? '—';
     final method = _boundMethodLabel();
+    final isWithdrawal = widget.mode == _PayoutSheetMode.withdraw;
+    final expected = widget.expectedWithdrawablePesewas;
     return [
-      const Text('Request Payout',
-          style: TextStyle(
+      Text(isWithdrawal ? 'Withdraw earnings' : 'Request Payout',
+          style: const TextStyle(
               fontFamily: 'Raleway',
               fontSize: 18,
               fontWeight: FontWeight.w800)),
       const SizedBox(height: 8),
       Text(
-        'We\'ll send your available balance to your registered MoMo account.',
+        isWithdrawal
+            ? 'Request GH₵ ${_formatMoney(expected ?? 0)} from your current server-confirmed withdrawable balance. MyShop will recheck it before accepting.'
+            : 'We\'ll send your available balance to your registered MoMo account.',
         style: MyShopTypography.body2,
       ),
       const SizedBox(height: 20),
@@ -373,7 +586,7 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
       ],
       const SizedBox(height: 20),
       MyShopPrimaryButton(
-        label: 'CONFIRM PAYOUT',
+        label: isWithdrawal ? 'CONFIRM WITHDRAWAL' : 'CONFIRM PAYOUT',
         onPressed: _firePayoutRequest,
       ),
       const SizedBox(height: 8),
@@ -468,7 +681,9 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
       ],
       const SizedBox(height: 20),
       MyShopPrimaryButton(
-        label: 'VERIFY & REQUEST PAYOUT',
+        label: widget.mode == _PayoutSheetMode.legacyRequest
+            ? 'VERIFY & REQUEST PAYOUT'
+            : 'VERIFY PAYOUT METHOD',
         onPressed: _onVerifyOtp,
       ),
       const SizedBox(height: 8),
@@ -499,12 +714,21 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
   }
 
   List<Widget> _doneStep() {
+    final status = _withdrawalStatus?.status;
+    final needsAttention =
+        status == ProviderWithdrawalGroupStatus.needsReview ||
+            status == ProviderWithdrawalGroupStatus.partialSuccess ||
+            status == ProviderWithdrawalGroupStatus.unknown;
     return [
-      const Icon(Icons.check_circle, size: 56, color: MyShopColors.success),
+      Icon(
+        needsAttention ? Icons.info_outline : Icons.check_circle,
+        size: 56,
+        color: needsAttention ? MyShopColors.primaryGold : MyShopColors.success,
+      ),
       const SizedBox(height: 12),
-      const Text('Payout queued',
+      Text(_successTitle ?? 'Request accepted',
           textAlign: TextAlign.center,
-          style: TextStyle(
+          style: const TextStyle(
               fontFamily: 'Raleway',
               fontSize: 18,
               fontWeight: FontWeight.w800)),
@@ -520,12 +744,17 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
   }
 
   List<Widget> _errorStep() {
+    final closeOnly =
+        widget.mode == _PayoutSheetMode.withdraw && !_withdrawalCanRetry;
     return [
       const Icon(Icons.error_outline, size: 56, color: MyShopColors.error),
       const SizedBox(height: 12),
-      const Text('Payout failed',
+      Text(
+          widget.mode == _PayoutSheetMode.withdraw
+              ? 'Withdrawal not confirmed'
+              : 'Payout failed',
           textAlign: TextAlign.center,
-          style: TextStyle(
+          style: const TextStyle(
               fontFamily: 'Raleway',
               fontSize: 18,
               fontWeight: FontWeight.w800)),
@@ -534,21 +763,23 @@ class _RequestPayoutSheetState extends ConsumerState<_RequestPayoutSheet> {
           textAlign: TextAlign.center, style: MyShopTypography.body2),
       const SizedBox(height: 20),
       MyShopPrimaryButton(
-        label: 'TRY AGAIN',
-        onPressed: () {
-          setState(() {
-            // Fresh idempotency key for the retry — the previous attempt
-            // is locked to its own key for 24h.
-            _idempotencyKey = null;
-          });
-          _firePayoutRequest();
-        },
+        label: closeOnly ? 'CLOSE' : 'TRY AGAIN',
+        onPressed: closeOnly
+            ? () => Navigator.of(context).pop()
+            : () {
+                // Reuse the same idempotency key. A timeout can happen after
+                // the backend accepts the group; changing keys here could
+                // double-send.
+                _firePayoutRequest();
+              },
       ),
-      const SizedBox(height: 8),
-      TextButton(
-        onPressed: () => Navigator.of(context).pop(),
-        child: const Text('Close'),
-      ),
+      if (!closeOnly) ...[
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
     ];
   }
 }

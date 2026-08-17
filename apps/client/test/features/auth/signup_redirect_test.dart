@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:shared_models/shared_models.dart';
+import 'package:shared_ui/shared_ui.dart';
 import 'package:myshop_client/src/features/auth/data/auth_repository.dart';
 import 'package:myshop_client/src/core/deep_links/referral_deep_link.dart';
 import 'package:myshop_client/src/features/auth/providers/auth_controller.dart';
@@ -55,7 +56,9 @@ class _RedirectAuthController extends ClientAuthController {
   }
 
   String? registeredPhone;
+  String? registeredFullName;
   String? registeredReferralCode;
+  int registrationCallCount = 0;
   final String? registrationReferralErrorCode;
   final List<String?> submittedReferralCodes = [];
 
@@ -70,7 +73,9 @@ class _RedirectAuthController extends ClientAuthController {
     String? email,
     String? referralCode,
   }) async {
+    registrationCallCount += 1;
     registeredPhone = phone;
+    registeredFullName = fullName;
     registeredReferralCode = referralCode;
     submittedReferralCodes.add(referralCode);
     if (registrationReferralErrorCode != null && referralCode != null) {
@@ -159,6 +164,67 @@ void main() {
 
       expect(controller.registeredPhone, '+233241234567');
       expect(controller.registeredReferralCode, 'MYSHOP-ABC123');
+    },
+  );
+
+  testWidgets(
+    'invalid personal names show inline guidance and never register',
+    (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final controller = _RedirectAuthController('+233241234567');
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            clientAuthControllerProvider.overrideWith((_) => controller),
+            pendingReferralCodeProvider.overrideWith((_) => null),
+            clientRegistrationLegalDocumentsProvider.overrideWith(
+              (_) async => _requiredClientLegalDocuments,
+            ),
+          ],
+          child: const MaterialApp(home: SignUpScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).first, 'Ama123');
+      await tester.tap(find.byType(Checkbox).at(0));
+      await tester.tap(find.byType(Checkbox).at(1));
+      await tester.pump();
+
+      expect(find.text(Validators.invalidFullNameMessage), findsOneWidget);
+      var button = tester.widget<ElevatedButton>(
+        find.widgetWithText(ElevatedButton, 'Create Account'),
+      );
+      expect(button.onPressed, isNull);
+      await tester.tap(find.text('Create Account'));
+      await tester.pump();
+      expect(controller.registrationCallCount, 0);
+
+      await tester.enterText(find.byType(TextField).first, 'Ama😀');
+      await tester.pump();
+      expect(find.text(Validators.invalidFullNameMessage), findsOneWidget);
+      expect(controller.registrationCallCount, 0);
+
+      await tester.enterText(find.byType(TextField).first, 'Am\uFE0F');
+      await tester.pump();
+      expect(find.text(Validators.invalidFullNameMessage), findsOneWidget);
+      expect(controller.registrationCallCount, 0);
+
+      await tester.enterText(find.byType(TextField).first, 'Ɛsi Ɔfori');
+      await tester.pump();
+      expect(find.text(Validators.invalidFullNameMessage), findsNothing);
+      button = tester.widget<ElevatedButton>(
+        find.widgetWithText(ElevatedButton, 'Create Account'),
+      );
+      expect(button.onPressed, isNotNull);
+      await tester.tap(find.text('Create Account'));
+      await tester.pump();
+      expect(controller.registrationCallCount, 1);
+      expect(controller.registeredFullName, 'Ɛsi Ɔfori');
     },
   );
 

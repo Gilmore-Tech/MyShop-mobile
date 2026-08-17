@@ -29,6 +29,29 @@ const _legalAcceptances = <LegalAcceptanceSelection>[
   ),
 ];
 
+DriverRegistrationDraft _completeDriverDraft(String fullName) =>
+    DriverRegistrationDraft(
+      fullName: fullName,
+      email: 'driver@example.com',
+      ghanaCardNumber: 'GHA-123456789-0',
+      vehicleMake: 'Toyota',
+      vehicleModel: 'Corolla',
+      vehicleYear: '2020',
+      vehiclePlate: 'GR 1234-20',
+      vehicleColor: 'Black',
+      rideCategories: const ['regular'],
+    );
+
+ArtisanRegistrationDraft _completeArtisanDraft(String fullName) =>
+    ArtisanRegistrationDraft(
+      fullName: fullName,
+      email: 'artisan@example.com',
+      ghanaCardNumber: 'GHA-123456789-0',
+      businessName: 'Plumbing Services',
+      tradeCategory: 'Plumber',
+      serviceCategories: const ['11111111-1111-4111-8111-111111111111'],
+    );
+
 void main() {
   setUpAll(() {
     registerFallbackValue(
@@ -62,6 +85,47 @@ void main() {
     expect(validateOptionalReferralCode(''), isNull);
   });
 
+  test('personal-name validation guards both provider registration drafts', () {
+    for (final invalidName in const [
+      'Driver123',
+      'Artisan😀',
+      'Am\uFE0E',
+      'Am\uFE0F',
+    ]) {
+      expect(
+        firstDriverRegistrationIssue(_completeDriverDraft(invalidName))?.step,
+        0,
+        reason: invalidName,
+      );
+      expect(
+        firstArtisanRegistrationIssue(_completeArtisanDraft(invalidName))?.step,
+        0,
+        reason: invalidName,
+      );
+    }
+
+    for (final validName in const [
+      'Ɛsi Ɔfori',
+      'Élodie',
+      'E\u0301lodie',
+      'O’Connor',
+      'NʼDour',
+      'Osei-Tutu',
+      '李小龙',
+    ]) {
+      expect(
+        firstDriverRegistrationIssue(_completeDriverDraft(validName)),
+        isNull,
+        reason: validName,
+      );
+      expect(
+        firstArtisanRegistrationIssue(_completeArtisanDraft(validName)),
+        isNull,
+        reason: validName,
+      );
+    }
+  });
+
   test('backend failures identify the section to correct', () {
     expect(
       registrationCorrectionForErrorCode(
@@ -90,6 +154,20 @@ void main() {
         ProviderType.artisan,
       )?.step,
       1,
+    );
+    expect(
+      registrationCorrectionForErrorCode(
+        AuthErrorCodes.invalidPersonName,
+        ProviderType.driver,
+      )?.step,
+      0,
+    );
+    expect(
+      registrationCorrectionForErrorCode(
+        'REGISTRATION_RESTART_REQUIRED',
+        ProviderType.artisan,
+      )?.step,
+      0,
     );
   });
 

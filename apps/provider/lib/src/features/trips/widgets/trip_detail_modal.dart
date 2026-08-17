@@ -179,10 +179,13 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
 
                                   // ── 2. Trip ID + Status badge ──
                                   Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
                                     children: [
-                                      _TripIdTag(tripId: widget.trip.tripId),
+                                      Expanded(
+                                        child: _TripIdTag(
+                                          tripId: widget.trip.tripId,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
                                       _StatusBadge(status: widget.trip.status),
                                     ],
                                   ),
@@ -202,25 +205,34 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
                                   const SizedBox(height: MyShopSpacing.sm),
 
                                   // ── 4. Date + Time ──
-                                  Row(
+                                  Wrap(
+                                    spacing: 12,
+                                    runSpacing: 4,
                                     children: [
-                                      const Icon(Icons.calendar_today,
-                                          size: 12,
-                                          color: MyShopColors.textSecondary),
-                                      const SizedBox(width: 8),
-                                      Text(widget.trip.date, style: _metaStyle),
-                                      const SizedBox(width: 12),
-                                      const Text('•',
-                                          style: TextStyle(
-                                              color: MyShopColors.textSecondary,
-                                              fontSize: 12)),
-                                      const SizedBox(width: 12),
-                                      const Icon(Icons.access_time,
-                                          size: 12,
-                                          color: MyShopColors.textSecondary),
-                                      const SizedBox(width: 8),
-                                      Text(widget.trip.timeRange,
-                                          style: _metaStyle),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.calendar_today,
+                                              size: 12,
+                                              color:
+                                                  MyShopColors.textSecondary),
+                                          const SizedBox(width: 8),
+                                          Text(widget.trip.date,
+                                              style: _metaStyle),
+                                        ],
+                                      ),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.access_time,
+                                              size: 12,
+                                              color:
+                                                  MyShopColors.textSecondary),
+                                          const SizedBox(width: 8),
+                                          Text(widget.trip.timeRange,
+                                              style: _metaStyle),
+                                        ],
+                                      ),
                                     ],
                                   ),
                                   const SizedBox(height: MyShopSpacing.lg),
@@ -693,6 +705,8 @@ class _TripIdTag extends StatelessWidget {
       child: Center(
         child: Text(
           'TRIP-ID: #$tripId',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             fontFamily: 'Raleway',
             fontSize: 10,
@@ -870,8 +884,8 @@ class _FareBreakdownCard extends StatelessWidget {
 
   /// Snapshot from `GET /rides/:id`. Null while the fetch is in flight
   /// (or if it failed). In that case the per-line values fall back to
-  /// dashes; the headline Total Paid still comes from the list-endpoint
-  /// value carried on [TripDetailData].
+  /// dashes; monetary values fall back to the list-endpoint values carried on
+  /// [TripDetailData] without changing their meaning.
   final _RideSnapshot? snapshot;
 
   String _ghs(int pesewas) {
@@ -881,6 +895,8 @@ class _FareBreakdownCard extends StatelessWidget {
     }
     return 'GHS ${ghs.toStringAsFixed(2)}';
   }
+
+  String _discount(int pesewas) => '- ${_ghs(pesewas)}';
 
   @override
   Widget build(BuildContext context) {
@@ -893,16 +909,56 @@ class _FareBreakdownCard extends StatelessWidget {
     final showBookingFee = hasSnapshot && s.bookingFeePesewas > 0;
     final showSurge = surge > 1.0;
 
-    // Total Paid: prefer the freshly-fetched total when available so a
-    // late dispute adjustment is reflected; otherwise fall back to the
-    // value already on the list row.
-    final totalDisplay =
-        hasSnapshot ? _ghs(s.totalFarePesewas) : trip.totalPaid;
-
-    // Commission is an immutable backend-recorded amount on the history row.
-    // Never recalculate it from today's platform configuration: an admin rate
-    // change must not rewrite the economics of an already completed trip.
-    final commissionDisplay = trip.commission;
+    // Full trip fare and client payment are different provider facts. The
+    // detail fetch may refresh each independently, but totalPaid must never
+    // replace the provider's full/pre-promo fare.
+    final tripFarePesewas =
+        (hasSnapshot ? s.tripFarePesewas : null) ?? trip.tripFarePesewas;
+    final clientPaidPesewas =
+        hasSnapshot ? s.clientPaidPesewas : trip.clientPaidPesewas;
+    final promoDiscountPesewas =
+        hasSnapshot ? s.promoDiscountPesewas : trip.promoDiscountPesewas;
+    final loyaltyDiscountPesewas =
+        hasSnapshot ? s.loyaltyDiscountPesewas : trip.loyaltyDiscountPesewas;
+    final candidateCommissionPesewas = hasSnapshot
+        ? s.providerCommissionPesewas
+        : trip.providerCommissionPesewas;
+    final candidateProviderEarningsPesewas =
+        hasSnapshot ? s.providerEarningsPesewas : trip.providerEarningsPesewas;
+    final providerSettlementBasisPesewas = hasSnapshot
+        ? s.providerSettlementBasisPesewas
+        : trip.providerSettlementBasisPesewas;
+    final financialPairConserves = tripFarePesewas != null &&
+        providerSettlementBasisPesewas != null &&
+        candidateCommissionPesewas != null &&
+        candidateProviderEarningsPesewas != null &&
+        tripFarePesewas >= 0 &&
+        providerSettlementBasisPesewas >= 0 &&
+        providerSettlementBasisPesewas <= tripFarePesewas &&
+        candidateCommissionPesewas >= 0 &&
+        candidateCommissionPesewas <= providerSettlementBasisPesewas &&
+        candidateProviderEarningsPesewas ==
+            providerSettlementBasisPesewas - candidateCommissionPesewas;
+    final commissionPesewas =
+        financialPairConserves ? candidateCommissionPesewas : null;
+    final providerEarningsPesewas =
+        financialPairConserves ? candidateProviderEarningsPesewas : null;
+    final financialsPending = !financialPairConserves;
+    final hasRefundAdjustedSettlement = financialPairConserves &&
+        providerSettlementBasisPesewas != tripFarePesewas;
+    final hasPlatformDiscount =
+        (promoDiscountPesewas ?? 0) > 0 || (loyaltyDiscountPesewas ?? 0) > 0;
+    final commissionIsEffective =
+        hasSnapshot ? s.commissionIsEffective : trip.commissionIsEffective;
+    final tripFareDisplay =
+        tripFarePesewas == null ? trip.subtotal : _ghs(tripFarePesewas);
+    final clientPaidDisplay =
+        clientPaidPesewas == null ? trip.totalPaid : _ghs(clientPaidPesewas);
+    final commissionDisplay =
+        commissionPesewas == null ? 'Pending' : _ghs(commissionPesewas);
+    final earningsDisplay = providerEarningsPesewas == null
+        ? 'Pending'
+        : _ghs(providerEarningsPesewas);
 
     return Container(
       margin: const EdgeInsets.fromLTRB(17, MyShopSpacing.md, 17, 0),
@@ -942,17 +998,23 @@ class _FareBreakdownCard extends StatelessWidget {
                     letterSpacing: -0.35,
                   ),
                 ),
+                const SizedBox(width: 8),
                 // Mirror the short user-facing identifier shown in the
                 // top badge (`TRP-<8 hex>`). The full UUID lives on
                 // `trip.rideId` for API calls only — never displayed.
-                Text(
-                  'ID: #${trip.tripId}',
-                  style: const TextStyle(
-                    fontFamily: 'Raleway',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w400,
-                    color: MyShopColors.primaryGold,
-                    letterSpacing: -0.35,
+                Flexible(
+                  child: Text(
+                    'ID: #${trip.tripId}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.end,
+                    style: const TextStyle(
+                      fontFamily: 'Raleway',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
+                      color: MyShopColors.primaryGold,
+                      letterSpacing: -0.35,
+                    ),
                   ),
                 ),
               ],
@@ -988,21 +1050,25 @@ class _FareBreakdownCard extends StatelessWidget {
                   child: Divider(height: 1, color: MyShopColors.divider),
                 ),
 
-                // Total
+                // Provider full/pre-promo fare. Never substitute the client
+                // payment amount here.
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Total Paid',
-                      style: TextStyle(
-                        fontFamily: 'Raleway',
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: MyShopColors.textPrimary,
+                    const Expanded(
+                      child: Text(
+                        'Trip Fare',
+                        style: TextStyle(
+                          fontFamily: 'Raleway',
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: MyShopColors.textPrimary,
+                        ),
                       ),
                     ),
+                    const SizedBox(width: 8),
                     Text(
-                      totalDisplay,
+                      tripFareDisplay,
                       style: const TextStyle(
                         fontFamily: 'Raleway',
                         fontSize: 20,
@@ -1012,11 +1078,57 @@ class _FareBreakdownCard extends StatelessWidget {
                     ),
                   ],
                 ),
+                if ((promoDiscountPesewas ?? 0) > 0) ...[
+                  const SizedBox(height: 12),
+                  _FareLine(
+                    label: 'Promo (covered by MyShop)',
+                    amount: _discount(promoDiscountPesewas!),
+                  ),
+                ],
+                if ((loyaltyDiscountPesewas ?? 0) > 0) ...[
+                  const SizedBox(height: 12),
+                  _FareLine(
+                    label: 'Loyalty (covered by MyShop)',
+                    amount: _discount(loyaltyDiscountPesewas!),
+                  ),
+                ],
                 const SizedBox(height: 12),
+                _FareLine(
+                  label: trip.paymentMethod.toLowerCase() == 'cash'
+                      ? 'Collect from Client'
+                      : 'Client Paid',
+                  amount: clientPaidDisplay,
+                ),
+                const SizedBox(height: 12),
+                if (hasRefundAdjustedSettlement) ...[
+                  const Divider(height: 1, color: MyShopColors.divider),
+                  const SizedBox(height: 12),
+                  _FareLine(
+                    label: 'Settlement Basis',
+                    amount: _ghs(providerSettlementBasisPesewas),
+                  ),
+                  const SizedBox(height: 4),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Refund-adjusted settlement: commission and earnings '
+                      'use this retained basis; Trip Fare remains the original '
+                      'completed fare.',
+                      style: TextStyle(
+                        fontFamily: 'Raleway',
+                        fontSize: 10,
+                        color: MyShopColors.textSecondary,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
 
-                // Promo badge — rider paid a discounted price, but the
-                // driver's earnings are whole: MyShop covers the discount.
-                if (s?.promoApplied ?? false) ...[
+                // Promo/loyalty badge. Standard provider economics use the
+                // full fare; a refund-adjusted final snapshot uses its
+                // explicit retained settlement basis instead.
+                if (hasPlatformDiscount || (s?.promoApplied ?? false)) ...[
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Container(
@@ -1028,19 +1140,23 @@ class _FareBreakdownCard extends StatelessWidget {
                         color: MyShopColors.primaryGoldLight,
                         borderRadius: BorderRadius.circular(999),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.local_offer_rounded,
                             size: 12,
                             color: MyShopColors.primaryGoldDark,
                           ),
-                          SizedBox(width: 6),
+                          const SizedBox(width: 6),
                           Flexible(
                             child: Text(
-                              "Promo ride — you're paid the full fare",
-                              style: TextStyle(
+                              hasRefundAdjustedSettlement
+                                  ? 'MyShop covers discounts; refund-adjusted '
+                                      'earnings use the retained basis'
+                                  : 'MyShop covers discounts; earnings use '
+                                      'the full fare',
+                              style: const TextStyle(
                                 fontFamily: 'Raleway',
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
@@ -1070,16 +1186,20 @@ class _FareBreakdownCard extends StatelessWidget {
                           const Icon(Icons.info_outline,
                               size: 12, color: MyShopColors.textPrimary),
                           const SizedBox(width: 6),
-                          const Text(
-                            'Platform Commission',
-                            style: TextStyle(
-                              fontFamily: 'Raleway',
-                              fontSize: 12,
-                              fontWeight: FontWeight.w400,
-                              color: MyShopColors.textPrimary,
+                          Expanded(
+                            child: Text(
+                              commissionIsEffective
+                                  ? 'Effective Platform Commission'
+                                  : 'Platform Commission',
+                              style: const TextStyle(
+                                fontFamily: 'Raleway',
+                                fontSize: 12,
+                                fontWeight: FontWeight.w400,
+                                color: MyShopColors.textPrimary,
+                              ),
                             ),
                           ),
-                          const Spacer(),
+                          const SizedBox(width: 8),
                           Text(
                             commissionDisplay,
                             style: const TextStyle(
@@ -1091,12 +1211,45 @@ class _FareBreakdownCard extends StatelessWidget {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(Icons.account_balance_wallet_outlined,
+                              size: 12, color: MyShopColors.textPrimary),
+                          const SizedBox(width: 6),
+                          const Expanded(
+                            child: Text(
+                              'Your Earnings',
+                              style: TextStyle(
+                                fontFamily: 'Raleway',
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: MyShopColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            earningsDisplay,
+                            style: const TextStyle(
+                              fontFamily: 'Raleway',
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: MyShopColors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 4),
-                      const Padding(
-                        padding: EdgeInsets.only(left: 22),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 18),
                         child: Text(
-                          'This commission rate is configured by platform administration and shown for this booking.',
-                          style: TextStyle(
+                          financialsPending
+                              ? 'Final settlement figures are still being recorded.'
+                              : hasRefundAdjustedSettlement
+                                  ? 'These amounts reflect the refund-adjusted settlement basis shown above.'
+                                  : 'These are the backend-recorded settlement amounts for this trip.',
+                          style: const TextStyle(
                             fontFamily: 'Raleway',
                             fontSize: 10,
                             fontWeight: FontWeight.w400,
@@ -1138,8 +1291,8 @@ class _FareBreakdownCard extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                const Text(
-                  'SUCCESS',
+                Text(
+                  trip.status.toUpperCase(),
                   style: TextStyle(
                     fontFamily: 'Raleway',
                     fontSize: 10,
@@ -1285,15 +1438,31 @@ class _RideSnapshot {
     required this.baseFarePesewas,
     required this.distanceFarePesewas,
     required this.bookingFeePesewas,
-    required this.totalFarePesewas,
+    required this.tripFarePesewas,
+    this.clientPaidPesewas,
+    this.promoDiscountPesewas,
+    this.loyaltyDiscountPesewas,
+    this.providerCommissionPesewas,
+    this.providerEarningsPesewas,
+    this.providerSettlementBasisPesewas,
+    this.financialsFinal,
+    this.commissionIsEffective = false,
     required this.surgeMultiplier,
     this.promoApplied = false,
   });
 
   factory _RideSnapshot.fromJson(Map<String, dynamic> json) {
-    int asInt(dynamic v) => v is num ? v.toInt() : 0;
+    num? asNum(dynamic v) {
+      if (v is num) return v;
+      if (v is String) return num.tryParse(v);
+      return null;
+    }
+
+    int asInt(dynamic v) => asNum(v)?.toInt() ?? 0;
+    int? optionalInt(dynamic v) => asNum(v)?.toInt();
     double asDouble(dynamic v, [double fallback = 0]) =>
-        v is num ? v.toDouble() : fallback;
+        asNum(v)?.toDouble() ?? fallback;
+    final ride = Ride.fromJson(json);
     return _RideSnapshot(
       pickupLat: asDouble(json['pickupLat']),
       pickupLng: asDouble(json['pickupLng']),
@@ -1302,10 +1471,27 @@ class _RideSnapshot {
       baseFarePesewas: asInt(json['baseFare']),
       distanceFarePesewas: asInt(json['distanceFare']),
       bookingFeePesewas: asInt(json['bookingFee']),
-      totalFarePesewas: asInt(json['totalPaidPesewas'] ?? json['totalFare']),
+      // Provider full fare comes from the shared Ride contract. In particular,
+      // totalPaid/totalFare never override an explicit pre-promo/final fare.
+      // Only the canonical pre-promo field may replace a full fare already
+      // carried by the list row. Older detail payloads alias totalFare to the
+      // client-paid amount.
+      tripFarePesewas: ride.prePromoFarePesewas,
+      clientPaidPesewas: optionalInt(
+        json['collectFromClientPesewas'] ??
+            json['totalPaidPesewas'] ??
+            json['totalFare'],
+      ),
+      promoDiscountPesewas: ride.promoDiscountPesewas,
+      loyaltyDiscountPesewas: ride.loyaltyDiscountPesewas,
+      providerCommissionPesewas: ride.providerCommissionPesewas,
+      providerEarningsPesewas: ride.settledProviderEarningsPesewas,
+      providerSettlementBasisPesewas:
+          ride.settledProviderSettlementBasisPesewas,
+      financialsFinal: ride.financialsFinal,
+      commissionIsEffective: ride.effectiveCommissionPesewas != null,
       surgeMultiplier: asDouble(json['surgeMultiplier'], 1.0),
-      // Additive field — absent on older backends, so default false.
-      promoApplied: json['promoApplied'] == true,
+      promoApplied: ride.promoApplied,
     );
   }
 
@@ -1316,7 +1502,15 @@ class _RideSnapshot {
   final int baseFarePesewas;
   final int distanceFarePesewas;
   final int bookingFeePesewas;
-  final int totalFarePesewas;
+  final int? tripFarePesewas;
+  final int? clientPaidPesewas;
+  final int? promoDiscountPesewas;
+  final int? loyaltyDiscountPesewas;
+  final int? providerCommissionPesewas;
+  final int? providerEarningsPesewas;
+  final int? providerSettlementBasisPesewas;
+  final bool? financialsFinal;
+  final bool commissionIsEffective;
   final double surgeMultiplier;
 
   /// True when a promo discount was applied to the rider's price. The
@@ -1352,6 +1546,15 @@ class TripDetailData {
     required this.totalPaid,
     required this.commission,
     required this.paymentMethod,
+    this.tripFarePesewas,
+    this.clientPaidPesewas,
+    this.promoDiscountPesewas,
+    this.loyaltyDiscountPesewas,
+    this.providerCommissionPesewas,
+    this.providerEarningsPesewas,
+    this.providerSettlementBasisPesewas,
+    this.financialsFinal,
+    this.commissionIsEffective = false,
   });
 
   final String tripId;
@@ -1376,4 +1579,13 @@ class TripDetailData {
   final String totalPaid;
   final String commission;
   final String paymentMethod;
+  final int? tripFarePesewas;
+  final int? clientPaidPesewas;
+  final int? promoDiscountPesewas;
+  final int? loyaltyDiscountPesewas;
+  final int? providerCommissionPesewas;
+  final int? providerEarningsPesewas;
+  final int? providerSettlementBasisPesewas;
+  final bool? financialsFinal;
+  final bool commissionIsEffective;
 }

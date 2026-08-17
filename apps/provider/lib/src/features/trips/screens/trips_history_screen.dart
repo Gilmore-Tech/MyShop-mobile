@@ -669,8 +669,9 @@ class _TripsSkeleton extends StatelessWidget {
 // TripDetailModal was designed for a rich snapshot (per-line fare breakdown,
 // commission split). The list endpoint only carries the Ride summary, so the
 // breakdown lines fall back to '—'. The modal still surfaces what matters:
-// status, route, distance/duration, and (for completed trips) the Total Paid
-// plus payment method. Cancelled trips render the "No fare collected" notice
+// status, route, distance/duration, full fare, client payment, discounts and
+// any settlement fields carried by the list snapshot. Cancelled trips render
+// the "No fare collected" notice
 // added earlier, so the placeholder breakdown lines never reach the user.
 //
 // When we add a `GET /rides/:id/snapshot` endpoint, swap this for a fetch +
@@ -686,6 +687,7 @@ TripDetailData _rideToTripDetailData(Ride r) {
   final dropAt = r.completedAt ?? r.cancelledAt ?? pickupAt;
 
   String fmtTime(DateTime t) => timeFmt.format(t.toLocal());
+  String fmtPesewas(int pesewas) => 'GHS ${(pesewas / 100).toStringAsFixed(2)}';
 
   final isCompleted = r.status == RideStatus.completed;
   final statusLabel = switch (r.status) {
@@ -698,6 +700,11 @@ TripDetailData _rideToTripDetailData(Ride r) {
   // estimate so completed trips show what really happened.
   final distance = r.actualDistanceKm ?? r.estimatedDistanceKm;
   final duration = r.actualDurationMins ?? r.estimatedDurationMins;
+  final clientPaidPesewas = r.collectFromClientPesewas ?? r.totalPaidPesewas;
+  final providerCommissionPesewas = r.providerCommissionPesewas;
+  final providerEarningsPesewas = r.settledProviderEarningsPesewas;
+  final providerSettlementBasisPesewas =
+      r.settledProviderSettlementBasisPesewas;
 
   return TripDetailData(
     tripId: 'TRP-${r.id.substring(0, 8).toUpperCase()}',
@@ -716,10 +723,8 @@ TripDetailData _rideToTripDetailData(Ride r) {
     distanceKm: distance.toStringAsFixed(1),
     durationMins: duration,
     surgeMultiplier: '${r.surgeMultiplier.toStringAsFixed(1)}x',
-    // Breakdown lines are placeholders — the list-endpoint payload doesn't
-    // carry them. Cancelled trips skip the breakdown card entirely (handled
-    // in the modal), so users only see '—' on completed trips where we have
-    // the Total Paid figure (which IS accurate).
+    // Component lines are placeholders — the detail GET fills them in. Raw
+    // monetary fields below retain their server meaning for truthful fallback.
     baseFare: '—',
     distanceFare: '—',
     timeFare: '—',
@@ -729,9 +734,22 @@ TripDetailData _rideToTripDetailData(Ride r) {
     promoDiscount: r.promoApplied && r.promoDiscountPesewas != null
         ? '- GHS ${((r.promoDiscountPesewas ?? 0) / 100).toStringAsFixed(2)}'
         : '—',
-    totalPaid: isCompleted ? r.tripFareDisplay : 'GHS 0.00',
-    commission: '—',
+    totalPaid: isCompleted && clientPaidPesewas != null
+        ? fmtPesewas(clientPaidPesewas)
+        : '—',
+    commission: providerCommissionPesewas == null
+        ? 'Pending'
+        : fmtPesewas(providerCommissionPesewas),
     paymentMethod: _formatPaymentMethod(r.paymentMethod),
+    tripFarePesewas: isCompleted ? r.tripFarePesewas : null,
+    clientPaidPesewas: isCompleted ? clientPaidPesewas : null,
+    promoDiscountPesewas: r.promoDiscountPesewas,
+    loyaltyDiscountPesewas: r.loyaltyDiscountPesewas,
+    providerCommissionPesewas: providerCommissionPesewas,
+    providerEarningsPesewas: providerEarningsPesewas,
+    providerSettlementBasisPesewas: providerSettlementBasisPesewas,
+    financialsFinal: r.financialsFinal,
+    commissionIsEffective: r.effectiveCommissionPesewas != null,
   );
 }
 

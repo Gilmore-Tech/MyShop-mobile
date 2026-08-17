@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_ui/shared_ui.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../core/di/providers.dart';
 import '../../auth/providers/current_user_provider.dart';
@@ -18,9 +19,11 @@ import '../services/cash_commission_remittance_poller.dart';
 ///   - No OTP-*bind* step for wallet ownership. The provider is charging
 ///     an arbitrary MoMo number (usually their own) — no need to verify
 ///     "they own this wallet" the way a payout target would.
-///   - Amount is editable. They can pay any amount > 0; underpayment
-///     chips away at oldest clawbacks, overpayment lands as a
-///     ProviderCredit that auto-nets the next cash commission.
+///   - Amount is editable between 1 pesewa and the server-authored debt shown
+///     when the sheet opens. The backend rechecks the fresh provider-scoped
+///     balance before creating a charge.
+///   - The initial charge is idempotent. A transport retry reuses the same key
+///     and exact body; editing the intent creates a new key.
 ///   - Charge flow branches on the backend's `chargeStatus`:
 ///     `pay_offline`/`pending` → the MoMo approval prompt goes straight
 ///     to the phone (awaiting screen). `send_otp` → Paystack first sends
@@ -31,6 +34,8 @@ import '../services/cash_commission_remittance_poller.dart';
 Future<void> showPayCommissionSheet(
   BuildContext context, {
   required int owedPesewas,
+  CashCommissionRemittancePoller poller =
+      const CashCommissionRemittancePoller(),
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -39,16 +44,23 @@ Future<void> showPayCommissionSheet(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
-    builder: (_) => _PayCommissionSheet(owedPesewas: owedPesewas),
+    builder: (_) => _PayCommissionSheet(
+      owedPesewas: owedPesewas,
+      poller: poller,
+    ),
   );
 }
 
 class _PayCommissionSheet extends ConsumerStatefulWidget {
-  const _PayCommissionSheet({required this.owedPesewas});
+  const _PayCommissionSheet({
+    required this.owedPesewas,
+    required this.poller,
+  });
 
   /// Outstanding debt at the moment the sheet opens — drives the
   /// pre-filled amount and the headline "You owe…" label.
   final int owedPesewas;
+  final CashCommissionRemittancePoller poller;
 
   @override
   ConsumerState<_PayCommissionSheet> createState() =>
@@ -56,6 +68,45 @@ class _PayCommissionSheet extends ConsumerStatefulWidget {
 }
 
 enum _Step { enter, working, otp, awaiting, completed, failed, error }
+
+enum _StartErrorDisposition { retrySameIntent, editIntent, closeAndRefresh }
+
+/// Frozen backend codes for charge-start conflicts. Keep the mapping
+/// centralized so every money-state conflict fails closed consistently.
+const _staleOwedErrorCodes = <String>{
+  'AMOUNT_EXCEEDS_OWED',
+  'NO_CASH_COMMISSION_OWED',
+};
+const _remitInProgressErrorCodes = <String>{
+  'CASH_COMMISSION_REMIT_IN_PROGRESS',
+};
+const _idempotencyMismatchErrorCodes = <String>{
+  'IDEMPOTENCY_MISMATCH',
+  'IDEMPOTENCY_KEY_REQUIRED',
+};
+
+class _RemittanceIntent {
+  const _RemittanceIntent({
+    required this.amountPesewas,
+    required this.paymentMethod,
+    required this.momoPhone,
+    required this.idempotencyKey,
+  });
+
+  final int amountPesewas;
+  final String paymentMethod;
+  final String momoPhone;
+  final String idempotencyKey;
+
+  bool hasSameBody({
+    required int amountPesewas,
+    required String paymentMethod,
+    required String momoPhone,
+  }) =>
+      this.amountPesewas == amountPesewas &&
+      this.paymentMethod == paymentMethod &&
+      this.momoPhone == momoPhone;
+}
 
 class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
   _Step _step = _Step.enter;
@@ -68,11 +119,13 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
   String? _otpError;
   bool _otpSubmitting = false;
   String? _remitId;
-  int? _surplusPesewas;
   int? _remittedPesewas;
   int? _remainingOwedPesewas;
   String? _gatewayStatus;
   bool _pollTimedOut = false;
+  _RemittanceIntent? _activeIntent;
+  _RemittanceIntent? _retryIntent;
+  bool _closeOnlyError = false;
 
   @override
   void initState() {
@@ -106,22 +159,52 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
       setState(() => _errorMessage = 'Enter an amount greater than 0.');
       return;
     }
+    if (amount > widget.owedPesewas) {
+      setState(() {
+        _errorMessage =
+            'Enter no more than GHS ${_fmtGhs(widget.owedPesewas)}, your '
+            'current outstanding commission.';
+      });
+      return;
+    }
     final phone = _phoneCtl.text.trim();
     if (phone.length < 9) {
       setState(() => _errorMessage = 'Enter your mobile money number.');
       return;
     }
 
+    final existingIntent = _activeIntent;
+    final intent = existingIntent != null &&
+            existingIntent.hasSameBody(
+              amountPesewas: amount,
+              paymentMethod: _selectedMethod,
+              momoPhone: phone,
+            )
+        ? existingIntent
+        : _RemittanceIntent(
+            amountPesewas: amount,
+            paymentMethod: _selectedMethod,
+            momoPhone: phone,
+            idempotencyKey: const Uuid().v4(),
+          );
+    _activeIntent = intent;
+    await _startRemittance(intent);
+  }
+
+  Future<void> _startRemittance(_RemittanceIntent intent) async {
     setState(() {
       _step = _Step.working;
       _errorMessage = null;
+      _retryIntent = null;
+      _closeOnlyError = false;
     });
 
     try {
       final res = await ref.read(paymentServiceProvider).remitCashCommission(
-            amountPesewas: amount,
-            paymentMethod: _selectedMethod,
-            momoPhone: phone,
+            amountPesewas: intent.amountPesewas,
+            paymentMethod: intent.paymentMethod,
+            momoPhone: intent.momoPhone,
+            idempotencyKey: intent.idempotencyKey,
           );
       if (!mounted) return;
       final remitId = res['remitId'];
@@ -144,8 +227,7 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
                     'provider.'
                 : 'Authorise the prompt on '
                     'your phone to complete the payment.');
-        _surplusPesewas = (res['surplusPesewas'] as num?)?.toInt() ?? 0;
-        _remittedPesewas = amount;
+        _remittedPesewas = intent.amountPesewas;
         _pollTimedOut = false;
         _otpError = null;
         _otpCtl.clear();
@@ -153,15 +235,27 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
       if (!needsOtp) unawaited(_monitorRemittance(remitId));
     } on ApiException catch (e) {
       if (!mounted) return;
+      final disposition = _startErrorDisposition(e);
+      if (disposition == _StartErrorDisposition.closeAndRefresh) {
+        _refreshEarnings();
+      }
       setState(() {
         _step = _Step.error;
         _errorMessage = _friendlyError(e);
+        _retryIntent = disposition == _StartErrorDisposition.retrySameIntent
+            ? intent
+            : null;
+        _closeOnlyError = disposition == _StartErrorDisposition.closeAndRefresh;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _step = _Step.error;
-        _errorMessage = "Couldn't start the payment. Please try again.";
+        _errorMessage =
+            "We couldn't confirm whether the payment request reached MyShop. "
+            'Retry safely to reuse the same protected request.';
+        _retryIntent = intent;
+        _closeOnlyError = false;
       });
     }
   }
@@ -224,7 +318,7 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
   }
 
   Future<void> _monitorRemittance(String remitId) async {
-    final result = await const CashCommissionRemittancePoller().waitForTerminal(
+    final result = await widget.poller.waitForTerminal(
       () => ref
           .read(paymentServiceProvider)
           .getCashCommissionRemittanceStatus(remitId),
@@ -232,6 +326,7 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
     if (!mounted) return;
 
     if (result == null) {
+      _refreshEarnings();
       setState(() => _pollTimedOut = true);
       return;
     }
@@ -241,30 +336,81 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
       _gatewayStatus = result.gatewayStatus;
       _remittedPesewas = result.amountPesewas;
       _remainingOwedPesewas = result.owedPesewas;
+      // A terminal authoritative status closes this intent. A subsequent
+      // attempt may safely receive a new idempotency key.
+      _activeIntent = null;
+      _retryIntent = null;
       _step = result.isCompleted ? _Step.completed : _Step.failed;
     });
   }
 
   void _refreshEarnings() {
-    ref.invalidate(todayCardProvider);
-    ref.invalidate(earningsSummaryProvider);
-    ref.invalidate(earningsReportProvider);
+    ref.read(invalidateEarningsCachesProvider)();
   }
 
-  static String _friendlyError(ApiException e) {
-    switch (e.errorCode) {
-      case 'NO_CASH_COMMISSION_OWED':
-        return 'You have no commission owing right now.';
-      case 'INVALID_AMOUNT':
-        return 'Enter an amount greater than 0.';
-      default:
-        return userSafeApiErrorMessage(
-          e,
-          fallback: "Couldn't start the payment. Please try again.",
-          conflictMessage:
-              'The commission balance changed. Refresh it before trying again.',
-        );
+  static _StartErrorDisposition _startErrorDisposition(ApiException error) {
+    final code = error.errorCode;
+    if (_staleOwedErrorCodes.contains(code) ||
+        _remitInProgressErrorCodes.contains(code) ||
+        _idempotencyMismatchErrorCodes.contains(code) ||
+        error.statusCode == 409) {
+      return _StartErrorDisposition.closeAndRefresh;
     }
+    if (error.isNetworkError || error.isServerError) {
+      return _StartErrorDisposition.retrySameIntent;
+    }
+    return _StartErrorDisposition.editIntent;
+  }
+
+  static String _friendlyError(ApiException error) {
+    final code = error.errorCode;
+    if (code == 'NO_CASH_COMMISSION_OWED') {
+      return 'You have no commission owing right now. Close this sheet to '
+          'refresh your balance.';
+    }
+    if (_staleOwedErrorCodes.contains(code)) {
+      return 'Your commission balance changed, so this payment was stopped. '
+          'Close this sheet and refresh before trying again.';
+    }
+    if (_remitInProgressErrorCodes.contains(code)) {
+      return 'A commission payment is already in progress. Do not pay again. '
+          'Close this sheet and wait for your balance to refresh.';
+    }
+    if (_idempotencyMismatchErrorCodes.contains(code)) {
+      return "We couldn't safely match this request to its original payment "
+          'attempt. Do not submit another payment. Close this sheet and '
+          'refresh.';
+    }
+    if (error.statusCode == 409) {
+      return 'A conflicting commission payment state was found. Do not pay '
+          'again. Close this sheet and refresh your balance.';
+    }
+    if (error.isNetworkError || error.isServerError) {
+      return "We couldn't confirm whether the payment request reached MyShop. "
+          'Retry safely to reuse the same protected request.';
+    }
+    if (code == 'INVALID_AMOUNT') {
+      return 'Enter an amount greater than 0.';
+    }
+    return userSafeApiErrorMessage(
+      error,
+      fallback: "Couldn't start the payment. Check the details and try again.",
+      conflictMessage:
+          'The commission balance changed. Close this sheet and refresh.',
+    );
+  }
+
+  void _returnToEntryAfterTerminalFailure() {
+    setState(() {
+      _step = _Step.enter;
+      _gatewayStatus = null;
+      _pollTimedOut = false;
+      _errorMessage = null;
+      _retryIntent = null;
+      // The poller supplied a terminal failed/cancelled state, so a new
+      // submission is a new intent even when its visible fields are unchanged.
+      _activeIntent = null;
+    });
   }
 
   String _fmtGhs(int pesewas) {
@@ -315,8 +461,8 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
         const SizedBox(height: 4),
         Text(
           'You owe MyShop GHS ${_fmtGhs(widget.owedPesewas)} in commission. '
-          'Pay any amount — partial payments chip away at the oldest debt; '
-          'overpayments roll into a credit against your next ride.',
+          'You can pay all or part of this balance. The amount cannot be more '
+          'than the outstanding commission shown here.',
           style: MyShopTypography.body2.copyWith(
             color: MyShopColors.textSecondary,
             height: 1.4,
@@ -610,7 +756,7 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
             ),
             child: const Text(
               'Confirmation is taking longer than expected. Do not pay again. '
-              'We will keep checking safely in the background.',
+              'Close this sheet and refresh Earnings to check the latest status.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: MyShopColors.textPrimary,
@@ -644,7 +790,6 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
   }
 
   Widget _buildCompleted() {
-    final surplus = _surplusPesewas ?? 0;
     final paid = _remittedPesewas ?? 0;
     final remaining = _remainingOwedPesewas ?? 0;
     return Column(
@@ -678,26 +823,6 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
             height: 1.45,
           ),
         ),
-        if (surplus > 0) ...[
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: MyShopColors.primaryGoldLight,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text(
-              'GHS ${_fmtGhs(surplus)} is held as commission credit for '
-              'your next cash booking.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: MyShopColors.textPrimary,
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-              ),
-            ),
-          ),
-        ],
         const SizedBox(height: 18),
         ElevatedButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -761,11 +886,7 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
         ),
         const SizedBox(height: 18),
         ElevatedButton(
-          onPressed: () => setState(() {
-            _step = _Step.enter;
-            _gatewayStatus = null;
-            _pollTimedOut = false;
-          }),
+          onPressed: _returnToEntryAfterTerminalFailure,
           style: ElevatedButton.styleFrom(
             backgroundColor: MyShopColors.primaryGold,
             foregroundColor: MyShopColors.textOnPrimary,
@@ -788,6 +909,7 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
   }
 
   Widget _buildError() {
+    final retryIntent = _retryIntent;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -803,7 +925,14 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
         ),
         const SizedBox(height: 18),
         ElevatedButton(
-          onPressed: () => setState(() => _step = _Step.enter),
+          onPressed: _closeOnlyError
+              ? () => Navigator.of(context).pop()
+              : retryIntent != null
+                  ? () => _startRemittance(retryIntent)
+                  : () => setState(() {
+                        _step = _Step.enter;
+                        _errorMessage = null;
+                      }),
           style: ElevatedButton.styleFrom(
             backgroundColor: MyShopColors.primaryGold,
             foregroundColor: MyShopColors.textOnPrimary,
@@ -812,8 +941,28 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
               borderRadius: BorderRadius.circular(24),
             ),
           ),
-          child: const Text('TRY AGAIN'),
+          child: Text(
+            _closeOnlyError
+                ? 'CLOSE'
+                : retryIntent != null
+                    ? 'RETRY SAFELY'
+                    : 'TRY AGAIN',
+          ),
         ),
+        if (retryIntent != null) ...[
+          const SizedBox(height: 10),
+          OutlinedButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: MyShopColors.textPrimary,
+              minimumSize: const Size(double.infinity, 48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+            ),
+            child: const Text('CLOSE'),
+          ),
+        ],
       ],
     );
   }

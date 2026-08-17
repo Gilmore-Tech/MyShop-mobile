@@ -856,11 +856,7 @@ class ActiveRideNotifier extends StateNotifier<ActiveRideState> {
   /// provider in tests doesn't crash the transition.
   void _bustEarningsCaches() {
     try {
-      _ref.invalidate(todayCardProvider);
-      _ref.invalidate(earningsSummaryProvider);
-      _ref.invalidate(earningsReportProvider);
-      _ref.invalidate(activeTodayCardProvider);
-      _ref.invalidate(payoutsProvider);
+      _ref.read(refreshEarningsAfterSettlementProvider)();
       _ref.invalidate(providerRatingsProvider);
       _ref.invalidate(driverTripsProvider);
     } catch (_) {

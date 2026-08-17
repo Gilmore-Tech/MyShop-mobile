@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myshop_provider/src/core/utils/incoming_ride_fare_copy.dart';
+import 'package:myshop_provider/src/features/driver_home/screens/active_ride_screen.dart';
 import 'package:shared_models/shared_models.dart';
 
 void main() {
@@ -92,6 +93,64 @@ void main() {
     expect(copy.primaryLabel, 'ESTIMATED FARE');
     expect(copy.primaryAmount, 'GHS 6.00');
     expect(copy.detailLines, isEmpty);
+  });
+
+  test('active ride labels a current provider quote as estimated full fare',
+      () {
+    final ride = Ride(
+      id: 'current-active-ride',
+      clientId: 'client',
+      status: RideStatus.inProgress,
+      pickupAddress: 'Pickup',
+      dropoffAddress: 'Dropoff',
+      pickupLat: 0,
+      pickupLng: 0,
+      dropoffLat: 0,
+      dropoffLng: 0,
+      estimatedFarePesewas: 600,
+      prePromoFarePesewas: 1000,
+      clientPayableEstimatePesewas: 600,
+      promoDiscountPesewas: 400,
+      promoApplied: true,
+      estimatedDistanceKm: 1,
+      estimatedDurationMins: 4,
+      paymentMethod: 'cash',
+      createdAt: DateTime.utc(2026),
+    );
+
+    final copy = providerActiveRideFareCopy(ride);
+    expect(copy.primaryLabel, 'EST. FULL FARE');
+    expect(copy.primaryAmount, 'GHS 10.00');
+    expect(copy.detailLines, hasLength(2));
+    expect(copy.detailLines[0].label, 'PROMO / DISCOUNT');
+    expect(copy.detailLines[0].amount, '- GHS 4.00');
+    expect(copy.detailLines[1].label, 'COLLECT FROM CLIENT');
+    expect(copy.detailLines[1].amount, 'GHS 6.00');
+  });
+
+  test('active ride keeps a legacy promo singleton labelled estimated fare',
+      () {
+    final ride = Ride(
+      id: 'legacy-active-ride',
+      clientId: 'client',
+      status: RideStatus.inProgress,
+      pickupAddress: 'Pickup',
+      dropoffAddress: 'Dropoff',
+      pickupLat: 0,
+      pickupLng: 0,
+      dropoffLat: 0,
+      dropoffLng: 0,
+      estimatedFarePesewas: 600,
+      promoApplied: true,
+      estimatedDistanceKm: 1,
+      estimatedDurationMins: 4,
+      paymentMethod: 'cash',
+      createdAt: DateTime.utc(2026),
+    );
+
+    final copy = providerActiveRideFareCopy(ride);
+    expect(copy.primaryLabel, 'ESTIMATED FARE');
+    expect(copy.primaryAmount, 'GHS 6.00');
   });
 
   test(

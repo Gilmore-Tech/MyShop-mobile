@@ -84,6 +84,10 @@ void main() {
       isTrue,
     );
     expect(
+      isEarningsSettlementNotification(NotificationPayload.typeEarningsUpdated),
+      isTrue,
+    );
+    expect(
       isEarningsSettlementNotification(NotificationPayload.typeRideSettled),
       isTrue,
     );
@@ -156,6 +160,49 @@ void main() {
     );
   });
 
+  test(
+    'settlement refresh wave is finite and duplicate waves are replaced',
+    () async {
+      final service = _CountingEarningsService();
+      final container = ProviderContainer(
+        overrides: [
+          earningsServiceProvider.overrideWithValue(service),
+          earningsSettlementRetryDelaysProvider.overrideWithValue(const [
+            Duration(milliseconds: 2),
+            Duration(milliseconds: 4),
+            Duration(milliseconds: 6),
+          ]),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      const key = EarningsSummaryKey(
+        role: EarningsRole.driver,
+        period: EarningsPeriod.week,
+      );
+      final subscription = container.listen(
+        earningsSummaryProvider(key),
+        (_, __) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+      await container.read(earningsSummaryProvider(key).future);
+
+      final coordinator = container.read(earningsRefreshCoordinatorProvider);
+      coordinator.scheduleAfterSettlement();
+      coordinator.scheduleAfterSettlement();
+      expect(coordinator.pendingRetryCount, 3);
+
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(coordinator.pendingRetryCount, 0);
+      expect(
+        service.summaryReads,
+        lessThanOrEqualTo(6),
+        reason: 'duplicate signals must not create two independent retry waves',
+      );
+    },
+  );
+
   test('payout CTA is fenced while an authoritative summary refreshes', () {
     final historicalSummary = _summary();
 
@@ -177,6 +224,25 @@ void main() {
     );
     expect(historicalSummary.todayAvailableBalancePesewas, 1200);
     expect(historicalSummary.weeklyAvailableBalancePesewas, 4800);
+  });
+
+  test('legacy payout authority also enforces the frozen GHS15 minimum', () {
+    expect(
+      canRequestPayoutFromSummary(
+        summary: _summary(availablePesewas: 1499),
+        summaryRefreshing: false,
+        summaryHasError: false,
+      ),
+      isFalse,
+    );
+    expect(
+      canRequestPayoutFromSummary(
+        summary: _summary(availablePesewas: 1500),
+        summaryRefreshing: false,
+        summaryHasError: false,
+      ),
+      isTrue,
+    );
   });
 
   test('pending settlement, debt, errors and zero balance fence payout', () {
@@ -231,6 +297,64 @@ void main() {
       ),
       isFalse,
       reason: 'an older response without capability must fail closed',
+    );
+  });
+
+  test('new withdrawal authority is accepted only when amounts agree', () {
+    EarningsSummary detailed({
+      int actionAmount = 5000,
+      int minimumWithdrawalPesewas = 1500,
+    }) =>
+        EarningsSummary.fromJson({
+          'role': 'driver',
+          'period': 'week',
+          'availableBalancePesewas': 5000,
+          'todayAvailableBalancePesewas': 0,
+          'weeklyAvailableBalancePesewas': 0,
+          'netEarningsPesewas': 0,
+          'tipsEarnedPesewas': 0,
+          'paidOutPesewas': 0,
+          'cashCommissionOwedPesewas': 0,
+          'pendingPayoutsPesewas': 0,
+          'availableBeforeDeductionsPesewas': 6000,
+          'deductionsAppliedPesewas': 1000,
+          'withdrawableBalancePesewas': 5000,
+          'remainingDebtPesewas': 0,
+          'heldBalancePesewas': 0,
+          'minimumWithdrawalPesewas': minimumWithdrawalPesewas,
+          'primaryAction': {
+            'kind': 'request_withdrawal',
+            'amountPesewas': actionAmount,
+            'reasonCode': 'MANUAL_WITHDRAWAL_AVAILABLE',
+          },
+          'series': <dynamic>[],
+          'granularity': 'day',
+        });
+
+    expect(
+      canRequestPayoutFromSummary(
+        summary: detailed(),
+        summaryRefreshing: false,
+        summaryHasError: false,
+      ),
+      isTrue,
+    );
+    expect(
+      canRequestPayoutFromSummary(
+        summary: detailed(actionAmount: 4999),
+        summaryRefreshing: false,
+        summaryHasError: false,
+      ),
+      isFalse,
+    );
+    expect(
+      canRequestPayoutFromSummary(
+        summary: detailed(minimumWithdrawalPesewas: 1400),
+        summaryRefreshing: false,
+        summaryHasError: false,
+      ),
+      isFalse,
+      reason: 'the new contract must use the frozen GHS15 minimum',
     );
   });
 }
