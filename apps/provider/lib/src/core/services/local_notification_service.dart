@@ -136,6 +136,18 @@ class NotificationPayload {
   static const typeProviderDocumentReplacementGraceExpired =
       'provider_document_replacement_grace_expired';
 
+  // Manual verification decisions. These are emitted without the `provider.`
+  // prefix by the review service and must still land on the same corrective
+  // document screen.
+  static const typeVerificationApproved = 'verification_approved';
+  static const typeVerificationRejected = 'verification_rejected';
+  static const typeVerificationDocumentReviewed =
+      'verification_document_reviewed';
+  static const typeVerificationDocumentApproved =
+      'verification_document_approved';
+  static const typeVerificationDocumentRejected =
+      'verification_document_rejected';
+
   /// Per-vehicle ride category decisions. The destination is derived locally;
   /// a remote `route` value is never trusted for these events.
   static const typeRideCategoryApproved = 'ride_category_approved';
@@ -224,7 +236,12 @@ String? providerDocumentLifecycleRoute(String rawType) {
     NotificationPayload.typeProviderDocumentExpiry2h ||
     NotificationPayload.typeProviderDocumentExpired ||
     NotificationPayload.typeProviderDocumentReplacementGraceStarted ||
-    NotificationPayload.typeProviderDocumentReplacementGraceExpired =>
+    NotificationPayload.typeProviderDocumentReplacementGraceExpired ||
+    NotificationPayload.typeVerificationApproved ||
+    NotificationPayload.typeVerificationRejected ||
+    NotificationPayload.typeVerificationDocumentReviewed ||
+    NotificationPayload.typeVerificationDocumentApproved ||
+    NotificationPayload.typeVerificationDocumentRejected =>
       '/account/documents',
     _ => null,
   };

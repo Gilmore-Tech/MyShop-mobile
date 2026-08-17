@@ -263,4 +263,45 @@ void main() {
       contains('Keep exactly one approved trade credential (contact support)'),
     );
   });
+
+  group('effectiveProviderVerificationStatus', () {
+    test('fresh rejected response overrides a stale approved profile', () {
+      expect(
+        effectiveProviderVerificationStatus(
+          verification: const VerificationStatusResponse(
+            driverData: {'verificationStatus': 'rejected'},
+            documents: [],
+          ),
+          providerType: 'driver',
+          profileStatus: 'approved',
+        ),
+        'rejected',
+      );
+    });
+
+    test('fresh suspended response is not presented as pending', () {
+      expect(
+        effectiveProviderVerificationStatus(
+          verification: const VerificationStatusResponse(
+            artisanData: {'verificationStatus': 'suspended'},
+            documents: [],
+          ),
+          providerType: 'artisan',
+          profileStatus: 'pending',
+        ),
+        'suspended',
+      );
+    });
+
+    test('omitted role block retains the legacy profile fallback', () {
+      expect(
+        effectiveProviderVerificationStatus(
+          verification: const VerificationStatusResponse(documents: []),
+          providerType: 'artisan',
+          profileStatus: 'approved',
+        ),
+        'approved',
+      );
+    });
+  });
 }

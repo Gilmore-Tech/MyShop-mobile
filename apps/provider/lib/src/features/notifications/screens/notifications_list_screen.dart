@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_ui/shared_ui.dart';
 
+import '../../../core/services/local_notification_service.dart';
+import '../../auth/providers/auth_controller.dart';
+import '../../profile/providers/verification_provider.dart';
 import '../providers/notifications_provider.dart';
 
 /// Notification inbox — backend-backed list of ride/job/payment/safety/system
@@ -13,6 +18,28 @@ import '../providers/notifications_provider.dart';
 /// EDD § 5.4 — GET /notifications, PATCH /notifications/:id/read.
 class ProviderNotificationsScreen extends ConsumerWidget {
   const ProviderNotificationsScreen({super.key});
+
+  void _openNotification(
+    BuildContext context,
+    WidgetRef ref,
+    Notif notification,
+  ) {
+    ref.read(providerNotifsProvider.notifier).markRead(notification.id);
+
+    // Never navigate to a route supplied by the notification payload. Only
+    // known event types can resolve to a local corrective destination.
+    final route = providerLifecycleNotificationRoute(notification.eventType);
+    if (route == null) return;
+
+    if (route == '/account/documents') {
+      ref.invalidate(verificationStatusProvider);
+      // Refresh the authenticated profile snapshot as well. Navigation should
+      // not wait on this best-effort request; the destination already fetches
+      // the authoritative verification response on entry.
+      unawaited(ref.read(authControllerProvider.notifier).refreshProfile());
+    }
+    context.go(route);
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -74,8 +101,8 @@ class ProviderNotificationsScreen extends ConsumerWidget {
             ? _EmptyState(w: w, h: h)
             : _NotifList(
                 notifs: notifs,
-                onTap: (id) =>
-                    ref.read(providerNotifsProvider.notifier).markRead(id),
+                onTap: (notification) =>
+                    _openNotification(context, ref, notification),
                 w: w,
                 h: h,
               ),
@@ -88,7 +115,7 @@ class ProviderNotificationsScreen extends ConsumerWidget {
 
 class _NotifList extends StatelessWidget {
   final List<Notif> notifs;
-  final void Function(String) onTap;
+  final void Function(Notif) onTap;
   final double w, h;
 
   const _NotifList({
@@ -147,7 +174,7 @@ class _GroupLabel extends StatelessWidget {
 
 class _NotifTile extends StatelessWidget {
   final Notif notif;
-  final void Function(String) onTap;
+  final void Function(Notif) onTap;
   final double w, h;
 
   const _NotifTile({
@@ -162,7 +189,7 @@ class _NotifTile extends StatelessWidget {
     final (iconData, iconColor, iconBg) = _iconFor(notif.type);
 
     return InkWell(
-      onTap: () => onTap(notif.id),
+      onTap: () => onTap(notif),
       child: Container(
         color: notif.isRead ? MyShopColors.offWhite : MyShopColors.surfaceWhite,
         padding:

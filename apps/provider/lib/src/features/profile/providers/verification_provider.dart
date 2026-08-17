@@ -20,6 +20,29 @@ final verificationStatusProvider = FutureProvider<VerificationStatusResponse>((
   return ref.watch(verificationServiceProvider).getVerificationStatus();
 });
 
+/// Resolves the active role's verification state without allowing a stale
+/// `/users/me` snapshot to hide a newer decision from `/verification/status`.
+///
+/// Older backend versions can omit the role block entirely, so the profile is
+/// retained as a compatibility fallback. An explicit pending, rejected, or
+/// suspended status from the verification endpoint always wins.
+String effectiveProviderVerificationStatus({
+  required VerificationStatusResponse? verification,
+  required String providerType,
+  String? profileStatus,
+}) {
+  String? normalized(String? value) {
+    final result = value?.trim().toLowerCase();
+    return result == null || result.isEmpty ? null : result;
+  }
+
+  return normalized(
+        verification?.providerVerificationStatus(providerType),
+      ) ??
+      normalized(profileStatus) ??
+      'pending';
+}
+
 /// Manages document upload state.
 class DocumentUploadNotifier extends StateNotifier<DocumentUploadState> {
   DocumentUploadNotifier(this._service) : super(const DocumentUploadState());

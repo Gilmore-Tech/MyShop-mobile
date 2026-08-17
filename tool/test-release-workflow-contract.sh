@@ -179,38 +179,38 @@ env \
   GITHUB_EVENT_NAME=workflow_dispatch \
   GITHUB_REF=refs/heads/main \
   GITHUB_SHA="$REVIEWED_SOURCE" \
-  bash "$VERIFIER" "$REVIEWED_SOURCE" "$REVIEWED_SOURCE" 38 both "$REPO" >/dev/null
+  bash "$VERIFIER" "$REVIEWED_SOURCE" "$REVIEWED_SOURCE" 39 both "$REPO" >/dev/null
 
 expect_failure "non-dispatch event" env \
   GITHUB_EVENT_NAME=push \
   GITHUB_REF=refs/heads/main \
   GITHUB_SHA="$REVIEWED_SOURCE" \
-  bash "$VERIFIER" "$REVIEWED_SOURCE" "$REVIEWED_SOURCE" 38 both "$REPO"
+  bash "$VERIFIER" "$REVIEWED_SOURCE" "$REVIEWED_SOURCE" 39 both "$REPO"
 expect_failure "non-main ref" env \
   GITHUB_EVENT_NAME=workflow_dispatch \
   GITHUB_REF=refs/heads/staging \
   GITHUB_SHA="$REVIEWED_SOURCE" \
-  bash "$VERIFIER" "$REVIEWED_SOURCE" "$REVIEWED_SOURCE" 38 both "$REPO"
+  bash "$VERIFIER" "$REVIEWED_SOURCE" "$REVIEWED_SOURCE" 39 both "$REPO"
 expect_failure "source different from event SHA" env \
   GITHUB_EVENT_NAME=workflow_dispatch \
   GITHUB_REF=refs/heads/main \
   GITHUB_SHA=0000000000000000000000000000000000000000 \
-  bash "$VERIFIER" "$REVIEWED_SOURCE" "$REVIEWED_SOURCE" 38 both "$REPO"
+  bash "$VERIFIER" "$REVIEWED_SOURCE" "$REVIEWED_SOURCE" 39 both "$REPO"
 expect_failure "operator source mismatch" env \
   GITHUB_EVENT_NAME=workflow_dispatch \
   GITHUB_REF=refs/heads/main \
   GITHUB_SHA="$REVIEWED_SOURCE" \
-  bash "$VERIFIER" "$REVIEWED_SOURCE" 0000000000000000000000000000000000000000 38 both "$REPO"
+  bash "$VERIFIER" "$REVIEWED_SOURCE" 0000000000000000000000000000000000000000 39 both "$REPO"
 expect_failure "invalid app selection" env \
   GITHUB_EVENT_NAME=workflow_dispatch \
   GITHUB_REF=refs/heads/main \
   GITHUB_SHA="$REVIEWED_SOURCE" \
-  bash "$VERIFIER" "$REVIEWED_SOURCE" "$REVIEWED_SOURCE" 38 artisan "$REPO"
+  bash "$VERIFIER" "$REVIEWED_SOURCE" "$REVIEWED_SOURCE" 39 artisan "$REPO"
 expect_failure "occupied build number" env \
   GITHUB_EVENT_NAME=workflow_dispatch \
   GITHUB_REF=refs/heads/main \
   GITHUB_SHA="$REVIEWED_SOURCE" \
-  bash "$VERIFIER" "$REVIEWED_SOURCE" "$REVIEWED_SOURCE" 37 both "$REPO"
+  bash "$VERIFIER" "$REVIEWED_SOURCE" "$REVIEWED_SOURCE" 38 both "$REPO"
 expect_failure "overflow build number" env \
   GITHUB_EVENT_NAME=workflow_dispatch \
   GITHUB_REF=refs/heads/main \

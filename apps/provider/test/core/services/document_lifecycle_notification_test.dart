@@ -39,6 +39,26 @@ void main() {
       ),
       NotificationPayload.typeProviderDocumentReplacementGraceExpired,
     );
+    expect(
+      NotificationPayload.normaliseType('verification.approved'),
+      NotificationPayload.typeVerificationApproved,
+    );
+    expect(
+      NotificationPayload.normaliseType('verification.rejected'),
+      NotificationPayload.typeVerificationRejected,
+    );
+    expect(
+      NotificationPayload.normaliseType('verification.document_reviewed'),
+      NotificationPayload.typeVerificationDocumentReviewed,
+    );
+    expect(
+      NotificationPayload.normaliseType('verification.document_approved'),
+      NotificationPayload.typeVerificationDocumentApproved,
+    );
+    expect(
+      NotificationPayload.normaliseType('verification.document_rejected'),
+      NotificationPayload.typeVerificationDocumentRejected,
+    );
   });
 
   test('only known document lifecycle events route to corrective screen', () {
@@ -51,6 +71,11 @@ void main() {
       'provider.document.expired',
       'provider.document.replacement_grace_started',
       'provider.document.replacement_grace_expired',
+      'verification.approved',
+      'verification.rejected',
+      'verification.document_reviewed',
+      'verification.document_approved',
+      'verification.document_rejected',
     ]) {
       expect(providerDocumentLifecycleRoute(event), '/account/documents');
     }
