@@ -105,12 +105,22 @@ class AccountSettingsScreen extends ConsumerWidget {
     );
     final profilePhoto = ref.watch(providerProfilePhotoDisplayProvider);
 
-    // Derive verification status from the user's profile
+    // Prefer the dedicated verification endpoint so a same-session rejection
+    // or suspension is not hidden by an older authenticated-profile snapshot.
+    // Legacy APIs that omit the role block still fall back to that snapshot.
     final driverProfile = user?.driverProfile;
     final artisanProfile = user?.artisanProfile;
-    final verificationStatus = isDriver
-        ? (driverProfile?.verificationStatus ?? 'pending')
-        : (artisanProfile?.verificationStatus ?? 'pending');
+    final verification = ref.watch(verificationStatusProvider).valueOrNull;
+    final roleValue = isDriver ? 'driver' : 'artisan';
+    final profileVerificationStatus = isDriver
+        ? driverProfile?.verificationStatus
+        : artisanProfile?.verificationStatus;
+    final verificationStatus = effectiveProviderVerificationStatus(
+      verification: verification,
+      providerType: roleValue,
+      profileStatus: profileVerificationStatus,
+    );
+    final verificationReason = verification?.providerRejectionReason(roleValue);
     final isVerified = verificationStatus == 'approved';
 
     // Vehicle info subtitle. Show partial vehicle records too; newly-created
@@ -132,12 +142,16 @@ class AccountSettingsScreen extends ConsumerWidget {
     final verificationLabel = verificationStatus == 'approved'
         ? 'Verification: Approved'
         : 'Verification: ${_capitalize(verificationStatus)}';
-    final verificationColor = verificationStatus == 'approved'
-        ? MyShopColors.success
-        : MyShopColors.warning;
-    final verificationBg = verificationStatus == 'approved'
-        ? MyShopColors.successLight
-        : MyShopColors.warningLight;
+    final verificationColor = switch (verificationStatus) {
+      'approved' => MyShopColors.success,
+      'rejected' || 'suspended' => MyShopColors.error,
+      _ => MyShopColors.warning,
+    };
+    final verificationBg = switch (verificationStatus) {
+      'approved' => MyShopColors.successLight,
+      'rejected' || 'suspended' => MyShopColors.errorLight,
+      _ => MyShopColors.warningLight,
+    };
 
     // Today's earnings for performance card — sourced from the homepage
     // today-card endpoint, scoped to the active role. Uses the
@@ -237,8 +251,10 @@ class AccountSettingsScreen extends ConsumerWidget {
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-                child:
-                    _VerificationBanner(verificationStatus: verificationStatus),
+                child: _VerificationBanner(
+                  verificationStatus: verificationStatus,
+                  rejectionReason: verificationReason,
+                ),
               ),
             if (!isVerified) const SizedBox(height: MyShopSpacing.lg),
 
@@ -471,10 +487,18 @@ class _IdentityCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isVerified = verificationStatus == 'approved';
     final statusLabel = _capitalize(verificationStatus);
-    final statusColor =
-        isVerified ? MyShopColors.success : MyShopColors.warning;
-    final statusIcon =
-        isVerified ? Icons.check_circle_outline : Icons.error_outline;
+    final needsAttention =
+        verificationStatus == 'rejected' || verificationStatus == 'suspended';
+    final statusColor = isVerified
+        ? MyShopColors.success
+        : needsAttention
+            ? MyShopColors.error
+            : MyShopColors.warning;
+    final statusIcon = isVerified
+        ? Icons.check_circle_outline
+        : needsAttention
+            ? Icons.error_outline
+            : Icons.access_time;
 
     final ImageProvider? avatarImage = localPhoto != null
         ? FileImage(localPhoto!)
@@ -556,8 +580,12 @@ class _IdentityCard extends StatelessWidget {
 // ─── Verification banner ────────────────────────────────────────────────────
 
 class _VerificationBanner extends StatelessWidget {
-  const _VerificationBanner({required this.verificationStatus});
+  const _VerificationBanner({
+    required this.verificationStatus,
+    this.rejectionReason,
+  });
   final String verificationStatus;
+  final String? rejectionReason;
 
   @override
   Widget build(BuildContext context) {
@@ -568,7 +596,9 @@ class _VerificationBanner extends StatelessWidget {
         ),
       'rejected' => (
           'Verification Needs Attention',
-          'One or more requirements were not approved. Open Documents & Verification for the exact notice and next step.',
+          rejectionReason == null
+              ? 'One or more requirements were not approved. Open Documents & Verification for the exact notice and next step.'
+              : 'Reason: $rejectionReason\nOpen Documents & Verification to re-upload the requested document.',
         ),
       'suspended' => (
           'Account Suspended',
@@ -580,17 +610,27 @@ class _VerificationBanner extends StatelessWidget {
         ),
     };
 
+    final needsAttention = verificationStatus.toLowerCase() == 'rejected' ||
+        verificationStatus.toLowerCase() == 'suspended';
+    final accent = needsAttention ? MyShopColors.error : MyShopColors.warning;
+    final background =
+        needsAttention ? MyShopColors.errorLight : MyShopColors.warningLight;
+
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.md),
       decoration: BoxDecoration(
-        color: MyShopColors.warningLight,
+        color: background,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: MyShopColors.warning.withValues(alpha: 0.3)),
+        border: Border.all(color: accent.withValues(alpha: 0.3)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.access_time, size: 22, color: MyShopColors.warning),
+          Icon(
+            needsAttention ? Icons.error_outline : Icons.access_time,
+            size: 22,
+            color: accent,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

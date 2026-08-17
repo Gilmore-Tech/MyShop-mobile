@@ -16,6 +16,7 @@ void main() {
     String createdAt = '2026-01-01T00:00:00Z',
     bool? expired,
     bool? providerReplacementAllowed,
+    bool? resubmissionRequired,
   }) {
     return DocumentInfo(
       id: id,
@@ -28,6 +29,7 @@ void main() {
       expiresAt: expiresAt,
       expired: expired,
       providerReplacementAllowed: providerReplacementAllowed,
+      resubmissionRequired: resubmissionRequired,
     );
   }
 
@@ -104,22 +106,26 @@ void main() {
     });
 
     test('is false for a non-approved doc even if the date has passed', () {
-      final rejected =
-          doc(status: 'rejected', expiresAt: '2026-06-01T00:00:00Z');
+      final rejected = doc(
+        status: 'rejected',
+        expiresAt: '2026-06-01T00:00:00Z',
+      );
       expect(rejected.isExpired(now), isFalse);
     });
 
-    test('prefers server expiry authority over a conflicting handset clock',
-        () {
-      expect(
-        doc(expiresAt: '2020-01-01', expired: false).isExpired(now),
-        isFalse,
-      );
-      expect(
-        doc(expiresAt: '2099-01-01', expired: true).isExpired(now),
-        isTrue,
-      );
-    });
+    test(
+      'prefers server expiry authority over a conflicting handset clock',
+      () {
+        expect(
+          doc(expiresAt: '2020-01-01', expired: false).isExpired(now),
+          isFalse,
+        );
+        expect(
+          doc(expiresAt: '2099-01-01', expired: true).isExpired(now),
+          isTrue,
+        );
+      },
+    );
   });
 
   group('DocumentInfo.canProviderReplace', () {
@@ -151,6 +157,20 @@ void main() {
         isFalse,
       );
     });
+
+    test(
+      'opens a backend-designated resubmission regardless of review stage',
+      () {
+        expect(
+          doc(
+            status: 'coordinator_validated',
+            providerReplacementAllowed: false,
+            resubmissionRequired: true,
+          ).canProviderReplace(now),
+          isTrue,
+        );
+      },
+    );
   });
 
   group('DocumentInfo.isExpiringSoon', () {
@@ -197,93 +217,161 @@ void main() {
 
       expect(
         response
-            .documentFor(
-              DocumentType.ghanaCard.value,
-              providerType: 'driver',
-            )
+            .documentFor(DocumentType.ghanaCard.value, providerType: 'driver')
             ?.status,
         'pending_review',
       );
       expect(
         response
-            .documentFor(
-              DocumentType.ghanaCard.value,
-              providerType: 'artisan',
-            )
+            .documentFor(DocumentType.ghanaCard.value, providerType: 'artisan')
             ?.status,
         'approved',
       );
     });
 
-    test('does not let a sibling role satisfy a missing active-role document',
-        () {
-      final response = VerificationStatusResponse(
-        documents: [
-          doc(
-            providerType: 'artisan',
-            documentType: DocumentType.ghanaCard.value,
-          ),
-        ],
-      );
+    test(
+      'does not let a sibling role satisfy a missing active-role document',
+      () {
+        final response = VerificationStatusResponse(
+          documents: [
+            doc(
+              providerType: 'artisan',
+              documentType: DocumentType.ghanaCard.value,
+            ),
+          ],
+        );
 
-      expect(
-        response.documentFor(
-          DocumentType.ghanaCard.value,
-          providerType: 'driver',
-        ),
-        isNull,
-      );
-      expect(response.documentFor(DocumentType.ghanaCard.value), isNotNull);
-    });
+        expect(
+          response.documentFor(
+            DocumentType.ghanaCard.value,
+            providerType: 'driver',
+          ),
+          isNull,
+        );
+        expect(response.documentFor(DocumentType.ghanaCard.value), isNotNull);
+      },
+    );
 
     test('chooses the newest row deterministically within a policy tier', () {
       final response = VerificationStatusResponse(
         documents: [
-          doc(
-            id: 'pending-v1',
-            status: 'pending_review',
-            version: 1,
-          ),
-          doc(
-            id: 'pending-v2',
-            status: 'pending_review',
-            version: 2,
-          ),
+          doc(id: 'pending-v1', status: 'pending_review', version: 1),
+          doc(id: 'pending-v2', status: 'pending_review', version: 2),
         ],
       );
 
       expect(response.documentFor('drivers_licence')?.id, 'pending-v2');
-      expect(
-        response.documentFor('drivers_licence')?.status,
-        'pending_review',
-      );
+      expect(response.documentFor('drivers_licence')?.status, 'pending_review');
     });
 
-    test('falls back to the newest approved legacy row when none is current',
-        () {
-      final response = VerificationStatusResponse(
-        documents: [
-          doc(id: 'v1', isCurrent: false, version: 1),
-          doc(id: 'v2', isCurrent: false, version: 2),
-        ],
-      );
+    test(
+      'falls back to the newest approved legacy row when none is current',
+      () {
+        final response = VerificationStatusResponse(
+          documents: [
+            doc(id: 'v1', isCurrent: false, version: 1),
+            doc(id: 'v2', isCurrent: false, version: 2),
+          ],
+        );
 
-      expect(response.documentFor('drivers_licence')?.id, 'v2');
-    });
+        expect(response.documentFor('drivers_licence')?.id, 'v2');
+      },
+    );
   });
 
   group('VerificationStatusResponse.providerVerificationStatus', () {
-    test('distinguishes an omitted role block from an explicit pending status',
-        () {
-      const omitted = VerificationStatusResponse(documents: []);
-      const pending = VerificationStatusResponse(
-        driverData: {'verificationStatus': 'pending'},
-        documents: [],
-      );
+    test(
+      'distinguishes an omitted role block from an explicit pending status',
+      () {
+        const omitted = VerificationStatusResponse(documents: []);
+        const pending = VerificationStatusResponse(
+          driverData: {'verificationStatus': 'pending'},
+          documents: [],
+        );
 
-      expect(omitted.providerVerificationStatus('driver'), isNull);
-      expect(pending.providerVerificationStatus('driver'), 'pending');
-      expect(pending.isProviderFullyApproved('driver'), isFalse);
+        expect(omitted.providerVerificationStatus('driver'), isNull);
+        expect(pending.providerVerificationStatus('driver'), 'pending');
+        expect(pending.isProviderFullyApproved('driver'), isFalse);
+      },
+    );
+
+    test('parses durable rejection recovery fields and exact document IDs', () {
+      final response = VerificationStatusResponse.fromJson({
+        'driver': {
+          'verificationStatus': 'rejected',
+          'verificationStage': 'regional_manager_review',
+          'rejectionReason': 'The licence image is unreadable.',
+          'resubmissionRequired': true,
+          'resubmissionDocumentIds': ['licence_1'],
+        },
+        'documents': [
+          {
+            'id': 'licence_1',
+            'providerType': 'driver',
+            'documentType': 'drivers_licence',
+            'status': 'coordinator_validated',
+            'isCurrent': true,
+            'createdAt': '2026-08-17T00:00:00Z',
+            'providerReplacementAllowed': true,
+            'resubmissionRequired': true,
+          },
+          {
+            'id': 'ghana_1',
+            'providerType': 'driver',
+            'documentType': 'ghana_card',
+            'status': 'coordinator_validated',
+            'isCurrent': true,
+            'createdAt': '2026-08-17T00:00:00Z',
+            'providerReplacementAllowed': false,
+            'resubmissionRequired': false,
+          },
+        ],
+      });
+
+      expect(response.providerVerificationStatus('driver'), 'rejected');
+      expect(
+        response.providerVerificationStage('driver'),
+        'regional_manager_review',
+      );
+      expect(
+        response.providerRejectionReason('driver'),
+        'The licence image is unreadable.',
+      );
+      expect(response.providerResubmissionRequired('driver'), isTrue);
+      expect(response.providerResubmissionDocumentIds('driver'), ['licence_1']);
+      expect(
+        response.requiresDocumentResubmission(
+          'driver',
+          response.documents.first,
+        ),
+        isTrue,
+      );
+      expect(
+        response.requiresDocumentResubmission(
+          'driver',
+          response.documents.last,
+        ),
+        isFalse,
+      );
     });
+
+    test(
+      'legacy rejected responses recover every current non-approved row',
+      () {
+        final current = doc(status: 'coordinator_validated');
+        final old = doc(id: 'old', status: 'uploaded', isCurrent: false);
+        final response = VerificationStatusResponse(
+          driverData: const {'verificationStatus': 'rejected'},
+          documents: [current, old],
+        );
+
+        expect(response.hasProviderResubmissionPlan('driver'), isFalse);
+        expect(
+          response.requiresDocumentResubmission('driver', current),
+          isTrue,
+        );
+        expect(response.requiresDocumentResubmission('driver', old), isFalse);
+      },
+    );
   });
 }
