@@ -27,19 +27,21 @@ enum DocumentType {
   /// a renewal once it lapses. Types without an expiry (photos, trade
   /// certificate, national ID) never prompt for one.
   bool get requiresExpiry => switch (this) {
-    DocumentType.driversLicence ||
-    DocumentType.roadworthinessCertificate ||
-    DocumentType.vehicleInsurance => true,
-    _ => false,
-  };
+        DocumentType.driversLicence ||
+        DocumentType.roadworthinessCertificate ||
+        DocumentType.vehicleInsurance =>
+          true,
+        _ => false,
+      };
 
   /// Documents whose authority belongs to one physical vehicle rather than
   /// to the driver account as a whole.
   bool get isVehicleScoped => switch (this) {
-    DocumentType.roadworthinessCertificate ||
-    DocumentType.vehicleInsurance => true,
-    _ => false,
-  };
+        DocumentType.roadworthinessCertificate ||
+        DocumentType.vehicleInsurance =>
+          true,
+        _ => false,
+      };
 }
 
 /// POST /verification/documents — request body.
@@ -292,8 +294,7 @@ class VerificationStatusResponse {
     return VerificationStatusResponse(
       driverData: json['driver'] as Map<String, dynamic>?,
       artisanData: json['artisan'] as Map<String, dynamic>?,
-      documents:
-          (json['documents'] as List<dynamic>?)
+      documents: (json['documents'] as List<dynamic>?)
               ?.map((e) => DocumentInfo.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const [],
@@ -318,8 +319,10 @@ class VerificationStatusResponse {
 
   /// The active manual-review stage, when supplied by the backend.
   String? providerVerificationStage(String providerType) => providerData(
-    providerType,
-  )?['verificationStage']?.toString().toLowerCase();
+        providerType,
+      )?['verificationStage']
+          ?.toString()
+          .toLowerCase();
 
   /// Durable provider-level rejection reason. Unlike a document rejection
   /// reason, this explains an RM decision that may target one or more otherwise
