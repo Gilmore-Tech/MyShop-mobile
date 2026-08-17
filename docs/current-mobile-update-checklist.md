@@ -4,6 +4,25 @@
 > path and pending-Backend wording, do not authorize the current release.
 > Executable release authority is [Release Setup](release-setup.md).
 
+## 2026-08-17 authoritative `1.4.6+39` store wave
+
+- [x] Client and Provider use marketing version `1.4.6`; build `39` is the
+      selected common candidate.
+- [x] The earnings, payout, promotion-display, and personal-name validation
+      changes are merged and their exact-main Mobile CI is green.
+- [ ] Confirm build `39` is unused and greater than every private build number
+      for Client Android, Client iOS, Provider Android, and Provider iOS.
+- [ ] Merge this release-preparation change through `staging` to `main`, then
+      require successful Mobile CI on the resulting exact `main` SHA.
+- [ ] Upload only artifacts built from that exact SHA through the protected
+      Android and iOS release workflows; never upload the retained
+      `1.4.5+38` artifacts, which predate this release wave.
+- [ ] Install and smoke-test both apps from Play Internal Testing and
+      TestFlight Internal before manual store promotion.
+- [ ] Make Provider `1.4.6+39` fully available on both public stores before the
+      Backend withdrawal migration and minimum-build cutover. Client release in
+      the same wave is recommended for the new signup/profile validation.
+
 ## 2026-08-13 authoritative `1.4.5` store wave
 
 - [x] The required Backend wave is deployed and healthy in production.

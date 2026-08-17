@@ -1,4 +1,5 @@
 import 'package:api_client/api_client.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +8,13 @@ import 'package:myshop_provider/src/features/profile/providers/provider_type_pro
 import 'package:myshop_provider/src/features/profile/providers/provider_vehicle_provider.dart';
 import 'package:myshop_provider/src/features/profile/providers/verification_provider.dart';
 import 'package:myshop_provider/src/features/profile/screens/documents_verification_screen.dart';
+
+class _SeededDocumentUploadNotifier extends DocumentUploadNotifier {
+  _SeededDocumentUploadNotifier(DocumentUploadState initialState)
+      : super(VerificationService(Dio())) {
+    state = initialState;
+  }
+}
 
 void main() {
   AuthUser driverUser({
@@ -99,12 +107,17 @@ void main() {
     String? activeVehicleId,
     ProviderType providerType = ProviderType.driver,
     double textScale = 1,
+    DocumentUploadState? uploadState,
   }) {
     return ProviderScope(
       overrides: [
         currentUserProvider.overrideWithValue(user),
         providerTypeProvider.overrideWith((ref) => providerType),
         verificationStatusProvider.overrideWith((ref) async => verification),
+        if (uploadState != null)
+          documentUploadProvider.overrideWith(
+            (ref) => _SeededDocumentUploadNotifier(uploadState),
+          ),
         providerVehiclesProvider.overrideWith(
           (ref) async => ProviderVehiclesResponse(
             activeVehicleId: activeVehicleId,
@@ -600,6 +613,183 @@ void main() {
         find.text('20% uploaded · 1 of 5 documents · 0 approved'),
         findsOneWidget,
       );
+    },
+  );
+
+  testWidgets(
+    'legacy RM rejection recovers a stranded driver document and keeps its reason',
+    (tester) async {
+      await tester.pumpWidget(
+        screen(
+          user: driverUser(),
+          verification: VerificationStatusResponse(
+            driverData: const {
+              'verificationStatus': 'rejected',
+              'rejectionReason': 'The licence image is too blurry.',
+            },
+            documents: [
+              DocumentInfo(
+                id: 'old_upload_orphan',
+                providerType: 'driver',
+                documentType: DocumentType.driversLicence.value,
+                status: 'uploaded',
+                isCurrent: false,
+                createdAt: '2026-08-15T00:00:00Z',
+              ),
+              DocumentInfo(
+                id: 'current_licence',
+                providerType: 'driver',
+                documentType: DocumentType.driversLicence.value,
+                status: 'coordinator_validated',
+                isCurrent: true,
+                createdAt: '2026-08-16T00:00:00Z',
+                providerReplacementAllowed: false,
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Verification needs attention'), findsOneWidget);
+      expect(
+        find.textContaining('Reason: The licence image is too blurry.'),
+        findsOneWidget,
+      );
+      expect(find.text('The licence image is too blurry.'), findsOneWidget);
+      expect(find.text('Action required'), findsOneWidget);
+      expect(
+        find.text('Coordinator validated — awaiting Regional Manager'),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'backend designates the exact vehicle document that must be replaced',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final selectedVehicle = vehicle(
+        id: 'vehicle_1',
+        make: 'Toyota',
+        model: 'Corolla',
+        plate: 'GR-1111-24',
+      );
+      await tester.pumpWidget(
+        screen(
+          user: driverUser(),
+          vehicles: [selectedVehicle],
+          activeVehicleId: selectedVehicle.id,
+          verification: VerificationStatusResponse(
+            driverData: const {
+              'verificationStatus': 'rejected',
+              'resubmissionRequired': true,
+              'resubmissionDocumentIds': ['insurance_vehicle_1'],
+            },
+            documents: [
+              DocumentInfo(
+                id: 'road_vehicle_1',
+                providerType: 'driver',
+                documentType: DocumentType.roadworthinessCertificate.value,
+                status: 'coordinator_validated',
+                isCurrent: true,
+                createdAt: '2026-08-16T00:00:00Z',
+                vehicleId: selectedVehicle.id,
+                providerReplacementAllowed: false,
+                resubmissionRequired: false,
+              ),
+              DocumentInfo(
+                id: 'insurance_vehicle_1',
+                providerType: 'driver',
+                documentType: DocumentType.vehicleInsurance.value,
+                status: 'coordinator_validated',
+                isCurrent: true,
+                createdAt: '2026-08-16T00:00:00Z',
+                vehicleId: selectedVehicle.id,
+                providerReplacementAllowed: true,
+                resubmissionRequired: true,
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('No replacement requested for this document'),
+          findsOneWidget);
+      expect(find.text('No action'), findsOneWidget);
+      expect(find.text('Replacement requested — tap to re-upload'),
+          findsOneWidget);
+      expect(find.text('Action required'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'artisan can re-upload a stranded trade credential after RM rejection',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        screen(
+          user: artisanUser(),
+          providerType: ProviderType.artisan,
+          verification: VerificationStatusResponse(
+            artisanData: const {'verificationStatus': 'rejected'},
+            documents: [
+              DocumentInfo(
+                id: 'trade_1',
+                providerType: 'artisan',
+                documentType: DocumentType.tradeCertificate.value,
+                status: 'coordinator_validated',
+                isCurrent: true,
+                createdAt: '2026-08-16T00:00:00Z',
+                providerReplacementAllowed: false,
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Verification needs attention'), findsOneWidget);
+      expect(find.text('Replacement requested — tap to re-upload'),
+          findsOneWidget);
+      expect(find.text('Action required'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'authoritative same-session rejection clears optimistic uploaded copy',
+    (tester) async {
+      await tester.pumpWidget(
+        screen(
+          user: driverUser(),
+          uploadState: const DocumentUploadState(
+            uploaded: {'ghana_card': true},
+          ),
+          verification: VerificationStatusResponse(
+            driverData: const {'verificationStatus': 'rejected'},
+            documents: [
+              DocumentInfo(
+                id: 'ghana_1',
+                providerType: 'driver',
+                documentType: DocumentType.ghanaCard.value,
+                status: 'rejected',
+                isCurrent: true,
+                createdAt: '2026-08-16T00:00:00Z',
+                rejectionReason: 'Upload a clearer Ghana Card.',
+                providerReplacementAllowed: true,
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Upload a clearer Ghana Card.'), findsOneWidget);
+      expect(find.text('Action required'), findsOneWidget);
+      expect(find.text('Uploaded — pending review'), findsNothing);
     },
   );
 }

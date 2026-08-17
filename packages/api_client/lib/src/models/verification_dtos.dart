@@ -140,6 +140,7 @@ class DocumentInfo {
     this.expiresAt,
     this.expired,
     this.providerReplacementAllowed,
+    this.resubmissionRequired,
     this.replacementOpensAt,
     this.version = 1,
   });
@@ -158,6 +159,7 @@ class DocumentInfo {
       expiresAt: json['expiresAt'] as String?,
       expired: json['expired'] as bool?,
       providerReplacementAllowed: json['providerReplacementAllowed'] as bool?,
+      resubmissionRequired: json['resubmissionRequired'] as bool?,
       replacementOpensAt: json['replacementOpensAt'] as String?,
       version: json['version'] as int? ?? 1,
       isCurrent: json['isCurrent'] as bool? ?? true,
@@ -192,6 +194,15 @@ class DocumentInfo {
   /// Whether the authenticated provider may initiate a replacement now.
   /// Approved profile photos remain administrator-only.
   final bool? providerReplacementAllowed;
+
+  /// Whether the provider-level rejection explicitly requires this document
+  /// to be replaced. This is separate from the document's own review status:
+  /// an RM can reject the overall verification while leaving an independently
+  /// validated document row at `coordinator_validated`.
+  ///
+  /// Older APIs omit this field. Callers must then use the aggregate rejected
+  /// state as the backwards-compatible recovery signal.
+  final bool? resubmissionRequired;
 
   /// Exact server-computed GMT instant at which an expiring approved document
   /// becomes invalid and provider resubmission opens.
@@ -248,6 +259,7 @@ class DocumentInfo {
   }
 
   bool canProviderReplace([DateTime? now]) {
+    if (resubmissionRequired == true) return true;
     if (providerReplacementAllowed != null) {
       return providerReplacementAllowed!;
     }
@@ -283,9 +295,7 @@ class VerificationStatusResponse {
       driverData: json['driver'] as Map<String, dynamic>?,
       artisanData: json['artisan'] as Map<String, dynamic>?,
       documents: (json['documents'] as List<dynamic>?)
-              ?.map(
-                (e) => DocumentInfo.fromJson(e as Map<String, dynamic>),
-              )
+              ?.map((e) => DocumentInfo.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const [],
     );
@@ -303,12 +313,77 @@ class VerificationStatusResponse {
   /// accounts without treating an explicit `pending`, `rejected`, or
   /// `suspended` response as approved.
   String? providerVerificationStatus(String providerType) {
-    final data = switch (providerType) {
+    final data = providerData(providerType);
+    return data?['verificationStatus']?.toString().toLowerCase();
+  }
+
+  /// The active manual-review stage, when supplied by the backend.
+  String? providerVerificationStage(String providerType) => providerData(
+        providerType,
+      )?['verificationStage']
+          ?.toString()
+          .toLowerCase();
+
+  /// Durable provider-level rejection reason. Unlike a document rejection
+  /// reason, this explains an RM decision that may target one or more otherwise
+  /// provisionally validated documents.
+  String? providerRejectionReason(String providerType) {
+    final raw = providerData(providerType)?['rejectionReason']?.toString();
+    final trimmed = raw?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+
+  bool providerResubmissionRequired(String providerType) =>
+      providerData(providerType)?['resubmissionRequired'] == true;
+
+  List<String> providerResubmissionDocumentIds(String providerType) {
+    final raw = providerData(providerType)?['resubmissionDocumentIds'];
+    if (raw is! List) return const [];
+    return raw
+        .map((value) => value?.toString().trim() ?? '')
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  /// True only for the newer recovery contract. The distinction matters
+  /// because the legacy API already emitted `providerReplacementAllowed=false`
+  /// on stranded coordinator-validated rows; absence of the role-level plan is
+  /// what activates the safe backwards-compatible fallback.
+  bool hasProviderResubmissionPlan(String providerType) {
+    final data = providerData(providerType);
+    return data?.containsKey('resubmissionRequired') == true ||
+        data?.containsKey('resubmissionDocumentIds') == true;
+  }
+
+  /// Whether [document] is actionable for this provider right now.
+  ///
+  /// New backends designate exact document IDs/rows. On an old backend an RM
+  /// rejection left every current document at `coordinator_validated`, so the
+  /// only recovery path is to permit current non-approved rows. Upload
+  /// confirmation immediately resets the provider to pending, closing this
+  /// fallback after the first successful replacement.
+  bool requiresDocumentResubmission(
+    String providerType,
+    DocumentInfo document,
+  ) {
+    if (document.providerType != providerType || !document.isCurrent) {
+      return false;
+    }
+    if (document.resubmissionRequired == true) return true;
+    if (providerResubmissionDocumentIds(providerType).contains(document.id)) {
+      return true;
+    }
+    if (hasProviderResubmissionPlan(providerType)) return false;
+    return providerVerificationStatus(providerType) == 'rejected' &&
+        !document.isApproved;
+  }
+
+  Map<String, dynamic>? providerData(String providerType) {
+    return switch (providerType) {
       'driver' => driverData,
       'artisan' => artisanData,
       _ => null,
     };
-    return data?['verificationStatus']?.toString().toLowerCase();
   }
 
   /// Whether the active provider role has aggregate approval. This is separate

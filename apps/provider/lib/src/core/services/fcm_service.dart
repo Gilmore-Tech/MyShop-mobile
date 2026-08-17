@@ -21,6 +21,7 @@ import '../../features/auth/providers/auth_controller.dart';
 import '../../features/driver_home/providers/ride_request_provider.dart';
 import '../../features/driver_home/widgets/rate_passenger_sheet.dart';
 import '../../features/earnings/providers/earnings_providers.dart';
+import '../../features/profile/providers/verification_provider.dart';
 import '../di/providers.dart';
 import '../providers/pending_request_recovery_provider.dart';
 import '../providers/socket_provider.dart';
@@ -1300,6 +1301,15 @@ class FcmService {
         // the payout CTA until the new balance has arrived.
         _ref.read(refreshEarningsAfterSettlementProvider)();
       }
+      if (providerDocumentLifecycleRoute(type) != null) {
+        // A decision can arrive while Documents & Verification or Account is
+        // already visible. Refresh immediately instead of requiring the user
+        // to tap the banner or restart before the corrective state appears.
+        _ref.invalidate(verificationStatusProvider);
+        unawaited(
+          _ref.read(authControllerProvider.notifier).refreshProfile(),
+        );
+      }
       if (type == NotificationPayload.typeRideRequest) {
         final received = await acknowledgeRideOfferWithSocket(
           payload: Map<String, dynamic>.from(message.data),
@@ -2498,6 +2508,15 @@ final fcmTapBridgeProvider = Provider<void>((ref) {
 
     final lifecycleRoute = providerLifecycleNotificationRoute(type ?? '');
     if (lifecycleRoute != null) {
+      if (lifecycleRoute == '/account/documents') {
+        ref.invalidate(verificationStatusProvider);
+        // The destination fetches verification state immediately; refresh the
+        // authenticated profile snapshot in parallel so other account surfaces
+        // cannot keep showing an older pending/approved status after review.
+        unawaited(
+          ref.read(authControllerProvider.notifier).refreshProfile(),
+        );
+      }
       router.go(lifecycleRoute);
       releaseUntransferredRideClaim();
       return;

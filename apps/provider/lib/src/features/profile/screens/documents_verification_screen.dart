@@ -54,17 +54,16 @@ class _DocumentsVerificationScreenState
     final verificationAsync = ref.watch(verificationStatusProvider);
     final uploadState = ref.watch(documentUploadProvider);
 
-    // Once the backend reflects a submission (pending review) or an admin
-    // decision (approved), retire the per-session optimistic "uploaded" flag so
-    // the backend status becomes the single source of truth. Without this the
-    // flag pins the row to "pending review" for the whole session and a later
-    // approval never shows until the app is restarted.
+    // Once the backend moves a row beyond the transient `uploaded` state,
+    // retire the per-session optimistic flag. Every later review state is
+    // authoritative, including a rejection received while this screen remains
+    // open in the same app session.
     ref.listen(verificationStatusProvider, (_, next) {
       final data = next.valueOrNull;
       if (data == null) return;
       final notifier = ref.read(documentUploadProvider.notifier);
       for (final d in data.documents) {
-        if (d.isCurrent && (d.isPendingReview || d.isApproved)) {
+        if (d.isCurrent && !d.isUploaded) {
           notifier.clearUploaded(d.documentType, vehicleId: d.vehicleId);
         }
       }
@@ -75,11 +74,14 @@ class _DocumentsVerificationScreenState
     // a refresh is in flight, so pull-to-refresh / entry-refresh don't blank the
     // rows back to their fallbacks.
     final providerType = isArtisan ? 'artisan' : 'driver';
-    final backendDocs =
-        verificationAsync.valueOrNull?.documents ?? const <DocumentInfo>[];
+    final verification = verificationAsync.valueOrNull;
+    final backendDocs = verification?.documents ?? const <DocumentInfo>[];
     final roleDocs = backendDocs
         .where((d) => d.providerType == providerType)
         .toList(growable: false);
+    final aggregateStatus =
+        verification?.providerVerificationStatus(providerType);
+    final rejectionReason = verification?.providerRejectionReason(providerType);
 
     final vehicleAsync = isArtisan ? null : ref.watch(providerVehiclesProvider);
     final vehicleData = vehicleAsync?.valueOrNull;
@@ -102,19 +104,25 @@ class _DocumentsVerificationScreenState
             : selectableVehicles.firstOrNull?.id;
 
     final requiredDocs = isArtisan
-        ? _buildArtisanRequired(user, roleDocs, uploadState)
+        ? _buildArtisanRequired(
+            user,
+            roleDocs,
+            uploadState,
+            verification,
+          )
         : _buildDriverRequired(
             user,
             roleDocs,
             uploadState,
             selectedVehicleId,
+            verification,
           );
     // Artisans must provide the Ghana Card plus exactly one trade credential.
     final oneOfDocs = isArtisan
-        ? _buildArtisanOneOf(roleDocs, uploadState)
+        ? _buildArtisanOneOf(roleDocs, uploadState, verification)
         : const <_DocItem>[];
     final optionalDocs = isArtisan
-        ? _buildArtisanOptional(roleDocs, uploadState)
+        ? _buildArtisanOptional(roleDocs, uploadState, verification)
         : const <_DocItem>[];
 
     final uploadedRequired =
@@ -161,6 +169,10 @@ class _DocumentsVerificationScreenState
                       docsApproved: docsApproved,
                       docsTotal: docsTotal,
                     ),
+                    if (aggregateStatus == 'rejected') ...[
+                      const SizedBox(height: MyShopSpacing.md),
+                      _VerificationRecoveryBanner(reason: rejectionReason),
+                    ],
                     if (!isArtisan) ...[
                       const SizedBox(height: MyShopSpacing.md),
                       _VehicleDocumentSelector(
@@ -261,6 +273,7 @@ class _DocumentsVerificationScreenState
     List<DocumentInfo> docs,
     DocumentUploadState uploadState,
     String? vehicleId,
+    VerificationStatusResponse? verification,
   ) {
     final dp = user?.driverProfile;
     return [
@@ -272,6 +285,8 @@ class _DocumentsVerificationScreenState
         title: 'Profile Photo',
         fallbackMeta: 'Upload a clear face photo',
         fallbackStatus: _DocStatus.missing,
+        verification: verification,
+        providerType: 'driver',
       ),
       _docItemFromBackend(
         docs: docs,
@@ -285,6 +300,8 @@ class _DocumentsVerificationScreenState
                 ? 'Licence number saved — upload document'
                 : 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
+        verification: verification,
+        providerType: 'driver',
       ),
       _docItemFromBackend(
         docs: docs,
@@ -295,6 +312,8 @@ class _DocumentsVerificationScreenState
         fallbackMeta: 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
         vehicleId: vehicleId,
+        verification: verification,
+        providerType: 'driver',
       ),
       _docItemFromBackend(
         docs: docs,
@@ -305,6 +324,8 @@ class _DocumentsVerificationScreenState
         fallbackMeta: 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
         vehicleId: vehicleId,
+        verification: verification,
+        providerType: 'driver',
       ),
       _docItemFromBackend(
         docs: docs,
@@ -316,6 +337,8 @@ class _DocumentsVerificationScreenState
             ? 'Identity verified — upload document'
             : 'Tap to upload front & back',
         fallbackStatus: _DocStatus.missing,
+        verification: verification,
+        providerType: 'driver',
       ),
     ];
   }
@@ -327,6 +350,7 @@ class _DocumentsVerificationScreenState
     AuthUser? user,
     List<DocumentInfo> docs,
     DocumentUploadState uploadState,
+    VerificationStatusResponse? verification,
   ) {
     final ap = user?.artisanProfile;
     return [
@@ -340,6 +364,8 @@ class _DocumentsVerificationScreenState
             ? 'Identity verified — upload document'
             : 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
+        verification: verification,
+        providerType: 'artisan',
       ),
     ];
   }
@@ -349,6 +375,7 @@ class _DocumentsVerificationScreenState
   static List<_DocItem> _buildArtisanOneOf(
     List<DocumentInfo> docs,
     DocumentUploadState uploadState,
+    VerificationStatusResponse? verification,
   ) {
     return [
       _docItemFromBackend(
@@ -359,6 +386,8 @@ class _DocumentsVerificationScreenState
         title: 'Business Registration Certificate',
         fallbackMeta: 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
+        verification: verification,
+        providerType: 'artisan',
       ),
       _docItemFromBackend(
         docs: docs,
@@ -368,6 +397,8 @@ class _DocumentsVerificationScreenState
         title: 'Trade Certificate',
         fallbackMeta: 'Tap to upload',
         fallbackStatus: _DocStatus.missing,
+        verification: verification,
+        providerType: 'artisan',
       ),
     ];
   }
@@ -375,6 +406,7 @@ class _DocumentsVerificationScreenState
   static List<_DocItem> _buildArtisanOptional(
     List<DocumentInfo> docs,
     DocumentUploadState uploadState,
+    VerificationStatusResponse? verification,
   ) {
     return [
       _docItemFromBackend(
@@ -385,6 +417,8 @@ class _DocumentsVerificationScreenState
         title: 'Profile Photo',
         fallbackMeta: 'Optional · reviewed independently',
         fallbackStatus: _DocStatus.missing,
+        verification: verification,
+        providerType: 'artisan',
       ),
       _docItemFromBackend(
         docs: docs,
@@ -394,6 +428,8 @@ class _DocumentsVerificationScreenState
         title: 'National ID',
         fallbackMeta: 'Recommended for VAT-eligible jobs',
         fallbackStatus: _DocStatus.missing,
+        verification: verification,
+        providerType: 'artisan',
       ),
       const _DocItem(
         icon: Icons.health_and_safety_outlined,
@@ -426,21 +462,11 @@ class _DocumentsVerificationScreenState
     required String title,
     required String fallbackMeta,
     required _DocStatus fallbackStatus,
+    required VerificationStatusResponse? verification,
+    required String providerType,
     String? vehicleId,
   }) {
     final uploadKey = documentUploadKey(type, vehicleId: vehicleId);
-    // Check if just uploaded in this session
-    if (uploadState.uploaded[uploadKey] == true) {
-      return _DocItem(
-        icon: icon,
-        title: title,
-        meta: 'Uploaded — pending review',
-        status: _DocStatus.uploaded,
-        documentType: type,
-        vehicleId: vehicleId,
-      );
-    }
-
     // Check if uploading right now
     if (uploadState.uploading[uploadKey] == true) {
       return _DocItem(
@@ -463,7 +489,41 @@ class _DocumentsVerificationScreenState
         )
         .firstOrNull;
 
+    // The optimistic success state is useful only while the server has no row
+    // beyond its transient `uploaded` state. A current pending/approved/rejected
+    // row always wins, even before the listener above has retired the flag.
+    if (uploadState.uploaded[uploadKey] == true &&
+        (doc == null || doc.isUploaded)) {
+      return _DocItem(
+        icon: icon,
+        title: title,
+        meta: 'Uploaded — pending review',
+        status: _DocStatus.uploaded,
+        documentType: type,
+        vehicleId: vehicleId,
+      );
+    }
+
     if (doc != null) {
+      final aggregateRejected =
+          verification?.providerVerificationStatus(providerType) == 'rejected';
+      final replacementRequested =
+          verification?.requiresDocumentResubmission(providerType, doc) ==
+                  true ||
+              (doc.providerReplacementAllowed == true && !doc.isApproved);
+      if (replacementRequested) {
+        final reason = doc.rejectionReason ??
+            verification?.providerRejectionReason(providerType);
+        return _DocItem(
+          icon: icon,
+          title: title,
+          meta: reason ?? 'Replacement requested — tap to re-upload',
+          status: _DocStatus.replacementRequired,
+          documentType: type,
+          vehicleId: vehicleId,
+        );
+      }
+
       if (doc.isApproved) {
         final expiry = doc.expiresAtDate;
         if (type.requiresExpiry && expiry == null) {
@@ -520,6 +580,20 @@ class _DocumentsVerificationScreenState
           title: title,
           meta: doc.rejectionReason ?? 'Rejected — please re-upload',
           status: _DocStatus.rejected,
+          documentType: type,
+          vehicleId: vehicleId,
+        );
+      } else if (aggregateRejected &&
+          verification?.hasProviderResubmissionPlan(providerType) == true) {
+        // A terminal provider rejection must never leave a non-targeted row
+        // saying it is still waiting for Coordinator/RM review. The backend's
+        // explicit plan is authoritative: only designated rows get an upload
+        // control and all other current rows clearly say no action is needed.
+        return _DocItem(
+          icon: icon,
+          title: title,
+          meta: 'No replacement requested for this document',
+          status: _DocStatus.noActionNeeded,
           documentType: type,
           vehicleId: vehicleId,
         );
@@ -706,6 +780,53 @@ class _ProgressCard extends StatelessWidget {
               minHeight: 6,
               backgroundColor: MyShopColors.surfaceWhite,
               valueColor: AlwaysStoppedAnimation(accent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VerificationRecoveryBanner extends StatelessWidget {
+  const _VerificationRecoveryBanner({this.reason});
+
+  final String? reason;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(MyShopSpacing.md),
+      decoration: BoxDecoration(
+        color: MyShopColors.errorLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: MyShopColors.error.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline, color: MyShopColors.error),
+          const SizedBox(width: MyShopSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Verification needs attention',
+                  style: MyShopTypography.h3.copyWith(
+                    color: MyShopColors.error,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  reason == null
+                      ? 'Your verification was not approved. Re-upload each document marked Action required below.'
+                      : 'Reason: $reason\nRe-upload each document marked Action required below.',
+                  style: MyShopTypography.body2.copyWith(height: 1.45),
+                ),
+              ],
             ),
           ),
         ],
@@ -906,6 +1027,8 @@ class _SectionLabel extends StatelessWidget {
 ///   coordinatorValidated → Coordinator accepted; awaiting Regional Manager
 ///   approved → Regional Manager gave final approval
 ///   rejected → admin rejected
+///   replacementRequired → provider-level rejection selected this row
+///   noActionNeeded → aggregate rejected but backend did not select this row
 ///   expired → approved but past its expiry date (client-derived, re-uploadable)
 ///   expiryMissing → approved legacy record without its required expiry date
 ///   expiringSoon → approved and lapsing within 30 days (client-derived)
@@ -919,6 +1042,8 @@ enum _DocStatus {
   uploaded,
   uploading,
   rejected,
+  replacementRequired,
+  noActionNeeded,
   expired,
   expiryMissing,
   expiringSoon,
@@ -1001,6 +1126,7 @@ class _DocRow extends StatelessWidget {
     }
     return item.status == _DocStatus.missing ||
         item.status == _DocStatus.rejected ||
+        item.status == _DocStatus.replacementRequired ||
         item.status == _DocStatus.expired;
   }
 
@@ -1008,7 +1134,9 @@ class _DocRow extends StatelessWidget {
   /// so we confirm before discarding it. A first-time upload goes straight
   /// to the picker.
   bool get _isReupload =>
-      item.status == _DocStatus.rejected || item.status == _DocStatus.expired;
+      item.status == _DocStatus.rejected ||
+      item.status == _DocStatus.replacementRequired ||
+      item.status == _DocStatus.expired;
 
   Future<void> _handleUpload(BuildContext context) async {
     if (item.documentType == null) return;
@@ -1147,6 +1275,7 @@ class _DocRow extends StatelessWidget {
                         style: MyShopTypography.body2.copyWith(
                           color: switch (item.status) {
                             _DocStatus.rejected ||
+                            _DocStatus.replacementRequired ||
                             _DocStatus.expired =>
                               MyShopColors.error,
                             _DocStatus.expiryMissing ||
@@ -1248,6 +1377,18 @@ class _StatusPill extends StatelessWidget {
           MyShopColors.error,
           'Rejected',
           Icons.cancel_outlined,
+        ),
+      _DocStatus.replacementRequired => (
+          MyShopColors.errorLight,
+          MyShopColors.error,
+          'Action required',
+          Icons.upload_file_outlined,
+        ),
+      _DocStatus.noActionNeeded => (
+          MyShopColors.surfaceGrey,
+          MyShopColors.textSecondary,
+          'No action',
+          Icons.info_outline,
         ),
       _DocStatus.expired => (
           MyShopColors.errorLight,

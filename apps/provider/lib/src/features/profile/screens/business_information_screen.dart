@@ -30,8 +30,11 @@ class BusinessInformationScreen extends ConsumerWidget {
     final shopCapacity = ap?.shopCapacity ?? 'solo';
     final maxJobs = ap?.maxConcurrentJobs ?? 1;
     final jobsDone = ap?.completedJobsCount ?? 0;
-    final verificationStatus = ap?.verificationStatus ?? 'pending';
-    final isVerified = verificationStatus == 'approved';
+    final verificationStatus = effectiveProviderVerificationStatus(
+      verification: ref.watch(verificationStatusProvider).valueOrNull,
+      providerType: 'artisan',
+      profileStatus: ap?.verificationStatus,
+    );
 
     return Scaffold(
       backgroundColor: MyShopColors.surfaceWhite,
@@ -49,7 +52,7 @@ class BusinessInformationScreen extends ConsumerWidget {
                   _HeroCard(
                     businessName: businessName,
                     categories: categories,
-                    isVerified: isVerified,
+                    verificationStatus: verificationStatus,
                     jobsCount: jobsDone,
                   ),
                   const SizedBox(height: MyShopSpacing.md),
@@ -217,17 +220,37 @@ class _HeroCard extends StatelessWidget {
   const _HeroCard({
     required this.businessName,
     required this.categories,
-    required this.isVerified,
+    required this.verificationStatus,
     required this.jobsCount,
   });
 
   final String businessName;
   final String categories;
-  final bool isVerified;
+  final String verificationStatus;
   final int jobsCount;
 
   @override
   Widget build(BuildContext context) {
+    final isVerified = verificationStatus == 'approved';
+    final needsAttention =
+        verificationStatus == 'rejected' || verificationStatus == 'suspended';
+    final statusColor = isVerified
+        ? MyShopColors.success
+        : needsAttention
+            ? MyShopColors.error
+            : MyShopColors.warning;
+    final statusIcon = isVerified
+        ? Icons.shield_outlined
+        : needsAttention
+            ? Icons.error_outline
+            : Icons.hourglass_empty;
+    final statusLabel = switch (verificationStatus) {
+      'approved' => 'VERIFIED',
+      'rejected' => 'REJECTED',
+      'suspended' => 'SUSPENDED',
+      _ => 'PENDING',
+    };
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: Container(
@@ -274,23 +297,20 @@ class _HeroCard extends StatelessWidget {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color:
-                      isVerified ? MyShopColors.success : MyShopColors.warning,
+                  color: statusColor,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      isVerified
-                          ? Icons.shield_outlined
-                          : Icons.hourglass_empty,
+                      statusIcon,
                       size: 14,
                       color: MyShopColors.textOnPrimary,
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      isVerified ? 'VERIFIED' : 'PENDING',
+                      statusLabel,
                       style: MyShopTypography.caption.copyWith(
                         color: MyShopColors.textOnPrimary,
                         fontWeight: FontWeight.w900,

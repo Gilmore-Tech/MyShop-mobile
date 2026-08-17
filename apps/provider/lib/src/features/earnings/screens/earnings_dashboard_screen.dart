@@ -61,6 +61,7 @@ class _EarningsDashboardBody extends ConsumerWidget {
     final summaryAsync = ref.watch(earningsSummaryProvider(summaryKey));
     final reportAsync = ref.watch(earningsReportProvider(reportQuery));
     final todayCardAsync = ref.watch(todayCardProvider(role));
+    final verification = ref.watch(verificationStatusProvider).valueOrNull;
 
     final profilePhoto = ref.watch(providerProfilePhotoDisplayProvider);
     final ImageProvider? avatarImage = profilePhoto.localFile != null
@@ -93,7 +94,29 @@ class _EarningsDashboardBody extends ConsumerWidget {
         ? report.effectiveEarningsPesewas
         : (summary?.weeklyAvailableBalancePesewas ?? 0);
     final tripsCompleted = report?.bookingsCompleted ?? 0;
-    final isVerified = user?.verificationStatus == 'approved';
+    final providerType = role == EarningsRole.driver ? 'driver' : 'artisan';
+    final profileVerificationStatus = role == EarningsRole.driver
+        ? user?.driverProfile?.verificationStatus
+        : user?.artisanProfile?.verificationStatus;
+    final verificationStatus = effectiveProviderVerificationStatus(
+      verification: verification,
+      providerType: providerType,
+      profileStatus: profileVerificationStatus,
+    );
+    final isVerified = verificationStatus == 'approved';
+    final needsVerificationAttention =
+        verificationStatus == 'rejected' || verificationStatus == 'suspended';
+    final verificationLabel = switch (verificationStatus) {
+      'approved' => 'Verified Provider',
+      'rejected' => 'Verification Needs Attention',
+      'suspended' => 'Account Suspended',
+      _ => 'Pending Verification',
+    };
+    final verificationColor = isVerified
+        ? MyShopColors.success
+        : needsVerificationAttention
+            ? MyShopColors.error
+            : MyShopColors.textSecondary;
     final summaryRefreshing = summaryAsync.isLoading ||
         summaryAsync.isRefreshing ||
         summaryAsync.isReloading;
@@ -131,6 +154,7 @@ class _EarningsDashboardBody extends ConsumerWidget {
             ref.invalidate(earningsReportProvider);
             ref.invalidate(todayCardProvider);
             ref.invalidate(payoutsProvider);
+            ref.invalidate(verificationStatusProvider);
             await Future.wait([
               ref.read(earningsSummaryProvider(summaryKey).future),
               ref.read(todayCardProvider(role).future),
@@ -160,18 +184,17 @@ class _EarningsDashboardBody extends ConsumerWidget {
                             Icon(
                                 isVerified
                                     ? Icons.check_circle_outline
-                                    : Icons.access_time,
+                                    : needsVerificationAttention
+                                        ? Icons.error_outline
+                                        : Icons.access_time,
                                 size: 12,
-                                color: isVerified
-                                    ? MyShopColors.success
-                                    : MyShopColors.textSecondary),
+                                color: verificationColor),
                             const SizedBox(width: 4),
-                            Text(
-                                isVerified
-                                    ? 'Verified Provider'
-                                    : 'Pending Verification',
-                                style: MyShopTypography.body2
-                                    .copyWith(fontSize: 11)),
+                            Text(verificationLabel,
+                                style: MyShopTypography.body2.copyWith(
+                                  fontSize: 11,
+                                  color: verificationColor,
+                                )),
                           ]),
                         ]),
                     Row(children: [
