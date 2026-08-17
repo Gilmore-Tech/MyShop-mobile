@@ -1,3 +1,4 @@
+import 'package:api_client/api_client.dart' show AuthErrorCodes;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
@@ -51,6 +52,8 @@ RegistrationDraftIssue? registrationCorrectionForErrorCode(
     'SELF_REFERRAL_NOT_ALLOWED',
     'ROLE_ACCOUNT_REFERRALS_SUSPENDED',
     'REFERRAL_ALREADY_LINKED',
+    AuthErrorCodes.invalidPersonName,
+    'REGISTRATION_RESTART_REQUIRED',
   }.contains(errorCode)) {
     return const RegistrationDraftIssue(step: 0, message: 'Review profile');
   }

@@ -1,3 +1,5 @@
+import 'package:characters/characters.dart';
+
 /// Reusable input validators for the MyShop auth and registration flows.
 ///
 /// Each method returns `null` when the value is valid, or an error message
@@ -8,12 +10,41 @@ class Validators {
 
   // ── Name ──────────────────────────────────────────────────────────────
 
+  static const invalidFullNameMessage =
+      'Names cannot contain numbers or emojis. Use letters, spaces, hyphens, and apostrophes only.';
+
+  static final RegExp _nameSpaceSeparator = RegExp(r'\p{Zs}+', unicode: true);
+  static final RegExp _nameEdgeSpaces = RegExp(r'^ +| +$');
+  static final RegExp _nameVariationSelector = RegExp(r'[\uFE0E\uFE0F]');
+  static final RegExp _fullNamePattern = RegExp(
+    r"^(?:(?!\u02BC)\p{L}[\p{Mn}\p{Mc}]*)+(?:[- '\u2019\u02BC\u2010\u2011](?:(?!\u02BC)\p{L}[\p{Mn}\p{Mc}]*)+)*$",
+    unicode: true,
+  );
+
   static String? fullName(String value) {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) return 'Full name is required.';
-    if (trimmed.length < 3) return 'Name must be at least 3 characters.';
-    if (!RegExp(r"^[a-zA-ZÀ-ÿ\s\-']+$").hasMatch(trimmed)) {
-      return 'Name can only contain letters, spaces, and hyphens.';
+    // Normalise every Unicode space-separator to an ordinary space for the
+    // validation decision, while deliberately leaving tabs, line breaks, and
+    // other control characters untouched so the structural rule rejects them.
+    final normalized = value
+        .replaceAll(_nameSpaceSeparator, ' ')
+        .replaceAll(_nameEdgeSpaces, '');
+    if (normalized.isEmpty) return 'Full name is required.';
+    if (_nameVariationSelector.hasMatch(normalized)) {
+      return invalidFullNameMessage;
+    }
+    // The backend applies NFC before persistence and uses the same user-
+    // perceived character semantics. Grapheme clusters keep composed and
+    // decomposed names equivalent for the length limits.
+    final logicalLength = normalized.characters.length;
+    if (logicalLength > 120) {
+      return 'Name must be 120 characters or fewer.';
+    }
+    final structuralMatch = _fullNamePattern.matchAsPrefix(normalized);
+    if (structuralMatch == null || structuralMatch.end != normalized.length) {
+      return invalidFullNameMessage;
+    }
+    if (logicalLength < 2) {
+      return 'Name must be at least 2 characters.';
     }
     return null;
   }

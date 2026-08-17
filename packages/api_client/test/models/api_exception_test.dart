@@ -47,6 +47,27 @@ void main() {
     expect(AuthErrorMapper.message(exception), fields['phone']);
   });
 
+  test('personal-name validation fields use the approved safe copy', () {
+    const exception = ValidationException(
+      message: 'private name validator details',
+      errorCode: 'VALIDATION_ERROR',
+      details: <String, dynamic>{
+        'fullName': <String>['must satisfy internal rule'],
+        'displayName': <String>['must satisfy internal rule'],
+        'legalName': <String>['must satisfy internal rule'],
+      },
+    );
+    const expected =
+        'Names cannot contain numbers or emojis. Use letters, spaces, hyphens, and apostrophes only.';
+
+    final fields = AuthErrorMapper.fieldErrors(exception);
+
+    expect(fields['fullName'], expected);
+    expect(fields['displayName'], expected);
+    expect(fields['legalName'], expected);
+    expect(AuthErrorMapper.message(exception), expected);
+  });
+
   test('parses NestJS string error envelopes as ApiException errorCode', () {
     final exception = ApiException.fromDioException(
       DioException(
