@@ -4,6 +4,36 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:myshop_provider/src/core/services/fcm_service.dart';
 
 void main() {
+  test('ride fallback includes positive toll reimbursement exactly once', () {
+    final body = privacySafeRequestBody('ride_request', {
+      'offerPayload': jsonEncode({
+        'prePromoFarePesewas': 4500,
+        'clientPayableEstimatePesewas': 4500,
+        'toll': {'label': 'Airport toll', 'amountPesewas': 500},
+      }),
+    });
+
+    expect(body, contains('Airport toll (100% to you) GHS 5.00'));
+    expect(RegExp('toll', caseSensitive: false).allMatches(body), hasLength(1));
+    expect(body, contains('Est. full fare GHS 45.00'));
+  });
+
+  test('ride fallback has no toll wording for absent or zero charge', () {
+    for (final payload in <Map<String, dynamic>>[
+      {'prePromoFarePesewas': 4000, 'clientPayableEstimatePesewas': 4000},
+      {
+        'prePromoFarePesewas': 4000,
+        'clientPayableEstimatePesewas': 4000,
+        'toll': {'label': 'Airport toll', 'amountPesewas': 0},
+      },
+    ]) {
+      final body = privacySafeRequestBody('ride_request', {
+        'offerPayload': jsonEncode(payload),
+      });
+      expect(body.toLowerCase(), isNot(contains('toll')));
+    }
+  });
+
   test('promo fallback shows three prices and reconciles a stale discount', () {
     final body = privacySafeRequestBody('ride_request', {
       'offerPayload': jsonEncode({

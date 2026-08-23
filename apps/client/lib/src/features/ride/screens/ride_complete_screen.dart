@@ -554,6 +554,14 @@ class _FareBreakdownCard extends StatelessWidget {
             amount: _fmtGhs(receipt.taxesPesewas),
             w: w,
           ),
+          if ((receipt.toll?.amountPesewas ?? 0) > 0) ...[
+            SizedBox(height: h * 0.012),
+            _FareLineItem(
+              label: receipt.toll!.label,
+              amount: _fmtGhs(receipt.toll!.amountPesewas),
+              w: w,
+            ),
+          ],
           if (receipt.promoDiscountPesewas > 0) ...[
             SizedBox(height: h * 0.012),
             _FareLineItem(

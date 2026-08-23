@@ -224,6 +224,20 @@ void _connectAndListen(Ref ref, SocketService socket) {
     }
 
     void applyRideSnapshot(Map<String, dynamic> data) {
+      final snapshotRideId = (data['rideId'] ?? data['id'])?.toString();
+      final activeRideId = ref.container.read(activeRideIdProvider);
+      if (snapshotRideId != null &&
+          snapshotRideId.isNotEmpty &&
+          activeRideId != null &&
+          activeRideId.isNotEmpty &&
+          snapshotRideId != activeRideId) {
+        developer.log(
+          'Ignoring stale ride:state for $snapshotRideId; '
+          'active ride is $activeRideId',
+          name: 'WS',
+        );
+        return;
+      }
       final driver =
           data['driver'] as Map<String, dynamic>? ?? <String, dynamic>{};
       // Driver name may arrive as a single `name` field or split into
@@ -255,6 +269,9 @@ void _connectAndListen(Ref ref, SocketService socket) {
         distanceFarePesewas: fare.distanceFarePesewas,
         distanceKm: fare.distanceKm,
         bookingFeePesewas: fare.bookingFeePesewas,
+        promoDiscountPesewas: fare.promoDiscountPesewas,
+        loyaltyDiscountPesewas: fare.loyaltyDiscountPesewas,
+        toll: fare.toll,
         vehicleShortName: driver['vehicleShortName'] as String? ?? '',
         confirmedFarePesewas: fare.totalFarePesewas,
         paymentMethod: data['paymentMethod'] as String? ?? 'Cash',
@@ -331,15 +348,10 @@ void _connectAndListen(Ref ref, SocketService socket) {
           unawaited(
             ref.container.read(rideBookingAttemptStoreProvider).clear(),
           );
-          ref.container.read(rideArrivalAnchorProvider.notifier).state = null;
-          ref.container.read(rideTrackingPhaseProvider.notifier).state =
-              RideTrackingPhase.completed;
-          // Build the receipt from the same snapshot before the tracking
-          // screen navigates to /ride-complete — without this the rider
-          // lands on the receipt screen with a null provider and an
-          // empty fallback.
-          ref.container.read(rideReceiptProvider.notifier).state =
-              buildRideReceiptFromSnapshot(data);
+          // Build/preserve the receipt, clear every next-ride input, then flip
+          // the phase so the tracking listener cannot navigate early and the
+          // just-completed pickup cannot leak into the rider's next request.
+          applyCompletedRideSnapshot(ref.container.read, data);
           if (ref.container.exists(activityNotifierProvider)) {
             ref.container.read(activityNotifierProvider.notifier).reload();
           }

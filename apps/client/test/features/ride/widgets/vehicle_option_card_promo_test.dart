@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myshop_client/src/features/ride/providers/ride_provider.dart';
 import 'package:myshop_client/src/features/ride/widgets/vehicle_option_card.dart';
+import 'package:shared_models/shared_models.dart';
 
 const _promoOption = VehicleOption(
   id: 'regular',
@@ -86,5 +87,27 @@ void main() {
     final fare = tester.widget<Text>(find.text('GH₵ 20.00'));
     expect(fare.style?.decoration, isNull);
     expect(find.text('August Rides'), findsNothing);
+  });
+
+  testWidgets('promo original and current totals include toll exactly once',
+      (tester) async {
+    const withToll = VehicleOption(
+      id: 'regular',
+      name: 'Regular',
+      description: 'Everyday rides',
+      capacityPersons: 4,
+      farePesewas: 2200,
+      transportFarePesewas: 1700,
+      toll: RideToll(label: 'Airport access', amountPesewas: 500),
+      estimatedTime: '4 min',
+      isMotorcycle: false,
+      promoName: 'August Rides',
+      promoOriginalFarePesewas: 2500,
+    );
+    await _pumpCard(tester, withToll);
+
+    expect(find.text('GH₵ 25.00'), findsOneWidget);
+    expect(find.text('GH₵ 22.00'), findsOneWidget);
+    expect(find.text('GH₵ 30.00'), findsNothing);
   });
 }

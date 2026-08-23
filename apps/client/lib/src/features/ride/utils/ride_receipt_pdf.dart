@@ -222,6 +222,7 @@ pw.Widget _breakdownTable(RideReceiptData r) {
     ('Distance (${r.distanceKm.toStringAsFixed(1)} km)', r.distanceFareDisplay),
     ('Booking Fee', r.bookingFeeDisplay),
     ('Taxes & Levies', r.taxesDisplay),
+    if ((r.toll?.amountPesewas ?? 0) > 0) (r.toll!.label, r.tollDisplay),
     if (r.promoDiscountPesewas > 0)
       ('Promotional Discount', r.promoDiscountDisplay),
     if (r.loyaltyDiscountPesewas > 0)

@@ -3,7 +3,8 @@ import 'dart:developer' as developer;
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_models/shared_models.dart' show kFreeWaitAtPickupSeconds;
+import 'package:shared_models/shared_models.dart'
+    show RideToll, kFreeWaitAtPickupSeconds;
 
 import '../../../core/di/providers.dart';
 import '../../../core/providers/current_location_provider.dart';
@@ -39,6 +40,8 @@ class VehicleOption {
   final String description;
   final int capacityPersons;
   final int farePesewas; // 100 pesewas = ₵1
+  final int? transportFarePesewas;
+  final RideToll? toll;
   final String estimatedTime;
   final bool isMotorcycle;
 
@@ -59,8 +62,9 @@ class VehicleOption {
 
   /// Name of the promo campaign applied to this category's fare, when the
   /// estimate entry carried a `promo` object. [farePesewas] is ALREADY the
-  /// discounted price in that case; [promoOriginalFarePesewas] holds the
-  /// pre-promo fare for the struck-through display. Both null = no promo.
+  /// discounted inclusive price in that case; [promoOriginalFarePesewas]
+  /// holds the inclusive pre-promo price. Both totals already contain the
+  /// optional access charge, which is never discounted.
   final String? promoName;
   final int? promoOriginalFarePesewas;
 
@@ -70,6 +74,8 @@ class VehicleOption {
     required this.description,
     required this.capacityPersons,
     required this.farePesewas,
+    this.transportFarePesewas,
+    this.toll,
     required this.estimatedTime,
     required this.isMotorcycle,
     this.distanceKm = 0,
@@ -88,8 +94,29 @@ class VehicleOption {
       promoOriginalFarePesewas != null &&
       promoOriginalFarePesewas! > farePesewas;
 
+  int get effectiveTransportFarePesewas {
+    final tollAmount = toll?.amountPesewas ?? 0;
+    final candidate = transportFarePesewas;
+    if (candidate != null &&
+        candidate >= 0 &&
+        candidate + tollAmount == farePesewas) {
+      return candidate;
+    }
+    return (farePesewas - tollAmount).clamp(0, farePesewas).toInt();
+  }
+
+  bool get hasToll {
+    final amount = toll?.amountPesewas ?? 0;
+    return amount > 0 && amount <= farePesewas;
+  }
+
   String get fareDisplay {
     final ghs = farePesewas / 100;
+    return 'GH₵ ${ghs.toStringAsFixed(2)}';
+  }
+
+  String get transportFareDisplay {
+    final ghs = effectiveTransportFarePesewas / 100;
     return 'GH₵ ${ghs.toStringAsFixed(2)}';
   }
 
@@ -97,6 +124,8 @@ class VehicleOption {
   String get promoOriginalFareDisplay {
     final original = promoOriginalFarePesewas;
     if (original == null) return '';
+    // The backend sends both promo totals inclusive of the optional access
+    // charge, so never add the charge again in the client.
     final ghs = original / 100;
     return 'GH₵ ${ghs.toStringAsFixed(2)}';
   }
@@ -162,6 +191,9 @@ class MatchedDriver {
   final int distanceFarePesewas;
   final double distanceKm;
   final int bookingFeePesewas;
+  final int promoDiscountPesewas;
+  final int loyaltyDiscountPesewas;
+  final RideToll? toll;
 
   /// Short vehicle name shown during active tracking, e.g. "Toyota Vitz"
   final String vehicleShortName;
@@ -191,6 +223,9 @@ class MatchedDriver {
     this.distanceFarePesewas = 0,
     this.distanceKm = 0,
     this.bookingFeePesewas = 0,
+    this.promoDiscountPesewas = 0,
+    this.loyaltyDiscountPesewas = 0,
+    this.toll,
     this.vehicleShortName = '',
     this.confirmedFarePesewas = 0,
     this.paymentMethod = 'MTN Mobile Money',
@@ -198,7 +233,12 @@ class MatchedDriver {
   });
 
   int get totalFarePesewas =>
-      baseFarePesewas + distanceFarePesewas + bookingFeePesewas;
+      baseFarePesewas +
+      distanceFarePesewas +
+      bookingFeePesewas +
+      (toll?.amountPesewas ?? 0) -
+      promoDiscountPesewas -
+      loyaltyDiscountPesewas;
 
   /// Active ride fare — confirmed amount or falls back to estimate
   int get activeFarePesewas =>
@@ -212,6 +252,9 @@ class MatchedDriver {
   String get baseFareDisplay => _fmt(baseFarePesewas);
   String get distanceFareDisplay => _fmt(distanceFarePesewas);
   String get bookingFeeDisplay => _fmt(bookingFeePesewas);
+  String get promoDiscountDisplay => '- ${_fmt(promoDiscountPesewas)}';
+  String get loyaltyDiscountDisplay => '- ${_fmt(loyaltyDiscountPesewas)}';
+  String get tollDisplay => _fmt(toll?.amountPesewas ?? 0);
   String get totalFareDisplay => _fmt(totalFarePesewas);
   String get activeFareDisplay => _fmt(activeFarePesewas);
 }
@@ -231,6 +274,7 @@ class RideFareFields {
     required this.surgeMultiplier,
     required this.surgeFarePesewas,
     required this.subtotalPesewas,
+    this.toll,
   });
 
   factory RideFareFields.fromSnapshot(Map<String, dynamic> snapshot) {
@@ -251,13 +295,16 @@ class RideFareFields {
     );
     final surgeFare =
         _readInt(snapshot, const ['surgeFarePesewas', 'surgeFare']);
+    final toll = RideToll.fromRideJson(snapshot);
     final componentTotal = baseFare +
         distanceFare +
         timeFare +
         bookingFee +
         taxes +
         surgeFare -
-        promoDiscount;
+        promoDiscount -
+        loyaltyDiscount +
+        (toll?.amountPesewas ?? 0);
     final total = _readInt(
       snapshot,
       const [
@@ -304,20 +351,21 @@ class RideFareFields {
         fallback: 1.0,
       ),
       surgeFarePesewas: surgeFare,
-      // Subtotal is the fare BEFORE discounts. Prefer the explicit pre-promo
-      // figure: `grossFarePesewas` is the post-promo charge, so on a promo
-      // ride it would render the subtotal as the discounted amount (0 when
-      // the campaign covers the whole fare).
+      // The subtotal excludes additive taxes and the access charge so the
+      // visible rows reconcile exactly once to the inclusive total:
+      // subtotal + taxes + charge - discounts = total.
       subtotalPesewas: _readInt(
         snapshot,
-        const [
-          'prePromoFarePesewas',
-          'subtotalPesewas',
-          'subtotal',
-          'grossFarePesewas',
-        ],
-        fallback: total + promoDiscount + loyaltyDiscount,
+        const ['subtotalPesewas', 'subtotal'],
+        fallback: (total +
+                promoDiscount +
+                loyaltyDiscount -
+                taxes -
+                (toll?.amountPesewas ?? 0))
+            .clamp(0, 9007199254740991)
+            .toInt(),
       ),
+      toll: toll,
     );
   }
 
@@ -334,6 +382,7 @@ class RideFareFields {
   final double surgeMultiplier;
   final int surgeFarePesewas;
   final int subtotalPesewas;
+  final RideToll? toll;
 }
 
 int _readInt(
@@ -494,6 +543,7 @@ class RideReceipt {
   final int surgeFarePesewas;
   final int subtotalPesewas;
   final int taxesPesewas;
+  final RideToll? toll;
 
   /// Positive value — displayed as a deduction (–GHS X.XX)
   final int promoDiscountPesewas;
@@ -524,6 +574,7 @@ class RideReceipt {
     required this.surgeFarePesewas,
     required this.subtotalPesewas,
     required this.taxesPesewas,
+    this.toll,
     required this.promoDiscountPesewas,
     required this.loyaltyDiscountPesewas,
     required this.totalPaidPesewas,
@@ -635,6 +686,7 @@ RideReceipt buildRideReceiptFromSnapshot(Map<String, dynamic> snapshot) {
     surgeFarePesewas: fare.surgeFarePesewas,
     subtotalPesewas: fare.subtotalPesewas,
     taxesPesewas: fare.taxesPesewas,
+    toll: fare.toll,
     promoDiscountPesewas: fare.promoDiscountPesewas,
     loyaltyDiscountPesewas: fare.loyaltyDiscountPesewas,
     totalPaidPesewas: fare.totalFarePesewas,
@@ -694,6 +746,12 @@ final driversNotifiedProvider = StateProvider<int>((_) => 0);
 final selectedVehicleProvider = StateProvider<String>(
   (_) => vehicleOptions.first.id,
 );
+
+/// Monotonic signal for providers that own pieces of the next-ride draft but
+/// cannot be imported here without creating a provider cycle. In particular,
+/// `tripStopsProvider` (declared in `edit_trip_provider.dart`) watches this
+/// epoch and rebuilds empty whenever [clearRideRequestDraft] advances it.
+final rideRequestDraftResetEpochProvider = StateProvider<int>((_) => 0);
 
 /// Booking phase: idle → searching → driverFound | failed
 final bookingPhaseProvider =
@@ -1283,6 +1341,7 @@ Future<void> requestRideAndMatchDriver(
     rideId = _extractRideId(result);
     ref.read(activeRideIdProvider.notifier).state = rideId;
     if (rideId != null) {
+      ref.read(rideSearchProvider.notifier).markSubmitted();
       ref.invalidate(homeRecentActivityProvider);
     }
 
@@ -1489,6 +1548,44 @@ Future<void> requestRideAndMatchDriver(
 /// bridge (which lives inside another Provider and also uses a ref).
 typedef RideStateReader = T Function<T>(ProviderListenable<T>);
 
+/// Clears every input that belongs to the *next* ride request.
+///
+/// The pickup/destination and selected vehicle live in this provider graph.
+/// Booking-time stops live in `edit_trip_provider.dart`; advancing the reset
+/// epoch makes that provider rebuild with an empty list without introducing a
+/// circular import between the active-ride and edit-trip provider modules.
+void clearRideRequestDraft(RideStateReader read) {
+  read(rideSearchProvider.notifier).reset();
+  read(selectedVehicleProvider.notifier).state = '';
+  final epoch = read(rideRequestDraftResetEpochProvider);
+  read(rideRequestDraftResetEpochProvider.notifier).state = epoch + 1;
+}
+
+/// Applies an authoritative completed snapshot as one ordered state change.
+///
+/// Receipt data must exist before the draft is cleared and before listeners see
+/// [RideTrackingPhase.completed], otherwise the tracking screen can navigate to
+/// a blank completion screen. Replayed completion snapshots are idempotent so a
+/// late socket/REST replay cannot wipe a draft the rider started afterwards.
+void applyCompletedRideSnapshot(
+  RideStateReader read,
+  Map<String, dynamic> snapshot,
+) {
+  final receipt = buildRideReceiptFromSnapshot(snapshot);
+  final previousReceipt = read(rideReceiptProvider);
+  final alreadyApplied =
+      receipt.rideId.isNotEmpty && previousReceipt?.rideId == receipt.rideId;
+
+  read(rideReceiptProvider.notifier).state = receipt;
+  // A replay for a ride whose completion was already applied may arrive after
+  // the rider has begun another request. It may refresh receipt data, but must
+  // not clear or complete the newer ride state.
+  if (alreadyApplied) return;
+  read(rideArrivalAnchorProvider.notifier).state = null;
+  clearRideRequestDraft(read);
+  read(rideTrackingPhaseProvider.notifier).state = RideTrackingPhase.completed;
+}
+
 Future<void> _reconcileMatchingViaSocket(
   RideStateReader read,
   SocketService socket,
@@ -1549,6 +1646,13 @@ Future<void> _hydrateFromRest(
   try {
     developer.log('REST fallback hydrating ride $rideId', name: 'RideProvider');
     final json = await rideService.getRide(rideId);
+    if (read(activeRideIdProvider) != rideId) {
+      developer.log(
+        'Ignoring stale REST hydrate for $rideId; active ride changed',
+        name: 'RideProvider',
+      );
+      return;
+    }
     final status = json['status'] as String? ?? '';
     final cancelledBy = json['cancelledBy'] as String?;
     final cancellationReason =
@@ -1598,11 +1702,7 @@ Future<void> _hydrateFromRest(
     // socket_provider; this REST path mirrors it for the recovery case.
     if (status == 'completed') {
       unawaited(read(rideBookingAttemptStoreProvider).clear());
-      read(rideTrackingPhaseProvider.notifier).state =
-          RideTrackingPhase.completed;
-      read(rideArrivalAnchorProvider.notifier).state = null;
-      read(rideReceiptProvider.notifier).state =
-          buildRideReceiptFromSnapshot(json);
+      applyCompletedRideSnapshot(read, json);
       return;
     }
     // Active — synthesise a `ride:state`-style snapshot and let the
@@ -1638,6 +1738,9 @@ Future<void> _hydrateFromRest(
       distanceFarePesewas: fare.distanceFarePesewas,
       distanceKm: fare.distanceKm,
       bookingFeePesewas: fare.bookingFeePesewas,
+      promoDiscountPesewas: fare.promoDiscountPesewas,
+      loyaltyDiscountPesewas: fare.loyaltyDiscountPesewas,
+      toll: fare.toll,
       vehicleShortName: driver['vehicleShortName'] as String? ?? '',
       confirmedFarePesewas: fare.totalFarePesewas,
       paymentMethod: json['paymentMethod'] as String? ?? 'Cash',
@@ -1683,6 +1786,10 @@ Future<void> _hydrateFromRest(
         ),
       );
     }
+    // These endpoints belong to an already-authoritative ride, not a new
+    // manual draft. Preserve that distinction if its later terminal event is
+    // missed while the app is backgrounded.
+    read(rideSearchProvider.notifier).markSubmitted();
 
     // Map the live tracking phase from the current backend status.
     switch (status) {

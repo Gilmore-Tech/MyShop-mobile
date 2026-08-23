@@ -76,7 +76,8 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
       if (!mounted) return;
       final clientObj = raw['client'] as Map<String, dynamic>?;
       final completedAt = DateTime.tryParse(
-          (raw['completedAt'] ?? raw['completed_at']) as String? ?? '');
+        (raw['completedAt'] ?? raw['completed_at']) as String? ?? '',
+      );
       final rawPhone = (raw['clientPhone'] ??
           clientObj?['phone'] ??
           clientObj?['maskedPhone']) as String?;
@@ -153,7 +154,8 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
                     if (hasCoords)
                       _MapPreview(
                         key: ValueKey(
-                            '$pickupLat,$pickupLng-$dropoffLat,$dropoffLng'),
+                          '$pickupLat,$pickupLng-$dropoffLat,$dropoffLng',
+                        ),
                         distanceKm: widget.trip.distanceKm,
                         pickupLat: pickupLat,
                         pickupLng: pickupLng,
@@ -170,8 +172,9 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 20),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                              ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -212,25 +215,31 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
                                       Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          const Icon(Icons.calendar_today,
-                                              size: 12,
-                                              color:
-                                                  MyShopColors.textSecondary),
+                                          const Icon(
+                                            Icons.calendar_today,
+                                            size: 12,
+                                            color: MyShopColors.textSecondary,
+                                          ),
                                           const SizedBox(width: 8),
-                                          Text(widget.trip.date,
-                                              style: _metaStyle),
+                                          Text(
+                                            widget.trip.date,
+                                            style: _metaStyle,
+                                          ),
                                         ],
                                       ),
                                       Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          const Icon(Icons.access_time,
-                                              size: 12,
-                                              color:
-                                                  MyShopColors.textSecondary),
+                                          const Icon(
+                                            Icons.access_time,
+                                            size: 12,
+                                            color: MyShopColors.textSecondary,
+                                          ),
                                           const SizedBox(width: 8),
-                                          Text(widget.trip.timeRange,
-                                              style: _metaStyle),
+                                          Text(
+                                            widget.trip.timeRange,
+                                            style: _metaStyle,
+                                          ),
                                         ],
                                       ),
                                     ],
@@ -264,7 +273,9 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
 
                             // ── 6. Fare Breakdown card ──
                             const Divider(
-                                height: 1, color: MyShopColors.divider),
+                              height: 1,
+                              color: MyShopColors.divider,
+                            ),
                             if (_isCompleted)
                               _FareBreakdownCard(
                                 trip: widget.trip,
@@ -284,9 +295,7 @@ class _TripDetailModalState extends ConsumerState<TripDetailModal> {
                 Positioned(
                   top: 8,
                   right: 8,
-                  child: _CloseButton(
-                    onTap: () => Navigator.of(context).pop(),
-                  ),
+                  child: _CloseButton(onTap: () => Navigator.of(context).pop()),
                 ),
               ],
             ),
@@ -346,8 +355,11 @@ class _PassengerContactRow extends StatelessWidget {
                 ),
                 Row(
                   children: [
-                    const Icon(Icons.phone_rounded,
-                        size: 13, color: MyShopColors.textSecondary),
+                    const Icon(
+                      Icons.phone_rounded,
+                      size: 13,
+                      color: MyShopColors.textSecondary,
+                    ),
                     const SizedBox(width: 5),
                     Text(
                       phone,
@@ -538,14 +550,16 @@ class _MapPreviewState extends ConsumerState<_MapPreview> {
                 markerId: const MarkerId('pickup'),
                 position: LatLng(widget.pickupLat, widget.pickupLng),
                 icon: BitmapDescriptor.defaultMarkerWithHue(
-                    BitmapDescriptor.hueOrange),
+                  BitmapDescriptor.hueOrange,
+                ),
                 infoWindow: const InfoWindow(title: 'Pickup'),
               ),
               Marker(
                 markerId: const MarkerId('dropoff'),
                 position: LatLng(widget.dropoffLat, widget.dropoffLng),
                 icon: BitmapDescriptor.defaultMarkerWithHue(
-                    BitmapDescriptor.hueRed),
+                  BitmapDescriptor.hueRed,
+                ),
                 infoWindow: const InfoWindow(title: 'Dropoff'),
               ),
             },
@@ -600,8 +614,11 @@ class _MapPreviewState extends ConsumerState<_MapPreview> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.navigation,
-                      size: 12, color: MyShopColors.primaryGold),
+                  const Icon(
+                    Icons.navigation,
+                    size: 12,
+                    color: MyShopColors.primaryGold,
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     widget.distanceKm,
@@ -648,8 +665,11 @@ class _MapPlaceholder extends StatelessWidget {
               borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
             ),
             child: const Center(
-              child: Icon(Icons.map_outlined,
-                  size: 48, color: MyShopColors.disabled),
+              child: Icon(
+                Icons.map_outlined,
+                size: 48,
+                color: MyShopColors.disabled,
+              ),
             ),
           ),
           Positioned(
@@ -665,8 +685,11 @@ class _MapPlaceholder extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.navigation,
-                      size: 12, color: MyShopColors.primaryGold),
+                  const Icon(
+                    Icons.navigation,
+                    size: 12,
+                    color: MyShopColors.primaryGold,
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     distanceKm,
@@ -908,6 +931,7 @@ class _FareBreakdownCard extends StatelessWidget {
     final surge = hasSnapshot ? s.surgeMultiplier : 1.0;
     final showBookingFee = hasSnapshot && s.bookingFeePesewas > 0;
     final showSurge = surge > 1.0;
+    final toll = hasSnapshot ? s.toll ?? trip.toll : trip.toll;
 
     // Full trip fare and client payment are different provider facts. The
     // detail fetch may refresh each independently, but totalPaid must never
@@ -1029,9 +1053,10 @@ class _FareBreakdownCard extends StatelessWidget {
                 _FareLine(label: 'Base Fare', amount: baseFare),
                 const SizedBox(height: 16),
                 _FareLine(
-                    label: 'Distance (${trip.distanceKm})'
-                        ' & Time (${trip.durationMins} mins)',
-                    amount: distanceFare),
+                  label: 'Distance (${trip.distanceKm})'
+                      ' & Time (${trip.durationMins} mins)',
+                  amount: distanceFare,
+                ),
                 if (showBookingFee) ...[
                   const SizedBox(height: 16),
                   _FareLine(label: 'Booking Fee', amount: bookingFee),
@@ -1042,6 +1067,13 @@ class _FareBreakdownCard extends StatelessWidget {
                     label: 'Surge Applied',
                     amount: '×${surge.toStringAsFixed(1)}',
                     icon: Icons.bolt,
+                  ),
+                ],
+                if ((toll?.amountPesewas ?? 0) > 0) ...[
+                  const SizedBox(height: 16),
+                  _FareLine(
+                    label: '${toll!.label} (100% to you)',
+                    amount: _ghs(toll.amountPesewas),
                   ),
                 ],
 
@@ -1183,8 +1215,11 @@ class _FareBreakdownCard extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.info_outline,
-                              size: 12, color: MyShopColors.textPrimary),
+                          const Icon(
+                            Icons.info_outline,
+                            size: 12,
+                            color: MyShopColors.textPrimary,
+                          ),
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(
@@ -1214,8 +1249,11 @@ class _FareBreakdownCard extends StatelessWidget {
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          const Icon(Icons.account_balance_wallet_outlined,
-                              size: 12, color: MyShopColors.textPrimary),
+                          const Icon(
+                            Icons.account_balance_wallet_outlined,
+                            size: 12,
+                            color: MyShopColors.textPrimary,
+                          ),
                           const SizedBox(width: 6),
                           const Expanded(
                             child: Text(
@@ -1278,8 +1316,11 @@ class _FareBreakdownCard extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const Icon(Icons.credit_card,
-                    size: 16, color: MyShopColors.textPrimary),
+                const Icon(
+                  Icons.credit_card,
+                  size: 16,
+                  color: MyShopColors.textPrimary,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   trip.paymentMethod,
@@ -1336,11 +1377,7 @@ class _CancelledFareNotice extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(
-              Icons.info_outline,
-              size: 18,
-              color: MyShopColors.error,
-            ),
+            const Icon(Icons.info_outline, size: 18, color: MyShopColors.error),
             const SizedBox(width: MyShopSpacing.sm),
             Expanded(
               child: Column(
@@ -1378,11 +1415,7 @@ class _CancelledFareNotice extends StatelessWidget {
 }
 
 class _FareLine extends StatelessWidget {
-  const _FareLine({
-    required this.label,
-    required this.amount,
-    this.icon,
-  });
+  const _FareLine({required this.label, required this.amount, this.icon});
 
   final String label;
   final String amount;
@@ -1447,6 +1480,7 @@ class _RideSnapshot {
     this.providerSettlementBasisPesewas,
     this.financialsFinal,
     this.commissionIsEffective = false,
+    this.toll,
     required this.surgeMultiplier,
     this.promoApplied = false,
   });
@@ -1490,6 +1524,7 @@ class _RideSnapshot {
           ride.settledProviderSettlementBasisPesewas,
       financialsFinal: ride.financialsFinal,
       commissionIsEffective: ride.effectiveCommissionPesewas != null,
+      toll: ride.toll,
       surgeMultiplier: asDouble(json['surgeMultiplier'], 1.0),
       promoApplied: ride.promoApplied,
     );
@@ -1511,6 +1546,7 @@ class _RideSnapshot {
   final int? providerSettlementBasisPesewas;
   final bool? financialsFinal;
   final bool commissionIsEffective;
+  final RideToll? toll;
   final double surgeMultiplier;
 
   /// True when a promo discount was applied to the rider's price. The
@@ -1555,6 +1591,7 @@ class TripDetailData {
     this.providerSettlementBasisPesewas,
     this.financialsFinal,
     this.commissionIsEffective = false,
+    this.toll,
   });
 
   final String tripId;
@@ -1588,4 +1625,5 @@ class TripDetailData {
   final int? providerSettlementBasisPesewas;
   final bool? financialsFinal;
   final bool commissionIsEffective;
+  final RideToll? toll;
 }

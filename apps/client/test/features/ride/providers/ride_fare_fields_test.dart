@@ -2,6 +2,54 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:myshop_client/src/features/ride/providers/ride_provider.dart';
 
 void main() {
+  test('keeps inclusive total authoritative and adds toll once in fallback',
+      () {
+    final authoritative = RideFareFields.fromSnapshot({
+      'finalFarePesewas': 4500,
+      'baseFarePesewas': 1000,
+      'distanceFarePesewas': 3000,
+      'toll': {'label': 'Airport toll', 'amountPesewas': 500},
+    });
+    final componentFallback = RideFareFields.fromSnapshot({
+      'baseFarePesewas': 1000,
+      'distanceFarePesewas': 3000,
+      'tollFeePesewas': 500,
+      'tollLabel': 'Airport toll',
+    });
+
+    expect(authoritative.totalFarePesewas, 4500);
+    expect(authoritative.toll?.amountPesewas, 500);
+    expect(componentFallback.totalFarePesewas, 4500);
+    expect(componentFallback.subtotalPesewas, 4000);
+  });
+
+  test('zero toll produces no receipt charge model', () {
+    final receipt = buildRideReceiptFromSnapshot({
+      'id': 'ride-no-toll',
+      'finalFarePesewas': 4000,
+      'toll': {'label': 'Airport toll', 'amountPesewas': 0},
+    });
+
+    expect(receipt.toll, isNull);
+    expect(receipt.totalPaidPesewas, 4000);
+  });
+
+  test('completed receipt carries a positive toll inside the inclusive total',
+      () {
+    final receipt = buildRideReceiptFromSnapshot({
+      'id': 'ride-with-toll',
+      'finalFarePesewas': 4500,
+      'baseFarePesewas': 1000,
+      'distanceFarePesewas': 3000,
+      'toll': {'label': 'Airport toll', 'amountPesewas': 500},
+    });
+
+    expect(receipt.toll?.label, 'Airport toll');
+    expect(receipt.toll?.amountPesewas, 500);
+    expect(receipt.totalPaidPesewas, 4500);
+    expect(receipt.subtotalPesewas, 4000);
+  });
+
   test('reads modern and legacy fare aliases from snapshots', () {
     final fare = RideFareFields.fromSnapshot({
       'finalFarePesewas': 4200,
