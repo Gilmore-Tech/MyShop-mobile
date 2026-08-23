@@ -259,7 +259,7 @@ void main() {
 
     expect(fake.remitIdempotencyKeys, isEmpty);
     expect(
-      find.textContaining('Enter no more than GHS 20'),
+      find.textContaining('Enter no more than GH₵ 20'),
       findsOneWidget,
     );
   });

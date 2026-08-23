@@ -84,15 +84,16 @@ class _EarningsDashboardBody extends ConsumerWidget {
     // dashboard doesn't appear to "lose" the funds during the brief
     // window between escrow release and transfer.success.
     final pendingPayouts = summary?.pendingPayoutsPesewas ?? 0;
-    // TODAY/WEEKLY tiles show authoritative provider take-home history,
-    // independent of whether payment was cash or in-app. The headline is a
-    // separate liability view: durable Owings or the server-visible balance.
-    final todayAvailable = todayCard != null
+    // Historical earnings are independent of whether payment was cash or
+    // in-app. The payout balance below remains a separate liability view:
+    // durable Owings or the server-visible withdrawable balance.
+    final todayEarnings = todayCard != null
         ? todayCard.effectiveEarningsPesewas
         : (summary?.todayAvailableBalancePesewas ?? 0);
-    final weeklyAvailable = report != null
+    final weeklyEarnings = report != null
         ? report.effectiveEarningsPesewas
         : (summary?.weeklyAvailableBalancePesewas ?? 0);
+    final todayTips = todayCard?.tipsEarnedPesewas ?? 0;
     final tripsCompleted = report?.bookingsCompleted ?? 0;
     final providerType = role == EarningsRole.driver ? 'driver' : 'artisan';
     final profileVerificationStatus = role == EarningsRole.driver
@@ -261,20 +262,28 @@ class _EarningsDashboardBody extends ConsumerWidget {
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
-                child: summary?.hasAuthoritativeBalanceBreakdown == true
-                    ? EarningsBalanceBreakdownCard(
-                        summary: summary!,
-                        earnedPesewas: todayAvailable,
-                        earnedLabel: 'Earned today',
-                      )
-                    : summary?.hasBalanceBreakdownContract == true
-                        ? const EarningsBalanceUnavailableCard()
-                        : _BalanceCard(
-                            availablePesewas: headlineBalance,
-                            todayPesewas: todayAvailable,
-                            weekPesewas: weeklyAvailable,
-                            isInArrears: isInArrears,
-                          ),
+                child: Column(
+                  children: [
+                    if (summary?.hasAuthoritativeBalanceBreakdown == true)
+                      EarningsBalanceBreakdownCard(summary: summary!)
+                    else if (summary?.hasBalanceBreakdownContract == true)
+                      const EarningsBalanceUnavailableCard()
+                    else
+                      _BalanceCard(
+                        availablePesewas: headlineBalance,
+                        isInArrears: isInArrears,
+                      ),
+                    const SizedBox(height: MyShopSpacing.sm),
+                    EarningsHistoryCard(
+                      label: 'Earned today',
+                      netEarningsPesewas: todayEarnings,
+                      secondaryLabel: 'Earned this week',
+                      secondaryNetEarningsPesewas: weeklyEarnings,
+                      tipsPaidDirectlyPesewas: todayTips,
+                      tipsLabel: 'Tips paid directly today',
+                    ),
+                  ],
+                ),
               ),
               if (pendingPayouts > 0) ...[
                 const SizedBox(height: MyShopSpacing.sm),
@@ -296,7 +305,7 @@ class _EarningsDashboardBody extends ConsumerWidget {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Pending settlement: GH₵ ${(pendingPayouts / 100).toStringAsFixed(2)}',
+                          'Withdrawal in progress: GH₵ ${(pendingPayouts / 100).toStringAsFixed(2)}',
                           style: const TextStyle(
                             fontFamily: 'Raleway',
                             fontSize: 13,
@@ -379,7 +388,7 @@ class _EarningsDashboardBody extends ConsumerWidget {
               ),
               const SizedBox(height: MyShopSpacing.md),
 
-              // ── Commission & Tax card ──
+              // ── Earnings breakdown card ──
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
@@ -391,7 +400,7 @@ class _EarningsDashboardBody extends ConsumerWidget {
               ),
               const SizedBox(height: MyShopSpacing.lg),
 
-              // ── Recent Payouts ──
+              // ── Payout history ──
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: MyShopSpacing.md),
@@ -402,7 +411,7 @@ class _EarningsDashboardBody extends ConsumerWidget {
                       const Icon(Icons.history,
                           size: 18, color: MyShopColors.textPrimary),
                       const SizedBox(width: 6),
-                      const Text('Recent Payouts',
+                      const Text('Payout history',
                           style: TextStyle(
                               fontFamily: 'Raleway',
                               fontSize: 16,
@@ -575,24 +584,18 @@ class _EarningsLoadingBanner extends StatelessWidget {
 class _BalanceCard extends StatelessWidget {
   const _BalanceCard({
     required this.availablePesewas,
-    required this.todayPesewas,
-    required this.weekPesewas,
     required this.isInArrears,
   });
 
-  /// Headline balance — available payout funds when clear, or the negative
-  /// full durable cash-commission debt while [isInArrears] is true.
+  /// Legacy headline balance. It is intentionally not called withdrawable:
+  /// older APIs may include retained funds that are not payout-eligible.
   final int availablePesewas;
-  final int todayPesewas;
-  final int weekPesewas;
   final bool isInArrears;
 
   @override
   Widget build(BuildContext context) {
     final totalDisplay = _fmtGhs(availablePesewas.abs());
-    final todayDisplay = _fmtGhs(todayPesewas);
-    final weekDisplay = _fmtGhs(weekPesewas);
-    final headline = isInArrears ? 'Owings' : 'Available Balance';
+    final headline = isInArrears ? 'Owings' : 'Available balance';
     final badgeText = isInArrears ? 'Owes platform' : 'Active';
     final amountColor =
         isInArrears ? MyShopColors.error.withValues(alpha: 0.95) : Colors.white;
@@ -642,8 +645,8 @@ class _BalanceCard extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
             // Prepend "-" when in arrears so the driver reads it as
-            // "−GHS 3.60 owed" — the abs() above gives the magnitude.
-            isInArrears ? '−GHS $totalDisplay' : 'GHS $totalDisplay',
+            // "− GH₵ 3.60 owed" — the abs() above gives the magnitude.
+            isInArrears ? '− GH₵ $totalDisplay' : 'GH₵ $totalDisplay',
             style: TextStyle(
                 fontFamily: 'Raleway',
                 fontSize: 36,
@@ -656,48 +659,6 @@ class _BalanceCard extends StatelessWidget {
               style: MyShopTypography.caption.copyWith(
                   color: Colors.white70, fontStyle: FontStyle.italic)),
         ],
-        const SizedBox(height: MyShopSpacing.md),
-        Row(children: [
-          Expanded(
-              child:
-                  _BalanceMiniStat(label: 'TODAY', value: 'GHS $todayDisplay')),
-          const SizedBox(width: MyShopSpacing.sm),
-          Expanded(
-              child:
-                  _BalanceMiniStat(label: 'WEEKLY', value: 'GHS $weekDisplay')),
-        ]),
-      ]),
-    );
-  }
-}
-
-class _BalanceMiniStat extends StatelessWidget {
-  const _BalanceMiniStat({required this.label, required this.value});
-  final String label;
-  final String value;
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white12,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label,
-            style: const TextStyle(
-                fontFamily: 'Raleway',
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: Colors.white60,
-                letterSpacing: 0.5)),
-        const SizedBox(height: 2),
-        Text(value,
-            style: const TextStyle(
-                fontFamily: 'Raleway',
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-                color: Colors.white)),
       ]),
     );
   }
@@ -769,9 +730,5 @@ class _StatCard extends StatelessWidget {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 String _fmtGhs(int pesewas) {
-  final ghs = pesewas / 100;
-  if (ghs == ghs.truncateToDouble()) {
-    return ghs.toStringAsFixed(0);
-  }
-  return ghs.toStringAsFixed(2);
+  return (pesewas / 100).toStringAsFixed(2);
 }

@@ -162,7 +162,7 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
     if (amount > widget.owedPesewas) {
       setState(() {
         _errorMessage =
-            'Enter no more than GHS ${_fmtGhs(widget.owedPesewas)}, your '
+            'Enter no more than GH₵ ${_fmtGhs(widget.owedPesewas)}, your '
             'current outstanding commission.';
       });
       return;
@@ -460,7 +460,7 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
         ),
         const SizedBox(height: 4),
         Text(
-          'You owe MyShop GHS ${_fmtGhs(widget.owedPesewas)} in commission. '
+          'You owe MyShop GH₵ ${_fmtGhs(widget.owedPesewas)} in commission. '
           'You can pay all or part of this balance. The amount cannot be more '
           'than the outstanding commission shown here.',
           style: MyShopTypography.body2.copyWith(
@@ -470,7 +470,7 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
         ),
         const SizedBox(height: 18),
         const Text(
-          'AMOUNT (GHS)',
+          'AMOUNT (GH₵)',
           style: TextStyle(
             fontFamily: 'Raleway',
             fontSize: 11,
@@ -488,7 +488,7 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
           ],
           decoration: InputDecoration(
             hintText: '0.00',
-            prefixText: 'GHS  ',
+            prefixText: 'GH₵  ',
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
               borderSide: const BorderSide(
@@ -815,8 +815,8 @@ class _PayCommissionSheetState extends ConsumerState<_PayCommissionSheet> {
         ),
         const SizedBox(height: 8),
         Text(
-          'GHS ${_fmtGhs(paid)} was applied to your commission account. '
-          'Your remaining Owings is GHS ${_fmtGhs(remaining)}.',
+          'GH₵ ${_fmtGhs(paid)} was applied to your commission account. '
+          'Your remaining Owings is GH₵ ${_fmtGhs(remaining)}.',
           textAlign: TextAlign.center,
           style: MyShopTypography.body2.copyWith(
             color: MyShopColors.textSecondary,

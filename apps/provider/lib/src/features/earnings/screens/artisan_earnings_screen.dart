@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_models/shared_models.dart';
 import 'package:shared_ui/shared_ui.dart';
 
-import '../../auth/providers/current_user_provider.dart';
 import '../data/ratings_service.dart';
 import '../providers/earnings_providers.dart';
 import '../providers/ratings_provider.dart';
@@ -121,8 +120,6 @@ class _EarningsContent extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // The top headline is a liability view: full durable Owings when debt is
     // present, otherwise the server-visible payout balance.
-    final user = ref.watch(currentUserProvider);
-    final jobsDone = user?.artisanProfile?.completedJobsCount ?? 0;
     // Show the server's visible balance when there is no durable commission
     // debt. Payout capability—not this amount—governs whether it can move.
     // Previously this read `todayCard.netEarningsPesewas` which is just
@@ -132,8 +129,6 @@ class _EarningsContent extends ConsumerWidget {
     final availablePesewas = summary.headlineBalancePesewas;
     final pendingPesewas = summary.pendingPayoutsPesewas;
     final isInArrears = summary.isInArrears;
-    final available = availablePesewas / 100;
-    final periodNet = summary.netEarningsPesewas / 100;
 
     // Commission, jobs count, and avg-fare follow the segmented control —
     // the screen reads as a coherent whole, not a half-period/half-week
@@ -168,18 +163,22 @@ class _EarningsContent extends ConsumerWidget {
           const EarningsBalanceUnavailableCard()
         else
           _BalanceCard(
-            available: available,
-            periodNet: periodNet,
-            jobsDone: jobsDone,
+            availablePesewas: availablePesewas,
             ratingsAsync: ratingsAsync,
             isInArrears: isInArrears,
           ),
+        const SizedBox(height: MyShopSpacing.sm),
+        EarningsHistoryCard(
+          label: _earnedLabel(period),
+          netEarningsPesewas: summary.netEarningsPesewas,
+          tipsPaidDirectlyPesewas: summary.tipsEarnedPesewas,
+        ),
         if (pendingPesewas > 0) ...[
           const SizedBox(height: MyShopSpacing.sm),
-          // "Pending settlement" line — money the platform owes and is
+          // "Withdrawal in progress" line — money the platform owes and is
           // currently trying to disburse. Includes payouts in `pending`,
           // `processing`, and `retrying` states. Without this surface
-          // the artisan saw GHS 0 on the dashboard even though the
+          // the artisan saw GH₵ 0 on the dashboard even though the
           // platform was actively retrying their MoMo transfer.
           Container(
             padding: const EdgeInsets.symmetric(
@@ -196,7 +195,7 @@ class _EarningsContent extends ConsumerWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Pending settlement: GH₵ ${(pendingPesewas / 100).toStringAsFixed(2)}',
+                  'Withdrawal in progress: GH₵ ${(pendingPesewas / 100).toStringAsFixed(2)}',
                   style: const TextStyle(
                     fontFamily: 'Raleway',
                     fontSize: 13,
@@ -257,7 +256,7 @@ class _EarningsContent extends ConsumerWidget {
         ),
         const SizedBox(height: MyShopSpacing.md),
 
-        // Commission & Tax — follows the period selector
+        // Earnings breakdown — follows the period selector
         CommissionCard(
           grossPesewas: report?.grossEarningsPesewas ?? 0,
           commissionPesewas: report?.commissionChargedPesewas ?? 0,
@@ -266,7 +265,7 @@ class _EarningsContent extends ConsumerWidget {
         ),
         const SizedBox(height: MyShopSpacing.lg),
 
-        // Recent Payouts
+        // Payout history
         Row(
           children: [
             const Icon(Icons.history,
@@ -274,7 +273,7 @@ class _EarningsContent extends ConsumerWidget {
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                'Recent Payouts',
+                'Payout history',
                 style: MyShopTypography.h2.copyWith(
                   fontWeight: FontWeight.w800,
                   fontSize: 16,
@@ -304,11 +303,22 @@ class _EarningsContent extends ConsumerWidget {
   static String _commissionTitle(EarningsPeriod p) {
     switch (p) {
       case EarningsPeriod.today:
-        return 'Commission & Tax — Today';
+        return 'Earnings breakdown — Today';
       case EarningsPeriod.week:
-        return 'Commission & Tax — This Week';
+        return 'Earnings breakdown — This Week';
       case EarningsPeriod.month:
-        return 'Commission & Tax — This Month';
+        return 'Earnings breakdown — This Month';
+    }
+  }
+
+  static String _earnedLabel(EarningsPeriod p) {
+    switch (p) {
+      case EarningsPeriod.today:
+        return 'Earned today';
+      case EarningsPeriod.week:
+        return 'Earned this week';
+      case EarningsPeriod.month:
+        return 'Earned this month';
     }
   }
 
@@ -424,30 +434,25 @@ class _PeriodSegmented extends StatelessWidget {
 
 class _BalanceCard extends StatelessWidget {
   const _BalanceCard({
-    required this.available,
-    required this.periodNet,
-    required this.jobsDone,
+    required this.availablePesewas,
     required this.ratingsAsync,
     required this.isInArrears,
   });
 
-  /// Headline balance — available payout funds when clear, or the negative
-  /// full durable cash-commission debt while [isInArrears] is true.
-  final double available;
-  final double periodNet;
-  final int jobsDone;
+  /// Legacy headline balance. It is intentionally not called withdrawable:
+  /// older APIs may include retained funds that are not payout-eligible.
+  final int availablePesewas;
   final AsyncValue<ProviderRatingsSummary> ratingsAsync;
   final bool isInArrears;
 
   @override
   Widget build(BuildContext context) {
-    final headline = isInArrears ? 'Owings' : 'Available Balance';
+    final headline = isInArrears ? 'Owings' : 'Available balance';
     final amountColor = isInArrears
         ? MyShopColors.error.withValues(alpha: 0.95)
         : MyShopColors.textOnDarkSlate;
-    final magnitude = available.abs().toStringAsFixed(2);
-    final amountText =
-        isInArrears ? '−GH₵ $magnitude' : 'GH₵ ${available.toStringAsFixed(2)}';
+    final magnitude = (availablePesewas.abs() / 100).toStringAsFixed(2);
+    final amountText = isInArrears ? '− GH₵ $magnitude' : 'GH₵ $magnitude';
 
     return Container(
       padding: const EdgeInsets.all(MyShopSpacing.lg),
@@ -504,57 +509,8 @@ class _BalanceCard extends StatelessWidget {
               ),
             ),
           ],
-          const SizedBox(height: MyShopSpacing.md),
-          Divider(
-            height: 1,
-            color: Colors.white.withValues(alpha: 0.18),
-          ),
-          const SizedBox(height: MyShopSpacing.md),
-          Row(
-            children: [
-              Expanded(
-                child: _miniStat(
-                  label: 'PERIOD NET',
-                  value: 'GH₵ ${periodNet.toStringAsFixed(2)}',
-                ),
-              ),
-              Expanded(
-                child: _miniStat(
-                  label: 'JOBS DONE',
-                  value: jobsDone.toString(),
-                ),
-              ),
-            ],
-          ),
         ],
       ),
-    );
-  }
-
-  Widget _miniStat({required String label, required String value}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: MyShopTypography.overline.copyWith(
-            color: MyShopColors.primaryGold,
-            fontWeight: FontWeight.w900,
-            fontSize: 11,
-            letterSpacing: 1.0,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(
-            fontFamily: 'Raleway',
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: MyShopColors.textOnDarkSlate,
-          ),
-        ),
-      ],
     );
   }
 }
